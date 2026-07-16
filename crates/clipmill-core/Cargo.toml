@@ -1,0 +1,11 @@
+[package]
+name = "clipmill-core"
+description = "Core primitives: identifiers, rational time, errors, canonical JSON"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true

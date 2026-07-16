@@ -1,0 +1,3 @@
+# Words clippy::doc_markdown should accept in doc prose without backticks.
+# ".." keeps clippy's built-in defaults.
+doc-valid-idents = ["ClipMill", "FFmpeg", "SQLite", "WebView", "OpusClip", ".."]

@@ -1,0 +1,34 @@
+# cargo-deny configuration — supply-chain policy for an AGPL-3.0-only project.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Dependencies must be AGPL-compatible. Our own crates are AGPL-3.0-only.
+allow = [
+  "AGPL-3.0-only",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "CC0-1.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
