@@ -1,0 +1,47 @@
+# Decision Register
+
+The load-bearing decisions, each with the test that would falsify it. A
+decision whose falsification test passes gets revisited — this register keeps
+the architecture honest as the field moves. D-decisions come from the system
+design book (Appendix D); R-decisions are repo-local implementation choices
+made where the book is silent or ambiguous.
+
+## D — Design-book decisions
+
+| ID | Decision | Falsification test |
+|----|----------|--------------------|
+| D01 | Local-first with orchestration width compensating for model size; API collapses the funnel | Ablation: local ensemble cascade vs. single local call vs. single API call, per genre — if width buys <2 points of blind preference, narrow it. |
+| D02 | Parity as a six-component vector with per-genre non-inferiority | Blind protocol detects a failed genre that aggregate scoring would have hidden. |
+| D03 | Rust daemon + Python model workers + Tauri/React shell | Kill drills and dependency-conflict injections cost only leased tasks; if a worker crash ever corrupts state, the boundary failed. |
+| D04 | SQLite + filesystem CAS; no server stack on desktop | Profiling shows metadata or artifact I/O as a top-3 bottleneck on any tier. |
+| D05 | Content-addressed artifacts; state/evidence separation | Cache hit rate on repeat analysis <95%, or any migration incident touching evidence. |
+| D06 | Rational time everywhere; no float seconds in records | VFR round-trip fixtures drift ≥1 tick. |
+| D07 | Specialists always-on; VLM event-triggered | Ablation: uniform VLM sampling beats triggered VLM on quality-per-joule on any tier. |
+| D08 | Separate ASR / alignment / diarization / ASD stages | An integrated model beats the pipeline on word timing *and* attribution *and* cost, per language. |
+| D09 | Evidence graph + hierarchical memory over flat context | Ablation: flat-transcript prompting matches packet prompting on hour-long sources. |
+| D10 | Proposer mesh over single scorer | One proposer's recall envelope covers the mesh across all launch genres. |
+| D11 | Pairwise judge ensembles + Bradley–Terry over absolute scores | Absolute scoring matches pairwise on ranking stability and calibration at equal cost. |
+| D12 | Boundary lattice as a separate optimization stage | End-to-end span prediction meets the boundary-repair SLO without it. |
+| D13 | One Edit IR for preview, render, and export | Any release where golden preview/render parity fails — the invariant, not the decision, is then the bug. |
+| D14 | Scene-level layout DP + crop-path optimization over per-frame tracking | Smoothed per-frame tracking passes the jerk/identity gates on the reframe benchmark. |
+| D15 | Retrieval-first B-roll; generation opt-in with provenance | Users on the blind protocol prefer generated default B-roll *and* the rights ledger can carry it. |
+| D16 | Deny-by-default network broker; Local Lock OS-enforced | Packet capture in CI ever shows an egress attempt in Lock mode — this one is allowed **zero revisits**. |
+| D17 | Evaluation service as a subsystem; gates over dates | A gated release that meets its gates and still regresses in the field beyond tolerance. |
+| D18 | Per-capability quantization policy; embeddings 8-bit minimum | 4-bit embeddings show no retrieval regression on the internal benchmark. |
+| D19 | Backend selection by measured device profile | Static per-platform defaults match measured selection within 5% on the device matrix. |
+| D20 | Export-first; publishing as adapter with human approval | Platform API terms and audit posture change to make first-party publishing low-risk at launch scale. |
+
+## R — Repo-local decisions
+
+| ID | Decision | Rationale / revisit condition |
+|----|----------|-------------------------------|
+| R1 | IPC = prost + length-delimited protobuf frames over UDS; no tonic/gRPC | The book prescribes "versioned Protobuf over Unix domain sockets", not gRPC. No HTTP/2 machinery between local processes; simpler Python client; auditable copies. Revisit if streaming ergonomics demand more. |
+| R2 | Generated code is committed, with a CI drift check | Reproducible builds, reviewable contract-change diffs, `cargo build` needs no codegen toolchain. |
+| R3 | SQLite ≥ 3.51.3 pin enforced at runtime (refuse WAL below 3051003) | rusqlite's bundled amalgamation may lag; vendor via `libsqlite3-sys` override if so. |
+| R4 | FFmpeg as pinned static sidecar binaries fetched by sha256 (`bom.toml`), not linked libav | Matches the book's subprocess-supervision sandbox posture; avoids GPL-linking questions in an AGPL codebase. |
+| R5 | Worker capability descriptors carry a signature field from day one (dev ed25519 key in Phase 0) | The real signed registry is Phase 4; shipping the field now means the protocol never changes. |
+| R6 | Phase 0 Local Lock proof = CI network-namespace denial + egress canary | OS-level enforcement (network extension/firewall) is the book's end state, arriving Phase 4. The claim is documented at exactly its current strength in `docs/local-lock.md`. |
+| R7 | Arrow shared memory: descriptor contract + one seal/map round-trip only in Phase 0 | No bulk consumers exist yet; descriptor ships now to avoid protocol churn. |
+| R8 | Seed-40 corpus content is a curation task, not a repo deliverable | Rights attestations required; the repo ships the harness plus a few CC-licensed entries. |
+| R9 | Design tokens follow the screens/prose palette (accent `#5E6AD2`, dark `#0A0B0E→#050608`, light `#F7F8FA→#ECEEF2`) over the DESIGN.md front-matter Material palette | The Stitch export's front-matter and screens disagree; the screens are what Sami approved visually. |
+| R10 | Daemon binary is `clipmilld` | The book's `clipperd` is a book-ism from before the product was named. |
