@@ -1,0 +1,29 @@
+# Rust
+target/
+
+# Node
+node_modules/
+dist/
+
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Tauri
+apps/desktop/src-tauri/gen/
+
+# Local tool cache (pinned FFmpeg, etc.)
+.cache/
+
+# Databases and local state
+*.db
+*.db-*
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
