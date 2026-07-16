@@ -1,0 +1,12 @@
+{
+  "name": "@clipmill/tokens",
+  "version": "0.0.1",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Pro-Studio Precision design tokens: tokens.json -> CSS variables + Tailwind preset (built in W9)",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p ."
+  }
+}
