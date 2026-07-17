@@ -33,7 +33,7 @@ jobs:
         if: steps.typify-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-typify --locked
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -137,7 +137,7 @@ jobs:
       - name: cargo-deny (advisories + AGPL-compatible license allowlist)
         uses: EmbarkStudios/cargo-deny-action@v2
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -151,7 +151,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
