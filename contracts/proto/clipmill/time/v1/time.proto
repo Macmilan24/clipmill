@@ -1,0 +1,23 @@
+// Rational time primitives. All ClipMill times are integers against an
+// explicit timebase — never float seconds (decision D06). Where a common
+// base is required across sources, it is 1/90000 ("ticks").
+syntax = "proto3";
+
+package clipmill.time.v1;
+
+// An exact rational timebase, e.g. {num: 1, den: 90000}.
+message Timebase {
+  int64 num = 1;
+  int64 den = 2;
+}
+
+// A count of ticks at the canonical 1/90000 timebase.
+message Ticks {
+  int64 ticks = 1;
+}
+
+// A half-open interval [start, end) in ticks at 1/90000.
+message Interval {
+  int64 start_ticks = 1;
+  int64 end_ticks = 2;
+}

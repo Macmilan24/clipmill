@@ -1,0 +1,15 @@
+// Minimal daemon control-plane message: proves the IPC contract pipeline
+// (proto -> Rust/Python/TypeScript) end to end. The real control plane
+// (project, job, task, events, health) lands in workstream W1/W2.
+syntax = "proto3";
+
+package clipmill.ipc.v1;
+
+message PingRequest {
+  string echo = 1;
+}
+
+message PingResponse {
+  string echo = 1;
+  string daemon_version = 2;
+}

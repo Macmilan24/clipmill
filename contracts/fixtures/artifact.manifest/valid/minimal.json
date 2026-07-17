@@ -1,0 +1,31 @@
+{
+  "artifact_id": "sha256:9f2c000000000000000000000000000000000000000000000000000000000001",
+  "files": [
+    {
+      "bytes": 481220,
+      "path": "tracks.arrow",
+      "sha256": "sha256:c0de000000000000000000000000000000000000000000000000000000000004"
+    }
+  ],
+  "inputs": [
+    "sha256:aaaa000000000000000000000000000000000000000000000000000000000002",
+    "sha256:bbbb000000000000000000000000000000000000000000000000000000000003"
+  ],
+  "kind": "evidence.active_speaker.v2",
+  "policy": "local-lock",
+  "producer": {
+    "implementation": "loconet-adapter@1.4.0",
+    "model_digest": "sha256:77d1000000000000000000000000000000000000000000000000000000000005",
+    "stage": "active-speaker"
+  },
+  "quality": {
+    "coverage": 0.97,
+    "mean_confidence": 0.84
+  },
+  "schema_version": "clipmill.artifact.manifest.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "timebase": {
+    "den": 90000,
+    "num": 1
+  }
+}

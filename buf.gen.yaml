@@ -1,0 +1,16 @@
+version: v2
+clean: false
+plugins:
+  # Rust (prost) — committed into crates/clipmill-contracts/src/gen
+  - remote: buf.build/community/neoeinstein-prost
+    out: crates/clipmill-contracts/src/gen/proto
+  # Python — committed into the worker SDK's src root, so the generated
+  # "clipmill" proto package is importable exactly as protoc names it
+  - remote: buf.build/protocolbuffers/python
+    out: workers/sdk/src
+  - remote: buf.build/protocolbuffers/pyi
+    out: workers/sdk/src
+  # TypeScript (protobuf-es) — committed into @clipmill/contracts
+  - remote: buf.build/bufbuild/es
+    out: packages/contracts/src/gen/proto
+    opt: target=ts
