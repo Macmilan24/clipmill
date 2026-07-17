@@ -1,6 +1,9 @@
 line-length = 100
 target-version = "py312"
 
+# Generated code is exempt from lint/format; it is drift-checked instead.
+exclude = ["workers/sdk/src/clipmill", "**/gen"]
+
 [lint]
 select = [
   "E", "F", "W",   # pycodestyle + pyflakes
