@@ -1,0 +1,48 @@
+{
+  "accelerators": [
+    {
+      "kind": "metal",
+      "name": "Apple M4 Pro"
+    },
+    {
+      "kind": "videotoolbox",
+      "name": "Apple VideoToolbox"
+    }
+  ],
+  "cpu": {
+    "efficiency_cores": 4,
+    "logical_cores": 12,
+    "model": "Apple M4 Pro",
+    "performance_cores": 8,
+    "physical_cores": 12
+  },
+  "measured": {
+    "decode": [
+      {
+        "codec": "h264",
+        "fps_measured": 861.4,
+        "hardware": true,
+        "height": 1080
+      }
+    ],
+    "encode": [
+      {
+        "codec": "h264",
+        "fps_measured": 214.9,
+        "hardware": true,
+        "height": 1920
+      }
+    ],
+    "ffmpeg_build": "1783011502_8.1.2"
+  },
+  "memory": {
+    "total_bytes": 25769803776,
+    "unified": true
+  },
+  "platform": {
+    "arch": "arm64",
+    "os": "macos",
+    "os_version": "26.0"
+  },
+  "schema_version": "clipmill.device_profile.v1"
+}

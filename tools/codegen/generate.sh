@@ -12,25 +12,37 @@ echo "==> protobuf (buf generate: Rust prost / Python / TypeScript)"
 buf lint
 buf generate
 
-echo "==> JSON Schema -> Rust (typify)"
-cargo typify contracts/schemas/clipmill.artifact.manifest.v1.json \
-  --output crates/clipmill-contracts/src/gen/schemas/artifact_manifest.rs
+# Module name for a schema file: clipmill.artifact.manifest.v1.json -> artifact_manifest
+module_name() {
+  basename "$1" .json | sed -e 's/^clipmill\.//' -e 's/\.v[0-9]*$//' -e 's/\./_/g'
+}
 
-echo "==> JSON Schema -> Python (datamodel-code-generator)"
-mkdir -p workers/sdk/src/clipmill_worker_sdk/gen/schemas
-uvx --from datamodel-code-generator datamodel-codegen \
-  --input contracts/schemas/clipmill.artifact.manifest.v1.json \
-  --input-file-type jsonschema \
-  --output workers/sdk/src/clipmill_worker_sdk/gen/schemas/artifact_manifest.py \
-  --output-model-type pydantic_v2.BaseModel \
-  --target-python-version 3.12 \
-  --disable-timestamp
+mkdir -p workers/sdk/src/clipmill_worker_sdk/gen/schemas \
+  crates/clipmill-contracts/src/gen/schemas \
+  packages/contracts/src/gen/schemas
 
-echo "==> JSON Schema -> TypeScript (json-schema-to-typescript)"
-pnpm --filter @clipmill/contracts exec json2ts \
-  -i ../../contracts/schemas/clipmill.artifact.manifest.v1.json \
-  -o src/gen/schemas/artifact-manifest.ts \
-  --additionalProperties false
+for schema in contracts/schemas/*.json; do
+  name="$(module_name "$schema")"
+
+  echo "==> $schema -> Rust (typify)"
+  cargo typify "$schema" \
+    --output "crates/clipmill-contracts/src/gen/schemas/${name}.rs"
+
+  echo "==> $schema -> Python (datamodel-code-generator)"
+  uvx --from datamodel-code-generator datamodel-codegen \
+    --input "$schema" \
+    --input-file-type jsonschema \
+    --output "workers/sdk/src/clipmill_worker_sdk/gen/schemas/${name}.py" \
+    --output-model-type pydantic_v2.BaseModel \
+    --target-python-version 3.12 \
+    --disable-timestamp
+
+  echo "==> $schema -> TypeScript (json-schema-to-typescript)"
+  pnpm --filter @clipmill/contracts exec json2ts \
+    -i "../../$schema" \
+    -o "src/gen/schemas/$(echo "$name" | tr '_' '-').ts" \
+    --additionalProperties false
+done
 
 echo "==> normalize"
 cargo fmt -p clipmill-contracts

@@ -1,0 +1,160 @@
+// The daemon control plane: versioned protobuf over Unix domain sockets
+// (named pipes on Windows), length-delimited frames, no gRPC (decision R1).
+// Every request is idempotent wherever retries exist; every frame carries
+// a request id so responses and pushed events can interleave on one socket.
+syntax = "proto3";
+
+package clipmill.ipc.v1;
+
+import "clipmill/ipc/v1/ping.proto";
+import "clipmill/worker/v1/worker.proto";
+
+// One request frame. request_id is client-chosen and echoed back.
+message Request {
+  string request_id = 1;
+  oneof body {
+    PingRequest ping = 10;
+    HealthRequest health = 11;
+    CreateProjectRequest create_project = 12;
+    GetProjectRequest get_project = 13;
+    ListProjectsRequest list_projects = 14;
+    DeleteProjectRequest delete_project = 15;
+    SubmitJobRequest submit_job = 16;
+    SubscribeTaskEventsRequest subscribe_task_events = 17;
+    GetDeviceProfileRequest get_device_profile = 18;
+  }
+}
+
+// One response frame. Either the matching response body or an error.
+// TaskEvent frames are pushed with the subscription's request_id.
+message Response {
+  string request_id = 1;
+  oneof body {
+    Error error = 9;
+    PingResponse ping = 10;
+    HealthResponse health = 11;
+    CreateProjectResponse create_project = 12;
+    GetProjectResponse get_project = 13;
+    ListProjectsResponse list_projects = 14;
+    DeleteProjectResponse delete_project = 15;
+    SubmitJobResponse submit_job = 16;
+    TaskEvent task_event = 17;
+    GetDeviceProfileResponse get_device_profile = 18;
+  }
+}
+
+message Error {
+  ErrorCode code = 1;
+  string message = 2;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_ARGUMENT = 1;
+  ERROR_CODE_NOT_FOUND = 2;
+  ERROR_CODE_CONFLICT = 3;
+  ERROR_CODE_UNAVAILABLE = 4;
+  ERROR_CODE_POLICY_DENIED = 5;
+  ERROR_CODE_INTERNAL = 6;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string daemon_version = 1;
+  // Wall-clock start time of the daemon process (project/runtime state may
+  // carry wall time; artifact identity never does).
+  uint64 started_unix_millis = 2;
+  bool local_lock = 3;
+}
+
+// ---- Project state (small, mutable, user-authored; SQLite, ch. 10) ----
+
+message Project {
+  string project_id = 1;
+  string name = 2;
+  uint64 created_unix_millis = 3;
+}
+
+message CreateProjectRequest {
+  string name = 1;
+}
+
+message CreateProjectResponse {
+  Project project = 1;
+}
+
+message GetProjectRequest {
+  string project_id = 1;
+}
+
+message GetProjectResponse {
+  Project project = 1;
+}
+
+message ListProjectsRequest {}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+}
+
+message DeleteProjectRequest {
+  string project_id = 1;
+}
+
+message DeleteProjectResponse {}
+
+// ---- Jobs and task events ----
+
+message SubmitJobRequest {
+  string project_id = 1;
+  // Job kind, e.g. "demo-dag" (Phase 0), later "analyze", "render".
+  string kind = 2;
+  bytes payload = 3;
+}
+
+message SubmitJobResponse {
+  string job_id = 1;
+}
+
+message SubscribeTaskEventsRequest {
+  // Empty subscribes to all projects.
+  string project_id = 1;
+}
+
+// Pushed for every task state transition and heartbeat-driven progress.
+message TaskEvent {
+  string job_id = 1;
+  string task_id = 2;
+  TaskState state = 3;
+  clipmill.worker.v1.ProgressUnits progress = 4;
+  // Resource reason when waiting, e.g. "paused: thermal" (ch. 10).
+  string wait_reason = 5;
+  uint64 at_unix_millis = 6;
+}
+
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_PLANNED = 1;
+  TASK_STATE_ADMITTED = 2;
+  TASK_STATE_RUNNING = 3;
+  TASK_STATE_SUCCEEDED = 4;
+  TASK_STATE_RETRYABLE = 5;
+  TASK_STATE_FAILED = 6;
+  TASK_STATE_CANCELLED = 7;
+}
+
+// ---- Device profile (measured, cached; ch. 11) ----
+
+message GetDeviceProfileRequest {
+  // Force a fresh measurement instead of the cached artifact.
+  bool remeasure = 1;
+}
+
+message GetDeviceProfileResponse {
+  // Content address of the device_profile artifact.
+  string artifact_id = 1;
+  // The profile document itself (clipmill.device_profile.v1 JSON), inlined
+  // for shells that do not read the artifact store directly.
+  string profile_json = 2;
+}

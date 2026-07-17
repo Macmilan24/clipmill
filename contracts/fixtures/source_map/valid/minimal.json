@@ -1,0 +1,48 @@
+{
+  "container": {
+    "duration_ticks": 900000,
+    "format": "mov,mp4,m4a,3gp,3g2,mj2",
+    "rotation_deg": 0
+  },
+  "schema_version": "clipmill.source_map.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "streams": [
+    {
+      "codec": "h264",
+      "duration_ticks": 900000,
+      "index": 0,
+      "kind": "video",
+      "start_offset_ticks": 0,
+      "timebase": {
+        "den": 15360,
+        "num": 1
+      },
+      "video": {
+        "coded_height": 720,
+        "coded_width": 1280,
+        "display_height": 720,
+        "display_width": 1280,
+        "frame_rate": {
+          "den": 1001,
+          "num": 30000
+        },
+        "vfr": false
+      }
+    },
+    {
+      "audio": {
+        "channels": 2,
+        "sample_rate": 48000
+      },
+      "codec": "aac",
+      "duration_ticks": 900000,
+      "index": 1,
+      "kind": "audio",
+      "start_offset_ticks": 0,
+      "timebase": {
+        "den": 48000,
+        "num": 1
+      }
+    }
+  ]
+}

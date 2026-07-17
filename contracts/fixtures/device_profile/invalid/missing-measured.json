@@ -1,0 +1,15 @@
+{
+  "accelerators": [],
+  "cpu": {
+    "logical_cores": 12,
+    "model": "Apple M4 Pro"
+  },
+  "memory": {
+    "total_bytes": 25769803776
+  },
+  "platform": {
+    "arch": "arm64",
+    "os": "macos"
+  },
+  "schema_version": "clipmill.device_profile.v1"
+}

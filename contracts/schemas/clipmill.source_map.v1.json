@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.source_map.v1.json",
+  "title": "SourceMap",
+  "description": "The source map built at ingest: the ONLY authority for converting between edit time and source presentation time (book ch. 10/12). All durations and offsets are integer ticks at 1/90000 against the stated timebase — variable frame rate and 29.97 drop-frame material are exactly where float-seconds pipelines drift by a frame.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "container", "streams"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.source_map.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "container": {
+      "type": "object",
+      "required": ["format", "duration_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "description": "Container format, e.g. 'mov,mp4,m4a,3gp,3g2,mj2'.",
+          "type": "string"
+        },
+        "duration_ticks": {
+          "description": "Container duration in ticks at 1/90000.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "rotation_deg": {
+          "description": "Display rotation from side data / display matrix.",
+          "type": "integer",
+          "enum": [0, 90, 180, 270]
+        }
+      }
+    },
+    "streams": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["index", "kind", "codec", "timebase"],
+        "additionalProperties": false,
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "kind": { "enum": ["video", "audio", "subtitle", "data"] },
+          "codec": { "type": "string" },
+          "timebase": { "$ref": "#/$defs/timebase" },
+          "start_offset_ticks": {
+            "description": "Stream start offset in ticks at 1/90000.",
+            "type": "integer"
+          },
+          "duration_ticks": { "type": "integer", "minimum": 0 },
+          "video": {
+            "type": "object",
+            "required": ["coded_width", "coded_height", "display_width", "display_height"],
+            "additionalProperties": false,
+            "properties": {
+              "coded_width": { "type": "integer", "minimum": 1 },
+              "coded_height": { "type": "integer", "minimum": 1 },
+              "display_width": {
+                "description": "Width after rotation/aspect are applied — what the viewer sees.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "display_height": { "type": "integer", "minimum": 1 },
+              "frame_rate": { "$ref": "#/$defs/timebase" },
+              "vfr": {
+                "description": "True when frame intervals vary (variable frame rate).",
+                "type": "boolean"
+              }
+            }
+          },
+          "audio": {
+            "type": "object",
+            "required": ["sample_rate", "channels"],
+            "additionalProperties": false,
+            "properties": {
+              "sample_rate": { "type": "integer", "minimum": 1 },
+              "channels": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timebase": {
+      "type": "object",
+      "required": ["num", "den"],
+      "additionalProperties": false,
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

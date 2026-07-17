@@ -1,0 +1,100 @@
+// The worker protocol (book ch. 9): workers advertise a signed capability
+// descriptor at startup, take leased tasks, stream heartbeats with
+// structured progress (never synthetic percentages, ch. 10), and finish
+// with a completion or a machine-readable decline. Workers are disposable;
+// the daemon owns truth.
+syntax = "proto3";
+
+package clipmill.worker.v1;
+
+// Advertised once at startup. The signature field exists from day one
+// (decision R5): Phase 0 verifies against a locally generated dev key; the
+// signed model/worker registry arrives in Phase 4 without a protocol change.
+message CapabilityDescriptor {
+  string worker_id = 1;
+  // Worker family, e.g. "echo", "asr", "vision". One locked venv per family.
+  string family = 2;
+  // Capability names this worker can serve, e.g. "echo", "asr", "embed-text".
+  repeated string capabilities = 3;
+  // Worker protocol version, e.g. "1.0". The daemon serves the current and
+  // the previous minor.
+  string protocol_version = 4;
+  // What this worker runs on and how much it may use.
+  string backend = 5; // e.g. "cpu", "metal", "cuda"
+  uint64 max_memory_bytes = 6;
+  // Ed25519 public key and signature over the descriptor fields.
+  bytes public_key = 7;
+  bytes signature = 8;
+}
+
+// A leased unit of work. Payload is opaque here; its shape is the leased
+// stage's own versioned contract.
+message TaskLease {
+  string task_id = 1;
+  string lease_id = 2;
+  // Task kind, e.g. "echo", "probe", "asr".
+  string kind = 3;
+  bytes payload = 4;
+  uint64 heartbeat_interval_ms = 5;
+  uint64 lease_ttl_ms = 6;
+}
+
+// Structured progress: real work units with a bounded estimate. A total of
+// zero means the total is not yet known.
+message ProgressUnits {
+  // The unit being counted, e.g. "audio_seconds", "frames_decoded".
+  string unit = 1;
+  uint64 done = 2;
+  uint64 total = 3;
+}
+
+message Heartbeat {
+  string lease_id = 1;
+  ProgressUnits progress = 2;
+}
+
+// A worker may decline a task before touching media, with a reason the
+// scheduler can act on.
+message Decline {
+  string task_id = 1;
+  DeclineReason reason = 2;
+  string detail = 3;
+}
+
+enum DeclineReason {
+  DECLINE_REASON_UNSPECIFIED = 0;
+  DECLINE_REASON_UNSUPPORTED_KIND = 1;
+  DECLINE_REASON_VERSION_SKEW = 2;
+  DECLINE_REASON_RESOURCE_EXHAUSTED = 3;
+  DECLINE_REASON_POLICY = 4;
+}
+
+message Complete {
+  string lease_id = 1;
+  TaskOutcome outcome = 2;
+  // Content addresses of artifacts staged and hash-verified by the daemon.
+  repeated string artifact_ids = 3;
+  // Machine-readable failure classification for the retry taxonomy (ch. 10).
+  FailureClass failure_class = 4;
+  string detail = 5;
+}
+
+enum TaskOutcome {
+  TASK_OUTCOME_UNSPECIFIED = 0;
+  TASK_OUTCOME_SUCCEEDED = 1;
+  TASK_OUTCOME_RETRYABLE = 2;
+  TASK_OUTCOME_FAILED = 3;
+  TASK_OUTCOME_CANCELLED = 4;
+}
+
+enum FailureClass {
+  FAILURE_CLASS_UNSPECIFIED = 0;
+  // Transient resource loss: retry with backoff.
+  FAILURE_CLASS_TRANSIENT = 1;
+  // Deterministic input failure: retrying a poison file is a loop.
+  FAILURE_CLASS_DETERMINISTIC = 2;
+  // Corrupt model: quarantine the model, not the task.
+  FAILURE_CLASS_CORRUPT_MODEL = 3;
+  // Network unavailable: park until the broker reports reachability.
+  FAILURE_CLASS_NETWORK = 4;
+}

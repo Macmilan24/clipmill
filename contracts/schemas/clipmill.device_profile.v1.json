@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.device_profile.v1.json",
+  "title": "DeviceProfile",
+  "description": "The measured device profile (book ch. 11): backend selection is driven by measurement, not static per-platform defaults (D19). Cached as an artifact; re-measured when hardware or runtimes change. Rates (fps, bytes/s) are measurements, not timeline positions, so they may be numbers.",
+  "type": "object",
+  "required": ["schema_version", "platform", "cpu", "memory", "accelerators", "measured"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.device_profile.v1"
+    },
+    "platform": {
+      "type": "object",
+      "required": ["os", "arch"],
+      "additionalProperties": false,
+      "properties": {
+        "os": { "enum": ["macos", "linux", "windows"] },
+        "arch": { "enum": ["arm64", "x86_64"] },
+        "os_version": { "type": "string" }
+      }
+    },
+    "cpu": {
+      "type": "object",
+      "required": ["model", "logical_cores"],
+      "additionalProperties": false,
+      "properties": {
+        "model": { "type": "string" },
+        "logical_cores": { "type": "integer", "minimum": 1 },
+        "physical_cores": { "type": "integer", "minimum": 1 },
+        "performance_cores": { "type": "integer", "minimum": 0 },
+        "efficiency_cores": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "required": ["total_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "total_bytes": { "type": "integer", "minimum": 0 },
+        "unified": {
+          "description": "True on unified-memory architectures (Apple Silicon).",
+          "type": "boolean"
+        }
+      }
+    },
+    "accelerators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["metal", "cuda", "vulkan", "videotoolbox", "vaapi", "cpu"] },
+          "name": { "type": "string" },
+          "vram_bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "measured": {
+      "description": "Micro-benchmark results from the pinned FFmpeg build.",
+      "type": "object",
+      "required": ["ffmpeg_build"],
+      "additionalProperties": false,
+      "properties": {
+        "ffmpeg_build": {
+          "description": "The bom.toml build identifier the measurements were taken with.",
+          "type": "string"
+        },
+        "decode": { "$ref": "#/$defs/codec_bench_list" },
+        "encode": { "$ref": "#/$defs/codec_bench_list" }
+      }
+    }
+  },
+  "$defs": {
+    "codec_bench_list": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["codec", "height", "fps_measured"],
+        "additionalProperties": false,
+        "properties": {
+          "codec": { "type": "string" },
+          "height": { "type": "integer", "minimum": 1 },
+          "fps_measured": { "type": "number", "exclusiveMinimum": 0 },
+          "hardware": {
+            "description": "True when a hardware path (VideoToolbox, NVDEC, …) was used.",
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

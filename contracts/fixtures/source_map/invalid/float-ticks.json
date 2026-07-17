@@ -1,0 +1,19 @@
+{
+  "container": {
+    "duration_ticks": 900000.5,
+    "format": "mov,mp4,m4a,3gp,3g2,mj2"
+  },
+  "schema_version": "clipmill.source_map.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "streams": [
+    {
+      "codec": "h264",
+      "index": 0,
+      "kind": "video",
+      "timebase": {
+        "den": 15360,
+        "num": 1
+      }
+    }
+  ]
+}

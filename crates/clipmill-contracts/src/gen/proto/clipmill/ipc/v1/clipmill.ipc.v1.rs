@@ -12,4 +12,282 @@ pub struct PingResponse {
     #[prost(string, tag = "2")]
     pub daemon_version: ::prost::alloc::string::String,
 }
+/// One request frame. request_id is client-chosen and echoed back.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Request {
+    #[prost(string, tag = "1")]
+    pub request_id: ::prost::alloc::string::String,
+    #[prost(oneof = "request::Body", tags = "10, 11, 12, 13, 14, 15, 16, 17, 18")]
+    pub body: ::core::option::Option<request::Body>,
+}
+/// Nested message and enum types in `Request`.
+pub mod request {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Body {
+        #[prost(message, tag = "10")]
+        Ping(super::PingRequest),
+        #[prost(message, tag = "11")]
+        Health(super::HealthRequest),
+        #[prost(message, tag = "12")]
+        CreateProject(super::CreateProjectRequest),
+        #[prost(message, tag = "13")]
+        GetProject(super::GetProjectRequest),
+        #[prost(message, tag = "14")]
+        ListProjects(super::ListProjectsRequest),
+        #[prost(message, tag = "15")]
+        DeleteProject(super::DeleteProjectRequest),
+        #[prost(message, tag = "16")]
+        SubmitJob(super::SubmitJobRequest),
+        #[prost(message, tag = "17")]
+        SubscribeTaskEvents(super::SubscribeTaskEventsRequest),
+        #[prost(message, tag = "18")]
+        GetDeviceProfile(super::GetDeviceProfileRequest),
+    }
+}
+/// One response frame. Either the matching response body or an error.
+/// TaskEvent frames are pushed with the subscription's request_id.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Response {
+    #[prost(string, tag = "1")]
+    pub request_id: ::prost::alloc::string::String,
+    #[prost(
+        oneof = "response::Body",
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
+    )]
+    pub body: ::core::option::Option<response::Body>,
+}
+/// Nested message and enum types in `Response`.
+pub mod response {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Body {
+        #[prost(message, tag = "9")]
+        Error(super::Error),
+        #[prost(message, tag = "10")]
+        Ping(super::PingResponse),
+        #[prost(message, tag = "11")]
+        Health(super::HealthResponse),
+        #[prost(message, tag = "12")]
+        CreateProject(super::CreateProjectResponse),
+        #[prost(message, tag = "13")]
+        GetProject(super::GetProjectResponse),
+        #[prost(message, tag = "14")]
+        ListProjects(super::ListProjectsResponse),
+        #[prost(message, tag = "15")]
+        DeleteProject(super::DeleteProjectResponse),
+        #[prost(message, tag = "16")]
+        SubmitJob(super::SubmitJobResponse),
+        #[prost(message, tag = "17")]
+        TaskEvent(super::TaskEvent),
+        #[prost(message, tag = "18")]
+        GetDeviceProfile(super::GetDeviceProfileResponse),
+    }
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Error {
+    #[prost(enumeration = "ErrorCode", tag = "1")]
+    pub code: i32,
+    #[prost(string, tag = "2")]
+    pub message: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HealthRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HealthResponse {
+    #[prost(string, tag = "1")]
+    pub daemon_version: ::prost::alloc::string::String,
+    /// Wall-clock start time of the daemon process (project/runtime state may
+    /// carry wall time; artifact identity never does).
+    #[prost(uint64, tag = "2")]
+    pub started_unix_millis: u64,
+    #[prost(bool, tag = "3")]
+    pub local_lock: bool,
+}
+// ---- Project state (small, mutable, user-authored; SQLite, ch. 10) ----
+
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Project {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub created_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateProjectRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateProjectResponse {
+    #[prost(message, optional, tag = "1")]
+    pub project: ::core::option::Option<Project>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetProjectRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetProjectResponse {
+    #[prost(message, optional, tag = "1")]
+    pub project: ::core::option::Option<Project>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListProjectsRequest {}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListProjectsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub projects: ::prost::alloc::vec::Vec<Project>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeleteProjectRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeleteProjectResponse {}
+// ---- Jobs and task events ----
+
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubmitJobRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    /// Job kind, e.g. "demo-dag" (Phase 0), later "analyze", "render".
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "3")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubmitJobResponse {
+    #[prost(string, tag = "1")]
+    pub job_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubscribeTaskEventsRequest {
+    /// Empty subscribes to all projects.
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+/// Pushed for every task state transition and heartbeat-driven progress.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TaskEvent {
+    #[prost(string, tag = "1")]
+    pub job_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(enumeration = "TaskState", tag = "3")]
+    pub state: i32,
+    #[prost(message, optional, tag = "4")]
+    pub progress: ::core::option::Option<super::super::worker::v1::ProgressUnits>,
+    /// Resource reason when waiting, e.g. "paused: thermal" (ch. 10).
+    #[prost(string, tag = "5")]
+    pub wait_reason: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "6")]
+    pub at_unix_millis: u64,
+}
+// ---- Device profile (measured, cached; ch. 11) ----
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetDeviceProfileRequest {
+    /// Force a fresh measurement instead of the cached artifact.
+    #[prost(bool, tag = "1")]
+    pub remeasure: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetDeviceProfileResponse {
+    /// Content address of the device_profile artifact.
+    #[prost(string, tag = "1")]
+    pub artifact_id: ::prost::alloc::string::String,
+    /// The profile document itself (clipmill.device_profile.v1 JSON), inlined
+    /// for shells that do not read the artifact store directly.
+    #[prost(string, tag = "2")]
+    pub profile_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ErrorCode {
+    Unspecified = 0,
+    InvalidArgument = 1,
+    NotFound = 2,
+    Conflict = 3,
+    Unavailable = 4,
+    PolicyDenied = 5,
+    Internal = 6,
+}
+impl ErrorCode {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ERROR_CODE_UNSPECIFIED",
+            Self::InvalidArgument => "ERROR_CODE_INVALID_ARGUMENT",
+            Self::NotFound => "ERROR_CODE_NOT_FOUND",
+            Self::Conflict => "ERROR_CODE_CONFLICT",
+            Self::Unavailable => "ERROR_CODE_UNAVAILABLE",
+            Self::PolicyDenied => "ERROR_CODE_POLICY_DENIED",
+            Self::Internal => "ERROR_CODE_INTERNAL",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ERROR_CODE_UNSPECIFIED" => Some(Self::Unspecified),
+            "ERROR_CODE_INVALID_ARGUMENT" => Some(Self::InvalidArgument),
+            "ERROR_CODE_NOT_FOUND" => Some(Self::NotFound),
+            "ERROR_CODE_CONFLICT" => Some(Self::Conflict),
+            "ERROR_CODE_UNAVAILABLE" => Some(Self::Unavailable),
+            "ERROR_CODE_POLICY_DENIED" => Some(Self::PolicyDenied),
+            "ERROR_CODE_INTERNAL" => Some(Self::Internal),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TaskState {
+    Unspecified = 0,
+    Planned = 1,
+    Admitted = 2,
+    Running = 3,
+    Succeeded = 4,
+    Retryable = 5,
+    Failed = 6,
+    Cancelled = 7,
+}
+impl TaskState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "TASK_STATE_UNSPECIFIED",
+            Self::Planned => "TASK_STATE_PLANNED",
+            Self::Admitted => "TASK_STATE_ADMITTED",
+            Self::Running => "TASK_STATE_RUNNING",
+            Self::Succeeded => "TASK_STATE_SUCCEEDED",
+            Self::Retryable => "TASK_STATE_RETRYABLE",
+            Self::Failed => "TASK_STATE_FAILED",
+            Self::Cancelled => "TASK_STATE_CANCELLED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TASK_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "TASK_STATE_PLANNED" => Some(Self::Planned),
+            "TASK_STATE_ADMITTED" => Some(Self::Admitted),
+            "TASK_STATE_RUNNING" => Some(Self::Running),
+            "TASK_STATE_SUCCEEDED" => Some(Self::Succeeded),
+            "TASK_STATE_RETRYABLE" => Some(Self::Retryable),
+            "TASK_STATE_FAILED" => Some(Self::Failed),
+            "TASK_STATE_CANCELLED" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
 // @@protoc_insertion_point(module)

@@ -1,0 +1,33 @@
+// Bulk data never rides the message channel (book ch. 9): the producer
+// seals an Arrow-compatible buffer in shared memory and sends this
+// descriptor. The consumer validates every dimension before mapping.
+syntax = "proto3";
+
+package clipmill.shm.v1;
+
+import "clipmill/time/v1/time.proto";
+
+message BufferDescriptor {
+  // Platform shared-memory identifier (POSIX shm name / Windows section).
+  string shm_name = 1;
+  repeated uint64 shape = 2;
+  DataType dtype = 3;
+  // Color space for image buffers, e.g. "bt709"; empty otherwise.
+  string colorspace = 4;
+  // Timebase governing any time axis in the buffer.
+  clipmill.time.v1.Timebase timebase = 5;
+  uint64 byte_len = 6;
+  // Hash of the sealed bytes; consumers verify before trusting.
+  string sha256 = 7;
+  // The task lease this buffer belongs to; unmapped when the lease ends.
+  string lease_id = 8;
+}
+
+enum DataType {
+  DATA_TYPE_UNSPECIFIED = 0;
+  DATA_TYPE_U8 = 1;
+  DATA_TYPE_I16 = 2;
+  DATA_TYPE_I32 = 3;
+  DATA_TYPE_F16 = 4;
+  DATA_TYPE_F32 = 5;
+}
