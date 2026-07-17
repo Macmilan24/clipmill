@@ -1,0 +1,122 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: contracts (drift + fixtures)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        id: typify-cache
+        with:
+          path: ~/.cargo/bin/cargo-typify
+          key: cargo-typify-${{ runner.os }}-v1
+      - name: Install cargo-typify
+        if: steps.typify-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-typify --locked
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+      - run: pnpm install --frozen-lockfile
+      - name: buf lint
+        run: buf lint
+      - name: buf breaking (against main)
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against ".git#branch=origin/main"
+      - name: schema-lint (rational-time rule, D06)
+        run: python3 tools/schema-lint/check.py contracts/schemas/*.json
+      - name: Fixture validation (valid must pass, invalid must fail)
+        run: |
+          uvx check-jsonschema --schemafile contracts/schemas/clipmill.artifact.manifest.v1.json \
+            contracts/fixtures/artifact.manifest/valid/*.json
+          for f in contracts/fixtures/artifact.manifest/invalid/*.json; do
+            if uvx check-jsonschema --schemafile contracts/schemas/clipmill.artifact.manifest.v1.json "$f" 2>/dev/null; then
+              echo "::error::invalid fixture $f unexpectedly passed schema validation"
+              exit 1
+            fi
+          done
+      - name: Codegen drift (generated code must match contracts/)
+        run: |
+          ./tools/codegen/generate.sh
+          git diff --exit-code || {
+            echo "::error::generated code drifted - run 'just codegen' and commit the result"
+            exit 1
+          }
+
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  python:
+    name: python (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: ruff
+        run: |
+          uvx ruff check .
+          uvx ruff format --check .
+      - name: pytest (all projects)
+        run: |
+          for project in workers/sdk workers/echo eval/harness; do
+            echo "==> $project"
+            (cd "$project" && uv sync --quiet && uv run pytest)
+          done
+
+  ts:
+    name: ts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
