@@ -24,7 +24,7 @@ jobs:
         with:
           setup_only: true
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: typify-cache
         with:
           path: ~/.cargo/bin/cargo-typify
