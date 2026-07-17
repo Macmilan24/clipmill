@@ -104,6 +104,31 @@ jobs:
             (cd "$project" && uv sync --quiet && uv run pytest)
           done
 
+  kill-drill:
+    name: kill-drill (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: ./tools/drills/kill-drill.sh 25
+
+  network-denial:
+    name: network-denial (Local Lock gate)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Allow unprivileged user namespaces (Ubuntu 24.04 default restricts them)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Prefetch and build everything (outside the namespace)
+        run: cargo test --workspace --no-run
+      - name: Run the suite inside a no-network namespace
+        run: unshare -rn ./tools/drills/network-denial.sh
+
   supply-chain:
     name: supply chain
     runs-on: ubuntu-24.04
