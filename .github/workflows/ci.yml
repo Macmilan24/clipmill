@@ -32,7 +32,7 @@ jobs:
       - name: Install cargo-typify
         if: steps.typify-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-typify --locked
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -136,7 +136,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: cargo-deny (advisories + AGPL-compatible license allowlist)
         uses: EmbarkStudios/cargo-deny-action@v2
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
