@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: pnpm install --frozen-lockfile
       - name: buf lint
         run: buf lint
@@ -90,7 +90,7 @@ jobs:
         os: [macos-15, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - name: ruff
