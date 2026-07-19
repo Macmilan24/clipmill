@@ -1319,7 +1319,7 @@ mod tests {
     };
     use clipmill_core::{ArtifactId, LeaseId, ProjectId, Sha256Digest, SourceId};
     use prost::Message;
-    use rusqlite::{Connection, OpenFlags};
+    use rusqlite::{Connection, OpenFlags, params};
     use tempfile::TempDir;
 
     use super::{

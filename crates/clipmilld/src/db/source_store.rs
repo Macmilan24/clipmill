@@ -123,6 +123,7 @@ pub(super) fn find_observation(
         .map_err(Into::into)
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn register_source(
     connection: &mut Connection,
     request_id: &str,
