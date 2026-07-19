@@ -3,12 +3,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fromBinary, toBinary } from '@bufbuild/protobuf';
+import { fromBinary, fromJson, toBinary } from '@bufbuild/protobuf';
+import type { JsonValue } from '@bufbuild/protobuf';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 
 import { canonicalJson } from '../src/canonical.js';
-import { BufferDescriptorSchema, DataType } from '../src/index.js';
+import { BufferDescriptorSchema, DataType, DemoDagPayloadV1Schema } from '../src/index.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const fixtures = join(repo, 'contracts', 'fixtures');
@@ -63,5 +64,21 @@ describe('shm buffer descriptor', () => {
     expect(descriptor.shape.map(Number)).toEqual(twin.shape);
     expect(Number(descriptor.timebase?.den)).toBe(twin.timebase.den);
     expect(toBinary(BufferDescriptorSchema, descriptor)).toEqual(bytes);
+  });
+});
+
+describe('W4 demo DAG payload', () => {
+  it('enforces the Phase 0 semantic key version fixtures', () => {
+    const valid = JSON.parse(
+      readFileSync(join(fixtures, 'proto', 'demo_dag', 'valid', 'payload.json'), 'utf8'),
+    ) as JsonValue;
+    const message = fromJson(DemoDagPayloadV1Schema, valid);
+    expect(message.keyVersion).toBe('clipmill.demo-dag.v1');
+    expect(new TextDecoder().decode(message.seed)).toBe('seed-40');
+
+    const invalid = JSON.parse(
+      readFileSync(join(fixtures, 'proto', 'demo_dag', 'invalid', 'wrong-version.json'), 'utf8'),
+    ) as JsonValue;
+    expect(fromJson(DemoDagPayloadV1Schema, invalid).keyVersion).not.toBe('clipmill.demo-dag.v1');
   });
 });

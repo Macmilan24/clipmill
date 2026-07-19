@@ -4,28 +4,36 @@
 mod support;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     io::{Read, Write},
     path::PathBuf,
     sync::Arc,
+    time::Duration,
 };
 
 use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
 };
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectRequest, DeleteProjectRequest, ErrorCode, GetProjectRequest, HealthRequest,
-    ListProjectsRequest, PingRequest, Request, request, response,
+    CancelJobRequest, CreateProjectRequest, DeleteProjectRequest, ErrorCode, GetProjectRequest,
+    HealthRequest, JobState, ListProjectsRequest, PingRequest, Request, SubscribeTaskEventsRequest,
+    TaskState, request, response,
 };
 use clipmill_core::{ProjectId, Sha256Digest};
 use clipmilld::{Config, Daemon, DaemonError};
 use serde_json::Map;
 use tempfile::TempDir;
-use tokio::{sync::oneshot, task::JoinHandle};
+use tokio::{
+    net::UnixStream,
+    sync::oneshot,
+    task::JoinHandle,
+    time::{sleep, timeout},
+};
 
 use support::{
-    create, send, send_without_reading_response, signal_terminate, spawn_daemon, wait_for_exit,
+    create, get_job, list_jobs, read_response, send, send_on_stream, send_without_reading_response,
+    signal_terminate, spawn_daemon, spawn_daemon_with_step_delay, submit_demo, wait_for_exit,
     wait_until_ready, workspace_tempdir,
 };
 
@@ -468,4 +476,275 @@ async fn invalid_and_unavailable_requests_return_stable_errors() {
     );
 
     stop(shutdown, task).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn durable_demo_job_completes_replays_events_and_survives_restart() {
+    let temp = workspace_tempdir();
+    let config = config(&temp);
+    let (socket, shutdown, task) = running(config.clone()).await;
+    let project = create(&socket, "job-project", "Durable job")
+        .await
+        .expect("project");
+    let submitted = submit_demo(
+        &socket,
+        "submit-demo",
+        &project.project_id,
+        b"deterministic input",
+    )
+    .await
+    .expect("submit demo");
+    let replayed = submit_demo(
+        &socket,
+        "submit-demo",
+        &project.project_id,
+        b"deterministic input",
+    )
+    .await
+    .expect("replay submit");
+    assert_eq!(submitted, replayed);
+
+    let mut completed = None;
+    for attempt in 0..250 {
+        let job = get_job(&socket, &format!("poll-{attempt}"), &submitted.job_id)
+            .await
+            .expect("poll job");
+        if job.state == JobState::Succeeded as i32 {
+            completed = Some(job);
+            break;
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
+    let completed = completed.expect("job completes");
+    assert_eq!(completed.tasks.len(), 4);
+    assert!(
+        completed
+            .tasks
+            .iter()
+            .all(|task| task.state == TaskState::Succeeded as i32)
+    );
+    assert_eq!(completed.output_artifact_ids.len(), 1);
+    assert_eq!(
+        list_jobs(&socket, "list-jobs", &project.project_id)
+            .await
+            .expect("list jobs"),
+        vec![completed.clone()]
+    );
+
+    let mut stream = UnixStream::connect(&socket)
+        .await
+        .expect("event connection");
+    send_on_stream(
+        &mut stream,
+        Request {
+            request_id: "events".to_owned(),
+            body: Some(request::Body::SubscribeTaskEvents(
+                SubscribeTaskEventsRequest {
+                    project_id: project.project_id,
+                    job_id: completed.job_id.clone(),
+                    after_event_id: 0,
+                },
+            )),
+        },
+    )
+    .await
+    .expect("subscribe");
+    let ready = read_response(&mut stream)
+        .await
+        .expect("subscription ready");
+    assert!(matches!(
+        ready.body,
+        Some(response::Body::SubscribeTaskEvents(value)) if value.current_event_id > 0
+    ));
+    let mut cursor = 0;
+    let mut saw_final = false;
+    for _event in 0..32 {
+        let response = read_response(&mut stream).await.expect("event replay");
+        let Some(response::Body::TaskEvent(event)) = response.body else {
+            panic!("unexpected subscription frame");
+        };
+        assert!(event.event_id > cursor);
+        cursor = event.event_id;
+        if event.task_id == completed.tasks[3].task_id && event.state == TaskState::Succeeded as i32
+        {
+            saw_final = true;
+            break;
+        }
+    }
+    assert!(saw_final);
+    drop(stream);
+    stop(shutdown, task).await;
+
+    let (socket, shutdown, task) = running(config).await;
+    let persisted = get_job(&socket, "job-after-restart", &completed.job_id)
+        .await
+        .expect("job after restart");
+    assert_eq!(persisted, completed);
+    stop(shutdown, task).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn live_event_subscription_reconnects_without_gaps_or_duplicates() {
+    let temp = workspace_tempdir();
+    let (socket, shutdown, task) = running(config(&temp)).await;
+    let project = create(&socket, "event-project", "Event replay")
+        .await
+        .expect("project");
+    let mut stream = UnixStream::connect(&socket)
+        .await
+        .expect("event connection");
+    send_on_stream(
+        &mut stream,
+        Request {
+            request_id: "live-events".to_owned(),
+            body: Some(request::Body::SubscribeTaskEvents(
+                SubscribeTaskEventsRequest {
+                    project_id: project.project_id.clone(),
+                    job_id: String::new(),
+                    after_event_id: 0,
+                },
+            )),
+        },
+    )
+    .await
+    .expect("subscribe");
+    let ready = read_response(&mut stream)
+        .await
+        .expect("subscription ready");
+    assert!(matches!(
+        ready.body,
+        Some(response::Body::SubscribeTaskEvents(_))
+    ));
+
+    let first = submit_demo(&socket, "live-job-1", &project.project_id, b"first")
+        .await
+        .expect("submit first job");
+    let final_task_id = first.tasks.last().expect("final task").task_id.clone();
+    let mut cursor = 0;
+    let mut seen = BTreeSet::new();
+    loop {
+        let response = timeout(Duration::from_secs(5), read_response(&mut stream))
+            .await
+            .expect("event timeout")
+            .expect("live event");
+        let Some(response::Body::TaskEvent(event)) = response.body else {
+            panic!("unexpected subscription frame");
+        };
+        assert!(event.event_id > cursor);
+        assert!(seen.insert(event.event_id), "duplicate event cursor");
+        cursor = event.event_id;
+        if event.job_id == first.job_id
+            && event.task_id == final_task_id
+            && event.state == TaskState::Succeeded as i32
+        {
+            break;
+        }
+    }
+    drop(stream);
+
+    let mut resumed = UnixStream::connect(&socket)
+        .await
+        .expect("resume connection");
+    send_on_stream(
+        &mut resumed,
+        Request {
+            request_id: "resumed-events".to_owned(),
+            body: Some(request::Body::SubscribeTaskEvents(
+                SubscribeTaskEventsRequest {
+                    project_id: project.project_id.clone(),
+                    job_id: String::new(),
+                    after_event_id: cursor,
+                },
+            )),
+        },
+    )
+    .await
+    .expect("resume subscription");
+    let ready = read_response(&mut resumed).await.expect("resume ready");
+    assert!(matches!(
+        ready.body,
+        Some(response::Body::SubscribeTaskEvents(_))
+    ));
+    let second = submit_demo(&socket, "live-job-2", &project.project_id, b"second")
+        .await
+        .expect("submit second job");
+    let response = timeout(Duration::from_secs(5), read_response(&mut resumed))
+        .await
+        .expect("resumed event timeout")
+        .expect("resumed event");
+    let Some(response::Body::TaskEvent(event)) = response.body else {
+        panic!("unexpected resumed subscription frame");
+    };
+    assert!(event.event_id > cursor);
+    assert_eq!(event.job_id, second.job_id);
+    drop(resumed);
+    stop(shutdown, task).await;
+}
+
+#[tokio::test]
+async fn cancelling_a_running_lease_is_durable_and_rejects_late_success() {
+    let temp = workspace_tempdir();
+    let data_dir = temp.path().join("cancel-data");
+    let socket = temp.path().join("cancel.sock");
+    let mut daemon = spawn_daemon_with_step_delay(&data_dir, &socket, Some(2_000));
+    wait_until_ready(&socket).await.expect("daemon ready");
+    let project = create(&socket, "cancel-project", "Cancellation")
+        .await
+        .expect("project");
+    let submitted = submit_demo(&socket, "cancel-submit", &project.project_id, b"cancel")
+        .await
+        .expect("submit");
+    let mut observed_running = false;
+    for attempt in 0..100 {
+        let current = get_job(
+            &socket,
+            &format!("cancel-poll-{attempt}"),
+            &submitted.job_id,
+        )
+        .await
+        .expect("poll");
+        if current
+            .tasks
+            .iter()
+            .any(|task| task.state == TaskState::Running as i32)
+        {
+            observed_running = true;
+            break;
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+    assert!(observed_running, "fixture task never entered running state");
+    let cancel = Request {
+        request_id: "cancel-running".to_owned(),
+        body: Some(request::Body::CancelJob(CancelJobRequest {
+            job_id: submitted.job_id.clone(),
+        })),
+    };
+    let first = send(&socket, cancel.clone()).await.expect("cancel");
+    let replay = send(&socket, cancel).await.expect("cancel replay");
+    assert_eq!(first, replay);
+    assert!(matches!(
+        first.body,
+        Some(response::Body::CancelJob(value))
+            if value.job.as_ref().is_some_and(|job| job.state == JobState::Cancelled as i32)
+    ));
+    sleep(Duration::from_millis(2_200)).await;
+    let persisted = get_job(&socket, "cancel-persisted", &submitted.job_id)
+        .await
+        .expect("cancelled job");
+    assert_eq!(persisted.state, JobState::Cancelled as i32);
+    assert!(persisted.output_artifact_ids.is_empty());
+    assert!(
+        persisted
+            .tasks
+            .iter()
+            .all(|task| task.state == TaskState::Cancelled as i32)
+    );
+    signal_terminate(&daemon).expect("terminate daemon");
+    assert!(
+        wait_for_exit(&mut daemon)
+            .await
+            .expect("daemon exits")
+            .success()
+    );
 }

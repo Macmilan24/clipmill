@@ -5,7 +5,7 @@
 //! Tests may panic; the workspace deny targets production code.
 #![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
-use clipmill_contracts::proto::ipc::v1::PingRequest;
+use clipmill_contracts::proto::ipc::v1::{DemoDagPayloadV1, PingRequest};
 use clipmill_contracts::schemas::artifact_manifest::ArtifactManifest;
 use prost::Message;
 
@@ -92,5 +92,31 @@ fn ping_binpb_fixture_roundtrips() {
         decoded.encode_to_vec(),
         bytes,
         "re-encode must be byte-identical"
+    );
+}
+
+#[test]
+fn demo_dag_payload_fixtures_enforce_the_phase0_key_version() {
+    let valid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/demo_dag/valid/payload.json",
+    ))
+    .expect("valid demo fixture JSON");
+    let message = DemoDagPayloadV1 {
+        key_version: valid["keyVersion"].as_str().unwrap_or_default().to_owned(),
+        seed: b"seed-40".to_vec(),
+    };
+    assert_eq!(message.key_version, "clipmill.demo-dag.v1");
+    assert_eq!(
+        DemoDagPayloadV1::decode(message.encode_to_vec().as_slice()).expect("round-trip"),
+        message
+    );
+
+    let invalid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/demo_dag/invalid/wrong-version.json",
+    ))
+    .expect("invalid demo fixture remains syntactically valid JSON");
+    assert_ne!(
+        invalid["keyVersion"].as_str().unwrap_or_default(),
+        "clipmill.demo-dag.v1"
     );
 }

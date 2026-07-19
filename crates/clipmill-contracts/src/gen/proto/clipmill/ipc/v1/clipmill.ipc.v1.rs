@@ -17,7 +17,10 @@ pub struct PingResponse {
 pub struct Request {
     #[prost(string, tag = "1")]
     pub request_id: ::prost::alloc::string::String,
-    #[prost(oneof = "request::Body", tags = "10, 11, 12, 13, 14, 15, 16, 17, 18")]
+    #[prost(
+        oneof = "request::Body",
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+    )]
     pub body: ::core::option::Option<request::Body>,
 }
 /// Nested message and enum types in `Request`.
@@ -42,6 +45,12 @@ pub mod request {
         SubscribeTaskEvents(super::SubscribeTaskEventsRequest),
         #[prost(message, tag = "18")]
         GetDeviceProfile(super::GetDeviceProfileRequest),
+        #[prost(message, tag = "19")]
+        GetJob(super::GetJobRequest),
+        #[prost(message, tag = "20")]
+        ListJobs(super::ListJobsRequest),
+        #[prost(message, tag = "21")]
+        CancelJob(super::CancelJobRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -52,7 +61,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -80,6 +89,14 @@ pub mod response {
         TaskEvent(super::TaskEvent),
         #[prost(message, tag = "18")]
         GetDeviceProfile(super::GetDeviceProfileResponse),
+        #[prost(message, tag = "19")]
+        GetJob(super::GetJobResponse),
+        #[prost(message, tag = "20")]
+        ListJobs(super::ListJobsResponse),
+        #[prost(message, tag = "21")]
+        CancelJob(super::CancelJobResponse),
+        #[prost(message, tag = "22")]
+        SubscribeTaskEvents(super::SubscribeTaskEventsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -159,16 +176,39 @@ pub struct SubmitJobRequest {
     #[prost(bytes = "vec", tag = "3")]
     pub payload: ::prost::alloc::vec::Vec<u8>,
 }
+/// Versioned deterministic fixture payload used by W4 and later by the echo
+/// worker. SubmitJobRequest.payload contains the encoded message.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DemoDagPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub seed: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubmitJobResponse {
     #[prost(string, tag = "1")]
     pub job_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub job: ::core::option::Option<Job>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SubscribeTaskEventsRequest {
     /// Empty subscribes to all projects.
     #[prost(string, tag = "1")]
     pub project_id: ::prost::alloc::string::String,
+    /// Empty subscribes to all jobs selected by project_id.
+    #[prost(string, tag = "2")]
+    pub job_id: ::prost::alloc::string::String,
+    /// Replay durable events strictly after this global event cursor.
+    #[prost(uint64, tag = "3")]
+    pub after_event_id: u64,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubscribeTaskEventsResponse {
+    /// Highest durable event present when the subscription was established.
+    #[prost(uint64, tag = "1")]
+    pub current_event_id: u64,
 }
 /// Pushed for every task state transition and heartbeat-driven progress.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -186,6 +226,85 @@ pub struct TaskEvent {
     pub wait_reason: ::prost::alloc::string::String,
     #[prost(uint64, tag = "6")]
     pub at_unix_millis: u64,
+    /// Global, durable, monotonically increasing replay cursor.
+    #[prost(uint64, tag = "7")]
+    pub event_id: u64,
+    #[prost(uint32, tag = "8")]
+    pub attempt: u32,
+    #[prost(enumeration = "super::super::worker::v1::FailureClass", tag = "9")]
+    pub failure_class: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Job {
+    #[prost(string, tag = "1")]
+    pub job_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(enumeration = "JobState", tag = "4")]
+    pub state: i32,
+    #[prost(uint64, tag = "5")]
+    pub created_unix_millis: u64,
+    #[prost(uint64, tag = "6")]
+    pub updated_unix_millis: u64,
+    #[prost(message, repeated, tag = "7")]
+    pub tasks: ::prost::alloc::vec::Vec<Task>,
+    #[prost(string, repeated, tag = "8")]
+    pub output_artifact_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(enumeration = "super::super::worker::v1::FailureClass", tag = "9")]
+    pub failure_class: i32,
+    #[prost(string, tag = "10")]
+    pub failure_detail: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Task {
+    #[prost(string, tag = "1")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(enumeration = "TaskState", tag = "3")]
+    pub state: i32,
+    #[prost(uint32, tag = "4")]
+    pub attempt: u32,
+    #[prost(uint32, tag = "5")]
+    pub max_attempts: u32,
+    #[prost(message, optional, tag = "6")]
+    pub progress: ::core::option::Option<super::super::worker::v1::ProgressUnits>,
+    #[prost(string, tag = "7")]
+    pub wait_reason: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub output_artifact_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetJobRequest {
+    #[prost(string, tag = "1")]
+    pub job_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetJobResponse {
+    #[prost(message, optional, tag = "1")]
+    pub job: ::core::option::Option<Job>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListJobsRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListJobsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub jobs: ::prost::alloc::vec::Vec<Job>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CancelJobRequest {
+    #[prost(string, tag = "1")]
+    pub job_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CancelJobResponse {
+    #[prost(message, optional, tag = "1")]
+    pub job: ::core::option::Option<Job>,
 }
 // ---- Device profile (measured, cached; ch. 11) ----
 
@@ -286,6 +405,47 @@ impl TaskState {
             "TASK_STATE_RETRYABLE" => Some(Self::Retryable),
             "TASK_STATE_FAILED" => Some(Self::Failed),
             "TASK_STATE_CANCELLED" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum JobState {
+    Unspecified = 0,
+    Planned = 1,
+    Running = 2,
+    Succeeded = 3,
+    Failed = 4,
+    CancelRequested = 5,
+    Cancelled = 6,
+}
+impl JobState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "JOB_STATE_UNSPECIFIED",
+            Self::Planned => "JOB_STATE_PLANNED",
+            Self::Running => "JOB_STATE_RUNNING",
+            Self::Succeeded => "JOB_STATE_SUCCEEDED",
+            Self::Failed => "JOB_STATE_FAILED",
+            Self::CancelRequested => "JOB_STATE_CANCEL_REQUESTED",
+            Self::Cancelled => "JOB_STATE_CANCELLED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "JOB_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "JOB_STATE_PLANNED" => Some(Self::Planned),
+            "JOB_STATE_RUNNING" => Some(Self::Running),
+            "JOB_STATE_SUCCEEDED" => Some(Self::Succeeded),
+            "JOB_STATE_FAILED" => Some(Self::Failed),
+            "JOB_STATE_CANCEL_REQUESTED" => Some(Self::CancelRequested),
+            "JOB_STATE_CANCELLED" => Some(Self::Cancelled),
             _ => None,
         }
     }
