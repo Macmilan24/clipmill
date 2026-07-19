@@ -45,7 +45,8 @@ gate-contracts:
     cd workers/sdk && uv run pytest tests/test_contracts.py
     pnpm --filter @clipmill/contracts test
 
-# Exit gate: jobs survive forced termination (N=50 locally, 25 in CI).
+# W2 coverage: acknowledged project mutations survive forced termination.
+# W3/W4 extend this same drill with artifacts, task leases, and job recovery.
 gate-kill:
     ./tools/drills/kill-drill.sh 50
 

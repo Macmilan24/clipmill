@@ -6,10 +6,11 @@ every stage of the intelligence running on your own machine. No upload, no
 cloud dependency, no per-minute pricing: your footage never leaves your disk
 unless you explicitly send it somewhere.
 
-> **Status: pre-alpha, Phase 0 ("Harness").** The engine spine is being built
-> first — contracts, durable orchestration, crash recovery, and the proof
-> harness that keeps "local-first" an enforced guarantee rather than a slogan.
-> Nothing here makes clips yet.
+> **Status: pre-alpha, Phase 0 ("Harness"), W2.** Contracts and the durable
+> daemon foundation are implemented: private Unix-socket IPC, SQLite/WAL
+> project state, idempotent mutations, single-writer locking, and hard-kill
+> recovery tests. The artifact store and task orchestrator come next. Nothing
+> here makes clips yet.
 
 ## Why
 
@@ -58,7 +59,7 @@ boundary with a versioned contract:
 - macOS (primary) or Linux; Windows support arrives later
 
 ```sh
-just setup   # once available: fetch pinned FFmpeg, sync workspaces
+just setup   # fetch pinned FFmpeg and sync all workspaces
 ```
 
 ## License
