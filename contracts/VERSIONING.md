@@ -24,3 +24,6 @@ Mechanics:
   `*time|start|end|duration|offset*` fails `tools/schema-lint` (D06).
 - Generated code (Rust/Python/TypeScript) is committed; CI regenerates and
   fails on drift, so contracts and code can never disagree on `main`.
+- Source-map v1 keeps its W1 shape readable. W5 producers always include the
+  additive `mapping` extension; absence identifies legacy evidence and is not
+  accepted as newly produced Phase 0 output.

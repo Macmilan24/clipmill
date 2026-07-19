@@ -63,7 +63,7 @@ JOB_STATE_CANCEL_REQUESTED: JobState
 JOB_STATE_CANCELLED: JobState
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -77,6 +77,9 @@ class Request(_message.Message):
     GET_JOB_FIELD_NUMBER: _ClassVar[int]
     LIST_JOBS_FIELD_NUMBER: _ClassVar[int]
     CANCEL_JOB_FIELD_NUMBER: _ClassVar[int]
+    REGISTER_SOURCE_FIELD_NUMBER: _ClassVar[int]
+    GET_SOURCE_FIELD_NUMBER: _ClassVar[int]
+    LIST_SOURCES_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -90,10 +93,13 @@ class Request(_message.Message):
     get_job: GetJobRequest
     list_jobs: ListJobsRequest
     cancel_job: CancelJobRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ...) -> None: ...
+    register_source: RegisterSourceRequest
+    get_source: GetSourceRequest
+    list_sources: ListSourcesRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -109,6 +115,9 @@ class Response(_message.Message):
     LIST_JOBS_FIELD_NUMBER: _ClassVar[int]
     CANCEL_JOB_FIELD_NUMBER: _ClassVar[int]
     SUBSCRIBE_TASK_EVENTS_FIELD_NUMBER: _ClassVar[int]
+    REGISTER_SOURCE_FIELD_NUMBER: _ClassVar[int]
+    GET_SOURCE_FIELD_NUMBER: _ClassVar[int]
+    LIST_SOURCES_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -124,7 +133,10 @@ class Response(_message.Message):
     list_jobs: ListJobsResponse
     cancel_job: CancelJobResponse
     subscribe_task_events: SubscribeTaskEventsResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ...) -> None: ...
+    register_source: RegisterSourceResponse
+    get_source: GetSourceResponse
+    list_sources: ListSourcesResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -219,6 +231,14 @@ class DemoDagPayloadV1(_message.Message):
     key_version: str
     seed: bytes
     def __init__(self, key_version: _Optional[str] = ..., seed: _Optional[bytes] = ...) -> None: ...
+
+class ProbeSourcePayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
 
 class SubmitJobResponse(_message.Message):
     __slots__ = ("job_id", "job")
@@ -345,6 +365,66 @@ class CancelJobResponse(_message.Message):
     JOB_FIELD_NUMBER: _ClassVar[int]
     job: Job
     def __init__(self, job: _Optional[_Union[Job, _Mapping]] = ...) -> None: ...
+
+class Source(_message.Message):
+    __slots__ = ("source_id", "project_id", "absolute_path", "byte_size", "sample_sha256", "source_fingerprint", "source_map_artifact_id", "created_unix_millis")
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    ABSOLUTE_PATH_FIELD_NUMBER: _ClassVar[int]
+    BYTE_SIZE_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_SHA256_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_MAP_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    CREATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    source_id: str
+    project_id: str
+    absolute_path: str
+    byte_size: int
+    sample_sha256: str
+    source_fingerprint: str
+    source_map_artifact_id: str
+    created_unix_millis: int
+    def __init__(self, source_id: _Optional[str] = ..., project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ..., byte_size: _Optional[int] = ..., sample_sha256: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., source_map_artifact_id: _Optional[str] = ..., created_unix_millis: _Optional[int] = ...) -> None: ...
+
+class RegisterSourceRequest(_message.Message):
+    __slots__ = ("project_id", "absolute_path")
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    ABSOLUTE_PATH_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    absolute_path: str
+    def __init__(self, project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ...) -> None: ...
+
+class RegisterSourceResponse(_message.Message):
+    __slots__ = ("source", "observation_cache_hit")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    OBSERVATION_CACHE_HIT_FIELD_NUMBER: _ClassVar[int]
+    source: Source
+    observation_cache_hit: bool
+    def __init__(self, source: _Optional[_Union[Source, _Mapping]] = ..., observation_cache_hit: _Optional[bool] = ...) -> None: ...
+
+class GetSourceRequest(_message.Message):
+    __slots__ = ("source_id",)
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    source_id: str
+    def __init__(self, source_id: _Optional[str] = ...) -> None: ...
+
+class GetSourceResponse(_message.Message):
+    __slots__ = ("source",)
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    source: Source
+    def __init__(self, source: _Optional[_Union[Source, _Mapping]] = ...) -> None: ...
+
+class ListSourcesRequest(_message.Message):
+    __slots__ = ("project_id",)
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    def __init__(self, project_id: _Optional[str] = ...) -> None: ...
+
+class ListSourcesResponse(_message.Message):
+    __slots__ = ("sources",)
+    SOURCES_FIELD_NUMBER: _ClassVar[int]
+    sources: _containers.RepeatedCompositeFieldContainer[Source]
+    def __init__(self, sources: _Optional[_Iterable[_Union[Source, _Mapping]]] = ...) -> None: ...
 
 class GetDeviceProfileRequest(_message.Message):
     __slots__ = ("remeasure",)

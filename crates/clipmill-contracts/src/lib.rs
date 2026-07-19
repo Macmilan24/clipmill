@@ -6,6 +6,7 @@
 //! The `proto` module tree mirrors the proto package hierarchy exactly, so
 //! prost's relative `super::` cross-package references resolve.
 #![allow(clippy::pedantic)]
+#![allow(clippy::derivable_impls)]
 
 pub mod proto;
 pub mod schemas;

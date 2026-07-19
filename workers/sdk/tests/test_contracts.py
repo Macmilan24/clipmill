@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from clipmill.ipc.v1 import daemon_pb2, ping_pb2
 from clipmill_worker_sdk.gen.schemas.artifact_manifest import ArtifactManifest
+from clipmill_worker_sdk.gen.schemas.source_map import SourceMap
 from google.protobuf import json_format
 from pydantic import ValidationError
 
@@ -50,3 +51,29 @@ def test_demo_dag_payload_fixtures_enforce_the_phase0_key_version() -> None:
     )
     parsed = json_format.ParseDict(invalid, daemon_pb2.DemoDagPayloadV1())
     assert parsed.key_version != "clipmill.demo-dag.v1"
+
+
+def test_probe_source_payload_fixtures_enforce_the_w5_key_version() -> None:
+    valid = json.loads((FIXTURES / "proto" / "probe_source" / "valid" / "payload.json").read_text())
+    message = json_format.ParseDict(valid, daemon_pb2.ProbeSourcePayloadV1())
+    assert message.key_version == "clipmill.probe-source.v1"
+    assert message.source_id.startswith("src_")
+
+    invalid = json.loads(
+        (FIXTURES / "proto" / "probe_source" / "invalid" / "wrong-version.json").read_text()
+    )
+    parsed = json_format.ParseDict(invalid, daemon_pb2.ProbeSourcePayloadV1())
+    assert parsed.key_version != "clipmill.probe-source.v1"
+
+
+@pytest.mark.parametrize("name", ["minimal.json", "with-mapping.json"])
+def test_source_map_v1_legacy_and_mapping_fixtures_are_readable(name: str) -> None:
+    raw = (FIXTURES / "source_map" / "valid" / name).read_text()
+    SourceMap.model_validate_json(raw)
+
+
+@pytest.mark.parametrize("name", ["float-ticks.json", "bad-mapping-timebase.json"])
+def test_invalid_source_map_fixtures_are_rejected(name: str) -> None:
+    raw = (FIXTURES / "source_map" / "invalid" / name).read_text()
+    with pytest.raises(ValidationError):
+        SourceMap.model_validate_json(raw)

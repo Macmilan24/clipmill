@@ -1,0 +1,45 @@
+{
+  "container": {
+    "duration_ticks": 90000,
+    "format": "matroska,webm",
+    "rotation_deg": 0
+  },
+  "mapping": {
+    "edit_timebase": {
+      "den": 90000,
+      "num": 1
+    },
+    "segments": [
+      {
+        "edit_end_ticks": 90000,
+        "edit_start_ticks": 0,
+        "segment_id": "stream-0-segment-0",
+        "source_end": 1000,
+        "source_start": 0,
+        "stream_index": 0
+      }
+    ]
+  },
+  "schema_version": "clipmill.source_map.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "streams": [
+    {
+      "codec": "h264",
+      "duration_ticks": 90000,
+      "index": 0,
+      "kind": "video",
+      "start_offset_ticks": 0,
+      "timebase": {
+        "den": 1000,
+        "num": 1
+      },
+      "video": {
+        "coded_height": 720,
+        "coded_width": 1280,
+        "display_height": 720,
+        "display_width": 1280,
+        "vfr": true
+      }
+    }
+  ]
+}

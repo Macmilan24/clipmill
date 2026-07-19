@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -51,6 +51,12 @@ pub mod request {
         ListJobs(super::ListJobsRequest),
         #[prost(message, tag = "21")]
         CancelJob(super::CancelJobRequest),
+        #[prost(message, tag = "22")]
+        RegisterSource(super::RegisterSourceRequest),
+        #[prost(message, tag = "23")]
+        GetSource(super::GetSourceRequest),
+        #[prost(message, tag = "24")]
+        ListSources(super::ListSourcesRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -61,7 +67,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -97,6 +103,12 @@ pub mod response {
         CancelJob(super::CancelJobResponse),
         #[prost(message, tag = "22")]
         SubscribeTaskEvents(super::SubscribeTaskEventsResponse),
+        #[prost(message, tag = "23")]
+        RegisterSource(super::RegisterSourceResponse),
+        #[prost(message, tag = "24")]
+        GetSource(super::GetSourceResponse),
+        #[prost(message, tag = "25")]
+        ListSources(super::ListSourcesResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -184,6 +196,15 @@ pub struct DemoDagPayloadV1 {
     pub key_version: ::prost::alloc::string::String,
     #[prost(bytes = "vec", tag = "2")]
     pub seed: ::prost::alloc::vec::Vec<u8>,
+}
+/// Versioned payload for the daemon-owned probe/source-map stage. Local paths
+/// never travel in job payloads; source_id resolves an immutable observation.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ProbeSourcePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubmitJobResponse {
@@ -305,6 +326,64 @@ pub struct CancelJobRequest {
 pub struct CancelJobResponse {
     #[prost(message, optional, tag = "1")]
     pub job: ::core::option::Option<Job>,
+}
+// ---- Immutable local source evidence ----
+
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Source {
+    #[prost(string, tag = "1")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub project_id: ::prost::alloc::string::String,
+    /// Local-only control-plane value. It is excluded from fingerprints,
+    /// artifact recipes, logs, and portable source-map artifacts.
+    #[prost(string, tag = "3")]
+    pub absolute_path: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "4")]
+    pub byte_size: u64,
+    #[prost(string, tag = "5")]
+    pub sample_sha256: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub source_map_artifact_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "8")]
+    pub created_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RegisterSourceRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub absolute_path: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RegisterSourceResponse {
+    #[prost(message, optional, tag = "1")]
+    pub source: ::core::option::Option<Source>,
+    /// True when an unchanged observation avoided another FFprobe invocation.
+    #[prost(bool, tag = "2")]
+    pub observation_cache_hit: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetSourceRequest {
+    #[prost(string, tag = "1")]
+    pub source_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetSourceResponse {
+    #[prost(message, optional, tag = "1")]
+    pub source: ::core::option::Option<Source>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListSourcesRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListSourcesResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub sources: ::prost::alloc::vec::Vec<Source>,
 }
 // ---- Device profile (measured, cached; ch. 11) ----
 

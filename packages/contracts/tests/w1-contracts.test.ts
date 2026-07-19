@@ -9,7 +9,12 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 
 import { canonicalJson } from '../src/canonical.js';
-import { BufferDescriptorSchema, DataType, DemoDagPayloadV1Schema } from '../src/index.js';
+import {
+  BufferDescriptorSchema,
+  DataType,
+  DemoDagPayloadV1Schema,
+  ProbeSourcePayloadV1Schema,
+} from '../src/index.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const fixtures = join(repo, 'contracts', 'fixtures');
@@ -42,6 +47,24 @@ describe.each([
     const raw = readFileSync(join(fixtures, kind, 'invalid', invalidName), 'utf8');
     expect(validators[kind]!(JSON.parse(raw))).toBe(false);
   });
+});
+
+describe('W5 source-map mapping extension', () => {
+  it.each(['minimal.json', 'with-mapping.json'])('accepts valid fixture %s', (name) => {
+    const raw = readFileSync(join(fixtures, 'source_map', 'valid', name), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    expect(validators.source_map!(parsed), ajv.errorsText(validators.source_map!.errors)).toBe(
+      true,
+    );
+  });
+
+  it.each(['float-ticks.json', 'bad-mapping-timebase.json'])(
+    'rejects invalid fixture %s',
+    (name) => {
+      const raw = readFileSync(join(fixtures, 'source_map', 'invalid', name), 'utf8');
+      expect(validators.source_map!(JSON.parse(raw))).toBe(false);
+    },
+  );
 });
 
 describe('shm buffer descriptor', () => {
@@ -80,5 +103,26 @@ describe('W4 demo DAG payload', () => {
       readFileSync(join(fixtures, 'proto', 'demo_dag', 'invalid', 'wrong-version.json'), 'utf8'),
     ) as JsonValue;
     expect(fromJson(DemoDagPayloadV1Schema, invalid).keyVersion).not.toBe('clipmill.demo-dag.v1');
+  });
+});
+
+describe('W5 probe-source payload', () => {
+  it('enforces the source-evidence semantic key version fixtures', () => {
+    const valid = JSON.parse(
+      readFileSync(join(fixtures, 'proto', 'probe_source', 'valid', 'payload.json'), 'utf8'),
+    ) as JsonValue;
+    const message = fromJson(ProbeSourcePayloadV1Schema, valid);
+    expect(message.keyVersion).toBe('clipmill.probe-source.v1');
+    expect(message.sourceId.startsWith('src_')).toBe(true);
+
+    const invalid = JSON.parse(
+      readFileSync(
+        join(fixtures, 'proto', 'probe_source', 'invalid', 'wrong-version.json'),
+        'utf8',
+      ),
+    ) as JsonValue;
+    expect(fromJson(ProbeSourcePayloadV1Schema, invalid).keyVersion).not.toBe(
+      'clipmill.probe-source.v1',
+    );
   });
 });
