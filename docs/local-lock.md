@@ -4,8 +4,9 @@ Local Lock is the product's zero-egress mode. Its final form combines an
 exclusive network broker, OS enforcement, and a project-visible audit.
 
 In Phase 0, CI enters a Linux network namespace with no interfaces, verifies an
-egress canary cannot connect, and runs the Rust workspace tests plus a W3 cache
-hard-kill smoke drill offline. The daemon and artifact store have no
+egress canary cannot connect, and runs the Rust workspace tests plus W3 cache
+and W4 durable-job hard-kill smoke drills offline. The daemon, scheduler, and
+artifact store have no
 network-capable dependency or request path, and health reports
 `local_lock=true`. This is a harness-level proof, not yet the final desktop
 enforcement boundary: the broker, model registry, shell, and complete offline

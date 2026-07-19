@@ -6,11 +6,12 @@ every stage of the intelligence running on your own machine. No upload, no
 cloud dependency, no per-minute pricing: your footage never leaves your disk
 unless you explicitly send it somewhere.
 
-> **Status: pre-alpha, Phase 0 ("Harness"), W3.** Contracts, the durable daemon,
-> and the filesystem artifact CAS are implemented: private Unix-socket IPC,
-> SQLite/WAL project roots, deterministic cache keys, atomic publication,
-> recovery/garbage collection, and hard-kill drills on macOS and Linux. Job
-> orchestration and worker leases come next. Nothing here makes clips yet.
+> **Status: pre-alpha, Phase 0 ("Harness"), W4.** Contracts, the durable daemon,
+> filesystem artifact CAS, and reusable durable DAG scheduler are implemented:
+> private Unix-socket IPC, SQLite/WAL roots and leases, deterministic cache keys,
+> atomic publication, cursor-replayed task events, cancellation, recovery/GC,
+> and hard-kill drills on macOS and Linux. Source evidence is next; external
+> workers arrive in W6. Nothing here makes clips yet.
 
 ## Why
 

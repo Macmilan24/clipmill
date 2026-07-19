@@ -79,6 +79,8 @@ six hours; shutdown cancels maintenance before closing the artifact and
 database actors.
 
 The cache drill hard-kills real daemon-backed publisher processes and verifies
-all acknowledged roots and visible payloads after restart. W4 must add active
-task leases as GC roots and prove task/job recovery before the broader Phase 0
-recovery claim is complete.
+all acknowledged roots and visible payloads after restart. W4 adds active task
+output roots and transitive task inputs to GC reachability, then proves local
+task/job recovery with a separate job kill drill. External worker recovery and
+source-probe recovery remain W6 and W5 respectively, so the broader Phase 0
+claim is not yet complete.
