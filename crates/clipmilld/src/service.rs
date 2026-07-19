@@ -108,7 +108,7 @@ impl Service {
             | request::Body::GetDeviceProfile(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
-                "operation is not available in W2",
+                "operation is not available in W3",
             ),
         }
     }

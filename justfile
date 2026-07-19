@@ -46,13 +46,14 @@ gate-contracts:
     pnpm --filter @clipmill/contracts test
 
 # W2 coverage: acknowledged project mutations survive forced termination.
-# W3/W4 extend this same drill with artifacts, task leases, and job recovery.
+# W4 extends this drill with task leases and interrupted-job recovery.
 gate-kill:
     ./tools/drills/kill-drill.sh 50
 
-# Exit gate: deterministic cache round-trips. Lands with W3 (CAS store).
+# W3 coverage: acknowledged filesystem + SQLite artifact publications survive
+# forced termination and every visible cache object verifies after recovery.
 gate-cache:
-    @echo "gate-cache: not yet implemented - lands with W3 (content-addressed store)" && exit 1
+    ./tools/drills/cache-drill.sh 50
 
 # Exit gate: Local Lock. Replays the CI namespace job in a no-network
 # container (Docker/OrbStack); the egress canary must be blocked.

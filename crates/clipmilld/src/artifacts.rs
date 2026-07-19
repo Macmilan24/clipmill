@@ -226,6 +226,17 @@ impl ArtifactCoordinator {
         self.artifacts.open(artifact_id).await
     }
 
+    /// Return the distinct artifact roots currently published by projects.
+    ///
+    /// This is an in-process scheduler/lifecycle interface; it is deliberately
+    /// not exposed through the W3 protobuf control API.
+    pub async fn artifact_roots(&self) -> Result<Vec<ArtifactId>, ArtifactServiceError> {
+        self.database
+            .list_artifact_roots()
+            .await
+            .map_err(ArtifactServiceError::from)
+    }
+
     /// Commit the immutable object first, then publish its project root in
     /// SQLite. The returned success is the durability acknowledgement.
     pub async fn publish_project(
