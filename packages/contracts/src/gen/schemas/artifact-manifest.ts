@@ -60,6 +60,20 @@ export interface ArtifactManifest {
     [k: string]: number;
   };
   /**
+   * Additive W3 cache-key metadata. Required for new daemon commits; omitted legacy v1 manifests remain readable by artifact id but cannot prove a computed cache hit.
+   */
+  recipe?: {
+    key_version: "clipmill.artifact.key.v1";
+    /**
+     * Stage configuration canonicalized with RFC 8785 before hashing.
+     */
+    config: {};
+    /**
+     * Schema/runtime semantic version included in the artifact key.
+     */
+    semantic_version: string;
+  };
+  /**
    * The artifact's data files, hash-verified on read.
    *
    * @minItems 1

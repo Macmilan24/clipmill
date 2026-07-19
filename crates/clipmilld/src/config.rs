@@ -2,6 +2,7 @@ use std::{
     env,
     ffi::OsString,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use directories::ProjectDirs;
@@ -10,16 +11,21 @@ use crate::DaemonError;
 
 const DATA_DIR_ENV: &str = "CLIPMILL_DATA_DIR";
 const SOCKET_ENV: &str = "CLIPMILL_SOCKET";
+const ARTIFACT_GC_GRACE_ENV: &str = "CLIPMILL_ARTIFACT_GC_GRACE";
+const DEFAULT_ARTIFACT_GC_GRACE: Duration = Duration::from_hours(168);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
     pub paths: Paths,
+    pub artifact_gc_grace: Duration,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Paths {
     pub data_dir: PathBuf,
     pub state_dir: PathBuf,
+    pub backups_dir: PathBuf,
+    pub artifacts_dir: PathBuf,
     pub run_dir: PathBuf,
     pub database: PathBuf,
     pub socket: PathBuf,
@@ -31,14 +37,24 @@ impl Config {
         cli_data_dir: Option<PathBuf>,
         cli_socket: Option<PathBuf>,
     ) -> Result<Self, DaemonError> {
+        Self::resolve_with_gc(cli_data_dir, cli_socket, None)
+    }
+
+    pub fn resolve_with_gc(
+        cli_data_dir: Option<PathBuf>,
+        cli_socket: Option<PathBuf>,
+        cli_artifact_gc_grace: Option<Duration>,
+    ) -> Result<Self, DaemonError> {
         let platform_default = ProjectDirs::from("dev", "clipmill", "ClipMill")
             .map(|dirs| dirs.data_dir().to_path_buf())
             .ok_or(DaemonError::PlatformDataDirectory)?;
-        Self::from_sources(
+        Self::from_sources_with_gc(
             cli_data_dir,
             cli_socket,
+            cli_artifact_gc_grace,
             env::var_os(DATA_DIR_ENV),
             env::var_os(SOCKET_ENV),
+            env::var_os(ARTIFACT_GC_GRACE_ENV),
             platform_default,
         )
     }
@@ -50,6 +66,27 @@ impl Config {
         env_socket: Option<OsString>,
         platform_default: PathBuf,
     ) -> Result<Self, DaemonError> {
+        Self::from_sources_with_gc(
+            cli_data_dir,
+            cli_socket,
+            None,
+            env_data_dir,
+            env_socket,
+            None,
+            platform_default,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_sources_with_gc(
+        cli_data_dir: Option<PathBuf>,
+        cli_socket: Option<PathBuf>,
+        cli_artifact_gc_grace: Option<Duration>,
+        env_data_dir: Option<OsString>,
+        env_socket: Option<OsString>,
+        env_artifact_gc_grace: Option<OsString>,
+        platform_default: PathBuf,
+    ) -> Result<Self, DaemonError> {
         let data_dir = cli_data_dir
             .or_else(|| env_data_dir.map(PathBuf::from))
             .unwrap_or(platform_default);
@@ -59,6 +96,13 @@ impl Config {
 
         let state_dir = data_dir.join("state");
         let run_dir = data_dir.join("run");
+        let artifact_gc_grace = match cli_artifact_gc_grace {
+            Some(value) => value,
+            None => env_artifact_gc_grace
+                .map(|value| parse_duration(&value))
+                .transpose()?
+                .unwrap_or(DEFAULT_ARTIFACT_GC_GRACE),
+        };
         let socket = cli_socket
             .or_else(|| env_socket.map(PathBuf::from))
             .unwrap_or_else(|| run_dir.join("clipmilld.sock"));
@@ -67,14 +111,24 @@ impl Config {
         Ok(Self {
             paths: Paths {
                 database: state_dir.join("clipmill.db"),
+                backups_dir: state_dir.join("backups"),
+                artifacts_dir: data_dir.join("artifacts"),
                 lock: run_dir.join("daemon.lock"),
                 data_dir,
                 state_dir,
                 run_dir,
                 socket,
             },
+            artifact_gc_grace,
         })
     }
+}
+
+fn parse_duration(value: &OsString) -> Result<Duration, DaemonError> {
+    let text = value
+        .to_str()
+        .ok_or_else(|| DaemonError::InvalidDuration("duration is not valid UTF-8".to_owned()))?;
+    humantime::parse_duration(text).map_err(|error| DaemonError::InvalidDuration(error.to_string()))
 }
 
 fn validate_socket(path: &Path) -> Result<(), DaemonError> {
@@ -93,7 +147,7 @@ fn validate_socket(path: &Path) -> Result<(), DaemonError> {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use std::{ffi::OsString, path::PathBuf};
+    use std::{ffi::OsString, path::PathBuf, time::Duration};
 
     use super::Config;
 
@@ -153,6 +207,55 @@ mod tests {
         assert_eq!(
             config.paths.socket,
             PathBuf::from("/default/data/run/clipmilld.sock")
+        );
+        assert_eq!(
+            config.paths.backups_dir,
+            PathBuf::from("/default/data/state/backups")
+        );
+        assert_eq!(
+            config.paths.artifacts_dir,
+            PathBuf::from("/default/data/artifacts")
+        );
+        assert_eq!(config.artifact_gc_grace, Duration::from_hours(168));
+    }
+
+    #[test]
+    fn artifact_gc_grace_uses_cli_environment_default_precedence() {
+        let cli = Config::from_sources_with_gc(
+            None,
+            None,
+            Some(Duration::from_hours(2)),
+            None,
+            None,
+            Some(OsString::from("1h")),
+            PathBuf::from("/default/data"),
+        )
+        .expect("CLI grace");
+        assert_eq!(cli.artifact_gc_grace, Duration::from_hours(2));
+
+        let environment = Config::from_sources_with_gc(
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(OsString::from("3d")),
+            PathBuf::from("/default/data"),
+        )
+        .expect("environment grace");
+        assert_eq!(environment.artifact_gc_grace, Duration::from_hours(72));
+
+        assert!(
+            Config::from_sources_with_gc(
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(OsString::from("not-a-duration")),
+                PathBuf::from("/default/data"),
+            )
+            .is_err()
         );
     }
 }

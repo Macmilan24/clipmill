@@ -108,7 +108,7 @@ impl Service {
             | request::Body::GetDeviceProfile(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
-                "operation is not available in W2",
+                "operation is not available in W3",
             ),
         }
     }
@@ -335,7 +335,8 @@ mod tests {
     async fn create_retry_returns_same_project_and_conflict_is_reported() {
         let temp = TempDir::new().expect("tempdir");
         let database = temp.path().join("clipmill.db");
-        let actor = DbActor::start(&database).expect("database actor");
+        let actor =
+            DbActor::start(&database, &temp.path().join("backups")).expect("database actor");
         let service = Service::new(actor.handle(), 1);
         let request = Request {
             request_id: "same-request".to_owned(),
@@ -364,7 +365,8 @@ mod tests {
     async fn future_operations_are_unavailable() {
         let temp = TempDir::new().expect("tempdir");
         let database = temp.path().join("clipmill.db");
-        let actor = DbActor::start(&database).expect("database actor");
+        let actor =
+            DbActor::start(&database, &temp.path().join("backups")).expect("database actor");
         let service = Service::new(actor.handle(), 1);
         let reply = service
             .handle(Request {

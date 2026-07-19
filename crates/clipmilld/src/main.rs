@@ -1,6 +1,6 @@
 #[cfg(unix)]
 mod unix_main {
-    use std::{path::PathBuf, process::ExitCode};
+    use std::{path::PathBuf, process::ExitCode, time::Duration};
 
     use clap::Parser;
     use clipmilld::{Config, Daemon};
@@ -15,6 +15,9 @@ mod unix_main {
         /// Override the Unix-domain socket path.
         #[arg(long)]
         socket: Option<PathBuf>,
+        /// Retain unreachable artifacts for this duration before collection.
+        #[arg(long, value_parser = humantime::parse_duration)]
+        artifact_gc_grace: Option<Duration>,
     }
 
     pub(crate) fn main() -> ExitCode {
@@ -42,7 +45,11 @@ mod unix_main {
     }
 
     async fn run(arguments: Arguments) -> Result<(), clipmilld::DaemonError> {
-        let config = Config::resolve(arguments.data_dir, arguments.socket)?;
+        let config = Config::resolve_with_gc(
+            arguments.data_dir,
+            arguments.socket,
+            arguments.artifact_gc_grace,
+        )?;
         let daemon = Daemon::start(config).await?;
         tracing::info!(socket = %daemon.socket_path().display(), "ClipMill daemon ready");
         daemon.serve_until(shutdown_signal()).await

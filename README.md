@@ -6,11 +6,11 @@ every stage of the intelligence running on your own machine. No upload, no
 cloud dependency, no per-minute pricing: your footage never leaves your disk
 unless you explicitly send it somewhere.
 
-> **Status: pre-alpha, Phase 0 ("Harness"), W2.** Contracts and the durable
-> daemon foundation are implemented: private Unix-socket IPC, SQLite/WAL
-> project state, idempotent mutations, single-writer locking, and hard-kill
-> recovery tests. The artifact store and task orchestrator come next. Nothing
-> here makes clips yet.
+> **Status: pre-alpha, Phase 0 ("Harness"), W3.** Contracts, the durable daemon,
+> and the filesystem artifact CAS are implemented: private Unix-socket IPC,
+> SQLite/WAL project roots, deterministic cache keys, atomic publication,
+> recovery/garbage collection, and hard-kill drills on macOS and Linux. Job
+> orchestration and worker leases come next. Nothing here makes clips yet.
 
 ## Why
 

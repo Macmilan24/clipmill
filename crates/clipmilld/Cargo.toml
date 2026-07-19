@@ -9,17 +9,21 @@ authors.workspace = true
 
 [dependencies]
 clap.workspace = true
+clipmill-artifacts.workspace = true
 clipmill-contracts.workspace = true
 clipmill-core.workspace = true
 directories.workspace = true
 fs2.workspace = true
+humantime.workspace = true
 prost.workspace = true
 rusqlite.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+ulid.workspace = true
 
 [dev-dependencies]
 tempfile = "3.23"

@@ -5,18 +5,19 @@ use std::{
     io,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use tokio::{
     net::{UnixListener, UnixStream},
-    sync::Semaphore,
+    sync::{Semaphore, oneshot},
     task::JoinSet,
-    time::timeout,
+    time::{MissedTickBehavior, interval, timeout},
 };
 
 use crate::{
-    Config, DaemonError,
+    ArtifactCoordinator, Config, DaemonError,
+    artifacts::{ArtifactActor, ArtifactHandle},
     db::DbActor,
     ipc::{FrameError, handle_connection},
     lock::DaemonLock,
@@ -26,12 +27,15 @@ use crate::{
 const MAX_CONNECTIONS: usize = 64;
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
+const GC_INTERVAL: Duration = Duration::from_hours(6);
 
 #[derive(Debug)]
 pub struct Daemon {
     listener: UnixListener,
     service: Service,
+    artifacts: ArtifactActor,
     database: DbActor,
+    artifact_gc_grace: Duration,
     socket: SocketGuard,
     _lock: DaemonLock,
 }
@@ -41,21 +45,38 @@ impl Daemon {
         let started_unix_millis = unix_millis()?;
         prepare_directories(&config)?;
         let daemon_lock = DaemonLock::acquire(&config.paths.lock)?;
-        let database = DbActor::start(&config.paths.database)?;
+        let database = DbActor::start(&config.paths.database, &config.paths.backups_dir)?;
+        let (artifacts, recovery) = match ArtifactActor::start(&config.paths.artifacts_dir) {
+            Ok(value) => value,
+            Err(error) => {
+                database.shutdown().await?;
+                return Err(error);
+            }
+        };
+        tracing::info!(
+            committed = recovery.committed_loaded,
+            legacy = recovery.legacy_loaded,
+            staging_quarantined = recovery.staging_quarantined,
+            objects_quarantined = recovery.objects_quarantined,
+            "artifact store recovered"
+        );
 
         if let Err(error) = recover_stale_socket(&config.paths.socket).await {
+            artifacts.shutdown().await?;
             database.shutdown().await?;
             return Err(error);
         }
         let listener = match UnixListener::bind(&config.paths.socket) {
             Ok(listener) => listener,
             Err(source) => {
+                artifacts.shutdown().await?;
                 database.shutdown().await?;
                 return Err(DaemonError::io(&config.paths.socket, source));
             }
         };
         let socket = SocketGuard::new(config.paths.socket);
         if let Err(error) = set_private_permissions(&socket.path, 0o600) {
+            artifacts.shutdown().await?;
             database.shutdown().await?;
             return Err(error);
         }
@@ -64,7 +85,9 @@ impl Daemon {
         Ok(Self {
             listener,
             service,
+            artifacts,
             database,
+            artifact_gc_grace: config.artifact_gc_grace,
             socket,
             _lock: daemon_lock,
         })
@@ -75,6 +98,11 @@ impl Daemon {
         &self.socket.path
     }
 
+    #[must_use]
+    pub fn artifact_coordinator(&self) -> ArtifactCoordinator {
+        ArtifactCoordinator::new(self.artifacts.handle(), self.database.handle())
+    }
+
     pub async fn serve_until<F>(self, shutdown: F) -> Result<(), DaemonError>
     where
         F: Future<Output = ()> + Send,
@@ -82,13 +110,22 @@ impl Daemon {
         let Self {
             listener,
             service,
+            artifacts,
             database,
+            artifact_gc_grace,
             mut socket,
             _lock: daemon_lock,
         } = self;
         let semaphore = Arc::new(Semaphore::new(MAX_CONNECTIONS));
         let mut connections: JoinSet<Result<(), FrameError>> = JoinSet::new();
         let mut serve_error = None;
+        let (maintenance_stop, maintenance_stopped) = oneshot::channel();
+        let mut maintenance = tokio::spawn(run_artifact_maintenance(
+            artifacts.handle(),
+            database.handle(),
+            artifact_gc_grace,
+            maintenance_stopped,
+        ));
         tokio::pin!(shutdown);
 
         loop {
@@ -126,6 +163,11 @@ impl Daemon {
         // streams alive for the bounded drain below.
         socket.remove();
         drop(listener);
+        let _stop_sent = maintenance_stop.send(());
+        if timeout(DRAIN_TIMEOUT, &mut maintenance).await.is_err() {
+            maintenance.abort();
+            let _joined = maintenance.await;
+        }
 
         let drain = async {
             while let Some(result) = connections.join_next().await {
@@ -137,12 +179,64 @@ impl Daemon {
             while connections.join_next().await.is_some() {}
         }
         drop(service);
+        let artifact_result = artifacts.shutdown().await;
         let database_result = database.shutdown().await;
         drop(socket);
         drop(daemon_lock);
+        artifact_result?;
         database_result?;
         serve_error.map_or(Ok(()), Err)
     }
+}
+
+async fn run_artifact_maintenance(
+    artifacts: ArtifactHandle,
+    database: crate::db::DbHandle,
+    grace: Duration,
+    mut stopped: oneshot::Receiver<()>,
+) {
+    let mut schedule = interval(GC_INTERVAL);
+    schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            _ = &mut stopped => break,
+            _ = schedule.tick() => {
+                let started = Instant::now();
+                let Ok(roots) = database.list_artifact_roots().await else {
+                    tracing::warn!(
+                        operation = "gc",
+                        latency_ms = latency_millis(started),
+                        result = "error",
+                        "cannot read artifact GC roots"
+                    );
+                    continue;
+                };
+                if let Ok(report) = artifacts.collect(roots, SystemTime::now(), grace).await {
+                    tracing::info!(
+                        operation = "gc",
+                        latency_ms = latency_millis(started),
+                        result = "ok",
+                        reachable = report.reachable,
+                        grace_preserved = report.preserved_by_grace,
+                        deleted = report.deleted,
+                        quarantine_deleted = report.quarantine_deleted,
+                        "artifact garbage collection complete"
+                    );
+                } else {
+                    tracing::warn!(
+                        operation = "gc",
+                        latency_ms = latency_millis(started),
+                        result = "error",
+                        "artifact garbage collection aborted"
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn latency_millis(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn log_connection_result(result: Result<Result<(), FrameError>, tokio::task::JoinError>) {
@@ -157,6 +251,8 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
     for path in [
         &config.paths.data_dir,
         &config.paths.state_dir,
+        &config.paths.backups_dir,
+        &config.paths.artifacts_dir,
         &config.paths.run_dir,
     ] {
         fs::create_dir_all(path).map_err(|source| DaemonError::io(path, source))?;

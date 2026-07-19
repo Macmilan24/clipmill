@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
@@ -20,6 +20,22 @@ class Timebase(BaseModel):
 class Policy(Enum):
     local_lock = 'local-lock'
     network_allowed = 'network-allowed'
+
+
+class Recipe(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    key_version: Literal['clipmill.artifact.key.v1']
+    config: dict[str, Any] = Field(
+        ...,
+        description='Stage configuration canonicalized with RFC 8785 before hashing.',
+    )
+    semantic_version: constr(
+        pattern=r'^[^\u0000-\u001f\u007f]+$', min_length=1, max_length=128
+    ) = Field(
+        ..., description='Schema/runtime semantic version included in the artifact key.'
+    )
 
 
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
@@ -82,6 +98,10 @@ class ArtifactManifest(BaseModel):
     )
     quality: dict[str, float] | None = Field(
         None, description='Producer-reported quality signals, e.g. {"coverage": 0.97}.'
+    )
+    recipe: Recipe | None = Field(
+        None,
+        description='Additive W3 cache-key metadata. Required for new daemon commits; omitted legacy v1 manifests remain readable by artifact id but cannot prove a computed cache hit.',
     )
     files: list[File] = Field(
         ...,

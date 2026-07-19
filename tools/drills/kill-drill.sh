@@ -7,9 +7,9 @@
 # acknowledged mutation remains present. Startup also runs quick_check and
 # removes the stale socket left by SIGKILL.
 #
-# This proves W2 project-state durability. Task leases, partial artifact
-# quarantine, and interrupted-job recovery are still W3/W4 work; the Phase 0
-# recovery gate is not complete until those assertions join this drill.
+# This proves W2 project-state durability. W3 artifact publication and staging
+# recovery are covered by cache-drill.sh. Task leases and interrupted-job
+# recovery remain W4 work, so the complete Phase 0 recovery claim is not made.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
