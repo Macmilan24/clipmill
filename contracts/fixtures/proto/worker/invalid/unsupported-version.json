@@ -1,0 +1,10 @@
+{
+  "backend": "cpu",
+  "capabilities": ["demo-seed"],
+  "family": "echo",
+  "max_memory_bytes": "268435456",
+  "protocol_version": "0.9",
+  "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "worker_id": "wrk_01J00000000000000000000000"
+}

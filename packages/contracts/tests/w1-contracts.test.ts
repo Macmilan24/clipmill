@@ -14,6 +14,8 @@ import {
   DataType,
   DemoDagPayloadV1Schema,
   ProbeSourcePayloadV1Schema,
+  CapabilityDescriptorSchema,
+  TransportType,
 } from '../src/index.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -124,5 +126,17 @@ describe('W5 probe-source payload', () => {
     expect(fromJson(ProbeSourcePayloadV1Schema, invalid).keyVersion).not.toBe(
       'clipmill.probe-source.v1',
     );
+  });
+});
+
+describe('W6 worker protocol extension', () => {
+  it('loads the signed capability fixture and exposes shared-memory transports', () => {
+    const raw = JSON.parse(
+      readFileSync(join(fixtures, 'proto', 'worker', 'valid', 'capability.json'), 'utf8'),
+    ) as JsonValue;
+    const descriptor = fromJson(CapabilityDescriptorSchema, raw);
+    expect(descriptor.protocolVersion).toBe('1.1');
+    expect(descriptor.capabilities).toContain('demo-join');
+    expect(TransportType.SCM_RIGHTS_MEMFD).not.toBe(TransportType.UNSPECIFIED);
   });
 });
