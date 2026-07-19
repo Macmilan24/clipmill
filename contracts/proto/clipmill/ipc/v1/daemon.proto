@@ -22,6 +22,9 @@ message Request {
     SubmitJobRequest submit_job = 16;
     SubscribeTaskEventsRequest subscribe_task_events = 17;
     GetDeviceProfileRequest get_device_profile = 18;
+    GetJobRequest get_job = 19;
+    ListJobsRequest list_jobs = 20;
+    CancelJobRequest cancel_job = 21;
   }
 }
 
@@ -40,6 +43,10 @@ message Response {
     SubmitJobResponse submit_job = 16;
     TaskEvent task_event = 17;
     GetDeviceProfileResponse get_device_profile = 18;
+    GetJobResponse get_job = 19;
+    ListJobsResponse list_jobs = 20;
+    CancelJobResponse cancel_job = 21;
+    SubscribeTaskEventsResponse subscribe_task_events = 22;
   }
 }
 
@@ -113,13 +120,30 @@ message SubmitJobRequest {
   bytes payload = 3;
 }
 
+// Versioned deterministic fixture payload used by W4 and later by the echo
+// worker. SubmitJobRequest.payload contains the encoded message.
+message DemoDagPayloadV1 {
+  string key_version = 1;
+  bytes seed = 2;
+}
+
 message SubmitJobResponse {
   string job_id = 1;
+  Job job = 2;
 }
 
 message SubscribeTaskEventsRequest {
   // Empty subscribes to all projects.
   string project_id = 1;
+  // Empty subscribes to all jobs selected by project_id.
+  string job_id = 2;
+  // Replay durable events strictly after this global event cursor.
+  uint64 after_event_id = 3;
+}
+
+message SubscribeTaskEventsResponse {
+  // Highest durable event present when the subscription was established.
+  uint64 current_event_id = 1;
 }
 
 // Pushed for every task state transition and heartbeat-driven progress.
@@ -131,6 +155,10 @@ message TaskEvent {
   // Resource reason when waiting, e.g. "paused: thermal" (ch. 10).
   string wait_reason = 5;
   uint64 at_unix_millis = 6;
+  // Global, durable, monotonically increasing replay cursor.
+  uint64 event_id = 7;
+  uint32 attempt = 8;
+  clipmill.worker.v1.FailureClass failure_class = 9;
 }
 
 enum TaskState {
@@ -142,6 +170,64 @@ enum TaskState {
   TASK_STATE_RETRYABLE = 5;
   TASK_STATE_FAILED = 6;
   TASK_STATE_CANCELLED = 7;
+}
+
+message Job {
+  string job_id = 1;
+  string project_id = 2;
+  string kind = 3;
+  JobState state = 4;
+  uint64 created_unix_millis = 5;
+  uint64 updated_unix_millis = 6;
+  repeated Task tasks = 7;
+  repeated string output_artifact_ids = 8;
+  clipmill.worker.v1.FailureClass failure_class = 9;
+  string failure_detail = 10;
+}
+
+message Task {
+  string task_id = 1;
+  string kind = 2;
+  TaskState state = 3;
+  uint32 attempt = 4;
+  uint32 max_attempts = 5;
+  clipmill.worker.v1.ProgressUnits progress = 6;
+  string wait_reason = 7;
+  string output_artifact_id = 8;
+}
+
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_PLANNED = 1;
+  JOB_STATE_RUNNING = 2;
+  JOB_STATE_SUCCEEDED = 3;
+  JOB_STATE_FAILED = 4;
+  JOB_STATE_CANCEL_REQUESTED = 5;
+  JOB_STATE_CANCELLED = 6;
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message GetJobResponse {
+  Job job = 1;
+}
+
+message ListJobsRequest {
+  string project_id = 1;
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  Job job = 1;
 }
 
 // ---- Device profile (measured, cached; ch. 11) ----

@@ -4,4 +4,8 @@ mod digest;
 mod id;
 
 pub use digest::{ArtifactId, DigestError, Sha256Digest};
-pub use id::{IdError, ProjectId, StagingId, StagingIdError};
+pub use id::{
+    IdError, JobId, JobIdError, LeaseId, LeaseIdError, ProjectId, SourceId, SourceIdError,
+    StagingId, StagingIdError, TaskEventCursor, TaskEventCursorError, TaskId, TaskIdError,
+    WorkerId, WorkerIdError,
+};
