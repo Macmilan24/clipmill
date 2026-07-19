@@ -77,6 +77,28 @@
       "type": "object",
       "additionalProperties": { "type": "number" }
     },
+    "recipe": {
+      "description": "Additive W3 cache-key metadata. Required for new daemon commits; omitted legacy v1 manifests remain readable by artifact id but cannot prove a computed cache hit.",
+      "type": "object",
+      "required": ["key_version", "config", "semantic_version"],
+      "additionalProperties": false,
+      "properties": {
+        "key_version": {
+          "const": "clipmill.artifact.key.v1"
+        },
+        "config": {
+          "description": "Stage configuration canonicalized with RFC 8785 before hashing.",
+          "type": "object"
+        },
+        "semantic_version": {
+          "description": "Schema/runtime semantic version included in the artifact key.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        }
+      }
+    },
     "files": {
       "description": "The artifact's data files, hash-verified on read.",
       "type": "array",

@@ -4,6 +4,7 @@ use thiserror::Error;
 use ulid::Ulid;
 
 const PROJECT_PREFIX: &str = "prj_";
+const STAGING_PREFIX: &str = "stg_";
 
 /// A stable project identifier serialized as `prj_<ULID>`.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -64,9 +65,62 @@ pub enum IdError {
     NonCanonical,
 }
 
+/// A private artifact staging identifier serialized as `stg_<ULID>`.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct StagingId(String);
+
+impl StagingId {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(format!("{STAGING_PREFIX}{}", Ulid::new()))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for StagingId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Display for StagingId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl FromStr for StagingId {
+    type Err = StagingIdError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let suffix = value
+            .strip_prefix(STAGING_PREFIX)
+            .ok_or(StagingIdError::WrongPrefix)?;
+        let parsed = Ulid::from_string(suffix).map_err(|_| StagingIdError::InvalidUlid)?;
+        if suffix != parsed.to_string() {
+            return Err(StagingIdError::NonCanonical);
+        }
+        Ok(Self(value.to_owned()))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
+pub enum StagingIdError {
+    #[error("staging id must start with 'stg_'")]
+    WrongPrefix,
+    #[error("staging id contains an invalid ULID")]
+    InvalidUlid,
+    #[error("staging id must use canonical uppercase ULID encoding")]
+    NonCanonical,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{IdError, ProjectId};
+    use super::{IdError, ProjectId, StagingId, StagingIdError};
 
     #[test]
     fn generated_id_roundtrips() {
@@ -89,5 +143,15 @@ mod tests {
             Err(IdError::InvalidUlid)
         );
         assert_eq!("prj_".parse::<ProjectId>(), Err(IdError::InvalidUlid));
+    }
+
+    #[test]
+    fn staging_id_roundtrips_and_validates_prefix() {
+        let id = StagingId::new();
+        assert_eq!(id.as_str().parse::<StagingId>(), Ok(id));
+        assert_eq!(
+            "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV".parse::<StagingId>(),
+            Err(StagingIdError::WrongPrefix)
+        );
     }
 }

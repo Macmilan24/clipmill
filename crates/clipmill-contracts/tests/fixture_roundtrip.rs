@@ -33,20 +33,25 @@ fn canonical(value: &serde_json::Value) -> String {
 
 #[test]
 fn valid_manifest_parses_and_roundtrips_canonically() {
-    let raw = read("contracts/fixtures/artifact.manifest/valid/minimal.json");
-    let manifest: ArtifactManifest = match serde_json::from_str(&raw) {
-        Ok(manifest) => manifest,
-        Err(err) => panic!("valid fixture rejected: {err}"),
-    };
-    let reserialized = match serde_json::to_value(&manifest) {
-        Ok(value) => value,
-        Err(err) => panic!("reserialize failed: {err}"),
-    };
-    assert_eq!(
-        canonical(&reserialized),
-        raw,
-        "canonical round-trip must be byte-identical (is the fixture stored canonically?)"
-    );
+    for rel in [
+        "contracts/fixtures/artifact.manifest/valid/minimal.json",
+        "contracts/fixtures/artifact.manifest/valid/with-recipe.json",
+    ] {
+        let raw = read(rel);
+        let manifest: ArtifactManifest = match serde_json::from_str(&raw) {
+            Ok(manifest) => manifest,
+            Err(err) => panic!("valid fixture {rel} rejected: {err}"),
+        };
+        let reserialized = match serde_json::to_value(&manifest) {
+            Ok(value) => value,
+            Err(err) => panic!("reserialize failed: {err}"),
+        };
+        assert_eq!(
+            canonical(&reserialized),
+            raw,
+            "canonical round-trip must be byte-identical for {rel}"
+        );
+    }
 }
 
 #[test]
@@ -54,6 +59,8 @@ fn invalid_manifests_are_rejected() {
     for rel in [
         "contracts/fixtures/artifact.manifest/invalid/float-seconds.json",
         "contracts/fixtures/artifact.manifest/invalid/missing-policy.json",
+        "contracts/fixtures/artifact.manifest/invalid/recipe-config-array.json",
+        "contracts/fixtures/artifact.manifest/invalid/recipe-missing-semantic-version.json",
     ] {
         let raw = read(rel);
         let parsed = serde_json::from_str::<ArtifactManifest>(&raw);
