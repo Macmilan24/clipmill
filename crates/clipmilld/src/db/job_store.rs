@@ -20,6 +20,7 @@ struct SelectedTaskRow {
     task_id: String,
     job_id: String,
     project_id: String,
+    source_id: Option<String>,
     kind: String,
     output_kind: String,
     payload: Vec<u8>,
@@ -202,15 +203,29 @@ pub(super) fn submit_job(
     if !project_exists {
         return Err(StoreError::NotFound);
     }
+    if let Some(source_id) = &plan.source_id {
+        let source_matches: bool = transaction.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM sources WHERE source_id = ?1 AND project_id = ?2
+             )",
+            params![source_id, plan.project_id],
+            |row| row.get(0),
+        )?;
+        if !source_matches {
+            return Err(StoreError::NotFound);
+        }
+    }
     let now = sqlite_u64(plan.created_unix_millis, "job timestamp")?;
     transaction.execute(
         "INSERT INTO jobs(
-            job_id, project_id, kind, payload, state, created_unix_millis, updated_unix_millis
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            job_id, project_id, kind, source_id, payload, state,
+            created_unix_millis, updated_unix_millis
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
         params![
             plan.job_id,
             plan.project_id,
             plan.kind,
+            plan.source_id,
             plan.payload,
             JobState::Planned as i32,
             now
@@ -515,7 +530,8 @@ pub(super) fn lease_next_task(
     let mut events = fail_open_circuit_breakers(&transaction, now)?;
     let selected: Option<SelectedTaskRow> = transaction
         .query_row(
-            "SELECT t.task_id, t.job_id, j.project_id, t.kind, t.output_kind, t.payload,
+            "SELECT t.task_id, t.job_id, j.project_id, j.source_id,
+                    t.kind, t.output_kind, t.payload,
                     t.implementation, t.attempt, t.cpu_threads, t.ram_bytes,
                     t.accelerator_class, t.vram_bytes, t.disk_bytes, t.network_policy,
                     t.thermal_class, t.determinism_class, t.checkpoint_support,
@@ -559,21 +575,22 @@ pub(super) fn lease_next_task(
                     task_id: row.get(0)?,
                     job_id: row.get(1)?,
                     project_id: row.get(2)?,
-                    kind: row.get(3)?,
-                    output_kind: row.get(4)?,
-                    payload: row.get(5)?,
-                    implementation: row.get(6)?,
-                    attempt: row.get(7)?,
-                    cpu_threads: row.get(8)?,
-                    ram_bytes: row.get(9)?,
-                    accelerator_class: row.get(10)?,
-                    vram_bytes: row.get(11)?,
-                    disk_bytes: row.get(12)?,
-                    network_policy: row.get(13)?,
-                    thermal_class: row.get(14)?,
-                    determinism_class: row.get(15)?,
-                    checkpoint_support: row.get(16)?,
-                    preemption_cost: row.get(17)?,
+                    source_id: row.get(3)?,
+                    kind: row.get(4)?,
+                    output_kind: row.get(5)?,
+                    payload: row.get(6)?,
+                    implementation: row.get(7)?,
+                    attempt: row.get(8)?,
+                    cpu_threads: row.get(9)?,
+                    ram_bytes: row.get(10)?,
+                    accelerator_class: row.get(11)?,
+                    vram_bytes: row.get(12)?,
+                    disk_bytes: row.get(13)?,
+                    network_policy: row.get(14)?,
+                    thermal_class: row.get(15)?,
+                    determinism_class: row.get(16)?,
+                    checkpoint_support: row.get(17)?,
+                    preemption_cost: row.get(18)?,
                 })
             },
         )
@@ -680,6 +697,7 @@ pub(super) fn lease_next_task(
         task: Some(LeasedTask {
             project_id: selected.project_id,
             job_id: selected.job_id,
+            source_id: selected.source_id,
             task_id: selected.task_id,
             lease_id: lease_id.to_owned(),
             kind: selected.kind,
@@ -764,14 +782,16 @@ pub(super) fn complete_task(
     if status != 1 {
         return Err(StoreError::Conflict);
     }
-    let (job_id, project_id, attempt, is_final, cancel_requested): (
+    let (job_id, project_id, source_id, attempt, is_final, cancel_requested): (
         String,
         String,
+        Option<String>,
         i64,
         bool,
         bool,
     ) = transaction.query_row(
-        "SELECT t.job_id, j.project_id, t.attempt, t.is_final, j.cancel_requested
+        "SELECT t.job_id, j.project_id, j.source_id, t.attempt,
+                t.is_final, j.cancel_requested
          FROM tasks t JOIN jobs j ON j.job_id = t.job_id WHERE t.task_id = ?1",
         [&task_id],
         |row| {
@@ -781,6 +801,7 @@ pub(super) fn complete_task(
                 row.get(2)?,
                 row.get(3)?,
                 row.get(4)?,
+                row.get(5)?,
             ))
         },
     )?;
@@ -844,6 +865,17 @@ pub(super) fn complete_task(
              VALUES (?1, ?2)",
             params![project_id, final_artifact],
         )?;
+        if let Some(source_id) = source_id {
+            transaction.execute(
+                "INSERT OR IGNORE INTO source_artifact_roots(source_id, artifact_id)
+                 VALUES (?1, ?2)",
+                params![source_id, final_artifact],
+            )?;
+            transaction.execute(
+                "UPDATE sources SET source_map_artifact_id = ?1 WHERE source_id = ?2",
+                params![final_artifact, source_id],
+            )?;
+        }
         transaction.execute(
             "UPDATE jobs SET state = ?1, updated_unix_millis = ?2 WHERE job_id = ?3",
             params![JobState::Succeeded as i32, now_sql, job_id],
@@ -1236,6 +1268,7 @@ fn fail_open_circuit_breakers(
     Ok(events)
 }
 
+#[allow(clippy::too_many_lines)]
 fn validate_plan(plan: &JobPlan) -> Result<(), StoreError> {
     plan.job_id
         .parse::<JobId>()
@@ -1243,6 +1276,11 @@ fn validate_plan(plan: &JobPlan) -> Result<(), StoreError> {
     plan.project_id
         .parse::<ProjectId>()
         .map_err(|_| StoreError::InvalidData("job project id is invalid"))?;
+    if let Some(source_id) = &plan.source_id {
+        source_id
+            .parse::<clipmill_core::SourceId>()
+            .map_err(|_| StoreError::InvalidData("job source id is invalid"))?;
+    }
     if !valid_label(&plan.kind, 128) {
         return Err(StoreError::InvalidData("job kind is invalid"));
     }

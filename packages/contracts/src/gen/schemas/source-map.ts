@@ -26,7 +26,15 @@ export interface SourceMap {
      * Display rotation from side data / display matrix.
      */
     rotation_deg?: 0 | 90 | 180 | 270;
+    color?: Color;
+    hdr?: Hdr;
   };
+  chapters?: {
+    id: number;
+    start_ticks: number;
+    end_ticks: number;
+    title: string;
+  }[];
   /**
    * @minItems 1
    */
@@ -54,10 +62,13 @@ export interface SourceMap {
          * True when frame intervals vary (variable frame rate).
          */
         vfr?: boolean;
+        color?: Color;
+        hdr?: Hdr;
       };
       audio?: {
         sample_rate: number;
         channels: number;
+        layout?: string;
       };
     },
     ...{
@@ -83,13 +94,56 @@ export interface SourceMap {
          * True when frame intervals vary (variable frame rate).
          */
         vfr?: boolean;
+        color?: Color;
+        hdr?: Hdr;
       };
       audio?: {
         sample_rate: number;
         channels: number;
+        layout?: string;
       };
     }[]
   ];
+  /**
+   * Exact source-presentation to 90 kHz edit-time mapping. Required on new Phase 0 output; omitted only by legacy v1 fixtures.
+   */
+  mapping?: {
+    edit_timebase: {
+      num: 1;
+      den: 90000;
+    };
+    /**
+     * @minItems 1
+     */
+    segments: [
+      {
+        segment_id: string;
+        stream_index: number;
+        source_start: number;
+        source_end: number;
+        edit_start_ticks: number;
+        edit_end_ticks: number;
+      },
+      ...{
+        segment_id: string;
+        stream_index: number;
+        source_start: number;
+        source_end: number;
+        edit_start_ticks: number;
+        edit_end_ticks: number;
+      }[]
+    ];
+  };
+}
+export interface Color {
+  space?: string;
+  transfer?: string;
+  primaries?: string;
+  range?: string;
+}
+export interface Hdr {
+  mastering_display?: string;
+  content_light_level?: string;
 }
 export interface Timebase {
   num: number;

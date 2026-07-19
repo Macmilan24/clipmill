@@ -23,6 +23,7 @@ use crate::{
     jobs::{EventHub, Scheduler},
     lock::DaemonLock,
     service::Service,
+    sources::SourceInspector,
 };
 
 const MAX_CONNECTIONS: usize = 64;
@@ -63,6 +64,19 @@ impl Daemon {
             objects_quarantined = recovery.objects_quarantined,
             "artifact store recovered"
         );
+        let sources = match SourceInspector::new(
+            config.ffprobe.clone(),
+            config.paths.probe_scratch_dir.clone(),
+        ) {
+            Ok(sources) => sources,
+            Err(error) => {
+                artifacts.shutdown().await?;
+                database.shutdown().await?;
+                return Err(DaemonError::Ipc(format!(
+                    "cannot initialize source inspector: {error}"
+                )));
+            }
+        };
         let daemon_epoch = ulid::Ulid::new().to_string();
         let events = EventHub::new();
         match database
@@ -104,12 +118,14 @@ impl Daemon {
             artifacts.handle(),
             events.clone(),
             daemon_epoch.clone(),
+            sources.clone(),
         );
         let service = Service::with_scheduler(
             database.handle(),
             started_unix_millis,
             events,
             scheduler.handle(),
+            sources,
         );
 
         Ok(Self {
@@ -295,6 +311,7 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
         &config.paths.state_dir,
         &config.paths.backups_dir,
         &config.paths.artifacts_dir,
+        &config.paths.probe_scratch_dir,
         &config.paths.run_dir,
     ] {
         fs::create_dir_all(path).map_err(|source| DaemonError::io(path, source))?;

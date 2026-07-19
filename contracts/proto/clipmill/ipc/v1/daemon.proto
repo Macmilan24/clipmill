@@ -25,6 +25,9 @@ message Request {
     GetJobRequest get_job = 19;
     ListJobsRequest list_jobs = 20;
     CancelJobRequest cancel_job = 21;
+    RegisterSourceRequest register_source = 22;
+    GetSourceRequest get_source = 23;
+    ListSourcesRequest list_sources = 24;
   }
 }
 
@@ -47,6 +50,9 @@ message Response {
     ListJobsResponse list_jobs = 20;
     CancelJobResponse cancel_job = 21;
     SubscribeTaskEventsResponse subscribe_task_events = 22;
+    RegisterSourceResponse register_source = 23;
+    GetSourceResponse get_source = 24;
+    ListSourcesResponse list_sources = 25;
   }
 }
 
@@ -125,6 +131,13 @@ message SubmitJobRequest {
 message DemoDagPayloadV1 {
   string key_version = 1;
   bytes seed = 2;
+}
+
+// Versioned payload for the daemon-owned probe/source-map stage. Local paths
+// never travel in job payloads; source_id resolves an immutable observation.
+message ProbeSourcePayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
 }
 
 message SubmitJobResponse {
@@ -228,6 +241,48 @@ message CancelJobRequest {
 
 message CancelJobResponse {
   Job job = 1;
+}
+
+// ---- Immutable local source evidence ----
+
+message Source {
+  string source_id = 1;
+  string project_id = 2;
+  // Local-only control-plane value. It is excluded from fingerprints,
+  // artifact recipes, logs, and portable source-map artifacts.
+  string absolute_path = 3;
+  uint64 byte_size = 4;
+  string sample_sha256 = 5;
+  string source_fingerprint = 6;
+  string source_map_artifact_id = 7;
+  uint64 created_unix_millis = 8;
+}
+
+message RegisterSourceRequest {
+  string project_id = 1;
+  string absolute_path = 2;
+}
+
+message RegisterSourceResponse {
+  Source source = 1;
+  // True when an unchanged observation avoided another FFprobe invocation.
+  bool observation_cache_hit = 2;
+}
+
+message GetSourceRequest {
+  string source_id = 1;
+}
+
+message GetSourceResponse {
+  Source source = 1;
+}
+
+message ListSourcesRequest {
+  string project_id = 1;
+}
+
+message ListSourcesResponse {
+  repeated Source sources = 1;
 }
 
 // ---- Device profile (measured, cached; ch. 11) ----

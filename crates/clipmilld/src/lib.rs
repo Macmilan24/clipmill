@@ -11,6 +11,7 @@ mod ipc;
 mod jobs;
 mod lock;
 mod service;
+mod sources;
 
 pub use artifacts::{ArtifactCoordinator, ArtifactServiceError};
 pub use config::{Config, Paths};

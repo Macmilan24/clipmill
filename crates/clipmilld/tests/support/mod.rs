@@ -7,9 +7,10 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectRequest, DemoDagPayloadV1, GetJobRequest, Job, ListJobsRequest,
-    ListProjectsRequest, PingRequest, Project, Request, Response, SubmitJobRequest, request,
-    response,
+    CreateProjectRequest, DemoDagPayloadV1, GetJobRequest, GetSourceRequest, Job, ListJobsRequest,
+    ListProjectsRequest, ListSourcesRequest, PingRequest, ProbeSourcePayloadV1, Project,
+    RegisterSourceRequest, RegisterSourceResponse, Request, Response, Source, SubmitJobRequest,
+    request, response,
 };
 use prost::Message;
 use tokio::{
@@ -70,7 +71,7 @@ pub async fn send_without_reading_response(socket: &Path, request: Request) -> R
 }
 
 pub async fn wait_until_ready(socket: &Path) -> Result<(), String> {
-    for attempt in 0..150 {
+    for attempt in 0..350 {
         let request = Request {
             request_id: format!("ready-{attempt}"),
             body: Some(request::Body::Ping(PingRequest {
@@ -150,6 +151,111 @@ pub async fn submit_demo(
             .ok_or_else(|| "submit response omitted job".to_owned()),
         Some(response::Body::Error(error)) => Err(error.message),
         _ => Err("unexpected submit response".to_owned()),
+    }
+}
+
+pub async fn register_source(
+    socket: &Path,
+    request_id: &str,
+    project_id: &str,
+    absolute_path: &Path,
+) -> Result<RegisterSourceResponse, String> {
+    let path = absolute_path
+        .to_str()
+        .ok_or_else(|| "test source path is not UTF-8".to_owned())?;
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::RegisterSource(RegisterSourceRequest {
+                project_id: project_id.to_owned(),
+                absolute_path: path.to_owned(),
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::RegisterSource(registered)) => Ok(registered),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected register source response".to_owned()),
+    }
+}
+
+pub async fn get_source(
+    socket: &Path,
+    request_id: &str,
+    source_id: &str,
+) -> Result<Source, String> {
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::GetSource(GetSourceRequest {
+                source_id: source_id.to_owned(),
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::GetSource(fetched)) => fetched
+            .source
+            .ok_or_else(|| "get source response omitted source".to_owned()),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected get source response".to_owned()),
+    }
+}
+
+pub async fn list_sources(
+    socket: &Path,
+    request_id: &str,
+    project_id: &str,
+) -> Result<Vec<Source>, String> {
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::ListSources(ListSourcesRequest {
+                project_id: project_id.to_owned(),
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::ListSources(listed)) => Ok(listed.sources),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected list sources response".to_owned()),
+    }
+}
+
+pub async fn submit_probe(
+    socket: &Path,
+    request_id: &str,
+    project_id: &str,
+    source_id: &str,
+) -> Result<Job, String> {
+    let payload = ProbeSourcePayloadV1 {
+        key_version: "clipmill.probe-source.v1".to_owned(),
+        source_id: source_id.to_owned(),
+    }
+    .encode_to_vec();
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::SubmitJob(SubmitJobRequest {
+                project_id: project_id.to_owned(),
+                kind: "probe-source".to_owned(),
+                payload,
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::SubmitJob(submitted)) => submitted
+            .job
+            .ok_or_else(|| "submit probe response omitted job".to_owned()),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected submit probe response".to_owned()),
     }
 }
 

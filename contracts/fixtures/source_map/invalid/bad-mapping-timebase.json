@@ -1,0 +1,35 @@
+{
+  "container": {
+    "duration_ticks": 90000,
+    "format": "matroska,webm"
+  },
+  "mapping": {
+    "edit_timebase": {
+      "den": 90000,
+      "num": 1
+    },
+    "segments": [
+      {
+        "edit_end_ticks": 1,
+        "edit_start_ticks": -1,
+        "segment_id": "invalid",
+        "source_end": 1,
+        "source_start": 0,
+        "stream_index": 0
+      }
+    ]
+  },
+  "schema_version": "clipmill.source_map.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "streams": [
+    {
+      "codec": "h264",
+      "index": 0,
+      "kind": "video",
+      "timebase": {
+        "den": 1000,
+        "num": 1
+      }
+    }
+  ]
+}

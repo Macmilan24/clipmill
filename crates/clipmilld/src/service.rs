@@ -2,21 +2,24 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clipmill_contracts::proto::ipc::v1::{
     CreateProjectRequest, DemoDagPayloadV1, Error, ErrorCode, GetJobResponse, GetProjectResponse,
-    HealthResponse, ListJobsResponse, ListProjectsResponse, PingResponse, Request, Response,
-    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request, response,
+    GetSourceResponse, HealthResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
+    PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest, Request, Response, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request, response,
 };
-use clipmill_core::{JobId, ProjectId, TaskEventCursor};
+use clipmill_core::{JobId, ProjectId, SourceId, TaskEventCursor};
 use prost::Message;
 use sha2::{Digest, Sha256};
 
 use crate::db::{DbHandle, ProjectRecord, StoreError};
 use crate::jobs::{EventFilter, TaskEventRecord};
 use crate::jobs::{EventHub, JobPlan, SchedulerHandle};
+use crate::sources::{SourceInspector, SourceProbeError};
 use tokio::sync::broadcast;
 
 const REQUEST_ID_MAX_CHARS: usize = 128;
 const PROJECT_NAME_MAX_CHARS: usize = 200;
 const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
+const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -24,6 +27,7 @@ pub(crate) struct Service {
     started_unix_millis: u64,
     events: EventHub,
     scheduler: Option<SchedulerHandle>,
+    sources: Option<SourceInspector>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -73,6 +77,7 @@ impl Service {
             started_unix_millis,
             events: EventHub::new(),
             scheduler: None,
+            sources: None,
         }
     }
 
@@ -81,12 +86,14 @@ impl Service {
         started_unix_millis: u64,
         events: EventHub,
         scheduler: SchedulerHandle,
+        sources: SourceInspector,
     ) -> Self {
         Self {
             database,
             started_unix_millis,
             events,
             scheduler: Some(scheduler),
+            sources: Some(sources),
         }
     }
 
@@ -247,6 +254,14 @@ impl Service {
                 self.cancel_job(request_id, request_hash, &cancel.job_id)
                     .await
             }
+            request::Body::RegisterSource(register) => {
+                self.register_source(request_id, request_hash, &register)
+                    .await
+            }
+            request::Body::GetSource(get) => self.get_source(request_id, &get.source_id).await,
+            request::Body::ListSources(list) => {
+                self.list_sources(request_id, &list.project_id).await
+            }
             request::Body::SubscribeTaskEvents(_) | request::Body::GetDeviceProfile(_) => {
                 error_reply(
                     request_id,
@@ -343,6 +358,7 @@ impl Service {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn submit_job(
         &self,
         request_id: String,
@@ -355,46 +371,93 @@ impl Service {
                 return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
             }
         };
-        if submit.kind != "demo-dag" {
-            return error_reply(
-                request_id,
-                ErrorCode::Unavailable,
-                "job kind is not available in W4",
-            );
-        }
         if submit.payload.len() > 72 * 1024 {
             return error_reply(
                 request_id,
                 ErrorCode::InvalidArgument,
-                "encoded demo job payload exceeds 72 KiB",
-            );
-        }
-        let Ok(payload) = DemoDagPayloadV1::decode(submit.payload.as_slice()) else {
-            return error_reply(
-                request_id,
-                ErrorCode::InvalidArgument,
-                "demo job payload is not a valid DemoDagPayloadV1",
-            );
-        };
-        if payload.key_version != DEMO_DAG_KEY_VERSION {
-            return error_reply(
-                request_id,
-                ErrorCode::InvalidArgument,
-                "demo job payload key_version is unsupported",
-            );
-        }
-        if payload.seed.len() > 64 * 1024 {
-            return error_reply(
-                request_id,
-                ErrorCode::InvalidArgument,
-                "demo job seed exceeds 64 KiB",
+                "encoded job payload exceeds 72 KiB",
             );
         }
         let now = match unix_millis() {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
-        let plan = JobPlan::demo(&project_id, payload.seed, now);
+        let plan = match submit.kind.as_str() {
+            "demo-dag" => {
+                let Ok(payload) = DemoDagPayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "demo job payload is not a valid DemoDagPayloadV1",
+                    );
+                };
+                if payload.key_version != DEMO_DAG_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "demo job payload key_version is unsupported",
+                    );
+                }
+                if payload.seed.len() > 64 * 1024 {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "demo job seed exceeds 64 KiB",
+                    );
+                }
+                JobPlan::demo(&project_id, payload.seed, now)
+            }
+            "probe-source" => {
+                let Ok(payload) = ProbeSourcePayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "probe job payload is not a valid ProbeSourcePayloadV1",
+                    );
+                };
+                if payload.key_version != PROBE_SOURCE_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "probe job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                JobPlan::probe_source(
+                    &project_id,
+                    source_id.to_string(),
+                    submit.payload.clone(),
+                    now,
+                )
+            }
+            _ => {
+                return error_reply(
+                    request_id,
+                    ErrorCode::Unavailable,
+                    "job kind is not available in W5",
+                );
+            }
+        };
         match self
             .database
             .submit_job(request_id.clone(), request_hash, plan)
@@ -410,6 +473,121 @@ impl Service {
                     outcome: Outcome::Success,
                 }
             }
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    async fn register_source(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        register: &RegisterSourceRequest,
+    ) -> Reply {
+        let project_id = match register.project_id.parse::<ProjectId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        if let Err(error) = self.database.get_project(project_id.to_string()).await {
+            return store_error_reply(request_id, &error);
+        }
+        let Some(inspector) = &self.sources else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "source inspection is not available",
+            );
+        };
+        let sampled = match inspector.sample(register.absolute_path.clone()).await {
+            Ok(value) => value,
+            Err(error) => return source_probe_error_reply(request_id, &error),
+        };
+        let existing = self
+            .database
+            .find_source_observation(project_id.to_string(), sampled.observation().clone())
+            .await;
+        match existing {
+            Ok(Some(source)) => {
+                let now = unix_millis().unwrap_or(source.created_unix_millis);
+                match self
+                    .database
+                    .remember_source_hit(request_id.clone(), request_hash, source, now)
+                    .await
+                {
+                    Ok(bytes) => Reply {
+                        bytes,
+                        outcome: Outcome::Success,
+                    },
+                    Err(error) => store_error_reply(request_id, &error),
+                }
+            }
+            Ok(None) => {
+                let inspection = match inspector.complete(sampled).await {
+                    Ok(value) => value,
+                    Err(error) => return source_probe_error_reply(request_id, &error),
+                };
+                let now = match unix_millis() {
+                    Ok(value) => value,
+                    Err(message) => {
+                        return error_reply(request_id, ErrorCode::Internal, message);
+                    }
+                };
+                match self
+                    .database
+                    .register_source(
+                        request_id.clone(),
+                        request_hash,
+                        project_id.to_string(),
+                        SourceId::new().to_string(),
+                        inspection,
+                        now,
+                    )
+                    .await
+                {
+                    Ok(bytes) => Reply {
+                        bytes,
+                        outcome: Outcome::Success,
+                    },
+                    Err(error) => store_error_reply(request_id, &error),
+                }
+            }
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    async fn get_source(&self, request_id: String, value: &str) -> Reply {
+        let source_id = match value.parse::<SourceId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        match self.database.get_source(source_id.to_string()).await {
+            Ok(source) => response_reply(
+                request_id,
+                response::Body::GetSource(GetSourceResponse {
+                    source: Some(source.into()),
+                }),
+            ),
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    async fn list_sources(&self, request_id: String, value: &str) -> Reply {
+        let project_id = match value.parse::<ProjectId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        match self.database.list_sources(project_id.to_string()).await {
+            Ok(sources) => response_reply(
+                request_id,
+                response::Body::ListSources(ListSourcesResponse {
+                    sources: sources.into_iter().map(Into::into).collect(),
+                }),
+            ),
             Err(error) => store_error_reply(request_id, &error),
         }
     }
@@ -495,6 +673,9 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetJob(_)) => "get_job",
         Some(request::Body::ListJobs(_)) => "list_jobs",
         Some(request::Body::CancelJob(_)) => "cancel_job",
+        Some(request::Body::RegisterSource(_)) => "register_source",
+        Some(request::Body::GetSource(_)) => "get_source",
+        Some(request::Body::ListSources(_)) => "list_sources",
         None => "missing_body",
     }
 }
@@ -537,6 +718,23 @@ fn store_error_reply(request_id: String, error: &StoreError) -> Reply {
         StoreError::NotFound => error_reply(request_id, ErrorCode::NotFound, error.to_string()),
         StoreError::Database(_) | StoreError::InvalidData(_) | StoreError::Stopped => {
             error_reply(request_id, ErrorCode::Internal, "internal database error")
+        }
+    }
+}
+
+fn source_probe_error_reply(request_id: String, error: &SourceProbeError) -> Reply {
+    match error {
+        SourceProbeError::InvalidPath(_) | SourceProbeError::ProbeFailed(_) => {
+            error_reply(request_id, ErrorCode::InvalidArgument, error.to_string())
+        }
+        SourceProbeError::SourceChanged => {
+            error_reply(request_id, ErrorCode::Conflict, error.to_string())
+        }
+        SourceProbeError::Timeout | SourceProbeError::OutputLimit => {
+            error_reply(request_id, ErrorCode::Unavailable, error.to_string())
+        }
+        SourceProbeError::Io(_) | SourceProbeError::InvalidProbe(_) | SourceProbeError::Stopped => {
+            error_reply(request_id, ErrorCode::Internal, "source inspection failed")
         }
     }
 }

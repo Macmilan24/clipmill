@@ -28,15 +28,19 @@ fn canonical(value: &serde_json::Value) -> String {
 
 #[test]
 fn source_map_valid_roundtrips_canonically() {
-    let raw = read("contracts/fixtures/source_map/valid/minimal.json");
-    let map: SourceMap = serde_json::from_str(&raw).expect("valid fixture rejected");
-    assert_eq!(canonical(&serde_json::to_value(&map).unwrap()), raw);
+    for fixture in ["minimal.json", "with-mapping.json"] {
+        let raw = read(&format!("contracts/fixtures/source_map/valid/{fixture}"));
+        let map: SourceMap = serde_json::from_str(&raw).expect("valid fixture rejected");
+        assert_eq!(canonical(&serde_json::to_value(&map).unwrap()), raw);
+    }
 }
 
 #[test]
 fn source_map_invalid_rejected() {
-    let raw = read("contracts/fixtures/source_map/invalid/float-ticks.json");
-    assert!(serde_json::from_str::<SourceMap>(&raw).is_err());
+    for fixture in ["float-ticks.json", "bad-mapping-timebase.json"] {
+        let raw = read(&format!("contracts/fixtures/source_map/invalid/{fixture}"));
+        assert!(serde_json::from_str::<SourceMap>(&raw).is_err());
+    }
 }
 
 #[test]

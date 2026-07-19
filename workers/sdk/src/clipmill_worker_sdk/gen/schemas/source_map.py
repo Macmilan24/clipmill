@@ -16,19 +16,14 @@ class RotationDeg(IntEnum):
     integer_270 = 270
 
 
-class Container(BaseModel):
+class Chapter(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    format: str = Field(
-        ..., description="Container format, e.g. 'mov,mp4,m4a,3gp,3g2,mj2'."
-    )
-    duration_ticks: conint(ge=0) = Field(
-        ..., description='Container duration in ticks at 1/90000.'
-    )
-    rotation_deg: RotationDeg | None = Field(
-        None, description='Display rotation from side data / display matrix.'
-    )
+    id: conint(ge=0)
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=0)
+    title: str
 
 
 class Kind(Enum):
@@ -44,6 +39,35 @@ class Audio(BaseModel):
     )
     sample_rate: conint(ge=1)
     channels: conint(ge=1)
+    layout: str | None = None
+
+
+class EditTimebase(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    num: Literal[1]
+    den: Literal[90000]
+
+
+class Segment(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    segment_id: constr(min_length=1)
+    stream_index: conint(ge=0)
+    source_start: int
+    source_end: int
+    edit_start_ticks: conint(ge=0)
+    edit_end_ticks: conint(ge=0)
+
+
+class Mapping(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    edit_timebase: EditTimebase
+    segments: list[Segment] = Field(..., min_length=1)
 
 
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
@@ -56,6 +80,41 @@ class Timebase(BaseModel):
     )
     num: conint(ge=1)
     den: conint(ge=1)
+
+
+class Color(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    space: str | None = None
+    transfer: str | None = None
+    primaries: str | None = None
+    range: str | None = None
+
+
+class Hdr(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    mastering_display: str | None = None
+    content_light_level: str | None = None
+
+
+class Container(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    format: str = Field(
+        ..., description="Container format, e.g. 'mov,mp4,m4a,3gp,3g2,mj2'."
+    )
+    duration_ticks: conint(ge=0) = Field(
+        ..., description='Container duration in ticks at 1/90000.'
+    )
+    rotation_deg: RotationDeg | None = Field(
+        None, description='Display rotation from side data / display matrix.'
+    )
+    color: Color | None = None
+    hdr: Hdr | None = None
 
 
 class Video(BaseModel):
@@ -73,6 +132,8 @@ class Video(BaseModel):
     vfr: bool | None = Field(
         None, description='True when frame intervals vary (variable frame rate).'
     )
+    color: Color | None = None
+    hdr: Hdr | None = None
 
 
 class Stream(BaseModel):
@@ -98,4 +159,9 @@ class SourceMap(BaseModel):
     schema_version: Literal['clipmill.source_map.v1']
     source_fingerprint: Sha256
     container: Container
+    chapters: list[Chapter] | None = None
     streams: list[Stream] = Field(..., min_length=1)
+    mapping: Mapping | None = Field(
+        None,
+        description='Exact source-presentation to 90 kHz edit-time mapping. Required on new Phase 0 output; omitted only by legacy v1 fixtures.',
+    )

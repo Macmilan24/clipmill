@@ -5,7 +5,7 @@
 //! Tests may panic; the workspace deny targets production code.
 #![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
-use clipmill_contracts::proto::ipc::v1::{DemoDagPayloadV1, PingRequest};
+use clipmill_contracts::proto::ipc::v1::{DemoDagPayloadV1, PingRequest, ProbeSourcePayloadV1};
 use clipmill_contracts::schemas::artifact_manifest::ArtifactManifest;
 use prost::Message;
 
@@ -118,5 +118,32 @@ fn demo_dag_payload_fixtures_enforce_the_phase0_key_version() {
     assert_ne!(
         invalid["keyVersion"].as_str().unwrap_or_default(),
         "clipmill.demo-dag.v1"
+    );
+}
+
+#[test]
+fn probe_source_payload_fixtures_enforce_the_w5_key_version() {
+    let valid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/probe_source/valid/payload.json",
+    ))
+    .expect("valid probe fixture JSON");
+    let message = ProbeSourcePayloadV1 {
+        key_version: valid["keyVersion"].as_str().unwrap_or_default().to_owned(),
+        source_id: valid["sourceId"].as_str().unwrap_or_default().to_owned(),
+    };
+    assert_eq!(message.key_version, "clipmill.probe-source.v1");
+    assert!(message.source_id.starts_with("src_"));
+    assert_eq!(
+        ProbeSourcePayloadV1::decode(message.encode_to_vec().as_slice()).expect("round-trip"),
+        message
+    );
+
+    let invalid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/probe_source/invalid/wrong-version.json",
+    ))
+    .expect("invalid probe fixture remains syntactically valid JSON");
+    assert_ne!(
+        invalid["keyVersion"].as_str().unwrap_or_default(),
+        "clipmill.probe-source.v1"
     );
 }

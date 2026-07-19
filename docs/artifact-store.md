@@ -69,8 +69,8 @@ objects, symlinks, undeclared files, and path/key mismatches are quarantined.
 Payload hashes are verified lazily on read using an already-open file handle;
 the resulting lease pins the object until dropped.
 
-Garbage collection marks project roots, transitive manifest inputs, and active
-reader pins. A missing or corrupt reachable node fails closed and deletes
+Garbage collection marks project roots, W4 active-task roots, W5 source-map
+roots, transitive manifest inputs, and active reader pins. A missing or corrupt reachable node fails closed and deletes
 nothing. Unreachable objects remain protected for `--artifact-gc-grace`,
 `CLIPMILL_ARTIFACT_GC_GRACE`, or the seven-day default. A collectible object is
 atomically moved to quarantine before recursive deletion. Quarantine cleanup
@@ -82,5 +82,5 @@ The cache drill hard-kills real daemon-backed publisher processes and verifies
 all acknowledged roots and visible payloads after restart. W4 adds active task
 output roots and transitive task inputs to GC reachability, then proves local
 task/job recovery with a separate job kill drill. External worker recovery and
-source-probe recovery remain W6 and W5 respectively, so the broader Phase 0
-claim is not yet complete.
+external-worker recovery remains W6, so the broader Phase 0 claim is not yet
+complete.
