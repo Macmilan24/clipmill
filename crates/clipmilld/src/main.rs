@@ -18,6 +18,9 @@ mod unix_main {
         /// Retain unreachable artifacts for this duration before collection.
         #[arg(long, value_parser = humantime::parse_duration)]
         artifact_gc_grace: Option<Duration>,
+        /// Pinned `FFprobe` sidecar executable.
+        #[arg(long)]
+        ffprobe: Option<PathBuf>,
     }
 
     pub(crate) fn main() -> ExitCode {
@@ -45,10 +48,11 @@ mod unix_main {
     }
 
     async fn run(arguments: Arguments) -> Result<(), clipmilld::DaemonError> {
-        let config = Config::resolve_with_gc(
+        let config = Config::resolve_full(
             arguments.data_dir,
             arguments.socket,
             arguments.artifact_gc_grace,
+            arguments.ffprobe,
         )?;
         let daemon = Daemon::start(config).await?;
         tracing::info!(socket = %daemon.socket_path().display(), "ClipMill daemon ready");

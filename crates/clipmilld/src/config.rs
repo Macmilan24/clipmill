@@ -12,12 +12,14 @@ use crate::DaemonError;
 const DATA_DIR_ENV: &str = "CLIPMILL_DATA_DIR";
 const SOCKET_ENV: &str = "CLIPMILL_SOCKET";
 const ARTIFACT_GC_GRACE_ENV: &str = "CLIPMILL_ARTIFACT_GC_GRACE";
+const FFPROBE_ENV: &str = "CLIPMILL_FFPROBE";
 const DEFAULT_ARTIFACT_GC_GRACE: Duration = Duration::from_hours(168);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
     pub paths: Paths,
     pub artifact_gc_grace: Duration,
+    pub ffprobe: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,6 +32,7 @@ pub struct Paths {
     pub database: PathBuf,
     pub socket: PathBuf,
     pub lock: PathBuf,
+    pub probe_scratch_dir: PathBuf,
 }
 
 impl Config {
@@ -45,6 +48,15 @@ impl Config {
         cli_socket: Option<PathBuf>,
         cli_artifact_gc_grace: Option<Duration>,
     ) -> Result<Self, DaemonError> {
+        Self::resolve_full(cli_data_dir, cli_socket, cli_artifact_gc_grace, None)
+    }
+
+    pub fn resolve_full(
+        cli_data_dir: Option<PathBuf>,
+        cli_socket: Option<PathBuf>,
+        cli_artifact_gc_grace: Option<Duration>,
+        cli_ffprobe: Option<PathBuf>,
+    ) -> Result<Self, DaemonError> {
         let platform_default = ProjectDirs::from("dev", "clipmill", "ClipMill")
             .map(|dirs| dirs.data_dir().to_path_buf())
             .ok_or(DaemonError::PlatformDataDirectory)?;
@@ -55,6 +67,8 @@ impl Config {
             env::var_os(DATA_DIR_ENV),
             env::var_os(SOCKET_ENV),
             env::var_os(ARTIFACT_GC_GRACE_ENV),
+            cli_ffprobe,
+            env::var_os(FFPROBE_ENV),
             platform_default,
         )
     }
@@ -73,6 +87,8 @@ impl Config {
             env_data_dir,
             env_socket,
             None,
+            None,
+            None,
             platform_default,
         )
     }
@@ -85,6 +101,8 @@ impl Config {
         env_data_dir: Option<OsString>,
         env_socket: Option<OsString>,
         env_artifact_gc_grace: Option<OsString>,
+        cli_ffprobe: Option<PathBuf>,
+        env_ffprobe: Option<OsString>,
         platform_default: PathBuf,
     ) -> Result<Self, DaemonError> {
         let data_dir = cli_data_dir
@@ -107,6 +125,12 @@ impl Config {
             .or_else(|| env_socket.map(PathBuf::from))
             .unwrap_or_else(|| run_dir.join("clipmilld.sock"));
         validate_socket(&socket)?;
+        let ffprobe = cli_ffprobe
+            .or_else(|| env_ffprobe.map(PathBuf::from))
+            .unwrap_or_else(|| PathBuf::from("ffprobe"));
+        if ffprobe.as_os_str().is_empty() {
+            return Err(DaemonError::InvalidPath("FFprobe path is empty"));
+        }
 
         Ok(Self {
             paths: Paths {
@@ -114,12 +138,14 @@ impl Config {
                 backups_dir: state_dir.join("backups"),
                 artifacts_dir: data_dir.join("artifacts"),
                 lock: run_dir.join("daemon.lock"),
+                probe_scratch_dir: state_dir.join("probe-scratch"),
                 data_dir,
                 state_dir,
                 run_dir,
                 socket,
             },
             artifact_gc_grace,
+            ffprobe,
         })
     }
 }
@@ -216,7 +242,12 @@ mod tests {
             config.paths.artifacts_dir,
             PathBuf::from("/default/data/artifacts")
         );
+        assert_eq!(
+            config.paths.probe_scratch_dir,
+            PathBuf::from("/default/data/state/probe-scratch")
+        );
         assert_eq!(config.artifact_gc_grace, Duration::from_hours(168));
+        assert_eq!(config.ffprobe, PathBuf::from("ffprobe"));
     }
 
     #[test]
@@ -228,6 +259,8 @@ mod tests {
             None,
             None,
             Some(OsString::from("1h")),
+            None,
+            None,
             PathBuf::from("/default/data"),
         )
         .expect("CLI grace");
@@ -240,6 +273,8 @@ mod tests {
             None,
             None,
             Some(OsString::from("3d")),
+            None,
+            None,
             PathBuf::from("/default/data"),
         )
         .expect("environment grace");
@@ -253,9 +288,42 @@ mod tests {
                 None,
                 None,
                 Some(OsString::from("not-a-duration")),
+                None,
+                None,
                 PathBuf::from("/default/data"),
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn ffprobe_uses_cli_environment_default_precedence() {
+        let cli = Config::from_sources_with_gc(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(PathBuf::from("/cli/ffprobe")),
+            Some(OsString::from("/env/ffprobe")),
+            PathBuf::from("/default/data"),
+        )
+        .expect("CLI FFprobe");
+        assert_eq!(cli.ffprobe, PathBuf::from("/cli/ffprobe"));
+
+        let environment = Config::from_sources_with_gc(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(OsString::from("/env/ffprobe")),
+            PathBuf::from("/default/data"),
+        )
+        .expect("environment FFprobe");
+        assert_eq!(environment.ffprobe, PathBuf::from("/env/ffprobe"));
     }
 }
