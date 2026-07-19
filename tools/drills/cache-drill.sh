@@ -8,8 +8,8 @@
 # acknowledged root and payload, scans every visible object, and confirms that
 # interrupted staging directories were quarantined.
 #
-# This proves W3 artifact publication and cache recovery. Task leases and
-# interrupted-job recovery remain W4 work.
+# This proves W3 artifact publication and cache recovery. The separate W4
+# kill drill covers task leases, active task roots, and interrupted jobs.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
