@@ -1,5 +1,5 @@
 #![cfg(unix)]
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 mod support;
 
@@ -52,6 +52,7 @@ async fn wait_for_job_boundary(socket: &std::path::Path, job_id: &str, boundary:
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run by tools/drills/kill-drill.sh"]
+#[allow(clippy::too_many_lines)]
 async fn acknowledged_jobs_and_projects_survive_random_hard_kills() {
     let iterations = std::env::var("CLIPMILL_KILL_ITERATIONS")
         .ok()
