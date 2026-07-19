@@ -71,7 +71,7 @@ pub async fn send_without_reading_response(socket: &Path, request: Request) -> R
 }
 
 pub async fn wait_until_ready(socket: &Path) -> Result<(), String> {
-    for attempt in 0..150 {
+    for attempt in 0..350 {
         let request = Request {
             request_id: format!("ready-{attempt}"),
             body: Some(request::Body::Ping(PingRequest {
