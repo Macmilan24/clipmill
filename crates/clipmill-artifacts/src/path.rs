@@ -33,7 +33,11 @@ impl FromStr for ArtifactPath {
         if value.is_empty() {
             return Err(ArtifactPathError::Empty);
         }
-        if value.starts_with('/') || value.ends_with('/') {
+        let has_windows_drive_prefix = value
+            .as_bytes()
+            .get(..2)
+            .is_some_and(|prefix| prefix[0].is_ascii_alphabetic() && prefix[1] == b':');
+        if value.starts_with('/') || value.ends_with('/') || has_windows_drive_prefix {
             return Err(ArtifactPathError::AbsoluteOrEmptyComponent);
         }
         if value.contains('\0') {
@@ -86,7 +90,7 @@ mod tests {
 
     #[test]
     fn rejects_nonportable_and_escaping_paths() {
-        for value in ["", "/root", "end/", "a//b", "a/../b", "a/./b"] {
+        for value in ["", "/root", "C:/root", "end/", "a//b", "a/../b", "a/./b"] {
             assert!(value.parse::<ArtifactPath>().is_err(), "accepted {value}");
         }
         assert_eq!(

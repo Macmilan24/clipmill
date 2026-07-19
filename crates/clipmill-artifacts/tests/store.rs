@@ -176,6 +176,35 @@ fn concurrent_stores_reject_nondeterministic_output_for_one_key() {
 }
 
 #[test]
+fn differing_quality_for_one_key_is_nondeterministic() {
+    let temp = TempDir::new().expect("tempdir");
+    let root = temp.path().join("artifacts");
+    let (mut first, _) = ArtifactStore::initialize(&root).expect("first");
+    let (mut second, _) = ArtifactStore::initialize(&root).expect("second");
+    let recipe = recipe(20);
+    let first_stage = prepare_miss(&mut first, recipe.clone());
+    let second_stage = prepare_miss(&mut second, recipe);
+    let path = "result.bin".parse::<ArtifactPath>().expect("path");
+    for staging in [&first_stage, &second_stage] {
+        staging
+            .create_file(&path)
+            .expect("staged file")
+            .write_all(b"identical")
+            .expect("staged write");
+    }
+    drop(
+        first
+            .commit(first_stage.id(), vec![path.clone()], BTreeMap::new())
+            .expect("first commit"),
+    );
+    let quality = BTreeMap::from([("confidence".to_owned(), 0.9)]);
+    assert!(matches!(
+        second.commit(second_stage.id(), vec![path], quality),
+        Err(ArtifactError::NonDeterministicOutput(_))
+    ));
+}
+
+#[test]
 fn exact_declared_files_are_enforced_and_failures_are_quarantined() {
     let temp = TempDir::new().expect("tempdir");
     let (mut store, _) = ArtifactStore::initialize(temp.path()).expect("store");
@@ -207,6 +236,46 @@ fn exact_declared_files_are_enforced_and_failures_are_quarantined() {
             .expect("quarantine")
             .count(),
         1
+    );
+
+    let missing_stage = prepare_miss(&mut store, recipe(17));
+    let actual = "actual.bin".parse::<ArtifactPath>().expect("actual");
+    missing_stage
+        .create_file(&actual)
+        .expect("actual file")
+        .write_all(b"actual")
+        .expect("actual write");
+    assert!(matches!(
+        store.commit(
+            missing_stage.id(),
+            vec![actual, "missing.bin".parse().expect("missing path")],
+            BTreeMap::new()
+        ),
+        Err(ArtifactError::DeclaredFileSetMismatch)
+    ));
+
+    let duplicate_stage = prepare_miss(&mut store, recipe(18));
+    let duplicate = "duplicate.bin"
+        .parse::<ArtifactPath>()
+        .expect("duplicate path");
+    duplicate_stage
+        .create_file(&duplicate)
+        .expect("duplicate file")
+        .write_all(b"duplicate")
+        .expect("duplicate write");
+    assert!(matches!(
+        store.commit(
+            duplicate_stage.id(),
+            vec![duplicate.clone(), duplicate],
+            BTreeMap::new()
+        ),
+        Err(ArtifactError::DuplicateFilePath)
+    ));
+    assert_eq!(
+        fs::read_dir(&store.paths().quarantine)
+            .expect("all failed stages quarantined")
+            .count(),
+        3
     );
 }
 
@@ -251,11 +320,16 @@ fn restart_quarantines_staging_and_structurally_corrupt_objects() {
     let committed_path = store.paths().object_dir(committed_id).join("complete.bin");
     make_writable(&committed_path);
     fs::write(&committed_path, b"short").expect("truncate");
+
+    let malformed_id = recipe(19).artifact_id().expect("malformed id");
+    let malformed = store.paths().object_dir(malformed_id);
+    fs::create_dir_all(&malformed).expect("malformed object directory");
+    fs::write(malformed.join("manifest.json"), b"{").expect("malformed manifest");
     drop(store);
 
     let (reopened, recovery) = ArtifactStore::initialize(&root).expect("reopen");
     assert_eq!(recovery.staging_quarantined, 1);
-    assert_eq!(recovery.objects_quarantined, 1);
+    assert_eq!(recovery.objects_quarantined, 2);
     assert_eq!(reopened.committed_count(), 0);
 }
 
@@ -326,6 +400,99 @@ fn garbage_collection_fails_closed_for_a_missing_reachable_root() {
         Err(ArtifactError::ReachableMissing(id)) if id == missing
     ));
     assert!(store.open(orphan_id).is_ok());
+}
+
+#[test]
+fn garbage_collection_fails_closed_for_a_corrupt_reachable_payload() {
+    let temp = TempDir::new().expect("tempdir");
+    let (mut store, _) = ArtifactStore::initialize(temp.path()).expect("store");
+    let reachable_recipe = recipe(14);
+    let reachable_id = reachable_recipe.artifact_id().expect("reachable id");
+    drop(commit_payload(
+        &mut store,
+        reachable_recipe,
+        "reachable.bin",
+        b"rooted",
+    ));
+    let orphan_recipe = recipe(15);
+    let orphan_id = orphan_recipe.artifact_id().expect("orphan id");
+    drop(commit_payload(
+        &mut store,
+        orphan_recipe,
+        "orphan.bin",
+        b"orphan",
+    ));
+
+    let reachable_payload = store.paths().object_dir(reachable_id).join("reachable.bin");
+    make_writable(&reachable_payload);
+    fs::write(&reachable_payload, b"broken").expect("same-size corruption");
+
+    assert!(matches!(
+        store.collect_garbage(
+            [reachable_id],
+            SystemTime::now() + Duration::from_hours(192),
+            Duration::from_hours(168)
+        ),
+        Err(ArtifactError::ReachableCorrupt { artifact_id, .. })
+            if artifact_id == reachable_id
+    ));
+    assert!(store.open(orphan_id).is_ok(), "GC must delete nothing");
+}
+
+#[test]
+fn garbage_collection_honors_exact_grace_and_recovers_interrupted_deletion() {
+    let temp = TempDir::new().expect("tempdir");
+    let root = temp.path().join("artifacts");
+    let (mut store, _) = ArtifactStore::initialize(&root).expect("store");
+    let orphan_recipe = recipe(16);
+    let orphan_id = orphan_recipe.artifact_id().expect("orphan id");
+    drop(commit_payload(
+        &mut store,
+        orphan_recipe,
+        "orphan.bin",
+        b"orphan",
+    ));
+    let manifest = store.paths().object_dir(orphan_id).join("manifest.json");
+    let published_at = fs::metadata(manifest)
+        .expect("manifest metadata")
+        .modified()
+        .expect("manifest timestamp");
+    let grace = Duration::from_hours(168);
+    let before_grace = grace
+        .checked_sub(Duration::from_nanos(1))
+        .expect("positive grace");
+    let just_before = published_at + before_grace;
+
+    let preserved = store
+        .collect_garbage([], just_before, grace)
+        .expect("preserve before grace");
+    assert_eq!(preserved.preserved_by_grace, 1);
+    assert!(store.open(orphan_id).is_ok());
+    let collected = store
+        .collect_garbage([], published_at + grace, grace)
+        .expect("collect at grace boundary");
+    assert_eq!(collected.deleted, 1);
+
+    let interrupted = store.paths().quarantine.join("gc-interrupted");
+    fs::create_dir(&interrupted).expect("interrupted quarantine wrapper");
+    fs::write(interrupted.join("item"), b"partially deleted").expect("quarantine item");
+    let quarantined_at = fs::metadata(&interrupted)
+        .expect("quarantine metadata")
+        .modified()
+        .expect("quarantine timestamp");
+    drop(store);
+
+    let (mut recovered, _) = ArtifactStore::initialize(root).expect("restart store");
+    assert!(interrupted.exists(), "restart retains recent quarantine");
+    let retained = recovered
+        .collect_garbage([], quarantined_at + before_grace, grace)
+        .expect("retain interrupted deletion before grace");
+    assert_eq!(retained.quarantine_deleted, 0);
+    let cleaned = recovered
+        .collect_garbage([], quarantined_at + grace, grace)
+        .expect("clean interrupted deletion at grace");
+    assert_eq!(cleaned.quarantine_deleted, 1);
+    assert!(!interrupted.exists());
 }
 
 #[test]

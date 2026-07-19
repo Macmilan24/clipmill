@@ -262,6 +262,9 @@ impl ArtifactStore {
             .parent()
             .ok_or(ArtifactError::InvalidStoreLayout)?;
         create_private_directory(final_parent)?;
+        // Persist a newly created digest shard (`sha256/ab`) before relying on
+        // it as the parent of an acknowledged object rename.
+        sync_directory(&self.paths.sha256_objects)?;
 
         if fs::symlink_metadata(&final_path).is_ok() {
             let existing_bytes = read_manifest_bytes(&final_path)?;
@@ -318,13 +321,13 @@ impl ArtifactStore {
                 .catalog
                 .get(&artifact_id)
                 .ok_or(ArtifactError::ReachableMissing(artifact_id))?;
-            let current = load_catalog_entry(&entry.dir, artifact_id).map_err(|error| {
+            let inputs = load_reachable_inputs(&entry.dir, artifact_id).map_err(|error| {
                 ArtifactError::ReachableCorrupt {
                     artifact_id,
                     detail: error.to_string(),
                 }
             })?;
-            pending.extend(current.manifest.input_ids()?);
+            pending.extend(inputs);
         }
 
         let candidates = self
@@ -616,6 +619,30 @@ fn load_catalog_entry(path: &Path, artifact_id: ArtifactId) -> Result<CatalogEnt
         published_at,
         legacy,
     })
+}
+
+fn load_reachable_inputs(
+    path: &Path,
+    artifact_id: ArtifactId,
+) -> Result<Vec<ArtifactId>, ArtifactError> {
+    let entry = load_catalog_entry(path, artifact_id)?;
+    for record in entry.manifest.file_records()? {
+        let payload = entry.dir.join(record.path.as_path());
+        let metadata =
+            fs::symlink_metadata(&payload).map_err(|source| ArtifactError::io(&payload, source))?;
+        if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+            return Err(ArtifactError::NonRegularFile);
+        }
+        let mut file =
+            File::open(&payload).map_err(|source| ArtifactError::io(&payload, source))?;
+        if metadata.len() != record.bytes {
+            return Err(ArtifactError::PayloadSizeMismatch);
+        }
+        if hash_open_file(&mut file, &payload)? != record.digest {
+            return Err(ArtifactError::PayloadHashMismatch);
+        }
+    }
+    entry.manifest.input_ids().map_err(Into::into)
 }
 
 fn read_manifest_bytes(object_dir: &Path) -> Result<Vec<u8>, ArtifactError> {
