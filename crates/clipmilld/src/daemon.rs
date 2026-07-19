@@ -5,7 +5,7 @@ use std::{
     io,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use tokio::{
@@ -201,26 +201,42 @@ async fn run_artifact_maintenance(
         tokio::select! {
             _ = &mut stopped => break,
             _ = schedule.tick() => {
-                let roots = match database.list_artifact_roots().await {
-                    Ok(roots) => roots,
-                    Err(error) => {
-                        tracing::warn!(%error, "cannot read artifact GC roots");
-                        continue;
-                    }
+                let started = Instant::now();
+                let Ok(roots) = database.list_artifact_roots().await else {
+                    tracing::warn!(
+                        operation = "gc",
+                        latency_ms = latency_millis(started),
+                        result = "error",
+                        "cannot read artifact GC roots"
+                    );
+                    continue;
                 };
-                match artifacts.collect(roots, SystemTime::now(), grace).await {
-                    Ok(report) => tracing::info!(
+                if let Ok(report) = artifacts.collect(roots, SystemTime::now(), grace).await {
+                    tracing::info!(
+                        operation = "gc",
+                        latency_ms = latency_millis(started),
+                        result = "ok",
                         reachable = report.reachable,
                         grace_preserved = report.preserved_by_grace,
                         deleted = report.deleted,
                         quarantine_deleted = report.quarantine_deleted,
                         "artifact garbage collection complete"
-                    ),
-                    Err(error) => tracing::warn!(%error, "artifact garbage collection aborted"),
+                    );
+                } else {
+                    tracing::warn!(
+                        operation = "gc",
+                        latency_ms = latency_millis(started),
+                        result = "error",
+                        "artifact garbage collection aborted"
+                    );
                 }
             }
         }
     }
+}
+
+fn latency_millis(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn log_connection_result(result: Result<Result<(), FrameError>, tokio::task::JoinError>) {

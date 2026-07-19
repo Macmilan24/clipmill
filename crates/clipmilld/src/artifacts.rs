@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     path::Path,
     thread,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use clipmill_artifacts::{
@@ -19,6 +19,129 @@ use crate::{
 };
 
 const COMMAND_CAPACITY: usize = 64;
+
+#[derive(Clone, Debug)]
+struct ArtifactLogContext {
+    artifact_id: Option<ArtifactId>,
+    kind: String,
+    stage: String,
+}
+
+fn latency_millis(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn log_prepare(
+    context: &ArtifactLogContext,
+    result: &Result<PrepareOutcome, ArtifactError>,
+    started: Instant,
+) {
+    let artifact_id = context
+        .artifact_id
+        .map_or_else(|| "unavailable".to_owned(), |value| value.to_string());
+    let latency_ms = latency_millis(started);
+    if let Ok(outcome) = result {
+        let cache_result = match outcome {
+            PrepareOutcome::Hit(_) => "hit",
+            PrepareOutcome::Miss(_) => "miss",
+            PrepareOutcome::InFlight { .. } => "in-flight",
+        };
+        tracing::info!(
+            artifact_id,
+            kind = context.kind,
+            stage = context.stage,
+            operation = "prepare",
+            latency_ms,
+            cache_result,
+            result = "ok",
+            "artifact operation"
+        );
+    } else {
+        tracing::warn!(
+            artifact_id,
+            kind = context.kind,
+            stage = context.stage,
+            operation = "prepare",
+            latency_ms,
+            cache_result = "error",
+            result = "error",
+            "artifact operation failed"
+        );
+    }
+}
+
+fn log_commit(
+    context: Option<&ArtifactLogContext>,
+    result: &Result<ArtifactLease, ArtifactError>,
+    started: Instant,
+) {
+    let latency_ms = latency_millis(started);
+    match result {
+        Ok(lease) => tracing::info!(
+            artifact_id = %lease.artifact_id(),
+            kind = lease.kind(),
+            stage = lease.stage(),
+            operation = "commit",
+            latency_ms,
+            cache_result = "published",
+            result = "ok",
+            "artifact operation"
+        ),
+        Err(error) => {
+            let artifact_id = context
+                .and_then(|value| value.artifact_id)
+                .map_or_else(|| "unavailable".to_owned(), |value| value.to_string());
+            let kind = context.map_or("unavailable", |value| value.kind.as_str());
+            let stage = context.map_or("unavailable", |value| value.stage.as_str());
+            let cache_result = if matches!(error, ArtifactError::NonDeterministicOutput(_)) {
+                "nondeterministic"
+            } else {
+                "error"
+            };
+            tracing::warn!(
+                artifact_id,
+                kind,
+                stage,
+                operation = "commit",
+                latency_ms,
+                cache_result,
+                result = "error",
+                "artifact operation failed"
+            );
+        }
+    }
+}
+
+fn log_open(
+    artifact_id: ArtifactId,
+    result: &Result<ArtifactLease, ArtifactError>,
+    started: Instant,
+) {
+    let latency_ms = latency_millis(started);
+    if let Ok(lease) = result {
+        tracing::info!(
+            artifact_id = %artifact_id,
+            kind = lease.kind(),
+            stage = lease.stage(),
+            operation = "open",
+            latency_ms,
+            cache_result = "hit",
+            result = "ok",
+            "artifact operation"
+        );
+    } else {
+        tracing::warn!(
+            artifact_id = %artifact_id,
+            kind = "unavailable",
+            stage = "unavailable",
+            operation = "open",
+            latency_ms,
+            cache_result = "error",
+            result = "error",
+            "artifact operation failed"
+        );
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct ArtifactHandle {
@@ -41,10 +164,22 @@ impl ArtifactActor {
             .spawn(move || match ArtifactStore::initialize(&store_path) {
                 Ok((mut store, recovery)) => {
                     let _ready = ready_sender.send(Ok(recovery));
+                    let mut staging_context = BTreeMap::new();
                     while let Some(command) = receiver.blocking_recv() {
                         match command {
                             Command::Prepare { recipe, reply } => {
-                                let _reply = reply.send(store.prepare(recipe));
+                                let started = Instant::now();
+                                let context = ArtifactLogContext {
+                                    artifact_id: recipe.artifact_id().ok(),
+                                    kind: recipe.kind().to_owned(),
+                                    stage: recipe.producer().stage.clone(),
+                                };
+                                let result = store.prepare(recipe);
+                                if let Ok(PrepareOutcome::Miss(staging)) = &result {
+                                    staging_context.insert(staging.id().clone(), context.clone());
+                                }
+                                log_prepare(&context, &result, started);
+                                let _reply = reply.send(result);
                             }
                             Command::Commit {
                                 staging_id,
@@ -52,10 +187,17 @@ impl ArtifactActor {
                                 quality,
                                 reply,
                             } => {
-                                let _reply = reply.send(store.commit(&staging_id, paths, quality));
+                                let started = Instant::now();
+                                let context = staging_context.remove(&staging_id);
+                                let result = store.commit(&staging_id, paths, quality);
+                                log_commit(context.as_ref(), &result, started);
+                                let _reply = reply.send(result);
                             }
                             Command::Open { artifact_id, reply } => {
-                                let _reply = reply.send(store.open(artifact_id));
+                                let started = Instant::now();
+                                let result = store.open(artifact_id);
+                                log_open(artifact_id, &result, started);
+                                let _reply = reply.send(result);
                             }
                             Command::Collect {
                                 roots,

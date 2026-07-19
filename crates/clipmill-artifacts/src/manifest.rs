@@ -124,6 +124,14 @@ impl StoredManifest {
         Ok(self.artifact_id.parse()?)
     }
 
+    pub(crate) fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub(crate) fn stage(&self) -> &str {
+        &self.producer.stage
+    }
+
     pub(crate) fn recipe(&self) -> Result<Option<ArtifactRecipe>, ManifestError> {
         let Some(recipe) = &self.recipe else {
             return Ok(None);

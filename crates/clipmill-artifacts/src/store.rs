@@ -442,6 +442,16 @@ impl ArtifactLease {
     }
 
     #[must_use]
+    pub fn kind(&self) -> &str {
+        self.manifest.kind()
+    }
+
+    #[must_use]
+    pub fn stage(&self) -> &str {
+        self.manifest.stage()
+    }
+
+    #[must_use]
     pub fn is_legacy(&self) -> bool {
         self.manifest.recipe().is_ok_and(|recipe| recipe.is_none())
     }
