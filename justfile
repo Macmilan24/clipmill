@@ -55,6 +55,11 @@ gate-kill:
 gate-cache:
     ./tools/drills/cache-drill.sh 50
 
+# W5 coverage: pinned FFprobe, immutable source observations, source maps,
+# deterministic warm hits, hostile input rejection, and mutation detection.
+gate-media:
+    ./tools/drills/media-drill.sh 1
+
 # Exit gate: Local Lock. Replays the CI namespace job in a no-network
 # container (Docker/OrbStack); the egress canary must be blocked.
 gate-lock:
@@ -69,7 +74,7 @@ gate-lock:
     fi
 
 # All Phase 0 gates in sequence.
-gate-phase0: gate-contracts gate-kill gate-cache gate-lock
+gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-lock
 
 # Launch the desktop shell. Lands with W9/W10.
 app:

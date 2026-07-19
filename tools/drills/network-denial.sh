@@ -30,4 +30,7 @@ CARGO_NET_OFFLINE=true ./tools/drills/cache-drill.sh 5
 echo "==> durable job hard-kill smoke test, offline"
 CARGO_NET_OFFLINE=true ./tools/drills/kill-drill.sh 5
 
-echo "network-denial: OK (canary blocked; suite, cache, and job drills green with zero egress)"
+echo "==> source evidence and media smoke test, offline"
+CARGO_NET_OFFLINE=true ./tools/drills/media-drill.sh 5
+
+echo "network-denial: OK (canary blocked; suite, cache, job, and media drills green with zero egress)"

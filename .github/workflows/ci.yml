@@ -58,6 +58,14 @@ jobs:
               exit 1
             fi
           done
+          uvx check-jsonschema --schemafile contracts/schemas/clipmill.source_map.v1.json \
+            contracts/fixtures/source_map/valid/*.json
+          for f in contracts/fixtures/source_map/invalid/*.json; do
+            if uvx check-jsonschema --schemafile contracts/schemas/clipmill.source_map.v1.json "$f" 2>/dev/null; then
+              echo "::error::invalid source-map fixture $f unexpectedly passed schema validation"
+              exit 1
+            fi
+          done
       - name: Codegen drift (generated code must match contracts/)
         run: |
           ./tools/codegen/generate.sh
@@ -142,6 +150,23 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: ./tools/drills/cache-drill.sh 25
 
+  media-conformance:
+    name: media-conformance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Fetch and verify pinned FFmpeg sidecars
+        run: ./tools/fetch-ffmpeg.sh
+      - run: ./tools/drills/media-drill.sh 1
+
   network-denial:
     name: network-denial (Local Lock gate)
     runs-on: ubuntu-24.04
@@ -154,7 +179,9 @@ jobs:
       - name: Allow unprivileged user namespaces (Ubuntu 24.04 default restricts them)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Prefetch and build everything (outside the namespace)
-        run: cargo test --workspace --no-run
+        run: |
+          ./tools/fetch-ffmpeg.sh
+          cargo test --workspace --no-run
       - name: Run the suite inside a no-network namespace
         run: unshare -rn ./tools/drills/network-denial.sh
 
