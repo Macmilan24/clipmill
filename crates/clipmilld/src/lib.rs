@@ -8,6 +8,7 @@ mod db;
 mod error;
 #[cfg(unix)]
 mod ipc;
+mod jobs;
 mod lock;
 mod service;
 

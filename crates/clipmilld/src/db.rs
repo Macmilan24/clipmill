@@ -19,9 +19,16 @@ use tokio::sync::{mpsc, oneshot};
 use ulid::Ulid;
 
 use crate::DaemonError;
+use crate::jobs::{
+    EventFilter, JobPlan, JobRecord, LeaseSelection, ResourceCapacity, TaskCompletion,
+    TaskEventRecord,
+};
+
+mod job_store;
+pub(crate) use job_store::MutationResult;
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -50,7 +57,7 @@ pub(crate) enum StoreError {
     Database(#[from] rusqlite::Error),
     #[error("database contains invalid data: {0}")]
     InvalidData(&'static str),
-    #[error("project was not found")]
+    #[error("requested record was not found")]
     NotFound,
     #[error("database actor stopped")]
     Stopped,
@@ -68,6 +75,7 @@ pub(crate) struct DbActor {
 }
 
 impl DbActor {
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn start(path: &Path, backups_dir: &Path) -> Result<Self, DaemonError> {
         let (sender, mut receiver) = mpsc::channel(COMMAND_CAPACITY);
         let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
@@ -129,6 +137,141 @@ impl DbActor {
                                 }
                                 Command::ListArtifactRoots { reply } => {
                                     let _result = reply.send(list_artifact_roots(&connection));
+                                }
+                                Command::SubmitJob {
+                                    request_id,
+                                    request_hash,
+                                    plan,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::submit_job(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &plan,
+                                    ));
+                                }
+                                Command::GetJob { job_id, reply } => {
+                                    let _result =
+                                        reply.send(job_store::get_job(&connection, &job_id));
+                                }
+                                Command::ListJobs { project_id, reply } => {
+                                    let _result =
+                                        reply.send(job_store::list_jobs(&connection, &project_id));
+                                }
+                                Command::CancelJob {
+                                    request_id,
+                                    request_hash,
+                                    job_id,
+                                    completed_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::cancel_job(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &job_id,
+                                        completed_unix_millis,
+                                    ));
+                                }
+                                Command::RecoverJobs {
+                                    daemon_epoch,
+                                    recovered_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::recover_jobs(
+                                        &mut connection,
+                                        &daemon_epoch,
+                                        recovered_unix_millis,
+                                    ));
+                                }
+                                Command::LeaseNextTask {
+                                    lease_id,
+                                    daemon_epoch,
+                                    now_unix_millis,
+                                    expires_unix_millis,
+                                    capacity,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::lease_next_task(
+                                        &mut connection,
+                                        &lease_id,
+                                        &daemon_epoch,
+                                        now_unix_millis,
+                                        expires_unix_millis,
+                                        capacity,
+                                    ));
+                                }
+                                Command::HeartbeatTask {
+                                    lease_id,
+                                    now_unix_millis,
+                                    expires_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::heartbeat_task(
+                                        &mut connection,
+                                        &lease_id,
+                                        now_unix_millis,
+                                        expires_unix_millis,
+                                    ));
+                                }
+                                Command::CompleteTask {
+                                    lease_id,
+                                    artifact_id,
+                                    completion_hash,
+                                    completion_response,
+                                    completed_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::complete_task(
+                                        &mut connection,
+                                        &lease_id,
+                                        artifact_id,
+                                        &completion_hash,
+                                        &completion_response,
+                                        completed_unix_millis,
+                                    ));
+                                }
+                                Command::FailTask {
+                                    lease_id,
+                                    failure_class,
+                                    detail,
+                                    failed_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::fail_task(
+                                        &mut connection,
+                                        &lease_id,
+                                        failure_class,
+                                        &detail,
+                                        failed_unix_millis,
+                                    ));
+                                }
+                                Command::ExpireTaskLeases {
+                                    now_unix_millis,
+                                    daemon_epoch,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::expire_task_leases(
+                                        &mut connection,
+                                        now_unix_millis,
+                                        &daemon_epoch,
+                                    ));
+                                }
+                                Command::CurrentEventId { reply } => {
+                                    let _result =
+                                        reply.send(job_store::current_event_id(&connection));
+                                }
+                                Command::ListEvents {
+                                    after_event_id,
+                                    filter,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::list_events(
+                                        &connection,
+                                        after_event_id,
+                                        &filter,
+                                    ));
                                 }
                                 Command::Shutdown { reply } => {
                                     let _result = reply.send(());
@@ -272,6 +415,210 @@ impl DbHandle {
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
     }
+
+    pub(crate) async fn submit_job(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        plan: JobPlan,
+    ) -> Result<MutationResult, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::SubmitJob {
+                request_id,
+                request_hash,
+                plan,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn get_job(&self, job_id: String) -> Result<JobRecord, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::GetJob { job_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn list_jobs(&self, project_id: String) -> Result<Vec<JobRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ListJobs { project_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn cancel_job(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        job_id: String,
+        completed_unix_millis: u64,
+    ) -> Result<MutationResult, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::CancelJob {
+                request_id,
+                request_hash,
+                job_id,
+                completed_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn recover_jobs(
+        &self,
+        daemon_epoch: String,
+        recovered_unix_millis: u64,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::RecoverJobs {
+                daemon_epoch,
+                recovered_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn lease_next_task(
+        &self,
+        lease_id: String,
+        daemon_epoch: String,
+        now_unix_millis: u64,
+        expires_unix_millis: u64,
+        capacity: ResourceCapacity,
+    ) -> Result<LeaseSelection, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::LeaseNextTask {
+                lease_id,
+                daemon_epoch,
+                now_unix_millis,
+                expires_unix_millis,
+                capacity,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn heartbeat_task(
+        &self,
+        lease_id: String,
+        now_unix_millis: u64,
+        expires_unix_millis: u64,
+    ) -> Result<(), StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::HeartbeatTask {
+                lease_id,
+                now_unix_millis,
+                expires_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn complete_task(
+        &self,
+        lease_id: String,
+        artifact_id: ArtifactId,
+        completion_hash: [u8; 32],
+        completion_response: Vec<u8>,
+        completed_unix_millis: u64,
+    ) -> Result<TaskCompletion, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::CompleteTask {
+                lease_id,
+                artifact_id,
+                completion_hash,
+                completion_response,
+                completed_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn fail_task(
+        &self,
+        lease_id: String,
+        failure_class: i32,
+        detail: String,
+        failed_unix_millis: u64,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::FailTask {
+                lease_id,
+                failure_class,
+                detail,
+                failed_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn expire_task_leases(
+        &self,
+        now_unix_millis: u64,
+        daemon_epoch: &str,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ExpireTaskLeases {
+                now_unix_millis,
+                daemon_epoch: daemon_epoch.to_owned(),
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn current_event_id(&self) -> Result<u64, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::CurrentEventId { reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn list_events(
+        &self,
+        after_event_id: u64,
+        filter: EventFilter,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ListEvents {
+                after_event_id,
+                filter,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
 }
 
 #[derive(Debug)]
@@ -303,6 +650,74 @@ enum Command {
     },
     ListArtifactRoots {
         reply: oneshot::Sender<Result<Vec<ArtifactId>, StoreError>>,
+    },
+    SubmitJob {
+        request_id: String,
+        request_hash: [u8; 32],
+        plan: JobPlan,
+        reply: oneshot::Sender<Result<MutationResult, StoreError>>,
+    },
+    GetJob {
+        job_id: String,
+        reply: oneshot::Sender<Result<JobRecord, StoreError>>,
+    },
+    ListJobs {
+        project_id: String,
+        reply: oneshot::Sender<Result<Vec<JobRecord>, StoreError>>,
+    },
+    CancelJob {
+        request_id: String,
+        request_hash: [u8; 32],
+        job_id: String,
+        completed_unix_millis: u64,
+        reply: oneshot::Sender<Result<MutationResult, StoreError>>,
+    },
+    RecoverJobs {
+        daemon_epoch: String,
+        recovered_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    LeaseNextTask {
+        lease_id: String,
+        daemon_epoch: String,
+        now_unix_millis: u64,
+        expires_unix_millis: u64,
+        capacity: ResourceCapacity,
+        reply: oneshot::Sender<Result<LeaseSelection, StoreError>>,
+    },
+    HeartbeatTask {
+        lease_id: String,
+        now_unix_millis: u64,
+        expires_unix_millis: u64,
+        reply: oneshot::Sender<Result<(), StoreError>>,
+    },
+    CompleteTask {
+        lease_id: String,
+        artifact_id: ArtifactId,
+        completion_hash: [u8; 32],
+        completion_response: Vec<u8>,
+        completed_unix_millis: u64,
+        reply: oneshot::Sender<Result<TaskCompletion, StoreError>>,
+    },
+    FailTask {
+        lease_id: String,
+        failure_class: i32,
+        detail: String,
+        failed_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    ExpireTaskLeases {
+        now_unix_millis: u64,
+        daemon_epoch: String,
+        reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    CurrentEventId {
+        reply: oneshot::Sender<Result<u64, StoreError>>,
+    },
+    ListEvents {
+        after_event_id: u64,
+        filter: EventFilter,
+        reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
     },
     Shutdown {
         reply: oneshot::Sender<()>,
@@ -435,26 +850,40 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute_batch(CREATE_V1_TABLES)?;
         transaction.execute_batch(CREATE_V2_TABLES)?;
+        transaction.execute_batch(job_store::CREATE_V3_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 2;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 3;")?;
         transaction.commit()?;
-    } else if version == 1 {
-        create_v1_backup(connection, backups_dir)?;
+    } else if version < SCHEMA_VERSION {
+        create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(CREATE_V2_TABLES)?;
-        transaction.execute_batch("PRAGMA user_version = 2;")?;
+        if version < 2 {
+            transaction.execute_batch(CREATE_V2_TABLES)?;
+        }
+        if version < 3 {
+            transaction.execute_batch(job_store::CREATE_V3_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 3;")?;
         transaction.commit()?;
     }
     Ok(())
 }
 
-fn create_v1_backup(source: &Connection, backups_dir: &Path) -> Result<PathBuf, DaemonError> {
+fn create_schema_backup(
+    source: &Connection,
+    backups_dir: &Path,
+    from_version: i64,
+    to_version: i64,
+) -> Result<PathBuf, DaemonError> {
     create_private_directory(backups_dir)?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| DaemonError::InvalidDuration(error.to_string()))?
         .as_millis();
-    let base = format!("clipmill-v1-to-v2-{timestamp}-{}", Ulid::new());
+    let base = format!(
+        "clipmill-v{from_version}-to-v{to_version}-{timestamp}-{}",
+        Ulid::new()
+    );
     let temporary = backups_dir.join(format!("{base}.db.tmp"));
     let final_path = backups_dir.join(format!("{base}.db"));
     create_private_database_file(&temporary)?;
@@ -669,7 +1098,10 @@ fn attach_artifact_root(
 
 fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, StoreError> {
     let mut statement = connection.prepare(
-        "SELECT DISTINCT artifact_id FROM project_artifact_roots ORDER BY artifact_id ASC",
+        "SELECT artifact_id FROM project_artifact_roots
+         UNION
+         SELECT artifact_id FROM task_artifact_roots
+         ORDER BY artifact_id ASC",
     )?;
     let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
     let encoded = rows.collect::<Result<Vec<_>, _>>()?;
@@ -705,17 +1137,25 @@ mod tests {
 
     use std::{fs, path::Path};
 
-    use clipmill_core::{ArtifactId, Sha256Digest};
+    use clipmill_contracts::proto::{
+        ipc::v1::{JobState, TaskState},
+        worker::v1::FailureClass,
+    };
+    use clipmill_core::{ArtifactId, LeaseId, ProjectId, Sha256Digest};
     use prost::Message;
     use rusqlite::{Connection, OpenFlags};
     use tempfile::TempDir;
 
     use super::{
-        CREATE_V1_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION, StoreError,
-        attach_artifact_root, create_project, delete_project, enforce_integrity_check,
-        enforce_sqlite_version, get_project, list_artifact_roots, list_projects, open_database,
+        CREATE_V1_TABLES, CREATE_V2_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION,
+        StoreError, attach_artifact_root, create_project, delete_project, enforce_integrity_check,
+        enforce_sqlite_version, get_project, job_store, list_artifact_roots, list_projects,
+        open_database,
     };
-    use crate::DaemonError;
+    use crate::{
+        DaemonError,
+        jobs::{JobPlan, ResourceCapacity},
+    };
 
     fn database(temp: &TempDir) -> (std::path::PathBuf, Connection) {
         let path = temp.path().join("clipmill.db");
@@ -804,7 +1244,7 @@ mod tests {
         let path = temp.path().join("newer.db");
         let connection = Connection::open(&path).expect("open raw database");
         connection
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 3;")
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 4;")
             .expect("set version");
         drop(connection);
         assert!(open_database(&path, &temp.path().join("backups")).is_err());
@@ -836,7 +1276,7 @@ mod tests {
         let name: String = upgraded
             .query_row("SELECT name FROM projects", [], |row| row.get(0))
             .expect("project preserved");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
         assert_eq!(name, "Before upgrade");
         drop(upgraded);
 
@@ -874,6 +1314,385 @@ mod tests {
                 0o600
             );
         }
+    }
+
+    #[test]
+    fn v2_upgrade_creates_backup_and_installs_strict_job_schema() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v2.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v2 database");
+        connection
+            .execute_batch(CREATE_V1_TABLES)
+            .expect("v1 schema");
+        connection
+            .execute_batch(CREATE_V2_TABLES)
+            .expect("v2 schema");
+        connection
+            .execute_batch(
+                "INSERT INTO projects(project_id, name, created_unix_millis)
+                 VALUES ('prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'V2', 1);
+                 PRAGMA application_id = 1129074765;
+                 PRAGMA user_version = 2;",
+            )
+            .expect("v2 state");
+        drop(connection);
+
+        let upgraded = open_database(&path, &backups).expect("upgrade v2");
+        let version: i64 = upgraded
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version");
+        let strict_jobs: i64 = upgraded
+            .query_row(
+                "SELECT strict FROM pragma_table_list WHERE name = 'jobs'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("strict jobs");
+        let without_rowid_dependencies: i64 = upgraded
+            .query_row(
+                "SELECT wr FROM pragma_table_list WHERE name = 'task_dependencies'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("without rowid dependencies");
+        assert_eq!(version, 3);
+        assert_eq!(strict_jobs, 1);
+        assert_eq!(without_rowid_dependencies, 1);
+        drop(upgraded);
+
+        let backup_path = fs::read_dir(&backups)
+            .expect("backups")
+            .next()
+            .expect("one backup")
+            .expect("backup entry")
+            .path();
+        let backup = Connection::open_with_flags(
+            backup_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .expect("open backup");
+        let backup_version: i64 = backup
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("backup version");
+        assert_eq!(backup_version, 2);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn durable_job_dag_leases_events_completion_and_cancellation_are_transactional() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Jobs", 10);
+        create_project(&mut connection, "create-jobs", &[1; 32], &project).expect("create project");
+        let project_id = project.project_id.parse::<ProjectId>().expect("project id");
+        let plan = JobPlan::demo(&project_id, b"payload".to_vec(), 20);
+        let submitted =
+            job_store::submit_job(&mut connection, "submit-job", &[2; 32], &plan).expect("submit");
+        let replayed = job_store::submit_job(
+            &mut connection,
+            "submit-job",
+            &[2; 32],
+            &JobPlan::demo(&project_id, b"different".to_vec(), 21),
+        )
+        .expect("replay");
+        assert_eq!(submitted.bytes, replayed.bytes);
+        assert!(matches!(
+            job_store::submit_job(
+                &mut connection,
+                "submit-job",
+                &[3; 32],
+                &JobPlan::demo(&project_id, b"different".to_vec(), 21),
+            ),
+            Err(StoreError::Conflict)
+        ));
+        assert_eq!(submitted.events.len(), 4);
+
+        let mut cursor = 0;
+        for index in 0..4_u8 {
+            let lease_id = LeaseId::new().to_string();
+            let selection = job_store::lease_next_task(
+                &mut connection,
+                &lease_id,
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                30 + u64::from(index),
+                15_030 + u64::from(index),
+                ResourceCapacity::w4_builtin(),
+            )
+            .expect("lease");
+            assert_eq!(selection.events.len(), 2);
+            let leased = selection.task.expect("runnable task");
+            let artifact = ArtifactId::from_digest(Sha256Digest::from_bytes([index; 32]));
+            let response = artifact.to_string().into_bytes();
+            let completed = job_store::complete_task(
+                &mut connection,
+                &leased.lease_id,
+                artifact,
+                &[index; 32],
+                &response,
+                40 + u64::from(index),
+            )
+            .expect("complete");
+            assert_eq!(completed.response, response);
+            assert_eq!(completed.events.len(), 1);
+            assert!(completed.events[0].event_id > cursor);
+            cursor = completed.events[0].event_id;
+            let replayed = job_store::complete_task(
+                &mut connection,
+                &leased.lease_id,
+                artifact,
+                &[index; 32],
+                b"response bytes are ignored on a matching durable retry",
+                41 + u64::from(index),
+            )
+            .expect("completion retry");
+            assert_eq!(replayed.response, response);
+            assert!(replayed.events.is_empty());
+            assert!(matches!(
+                job_store::complete_task(
+                    &mut connection,
+                    &leased.lease_id,
+                    artifact,
+                    &[index.saturating_add(1); 32],
+                    b"conflicting response",
+                    42 + u64::from(index),
+                ),
+                Err(StoreError::Conflict)
+            ));
+        }
+        let completed = job_store::get_job(&connection, &plan.job_id).expect("completed job");
+        assert_eq!(completed.state, JobState::Succeeded as i32);
+        assert!(
+            completed
+                .tasks
+                .iter()
+                .all(|task| task.state == TaskState::Succeeded as i32)
+        );
+        assert_eq!(completed.output_artifact_ids.len(), 1);
+        assert_eq!(list_artifact_roots(&connection).expect("roots").len(), 1);
+
+        let cancellable = JobPlan::demo(&project_id, b"cancel".to_vec(), 100);
+        job_store::submit_job(&mut connection, "submit-cancel", &[4; 32], &cancellable)
+            .expect("submit cancellable");
+        let cancelled = job_store::cancel_job(
+            &mut connection,
+            "cancel",
+            &[5; 32],
+            &cancellable.job_id,
+            101,
+        )
+        .expect("cancel");
+        assert_eq!(cancelled.events.len(), 4);
+        assert_eq!(
+            job_store::get_job(&connection, &cancellable.job_id)
+                .expect("cancelled job")
+                .state,
+            JobState::Cancelled as i32
+        );
+    }
+
+    #[test]
+    fn daemon_recovery_retries_without_spending_worker_failure_budget() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Recovery", 10);
+        create_project(&mut connection, "create-recovery", &[1; 32], &project).expect("project");
+        let project_id = project.project_id.parse().expect("project id");
+        let plan = JobPlan::demo(&project_id, b"recover".to_vec(), 20);
+        job_store::submit_job(&mut connection, "submit-recovery", &[2; 32], &plan).expect("submit");
+        let old_lease = LeaseId::new().to_string();
+        let selection = job_store::lease_next_task(
+            &mut connection,
+            &old_lease,
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15_030,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("lease");
+        let leased = selection.task.expect("task");
+        let recovery = job_store::recover_jobs(&mut connection, "01ARZ3NDEKTSV4RRFFQ69G5FAW", 31)
+            .expect("recovery");
+        assert_eq!(recovery.len(), 1);
+        assert_eq!(recovery[0].state, TaskState::Retryable as i32);
+        assert_eq!(recovery[0].attempt, 0);
+        let artifact = ArtifactId::from_digest(Sha256Digest::from_bytes([9; 32]));
+        assert!(matches!(
+            job_store::complete_task(
+                &mut connection,
+                &leased.lease_id,
+                artifact,
+                &[9; 32],
+                b"stale",
+                32,
+            ),
+            Err(StoreError::Conflict)
+        ));
+        let selection = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+            33,
+            15_033,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("retry lease");
+        let retried = selection.task.expect("retry task");
+        assert_eq!(retried.task_id, leased.task_id);
+        assert_eq!(retried.attempt, 1);
+    }
+
+    #[test]
+    fn lease_heartbeats_extend_ttl_and_stale_heartbeats_are_rejected() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Heartbeat", 10);
+        create_project(&mut connection, "create-heartbeat", &[1; 32], &project).expect("project");
+        let project_id = project.project_id.parse().expect("project id");
+        let plan = JobPlan::demo(&project_id, b"heartbeat".to_vec(), 20);
+        job_store::submit_job(&mut connection, "submit-heartbeat", &[2; 32], &plan)
+            .expect("submit");
+        let lease_id = LeaseId::new().to_string();
+        let selection = job_store::lease_next_task(
+            &mut connection,
+            &lease_id,
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15_030,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("lease");
+        assert!(selection.task.is_some());
+        job_store::heartbeat_task(&mut connection, &lease_id, 10_000, 25_000).expect("heartbeat");
+        assert!(
+            job_store::expire_task_leases(&mut connection, 15_031, "01ARZ3NDEKTSV4RRFFQ69G5FAV")
+                .expect("not expired")
+                .is_empty()
+        );
+        let expired =
+            job_store::expire_task_leases(&mut connection, 25_000, "01ARZ3NDEKTSV4RRFFQ69G5FAV")
+                .expect("expired");
+        assert_eq!(expired.len(), 1);
+        assert_eq!(expired[0].state, TaskState::Retryable as i32);
+        assert!(matches!(
+            job_store::heartbeat_task(&mut connection, &lease_id, 25_001, 40_001),
+            Err(StoreError::Conflict)
+        ));
+    }
+
+    #[test]
+    fn terminal_lease_expiry_fails_the_job_and_cancels_remaining_tasks() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Expiry", 10);
+        create_project(&mut connection, "create-expiry", &[1; 32], &project).expect("project");
+        let project_id = project.project_id.parse().expect("project id");
+        let mut plan = JobPlan::demo(&project_id, b"expiry".to_vec(), 20);
+        plan.tasks[0].max_attempts = 1;
+        job_store::submit_job(&mut connection, "submit-expiry", &[2; 32], &plan).expect("submit");
+        let selection = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15_030,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("lease");
+        assert!(selection.task.is_some());
+        let events =
+            job_store::expire_task_leases(&mut connection, 15_030, "01ARZ3NDEKTSV4RRFFQ69G5FAV")
+                .expect("expire");
+        assert_eq!(events.len(), 4);
+        let failed = job_store::get_job(&connection, &plan.job_id).expect("failed job");
+        assert_eq!(failed.state, JobState::Failed as i32);
+        assert_eq!(failed.tasks[0].state, TaskState::Failed as i32);
+        assert!(
+            failed.tasks[1..]
+                .iter()
+                .all(|task| task.state == TaskState::Cancelled as i32)
+        );
+    }
+
+    #[test]
+    fn equivalent_deterministic_failures_open_a_durable_circuit_breaker() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Breaker", 10);
+        create_project(&mut connection, "create-breaker", &[1; 32], &project).expect("project");
+        let project_id = project.project_id.parse().expect("project id");
+        for index in 0..3_u8 {
+            let plan = JobPlan::demo(&project_id, b"same-input".to_vec(), 20 + u64::from(index));
+            job_store::submit_job(
+                &mut connection,
+                &format!("submit-breaker-{index}"),
+                &[index.saturating_add(2); 32],
+                &plan,
+            )
+            .expect("submit breaker fixture");
+            let selection = job_store::lease_next_task(
+                &mut connection,
+                &LeaseId::new().to_string(),
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                30 + u64::from(index),
+                15_030 + u64::from(index),
+                ResourceCapacity::w4_builtin(),
+            )
+            .expect("lease breaker fixture");
+            let leased = selection.task.expect("runnable breaker fixture");
+            job_store::fail_task(
+                &mut connection,
+                &leased.lease_id,
+                FailureClass::Deterministic as i32,
+                "fixture deterministic failure",
+                40 + u64::from(index),
+            )
+            .expect("fail breaker fixture");
+        }
+
+        let blocked = JobPlan::demo(&project_id, b"same-input".to_vec(), 100);
+        job_store::submit_job(&mut connection, "submit-blocked", &[9; 32], &blocked)
+            .expect("submit blocked fixture");
+        let selection = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            101,
+            15_101,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("evaluate breaker");
+        assert!(selection.task.is_none());
+        assert_eq!(selection.events.len(), 4);
+        let failed = job_store::get_job(&connection, &blocked.job_id).expect("blocked job");
+        assert_eq!(failed.state, JobState::Failed as i32);
+        assert_eq!(failed.failure_class, FailureClass::Deterministic as i32);
+        assert!(failed.failure_detail.contains("circuit breaker open"));
+    }
+
+    #[test]
+    fn cyclic_job_plan_rolls_back_without_claiming_request_id() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Cycle", 10);
+        create_project(&mut connection, "create-cycle", &[1; 32], &project).expect("project");
+        let project_id = project.project_id.parse::<ProjectId>().expect("project id");
+        let mut cyclic = JobPlan::demo(&project_id, b"cycle".to_vec(), 20);
+        let final_id = cyclic.tasks[3].task_id.clone();
+        cyclic.tasks[0].dependencies.push(final_id);
+        assert!(matches!(
+            job_store::submit_job(&mut connection, "cycle", &[2; 32], &cyclic),
+            Err(StoreError::InvalidData(_))
+        ));
+        let valid = JobPlan::demo(&project_id, b"valid".to_vec(), 21);
+        job_store::submit_job(&mut connection, "cycle", &[2; 32], &valid)
+            .expect("request id remains available");
+        assert_eq!(
+            job_store::list_jobs(&connection, &project.project_id)
+                .expect("jobs")
+                .len(),
+            1
+        );
     }
 
     #[test]

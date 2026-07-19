@@ -20,6 +20,7 @@ use crate::{
     artifacts::{ArtifactActor, ArtifactHandle},
     db::DbActor,
     ipc::{FrameError, handle_connection},
+    jobs::{EventHub, Scheduler},
     lock::DaemonLock,
     service::Service,
 };
@@ -35,6 +36,8 @@ pub struct Daemon {
     service: Service,
     artifacts: ArtifactActor,
     database: DbActor,
+    scheduler: Scheduler,
+    epoch: String,
     artifact_gc_grace: Duration,
     socket: SocketGuard,
     _lock: DaemonLock,
@@ -60,6 +63,22 @@ impl Daemon {
             objects_quarantined = recovery.objects_quarantined,
             "artifact store recovered"
         );
+        let daemon_epoch = ulid::Ulid::new().to_string();
+        let events = EventHub::new();
+        match database
+            .handle()
+            .recover_jobs(daemon_epoch.clone(), started_unix_millis)
+            .await
+        {
+            Ok(recovered) => events.publish_all(recovered),
+            Err(error) => {
+                artifacts.shutdown().await?;
+                database.shutdown().await?;
+                return Err(DaemonError::Ipc(format!(
+                    "cannot recover durable jobs: {error}"
+                )));
+            }
+        }
 
         if let Err(error) = recover_stale_socket(&config.paths.socket).await {
             artifacts.shutdown().await?;
@@ -80,13 +99,26 @@ impl Daemon {
             database.shutdown().await?;
             return Err(error);
         }
-        let service = Service::new(database.handle(), started_unix_millis);
+        let scheduler = Scheduler::start(
+            database.handle(),
+            artifacts.handle(),
+            events.clone(),
+            daemon_epoch.clone(),
+        );
+        let service = Service::with_scheduler(
+            database.handle(),
+            started_unix_millis,
+            events,
+            scheduler.handle(),
+        );
 
         Ok(Self {
             listener,
             service,
             artifacts,
             database,
+            scheduler,
+            epoch: daemon_epoch,
             artifact_gc_grace: config.artifact_gc_grace,
             socket,
             _lock: daemon_lock,
@@ -112,6 +144,8 @@ impl Daemon {
             service,
             artifacts,
             database,
+            scheduler,
+            epoch: daemon_epoch,
             artifact_gc_grace,
             mut socket,
             _lock: daemon_lock,
@@ -163,6 +197,14 @@ impl Daemon {
         // streams alive for the bounded drain below.
         socket.remove();
         drop(listener);
+        scheduler.shutdown().await;
+        if let Ok(recovered) = database
+            .handle()
+            .recover_jobs(daemon_epoch, unix_millis().unwrap_or(u64::MAX))
+            .await
+        {
+            service.event_hub().publish_all(recovered);
+        }
         let _stop_sent = maintenance_stop.send(());
         if timeout(DRAIN_TIMEOUT, &mut maintenance).await.is_err() {
             maintenance.abort();

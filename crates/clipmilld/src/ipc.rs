@@ -1,15 +1,17 @@
 use std::{io, time::Duration};
 
-use clipmill_contracts::proto::ipc::v1::Request;
+use clipmill_contracts::proto::ipc::v1::{Error, ErrorCode, Request, Response, request, response};
 use prost::Message;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    net::UnixStream,
+    net::{UnixStream, unix::OwnedWriteHalf},
+    sync::mpsc,
+    task::JoinSet,
     time::{Instant, timeout},
 };
 
-use crate::service::{Service, request_kind};
+use crate::service::{Service, Subscription, request_kind};
 
 pub(crate) const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -34,26 +36,43 @@ pub(crate) enum FrameError {
 }
 
 pub(crate) async fn handle_connection(
-    mut stream: UnixStream,
+    stream: UnixStream,
     service: Service,
 ) -> Result<(), FrameError> {
-    loop {
-        let frame = timeout(READ_TIMEOUT, read_frame(&mut stream))
+    let (mut reader, writer) = stream.into_split();
+    let (outgoing, receiver) = mpsc::channel::<Vec<u8>>(128);
+    let mut writer = tokio::spawn(write_outgoing(writer, receiver));
+    let mut subscriptions = JoinSet::new();
+    let read_result: Result<(), FrameError> = loop {
+        let frame = timeout(READ_TIMEOUT, read_frame(&mut reader))
             .await
             .map_err(|_| FrameError::ReadTimeout)??;
         let Some(frame) = frame else {
-            return Ok(());
+            break Ok(());
         };
         let request =
             Request::decode(frame.as_slice()).map_err(|_| FrameError::MalformedRequest)?;
         let kind = request_kind(&request);
         let request_id = request.request_id.clone();
         let started = Instant::now();
-        let reply = service.handle(request).await;
-        let outcome = reply.outcome;
-        let write_result = timeout(WRITE_TIMEOUT, write_frame(&mut stream, &reply.bytes))
-            .await
-            .map_err(|_| FrameError::WriteTimeout);
+        let outcome =
+            if let Some(request::Body::SubscribeTaskEvents(subscribe)) = request.body.as_ref() {
+                match service.subscribe(request_id.clone(), subscribe).await {
+                    Ok(subscription) => {
+                        queue_subscription(&outgoing, &mut subscriptions, subscription).await?;
+                        crate::service::Outcome::Success
+                    }
+                    Err(reply) => {
+                        send_outgoing(&outgoing, reply.bytes).await?;
+                        reply.outcome
+                    }
+                }
+            } else {
+                let reply = service.handle(request).await;
+                let outcome = reply.outcome;
+                send_outgoing(&outgoing, reply.bytes).await?;
+                outcome
+            };
         tracing::info!(
             request_kind = kind,
             request_id,
@@ -61,8 +80,104 @@ pub(crate) async fn handle_connection(
             latency_ms = started.elapsed().as_millis(),
             "handled IPC request"
         );
-        write_result??;
+    };
+
+    subscriptions.abort_all();
+    while subscriptions.join_next().await.is_some() {}
+    drop(outgoing);
+    let writer_result = (&mut writer)
+        .await
+        .map_err(|error| FrameError::Io(io::Error::other(error.to_string())))?;
+    read_result?;
+    writer_result
+}
+
+async fn write_outgoing(
+    mut writer: OwnedWriteHalf,
+    mut receiver: mpsc::Receiver<Vec<u8>>,
+) -> Result<(), FrameError> {
+    while let Some(payload) = receiver.recv().await {
+        timeout(WRITE_TIMEOUT, write_frame(&mut writer, &payload))
+            .await
+            .map_err(|_| FrameError::WriteTimeout)??;
     }
+    Ok(())
+}
+
+async fn send_outgoing(
+    outgoing: &mpsc::Sender<Vec<u8>>,
+    payload: Vec<u8>,
+) -> Result<(), FrameError> {
+    outgoing.send(payload).await.map_err(|_| {
+        FrameError::Io(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "IPC writer stopped",
+        ))
+    })
+}
+
+async fn queue_subscription(
+    outgoing: &mpsc::Sender<Vec<u8>>,
+    subscriptions: &mut JoinSet<()>,
+    mut subscription: Subscription,
+) -> Result<(), FrameError> {
+    send_outgoing(outgoing, subscription.ack).await?;
+    let mut last_event_id = subscription.after_event_id;
+    for event in subscription.history {
+        last_event_id = last_event_id.max(event.event_id);
+        send_outgoing(
+            outgoing,
+            event_response(&subscription.request_id, event.as_proto()),
+        )
+        .await?;
+    }
+    let outgoing = outgoing.clone();
+    subscriptions.spawn(async move {
+        loop {
+            match subscription.live.recv().await {
+                Ok(event) => {
+                    if event.event_id <= last_event_id || !subscription.filter.matches(&event) {
+                        continue;
+                    }
+                    last_event_id = event.event_id;
+                    if outgoing
+                        .send(event_response(&subscription.request_id, event.as_proto()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    let response = Response {
+                        request_id: subscription.request_id.clone(),
+                        body: Some(response::Body::Error(Error {
+                            code: ErrorCode::Unavailable as i32,
+                            message: format!(
+                                "subscription lagged; resume after event_id {last_event_id}"
+                            ),
+                        })),
+                    }
+                    .encode_to_vec();
+                    let _sent = outgoing.send(response).await;
+                    break;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+    Ok(())
+}
+
+fn event_response(
+    request_id: &str,
+    event: clipmill_contracts::proto::ipc::v1::TaskEvent,
+) -> Vec<u8> {
+    Response {
+        request_id: request_id.to_owned(),
+        body: Some(response::Body::TaskEvent(event)),
+    }
+    .encode_to_vec()
 }
 
 pub(crate) async fn read_frame<R>(reader: &mut R) -> Result<Option<Vec<u8>>, FrameError>
