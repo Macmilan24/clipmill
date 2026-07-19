@@ -26,9 +26,11 @@ use crate::jobs::{
 
 mod job_store;
 pub(crate) use job_store::MutationResult;
+mod source_store;
+pub(crate) use source_store::SourceRecord;
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -272,6 +274,60 @@ impl DbActor {
                                         after_event_id,
                                         &filter,
                                     ));
+                                }
+                                Command::FindSourceObservation {
+                                    project_id,
+                                    observation,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(source_store::find_observation(
+                                        &connection,
+                                        &project_id,
+                                        &observation,
+                                    ));
+                                }
+                                Command::RegisterSource {
+                                    request_id,
+                                    request_hash,
+                                    project_id,
+                                    source_id,
+                                    inspection,
+                                    created_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(source_store::register_source(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &project_id,
+                                        &source_id,
+                                        &inspection,
+                                        created_unix_millis,
+                                    ));
+                                }
+                                Command::RememberSourceHit {
+                                    request_id,
+                                    request_hash,
+                                    source,
+                                    completed_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result =
+                                        reply.send(source_store::remember_observation_hit(
+                                            &mut connection,
+                                            &request_id,
+                                            &request_hash,
+                                            &source,
+                                            completed_unix_millis,
+                                        ));
+                                }
+                                Command::GetSource { source_id, reply } => {
+                                    let _result = reply
+                                        .send(source_store::get_source(&connection, &source_id));
+                                }
+                                Command::ListSources { project_id, reply } => {
+                                    let _result = reply
+                                        .send(source_store::list_sources(&connection, &project_id));
                                 }
                                 Command::Shutdown { reply } => {
                                     let _result = reply.send(());
@@ -619,6 +675,91 @@ impl DbHandle {
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
     }
+
+    pub(crate) async fn find_source_observation(
+        &self,
+        project_id: String,
+        observation: crate::sources::FileObservation,
+    ) -> Result<Option<SourceRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::FindSourceObservation {
+                project_id,
+                observation,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn register_source(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        source_id: String,
+        inspection: crate::sources::InspectedSource,
+        created_unix_millis: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::RegisterSource {
+                request_id,
+                request_hash,
+                project_id,
+                source_id,
+                inspection,
+                created_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn get_source(&self, source_id: String) -> Result<SourceRecord, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::GetSource { source_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn remember_source_hit(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        source: SourceRecord,
+        completed_unix_millis: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::RememberSourceHit {
+                request_id,
+                request_hash,
+                source,
+                completed_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn list_sources(
+        &self,
+        project_id: String,
+    ) -> Result<Vec<SourceRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ListSources { project_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
 }
 
 #[derive(Debug)]
@@ -718,6 +859,35 @@ enum Command {
         after_event_id: u64,
         filter: EventFilter,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    FindSourceObservation {
+        project_id: String,
+        observation: crate::sources::FileObservation,
+        reply: oneshot::Sender<Result<Option<SourceRecord>, StoreError>>,
+    },
+    RegisterSource {
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        source_id: String,
+        inspection: crate::sources::InspectedSource,
+        created_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
+    RememberSourceHit {
+        request_id: String,
+        request_hash: [u8; 32],
+        source: SourceRecord,
+        completed_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
+    GetSource {
+        source_id: String,
+        reply: oneshot::Sender<Result<SourceRecord, StoreError>>,
+    },
+    ListSources {
+        project_id: String,
+        reply: oneshot::Sender<Result<Vec<SourceRecord>, StoreError>>,
     },
     Shutdown {
         reply: oneshot::Sender<()>,
@@ -851,8 +1021,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(CREATE_V1_TABLES)?;
         transaction.execute_batch(CREATE_V2_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V3_TABLES)?;
+        transaction.execute_batch(source_store::CREATE_V4_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 3;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 4;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -863,7 +1034,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 3 {
             transaction.execute_batch(job_store::CREATE_V3_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 3;")?;
+        if version < 4 {
+            transaction.execute_batch(source_store::CREATE_V4_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 4;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -1101,6 +1275,8 @@ fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, Store
         "SELECT artifact_id FROM project_artifact_roots
          UNION
          SELECT artifact_id FROM task_artifact_roots
+         UNION
+         SELECT artifact_id FROM source_artifact_roots
          ORDER BY artifact_id ASC",
     )?;
     let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
@@ -1141,7 +1317,7 @@ mod tests {
         ipc::v1::{JobState, TaskState},
         worker::v1::FailureClass,
     };
-    use clipmill_core::{ArtifactId, LeaseId, ProjectId, Sha256Digest};
+    use clipmill_core::{ArtifactId, LeaseId, ProjectId, Sha256Digest, SourceId};
     use prost::Message;
     use rusqlite::{Connection, OpenFlags};
     use tempfile::TempDir;
@@ -1150,11 +1326,12 @@ mod tests {
         CREATE_V1_TABLES, CREATE_V2_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION,
         StoreError, attach_artifact_root, create_project, delete_project, enforce_integrity_check,
         enforce_sqlite_version, get_project, job_store, list_artifact_roots, list_projects,
-        open_database,
+        open_database, source_store,
     };
     use crate::{
         DaemonError,
         jobs::{JobPlan, ResourceCapacity},
+        sources::{FileObservation, InspectedSource},
     };
 
     fn database(temp: &TempDir) -> (std::path::PathBuf, Connection) {
@@ -1205,6 +1382,13 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("artifact roots table mode");
+        let strict_sources: i64 = connection
+            .query_row(
+                "SELECT strict FROM pragma_table_list WHERE name = 'sources'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("sources table mode");
         let quick_check: String = connection
             .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
             .expect("quick check");
@@ -1215,6 +1399,7 @@ mod tests {
         assert_eq!(busy_timeout, 5_000);
         assert_eq!(strict_projects, 1);
         assert_eq!(strict_roots, 1);
+        assert_eq!(strict_sources, 1);
         assert_eq!(quick_check, "ok");
         let backup_count = fs::read_dir(temp.path().join("backups"))
             .map(Iterator::count)
@@ -1244,7 +1429,7 @@ mod tests {
         let path = temp.path().join("newer.db");
         let connection = Connection::open(&path).expect("open raw database");
         connection
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 4;")
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 5;")
             .expect("set version");
         drop(connection);
         assert!(open_database(&path, &temp.path().join("backups")).is_err());
@@ -1276,7 +1461,7 @@ mod tests {
         let name: String = upgraded
             .query_row("SELECT name FROM projects", [], |row| row.get(0))
             .expect("project preserved");
-        assert_eq!(version, 3);
+        assert_eq!(version, SCHEMA_VERSION);
         assert_eq!(name, "Before upgrade");
         drop(upgraded);
 
@@ -1356,7 +1541,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("without rowid dependencies");
-        assert_eq!(version, 3);
+        assert_eq!(version, SCHEMA_VERSION);
         assert_eq!(strict_jobs, 1);
         assert_eq!(without_rowid_dependencies, 1);
         drop(upgraded);
@@ -1376,6 +1561,71 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("backup version");
         assert_eq!(backup_version, 2);
+    }
+
+    #[test]
+    fn v3_upgrade_creates_backup_and_installs_source_evidence_schema() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v3.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v3 database");
+        connection
+            .execute_batch(CREATE_V1_TABLES)
+            .expect("v1 schema");
+        connection
+            .execute_batch(CREATE_V2_TABLES)
+            .expect("v2 schema");
+        connection
+            .execute_batch(job_store::CREATE_V3_TABLES)
+            .expect("v3 schema");
+        connection
+            .execute_batch(
+                "INSERT INTO projects(project_id, name, created_unix_millis)
+                 VALUES ('prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'V3', 1);
+                 PRAGMA application_id = 1129074765;
+                 PRAGMA user_version = 3;",
+            )
+            .expect("v3 state");
+        drop(connection);
+
+        let upgraded = open_database(&path, &backups).expect("upgrade v3");
+        let version: i64 = upgraded
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version");
+        let strict_sources: i64 = upgraded
+            .query_row(
+                "SELECT strict FROM pragma_table_list WHERE name = 'sources'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("strict sources");
+        let jobs_has_source: i64 = upgraded
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('jobs') WHERE name = 'source_id'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("jobs source column");
+        assert_eq!(version, SCHEMA_VERSION);
+        assert_eq!(strict_sources, 1);
+        assert_eq!(jobs_has_source, 1);
+        drop(upgraded);
+
+        let backup_path = fs::read_dir(&backups)
+            .expect("backups")
+            .next()
+            .expect("one backup")
+            .expect("backup entry")
+            .path();
+        let backup = Connection::open_with_flags(
+            backup_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .expect("open backup");
+        let backup_version: i64 = backup
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("backup version");
+        assert_eq!(backup_version, 3);
     }
 
     #[test]
@@ -1730,6 +1980,53 @@ mod tests {
     }
 
     #[test]
+    fn failed_v3_upgrade_keeps_orchestration_schema_intact() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v3-failure.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v3 database");
+        connection
+            .execute_batch(CREATE_V1_TABLES)
+            .expect("v1 schema");
+        connection
+            .execute_batch(CREATE_V2_TABLES)
+            .expect("v2 schema");
+        connection
+            .execute_batch(job_store::CREATE_V3_TABLES)
+            .expect("v3 schema");
+        connection
+            .execute_batch(
+                "CREATE TABLE sources (marker TEXT NOT NULL);
+                 INSERT INTO sources(marker) VALUES ('prior-v3');
+                 PRAGMA application_id = 1129074765;
+                 PRAGMA user_version = 3;",
+            )
+            .expect("conflicting v3 state");
+        drop(connection);
+
+        assert!(open_database(&path, &backups).is_err());
+        let prior = Connection::open(&path).expect("reopen v3");
+        let version: i64 = prior
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("v3 version remains");
+        let marker: String = prior
+            .query_row("SELECT marker FROM sources", [], |row| row.get(0))
+            .expect("prior source table remains");
+        let source_roots: i64 = prior
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                 WHERE type = 'table' AND name = 'source_artifact_roots'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("source roots count");
+        assert_eq!(version, 3);
+        assert_eq!(marker, "prior-v3");
+        assert_eq!(source_roots, 0);
+        assert_eq!(fs::read_dir(backups).expect("backup retained").count(), 1);
+    }
+
+    #[test]
     fn failed_migration_rolls_back_to_the_prior_schema() {
         let temp = TempDir::new().expect("tempdir");
         let path = temp.path().join("migration-failure.db");
@@ -1798,6 +2095,86 @@ mod tests {
             get_project(&connection, "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"),
             Err(StoreError::NotFound)
         ));
+    }
+
+    #[test]
+    fn source_records_are_idempotent_ordered_and_cascade_with_projects() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Sources", 10);
+        create_project(&mut connection, "create-sources", &[1; 32], &project).expect("project");
+        let source_id = SourceId::new().to_string();
+        let inspection = InspectedSource {
+            observation: FileObservation {
+                absolute_path: "/private/media/source.mkv".to_owned(),
+                byte_size: 123,
+                sample_sha256: format!("sha256:{}", "11".repeat(32)),
+                device_id: 1,
+                inode: 2,
+                modified_unix_nanos: 3,
+            },
+            source_fingerprint: format!("sha256:{}", "22".repeat(32)),
+            source_map_json: b"{\"schema_version\":\"clipmill.source_map.v1\"}".to_vec(),
+        };
+        let first = source_store::register_source(
+            &mut connection,
+            "register-source",
+            &[2; 32],
+            &project.project_id,
+            &source_id,
+            &inspection,
+            20,
+        )
+        .expect("register source");
+        let replay = source_store::register_source(
+            &mut connection,
+            "register-source",
+            &[2; 32],
+            &project.project_id,
+            &SourceId::new().to_string(),
+            &inspection,
+            21,
+        )
+        .expect("replay source registration");
+        assert_eq!(first, replay);
+        let fetched = source_store::get_source(&connection, &source_id).expect("get source");
+        assert_eq!(fetched.observation, inspection.observation);
+        assert_eq!(
+            source_store::list_sources(&connection, &project.project_id)
+                .expect("list sources")
+                .len(),
+            1
+        );
+        let artifact = ArtifactId::from_digest(Sha256Digest::from_bytes([0x33; 32]));
+        connection
+            .execute(
+                "INSERT INTO source_artifact_roots(source_id, artifact_id) VALUES (?1, ?2)",
+                params![source_id, artifact.to_string()],
+            )
+            .expect("source root");
+        assert!(
+            list_artifact_roots(&connection)
+                .expect("GC roots")
+                .contains(&artifact)
+        );
+        delete_project(
+            &mut connection,
+            "delete-source-project",
+            &[3; 32],
+            &project.project_id,
+            30,
+        )
+        .expect("delete project");
+        let sources: i64 = connection
+            .query_row("SELECT count(*) FROM sources", [], |row| row.get(0))
+            .expect("source count");
+        let roots: i64 = connection
+            .query_row("SELECT count(*) FROM source_artifact_roots", [], |row| {
+                row.get(0)
+            })
+            .expect("source root count");
+        assert_eq!(sources, 0);
+        assert_eq!(roots, 0);
     }
 
     #[test]

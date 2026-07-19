@@ -25,6 +25,7 @@ use tokio::{
 use crate::{
     artifacts::ArtifactHandle,
     db::{DbHandle, StoreError},
+    sources::{SourceInspector, SourceProbeError},
 };
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -126,6 +127,7 @@ pub(crate) struct JobPlan {
     pub job_id: String,
     pub project_id: String,
     pub kind: String,
+    pub source_id: Option<String>,
     pub payload: Vec<u8>,
     pub created_unix_millis: u64,
     pub tasks: Vec<TaskSpec>,
@@ -162,6 +164,7 @@ impl JobPlan {
             job_id,
             project_id: project_id.to_string(),
             kind: "demo-dag".to_owned(),
+            source_id: None,
             payload,
             created_unix_millis: now,
             tasks: vec![
@@ -202,6 +205,47 @@ impl JobPlan {
                     true,
                 ),
             ],
+        }
+    }
+
+    pub(crate) fn probe_source(
+        project_id: &ProjectId,
+        source_id: String,
+        payload: Vec<u8>,
+        now: u64,
+    ) -> Self {
+        let job_id = JobId::new().to_string();
+        Self {
+            job_id,
+            project_id: project_id.to_string(),
+            kind: "probe-source".to_owned(),
+            source_id: Some(source_id),
+            payload: payload.clone(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: "probe-source".to_owned(),
+                input_kinds: Vec::new(),
+                output_kind: "evidence.source_map.v1".to_owned(),
+                payload,
+                dependencies: Vec::new(),
+                resources: ResourceDeclaration {
+                    cpu_threads: 1,
+                    ram_bytes: 64 * 1024 * 1024,
+                    accelerator_class: String::new(),
+                    vram_bytes: 0,
+                    disk_bytes: 32 * 1024 * 1024,
+                    network_policy: "local-lock".to_owned(),
+                    thermal_class: "light".to_owned(),
+                    determinism_class: "deterministic".to_owned(),
+                    checkpoint_support: false,
+                    preemption_cost: 1,
+                },
+                implementation: "ffprobe-8.1.2+clipmill-map-v1".to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
         }
     }
 }
@@ -355,6 +399,7 @@ impl EventHub {
 pub(crate) struct LeasedTask {
     pub project_id: String,
     pub job_id: String,
+    pub source_id: Option<String>,
     pub task_id: String,
     pub lease_id: String,
     pub kind: String,
@@ -402,6 +447,7 @@ impl Scheduler {
         artifacts: ArtifactHandle,
         events: EventHub,
         daemon_epoch: String,
+        sources: SourceInspector,
     ) -> Self {
         debug_assert!(LEASE_TTL >= HEARTBEAT_INTERVAL.saturating_mul(3));
         let notify = Arc::new(Notify::new());
@@ -414,6 +460,7 @@ impl Scheduler {
             artifacts,
             events,
             daemon_epoch,
+            sources,
             notify,
             stop,
         ));
@@ -443,6 +490,7 @@ async fn run_scheduler(
     artifacts: ArtifactHandle,
     events: EventHub,
     daemon_epoch: String,
+    sources: SourceInspector,
     notify: Arc<Notify>,
     mut stop: oneshot::Receiver<()>,
 ) {
@@ -503,9 +551,10 @@ async fn run_scheduler(
             let database = database.clone();
             let artifacts = artifacts.clone();
             let events = events.clone();
+            let sources = sources.clone();
             let notify = Arc::clone(&notify);
             running.spawn(async move {
-                execute_task(database, artifacts, events, task).await;
+                execute_task(database, artifacts, events, sources, task).await;
                 notify.notify_one();
                 resources
             });
@@ -520,6 +569,7 @@ async fn execute_task(
     database: DbHandle,
     artifacts: ArtifactHandle,
     events: EventHub,
+    sources: SourceInspector,
     task: LeasedTask,
 ) {
     tracing::debug!(
@@ -536,7 +586,12 @@ async fn execute_task(
         {
             tokio::time::sleep(Duration::from_millis(delay.min(30_000))).await;
         }
-        execute_demo_artifact(&artifacts, &task).await
+        match task.kind.as_str() {
+            "probe-source" => execute_probe_artifact(&database, &artifacts, &sources, &task).await,
+            _ => execute_demo_artifact(&artifacts, &task)
+                .await
+                .map_err(TaskExecutionError::transient),
+        }
     };
     tokio::pin!(work);
     let mut heartbeat = interval(HEARTBEAT_INTERVAL);
@@ -596,11 +651,11 @@ async fn execute_task(
                 }
             }
         }
-        Err(detail) => match database
+        Err(failure) => match database
             .fail_task(
                 lease_id,
-                FailureClass::Transient as i32,
-                detail,
+                failure.classification as i32,
+                failure.detail,
                 now_millis(),
             )
             .await
@@ -610,6 +665,117 @@ async fn execute_task(
                 tracing::warn!(task_id = task.task_id, %error, "task failure could not be persisted");
             }
         },
+    }
+}
+
+#[derive(Debug)]
+struct TaskExecutionError {
+    classification: FailureClass,
+    detail: String,
+}
+
+impl TaskExecutionError {
+    fn transient(detail: String) -> Self {
+        Self {
+            classification: FailureClass::Transient,
+            detail,
+        }
+    }
+
+    fn deterministic(detail: impl Into<String>) -> Self {
+        Self {
+            classification: FailureClass::Deterministic,
+            detail: detail.into(),
+        }
+    }
+}
+
+async fn execute_probe_artifact(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    sources: &SourceInspector,
+    task: &LeasedTask,
+) -> Result<ArtifactId, TaskExecutionError> {
+    let source_id = task
+        .source_id
+        .as_ref()
+        .ok_or_else(|| TaskExecutionError::deterministic("probe task omitted source id"))?;
+    let source = database
+        .get_source(source_id.clone())
+        .await
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    sources
+        .verify(&source.observation)
+        .await
+        .map_err(|error| match error {
+            SourceProbeError::SourceChanged => TaskExecutionError::deterministic("SOURCE_CHANGED"),
+            SourceProbeError::InvalidPath(_) | SourceProbeError::ProbeFailed(_) => {
+                TaskExecutionError::deterministic(error.to_string())
+            }
+            _ => TaskExecutionError::transient(error.to_string()),
+        })?;
+    let digest = source
+        .source_fingerprint
+        .strip_prefix("sha256:")
+        .ok_or_else(|| TaskExecutionError::deterministic("source fingerprint is invalid"))?
+        .parse::<Sha256Digest>()
+        .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    let mut config = Map::new();
+    config.insert(
+        "ffmpeg_bom".to_owned(),
+        Value::String("ffmpeg-8.1.2-btb-n8.1.2".to_owned()),
+    );
+    config.insert(
+        "probe_algorithm".to_owned(),
+        Value::String("clipmill.ffprobe.normalize.v1".to_owned()),
+    );
+    config.insert(
+        "mapping_algorithm".to_owned(),
+        Value::String("clipmill.source-map.mapping.v1".to_owned()),
+    );
+    let recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
+        kind: task.output_kind.clone(),
+        source_fingerprint: digest,
+        timebase: Timebase {
+            num: 1,
+            den: 90_000,
+        },
+        producer: Producer {
+            stage: task.kind.clone(),
+            implementation: task.implementation.clone(),
+            model_digest: None,
+        },
+        inputs: Vec::new(),
+        policy: NetworkPolicy::LocalLock,
+        config,
+        semantic_version: "clipmill.source_map.v1".to_owned(),
+    })
+    .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    match artifacts
+        .prepare(recipe)
+        .await
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?
+    {
+        PrepareOutcome::Hit(lease) => Ok(lease.artifact_id()),
+        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::transient(
+            "source-map artifact key is already in flight".to_owned(),
+        )),
+        PrepareOutcome::Miss(staging) => {
+            let path = "source-map.json"
+                .parse::<ArtifactPath>()
+                .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+            let mut file = staging
+                .create_file(&path)
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+            write_and_sync(&mut file, &source.source_map_json)
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+            drop(file);
+            let lease = artifacts
+                .commit(staging.id().clone(), vec![path], BTreeMap::new())
+                .await
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+            Ok(lease.artifact_id())
+        }
     }
 }
 
