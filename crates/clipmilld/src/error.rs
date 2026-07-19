@@ -10,10 +10,18 @@ pub enum DaemonError {
     DatabaseActorStopped,
     #[error("database actor thread panicked")]
     DatabaseActorPanicked,
+    #[error("artifact actor stopped unexpectedly")]
+    ArtifactActorStopped,
+    #[error("artifact actor thread panicked")]
+    ArtifactActorPanicked,
+    #[error("artifact store error: {0}")]
+    Artifact(#[from] clipmill_artifacts::ArtifactError),
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("invalid path: {0}")]
     InvalidPath(&'static str),
+    #[error("invalid artifact GC duration: {0}")]
+    InvalidDuration(String),
     #[error("I/O error at {path}: {source}")]
     Io {
         path: PathBuf,

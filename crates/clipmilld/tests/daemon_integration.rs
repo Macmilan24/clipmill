@@ -3,20 +3,52 @@
 
 mod support;
 
-use std::{ffi::OsString, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    ffi::OsString,
+    io::{Read, Write},
+    path::PathBuf,
+    sync::Arc,
+};
 
+use clipmill_artifacts::{
+    ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
+};
 use clipmill_contracts::proto::ipc::v1::{
     CreateProjectRequest, DeleteProjectRequest, ErrorCode, GetProjectRequest, HealthRequest,
     ListProjectsRequest, PingRequest, Request, request, response,
 };
+use clipmill_core::{ProjectId, Sha256Digest};
 use clipmilld::{Config, Daemon, DaemonError};
+use serde_json::Map;
 use tempfile::TempDir;
 use tokio::{sync::oneshot, task::JoinHandle};
 
 use support::{
-    send, send_without_reading_response, signal_terminate, spawn_daemon, wait_for_exit,
+    create, send, send_without_reading_response, signal_terminate, spawn_daemon, wait_for_exit,
     wait_until_ready, workspace_tempdir,
 };
+
+fn artifact_recipe() -> ArtifactRecipe {
+    ArtifactRecipe::try_from_spec(RecipeSpec {
+        kind: "evidence.probe.v1".to_owned(),
+        source_fingerprint: Sha256Digest::from_bytes([0x31; 32]),
+        timebase: Timebase {
+            num: 1,
+            den: 90_000,
+        },
+        producer: Producer {
+            stage: "probe".to_owned(),
+            implementation: "probe-adapter@1.0.0".to_owned(),
+            model_digest: None,
+        },
+        inputs: Vec::new(),
+        policy: NetworkPolicy::LocalLock,
+        config: Map::new(),
+        semantic_version: "1.0.0".to_owned(),
+    })
+    .expect("artifact recipe")
+}
 
 fn config(temp: &TempDir) -> Config {
     Config::from_sources(
@@ -196,6 +228,83 @@ async fn mutation_retry_after_response_loss_is_applied_once() {
         matches!(listed.body, Some(response::Body::ListProjects(value)) if value.projects.len() == 1)
     );
     stop(shutdown, task).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn artifact_publication_is_rooted_reused_and_persistent() {
+    let temp = workspace_tempdir();
+    let config = config(&temp);
+    let daemon = Daemon::start(config.clone()).await.expect("daemon starts");
+    let coordinator = daemon.artifact_coordinator();
+    let socket = daemon.socket_path().to_path_buf();
+    let (shutdown, stopped) = oneshot::channel();
+    let task = tokio::spawn(daemon.serve_until(async {
+        let _stopped = stopped.await;
+    }));
+
+    let first = create(&socket, "artifact-project-1", "Artifact one")
+        .await
+        .expect("first project");
+    let first_id = first.project_id.parse::<ProjectId>().expect("first id");
+    let recipe = artifact_recipe();
+    let staging = match coordinator.prepare(recipe.clone()).await.expect("prepare") {
+        PrepareOutcome::Miss(staging) => staging,
+        other => panic!("expected cache miss, got {other:?}"),
+    };
+    let path = "probe.json".parse::<ArtifactPath>().expect("artifact path");
+    {
+        let mut file = staging.create_file(&path).expect("staging file");
+        file.write_all(b"{\"probe\":true}\n")
+            .expect("write artifact");
+        file.sync_all().expect("sync artifact");
+    }
+    let lease = coordinator
+        .publish_project(
+            first_id,
+            staging.id().clone(),
+            vec![path.clone()],
+            BTreeMap::new(),
+        )
+        .await
+        .expect("publish first root");
+    let artifact_id = lease.artifact_id();
+    drop(lease);
+
+    let second = create(&socket, "artifact-project-2", "Artifact two")
+        .await
+        .expect("second project");
+    let second_id = second.project_id.parse::<ProjectId>().expect("second id");
+    match coordinator.prepare(recipe).await.expect("cache lookup") {
+        PrepareOutcome::Hit(hit) => assert_eq!(hit.artifact_id(), artifact_id),
+        other => panic!("expected cache hit, got {other:?}"),
+    }
+    drop(
+        coordinator
+            .attach_existing_project(second_id, artifact_id)
+            .await
+            .expect("attach shared artifact"),
+    );
+    stop(shutdown, task).await;
+
+    let daemon = Daemon::start(config).await.expect("restart daemon");
+    let coordinator = daemon.artifact_coordinator();
+    let socket = daemon.socket_path().to_path_buf();
+    let (shutdown, stopped) = oneshot::channel();
+    let task = tokio::spawn(daemon.serve_until(async {
+        let _stopped = stopped.await;
+    }));
+    let reopened = coordinator
+        .open(artifact_id)
+        .await
+        .expect("open after restart");
+    let mut file = reopened.open_verified(&path).expect("verified artifact");
+    let mut payload = String::new();
+    file.read_to_string(&mut payload).expect("read artifact");
+    assert_eq!(payload, "{\"probe\":true}\n");
+    drop(file);
+    drop(reopened);
+    stop(shutdown, task).await;
+    assert!(!socket.exists());
 }
 
 #[tokio::test]

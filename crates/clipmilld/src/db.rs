@@ -1,24 +1,27 @@
 use std::{
-    fs::{self, OpenOptions},
-    path::Path,
+    fs::{self, File, OpenOptions},
+    path::{Path, PathBuf},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use clipmill_contracts::proto::ipc::v1::{
     CreateProjectResponse, DeleteProjectResponse, Project, Response, response,
 };
+use clipmill_core::{ArtifactId, ProjectId};
 use prost::Message;
 use rusqlite::{
-    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
+    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, backup::Backup,
+    params,
 };
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
+use ulid::Ulid;
 
 use crate::DaemonError;
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -65,14 +68,15 @@ pub(crate) struct DbActor {
 }
 
 impl DbActor {
-    pub(crate) fn start(path: &Path) -> Result<Self, DaemonError> {
+    pub(crate) fn start(path: &Path, backups_dir: &Path) -> Result<Self, DaemonError> {
         let (sender, mut receiver) = mpsc::channel(COMMAND_CAPACITY);
         let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
         let database_path = path.to_path_buf();
+        let database_backups = backups_dir.to_path_buf();
         let actor_thread = thread::Builder::new()
             .name("clipmill-sqlite".to_owned())
             .spawn(move || {
-                let connection = open_database(&database_path);
+                let connection = open_database(&database_path, &database_backups);
                 match connection {
                     Ok(mut connection) => {
                         let _result = ready_sender.send(Ok(()));
@@ -111,6 +115,20 @@ impl DbActor {
                                 }
                                 Command::List { reply } => {
                                     let _result = reply.send(list_projects(&connection));
+                                }
+                                Command::AttachArtifactRoot {
+                                    project_id,
+                                    artifact_id,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(attach_artifact_root(
+                                        &mut connection,
+                                        &project_id,
+                                        &artifact_id,
+                                    ));
+                                }
+                                Command::ListArtifactRoots { reply } => {
+                                    let _result = reply.send(list_artifact_roots(&connection));
                                 }
                                 Command::Shutdown { reply } => {
                                     let _result = reply.send(());
@@ -228,6 +246,32 @@ impl DbHandle {
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
     }
+
+    pub(crate) async fn attach_artifact_root(
+        &self,
+        project_id: ProjectId,
+        artifact_id: ArtifactId,
+    ) -> Result<(), StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::AttachArtifactRoot {
+                project_id: project_id.to_string(),
+                artifact_id: artifact_id.to_string(),
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn list_artifact_roots(&self) -> Result<Vec<ArtifactId>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ListArtifactRoots { reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
 }
 
 #[derive(Debug)]
@@ -252,12 +296,20 @@ enum Command {
     List {
         reply: oneshot::Sender<Result<Vec<ProjectRecord>, StoreError>>,
     },
+    AttachArtifactRoot {
+        project_id: String,
+        artifact_id: String,
+        reply: oneshot::Sender<Result<(), StoreError>>,
+    },
+    ListArtifactRoots {
+        reply: oneshot::Sender<Result<Vec<ArtifactId>, StoreError>>,
+    },
     Shutdown {
         reply: oneshot::Sender<()>,
     },
 }
 
-fn open_database(path: &Path) -> Result<Connection, DaemonError> {
+fn open_database(path: &Path, backups_dir: &Path) -> Result<Connection, DaemonError> {
     let found_version = rusqlite::version_number();
     enforce_sqlite_version(found_version, rusqlite::version())?;
 
@@ -280,7 +332,9 @@ fn open_database(path: &Path) -> Result<Connection, DaemonError> {
     }
     connection.execute_batch("PRAGMA synchronous = FULL;")?;
 
-    migrate(&mut connection)?;
+    let check: String = connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
+    enforce_integrity_check(&check)?;
+    migrate(&mut connection, backups_dir)?;
     let check: String = connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
     enforce_integrity_check(&check)?;
     Ok(connection)
@@ -323,7 +377,45 @@ fn create_private_database_file(path: &Path) -> Result<(), DaemonError> {
     Ok(())
 }
 
-fn migrate(connection: &mut Connection) -> Result<(), DaemonError> {
+const CREATE_V1_TABLES: &str = "
+    CREATE TABLE projects (
+        project_id TEXT PRIMARY KEY
+            CHECK(length(project_id) = 30 AND substr(project_id, 1, 4) = 'prj_'),
+        name TEXT NOT NULL
+            CHECK(length(name) BETWEEN 1 AND 200),
+        created_unix_millis INTEGER NOT NULL
+            CHECK(created_unix_millis >= 0)
+    ) STRICT;
+
+    CREATE TABLE request_dedup (
+        request_id TEXT PRIMARY KEY
+            CHECK(length(request_id) BETWEEN 1 AND 128),
+        request_hash BLOB NOT NULL
+            CHECK(length(request_hash) = 32),
+        response_blob BLOB NOT NULL,
+        completed_unix_millis INTEGER NOT NULL
+            CHECK(completed_unix_millis >= 0)
+    ) STRICT;
+";
+
+const CREATE_V2_TABLES: &str = "
+    CREATE TABLE project_artifact_roots (
+        project_id TEXT NOT NULL
+            REFERENCES projects(project_id) ON DELETE CASCADE,
+        artifact_id TEXT NOT NULL
+            CHECK(
+                length(artifact_id) = 71
+                AND substr(artifact_id, 1, 7) = 'sha256:'
+                AND substr(artifact_id, 8) NOT GLOB '*[^0-9a-f]*'
+            ),
+        PRIMARY KEY(project_id, artifact_id)
+    ) STRICT, WITHOUT ROWID;
+
+    CREATE INDEX project_artifact_roots_by_artifact
+        ON project_artifact_roots(artifact_id);
+";
+
+fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), DaemonError> {
     let application_id: i64 =
         connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     if application_id != 0 && application_id != APPLICATION_ID {
@@ -341,34 +433,87 @@ fn migrate(connection: &mut Connection) -> Result<(), DaemonError> {
     }
     if version == 0 {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(
-            "
-            CREATE TABLE projects (
-                project_id TEXT PRIMARY KEY
-                    CHECK(length(project_id) = 30 AND substr(project_id, 1, 4) = 'prj_'),
-                name TEXT NOT NULL
-                    CHECK(length(name) BETWEEN 1 AND 200),
-                created_unix_millis INTEGER NOT NULL
-                    CHECK(created_unix_millis >= 0)
-            ) STRICT;
-
-            CREATE TABLE request_dedup (
-                request_id TEXT PRIMARY KEY
-                    CHECK(length(request_id) BETWEEN 1 AND 128),
-                request_hash BLOB NOT NULL
-                    CHECK(length(request_hash) = 32),
-                response_blob BLOB NOT NULL,
-                completed_unix_millis INTEGER NOT NULL
-                    CHECK(completed_unix_millis >= 0)
-            ) STRICT;
-
-            PRAGMA application_id = 1129074765;
-            PRAGMA user_version = 1;
-            ",
-        )?;
+        transaction.execute_batch(CREATE_V1_TABLES)?;
+        transaction.execute_batch(CREATE_V2_TABLES)?;
+        transaction
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 2;")?;
+        transaction.commit()?;
+    } else if version == 1 {
+        create_v1_backup(connection, backups_dir)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(CREATE_V2_TABLES)?;
+        transaction.execute_batch("PRAGMA user_version = 2;")?;
         transaction.commit()?;
     }
     Ok(())
+}
+
+fn create_v1_backup(source: &Connection, backups_dir: &Path) -> Result<PathBuf, DaemonError> {
+    create_private_directory(backups_dir)?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| DaemonError::InvalidDuration(error.to_string()))?
+        .as_millis();
+    let base = format!("clipmill-v1-to-v2-{timestamp}-{}", Ulid::new());
+    let temporary = backups_dir.join(format!("{base}.db.tmp"));
+    let final_path = backups_dir.join(format!("{base}.db"));
+    create_private_database_file(&temporary)?;
+
+    let backup_result = (|| -> Result<(), DaemonError> {
+        let mut destination = Connection::open_with_flags(
+            &temporary,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        {
+            let backup = Backup::new(source, &mut destination)?;
+            backup.run_to_completion(128, Duration::from_millis(5), None)?;
+        }
+        let check: String = destination.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
+        enforce_integrity_check(&check)?;
+        drop(destination);
+        File::open(&temporary)
+            .and_then(|file| file.sync_all())
+            .map_err(|source| DaemonError::io(&temporary, source))?;
+        fs::rename(&temporary, &final_path)
+            .map_err(|source| DaemonError::io(&final_path, source))?;
+        set_private_file_permissions(&final_path)?;
+        sync_directory(backups_dir)
+    })();
+
+    if backup_result.is_err() {
+        let _cleanup = fs::remove_file(&temporary);
+    }
+    backup_result?;
+    Ok(final_path)
+}
+
+fn create_private_directory(path: &Path) -> Result<(), DaemonError> {
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::create_dir_all(path).map_err(|source| DaemonError::io(path, source))?;
+    #[cfg(unix)]
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .map_err(|source| DaemonError::io(path, source))?;
+    Ok(())
+}
+
+fn set_private_file_permissions(path: &Path) -> Result<(), DaemonError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|source| DaemonError::io(path, source))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+fn sync_directory(path: &Path) -> Result<(), DaemonError> {
+    File::open(path)
+        .and_then(|file| file.sync_all())
+        .map_err(|source| DaemonError::io(path, source))
 }
 
 fn create_project(
@@ -500,6 +645,44 @@ fn list_projects(connection: &Connection) -> Result<Vec<ProjectRecord>, StoreErr
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+fn attach_artifact_root(
+    connection: &mut Connection,
+    project_id: &str,
+    artifact_id: &str,
+) -> Result<(), StoreError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let project_exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM projects WHERE project_id = ?1)",
+        [project_id],
+        |row| row.get(0),
+    )?;
+    if !project_exists {
+        return Err(StoreError::NotFound);
+    }
+    transaction.execute(
+        "INSERT OR IGNORE INTO project_artifact_roots(project_id, artifact_id) VALUES (?1, ?2)",
+        params![project_id, artifact_id],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT artifact_id FROM project_artifact_roots ORDER BY artifact_id ASC",
+    )?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+    let encoded = rows.collect::<Result<Vec<_>, _>>()?;
+    encoded
+        .into_iter()
+        .map(|value| {
+            value
+                .parse()
+                .map_err(|_| StoreError::InvalidData("artifact root id is invalid"))
+        })
+        .collect()
+}
+
 fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> {
     let created: i64 = row.get(2)?;
     let created_unix_millis = u64::try_from(created).map_err(|error| {
@@ -520,22 +703,24 @@ fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> 
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    use std::path::Path;
+    use std::{fs, path::Path};
 
+    use clipmill_core::{ArtifactId, Sha256Digest};
     use prost::Message;
-    use rusqlite::Connection;
+    use rusqlite::{Connection, OpenFlags};
     use tempfile::TempDir;
 
     use super::{
-        ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION, StoreError, create_project,
-        delete_project, enforce_integrity_check, enforce_sqlite_version, get_project,
-        list_projects, open_database,
+        CREATE_V1_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION, StoreError,
+        attach_artifact_root, create_project, delete_project, enforce_integrity_check,
+        enforce_sqlite_version, get_project, list_artifact_roots, list_projects, open_database,
     };
     use crate::DaemonError;
 
     fn database(temp: &TempDir) -> (std::path::PathBuf, Connection) {
         let path = temp.path().join("clipmill.db");
-        let connection = open_database(&path).expect("database opens");
+        let connection =
+            open_database(&path, &temp.path().join("backups")).expect("database opens");
         (path, connection)
     }
 
@@ -573,6 +758,13 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("projects table mode");
+        let strict_roots: i64 = connection
+            .query_row(
+                "SELECT strict FROM pragma_table_list WHERE name = 'project_artifact_roots'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("artifact roots table mode");
         let quick_check: String = connection
             .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
             .expect("quick check");
@@ -582,9 +774,14 @@ mod tests {
         assert_eq!(synchronous, 2);
         assert_eq!(busy_timeout, 5_000);
         assert_eq!(strict_projects, 1);
+        assert_eq!(strict_roots, 1);
         assert_eq!(quick_check, "ok");
+        let backup_count = fs::read_dir(temp.path().join("backups"))
+            .map(Iterator::count)
+            .unwrap_or_default();
+        assert_eq!(backup_count, 0);
         drop(connection);
-        open_database(&path).expect("repeat startup succeeds");
+        open_database(&path, &temp.path().join("backups")).expect("repeat startup succeeds");
     }
 
     #[test]
@@ -607,10 +804,110 @@ mod tests {
         let path = temp.path().join("newer.db");
         let connection = Connection::open(&path).expect("open raw database");
         connection
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 2;")
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 3;")
             .expect("set version");
         drop(connection);
-        assert!(open_database(&path).is_err());
+        assert!(open_database(&path, &temp.path().join("backups")).is_err());
+    }
+
+    #[test]
+    fn v1_upgrade_creates_verified_private_backup_and_preserves_state() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v1.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v1 database");
+        connection
+            .execute_batch(CREATE_V1_TABLES)
+            .expect("v1 tables");
+        connection
+            .execute_batch(
+                "INSERT INTO projects(project_id, name, created_unix_millis)
+                 VALUES ('prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'Before upgrade', 1);
+                 PRAGMA application_id = 1129074765;
+                 PRAGMA user_version = 1;",
+            )
+            .expect("v1 state");
+        drop(connection);
+
+        let upgraded = open_database(&path, &backups).expect("upgrade");
+        let version: i64 = upgraded
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version");
+        let name: String = upgraded
+            .query_row("SELECT name FROM projects", [], |row| row.get(0))
+            .expect("project preserved");
+        assert_eq!(version, 2);
+        assert_eq!(name, "Before upgrade");
+        drop(upgraded);
+
+        let backup_paths = fs::read_dir(&backups)
+            .expect("backups")
+            .map(|entry| entry.expect("backup entry").path())
+            .collect::<Vec<_>>();
+        assert_eq!(backup_paths.len(), 1);
+        assert_eq!(
+            backup_paths[0].extension().and_then(|value| value.to_str()),
+            Some("db")
+        );
+        let backup = Connection::open_with_flags(
+            &backup_paths[0],
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .expect("open backup read-only");
+        let backup_version: i64 = backup
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("backup version");
+        let backup_check: String = backup
+            .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
+            .expect("backup quick check");
+        assert_eq!(backup_version, 1);
+        assert_eq!(backup_check, "ok");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&backup_paths[0])
+                    .expect("backup metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+    }
+
+    #[test]
+    fn failed_v1_upgrade_keeps_v1_transactionally_intact() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v1-failure.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v1 database");
+        connection
+            .execute_batch(CREATE_V1_TABLES)
+            .expect("v1 tables");
+        connection
+            .execute_batch(
+                "CREATE TABLE project_artifact_roots (marker TEXT NOT NULL);
+                 INSERT INTO project_artifact_roots(marker) VALUES ('prior');
+                 PRAGMA application_id = 1129074765;
+                 PRAGMA user_version = 1;",
+            )
+            .expect("conflicting v1 state");
+        drop(connection);
+
+        assert!(open_database(&path, &backups).is_err());
+        let prior = Connection::open(&path).expect("reopen v1");
+        let version: i64 = prior
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("v1 version remains");
+        let marker: String = prior
+            .query_row("SELECT marker FROM project_artifact_roots", [], |row| {
+                row.get(0)
+            })
+            .expect("prior table remains");
+        assert_eq!(version, 1);
+        assert_eq!(marker, "prior");
+        assert_eq!(fs::read_dir(backups).expect("backup retained").count(), 1);
     }
 
     #[test]
@@ -626,7 +923,7 @@ mod tests {
             .expect("create prior schema");
         drop(connection);
 
-        assert!(open_database(&path).is_err());
+        assert!(open_database(&path, &temp.path().join("backups")).is_err());
 
         let connection = Connection::open(&path).expect("reopen prior database");
         let version: i64 = connection
@@ -682,6 +979,38 @@ mod tests {
             get_project(&connection, "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"),
             Err(StoreError::NotFound)
         ));
+    }
+
+    #[test]
+    fn artifact_roots_are_idempotent_and_cascade_with_projects() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Rooted", 10);
+        create_project(&mut connection, "create-rooted", &[1; 32], &project)
+            .expect("create project");
+        let artifact = ArtifactId::from_digest(Sha256Digest::from_bytes([0xab; 32]));
+        attach_artifact_root(&mut connection, &project.project_id, &artifact.to_string())
+            .expect("attach");
+        attach_artifact_root(&mut connection, &project.project_id, &artifact.to_string())
+            .expect("idempotent attach");
+        assert_eq!(
+            list_artifact_roots(&connection).expect("roots"),
+            vec![artifact]
+        );
+
+        delete_project(
+            &mut connection,
+            "delete-rooted",
+            &[2; 32],
+            &project.project_id,
+            20,
+        )
+        .expect("delete project");
+        assert!(
+            list_artifact_roots(&connection)
+                .expect("roots after delete")
+                .is_empty()
+        );
     }
 
     #[test]
