@@ -28,11 +28,18 @@ def test_valid_fixture_roundtrips_canonically(model: type, kind: str) -> None:
     assert canonical(parsed.model_dump(mode="json", exclude_none=True)) == raw
 
 
+def test_phase0_device_profile_fixture_roundtrips_canonically() -> None:
+    raw = (FIXTURES / "device_profile" / "valid" / "phase0.json").read_text()
+    parsed = DeviceProfile.model_validate_json(raw)
+    assert canonical(parsed.model_dump(mode="json", exclude_none=True)) == raw
+
+
 @pytest.mark.parametrize(
     ("model", "kind", "name"),
     [
         (SourceMap, "source_map", "float-ticks.json"),
         (DeviceProfile, "device_profile", "missing-measured.json"),
+        (DeviceProfile, "device_profile", "bad-attestation.json"),
     ],
 )
 def test_invalid_fixture_rejected(model: type, kind: str, name: str) -> None:

@@ -70,6 +70,52 @@
         "decode": { "$ref": "#/$defs/codec_bench_list" },
         "encode": { "$ref": "#/$defs/codec_bench_list" }
       }
+    },
+    "phase0": {
+      "description": "Measured Phase 0 scheduler and attestation extension. Legacy v1 profiles omit it; every new Phase 0 profile includes it.",
+      "type": "object",
+      "required": [
+        "hardware_fingerprint",
+        "measurement_generation",
+        "available_memory_bytes",
+        "runtime_identities",
+        "capability_results",
+        "shared_memory",
+        "hardware_roundtrip",
+        "attestation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "hardware_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "measurement_generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "available_memory_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runtime_identities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtime_identity" }
+        },
+        "capability_results": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability_result" }
+        },
+        "shared_memory": {
+          "$ref": "#/$defs/shared_memory_benchmark"
+        },
+        "hardware_roundtrip": {
+          "$ref": "#/$defs/hardware_roundtrip"
+        },
+        "attestation": {
+          "$ref": "#/$defs/device_attestation"
+        }
+      }
     }
   },
   "$defs": {
@@ -87,6 +133,112 @@
             "description": "True when a hardware path (VideoToolbox, NVDEC, …) was used.",
             "type": "boolean"
           }
+        }
+      }
+    },
+    "runtime_identity": {
+      "type": "object",
+      "required": ["kind", "identity", "available"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "identity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "available": { "type": "boolean" }
+      }
+    },
+    "capability_result": {
+      "type": "object",
+      "required": ["capability", "backend", "available"],
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "backend": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "available": { "type": "boolean" },
+        "detail": {
+          "type": "string",
+          "maxLength": 512
+        }
+      }
+    },
+    "shared_memory_benchmark": {
+      "type": "object",
+      "required": ["sample_bytes", "bytes_per_second"],
+      "additionalProperties": false,
+      "properties": {
+        "sample_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bytes_per_second": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "hardware_roundtrip": {
+      "type": "object",
+      "required": ["backend", "available"],
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "available": { "type": "boolean" },
+        "milliseconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unavailable_reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "oneOf": [
+        {
+          "properties": { "available": { "const": true } },
+          "required": ["milliseconds"],
+          "not": { "required": ["unavailable_reason"] }
+        },
+        {
+          "properties": { "available": { "const": false } },
+          "required": ["unavailable_reason"],
+          "not": { "required": ["milliseconds"] }
+        }
+      ]
+    },
+    "device_attestation": {
+      "description": "Signature over RFC 8785 canonical profile JSON with this attestation object omitted.",
+      "type": "object",
+      "required": ["algorithm", "public_key", "signature"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{128}$"
         }
       }
     }

@@ -6,7 +6,16 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, RootModel, conint
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    RootModel,
+    confloat,
+    conint,
+    constr,
+)
 
 
 class Os(Enum):
@@ -84,6 +93,66 @@ class CodecBenchList(RootModel[list[CodecBenchListItem]]):
     root: list[CodecBenchListItem]
 
 
+class RuntimeIdentity(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: constr(min_length=1, max_length=64)
+    identity: constr(min_length=1, max_length=512)
+    available: bool
+
+
+class CapabilityResult(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capability: constr(min_length=1, max_length=64)
+    backend: constr(min_length=1, max_length=64)
+    available: bool
+    detail: constr(max_length=512) | None = None
+
+
+class SharedMemoryBenchmark(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    sample_bytes: conint(ge=1)
+    bytes_per_second: PositiveFloat
+
+
+class HardwareRoundtrip1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    backend: constr(min_length=1, max_length=64)
+    available: Literal[True]
+    milliseconds: confloat(ge=0.0)
+    unavailable_reason: constr(min_length=1, max_length=512) | None = None
+
+
+class HardwareRoundtrip2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    backend: constr(min_length=1, max_length=64)
+    available: Literal[False]
+    milliseconds: confloat(ge=0.0) | None = None
+    unavailable_reason: constr(min_length=1, max_length=512)
+
+
+class HardwareRoundtrip(RootModel[HardwareRoundtrip1 | HardwareRoundtrip2]):
+    root: HardwareRoundtrip1 | HardwareRoundtrip2
+
+
+class DeviceAttestation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    algorithm: Literal['ed25519']
+    public_key: constr(pattern=r'^[0-9a-f]{64}$')
+    signature: constr(pattern=r'^[0-9a-f]{128}$')
+
+
 class Measured(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -94,6 +163,20 @@ class Measured(BaseModel):
     )
     decode: CodecBenchList | None = None
     encode: CodecBenchList | None = None
+
+
+class Phase0(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    hardware_fingerprint: constr(pattern=r'^sha256:[0-9a-f]{64}$')
+    measurement_generation: conint(ge=1)
+    available_memory_bytes: conint(ge=0)
+    runtime_identities: list[RuntimeIdentity]
+    capability_results: list[CapabilityResult]
+    shared_memory: SharedMemoryBenchmark
+    hardware_roundtrip: HardwareRoundtrip
+    attestation: DeviceAttestation
 
 
 class DeviceProfile(BaseModel):
@@ -107,4 +190,8 @@ class DeviceProfile(BaseModel):
     accelerators: list[Accelerator]
     measured: Measured = Field(
         ..., description='Micro-benchmark results from the pinned FFmpeg build.'
+    )
+    phase0: Phase0 | None = Field(
+        None,
+        description='Measured Phase 0 scheduler and attestation extension. Legacy v1 profiles omit it; every new Phase 0 profile includes it.',
     )

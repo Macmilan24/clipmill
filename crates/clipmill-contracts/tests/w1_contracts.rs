@@ -48,15 +48,23 @@ fn source_map_invalid_rejected() {
 
 #[test]
 fn device_profile_valid_roundtrips_canonically() {
-    let raw = read("contracts/fixtures/device_profile/valid/minimal.json");
-    let profile: DeviceProfile = serde_json::from_str(&raw).expect("valid fixture rejected");
-    assert_eq!(canonical(&serde_json::to_value(&profile).unwrap()), raw);
+    for fixture in ["minimal.json", "phase0.json"] {
+        let raw = read(&format!(
+            "contracts/fixtures/device_profile/valid/{fixture}"
+        ));
+        let profile: DeviceProfile = serde_json::from_str(&raw).expect("valid fixture rejected");
+        assert_eq!(canonical(&serde_json::to_value(&profile).unwrap()), raw);
+    }
 }
 
 #[test]
 fn device_profile_invalid_rejected() {
-    let raw = read("contracts/fixtures/device_profile/invalid/missing-measured.json");
-    assert!(serde_json::from_str::<DeviceProfile>(&raw).is_err());
+    for fixture in ["missing-measured.json", "bad-attestation.json"] {
+        let raw = read(&format!(
+            "contracts/fixtures/device_profile/invalid/{fixture}"
+        ));
+        assert!(serde_json::from_str::<DeviceProfile>(&raw).is_err());
+    }
 }
 
 #[test]

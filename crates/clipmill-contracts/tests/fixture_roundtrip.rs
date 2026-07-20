@@ -5,7 +5,9 @@
 //! Tests may panic; the workspace deny targets production code.
 #![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
-use clipmill_contracts::proto::ipc::v1::{DemoDagPayloadV1, PingRequest, ProbeSourcePayloadV1};
+use clipmill_contracts::proto::ipc::v1::{
+    DemoDagPayloadV1, DeviceProfilePayloadV1, PingRequest, ProbeSourcePayloadV1,
+};
 use clipmill_contracts::schemas::artifact_manifest::ArtifactManifest;
 use prost::Message;
 
@@ -145,5 +147,41 @@ fn probe_source_payload_fixtures_enforce_the_w5_key_version() {
     assert_ne!(
         invalid["keyVersion"].as_str().unwrap_or_default(),
         "clipmill.probe-source.v1"
+    );
+}
+
+#[test]
+fn device_profile_payload_fixtures_enforce_the_w7_key_version() {
+    let valid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/device_profile/valid/payload.json",
+    ))
+    .expect("valid device-profile fixture JSON");
+    let message = DeviceProfilePayloadV1 {
+        key_version: valid["keyVersion"].as_str().unwrap_or_default().to_owned(),
+        hardware_fingerprint: valid["hardwareFingerprint"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        measurement_generation: valid["measurementGeneration"]
+            .as_str()
+            .unwrap_or_default()
+            .parse()
+            .expect("generation"),
+    };
+    assert_eq!(message.key_version, "clipmill.device-profile.v1");
+    assert!(message.hardware_fingerprint.starts_with("sha256:"));
+    assert_eq!(message.measurement_generation, 1);
+    assert_eq!(
+        DeviceProfilePayloadV1::decode(message.encode_to_vec().as_slice()).expect("round-trip"),
+        message
+    );
+
+    let invalid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/device_profile/invalid/wrong-version.json",
+    ))
+    .expect("invalid device-profile fixture remains syntactically valid JSON");
+    assert_ne!(
+        invalid["keyVersion"].as_str().unwrap_or_default(),
+        "clipmill.device-profile.v1"
     );
 }
