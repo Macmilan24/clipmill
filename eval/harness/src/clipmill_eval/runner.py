@@ -40,6 +40,11 @@ def run_corpus(
     completed_unix_millis = _unix_millis()
     return {
         "schema_version": "clipmill.eval.run.v1",
+        "versions": {
+            "artifact_manifest": "clipmill.artifact.manifest.v1",
+            "evaluation": "clipmill.eval.run.v1",
+            "source_map": "clipmill.source_map.v1",
+        },
         "corpus_id": corpus.corpus_id,
         "corpus_signing_key": corpus.signing_public_key.hex(),
         "daemon_version": health.daemon_version,
@@ -75,13 +80,29 @@ def _run_item(
         if item.expected_result != "structured_failure":
             raise EvaluationError(f"valid item {item.item_id} failed: {error}") from error
         _require_expected_failure(item, error.message)
+        cold_millis = _elapsed_millis(cold_started)
+        warm_started = time.monotonic_ns()
+        try:
+            client.register_source(project_id, path)
+        except DaemonClientError as warm_error:
+            _require_expected_failure(item, warm_error.message)
+            if warm_error.code != error.code:
+                raise EvaluationError(
+                    f"hostile item {item.item_id} changed failure code on warm run"
+                ) from warm_error
+        else:
+            raise EvaluationError(
+                f"hostile item {item.item_id} unexpectedly registered on warm run"
+            )
         return {
             "item_id": item.item_id,
             "expected_result": item.expected_result,
             "observed_result": "structured_failure",
             "failure_code": error.code,
             "failure": item.expected_failure,
-            "cold_millis": _elapsed_millis(cold_started),
+            "cold_millis": cold_millis,
+            "warm_millis": _elapsed_millis(warm_started),
+            "warm_observed_result": "structured_failure",
         }
     source = registered.source
     job = client.submit_probe(project_id, source.source_id)
@@ -90,19 +111,33 @@ def _run_item(
         if job.state != daemon_pb2.JOB_STATE_FAILED:
             raise EvaluationError(f"hostile item {item.item_id} unexpectedly succeeded")
         _require_expected_failure(item, job.failure_detail)
+        cold_millis = _elapsed_millis(cold_started)
+        warm_started = time.monotonic_ns()
+        warm_registration = client.register_source(project_id, path)
+        if not warm_registration.observation_cache_hit:
+            raise EvaluationError(f"hostile item {item.item_id} missed warm observation cache")
+        warm_job = client.submit_probe(project_id, warm_registration.source.source_id)
+        warm_job = client.wait_for_job(warm_job.job_id)
+        if warm_job.state != daemon_pb2.JOB_STATE_FAILED:
+            raise EvaluationError(f"hostile item {item.item_id} changed outcome on warm run")
+        _require_expected_failure(item, warm_job.failure_detail)
+        if warm_job.failure_class != job.failure_class:
+            raise EvaluationError(f"hostile item {item.item_id} changed failure class on warm run")
         return {
             "item_id": item.item_id,
             "expected_result": item.expected_result,
             "observed_result": "structured_failure",
             "failure_code": job.failure_class,
             "failure": item.expected_failure,
-            "cold_millis": _elapsed_millis(cold_started),
+            "cold_millis": cold_millis,
+            "warm_millis": _elapsed_millis(warm_started),
+            "warm_observed_result": "structured_failure",
         }
     if job.state != daemon_pb2.JOB_STATE_SUCCEEDED or len(job.output_artifact_ids) != 1:
         raise EvaluationError(f"valid item {item.item_id} probe failed: {job.failure_detail}")
     cold_artifact_id = job.output_artifact_ids[0]
     source_map = verify_artifact(data_dir, cold_artifact_id)
-    _verify_source_map(source_map)
+    version_evidence = _verify_source_map(source_map, source.source_fingerprint)
     cold_millis = _elapsed_millis(cold_started)
 
     warm_started = time.monotonic_ns()
@@ -124,22 +159,66 @@ def _run_item(
         "observed_result": "success",
         "source_fingerprint": source.source_fingerprint,
         "source_map_artifact_id": cold_artifact_id,
+        "cold_source_map_artifact_id": cold_artifact_id,
+        "warm_source_map_artifact_id": warm_job.output_artifact_ids[0],
+        **version_evidence,
         "cold_millis": cold_millis,
         "warm_millis": _elapsed_millis(warm_started),
         "warm_cache_hit": True,
     }
 
 
-def _verify_source_map(artifact: VerifiedArtifact) -> None:
+def _verify_source_map(artifact: VerifiedArtifact, source_fingerprint: str) -> dict[str, Any]:
     if artifact.kind != "evidence.source_map.v1" or artifact.stage != "probe-source":
         raise EvaluationError("source-map artifact kind or producer is invalid")
+    manifest = artifact.manifest
+    producer = manifest.get("producer")
+    recipe = manifest.get("recipe")
+    config = recipe.get("config") if isinstance(recipe, dict) else None
+    if (
+        manifest.get("source_fingerprint") != source_fingerprint
+        or manifest.get("policy") != "local-lock"
+        or not isinstance(producer, dict)
+        or not isinstance(producer.get("implementation"), str)
+        or not producer["implementation"]
+        or not isinstance(recipe, dict)
+        or recipe.get("key_version") != "clipmill.artifact.key.v1"
+        or recipe.get("semantic_version") != "clipmill.source_map.v1"
+        or not isinstance(config, dict)
+        or config.get("ffmpeg_bom") != "ffmpeg-8.1.2-btb-n8.1.2"
+        or config.get("probe_algorithm") != "clipmill.ffprobe.normalize.v1"
+        or config.get("mapping_algorithm") != "clipmill.source-map.mapping.v1"
+    ):
+        raise EvaluationError("source-map recipe, policy, or source identity is invalid")
     payload = artifact.object_directory / "source-map.json"
     try:
         value = json.loads(payload.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise EvaluationError(f"source-map payload is invalid: {error}") from error
-    if not isinstance(value, dict) or not isinstance(value.get("mapping"), dict):
+    if (
+        not isinstance(value, dict)
+        or value.get("schema_version") != "clipmill.source_map.v1"
+        or not isinstance(value.get("mapping"), dict)
+        or not isinstance(value.get("streams"), list)
+    ):
         raise EvaluationError("new Phase 0 source map omitted exact timestamp mapping")
+    segments = value["mapping"].get("segments")
+    chapters = value.get("chapters", [])
+    if not isinstance(segments, list) or not isinstance(chapters, list):
+        raise EvaluationError("source-map metric collections are invalid")
+    return {
+        "artifact_key_version": recipe["key_version"],
+        "ffmpeg_bom": config["ffmpeg_bom"],
+        "mapping_algorithm": config["mapping_algorithm"],
+        "probe_algorithm": config["probe_algorithm"],
+        "producer_implementation": producer["implementation"],
+        "source_map_schema_version": value["schema_version"],
+        "source_map_metrics": {
+            "chapters": len(chapters),
+            "mapping_segments": len(segments),
+            "streams": len(value["streams"]),
+        },
+    }
 
 
 def _verify_profile_payload(artifact: VerifiedArtifact, expected: str) -> None:

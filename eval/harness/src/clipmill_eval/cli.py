@@ -7,6 +7,12 @@ import hashlib
 import sys
 from pathlib import Path
 
+from .attestation import (
+    build_phase0_attestation,
+    load_private_signing_key,
+    verify_phase0_attestation,
+    write_phase0_attestation,
+)
 from .client import DaemonClient
 from .corpus import verify_corpus
 from .runner import run_corpus, write_run_manifest
@@ -41,6 +47,35 @@ def main(arguments: list[str] | None = None) -> int:
             write_run_manifest(options.output, manifest)
             print(f"wrote run manifest sha256:{_sha256(options.output)}")
             return 0
+        if options.command == "seed40":
+            corpus = verify_corpus(
+                options.corpus_dir,
+                options.manifest,
+                options.license_attestation,
+                _public_key(options.public_key),
+            )
+            run_manifest = run_corpus(
+                DaemonClient(options.socket),
+                options.data_dir,
+                corpus,
+            )
+            bundle = build_phase0_attestation(
+                corpus,
+                run_manifest,
+                load_private_signing_key(options.signing_key),
+            )
+            write_phase0_attestation(options.output_dir, bundle)
+            verify_phase0_attestation(options.output_dir)
+            digest = _sha256(options.output_dir / "run-attestation.json")
+            print(f"Seed-40 passed; wrote Phase 0 attestation sha256:{digest}")
+            return 0
+        if options.command == "verify-attestation":
+            bundle = verify_phase0_attestation(options.attestation_dir)
+            print(
+                "verified Phase 0 attestation: "
+                f"{bundle.corpus_metadata['items_total']} Seed-40 items"
+            )
+            return 0
         if options.command == "smoke":
             root, manifest_path, license_path = build_smoke_corpus(
                 options.work_dir,
@@ -72,6 +107,16 @@ def _parser() -> argparse.ArgumentParser:
     run = subcommands.add_parser("run")
     _corpus_arguments(run)
     _daemon_arguments(run)
+
+    seed40 = subcommands.add_parser("seed40")
+    _corpus_arguments(seed40)
+    seed40.add_argument("--socket", type=Path, required=True)
+    seed40.add_argument("--data-dir", type=Path, required=True)
+    seed40.add_argument("--signing-key", type=Path, required=True)
+    seed40.add_argument("--output-dir", type=Path, required=True)
+
+    verify_attestation = subcommands.add_parser("verify-attestation")
+    verify_attestation.add_argument("--attestation-dir", type=Path, required=True)
 
     smoke = subcommands.add_parser("smoke")
     _daemon_arguments(smoke)

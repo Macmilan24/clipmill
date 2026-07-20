@@ -32,11 +32,22 @@ class CorpusItem:
 
 
 @dataclass(frozen=True, slots=True)
+class LicenseGrant:
+    item_id: str
+    license_id: str
+    redistributable: bool
+    evaluation_permitted: bool
+
+
+@dataclass(frozen=True, slots=True)
 class VerifiedCorpus:
     corpus_id: str
     root: Path
     items: tuple[CorpusItem, ...]
+    licenses: tuple[LicenseGrant, ...]
     signing_public_key: bytes
+    manifest_sha256: str
+    license_attestation_sha256: str
 
     def path_for(self, item: CorpusItem) -> Path:
         return self.root.joinpath(*PurePosixPath(item.relative_path).parts)
@@ -94,17 +105,26 @@ def verify_corpus(
     items = tuple(_parse_item(value) for value in raw_items)
     if len({item.item_id for item in items}) != len(items):
         raise CorpusError("corpus item IDs must be unique")
-    if {item.item_id for item in items} != set(licenses):
+    licenses_by_item = {grant.item_id: grant for grant in licenses}
+    if {item.item_id for item in items} != set(licenses_by_item):
         raise CorpusError("license attestation must cover exactly every corpus item")
 
     root = corpus_root.resolve(strict=True)
     if not root.is_dir() or root.is_symlink():
         raise CorpusError("corpus root must be a real directory")
     for item in items:
-        if licenses[item.item_id] != item.license_id:
+        if licenses_by_item[item.item_id].license_id != item.license_id:
             raise CorpusError(f"license mismatch for {item.item_id}")
         _verify_media(root, item)
-    return VerifiedCorpus(corpus_id, root, items, public_key)
+    return VerifiedCorpus(
+        corpus_id=corpus_id,
+        root=root,
+        items=items,
+        licenses=licenses,
+        signing_public_key=public_key,
+        manifest_sha256=_file_sha256(manifest_path),
+        license_attestation_sha256=_file_sha256(license_path),
+    )
 
 
 def _parse_item(value: Any) -> CorpusItem:
@@ -145,25 +165,41 @@ def _parse_item(value: Any) -> CorpusItem:
     )
 
 
-def _validated_licenses(values: list[Any]) -> dict[str, str]:
-    result: dict[str, str] = {}
+def _validated_licenses(values: list[Any]) -> tuple[LicenseGrant, ...]:
+    result: list[LicenseGrant] = []
+    item_ids: set[str] = set()
     for value in values:
         if not isinstance(value, dict):
             raise CorpusError("license records must be objects")
         item_id = value.get("item_id")
         license_id = value.get("license_id")
         redistributable = value.get("redistributable")
+        evaluation_permitted = value.get("evaluation_permitted", False)
         if (
             not isinstance(item_id, str)
             or not item_id
             or not isinstance(license_id, str)
             or not license_id
-            or redistributable is not True
-            or item_id in result
+            or not isinstance(redistributable, bool)
+            or not isinstance(evaluation_permitted, bool)
+            or not (redistributable or evaluation_permitted)
+            or item_id in item_ids
         ):
             raise CorpusError("license record is invalid or duplicated")
-        result[item_id] = license_id
-    return result
+        item_ids.add(item_id)
+        result.append(LicenseGrant(item_id, license_id, redistributable, evaluation_permitted))
+    return tuple(result)
+
+
+def _file_sha256(path: Path) -> str:
+    hasher = hashlib.sha256()
+    try:
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                hasher.update(chunk)
+    except OSError as error:
+        raise CorpusError(f"cannot hash signed metadata {path}: {error}") from error
+    return hasher.hexdigest()
 
 
 def _portable_relative_path(value: str) -> bool:
