@@ -297,7 +297,7 @@ jobs:
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate
-        run: just gate-security
+        run: ./tools/security/security-gate.sh
       - name: Threat review for sensitive pull requests
         if: github.event_name == 'pull_request'
         env:
