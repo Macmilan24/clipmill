@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from clipmill.ipc.v1 import daemon_pb2
-from clipmill_eval.client import DaemonClient, DaemonClientError, _encode_varint
+from clipmill_eval.client import DaemonClient, DaemonClientError, FramingError, _encode_varint
 
 
 def serve_once(socket_path: Path, response: daemon_pb2.Response) -> threading.Thread:
@@ -67,6 +67,18 @@ def test_daemon_errors_remain_structured() -> None:
     thread.join(timeout=2)
     socket_path.unlink(missing_ok=True)
     assert captured.value.code == daemon_pb2.ERROR_CODE_POLICY_DENIED
+
+
+def test_control_client_rejects_the_wrong_response_body() -> None:
+    socket_path = short_socket_path()
+    thread = serve_once(
+        socket_path,
+        daemon_pb2.Response(),
+    )
+    with pytest.raises(FramingError, match="expected health"):
+        DaemonClient(socket_path).health()
+    thread.join(timeout=2)
+    socket_path.unlink(missing_ok=True)
 
 
 def _read_varint(connection: socket.socket) -> int:

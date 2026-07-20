@@ -6,7 +6,6 @@ import socket
 import time
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 
 from clipmill.ipc.v1 import daemon_pb2
@@ -25,12 +24,6 @@ class FramingError(RuntimeError):
     """The daemon returned malformed length-delimited Protobuf framing."""
 
 
-@dataclass(frozen=True, slots=True)
-class EventBatch:
-    events: tuple[daemon_pb2.TaskEvent, ...]
-    last_cursor: int
-
-
 class DaemonClient:
     def __init__(self, socket_path: Path, timeout_seconds: float = 30.0) -> None:
         self.socket_path = socket_path
@@ -38,7 +31,7 @@ class DaemonClient:
 
     def health(self) -> daemon_pb2.HealthResponse:
         response = self._call(daemon_pb2.Request(health=daemon_pb2.HealthRequest()))
-        return response.health
+        return _require_body(response, "health")
 
     def create_project(self, name: str) -> daemon_pb2.Project:
         response = self._call(
@@ -46,7 +39,7 @@ class DaemonClient:
                 create_project=daemon_pb2.CreateProjectRequest(name=name),
             )
         )
-        return response.create_project.project
+        return _require_body(response, "create_project").project
 
     def register_source(
         self, project_id: str, absolute_path: Path
@@ -59,7 +52,7 @@ class DaemonClient:
                 )
             )
         )
-        return response.register_source
+        return _require_body(response, "register_source")
 
     def submit_probe(self, project_id: str, source_id: str) -> daemon_pb2.Job:
         payload = daemon_pb2.ProbeSourcePayloadV1(
@@ -75,17 +68,41 @@ class DaemonClient:
                 )
             )
         )
-        return response.submit_job.job
+        return _require_body(response, "submit_job").job
 
     def get_job(self, job_id: str) -> daemon_pb2.Job:
         response = self._call(daemon_pb2.Request(get_job=daemon_pb2.GetJobRequest(job_id=job_id)))
-        return response.get_job.job
+        return _require_body(response, "get_job").job
+
+    def list_jobs(self, project_id: str) -> tuple[daemon_pb2.Job, ...]:
+        response = self._call(
+            daemon_pb2.Request(
+                list_jobs=daemon_pb2.ListJobsRequest(project_id=project_id),
+            )
+        )
+        return tuple(_require_body(response, "list_jobs").jobs)
+
+    def cancel_job(self, job_id: str) -> daemon_pb2.Job:
+        response = self._call(
+            daemon_pb2.Request(
+                cancel_job=daemon_pb2.CancelJobRequest(job_id=job_id),
+            )
+        )
+        return _require_body(response, "cancel_job").job
 
     def get_source(self, source_id: str) -> daemon_pb2.Source:
         response = self._call(
             daemon_pb2.Request(get_source=daemon_pb2.GetSourceRequest(source_id=source_id))
         )
-        return response.get_source.source
+        return _require_body(response, "get_source").source
+
+    def list_sources(self, project_id: str) -> tuple[daemon_pb2.Source, ...]:
+        response = self._call(
+            daemon_pb2.Request(
+                list_sources=daemon_pb2.ListSourcesRequest(project_id=project_id),
+            )
+        )
+        return tuple(_require_body(response, "list_sources").sources)
 
     def get_device_profile(
         self, *, remeasure: bool = False, request_id: str | None = None
@@ -97,7 +114,7 @@ class DaemonClient:
             ),
             assign_request_id=False,
         )
-        return response.get_device_profile
+        return _require_body(response, "get_device_profile")
 
     def wait_for_job(self, job_id: str, timeout_seconds: float = 30.0) -> daemon_pb2.Job:
         deadline = time.monotonic() + timeout_seconds
@@ -131,6 +148,8 @@ class DaemonClient:
         with self._connect() as connection:
             _write_frame(connection, request.SerializeToString(deterministic=True))
             ready = _read_response(connection)
+            if ready.request_id != request.request_id:
+                raise FramingError("subscription response request_id does not match the request")
             self._raise_error(ready)
             if ready.WhichOneof("body") != "subscribe_task_events":
                 raise FramingError("subscription omitted its ready response")
@@ -138,6 +157,8 @@ class DaemonClient:
             received = 0
             while maximum_events is None or received < maximum_events:
                 response = _read_response(connection)
+                if response.request_id != request.request_id:
+                    raise FramingError("event response request_id does not match the subscription")
                 self._raise_error(response)
                 if response.WhichOneof("body") != "task_event":
                     raise FramingError("subscription returned a non-event response")
@@ -229,3 +250,10 @@ def _encode_varint(value: int) -> bytes:
         value >>= 7
     encoded.append(value)
     return bytes(encoded)
+
+
+def _require_body(response: daemon_pb2.Response, expected: str):
+    actual = response.WhichOneof("body")
+    if actual != expected:
+        raise FramingError(f"daemon returned {actual or 'no body'}; expected {expected}")
+    return getattr(response, expected)

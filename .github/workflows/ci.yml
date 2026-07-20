@@ -186,6 +186,28 @@ jobs:
       - run: uv sync --frozen --project workers/echo
       - run: ./tools/drills/worker-drill.sh 25
 
+  phase0-eval:
+    name: phase0-eval (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - name: Fetch and verify pinned FFmpeg sidecars
+        run: ./tools/fetch-ffmpeg.sh
+      - run: uv sync --frozen --project eval/harness
+      - run: ./tools/drills/device-drill.sh 1
+      - run: ./tools/drills/eval-smoke.sh 1
+
   network-denial:
     name: network-denial (Local Lock gate)
     runs-on: ubuntu-24.04
@@ -204,6 +226,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           uv sync --frozen --project workers/echo
+          uv sync --frozen --project eval/harness
           cargo test --workspace --no-run
       - name: Run the suite inside a no-network namespace
         run: unshare -rn ./tools/drills/network-denial.sh

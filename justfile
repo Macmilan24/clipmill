@@ -65,6 +65,16 @@ gate-media:
 gate-workers:
     ./tools/drills/worker-drill.sh 50
 
+# W7 coverage: measured runtime/capacity, bounded codec/shared-memory probes,
+# Ed25519 attestation, durable caching, and fingerprint generations.
+gate-device:
+    ./tools/drills/device-drill.sh 1
+
+# W7 coverage: signed public corpus, real daemon IPC, cold/warm source-map
+# cache identity, device-profile verification, CAS verification, hostile media.
+gate-eval-smoke:
+    ./tools/drills/eval-smoke.sh 1
+
 # Exit gate: Local Lock. Replays the CI namespace job in a no-network
 # container (Docker/OrbStack); the egress canary must be blocked.
 gate-lock:
@@ -79,7 +89,7 @@ gate-lock:
     fi
 
 # All Phase 0 gates in sequence.
-gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-lock
+gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-lock
 
 # Launch the desktop shell. Lands with W9/W10.
 app:

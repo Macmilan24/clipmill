@@ -3,7 +3,12 @@
 
 mod support;
 
-use std::{ffi::OsString, io::Read, os::unix::fs::PermissionsExt, path::PathBuf};
+use std::{
+    ffi::OsString,
+    io::Read,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 
 use clipmill_artifacts::ArtifactPath;
 use clipmill_contracts::proto::ipc::v1::{
@@ -22,14 +27,31 @@ use tokio::{
 use support::{send, send_without_reading_response, workspace_tempdir};
 
 fn config(temp: &TempDir) -> Config {
-    Config::from_sources(
+    config_with_ffprobe(temp, None)
+}
+
+fn config_with_ffprobe(temp: &TempDir, ffprobe: Option<PathBuf>) -> Config {
+    Config::from_sources_with_gc(
         Some(temp.path().to_path_buf()),
         None,
+        None,
         Some(OsString::from("/ignored/env")),
+        None,
+        None,
+        ffprobe,
         None,
         PathBuf::from("/ignored/default"),
     )
     .expect("config")
+}
+
+fn workspace_tool(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(".cache/bin")
+        .join(name)
+        .canonicalize()
+        .unwrap_or_else(|_| panic!("{name} is missing; run ./tools/fetch-ffmpeg.sh"))
 }
 
 async fn running(
@@ -160,6 +182,52 @@ async fn profile_requests_join_publish_verify_remeasure_and_survive_restart() {
             .expect("restart signature")
             .measurement_generation,
         2
+    );
+    stop(shutdown, task).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run through tools/drills/device-drill.sh with pinned FFmpeg"]
+async fn pinned_ffmpeg_profile_executes_bounded_measurements() {
+    let temp = workspace_tempdir();
+    let config = config_with_ffprobe(&temp, Some(workspace_tool("ffprobe")));
+    let (socket, _artifacts, shutdown, task) = running(config).await;
+    let measured = profile(
+        send(&socket, request("profile-pinned-ffmpeg", false))
+            .await
+            .expect("measured profile"),
+    );
+    verify_device_profile(&measured.profile_json, None).expect("signed profile");
+    let value: serde_json::Value =
+        serde_json::from_str(&measured.profile_json).expect("profile JSON");
+    let phase0 = value.get("phase0").expect("Phase 0 extension");
+    assert_eq!(
+        phase0
+            .get("runtime_identities")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|identities| identities.first())
+            .and_then(|identity| identity.get("available"))
+            .and_then(serde_json::Value::as_bool),
+        Some(true),
+        "the pinned FFmpeg runtime must be measured"
+    );
+    assert_eq!(
+        phase0
+            .get("capability_results")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|capabilities| capabilities.first())
+            .and_then(|capability| capability.get("available"))
+            .and_then(serde_json::Value::as_bool),
+        Some(true),
+        "the bounded CPU video round trip must execute"
+    );
+    assert!(
+        phase0
+            .get("shared_memory")
+            .and_then(|shared| shared.get("bytes_per_second"))
+            .and_then(serde_json::Value::as_f64)
+            .is_some_and(|throughput| throughput > 0.0),
+        "the bounded shared-memory measurement must execute"
     );
     stop(shutdown, task).await;
 }
