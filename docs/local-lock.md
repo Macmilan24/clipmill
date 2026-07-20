@@ -5,9 +5,10 @@ exclusive network broker, OS enforcement, and a project-visible audit.
 
 In Phase 0, CI enters a Linux network namespace with no interfaces, verifies an
 egress canary cannot connect, and runs the Rust workspace tests plus W3 cache,
-W4 durable-job, W5 pinned media/source, and W6 external-worker recovery smoke
-drills offline. The daemon, scheduler, artifact store, FFprobe sidecar, Python
-worker SDK, echo worker, and shared-memory broker have no network-capable
+W4 durable-job, W5 pinned media/source, W6 external-worker recovery, and W7
+device-profile/public-evaluation smoke drills offline. The daemon, scheduler,
+artifact store, FFmpeg/FFprobe sidecars, Python worker SDK, echo worker,
+evaluation harness, and shared-memory broker have no network-capable
 dependency or request path, and health reports
 `local_lock=true`. This is a harness-level proof, not yet the final desktop
 enforcement boundary: the broker, model registry, shell, and complete offline

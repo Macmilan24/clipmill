@@ -70,7 +70,8 @@ Payload hashes are verified lazily on read using an already-open file handle;
 the resulting lease pins the object until dropped.
 
 Garbage collection marks project roots, W4 active-task roots, W5 source-map
-roots, transitive manifest inputs, and active reader pins. A missing or corrupt reachable node fails closed and deletes
+roots, W7 active device-profile system roots, transitive manifest inputs, and
+active reader pins. A missing or corrupt reachable node fails closed and deletes
 nothing. Unreachable objects remain protected for `--artifact-gc-grace`,
 `CLIPMILL_ARTIFACT_GC_GRACE`, or the seven-day default. A collectible object is
 atomically moved to quarantine before recursive deletion. Quarantine cleanup
@@ -86,4 +87,6 @@ authenticated external workers: the daemon prepares lease-scoped staging,
 validates the exact declaration, publishes and roots outputs itself, and
 durably deduplicates both successful and failed completion acknowledgements.
 Worker or daemon death abandons uncommitted staging without exposing a partial
-object. The broader Phase 0 claim still requires W7 and W8.
+object. W7 uses the same publication ordering for signed device profiles and
+retains the active generation through a system root. The broader Phase 0 claim
+still requires W8.

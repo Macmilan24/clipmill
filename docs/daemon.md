@@ -1,4 +1,4 @@
-# Durable daemon, artifacts, orchestration, sources, and workers (W2-W6)
+# Durable daemon, artifacts, orchestration, sources, workers, and profiling (W2-W7)
 
 `clipmilld` is a foreground, single-writer process. On macOS and Linux it
 serves the existing `clipmill.ipc.v1` protobuf contract over a private Unix
@@ -18,6 +18,8 @@ The default application data directory is platform-specific. Override it with
     clipmill.db
     backups/
     probe-scratch/
+    device-profile-scratch/
+    device-attestation.key
     worker-identities/
     worker-trust/
   artifacts/
@@ -32,17 +34,19 @@ The default application data directory is platform-specific. Override it with
 ```
 
 Directories are mode `0700`; the database, sockets, lock, private worker
-identities, and trust entries are `0600`.
+identities, trust entries, and device-attestation key are `0600`.
 `clipmilld` refuses a second writer, removes a stale socket only after acquiring
 the daemon lock, and runs SQLite `quick_check` before serving requests.
 
 Schema v2 adds strict project-to-artifact roots. Schema v3 adds jobs, task DAGs,
 resource declarations, leases, task events, circuit breakers, and active-task
 artifact roots. Schema v4 adds immutable sources, file observations,
-source-artifact roots, and optional source links on jobs. Existing databases
+source-artifact roots, and optional source links on jobs. Schema v5 adds device
+profile generations, response replay, and system artifact roots while hiding
+the daemon's system project from public APIs. Existing databases
 are checked and backed up with SQLite's
 backup API before each transactional upgrade; fresh databases receive the
-complete v4 schema without a redundant backup. Backups are atomically
+complete v5 schema without a redundant backup. Backups are atomically
 published under `state/backups/` with mode `0600`.
 
 ## Control API surface
@@ -54,9 +58,10 @@ the mutation. W4 adds submit/get/list/cancel job operations plus cursor-based
 task-event replay and live delivery. The versioned `demo-dag` fixture exercises
 a reusable persisted DAG scheduler. W5 adds register/get/list source operations
 and the versioned `probe-source` job. W6 moves `demo-dag` execution to a
-standalone authenticated pull worker without changing scheduler semantics;
-device profiling remains `UNAVAILABLE`. W3-W6 intentionally expose no public
-artifact command: only the daemon
+standalone authenticated pull worker without changing scheduler semantics.
+W7 implements `GetDeviceProfile`; concurrent callers join one durable profile
+job and a response-loss retry returns the exact original bytes. W3-W7
+intentionally expose no public artifact command: only the daemon
 publishes and roots CAS objects.
 
 Every task records its artifact kinds and CPU, RAM, accelerator/VRAM, disk,
@@ -95,6 +100,17 @@ The Python SDK validates dimensions, byte length, timebase, lease identity, and
 SHA-256 before exposing a zero-copy PyArrow buffer. Handles are revoked when
 mapped, disconnected, cancelled, expired, or completed.
 
+W7 profiles OS/architecture, CPU topology, total and available memory,
+accelerator driver availability, pinned FFmpeg identity and codec paths, a
+bounded hardware round trip, and the real W6 shared-memory transport.
+Unsupported backends remain structured unavailable results. A stable
+hardware/runtime fingerprint selects the cached generation; `remeasure=true`
+allocates a new monotonic generation. The daemon signs canonical profile JSON
+with its private state key, publishes it through CAS, and activates it through
+a system root. Scheduler capacity changes only after signature, fingerprint,
+and CAS verification. Measured RAM and backend availability participate in
+both in-memory reservation and SQLite task admission.
+
 ## Current recovery claim
 
 The kill drill now submits real four-node jobs while injecting `SIGKILL`. Every
@@ -109,6 +125,9 @@ local gates, with five-iteration smoke runs inside network denial.
 W6 additionally kills real worker and daemon processes, expires and reissues
 leases, loses completion responses, cancels active work, verifies CAS outputs,
 and checks shared-memory/staging cleanup. This proves task/job recovery across
-the authenticated external-worker boundary. Device-profile and evaluation
-recovery remain W7; the private Seed-40 exit remains W8. Phase 0 is therefore
-not yet complete.
+the authenticated external-worker boundary. W7 proves profile request joining,
+response-loss replay, signed-CAS verification, generation invalidation, and
+restart reuse. Its public evaluation gate drives a real daemon through signed
+CFR/VFR/rotation/audio-offset/malformed fixtures, verifies cold and warm CAS
+outputs, and runs offline on both operating systems. The private Seed-40 and
+integrated security exit remain W8, so Phase 0 is not yet complete.

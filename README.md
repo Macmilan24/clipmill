@@ -6,15 +6,16 @@ every stage of the intelligence running on your own machine. No upload, no
 cloud dependency, no per-minute pricing: your footage never leaves your disk
 unless you explicitly send it somewhere.
 
-> **Status: pre-alpha, Phase 0 ("Harness"), W6.** Contracts, the durable daemon,
+> **Status: pre-alpha, Phase 0 ("Harness"), W7.** Contracts, the durable daemon,
 > filesystem artifact CAS, reusable durable DAG scheduler, local-source
 > evidence pipeline, and authenticated external-worker runtime are implemented:
 > private Unix-socket IPC, SQLite/WAL roots and leases, deterministic cache keys,
 > atomic publication, cursor-replayed task events, cancellation, recovery/GC,
 > hard-kill drills, pinned FFprobe supervision, immutable source fingerprints,
 > rational source maps, signed worker registration, daemon-owned output staging,
-> and one-use read-only shared memory on macOS and Linux. Device profiling and
-> evaluation arrive in W7. Nothing here makes clips yet.
+> one-use read-only shared memory, measured and signed device profiles, and the
+> signed offline evaluation harness on macOS and Linux. The private Seed-40 and
+> integrated security exit remain W8. Nothing here makes clips yet.
 
 ## Why
 

@@ -1,13 +1,7 @@
 {
   "corpus_id": "phase0-public-smoke-v1",
   "generator": "clipmill_eval.smoke",
-  "items": [
-    "cfr",
-    "vfr",
-    "rotation",
-    "audio-offset",
-    "malformed"
-  ],
+  "items": ["cfr", "vfr", "rotation", "audio-offset", "malformed"],
   "license": "CC0-1.0",
   "schema_version": "clipmill.smoke-corpus.recipe.v1"
 }
