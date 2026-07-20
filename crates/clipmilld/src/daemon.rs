@@ -521,7 +521,8 @@ async fn startup_profile_capacity(
         return live;
     }
     let measured =
-        ResourceCapacity::measured(verified.logical_cores, verified.available_memory_bytes);
+        ResourceCapacity::measured(verified.logical_cores, verified.available_memory_bytes)
+            .with_available_backends(&verified.available_backends);
     tracing::info!(
         %artifact_id,
         generation = verified.measurement_generation,
@@ -532,6 +533,8 @@ async fn startup_profile_capacity(
         cpu_threads: measured.cpu_threads.min(live.cpu_threads).max(1),
         ram_bytes: measured.ram_bytes.min(live.ram_bytes),
         disk_bytes: measured.disk_bytes.min(live.disk_bytes),
+        accelerator_mask: measured.accelerator_mask,
+        vram_bytes: measured.vram_bytes,
     }
 }
 

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::File,
     io::Write,
     sync::{Arc, Mutex},
@@ -56,6 +56,8 @@ pub(crate) struct ResourceCapacity {
     pub cpu_threads: u32,
     pub ram_bytes: u64,
     pub disk_bytes: u64,
+    pub accelerator_mask: u32,
+    pub vram_bytes: u64,
 }
 
 impl ResourceCapacity {
@@ -68,6 +70,8 @@ impl ResourceCapacity {
             cpu_threads: u32::try_from(cpu_threads).unwrap_or(u32::MAX),
             ram_bytes: 512 * 1024 * 1024,
             disk_bytes: 512 * 1024 * 1024,
+            accelerator_mask: 0,
+            vram_bytes: 0,
         }
     }
 
@@ -81,12 +85,28 @@ impl ResourceCapacity {
                 .unwrap_or(available_memory_bytes)
                 .max(64 * 1024 * 1024),
             disk_bytes: 512 * 1024 * 1024,
+            accelerator_mask: 0,
+            vram_bytes: 0,
         }
     }
 
+    pub(crate) fn with_available_backends(mut self, backends: &BTreeSet<String>) -> Self {
+        self.accelerator_mask = backends
+            .iter()
+            .filter_map(|backend| accelerator_bit(backend))
+            .fold(0, std::ops::BitOr::bitor);
+        self
+    }
+
     fn reserve(&mut self, resources: &ResourceDeclaration) -> bool {
-        if resources.accelerator_class.is_empty()
-            && resources.vram_bytes == 0
+        let accelerator_available = if resources.accelerator_class.is_empty() {
+            resources.vram_bytes == 0
+        } else {
+            accelerator_bit(&resources.accelerator_class)
+                .is_some_and(|bit| self.accelerator_mask & bit != 0)
+                && resources.vram_bytes <= self.vram_bytes
+        };
+        if accelerator_available
             && resources.network_policy == "local-lock"
             && resources.cpu_threads <= self.cpu_threads
             && resources.ram_bytes <= self.ram_bytes
@@ -95,6 +115,7 @@ impl ResourceCapacity {
             self.cpu_threads -= resources.cpu_threads;
             self.ram_bytes -= resources.ram_bytes;
             self.disk_bytes -= resources.disk_bytes;
+            self.vram_bytes -= resources.vram_bytes;
             true
         } else {
             false
@@ -105,6 +126,18 @@ impl ResourceCapacity {
         self.cpu_threads = self.cpu_threads.saturating_add(resources.cpu_threads);
         self.ram_bytes = self.ram_bytes.saturating_add(resources.ram_bytes);
         self.disk_bytes = self.disk_bytes.saturating_add(resources.disk_bytes);
+        self.vram_bytes = self.vram_bytes.saturating_add(resources.vram_bytes);
+    }
+}
+
+pub(crate) fn accelerator_bit(backend: &str) -> Option<u32> {
+    match backend {
+        "videotoolbox" => Some(1 << 0),
+        "vaapi" => Some(1 << 1),
+        "cuda" => Some(1 << 2),
+        "vulkan" => Some(1 << 3),
+        "metal" => Some(1 << 4),
+        _ => None,
     }
 }
 
@@ -518,7 +551,8 @@ impl SchedulerHandle {
 
     pub(crate) fn apply_device_profile(&self, profile: &VerifiedDeviceProfile) {
         let measured =
-            ResourceCapacity::measured(profile.logical_cores, profile.available_memory_bytes);
+            ResourceCapacity::measured(profile.logical_cores, profile.available_memory_bytes)
+                .with_available_backends(&profile.available_backends);
         let capacity = ResourceCapacity {
             cpu_threads: measured
                 .cpu_threads
@@ -526,6 +560,8 @@ impl SchedulerHandle {
                 .max(1),
             ram_bytes: measured.ram_bytes.min(self.capacity_limit.ram_bytes),
             disk_bytes: measured.disk_bytes.min(self.capacity_limit.disk_bytes),
+            accelerator_mask: measured.accelerator_mask,
+            vram_bytes: measured.vram_bytes,
         };
         if let Ok(mut pending) = self.capacity_update.lock() {
             *pending = Some(capacity);
@@ -1118,4 +1154,25 @@ pub(crate) fn is_terminal_job(state: i32) -> bool {
     state == JobState::Succeeded as i32
         || state == JobState::Failed as i32
         || state == JobState::Cancelled as i32
+}
+
+#[cfg(test)]
+mod resource_tests {
+    use std::collections::BTreeSet;
+
+    use super::{ResourceCapacity, ResourceDeclaration};
+
+    #[test]
+    fn measured_backend_availability_controls_accelerator_admission() {
+        let backends = BTreeSet::from(["videotoolbox".to_owned()]);
+        let mut capacity =
+            ResourceCapacity::measured(4, 1024 * 1024 * 1024).with_available_backends(&backends);
+        let mut resources = ResourceDeclaration::demo();
+        resources.accelerator_class = "vaapi".to_owned();
+        assert!(!capacity.reserve(&resources));
+        resources.accelerator_class = "videotoolbox".to_owned();
+        assert!(capacity.reserve(&resources));
+        capacity.release(&resources);
+        assert!(capacity.reserve(&resources));
+    }
 }

@@ -3,7 +3,7 @@ use std::{
     io::{self, Read, Write},
     os::unix::net::UnixStream as StdUnixStream,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[cfg(target_os = "macos")]
@@ -21,6 +21,27 @@ use thiserror::Error;
 
 const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub(crate) fn benchmark_shared_memory(sample_bytes: usize) -> Result<(u64, f64), ShmError> {
+    if sample_bytes == 0 {
+        return Err(ShmError::Invalid(
+            "shared-memory benchmark payload is empty",
+        ));
+    }
+    let payload = vec![0x5a_u8; sample_bytes];
+    let rounds = 4_u32;
+    let started = Instant::now();
+    for _ in 0..rounds {
+        let (backing, _name, _transport) = create_backing(&payload)?;
+        std::hint::black_box(&backing);
+    }
+    let bytes = u64::try_from(sample_bytes).map_err(|_| ShmError::Overflow)?;
+    let sample = u32::try_from(sample_bytes).map_err(|_| ShmError::Overflow)?;
+    let throughput = (f64::from(sample) * f64::from(rounds)
+        / started.elapsed().as_secs_f64().max(0.000_001))
+    .max(0.000_001);
+    Ok((bytes, throughput))
+}
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ShmBroker {

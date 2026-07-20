@@ -18,7 +18,7 @@ use thiserror::Error;
 use tokio::{process::Command, sync::OnceCell, time::timeout};
 use ulid::Ulid;
 
-use crate::jobs::ResourceCapacity;
+use crate::{jobs::ResourceCapacity, shm::benchmark_shared_memory};
 
 const PROFILE_SCHEMA: &str = "clipmill.device_profile.v1";
 const FINGERPRINT_DOMAIN: &[u8] = b"clipmill.device.fingerprint.v1\0";
@@ -60,6 +60,7 @@ struct DeviceIdentity {
     ffmpeg_available: bool,
     ffmpeg_hwaccels: Vec<String>,
     ffmpeg_encoders: Vec<String>,
+    driver_identities: Vec<RuntimeIdentity>,
     hardware_fingerprint: String,
 }
 
@@ -81,6 +82,13 @@ struct CpuIdentity {
 struct AcceleratorIdentity {
     kind: String,
     name: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct RuntimeIdentity {
+    kind: String,
+    identity: String,
+    available: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +134,8 @@ pub enum DeviceProfileError {
     CommandTimeout,
     #[error("device measurement task stopped")]
     TaskStopped,
+    #[error("device shared-memory measurement failed: {0}")]
+    SharedMemory(String),
 }
 
 impl DeviceProfiler {
@@ -170,9 +180,11 @@ impl DeviceProfiler {
             return Err(DeviceProfileError::FingerprintMismatch);
         }
         let available_memory = measured_available_memory(identity.total_memory_bytes).await;
-        let shared_memory = tokio::task::spawn_blocking(shared_memory_benchmark)
-            .await
-            .map_err(|_| DeviceProfileError::TaskStopped)?;
+        let shared_memory =
+            tokio::task::spawn_blocking(|| benchmark_shared_memory(SHARED_MEMORY_SAMPLE_BYTES))
+                .await
+                .map_err(|_| DeviceProfileError::TaskStopped)?
+                .map_err(|error| DeviceProfileError::SharedMemory(error.to_string()))?;
         let (codec, hardware) = self.measure_ffmpeg(&identity).await;
 
         let accelerators = identity
@@ -215,14 +227,12 @@ impl DeviceProfiler {
             "capability": "video-roundtrip",
             "detail": if cpu_available { "bounded synthetic round trip completed" } else { "FFmpeg CPU round trip unavailable" },
         })];
-        if hardware.backend != "none" {
-            capability_results.push(json!({
-                "available": hardware_available,
-                "backend": hardware.backend,
-                "capability": "video-roundtrip",
-                "detail": hardware.unavailable_reason.clone().unwrap_or_else(|| "bounded synthetic round trip completed".to_owned()),
-            }));
-        }
+        capability_results.push(json!({
+            "available": hardware_available,
+            "backend": hardware.backend,
+            "capability": "video-roundtrip",
+            "detail": hardware.unavailable_reason.clone().unwrap_or_else(|| "bounded synthetic round trip completed".to_owned()),
+        }));
         let hardware_roundtrip = if let Some(milliseconds) = hardware.milliseconds {
             json!({
                 "available": true,
@@ -258,11 +268,11 @@ impl DeviceProfiler {
                 "hardware_fingerprint": identity.hardware_fingerprint,
                 "hardware_roundtrip": hardware_roundtrip,
                 "measurement_generation": measurement_generation,
-                "runtime_identities": [{
-                    "available": identity.ffmpeg_available,
-                    "identity": identity.ffmpeg_identity,
-                    "kind": "ffmpeg",
-                }],
+                "runtime_identities": std::iter::once(RuntimeIdentity {
+                    available: identity.ffmpeg_available,
+                    identity: identity.ffmpeg_identity.clone(),
+                    kind: "ffmpeg".to_owned(),
+                }).chain(identity.driver_identities.clone()).collect::<Vec<_>>(),
                 "shared_memory": {
                     "bytes_per_second": shared_memory.1,
                     "sample_bytes": shared_memory.0,
@@ -619,19 +629,15 @@ async fn capture_identity(ffmpeg: &Path) -> Result<DeviceIdentity, DeviceProfile
     .ok()
     .filter(|output| output.status.success())
     .map_or_else(Vec::new, |output| parse_encoders(&output.stdout));
+    let driver_identities = capture_driver_identities(&platform, &hwaccels);
     let mut accelerators = vec![AcceleratorIdentity {
         kind: "cpu".to_owned(),
         name: cpu.model.clone(),
     }];
-    for (kind, name) in [
-        ("videotoolbox", "Apple VideoToolbox"),
-        ("vaapi", "VAAPI"),
-        ("cuda", "CUDA"),
-        ("vulkan", "Vulkan"),
-    ] {
-        if hwaccels.iter().any(|value| value == kind) {
+    for driver in driver_identities.iter().filter(|driver| driver.available) {
+        if let Some(name) = accelerator_name(&driver.kind) {
             accelerators.push(AcceleratorIdentity {
-                kind: kind.to_owned(),
+                kind: driver.kind.clone(),
                 name: name.to_owned(),
             });
         }
@@ -644,6 +650,7 @@ async fn capture_identity(ffmpeg: &Path) -> Result<DeviceIdentity, DeviceProfile
             "identity": ffmpeg_identity,
             "hwaccels": hwaccels,
         },
+        "drivers": driver_identities,
         "memory": { "total_bytes": total_memory_bytes },
         "platform": platform,
     });
@@ -665,6 +672,7 @@ async fn capture_identity(ffmpeg: &Path) -> Result<DeviceIdentity, DeviceProfile
         ffmpeg_available,
         ffmpeg_hwaccels: hwaccels,
         ffmpeg_encoders: encoders,
+        driver_identities,
         hardware_fingerprint,
     })
 }
@@ -836,12 +844,86 @@ fn preferred_hardware_backend(identity: &DeviceIdentity) -> String {
         .into_iter()
         .find(|candidate| {
             identity
-                .ffmpeg_hwaccels
+                .accelerators
                 .iter()
-                .any(|value| value == candidate)
+                .any(|accelerator| accelerator.kind == *candidate)
         })
         .unwrap_or("none")
         .to_owned()
+}
+
+fn accelerator_name(kind: &str) -> Option<&'static str> {
+    match kind {
+        "videotoolbox" => Some("Apple VideoToolbox"),
+        "vaapi" => Some("VAAPI"),
+        "cuda" => Some("CUDA"),
+        "vulkan" => Some("Vulkan"),
+        _ => None,
+    }
+}
+
+fn capture_driver_identities(
+    platform: &PlatformIdentity,
+    ffmpeg_hwaccels: &[String],
+) -> Vec<RuntimeIdentity> {
+    let mut identities = Vec::new();
+    for kind in ["videotoolbox", "vaapi", "cuda", "vulkan"] {
+        if !ffmpeg_hwaccels.iter().any(|value| value == kind) {
+            continue;
+        }
+        let (available, identity) = match kind {
+            "videotoolbox" => (
+                platform.os == "macos",
+                if platform.os == "macos" {
+                    format!("macOS {} integrated media driver", platform.os_version)
+                } else {
+                    "VideoToolbox is unavailable on this platform".to_owned()
+                },
+            ),
+            "vaapi" => linux_render_driver_identity("VAAPI"),
+            "cuda" => linux_cuda_driver_identity(),
+            "vulkan" => linux_render_driver_identity("Vulkan"),
+            _ => unreachable!(),
+        };
+        identities.push(RuntimeIdentity {
+            kind: kind.to_owned(),
+            identity: identity.chars().take(512).collect(),
+            available,
+        });
+    }
+    identities
+}
+
+fn linux_render_driver_identity(label: &str) -> (bool, String) {
+    let render = Path::new("/dev/dri/renderD128");
+    if !cfg!(target_os = "linux") || !render.exists() {
+        return (false, format!("{label} render device unavailable"));
+    }
+    let driver = fs::read_link("/sys/class/drm/renderD128/device/driver")
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "unknown".to_owned());
+    let version = fs::read_to_string("/sys/class/drm/renderD128/device/driver/module/version")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "kernel-managed".to_owned());
+    (true, format!("{label} driver {driver} {version}"))
+}
+
+fn linux_cuda_driver_identity() -> (bool, String) {
+    if !cfg!(target_os = "linux") || !Path::new("/dev/nvidiactl").exists() {
+        return (false, "CUDA driver device unavailable".to_owned());
+    }
+    let identity = fs::read_to_string("/proc/driver/nvidia/version")
+        .ok()
+        .and_then(|value| value.lines().next().map(str::trim).map(str::to_owned))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "NVIDIA driver version unavailable".to_owned());
+    (true, identity)
 }
 
 fn frames_per_second(frames: u32, duration: Duration) -> f64 {
@@ -851,23 +933,6 @@ fn frames_per_second(frames: u32, duration: Duration) -> f64 {
 
 fn duration_millis_f64(duration: Duration) -> f64 {
     (duration.as_secs_f64() * 1_000.0).max(0.0)
-}
-
-fn shared_memory_benchmark() -> (u64, f64) {
-    let source = vec![0x5a_u8; SHARED_MEMORY_SAMPLE_BYTES];
-    let mut destination = vec![0_u8; SHARED_MEMORY_SAMPLE_BYTES];
-    let started = Instant::now();
-    let rounds = 8_u32;
-    for _ in 0..rounds {
-        destination.copy_from_slice(&source);
-        std::hint::black_box(&destination);
-    }
-    let bytes = u64::try_from(SHARED_MEMORY_SAMPLE_BYTES).unwrap_or(u64::MAX);
-    let sample = u32::try_from(SHARED_MEMORY_SAMPLE_BYTES).unwrap_or(u32::MAX);
-    let rate = (f64::from(sample) * f64::from(rounds)
-        / started.elapsed().as_secs_f64().max(0.000_001))
-    .max(0.000_001);
-    (bytes, rate)
 }
 
 fn ffmpeg_sibling(ffprobe: &Path) -> PathBuf {

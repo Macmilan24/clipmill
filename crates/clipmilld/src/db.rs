@@ -1579,7 +1579,7 @@ fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> 
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-    use std::{fs, path::Path};
+    use std::{collections::BTreeSet, fs, path::Path};
 
     use clipmill_contracts::proto::{
         ipc::v1::{JobState, TaskState},
@@ -1817,6 +1817,53 @@ mod tests {
             device_store::BeginDeviceProfile::Response { bytes, .. }
                 if bytes == b"encoded-response"
         ));
+    }
+
+    #[test]
+    fn task_admission_uses_measured_backend_availability() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Accelerator", 10);
+        create_project(&mut connection, "create-accelerator", &[1; 32], &project)
+            .expect("create project");
+        let project_id = project.project_id.parse::<ProjectId>().expect("project id");
+        let mut plan = JobPlan::demo(&project_id, b"backend".to_vec(), 20);
+        plan.tasks.truncate(1);
+        plan.tasks[0].is_final = true;
+        plan.tasks[0].resources.accelerator_class = "videotoolbox".to_owned();
+        job_store::submit_job(&mut connection, "submit-accelerator", &[2; 32], &plan)
+            .expect("submit job");
+
+        let unavailable = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15_030,
+            ResourceCapacity::measured(4, 1024 * 1024 * 1024),
+        )
+        .expect("query without measured backend");
+        assert!(unavailable.task.is_none());
+
+        let available = ResourceCapacity::measured(4, 1024 * 1024 * 1024)
+            .with_available_backends(&BTreeSet::from(["videotoolbox".to_owned()]));
+        let leased = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            31,
+            15_031,
+            available,
+        )
+        .expect("query with measured backend");
+        assert_eq!(
+            leased
+                .task
+                .expect("accelerated task")
+                .resources
+                .accelerator_class,
+            "videotoolbox"
+        );
     }
 
     #[test]

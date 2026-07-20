@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use super::{StoreError, remember, replay};
 use crate::jobs::{
     EventFilter, JobPlan, JobRecord, LeaseRequest, LeaseSelection, LeasedTask, ResourceDeclaration,
-    TaskCompletion, TaskEventRecord, TaskRecord, is_terminal_job,
+    TaskCompletion, TaskEventRecord, TaskRecord, accelerator_bit, is_terminal_job,
 };
 
 #[derive(Debug)]
@@ -579,10 +579,22 @@ pub(super) fn lease_next_task_for_worker(
                AND t.cpu_threads <= ?7
                AND t.ram_bytes <= ?8
                AND t.disk_bytes <= ?9
-               AND t.accelerator_class = ''
-               AND t.vram_bytes = 0
+               AND (
+                    (t.accelerator_class = '' AND t.vram_bytes = 0)
+                    OR (
+                        t.accelerator_class <> ''
+                        AND t.vram_bytes <= ?10
+                        AND (
+                            (t.accelerator_class = 'videotoolbox' AND (?11 & ?12) <> 0)
+                            OR (t.accelerator_class = 'vaapi' AND (?11 & ?13) <> 0)
+                            OR (t.accelerator_class = 'cuda' AND (?11 & ?14) <> 0)
+                            OR (t.accelerator_class = 'vulkan' AND (?11 & ?15) <> 0)
+                            OR (t.accelerator_class = 'metal' AND (?11 & ?16) <> 0)
+                        )
+                    )
+               )
                AND t.network_policy = 'local-lock'
-               AND instr(?10, ',' || t.kind || ',') > 0
+               AND instr(?17, ',' || t.kind || ',') > 0
              ORDER BY j.created_unix_millis, j.job_id, t.ordinal
              LIMIT 1",
             params![
@@ -595,6 +607,13 @@ pub(super) fn lease_next_task_for_worker(
                 i64::from(capacity.cpu_threads),
                 sqlite_u64(capacity.ram_bytes, "available task RAM")?,
                 sqlite_u64(capacity.disk_bytes, "available task disk")?,
+                sqlite_u64(capacity.vram_bytes, "available task VRAM")?,
+                i64::from(capacity.accelerator_mask),
+                i64::from(accelerator_bit("videotoolbox").unwrap_or(0)),
+                i64::from(accelerator_bit("vaapi").unwrap_or(0)),
+                i64::from(accelerator_bit("cuda").unwrap_or(0)),
+                i64::from(accelerator_bit("vulkan").unwrap_or(0)),
+                i64::from(accelerator_bit("metal").unwrap_or(0)),
                 capability_filter,
             ],
             |row| {
