@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import platform as host_platform
 import re
 import subprocess
 import sys
@@ -13,6 +14,10 @@ from urllib.parse import urlparse
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 BUILD_PATTERN = re.compile(r"^[0-9]+_[0-9]+\.[0-9]+\.[0-9]+$")
+LICENSE_POLICY = {
+    "macos-arm64": ("gpl-v3", True),
+    "linux-amd64": ("gpl-v3-nonfree", False),
+}
 
 
 def main() -> int:
@@ -42,6 +47,12 @@ def main() -> int:
                 or not build.endswith(version)
             ):
                 raise ValueError(f"{platform} build identity is invalid")
+            expected_license, expected_redistributable = LICENSE_POLICY[platform]
+            if (
+                entry.get("license_mode") != expected_license
+                or entry.get("redistributable") is not expected_redistributable
+            ):
+                raise ValueError(f"{platform} license/distribution policy is invalid")
             for binary in ("ffmpeg", "ffprobe"):
                 url = entry.get(f"{binary}_url")
                 digest = entry.get(f"{binary}_sha256")
@@ -55,8 +66,10 @@ def main() -> int:
         sqlite = bom["sqlite"]
         if sqlite.get("min_version") != "3.51.3" or sqlite.get("min_version_number") != 3051003:
             raise ValueError("SQLite corruption-fix floor changed without a BOM decision")
+        current_platform = _current_platform()
+        allow_nonfree = ffmpeg[current_platform]["license_mode"] == "gpl-v3-nonfree"
         for name, path in (("ffmpeg", options.ffmpeg), ("ffprobe", options.ffprobe)):
-            _verify_binary(name, path, version)
+            _verify_binary(name, path, version, allow_nonfree)
     except (
         KeyError,
         OSError,
@@ -66,11 +79,24 @@ def main() -> int:
     ) as error:
         print(f"bom-policy: {error}", file=sys.stderr)
         return 1
-    print("bom-policy: OK (pinned hashes; GPL/version3 FFmpeg; nonfree disabled; SQLite floor)")
+    print(
+        "bom-policy: OK (pinned hashes; runtime license flags match the "
+        "platform distribution policy; SQLite floor)"
+    )
     return 0
 
 
-def _verify_binary(name: str, path: Path, version: str) -> None:
+def _current_platform() -> str:
+    system = host_platform.system()
+    machine = host_platform.machine().casefold()
+    if system == "Darwin" and machine == "arm64":
+        return "macos-arm64"
+    if system == "Linux" and machine in {"amd64", "x86_64"}:
+        return "linux-amd64"
+    raise ValueError(f"unsupported BOM verification platform: {system}-{machine}")
+
+
+def _verify_binary(name: str, path: Path, version: str, allow_nonfree: bool) -> None:
     if path.is_symlink() or not path.is_file():
         raise ValueError(f"installed {name} is missing or unsafe: {path}")
     result = subprocess.run(
@@ -87,8 +113,9 @@ def _verify_binary(name: str, path: Path, version: str) -> None:
         raise ValueError(f"installed {name} does not match BOM version {version}")
     if "--enable-gpl" not in output or "--enable-version3" not in output:
         raise ValueError(f"installed {name} omitted its declared GPL/version3 license flags")
-    if "--enable-nonfree" in output:
-        raise ValueError(f"installed {name} enables non-redistributable components")
+    has_nonfree = "--enable-nonfree" in output
+    if has_nonfree != allow_nonfree:
+        raise ValueError(f"installed {name} nonfree mode differs from its BOM policy")
 
 
 if __name__ == "__main__":

@@ -72,5 +72,9 @@ the code is risk-free.
   model and the no-network suite when introduced.
 - Release archives, signing keys, notarization, update metadata, and rollback
   are owned by the desktop/release workstream.
+- The pinned Linux FFmpeg development/CI sidecar enables DeckLink and reports
+  FFmpeg `nonfree`. Its hash and non-redistributable status are fail-closed in
+  the BOM, and Phase 0 publishes no binary. The release workstream must replace
+  it with a redistributable build before any application packaging.
 - Phase 0 keeps Seed-40 media private. Its committed signature proves the run
   and aggregate rights metadata without publishing restricted bytes or paths.

@@ -9,6 +9,8 @@ provider = "https://ffmpeg.martin-riedl.de (static builds, ffmpeg + ffprobe)"
 
 [ffmpeg.macos-arm64]
 build = "1783011502_8.1.2"
+license_mode = "gpl-v3"
+redistributable = true
 ffmpeg_url = "https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/ffmpeg.zip"
 ffmpeg_sha256 = "ef1aa60006c7b77ce170c1608c08d8e4ba1c30c5746f2ac986ded932d0ac2c3c"
 ffprobe_url = "https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/ffprobe.zip"
@@ -16,6 +18,12 @@ ffprobe_sha256 = "c39787f4af7a3932502d2d48db6f6feaaa836b48a73ef78c32cc3285df61df
 
 [ffmpeg.linux-amd64]
 build = "1783011670_8.1.2"
+# This upstream static build enables DeckLink and is therefore configured as
+# FFmpeg "nonfree". Phase 0 downloads it for development/CI and publishes no
+# binary. Desktop/release packaging MUST replace it with a redistributable
+# build; the security gate asserts this restriction instead of hiding it.
+license_mode = "gpl-v3-nonfree"
+redistributable = false
 ffmpeg_url = "https://ffmpeg.martin-riedl.de/download/linux/amd64/1783011670_8.1.2/ffmpeg.zip"
 ffmpeg_sha256 = "56452c0bfc4ee0325cd615d62f46ba8264f62eed34f727c2224c6c84fa7b8719"
 ffprobe_url = "https://ffmpeg.martin-riedl.de/download/linux/amd64/1783011670_8.1.2/ffprobe.zip"
