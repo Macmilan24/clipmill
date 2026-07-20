@@ -38,6 +38,8 @@ pub struct Paths {
     pub lock: PathBuf,
     pub probe_scratch_dir: PathBuf,
     pub worker_trust_dir: PathBuf,
+    pub device_attestation_key: PathBuf,
+    pub device_profile_scratch_dir: PathBuf,
 }
 
 impl Config {
@@ -213,6 +215,8 @@ impl Config {
                 lock: run_dir.join("daemon.lock"),
                 probe_scratch_dir: state_dir.join("probe-scratch"),
                 worker_trust_dir: state_dir.join("worker-trust"),
+                device_attestation_key: state_dir.join("device-attestation.key"),
+                device_profile_scratch_dir: state_dir.join("device-profile-scratch"),
                 data_dir,
                 state_dir,
                 run_dir,
@@ -336,6 +340,14 @@ mod tests {
         assert_eq!(
             config.paths.worker_trust_dir,
             PathBuf::from("/default/data/state/worker-trust")
+        );
+        assert_eq!(
+            config.paths.device_attestation_key,
+            PathBuf::from("/default/data/state/device-attestation.key")
+        );
+        assert_eq!(
+            config.paths.device_profile_scratch_dir,
+            PathBuf::from("/default/data/state/device-profile-scratch")
         );
     }
 

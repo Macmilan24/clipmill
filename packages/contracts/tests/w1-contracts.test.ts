@@ -13,6 +13,7 @@ import {
   BufferDescriptorSchema,
   DataType,
   DemoDagPayloadV1Schema,
+  DeviceProfilePayloadV1Schema,
   ProbeSourcePayloadV1Schema,
   CapabilityDescriptorSchema,
   TransportType,
@@ -67,6 +68,41 @@ describe('W5 source-map mapping extension', () => {
       expect(validators.source_map!(JSON.parse(raw))).toBe(false);
     },
   );
+});
+
+describe('W7 device-profile extension', () => {
+  it('accepts the measured and attested Phase 0 fixture', () => {
+    const raw = readFileSync(join(fixtures, 'device_profile', 'valid', 'phase0.json'), 'utf8');
+    expect(validators.device_profile!(JSON.parse(raw))).toBe(true);
+    expect(canonicalJson(JSON.parse(raw) as JsonValue)).toBe(raw);
+  });
+
+  it('rejects malformed attestation material', () => {
+    const raw = readFileSync(
+      join(fixtures, 'device_profile', 'invalid', 'bad-attestation.json'),
+      'utf8',
+    );
+    expect(validators.device_profile!(JSON.parse(raw))).toBe(false);
+  });
+
+  it('enforces the device-profile job payload key version', () => {
+    const valid = JSON.parse(
+      readFileSync(join(fixtures, 'proto', 'device_profile', 'valid', 'payload.json'), 'utf8'),
+    ) as JsonValue;
+    const payload = fromJson(DeviceProfilePayloadV1Schema, valid);
+    expect(payload.keyVersion).toBe('clipmill.device-profile.v1');
+    expect(payload.measurementGeneration).toBe(1n);
+
+    const invalid = JSON.parse(
+      readFileSync(
+        join(fixtures, 'proto', 'device_profile', 'invalid', 'wrong-version.json'),
+        'utf8',
+      ),
+    ) as JsonValue;
+    expect(fromJson(DeviceProfilePayloadV1Schema, invalid).keyVersion).not.toBe(
+      'clipmill.device-profile.v1',
+    );
+  });
 });
 
 describe('shm buffer descriptor', () => {

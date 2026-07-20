@@ -5,6 +5,7 @@ mod config;
 #[cfg(unix)]
 mod daemon;
 mod db;
+mod device;
 mod error;
 #[cfg(unix)]
 mod ipc;
@@ -21,4 +22,7 @@ pub use artifacts::{ArtifactCoordinator, ArtifactServiceError};
 pub use config::{Config, Paths};
 #[cfg(unix)]
 pub use daemon::Daemon;
+pub use device::{
+    DeviceProfileError, VerifiedDeviceProfile, verify_profile as verify_device_profile,
+};
 pub use error::DaemonError;

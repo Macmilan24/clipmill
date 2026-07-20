@@ -14,6 +14,19 @@ export type CodecBenchList = {
    */
   hardware?: boolean;
 }[];
+export type HardwareRoundtrip = {
+  backend: string;
+  available: boolean;
+  milliseconds?: number;
+  unavailable_reason?: string;
+} & HardwareRoundtrip1;
+export type HardwareRoundtrip1 =
+  | {
+      available?: true;
+    }
+  | {
+      available?: false;
+    };
 
 /**
  * The measured device profile (book ch. 11): backend selection is driven by measurement, not static per-platform defaults (D19). Cached as an artifact; re-measured when hardware or runtimes change. Rates (fps, bytes/s) are measurements, not timeline positions, so they may be numbers.
@@ -55,4 +68,40 @@ export interface DeviceProfile {
     decode?: CodecBenchList;
     encode?: CodecBenchList;
   };
+  /**
+   * Measured Phase 0 scheduler and attestation extension. Legacy v1 profiles omit it; every new Phase 0 profile includes it.
+   */
+  phase0?: {
+    hardware_fingerprint: string;
+    measurement_generation: number;
+    available_memory_bytes: number;
+    runtime_identities: RuntimeIdentity[];
+    capability_results: CapabilityResult[];
+    shared_memory: SharedMemoryBenchmark;
+    hardware_roundtrip: HardwareRoundtrip;
+    attestation: DeviceAttestation;
+  };
+}
+export interface RuntimeIdentity {
+  kind: string;
+  identity: string;
+  available: boolean;
+}
+export interface CapabilityResult {
+  capability: string;
+  backend: string;
+  available: boolean;
+  detail?: string;
+}
+export interface SharedMemoryBenchmark {
+  sample_bytes: number;
+  bytes_per_second: number;
+}
+/**
+ * Signature over RFC 8785 canonical profile JSON with this attestation object omitted.
+ */
+export interface DeviceAttestation {
+  algorithm: "ed25519";
+  public_key: string;
+  signature: string;
 }

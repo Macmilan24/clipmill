@@ -140,6 +140,15 @@ message ProbeSourcePayloadV1 {
   string source_id = 2;
 }
 
+// Versioned payload for the daemon-owned device profiler. The stable
+// hardware/runtime fingerprint selects the cache lineage; generation makes
+// an explicit remeasurement a distinct artifact recipe.
+message DeviceProfilePayloadV1 {
+  string key_version = 1;
+  string hardware_fingerprint = 2;
+  uint64 measurement_generation = 3;
+}
+
 message SubmitJobResponse {
   string job_id = 1;
   Job job = 2;

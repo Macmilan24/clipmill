@@ -206,6 +206,18 @@ pub struct ProbeSourcePayloadV1 {
     #[prost(string, tag = "2")]
     pub source_id: ::prost::alloc::string::String,
 }
+/// Versioned payload for the daemon-owned device profiler. The stable
+/// hardware/runtime fingerprint selects the cache lineage; generation makes
+/// an explicit remeasurement a distinct artifact recipe.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeviceProfilePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub hardware_fingerprint: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub measurement_generation: u64,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubmitJobResponse {
     #[prost(string, tag = "1")]

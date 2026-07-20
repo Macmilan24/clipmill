@@ -1,20 +1,29 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    io::Read,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
+use clipmill_artifacts::ArtifactPath;
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectRequest, DemoDagPayloadV1, Error, ErrorCode, GetJobResponse, GetProjectResponse,
-    GetSourceResponse, HealthResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest, Request, Response, SubmitJobRequest,
+    CreateProjectRequest, DemoDagPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
+    GetDeviceProfileResponse, GetJobResponse, GetProjectResponse, GetSourceResponse,
+    HealthResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
+    ProbeSourcePayloadV1, RegisterSourceRequest, Request, Response, SubmitJobRequest,
     SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request, response,
 };
 use clipmill_core::{JobId, ProjectId, SourceId, TaskEventCursor};
 use prost::Message;
 use sha2::{Digest, Sha256};
 
+use crate::artifacts::ArtifactHandle;
+use crate::db::{BeginDeviceProfile, DeviceProfileState};
 use crate::db::{DbHandle, ProjectRecord, StoreError};
+use crate::device::{DeviceProfiler, verify_profile};
 use crate::jobs::{EventFilter, TaskEventRecord};
 use crate::jobs::{EventHub, JobPlan, SchedulerHandle};
 use crate::sources::{SourceInspector, SourceProbeError};
 use tokio::sync::broadcast;
+use tokio::time::{Instant, sleep};
 
 const REQUEST_ID_MAX_CHARS: usize = 128;
 const PROJECT_NAME_MAX_CHARS: usize = 200;
@@ -28,6 +37,8 @@ pub(crate) struct Service {
     events: EventHub,
     scheduler: Option<SchedulerHandle>,
     sources: Option<SourceInspector>,
+    artifacts: Option<ArtifactHandle>,
+    device_profiler: Option<DeviceProfiler>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -78,6 +89,8 @@ impl Service {
             events: EventHub::new(),
             scheduler: None,
             sources: None,
+            artifacts: None,
+            device_profiler: None,
         }
     }
 
@@ -87,6 +100,8 @@ impl Service {
         events: EventHub,
         scheduler: SchedulerHandle,
         sources: SourceInspector,
+        artifacts: ArtifactHandle,
+        device_profiler: DeviceProfiler,
     ) -> Self {
         Self {
             database,
@@ -94,6 +109,8 @@ impl Service {
             events,
             scheduler: Some(scheduler),
             sources: Some(sources),
+            artifacts: Some(artifacts),
+            device_profiler: Some(device_profiler),
         }
     }
 
@@ -262,13 +279,15 @@ impl Service {
             request::Body::ListSources(list) => {
                 self.list_sources(request_id, &list.project_id).await
             }
-            request::Body::SubscribeTaskEvents(_) | request::Body::GetDeviceProfile(_) => {
-                error_reply(
-                    request_id,
-                    ErrorCode::Unavailable,
-                    "operation is not available",
-                )
+            request::Body::GetDeviceProfile(get) => {
+                self.get_device_profile(request_id, request_hash, &get)
+                    .await
             }
+            request::Body::SubscribeTaskEvents(_) => error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "operation is not available",
+            ),
         }
     }
 
@@ -473,6 +492,209 @@ impl Service {
                     outcome: Outcome::Success,
                 }
             }
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn get_device_profile(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        request: &GetDeviceProfileRequest,
+    ) -> Reply {
+        let (Some(profiler), Some(artifacts)) = (&self.device_profiler, &self.artifacts) else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "device profiling is not available",
+            );
+        };
+        let fingerprint = match profiler.hardware_fingerprint().await {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => {
+                tracing::warn!(operation = "device-profile", %error, "device fingerprint failed");
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    "device fingerprint could not be measured",
+                );
+            }
+        };
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        let (started, cached_response) = match self
+            .database
+            .begin_device_profile(
+                request_id.clone(),
+                request_hash,
+                fingerprint.clone(),
+                request.remeasure,
+                now,
+            )
+            .await
+        {
+            Ok(BeginDeviceProfile::Response { bytes, record }) => (record, Some(bytes)),
+            Ok(BeginDeviceProfile::Profile { record, events }) => {
+                self.events.publish_all(events);
+                if let Some(scheduler) = &self.scheduler {
+                    scheduler.notify();
+                }
+                (record, None)
+            }
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let record = loop {
+            match started.state {
+                DeviceProfileState::Succeeded => break started.clone(),
+                DeviceProfileState::Failed => {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Internal,
+                        "device-profile job failed",
+                    );
+                }
+                DeviceProfileState::Pending => {}
+            }
+            if Instant::now() >= deadline {
+                return error_reply(
+                    request_id,
+                    ErrorCode::Unavailable,
+                    "device-profile job is still running; retry the same request_id",
+                );
+            }
+            sleep(Duration::from_millis(50)).await;
+            match self
+                .database
+                .device_profile_for_job(started.job_id.clone())
+                .await
+            {
+                Ok(current) if current.state == DeviceProfileState::Succeeded => break current,
+                Ok(current) if current.state == DeviceProfileState::Failed => {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Internal,
+                        "device-profile job failed",
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => return store_error_reply(request_id, &error),
+            }
+        };
+        let Some(artifact_id) = record.artifact_id else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "device profile completed without an artifact",
+            );
+        };
+        let Some(profile_json) = record.profile_json else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "device profile completed without measured JSON",
+            );
+        };
+        let verified = match verify_profile(&profile_json, Some(&fingerprint)) {
+            Ok(verified) => verified,
+            Err(error) => {
+                tracing::warn!(%artifact_id, %error, "cached device profile verification failed");
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    "cached device profile verification failed",
+                );
+            }
+        };
+        let lease = match artifacts.open(artifact_id).await {
+            Ok(lease) => lease,
+            Err(error) => {
+                tracing::warn!(%artifact_id, %error, "device profile artifact could not be opened");
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    "device profile artifact could not be verified",
+                );
+            }
+        };
+        let Ok(profile_path) = "profile.json".parse::<ArtifactPath>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "device profile artifact path is invalid",
+            );
+        };
+        let mut stored_profile = String::new();
+        let profile_read = lease
+            .open_verified(&profile_path)
+            .map_err(|error| error.to_string())
+            .and_then(|mut file| {
+                file.read_to_string(&mut stored_profile)
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            });
+        if profile_read.is_err() || stored_profile != profile_json {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "device profile artifact payload does not match durable state",
+            );
+        }
+        if let Some(scheduler) = &self.scheduler {
+            scheduler.apply_device_profile(&verified);
+        }
+        if let Some(bytes) = cached_response {
+            let cached_matches = Response::decode(bytes.as_slice())
+                .ok()
+                .filter(|response| response.request_id == request_id)
+                .and_then(|response| response.body)
+                .is_some_and(|body| {
+                    matches!(
+                        body,
+                        response::Body::GetDeviceProfile(profile)
+                            if profile.artifact_id == artifact_id.to_string()
+                                && profile.profile_json == profile_json
+                    )
+                });
+            if !cached_matches {
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    "durable device profile response is inconsistent",
+                );
+            }
+            return Reply {
+                bytes,
+                outcome: Outcome::Success,
+            };
+        }
+        let response = Response {
+            request_id: request_id.clone(),
+            body: Some(response::Body::GetDeviceProfile(GetDeviceProfileResponse {
+                artifact_id: artifact_id.to_string(),
+                profile_json,
+            })),
+        }
+        .encode_to_vec();
+        let completed = unix_millis().unwrap_or(now);
+        match self
+            .database
+            .finish_device_profile_request(
+                request_id.clone(),
+                request_hash,
+                artifact_id,
+                response,
+                completed,
+            )
+            .await
+        {
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
             Err(error) => store_error_reply(request_id, &error),
         }
     }

@@ -29,6 +29,267 @@ pub mod error {
         }
     }
 }
+#[doc = "`CapabilityResult`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"available\","]
+#[doc = "    \"backend\","]
+#[doc = "    \"capability\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"available\": {"]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
+#[doc = "    \"backend\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"capability\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"detail\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 512"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityResult {
+    pub available: bool,
+    pub backend: CapabilityResultBackend,
+    pub capability: CapabilityResultCapability,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub detail: ::std::option::Option<CapabilityResultDetail>,
+}
+impl CapabilityResult {
+    pub fn builder() -> builder::CapabilityResult {
+        Default::default()
+    }
+}
+#[doc = "`CapabilityResultBackend`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CapabilityResultBackend(::std::string::String);
+impl ::std::ops::Deref for CapabilityResultBackend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CapabilityResultBackend> for ::std::string::String {
+    fn from(value: CapabilityResultBackend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CapabilityResultBackend {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CapabilityResultBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CapabilityResultBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CapabilityResultBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CapabilityResultBackend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`CapabilityResultCapability`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CapabilityResultCapability(::std::string::String);
+impl ::std::ops::Deref for CapabilityResultCapability {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CapabilityResultCapability> for ::std::string::String {
+    fn from(value: CapabilityResultCapability) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CapabilityResultCapability {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CapabilityResultCapability {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CapabilityResultCapability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CapabilityResultCapability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CapabilityResultCapability {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`CapabilityResultDetail`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 512"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CapabilityResultDetail(::std::string::String);
+impl ::std::ops::Deref for CapabilityResultDetail {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CapabilityResultDetail> for ::std::string::String {
+    fn from(value: CapabilityResultDetail) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CapabilityResultDetail {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CapabilityResultDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CapabilityResultDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CapabilityResultDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CapabilityResultDetail {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "`CodecBenchList`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -130,6 +391,188 @@ pub struct CodecBenchListItem {
 impl CodecBenchListItem {
     pub fn builder() -> builder::CodecBenchListItem {
         Default::default()
+    }
+}
+#[doc = "Signature over RFC 8785 canonical profile JSON with this attestation object omitted."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Signature over RFC 8785 canonical profile JSON with this attestation object omitted.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"algorithm\","]
+#[doc = "    \"public_key\","]
+#[doc = "    \"signature\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"algorithm\": {"]
+#[doc = "      \"const\": \"ed25519\""]
+#[doc = "    },"]
+#[doc = "    \"public_key\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^[0-9a-f]{64}$\""]
+#[doc = "    },"]
+#[doc = "    \"signature\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^[0-9a-f]{128}$\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceAttestation {
+    pub algorithm: ::serde_json::Value,
+    pub public_key: DeviceAttestationPublicKey,
+    pub signature: DeviceAttestationSignature,
+}
+impl DeviceAttestation {
+    pub fn builder() -> builder::DeviceAttestation {
+        Default::default()
+    }
+}
+#[doc = "`DeviceAttestationPublicKey`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^[0-9a-f]{64}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct DeviceAttestationPublicKey(::std::string::String);
+impl ::std::ops::Deref for DeviceAttestationPublicKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<DeviceAttestationPublicKey> for ::std::string::String {
+    fn from(value: DeviceAttestationPublicKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for DeviceAttestationPublicKey {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f]{64}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for DeviceAttestationPublicKey {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for DeviceAttestationPublicKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DeviceAttestationPublicKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for DeviceAttestationPublicKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`DeviceAttestationSignature`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^[0-9a-f]{128}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct DeviceAttestationSignature(::std::string::String);
+impl ::std::ops::Deref for DeviceAttestationSignature {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<DeviceAttestationSignature> for ::std::string::String {
+    fn from(value: DeviceAttestationSignature) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for DeviceAttestationSignature {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f]{128}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{128}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for DeviceAttestationSignature {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for DeviceAttestationSignature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DeviceAttestationSignature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for DeviceAttestationSignature {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "The measured device profile (book ch. 11): backend selection is driven by measurement, not static per-platform defaults (D19). Cached as an artifact; re-measured when hardware or runtimes change. Rates (fps, bytes/s) are measurements, not timeline positions, so they may be numbers."]
@@ -247,6 +690,56 @@ impl CodecBenchListItem {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"phase0\": {"]
+#[doc = "      \"description\": \"Measured Phase 0 scheduler and attestation extension. Legacy v1 profiles omit it; every new Phase 0 profile includes it.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"attestation\","]
+#[doc = "        \"available_memory_bytes\","]
+#[doc = "        \"capability_results\","]
+#[doc = "        \"hardware_fingerprint\","]
+#[doc = "        \"hardware_roundtrip\","]
+#[doc = "        \"measurement_generation\","]
+#[doc = "        \"runtime_identities\","]
+#[doc = "        \"shared_memory\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"attestation\": {"]
+#[doc = "          \"$ref\": \"#/$defs/device_attestation\""]
+#[doc = "        },"]
+#[doc = "        \"available_memory_bytes\": {"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"capability_results\": {"]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"$ref\": \"#/$defs/capability_result\""]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"hardware_fingerprint\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "        },"]
+#[doc = "        \"hardware_roundtrip\": {"]
+#[doc = "          \"$ref\": \"#/$defs/hardware_roundtrip\""]
+#[doc = "        },"]
+#[doc = "        \"measurement_generation\": {"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 1.0"]
+#[doc = "        },"]
+#[doc = "        \"runtime_identities\": {"]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"$ref\": \"#/$defs/runtime_identity\""]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"shared_memory\": {"]
+#[doc = "          \"$ref\": \"#/$defs/shared_memory_benchmark\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"platform\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
@@ -288,6 +781,8 @@ pub struct DeviceProfile {
     pub cpu: DeviceProfileCpu,
     pub measured: DeviceProfileMeasured,
     pub memory: DeviceProfileMemory,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub phase0: ::std::option::Option<DeviceProfilePhase0>,
     pub platform: DeviceProfilePlatform,
     pub schema_version: ::serde_json::Value,
 }
@@ -566,6 +1061,150 @@ impl DeviceProfileMemory {
         Default::default()
     }
 }
+#[doc = "Measured Phase 0 scheduler and attestation extension. Legacy v1 profiles omit it; every new Phase 0 profile includes it."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Measured Phase 0 scheduler and attestation extension. Legacy v1 profiles omit it; every new Phase 0 profile includes it.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"attestation\","]
+#[doc = "    \"available_memory_bytes\","]
+#[doc = "    \"capability_results\","]
+#[doc = "    \"hardware_fingerprint\","]
+#[doc = "    \"hardware_roundtrip\","]
+#[doc = "    \"measurement_generation\","]
+#[doc = "    \"runtime_identities\","]
+#[doc = "    \"shared_memory\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"attestation\": {"]
+#[doc = "      \"$ref\": \"#/$defs/device_attestation\""]
+#[doc = "    },"]
+#[doc = "    \"available_memory_bytes\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"capability_results\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/capability_result\""]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"hardware_fingerprint\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "    },"]
+#[doc = "    \"hardware_roundtrip\": {"]
+#[doc = "      \"$ref\": \"#/$defs/hardware_roundtrip\""]
+#[doc = "    },"]
+#[doc = "    \"measurement_generation\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"runtime_identities\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/runtime_identity\""]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"shared_memory\": {"]
+#[doc = "      \"$ref\": \"#/$defs/shared_memory_benchmark\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceProfilePhase0 {
+    pub attestation: DeviceAttestation,
+    pub available_memory_bytes: u64,
+    pub capability_results: ::std::vec::Vec<CapabilityResult>,
+    pub hardware_fingerprint: DeviceProfilePhase0HardwareFingerprint,
+    pub hardware_roundtrip: HardwareRoundtrip,
+    pub measurement_generation: ::std::num::NonZeroU64,
+    pub runtime_identities: ::std::vec::Vec<RuntimeIdentity>,
+    pub shared_memory: SharedMemoryBenchmark,
+}
+impl DeviceProfilePhase0 {
+    pub fn builder() -> builder::DeviceProfilePhase0 {
+        Default::default()
+    }
+}
+#[doc = "`DeviceProfilePhase0HardwareFingerprint`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct DeviceProfilePhase0HardwareFingerprint(::std::string::String);
+impl ::std::ops::Deref for DeviceProfilePhase0HardwareFingerprint {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<DeviceProfilePhase0HardwareFingerprint> for ::std::string::String {
+    fn from(value: DeviceProfilePhase0HardwareFingerprint) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for DeviceProfilePhase0HardwareFingerprint {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^sha256:[0-9a-f]{64}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^sha256:[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for DeviceProfilePhase0HardwareFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for DeviceProfilePhase0HardwareFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DeviceProfilePhase0HardwareFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for DeviceProfilePhase0HardwareFingerprint {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "`DeviceProfilePlatform`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -759,8 +1398,614 @@ impl ::std::convert::TryFrom<::std::string::String> for DeviceProfilePlatformOs 
         value.parse()
     }
 }
+#[doc = "`HardwareRoundtrip`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"not\": {"]
+#[doc = "        \"required\": ["]
+#[doc = "          \"unavailable_reason\""]
+#[doc = "        ]"]
+#[doc = "      },"]
+#[doc = "      \"required\": ["]
+#[doc = "        \"milliseconds\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"available\": {"]
+#[doc = "          \"const\": true"]
+#[doc = "        }"]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"not\": {"]
+#[doc = "        \"required\": ["]
+#[doc = "          \"milliseconds\""]
+#[doc = "        ]"]
+#[doc = "      },"]
+#[doc = "      \"required\": ["]
+#[doc = "        \"unavailable_reason\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"available\": {"]
+#[doc = "          \"const\": false"]
+#[doc = "        }"]
+#[doc = "      }"]
+#[doc = "    }"]
+#[doc = "  ],"]
+#[doc = "  \"required\": ["]
+#[doc = "    \"available\","]
+#[doc = "    \"backend\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"available\": {"]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
+#[doc = "    \"backend\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"milliseconds\": {"]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"unavailable_reason\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 512,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum HardwareRoundtrip {
+    Variant0 {
+        available: bool,
+        backend: HardwareRoundtripVariant0Backend,
+        milliseconds: f64,
+    },
+    Variant1 {
+        available: bool,
+        backend: HardwareRoundtripVariant1Backend,
+        unavailable_reason: HardwareRoundtripVariant1UnavailableReason,
+    },
+}
+#[doc = "`HardwareRoundtripVariant0Backend`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HardwareRoundtripVariant0Backend(::std::string::String);
+impl ::std::ops::Deref for HardwareRoundtripVariant0Backend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HardwareRoundtripVariant0Backend> for ::std::string::String {
+    fn from(value: HardwareRoundtripVariant0Backend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HardwareRoundtripVariant0Backend {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HardwareRoundtripVariant0Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for HardwareRoundtripVariant0Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HardwareRoundtripVariant0Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HardwareRoundtripVariant0Backend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`HardwareRoundtripVariant1Backend`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HardwareRoundtripVariant1Backend(::std::string::String);
+impl ::std::ops::Deref for HardwareRoundtripVariant1Backend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HardwareRoundtripVariant1Backend> for ::std::string::String {
+    fn from(value: HardwareRoundtripVariant1Backend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HardwareRoundtripVariant1Backend {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HardwareRoundtripVariant1Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for HardwareRoundtripVariant1Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HardwareRoundtripVariant1Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HardwareRoundtripVariant1Backend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`HardwareRoundtripVariant1UnavailableReason`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 512,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HardwareRoundtripVariant1UnavailableReason(::std::string::String);
+impl ::std::ops::Deref for HardwareRoundtripVariant1UnavailableReason {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HardwareRoundtripVariant1UnavailableReason> for ::std::string::String {
+    fn from(value: HardwareRoundtripVariant1UnavailableReason) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HardwareRoundtripVariant1UnavailableReason {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HardwareRoundtripVariant1UnavailableReason {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for HardwareRoundtripVariant1UnavailableReason
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HardwareRoundtripVariant1UnavailableReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HardwareRoundtripVariant1UnavailableReason {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`RuntimeIdentity`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"available\","]
+#[doc = "    \"identity\","]
+#[doc = "    \"kind\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"available\": {"]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
+#[doc = "    \"identity\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 512,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"kind\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeIdentity {
+    pub available: bool,
+    pub identity: RuntimeIdentityIdentity,
+    pub kind: RuntimeIdentityKind,
+}
+impl RuntimeIdentity {
+    pub fn builder() -> builder::RuntimeIdentity {
+        Default::default()
+    }
+}
+#[doc = "`RuntimeIdentityIdentity`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 512,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RuntimeIdentityIdentity(::std::string::String);
+impl ::std::ops::Deref for RuntimeIdentityIdentity {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RuntimeIdentityIdentity> for ::std::string::String {
+    fn from(value: RuntimeIdentityIdentity) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RuntimeIdentityIdentity {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RuntimeIdentityIdentity {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RuntimeIdentityIdentity {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RuntimeIdentityIdentity {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RuntimeIdentityIdentity {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`RuntimeIdentityKind`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RuntimeIdentityKind(::std::string::String);
+impl ::std::ops::Deref for RuntimeIdentityKind {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RuntimeIdentityKind> for ::std::string::String {
+    fn from(value: RuntimeIdentityKind) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RuntimeIdentityKind {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RuntimeIdentityKind {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RuntimeIdentityKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RuntimeIdentityKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RuntimeIdentityKind {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`SharedMemoryBenchmark`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"bytes_per_second\","]
+#[doc = "    \"sample_bytes\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"bytes_per_second\": {"]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"exclusiveMinimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"sample_bytes\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SharedMemoryBenchmark {
+    pub bytes_per_second: f64,
+    pub sample_bytes: ::std::num::NonZeroU64,
+}
+impl SharedMemoryBenchmark {
+    pub fn builder() -> builder::SharedMemoryBenchmark {
+        Default::default()
+    }
+}
 #[doc = r" Types for composing complex structures."]
 pub mod builder {
+    #[derive(Clone, Debug)]
+    pub struct CapabilityResult {
+        available: ::std::result::Result<bool, ::std::string::String>,
+        backend: ::std::result::Result<super::CapabilityResultBackend, ::std::string::String>,
+        capability: ::std::result::Result<super::CapabilityResultCapability, ::std::string::String>,
+        detail: ::std::result::Result<
+            ::std::option::Option<super::CapabilityResultDetail>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for CapabilityResult {
+        fn default() -> Self {
+            Self {
+                available: Err("no value supplied for available".to_string()),
+                backend: Err("no value supplied for backend".to_string()),
+                capability: Err("no value supplied for capability".to_string()),
+                detail: Ok(Default::default()),
+            }
+        }
+    }
+    impl CapabilityResult {
+        pub fn available<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<bool>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.available = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for available: {e}"));
+            self
+        }
+        pub fn backend<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::CapabilityResultBackend>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.backend = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for backend: {e}"));
+            self
+        }
+        pub fn capability<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::CapabilityResultCapability>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.capability = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for capability: {e}"));
+            self
+        }
+        pub fn detail<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::CapabilityResultDetail>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.detail = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for detail: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<CapabilityResult> for super::CapabilityResult {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: CapabilityResult,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                available: value.available?,
+                backend: value.backend?,
+                capability: value.capability?,
+                detail: value.detail?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::CapabilityResult> for CapabilityResult {
+        fn from(value: super::CapabilityResult) -> Self {
+            Self {
+                available: Ok(value.available),
+                backend: Ok(value.backend),
+                capability: Ok(value.capability),
+                detail: Ok(value.detail),
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     pub struct CodecBenchListItem {
         codec: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -844,6 +2089,74 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct DeviceAttestation {
+        algorithm: ::std::result::Result<::serde_json::Value, ::std::string::String>,
+        public_key: ::std::result::Result<super::DeviceAttestationPublicKey, ::std::string::String>,
+        signature: ::std::result::Result<super::DeviceAttestationSignature, ::std::string::String>,
+    }
+    impl ::std::default::Default for DeviceAttestation {
+        fn default() -> Self {
+            Self {
+                algorithm: Err("no value supplied for algorithm".to_string()),
+                public_key: Err("no value supplied for public_key".to_string()),
+                signature: Err("no value supplied for signature".to_string()),
+            }
+        }
+    }
+    impl DeviceAttestation {
+        pub fn algorithm<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::serde_json::Value>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.algorithm = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for algorithm: {e}"));
+            self
+        }
+        pub fn public_key<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::DeviceAttestationPublicKey>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.public_key = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for public_key: {e}"));
+            self
+        }
+        pub fn signature<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::DeviceAttestationSignature>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.signature = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for signature: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<DeviceAttestation> for super::DeviceAttestation {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: DeviceAttestation,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                algorithm: value.algorithm?,
+                public_key: value.public_key?,
+                signature: value.signature?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::DeviceAttestation> for DeviceAttestation {
+        fn from(value: super::DeviceAttestation) -> Self {
+            Self {
+                algorithm: Ok(value.algorithm),
+                public_key: Ok(value.public_key),
+                signature: Ok(value.signature),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct DeviceProfile {
         accelerators: ::std::result::Result<
             ::std::vec::Vec<super::DeviceProfileAcceleratorsItem>,
@@ -852,6 +2165,10 @@ pub mod builder {
         cpu: ::std::result::Result<super::DeviceProfileCpu, ::std::string::String>,
         measured: ::std::result::Result<super::DeviceProfileMeasured, ::std::string::String>,
         memory: ::std::result::Result<super::DeviceProfileMemory, ::std::string::String>,
+        phase0: ::std::result::Result<
+            ::std::option::Option<super::DeviceProfilePhase0>,
+            ::std::string::String,
+        >,
         platform: ::std::result::Result<super::DeviceProfilePlatform, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
     }
@@ -862,6 +2179,7 @@ pub mod builder {
                 cpu: Err("no value supplied for cpu".to_string()),
                 measured: Err("no value supplied for measured".to_string()),
                 memory: Err("no value supplied for memory".to_string()),
+                phase0: Ok(Default::default()),
                 platform: Err("no value supplied for platform".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
             }
@@ -908,6 +2226,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for memory: {e}"));
             self
         }
+        pub fn phase0<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::DeviceProfilePhase0>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.phase0 = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for phase0: {e}"));
+            self
+        }
         pub fn platform<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::DeviceProfilePlatform>,
@@ -939,6 +2267,7 @@ pub mod builder {
                 cpu: value.cpu?,
                 measured: value.measured?,
                 memory: value.memory?,
+                phase0: value.phase0?,
                 platform: value.platform?,
                 schema_version: value.schema_version?,
             })
@@ -951,6 +2280,7 @@ pub mod builder {
                 cpu: Ok(value.cpu),
                 measured: Ok(value.measured),
                 memory: Ok(value.memory),
+                phase0: Ok(value.phase0),
                 platform: Ok(value.platform),
                 schema_version: Ok(value.schema_version),
             }
@@ -1255,6 +2585,154 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct DeviceProfilePhase0 {
+        attestation: ::std::result::Result<super::DeviceAttestation, ::std::string::String>,
+        available_memory_bytes: ::std::result::Result<u64, ::std::string::String>,
+        capability_results:
+            ::std::result::Result<::std::vec::Vec<super::CapabilityResult>, ::std::string::String>,
+        hardware_fingerprint: ::std::result::Result<
+            super::DeviceProfilePhase0HardwareFingerprint,
+            ::std::string::String,
+        >,
+        hardware_roundtrip: ::std::result::Result<super::HardwareRoundtrip, ::std::string::String>,
+        measurement_generation:
+            ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        runtime_identities:
+            ::std::result::Result<::std::vec::Vec<super::RuntimeIdentity>, ::std::string::String>,
+        shared_memory: ::std::result::Result<super::SharedMemoryBenchmark, ::std::string::String>,
+    }
+    impl ::std::default::Default for DeviceProfilePhase0 {
+        fn default() -> Self {
+            Self {
+                attestation: Err("no value supplied for attestation".to_string()),
+                available_memory_bytes: Err(
+                    "no value supplied for available_memory_bytes".to_string()
+                ),
+                capability_results: Err("no value supplied for capability_results".to_string()),
+                hardware_fingerprint: Err("no value supplied for hardware_fingerprint".to_string()),
+                hardware_roundtrip: Err("no value supplied for hardware_roundtrip".to_string()),
+                measurement_generation: Err(
+                    "no value supplied for measurement_generation".to_string()
+                ),
+                runtime_identities: Err("no value supplied for runtime_identities".to_string()),
+                shared_memory: Err("no value supplied for shared_memory".to_string()),
+            }
+        }
+    }
+    impl DeviceProfilePhase0 {
+        pub fn attestation<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::DeviceAttestation>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.attestation = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for attestation: {e}"));
+            self
+        }
+        pub fn available_memory_bytes<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.available_memory_bytes = value.try_into().map_err(|e| {
+                format!("error converting supplied value for available_memory_bytes: {e}")
+            });
+            self
+        }
+        pub fn capability_results<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::CapabilityResult>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.capability_results = value.try_into().map_err(|e| {
+                format!("error converting supplied value for capability_results: {e}")
+            });
+            self
+        }
+        pub fn hardware_fingerprint<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::DeviceProfilePhase0HardwareFingerprint>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.hardware_fingerprint = value.try_into().map_err(|e| {
+                format!("error converting supplied value for hardware_fingerprint: {e}")
+            });
+            self
+        }
+        pub fn hardware_roundtrip<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::HardwareRoundtrip>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.hardware_roundtrip = value.try_into().map_err(|e| {
+                format!("error converting supplied value for hardware_roundtrip: {e}")
+            });
+            self
+        }
+        pub fn measurement_generation<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.measurement_generation = value.try_into().map_err(|e| {
+                format!("error converting supplied value for measurement_generation: {e}")
+            });
+            self
+        }
+        pub fn runtime_identities<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::RuntimeIdentity>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.runtime_identities = value.try_into().map_err(|e| {
+                format!("error converting supplied value for runtime_identities: {e}")
+            });
+            self
+        }
+        pub fn shared_memory<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::SharedMemoryBenchmark>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.shared_memory = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for shared_memory: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<DeviceProfilePhase0> for super::DeviceProfilePhase0 {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: DeviceProfilePhase0,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                attestation: value.attestation?,
+                available_memory_bytes: value.available_memory_bytes?,
+                capability_results: value.capability_results?,
+                hardware_fingerprint: value.hardware_fingerprint?,
+                hardware_roundtrip: value.hardware_roundtrip?,
+                measurement_generation: value.measurement_generation?,
+                runtime_identities: value.runtime_identities?,
+                shared_memory: value.shared_memory?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::DeviceProfilePhase0> for DeviceProfilePhase0 {
+        fn from(value: super::DeviceProfilePhase0) -> Self {
+            Self {
+                attestation: Ok(value.attestation),
+                available_memory_bytes: Ok(value.available_memory_bytes),
+                capability_results: Ok(value.capability_results),
+                hardware_fingerprint: Ok(value.hardware_fingerprint),
+                hardware_roundtrip: Ok(value.hardware_roundtrip),
+                measurement_generation: Ok(value.measurement_generation),
+                runtime_identities: Ok(value.runtime_identities),
+                shared_memory: Ok(value.shared_memory),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct DeviceProfilePlatform {
         arch: ::std::result::Result<super::DeviceProfilePlatformArch, ::std::string::String>,
         os: ::std::result::Result<super::DeviceProfilePlatformOs, ::std::string::String>,
@@ -1322,6 +2800,128 @@ pub mod builder {
                 arch: Ok(value.arch),
                 os: Ok(value.os),
                 os_version: Ok(value.os_version),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct RuntimeIdentity {
+        available: ::std::result::Result<bool, ::std::string::String>,
+        identity: ::std::result::Result<super::RuntimeIdentityIdentity, ::std::string::String>,
+        kind: ::std::result::Result<super::RuntimeIdentityKind, ::std::string::String>,
+    }
+    impl ::std::default::Default for RuntimeIdentity {
+        fn default() -> Self {
+            Self {
+                available: Err("no value supplied for available".to_string()),
+                identity: Err("no value supplied for identity".to_string()),
+                kind: Err("no value supplied for kind".to_string()),
+            }
+        }
+    }
+    impl RuntimeIdentity {
+        pub fn available<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<bool>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.available = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for available: {e}"));
+            self
+        }
+        pub fn identity<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RuntimeIdentityIdentity>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.identity = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for identity: {e}"));
+            self
+        }
+        pub fn kind<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RuntimeIdentityKind>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.kind = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for kind: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<RuntimeIdentity> for super::RuntimeIdentity {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: RuntimeIdentity,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                available: value.available?,
+                identity: value.identity?,
+                kind: value.kind?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::RuntimeIdentity> for RuntimeIdentity {
+        fn from(value: super::RuntimeIdentity) -> Self {
+            Self {
+                available: Ok(value.available),
+                identity: Ok(value.identity),
+                kind: Ok(value.kind),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct SharedMemoryBenchmark {
+        bytes_per_second: ::std::result::Result<f64, ::std::string::String>,
+        sample_bytes: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+    }
+    impl ::std::default::Default for SharedMemoryBenchmark {
+        fn default() -> Self {
+            Self {
+                bytes_per_second: Err("no value supplied for bytes_per_second".to_string()),
+                sample_bytes: Err("no value supplied for sample_bytes".to_string()),
+            }
+        }
+    }
+    impl SharedMemoryBenchmark {
+        pub fn bytes_per_second<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.bytes_per_second = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for bytes_per_second: {e}"));
+            self
+        }
+        pub fn sample_bytes<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.sample_bytes = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for sample_bytes: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<SharedMemoryBenchmark> for super::SharedMemoryBenchmark {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: SharedMemoryBenchmark,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                bytes_per_second: value.bytes_per_second?,
+                sample_bytes: value.sample_bytes?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::SharedMemoryBenchmark> for SharedMemoryBenchmark {
+        fn from(value: super::SharedMemoryBenchmark) -> Self {
+            Self {
+                bytes_per_second: Ok(value.bytes_per_second),
+                sample_bytes: Ok(value.sample_bytes),
             }
         }
     }

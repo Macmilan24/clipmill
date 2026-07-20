@@ -1,0 +1,67 @@
+{
+  "accelerators": [
+    {
+      "kind": "cpu",
+      "name": "Reference CPU"
+    }
+  ],
+  "cpu": {
+    "logical_cores": 8,
+    "model": "Reference CPU",
+    "physical_cores": 4
+  },
+  "measured": {
+    "decode": [],
+    "encode": [],
+    "ffmpeg_build": "1783011670_8.1.2"
+  },
+  "memory": {
+    "total_bytes": 17179869184,
+    "unified": false
+  },
+  "phase0": {
+    "attestation": {
+      "algorithm": "ed25519",
+      "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "available_memory_bytes": 8589934592,
+    "capability_results": [
+      {
+        "available": true,
+        "backend": "cpu",
+        "capability": "h264-decode"
+      },
+      {
+        "available": false,
+        "backend": "vaapi",
+        "capability": "h264-encode",
+        "detail": "runtime unavailable"
+      }
+    ],
+    "hardware_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "hardware_roundtrip": {
+      "available": false,
+      "backend": "hardware",
+      "unavailable_reason": "no supported accelerator"
+    },
+    "measurement_generation": 1,
+    "runtime_identities": [
+      {
+        "available": true,
+        "identity": "ffmpeg 8.1.2 build 1783011670_8.1.2",
+        "kind": "ffmpeg"
+      }
+    ],
+    "shared_memory": {
+      "bytes_per_second": 1000000000.5,
+      "sample_bytes": 4194304
+    }
+  },
+  "platform": {
+    "arch": "x86_64",
+    "os": "linux",
+    "os_version": "reference"
+  },
+  "schema_version": "clipmill.device_profile.v1"
+}

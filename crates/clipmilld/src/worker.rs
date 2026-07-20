@@ -230,6 +230,8 @@ impl WorkerService {
             cpu_threads: 1,
             ram_bytes: descriptor.max_memory_bytes,
             disk_bytes: 512 * 1024 * 1024,
+            accelerator_mask: 0,
+            vram_bytes: 0,
         };
         for _cache_attempt in 0..8 {
             let now = now_millis();

@@ -27,9 +27,11 @@ mod job_store;
 pub(crate) use job_store::MutationResult;
 mod source_store;
 pub(crate) use source_store::SourceRecord;
+mod device_store;
+pub(crate) use device_store::{BeginDeviceProfile, DeviceProfileRecord, DeviceProfileState};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -352,6 +354,66 @@ impl DbActor {
                                 Command::ListSources { project_id, reply } => {
                                     let _result = reply
                                         .send(source_store::list_sources(&connection, &project_id));
+                                }
+                                Command::BeginDeviceProfile {
+                                    request_id,
+                                    request_hash,
+                                    hardware_fingerprint,
+                                    remeasure,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(device_store::begin_device_profile(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &hardware_fingerprint,
+                                        remeasure,
+                                        now_unix_millis,
+                                    ));
+                                }
+                                Command::DeviceProfileForJob { job_id, reply } => {
+                                    let _result = reply
+                                        .send(device_store::profile_for_job(&connection, &job_id));
+                                }
+                                Command::CurrentDeviceProfile {
+                                    hardware_fingerprint,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(device_store::current_profile(
+                                        &connection,
+                                        &hardware_fingerprint,
+                                    ));
+                                }
+                                Command::StoreDeviceProfileJson {
+                                    job_id,
+                                    profile_json,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(device_store::store_profile_json(
+                                        &mut connection,
+                                        &job_id,
+                                        &profile_json,
+                                        now_unix_millis,
+                                    ));
+                                }
+                                Command::FinishDeviceProfileRequest {
+                                    request_id,
+                                    request_hash,
+                                    artifact_id,
+                                    response,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(device_store::finish_device_request(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        artifact_id,
+                                        &response,
+                                        now_unix_millis,
+                                    ));
                                 }
                                 Command::Shutdown { reply } => {
                                     let _result = reply.send(());
@@ -820,6 +882,98 @@ impl DbHandle {
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
     }
+
+    pub(crate) async fn begin_device_profile(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        hardware_fingerprint: String,
+        remeasure: bool,
+        now_unix_millis: u64,
+    ) -> Result<BeginDeviceProfile, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::BeginDeviceProfile {
+                request_id,
+                request_hash,
+                hardware_fingerprint,
+                remeasure,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn device_profile_for_job(
+        &self,
+        job_id: String,
+    ) -> Result<DeviceProfileRecord, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::DeviceProfileForJob { job_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn current_device_profile(
+        &self,
+        hardware_fingerprint: String,
+    ) -> Result<Option<DeviceProfileRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::CurrentDeviceProfile {
+                hardware_fingerprint,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn store_device_profile_json(
+        &self,
+        job_id: String,
+        profile_json: String,
+        now_unix_millis: u64,
+    ) -> Result<DeviceProfileRecord, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::StoreDeviceProfileJson {
+                job_id,
+                profile_json,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn finish_device_profile_request(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        artifact_id: ArtifactId,
+        response: Vec<u8>,
+        now_unix_millis: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::FinishDeviceProfileRequest {
+                request_id,
+                request_hash,
+                artifact_id,
+                response,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
 }
 
 #[derive(Debug)]
@@ -961,6 +1115,36 @@ enum Command {
         project_id: String,
         reply: oneshot::Sender<Result<Vec<SourceRecord>, StoreError>>,
     },
+    BeginDeviceProfile {
+        request_id: String,
+        request_hash: [u8; 32],
+        hardware_fingerprint: String,
+        remeasure: bool,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<BeginDeviceProfile, StoreError>>,
+    },
+    DeviceProfileForJob {
+        job_id: String,
+        reply: oneshot::Sender<Result<DeviceProfileRecord, StoreError>>,
+    },
+    CurrentDeviceProfile {
+        hardware_fingerprint: String,
+        reply: oneshot::Sender<Result<Option<DeviceProfileRecord>, StoreError>>,
+    },
+    StoreDeviceProfileJson {
+        job_id: String,
+        profile_json: String,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<DeviceProfileRecord, StoreError>>,
+    },
+    FinishDeviceProfileRequest {
+        request_id: String,
+        request_hash: [u8; 32],
+        artifact_id: ArtifactId,
+        response: Vec<u8>,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
     Shutdown {
         reply: oneshot::Sender<()>,
     },
@@ -1094,8 +1278,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(CREATE_V2_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V3_TABLES)?;
         transaction.execute_batch(source_store::CREATE_V4_TABLES)?;
+        transaction.execute_batch(device_store::CREATE_V5_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 4;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 5;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1109,7 +1294,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 4 {
             transaction.execute_batch(source_store::CREATE_V4_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 4;")?;
+        if version < 5 {
+            transaction.execute_batch(device_store::CREATE_V5_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 5;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -1241,8 +1429,10 @@ fn delete_project(
         return Ok(response);
     }
 
-    let deleted =
-        transaction.execute("DELETE FROM projects WHERE project_id = ?1", [project_id])?;
+    let deleted = transaction.execute(
+        "DELETE FROM projects WHERE project_id = ?1 AND is_system = 0",
+        [project_id],
+    )?;
     if deleted == 0 {
         return Err(StoreError::NotFound);
     }
@@ -1302,7 +1492,8 @@ fn remember(
 fn get_project(connection: &Connection, project_id: &str) -> Result<ProjectRecord, StoreError> {
     connection
         .query_row(
-            "SELECT project_id, name, created_unix_millis FROM projects WHERE project_id = ?1",
+            "SELECT project_id, name, created_unix_millis FROM projects
+             WHERE project_id = ?1 AND is_system = 0",
             [project_id],
             project_from_row,
         )
@@ -1314,6 +1505,7 @@ fn list_projects(connection: &Connection) -> Result<Vec<ProjectRecord>, StoreErr
     let mut statement = connection.prepare(
         "SELECT project_id, name, created_unix_millis
          FROM projects
+         WHERE is_system = 0
          ORDER BY created_unix_millis DESC, project_id DESC",
     )?;
     let rows = statement.query_map([], project_from_row)?;
@@ -1327,7 +1519,9 @@ fn attach_artifact_root(
 ) -> Result<(), StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let project_exists: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM projects WHERE project_id = ?1)",
+        "SELECT EXISTS(
+            SELECT 1 FROM projects WHERE project_id = ?1 AND is_system = 0
+         )",
         [project_id],
         |row| row.get(0),
     )?;
@@ -1349,6 +1543,8 @@ fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, Store
          SELECT artifact_id FROM task_artifact_roots
          UNION
          SELECT artifact_id FROM source_artifact_roots
+         UNION
+         SELECT artifact_id FROM system_artifact_roots
          ORDER BY artifact_id ASC",
     )?;
     let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
@@ -1381,9 +1577,9 @@ fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> 
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::unwrap_used)]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-    use std::{fs, path::Path};
+    use std::{collections::BTreeSet, fs, path::Path};
 
     use clipmill_contracts::proto::{
         ipc::v1::{JobState, TaskState},
@@ -1396,9 +1592,9 @@ mod tests {
 
     use super::{
         CREATE_V1_TABLES, CREATE_V2_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION,
-        StoreError, attach_artifact_root, create_project, delete_project, enforce_integrity_check,
-        enforce_sqlite_version, get_project, job_store, list_artifact_roots, list_projects,
-        open_database, source_store,
+        StoreError, attach_artifact_root, create_project, delete_project, device_store,
+        enforce_integrity_check, enforce_sqlite_version, get_project, job_store,
+        list_artifact_roots, list_projects, open_database, source_store,
     };
     use crate::{
         DaemonError,
@@ -1461,6 +1657,14 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("sources table mode");
+        let strict_device_profiles: i64 = connection
+            .query_row(
+                "SELECT strict FROM pragma_table_list
+                 WHERE name = 'device_profile_generations'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("device profiles table mode");
         let quick_check: String = connection
             .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
             .expect("quick check");
@@ -1472,6 +1676,7 @@ mod tests {
         assert_eq!(strict_projects, 1);
         assert_eq!(strict_roots, 1);
         assert_eq!(strict_sources, 1);
+        assert_eq!(strict_device_profiles, 1);
         assert_eq!(quick_check, "ok");
         let backup_count = fs::read_dir(temp.path().join("backups"))
             .map(Iterator::count)
@@ -1479,6 +1684,186 @@ mod tests {
         assert_eq!(backup_count, 0);
         drop(connection);
         open_database(&path, &temp.path().join("backups")).expect("repeat startup succeeds");
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn system_project_is_private_and_device_requests_join_durably() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        assert!(list_projects(&connection).expect("projects").is_empty());
+        assert!(matches!(
+            get_project(&connection, crate::jobs::SYSTEM_PROJECT_ID),
+            Err(StoreError::NotFound)
+        ));
+
+        let fingerprint = format!("sha256:{}", "0".repeat(64));
+        let started = device_store::begin_device_profile(
+            &mut connection,
+            "device-request",
+            &[1; 32],
+            &fingerprint,
+            false,
+            10,
+        )
+        .expect("begin profile");
+        let device_store::BeginDeviceProfile::Profile { record, events } = started else {
+            panic!("new request must create a profile job");
+        };
+        assert_eq!(record.measurement_generation, 1);
+        assert_eq!(events.len(), 1);
+
+        let joined = device_store::begin_device_profile(
+            &mut connection,
+            "device-request-join",
+            &[2; 32],
+            &fingerprint,
+            true,
+            11,
+        )
+        .expect("join profile");
+        let device_store::BeginDeviceProfile::Profile {
+            record: joined_record,
+            events: joined_events,
+        } = joined
+        else {
+            panic!("join should remain pending");
+        };
+        assert_eq!(joined_record.job_id, record.job_id);
+        assert!(joined_events.is_empty());
+        assert!(matches!(
+            device_store::begin_device_profile(
+                &mut connection,
+                "device-request",
+                &[9; 32],
+                &fingerprint,
+                false,
+                12,
+            ),
+            Err(StoreError::Conflict)
+        ));
+
+        device_store::store_profile_json(&mut connection, &record.job_id, "{}", 20)
+            .expect("store measured profile");
+        let lease_id = LeaseId::new().to_string();
+        let leased = job_store::lease_next_task(
+            &mut connection,
+            &lease_id,
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            21,
+            15_021,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("lease device task");
+        assert_eq!(leased.task.expect("task").kind, "device-profile");
+        let artifact_id = format!("sha256:{}", "1".repeat(64))
+            .parse::<ArtifactId>()
+            .expect("artifact id");
+        job_store::complete_task(
+            &mut connection,
+            &lease_id,
+            artifact_id,
+            &[3; 32],
+            b"artifact-response",
+            30,
+        )
+        .expect("complete profile");
+        let roots = list_artifact_roots(&connection).expect("roots");
+        assert_eq!(roots, vec![artifact_id]);
+
+        let cached = device_store::begin_device_profile(
+            &mut connection,
+            "device-request-cache",
+            &[4; 32],
+            &fingerprint,
+            false,
+            31,
+        )
+        .expect("cached profile");
+        let device_store::BeginDeviceProfile::Profile {
+            record: cached_record,
+            events: cached_events,
+        } = cached
+        else {
+            panic!("cache record expected");
+        };
+        assert_eq!(
+            cached_record.state,
+            device_store::DeviceProfileState::Succeeded
+        );
+        assert_eq!(cached_record.artifact_id, Some(artifact_id));
+        assert!(cached_events.is_empty());
+        let response = device_store::finish_device_request(
+            &mut connection,
+            "device-request-cache",
+            &[4; 32],
+            artifact_id,
+            b"encoded-response",
+            32,
+        )
+        .expect("finish response");
+        assert_eq!(response, b"encoded-response");
+        let replayed = device_store::begin_device_profile(
+            &mut connection,
+            "device-request-cache",
+            &[4; 32],
+            &fingerprint,
+            false,
+            33,
+        )
+        .expect("replay response");
+        assert!(matches!(
+            replayed,
+            device_store::BeginDeviceProfile::Response { bytes, .. }
+                if bytes == b"encoded-response"
+        ));
+    }
+
+    #[test]
+    fn task_admission_uses_measured_backend_availability() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Accelerator", 10);
+        create_project(&mut connection, "create-accelerator", &[1; 32], &project)
+            .expect("create project");
+        let project_id = project.project_id.parse::<ProjectId>().expect("project id");
+        let mut plan = JobPlan::demo(&project_id, b"backend".to_vec(), 20);
+        plan.tasks.truncate(1);
+        plan.tasks[0].is_final = true;
+        plan.tasks[0].resources.accelerator_class = "videotoolbox".to_owned();
+        job_store::submit_job(&mut connection, "submit-accelerator", &[2; 32], &plan)
+            .expect("submit job");
+
+        let unavailable = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15_030,
+            ResourceCapacity::measured(4, 1024 * 1024 * 1024),
+        )
+        .expect("query without measured backend");
+        assert!(unavailable.task.is_none());
+
+        let available = ResourceCapacity::measured(4, 1024 * 1024 * 1024)
+            .with_available_backends(&BTreeSet::from(["videotoolbox".to_owned()]));
+        let leased = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            31,
+            15_031,
+            available,
+        )
+        .expect("query with measured backend");
+        assert_eq!(
+            leased
+                .task
+                .expect("accelerated task")
+                .resources
+                .accelerator_class,
+            "videotoolbox"
+        );
     }
 
     #[test]
@@ -1501,7 +1886,10 @@ mod tests {
         let path = temp.path().join("newer.db");
         let connection = Connection::open(&path).expect("open raw database");
         connection
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 5;")
+            .execute_batch(&format!(
+                "PRAGMA application_id = 1129074765; PRAGMA user_version = {};",
+                SCHEMA_VERSION + 1
+            ))
             .expect("set version");
         drop(connection);
         assert!(open_database(&path, &temp.path().join("backups")).is_err());
@@ -1698,6 +2086,75 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("backup version");
         assert_eq!(backup_version, 3);
+    }
+
+    #[test]
+    fn v4_upgrade_creates_backup_and_installs_device_profile_schema() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v4.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v4 database");
+        connection
+            .execute_batch(CREATE_V1_TABLES)
+            .expect("v1 schema");
+        connection
+            .execute_batch(CREATE_V2_TABLES)
+            .expect("v2 schema");
+        connection
+            .execute_batch(job_store::CREATE_V3_TABLES)
+            .expect("v3 schema");
+        connection
+            .execute_batch(source_store::CREATE_V4_TABLES)
+            .expect("v4 schema");
+        connection
+            .execute_batch(
+                "INSERT INTO projects(project_id, name, created_unix_millis)
+                 VALUES ('prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'V4', 1);
+                 PRAGMA application_id = 1129074765;
+                 PRAGMA user_version = 4;",
+            )
+            .expect("v4 state");
+        drop(connection);
+
+        let upgraded = open_database(&path, &backups).expect("upgrade v4");
+        let version: i64 = upgraded
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version");
+        let strict_profiles: i64 = upgraded
+            .query_row(
+                "SELECT strict FROM pragma_table_list
+                 WHERE name = 'device_profile_generations'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("strict profiles");
+        let system_projects: i64 = upgraded
+            .query_row(
+                "SELECT count(*) FROM projects WHERE is_system = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("system project");
+        assert_eq!(version, SCHEMA_VERSION);
+        assert_eq!(strict_profiles, 1);
+        assert_eq!(system_projects, 1);
+        drop(upgraded);
+
+        let backup_path = fs::read_dir(&backups)
+            .expect("backups")
+            .next()
+            .expect("one backup")
+            .expect("backup entry")
+            .path();
+        let backup = Connection::open_with_flags(
+            backup_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .expect("open backup");
+        let backup_version: i64 = backup
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("backup version");
+        assert_eq!(backup_version, 4);
     }
 
     #[test]

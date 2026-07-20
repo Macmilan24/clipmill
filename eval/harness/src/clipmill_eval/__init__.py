@@ -1,8 +1,24 @@
-"""ClipMill evaluation harness.
+"""Signed corpus verification, daemon evaluation, and run attestations."""
 
-Populated alongside workstreams W7-W8: Seed-40 corpus manifest handling
-(fetch/verify by sha256, license attestations), the stage runner, and the
-run-manifest recorder. Evaluation is a subsystem, not an afterthought (D17).
-"""
+from .artifacts import ArtifactVerificationError, verify_artifact
+from .client import DaemonClient, DaemonClientError
+from .corpus import CorpusError, VerifiedCorpus, verify_corpus
+from .profiles import DeviceProfileVerificationError, verify_device_profile
+from .runner import EvaluationError, run_corpus, write_run_manifest
 
 __version__ = "0.0.1"
+
+__all__ = [
+    "ArtifactVerificationError",
+    "CorpusError",
+    "DaemonClient",
+    "DaemonClientError",
+    "DeviceProfileVerificationError",
+    "EvaluationError",
+    "VerifiedCorpus",
+    "run_corpus",
+    "verify_artifact",
+    "verify_corpus",
+    "verify_device_profile",
+    "write_run_manifest",
+]

@@ -26,6 +26,7 @@ export {
   SubmitJobResponseSchema,
   DemoDagPayloadV1Schema,
   ProbeSourcePayloadV1Schema,
+  DeviceProfilePayloadV1Schema,
   SubscribeTaskEventsRequestSchema,
   SubscribeTaskEventsResponseSchema,
   TaskEventSchema,

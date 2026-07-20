@@ -1,0 +1,39 @@
+{
+  "accelerators": [],
+  "cpu": {
+    "logical_cores": 1,
+    "model": "Reference CPU"
+  },
+  "measured": {
+    "ffmpeg_build": "reference"
+  },
+  "memory": {
+    "total_bytes": 1
+  },
+  "phase0": {
+    "attestation": {
+      "algorithm": "ed25519",
+      "public_key": "not-a-key",
+      "signature": "not-a-signature"
+    },
+    "available_memory_bytes": 1,
+    "capability_results": [],
+    "hardware_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "hardware_roundtrip": {
+      "available": false,
+      "backend": "hardware",
+      "unavailable_reason": "unavailable"
+    },
+    "measurement_generation": 1,
+    "runtime_identities": [],
+    "shared_memory": {
+      "bytes_per_second": 1.0,
+      "sample_bytes": 1
+    }
+  },
+  "platform": {
+    "arch": "x86_64",
+    "os": "linux"
+  },
+  "schema_version": "clipmill.device_profile.v1"
+}
