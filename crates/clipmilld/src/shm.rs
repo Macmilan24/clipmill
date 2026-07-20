@@ -60,7 +60,7 @@ impl ShmBroker {
             token,
             SharedEntry {
                 descriptor: descriptor.clone(),
-                _backing: backing,
+                backing,
             },
         );
         Ok(descriptor)
@@ -97,7 +97,10 @@ impl ShmBroker {
 #[derive(Debug)]
 struct SharedEntry {
     descriptor: BufferDescriptor,
-    _backing: SharedBacking,
+    // On macOS the field is retained only for its Drop cleanup; Linux also
+    // reads it to transfer the memfd through SCM_RIGHTS.
+    #[allow(dead_code)]
+    backing: SharedBacking,
 }
 
 #[cfg(target_os = "linux")]
@@ -291,7 +294,7 @@ fn send_descriptor(stream: &mut StdUnixStream, entry: &SharedEntry) -> Result<()
     use nix::sys::socket::{ControlMessage, MsgFlags, sendmsg};
 
     let bytes = entry.descriptor.encode_length_delimited_to_vec();
-    let descriptor = [entry._backing.memfd.as_file().as_raw_fd()];
+    let descriptor = [entry.backing.memfd.as_file().as_raw_fd()];
     let iov = [IoSlice::new(&bytes)];
     let sent = sendmsg::<()>(
         stream.as_raw_fd(),
