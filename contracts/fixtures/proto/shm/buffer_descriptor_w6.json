@@ -1,0 +1,14 @@
+{
+  "byte_len": "4",
+  "dtype": "DATA_TYPE_U8",
+  "handle_token": "shm_01J00000000000000000000000",
+  "lease_id": "lse_01J00000000000000000000000",
+  "sha256": "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+  "shape": ["4"],
+  "shm_name": "",
+  "timebase": {
+    "den": "90000",
+    "num": "1"
+  },
+  "transport_type": "TRANSPORT_TYPE_SCM_RIGHTS_MEMFD"
+}

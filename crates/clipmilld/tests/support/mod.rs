@@ -7,10 +7,10 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectRequest, DemoDagPayloadV1, GetJobRequest, GetSourceRequest, Job, ListJobsRequest,
-    ListProjectsRequest, ListSourcesRequest, PingRequest, ProbeSourcePayloadV1, Project,
-    RegisterSourceRequest, RegisterSourceResponse, Request, Response, Source, SubmitJobRequest,
-    request, response,
+    CancelJobRequest, CreateProjectRequest, DemoDagPayloadV1, GetJobRequest, GetSourceRequest, Job,
+    ListJobsRequest, ListProjectsRequest, ListSourcesRequest, PingRequest, ProbeSourcePayloadV1,
+    Project, RegisterSourceRequest, RegisterSourceResponse, Request, Response, Source,
+    SubmitJobRequest, request, response,
 };
 use prost::Message;
 use tokio::{
@@ -22,6 +22,7 @@ use tokio::{
 pub fn workspace_tempdir() -> tempfile::TempDir {
     let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
     std::fs::create_dir_all(&target).expect("target directory");
+    let target = target.canonicalize().expect("canonical target directory");
     tempfile::TempDir::new_in(target).expect("workspace tempdir")
 }
 
@@ -279,6 +280,26 @@ pub async fn get_job(socket: &Path, request_id: &str, job_id: &str) -> Result<Jo
     }
 }
 
+pub async fn cancel_job(socket: &Path, request_id: &str, job_id: &str) -> Result<Job, String> {
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::CancelJob(CancelJobRequest {
+                job_id: job_id.to_owned(),
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::CancelJob(cancelled)) => cancelled
+            .job
+            .ok_or_else(|| "cancel response omitted job".to_owned()),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected cancel response".to_owned()),
+    }
+}
+
 pub async fn list_jobs(
     socket: &Path,
     request_id: &str,
@@ -317,9 +338,10 @@ pub fn spawn_daemon_with_step_delay(
         .arg("--socket")
         .arg(socket)
         .env("RUST_LOG", "error")
+        .env("CLIPMILL_TEST_BUILTIN_WORKER", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::inherit());
     if let Some(delay) = step_delay_ms {
         command.env("CLIPMILL_W4_STEP_DELAY_MS", delay.to_string());
     }

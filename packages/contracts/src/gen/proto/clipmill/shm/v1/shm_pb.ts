@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file clipmill/shm/v1/shm.proto.
  */
 export const file_clipmill_shm_v1_shm: GenFile = /*@__PURE__*/
-  fileDesc("ChljbGlwbWlsbC9zaG0vdjEvc2htLnByb3RvEg9jbGlwbWlsbC5zaG0udjEi0wEKEEJ1ZmZlckRlc2NyaXB0b3ISEAoIc2htX25hbWUYASABKAkSDQoFc2hhcGUYAiADKAQSKAoFZHR5cGUYAyABKA4yGS5jbGlwbWlsbC5zaG0udjEuRGF0YVR5cGUSEgoKY29sb3JzcGFjZRgEIAEoCRIsCgh0aW1lYmFzZRgFIAEoCzIaLmNsaXBtaWxsLnRpbWUudjEuVGltZWJhc2USEAoIYnl0ZV9sZW4YBiABKAQSDgoGc2hhMjU2GAcgASgJEhAKCGxlYXNlX2lkGAggASgJKoMBCghEYXRhVHlwZRIZChVEQVRBX1RZUEVfVU5TUEVDSUZJRUQQABIQCgxEQVRBX1RZUEVfVTgQARIRCg1EQVRBX1RZUEVfSTE2EAISEQoNREFUQV9UWVBFX0kzMhADEhEKDURBVEFfVFlQRV9GMTYQBBIRCg1EQVRBX1RZUEVfRjMyEAViBnByb3RvMw", [file_clipmill_time_v1_time]);
+  fileDesc("ChljbGlwbWlsbC9zaG0vdjEvc2htLnByb3RvEg9jbGlwbWlsbC5zaG0udjEioQIKEEJ1ZmZlckRlc2NyaXB0b3ISEAoIc2htX25hbWUYASABKAkSDQoFc2hhcGUYAiADKAQSKAoFZHR5cGUYAyABKA4yGS5jbGlwbWlsbC5zaG0udjEuRGF0YVR5cGUSEgoKY29sb3JzcGFjZRgEIAEoCRIsCgh0aW1lYmFzZRgFIAEoCzIaLmNsaXBtaWxsLnRpbWUudjEuVGltZWJhc2USEAoIYnl0ZV9sZW4YBiABKAQSDgoGc2hhMjU2GAcgASgJEhAKCGxlYXNlX2lkGAggASgJEjYKDnRyYW5zcG9ydF90eXBlGAkgASgOMh4uY2xpcG1pbGwuc2htLnYxLlRyYW5zcG9ydFR5cGUSFAoMaGFuZGxlX3Rva2VuGAogASgJIjQKCk1hcFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSFAoMaGFuZGxlX3Rva2VuGAIgASgJIlwKEk1hcEFja25vd2xlZGdlbWVudBIQCghsZWFzZV9pZBgBIAEoCRIUCgxoYW5kbGVfdG9rZW4YAiABKAkSDgoGbWFwcGVkGAMgASgIEg4KBmRldGFpbBgEIAEoCSpyCg1UcmFuc3BvcnRUeXBlEh4KGlRSQU5TUE9SVF9UWVBFX1VOU1BFQ0lGSUVEEAASIwofVFJBTlNQT1JUX1RZUEVfU0NNX1JJR0hUU19NRU1GRBABEhwKGFRSQU5TUE9SVF9UWVBFX1BPU0lYX1NITRACKoMBCghEYXRhVHlwZRIZChVEQVRBX1RZUEVfVU5TUEVDSUZJRUQQABIQCgxEQVRBX1RZUEVfVTgQARIRCg1EQVRBX1RZUEVfSTE2EAISEQoNREFUQV9UWVBFX0kzMhADEhEKDURBVEFfVFlQRV9GMTYQBBIRCg1EQVRBX1RZUEVfRjMyEAViBnByb3RvMw", [file_clipmill_time_v1_time]);
 
 /**
  * @generated from message clipmill.shm.v1.BufferDescriptor
@@ -71,6 +71,21 @@ export type BufferDescriptor = Message<"clipmill.shm.v1.BufferDescriptor"> & {
    * @generated from field: string lease_id = 8;
    */
   leaseId: string;
+
+  /**
+   * Linux transfers a sealed memfd through SCM_RIGHTS. macOS opens a private
+   * POSIX shm name read-only and the daemon unlinks it after map acknowledgement.
+   *
+   * @generated from field: clipmill.shm.v1.TransportType transport_type = 9;
+   */
+  transportType: TransportType;
+
+  /**
+   * One-use, unguessable bearer token bound to lease_id.
+   *
+   * @generated from field: string handle_token = 10;
+   */
+  handleToken: string;
 };
 
 /**
@@ -79,6 +94,86 @@ export type BufferDescriptor = Message<"clipmill.shm.v1.BufferDescriptor"> & {
  */
 export const BufferDescriptorSchema: GenMessage<BufferDescriptor> = /*@__PURE__*/
   messageDesc(file_clipmill_shm_v1_shm, 0);
+
+/**
+ * @generated from message clipmill.shm.v1.MapRequest
+ */
+export type MapRequest = Message<"clipmill.shm.v1.MapRequest"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: string handle_token = 2;
+   */
+  handleToken: string;
+};
+
+/**
+ * Describes the message clipmill.shm.v1.MapRequest.
+ * Use `create(MapRequestSchema)` to create a new message.
+ */
+export const MapRequestSchema: GenMessage<MapRequest> = /*@__PURE__*/
+  messageDesc(file_clipmill_shm_v1_shm, 1);
+
+/**
+ * @generated from message clipmill.shm.v1.MapAcknowledgement
+ */
+export type MapAcknowledgement = Message<"clipmill.shm.v1.MapAcknowledgement"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: string handle_token = 2;
+   */
+  handleToken: string;
+
+  /**
+   * @generated from field: bool mapped = 3;
+   */
+  mapped: boolean;
+
+  /**
+   * @generated from field: string detail = 4;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message clipmill.shm.v1.MapAcknowledgement.
+ * Use `create(MapAcknowledgementSchema)` to create a new message.
+ */
+export const MapAcknowledgementSchema: GenMessage<MapAcknowledgement> = /*@__PURE__*/
+  messageDesc(file_clipmill_shm_v1_shm, 2);
+
+/**
+ * @generated from enum clipmill.shm.v1.TransportType
+ */
+export enum TransportType {
+  /**
+   * @generated from enum value: TRANSPORT_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: TRANSPORT_TYPE_SCM_RIGHTS_MEMFD = 1;
+   */
+  SCM_RIGHTS_MEMFD = 1,
+
+  /**
+   * @generated from enum value: TRANSPORT_TYPE_POSIX_SHM = 2;
+   */
+  POSIX_SHM = 2,
+}
+
+/**
+ * Describes the enum clipmill.shm.v1.TransportType.
+ */
+export const TransportTypeSchema: GenEnum<TransportType> = /*@__PURE__*/
+  enumDesc(file_clipmill_shm_v1_shm, 0);
 
 /**
  * @generated from enum clipmill.shm.v1.DataType
@@ -119,5 +214,5 @@ export enum DataType {
  * Describes the enum clipmill.shm.v1.DataType.
  */
 export const DataTypeSchema: GenEnum<DataType> = /*@__PURE__*/
-  enumDesc(file_clipmill_shm_v1_shm, 0);
+  enumDesc(file_clipmill_shm_v1_shm, 1);
 

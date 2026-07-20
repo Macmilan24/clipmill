@@ -7,6 +7,8 @@ syntax = "proto3";
 
 package clipmill.worker.v1;
 
+import "clipmill/shm/v1/shm.proto";
+
 // Advertised once at startup. The signature field exists from day one
 // (decision R5): Phase 0 verifies against a locally generated dev key; the
 // signed model/worker registry arrives in Phase 4 without a protocol change.
@@ -37,6 +39,14 @@ message TaskLease {
   bytes payload = 4;
   uint64 heartbeat_interval_ms = 5;
   uint64 lease_ttl_ms = 6;
+  // The daemon owns this private CAS staging area. Workers may create only
+  // the relative paths they later declare in Complete.staged_outputs.
+  string staging_id = 7;
+  string staging_dir = 8;
+  repeated string input_artifact_ids = 9;
+  clipmill.shm.v1.BufferDescriptor shared_buffer = 10;
+  string output_kind = 11;
+  uint32 attempt = 12;
 }
 
 // Structured progress: real work units with a bounded estimate. A total of
@@ -77,6 +87,97 @@ message Complete {
   // Machine-readable failure classification for the retry taxonomy (ch. 10).
   FailureClass failure_class = 4;
   string detail = 5;
+  // Workers declare staged paths and observations; the daemon independently
+  // validates, hashes, commits, assigns artifact IDs, and roots the result.
+  repeated StagedOutput staged_outputs = 6;
+}
+
+message StagedOutput {
+  string relative_path = 1;
+  uint64 byte_size = 2;
+  string sha256 = 3;
+}
+
+// The daemon sends a fresh nonce for every connection. Registration
+// signatures cover this challenge and a canonical capability descriptor,
+// preventing descriptor replay.
+message RegistrationChallenge {
+  bytes nonce = 1;
+  repeated string supported_protocol_versions = 2;
+  uint64 issued_unix_millis = 3;
+}
+
+message RegisterWorker {
+  CapabilityDescriptor descriptor = 1;
+}
+
+message RegistrationAck {
+  bool accepted = 1;
+  string session_id = 2;
+  string detail = 3;
+}
+
+message WorkRequest {
+  uint64 max_wait_ms = 1;
+}
+
+message NoWork {
+  uint64 retry_after_ms = 1;
+}
+
+message LeaseAcceptance {
+  string lease_id = 1;
+  bool accepted = 2;
+  DeclineReason reason = 3;
+  string detail = 4;
+}
+
+message HeartbeatAck {
+  string lease_id = 1;
+  bool accepted = 2;
+  bool cancelled = 3;
+  uint64 expires_unix_millis = 4;
+}
+
+message CancelLease {
+  string lease_id = 1;
+  string reason = 2;
+}
+
+message CompletionAck {
+  string lease_id = 1;
+  bool accepted = 2;
+  repeated string artifact_ids = 3;
+  string detail = 4;
+}
+
+message ProtocolError {
+  string code = 1;
+  string detail = 2;
+}
+
+message WorkerRequest {
+  oneof body {
+    RegisterWorker register = 1;
+    WorkRequest work_request = 2;
+    LeaseAcceptance lease_acceptance = 3;
+    Heartbeat heartbeat = 4;
+    Complete complete = 5;
+    Decline decline = 6;
+  }
+}
+
+message WorkerResponse {
+  oneof body {
+    RegistrationChallenge challenge = 1;
+    RegistrationAck registration_ack = 2;
+    TaskLease task_lease = 3;
+    NoWork no_work = 4;
+    HeartbeatAck heartbeat_ack = 5;
+    CancelLease cancel = 6;
+    CompletionAck completion_ack = 7;
+    ProtocolError error = 8;
+  }
 }
 
 enum TaskOutcome {

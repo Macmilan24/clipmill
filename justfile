@@ -60,6 +60,11 @@ gate-cache:
 gate-media:
     ./tools/drills/media-drill.sh 1
 
+# W6 coverage: authenticated external workers, durable completion replay,
+# shared-memory validation/cleanup, cancellation, and worker/daemon recovery.
+gate-workers:
+    ./tools/drills/worker-drill.sh 50
+
 # Exit gate: Local Lock. Replays the CI namespace job in a no-network
 # container (Docker/OrbStack); the egress canary must be blocked.
 gate-lock:
@@ -74,7 +79,7 @@ gate-lock:
     fi
 
 # All Phase 0 gates in sequence.
-gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-lock
+gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-lock
 
 # Launch the desktop shell. Lands with W9/W10.
 app:

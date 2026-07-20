@@ -67,6 +67,7 @@ fn config(temp: &TempDir) -> Config {
         PathBuf::from("/ignored/default"),
     )
     .expect("config")
+    .with_builtin_fixture_executor_for_tests()
 }
 
 async fn running(

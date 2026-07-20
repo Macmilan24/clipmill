@@ -11,7 +11,11 @@ mod ipc;
 mod jobs;
 mod lock;
 mod service;
+#[cfg(unix)]
+mod shm;
 mod sources;
+#[cfg(unix)]
+mod worker;
 
 pub use artifacts::{ArtifactCoordinator, ArtifactServiceError};
 pub use config::{Config, Paths};

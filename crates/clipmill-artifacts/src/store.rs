@@ -211,6 +211,29 @@ impl ArtifactStore {
         }
     }
 
+    /// Revoke an uncommitted staging token and quarantine its directory.
+    ///
+    /// Worker disconnect, cancellation, and lease expiry use this operation so
+    /// abandoned bytes can never remain an active candidate or be published by
+    /// a later connection.
+    pub fn abandon(&mut self, staging_id: &StagingId) -> Result<bool, ArtifactError> {
+        let artifact_id = self
+            .active
+            .iter()
+            .find_map(|(artifact_id, state)| (state.id == *staging_id).then_some(*artifact_id));
+        let Some(artifact_id) = artifact_id else {
+            return Ok(false);
+        };
+        let state = self
+            .active
+            .remove(&artifact_id)
+            .ok_or(ArtifactError::InvalidStoreLayout)?;
+        if fs::symlink_metadata(&state.path).is_ok() {
+            quarantine_entry(&self.paths, &state.path, "abandoned")?;
+        }
+        Ok(true)
+    }
+
     fn commit_inner(
         &mut self,
         state: &StagingState,

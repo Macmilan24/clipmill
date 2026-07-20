@@ -7,8 +7,8 @@
 #   1. The egress canary: an outbound connection attempt MUST fail. If it
 #      succeeds, the denial harness itself is broken and everything after
 #      it would be theater - abort loudly.
-#   2. The test suite plus five-iteration W3 cache and W4 job kill drills pass
-#      with zero network: no hidden cloud dependency anywhere in the workspace.
+#   2. The test suite plus five-iteration cache, job, media, and worker drills
+#      pass with zero network: no hidden cloud dependency in the workspace.
 #      Build artifacts are prepared outside the namespace; Cargo is offline.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -33,4 +33,7 @@ CARGO_NET_OFFLINE=true ./tools/drills/kill-drill.sh 5
 echo "==> source evidence and media smoke test, offline"
 CARGO_NET_OFFLINE=true ./tools/drills/media-drill.sh 5
 
-echo "network-denial: OK (canary blocked; suite, cache, job, and media drills green with zero egress)"
+echo "==> authenticated worker and shared-memory smoke test, offline"
+CARGO_NET_OFFLINE=true ./tools/drills/worker-drill.sh 5
+
+echo "network-denial: OK (canary blocked; suite, cache, job, media, and worker drills green with zero egress)"

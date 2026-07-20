@@ -139,6 +139,38 @@ fn one_writer_per_key_and_model_changes_create_sibling_lineages() {
 }
 
 #[test]
+fn abandoning_worker_staging_revokes_the_token_and_quarantines_bytes() {
+    let temp = TempDir::new().expect("tempdir");
+    let (mut store, _) = ArtifactStore::initialize(temp.path()).expect("store");
+    let recipe = recipe(41);
+    let staging = prepare_miss(&mut store, recipe.clone());
+    let staging_id = staging.id().clone();
+    let staging_path = staging.path().to_path_buf();
+    let path = "partial.bin".parse::<ArtifactPath>().expect("path");
+    let mut file = staging.create_file(&path).expect("partial output");
+    file.write_all(b"unacknowledged").expect("write partial");
+    file.sync_all().expect("sync partial");
+    drop(file);
+
+    assert!(store.abandon(&staging_id).expect("abandon token"));
+    assert!(!staging_path.exists());
+    assert!(!store.abandon(&staging_id).expect("repeat abandon"));
+    assert!(
+        fs::read_dir(temp.path().join("quarantine"))
+            .expect("quarantine")
+            .any(|entry| entry
+                .expect("quarantine entry")
+                .file_name()
+                .to_string_lossy()
+                .starts_with("abandoned-"))
+    );
+    assert!(matches!(
+        store.prepare(recipe).expect("prepare after abandon"),
+        PrepareOutcome::Miss(_)
+    ));
+}
+
+#[test]
 fn concurrent_stores_reject_nondeterministic_output_for_one_key() {
     let temp = TempDir::new().expect("tempdir");
     let root = temp.path().join("artifacts");

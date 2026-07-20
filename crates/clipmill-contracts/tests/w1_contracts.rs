@@ -5,7 +5,10 @@
 //! Tests may panic; the workspace deny targets production code.
 #![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
-use clipmill_contracts::proto::shm::v1::{BufferDescriptor, DataType};
+use clipmill_contracts::proto::{
+    shm::v1::{BufferDescriptor, DataType, TransportType},
+    worker::v1::{CapabilityDescriptor, WorkerRequest, worker_request},
+};
 use clipmill_contracts::schemas::device_profile::DeviceProfile;
 use clipmill_contracts::schemas::source_map::SourceMap;
 use prost::Message;
@@ -76,5 +79,56 @@ fn shm_descriptor_binpb_roundtrips_with_cross_package_timebase() {
         decoded.encode_to_vec(),
         bytes,
         "re-encode must be byte-identical"
+    );
+}
+
+#[test]
+fn w6_additive_worker_and_shared_memory_contracts_roundtrip() {
+    let descriptor_fixture: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/shm/buffer_descriptor_w6.json",
+    ))
+    .unwrap();
+    let descriptor = BufferDescriptor {
+        shm_name: descriptor_fixture["shm_name"].as_str().unwrap().to_owned(),
+        shape: vec![4],
+        dtype: DataType::U8 as i32,
+        colorspace: String::new(),
+        timebase: Some(clipmill_contracts::proto::time::v1::Timebase {
+            num: 1,
+            den: 90_000,
+        }),
+        byte_len: 4,
+        sha256: descriptor_fixture["sha256"].as_str().unwrap().to_owned(),
+        lease_id: descriptor_fixture["lease_id"].as_str().unwrap().to_owned(),
+        transport_type: TransportType::ScmRightsMemfd as i32,
+        handle_token: descriptor_fixture["handle_token"]
+            .as_str()
+            .unwrap()
+            .to_owned(),
+    };
+    let decoded = BufferDescriptor::decode(descriptor.encode_to_vec().as_slice()).unwrap();
+    assert_eq!(decoded.transport_type(), TransportType::ScmRightsMemfd);
+    assert!(!decoded.handle_token.is_empty());
+
+    let capability = CapabilityDescriptor {
+        worker_id: "wrk_01J00000000000000000000000".to_owned(),
+        family: "echo".to_owned(),
+        capabilities: vec!["demo-seed".to_owned()],
+        protocol_version: "1.1".to_owned(),
+        backend: "cpu".to_owned(),
+        max_memory_bytes: 268_435_456,
+        public_key: vec![0; 32],
+        signature: vec![0; 64],
+    };
+    let request = WorkerRequest {
+        body: Some(worker_request::Body::Register(
+            clipmill_contracts::proto::worker::v1::RegisterWorker {
+                descriptor: Some(capability),
+            },
+        )),
+    };
+    assert_eq!(
+        WorkerRequest::decode(request.encode_to_vec().as_slice()).unwrap(),
+        request
     );
 }

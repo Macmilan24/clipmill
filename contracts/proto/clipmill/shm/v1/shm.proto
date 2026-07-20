@@ -21,6 +21,29 @@ message BufferDescriptor {
   string sha256 = 7;
   // The task lease this buffer belongs to; unmapped when the lease ends.
   string lease_id = 8;
+  // Linux transfers a sealed memfd through SCM_RIGHTS. macOS opens a private
+  // POSIX shm name read-only and the daemon unlinks it after map acknowledgement.
+  TransportType transport_type = 9;
+  // One-use, unguessable bearer token bound to lease_id.
+  string handle_token = 10;
+}
+
+message MapRequest {
+  string lease_id = 1;
+  string handle_token = 2;
+}
+
+message MapAcknowledgement {
+  string lease_id = 1;
+  string handle_token = 2;
+  bool mapped = 3;
+  string detail = 4;
+}
+
+enum TransportType {
+  TRANSPORT_TYPE_UNSPECIFIED = 0;
+  TRANSPORT_TYPE_SCM_RIGHTS_MEMFD = 1;
+  TRANSPORT_TYPE_POSIX_SHM = 2;
 }
 
 enum DataType {

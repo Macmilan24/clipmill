@@ -27,3 +27,6 @@ Mechanics:
 - Source-map v1 keeps its W1 shape readable. W5 producers always include the
   additive `mapping` extension; absence identifies legacy evidence and is not
   accepted as newly produced Phase 0 output.
+- Worker protocol `1.1` is the Phase 0 current minor and `1.0` is the supported
+  previous minor. Both authenticate a fresh daemon challenge; only `1.1`
+  workers may use staged-output declarations and one-use shared-memory handles.

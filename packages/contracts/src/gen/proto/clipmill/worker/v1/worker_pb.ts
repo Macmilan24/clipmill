@@ -10,13 +10,15 @@
 
 import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { BufferDescriptor } from "../../shm/v1/shm_pb";
+import { file_clipmill_shm_v1_shm } from "../../shm/v1/shm_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file clipmill/worker/v1/worker.proto.
  */
 export const file_clipmill_worker_v1_worker: GenFile = /*@__PURE__*/
-  fileDesc("Ch9jbGlwbWlsbC93b3JrZXIvdjEvd29ya2VyLnByb3RvEhJjbGlwbWlsbC53b3JrZXIudjEiuwEKFENhcGFiaWxpdHlEZXNjcmlwdG9yEhEKCXdvcmtlcl9pZBgBIAEoCRIOCgZmYW1pbHkYAiABKAkSFAoMY2FwYWJpbGl0aWVzGAMgAygJEhgKEHByb3RvY29sX3ZlcnNpb24YBCABKAkSDwoHYmFja2VuZBgFIAEoCRIYChBtYXhfbWVtb3J5X2J5dGVzGAYgASgEEhIKCnB1YmxpY19rZXkYByABKAwSEQoJc2lnbmF0dXJlGAggASgMIoIBCglUYXNrTGVhc2USDwoHdGFza19pZBgBIAEoCRIQCghsZWFzZV9pZBgCIAEoCRIMCgRraW5kGAMgASgJEg8KB3BheWxvYWQYBCABKAwSHQoVaGVhcnRiZWF0X2ludGVydmFsX21zGAUgASgEEhQKDGxlYXNlX3R0bF9tcxgGIAEoBCI6Cg1Qcm9ncmVzc1VuaXRzEgwKBHVuaXQYASABKAkSDAoEZG9uZRgCIAEoBBINCgV0b3RhbBgDIAEoBCJSCglIZWFydGJlYXQSEAoIbGVhc2VfaWQYASABKAkSMwoIcHJvZ3Jlc3MYAiABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuUHJvZ3Jlc3NVbml0cyJdCgdEZWNsaW5lEg8KB3Rhc2tfaWQYASABKAkSMQoGcmVhc29uGAIgASgOMiEuY2xpcG1pbGwud29ya2VyLnYxLkRlY2xpbmVSZWFzb24SDgoGZGV0YWlsGAMgASgJIq0BCghDb21wbGV0ZRIQCghsZWFzZV9pZBgBIAEoCRIwCgdvdXRjb21lGAIgASgOMh8uY2xpcG1pbGwud29ya2VyLnYxLlRhc2tPdXRjb21lEhQKDGFydGlmYWN0X2lkcxgDIAMoCRI3Cg1mYWlsdXJlX2NsYXNzGAQgASgOMiAuY2xpcG1pbGwud29ya2VyLnYxLkZhaWx1cmVDbGFzcxIOCgZkZXRhaWwYBSABKAkqtwEKDURlY2xpbmVSZWFzb24SHgoaREVDTElORV9SRUFTT05fVU5TUEVDSUZJRUQQABIjCh9ERUNMSU5FX1JFQVNPTl9VTlNVUFBPUlRFRF9LSU5EEAESHwobREVDTElORV9SRUFTT05fVkVSU0lPTl9TS0VXEAISJQohREVDTElORV9SRUFTT05fUkVTT1VSQ0VfRVhIQVVTVEVEEAMSGQoVREVDTElORV9SRUFTT05fUE9MSUNZEAQqmAEKC1Rhc2tPdXRjb21lEhwKGFRBU0tfT1VUQ09NRV9VTlNQRUNJRklFRBAAEhoKFlRBU0tfT1VUQ09NRV9TVUNDRUVERUQQARIaChZUQVNLX09VVENPTUVfUkVUUllBQkxFEAISFwoTVEFTS19PVVRDT01FX0ZBSUxFRBADEhoKFlRBU0tfT1VUQ09NRV9DQU5DRUxMRUQQBCqnAQoMRmFpbHVyZUNsYXNzEh0KGUZBSUxVUkVfQ0xBU1NfVU5TUEVDSUZJRUQQABIbChdGQUlMVVJFX0NMQVNTX1RSQU5TSUVOVBABEh8KG0ZBSUxVUkVfQ0xBU1NfREVURVJNSU5JU1RJQxACEh8KG0ZBSUxVUkVfQ0xBU1NfQ09SUlVQVF9NT0RFTBADEhkKFUZBSUxVUkVfQ0xBU1NfTkVUV09SSxAEYgZwcm90bzM");
+  fileDesc("Ch9jbGlwbWlsbC93b3JrZXIvdjEvd29ya2VyLnByb3RvEhJjbGlwbWlsbC53b3JrZXIudjEiuwEKFENhcGFiaWxpdHlEZXNjcmlwdG9yEhEKCXdvcmtlcl9pZBgBIAEoCRIOCgZmYW1pbHkYAiABKAkSFAoMY2FwYWJpbGl0aWVzGAMgAygJEhgKEHByb3RvY29sX3ZlcnNpb24YBCABKAkSDwoHYmFja2VuZBgFIAEoCRIYChBtYXhfbWVtb3J5X2J5dGVzGAYgASgEEhIKCnB1YmxpY19rZXkYByABKAwSEQoJc2lnbmF0dXJlGAggASgMIqcCCglUYXNrTGVhc2USDwoHdGFza19pZBgBIAEoCRIQCghsZWFzZV9pZBgCIAEoCRIMCgRraW5kGAMgASgJEg8KB3BheWxvYWQYBCABKAwSHQoVaGVhcnRiZWF0X2ludGVydmFsX21zGAUgASgEEhQKDGxlYXNlX3R0bF9tcxgGIAEoBBISCgpzdGFnaW5nX2lkGAcgASgJEhMKC3N0YWdpbmdfZGlyGAggASgJEhoKEmlucHV0X2FydGlmYWN0X2lkcxgJIAMoCRI4Cg1zaGFyZWRfYnVmZmVyGAogASgLMiEuY2xpcG1pbGwuc2htLnYxLkJ1ZmZlckRlc2NyaXB0b3ISEwoLb3V0cHV0X2tpbmQYCyABKAkSDwoHYXR0ZW1wdBgMIAEoDSI6Cg1Qcm9ncmVzc1VuaXRzEgwKBHVuaXQYASABKAkSDAoEZG9uZRgCIAEoBBINCgV0b3RhbBgDIAEoBCJSCglIZWFydGJlYXQSEAoIbGVhc2VfaWQYASABKAkSMwoIcHJvZ3Jlc3MYAiABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuUHJvZ3Jlc3NVbml0cyJdCgdEZWNsaW5lEg8KB3Rhc2tfaWQYASABKAkSMQoGcmVhc29uGAIgASgOMiEuY2xpcG1pbGwud29ya2VyLnYxLkRlY2xpbmVSZWFzb24SDgoGZGV0YWlsGAMgASgJIucBCghDb21wbGV0ZRIQCghsZWFzZV9pZBgBIAEoCRIwCgdvdXRjb21lGAIgASgOMh8uY2xpcG1pbGwud29ya2VyLnYxLlRhc2tPdXRjb21lEhQKDGFydGlmYWN0X2lkcxgDIAMoCRI3Cg1mYWlsdXJlX2NsYXNzGAQgASgOMiAuY2xpcG1pbGwud29ya2VyLnYxLkZhaWx1cmVDbGFzcxIOCgZkZXRhaWwYBSABKAkSOAoOc3RhZ2VkX291dHB1dHMYBiADKAsyIC5jbGlwbWlsbC53b3JrZXIudjEuU3RhZ2VkT3V0cHV0IkgKDFN0YWdlZE91dHB1dBIVCg1yZWxhdGl2ZV9wYXRoGAEgASgJEhEKCWJ5dGVfc2l6ZRgCIAEoBBIOCgZzaGEyNTYYAyABKAkiZwoVUmVnaXN0cmF0aW9uQ2hhbGxlbmdlEg0KBW5vbmNlGAEgASgMEiMKG3N1cHBvcnRlZF9wcm90b2NvbF92ZXJzaW9ucxgCIAMoCRIaChJpc3N1ZWRfdW5peF9taWxsaXMYAyABKAQiTgoOUmVnaXN0ZXJXb3JrZXISPAoKZGVzY3JpcHRvchgBIAEoCzIoLmNsaXBtaWxsLndvcmtlci52MS5DYXBhYmlsaXR5RGVzY3JpcHRvciJHCg9SZWdpc3RyYXRpb25BY2sSEAoIYWNjZXB0ZWQYASABKAgSEgoKc2Vzc2lvbl9pZBgCIAEoCRIOCgZkZXRhaWwYAyABKAkiIgoLV29ya1JlcXVlc3QSEwoLbWF4X3dhaXRfbXMYASABKAQiIAoGTm9Xb3JrEhYKDnJldHJ5X2FmdGVyX21zGAEgASgEIngKD0xlYXNlQWNjZXB0YW5jZRIQCghsZWFzZV9pZBgBIAEoCRIQCghhY2NlcHRlZBgCIAEoCBIxCgZyZWFzb24YAyABKA4yIS5jbGlwbWlsbC53b3JrZXIudjEuRGVjbGluZVJlYXNvbhIOCgZkZXRhaWwYBCABKAkiYgoMSGVhcnRiZWF0QWNrEhAKCGxlYXNlX2lkGAEgASgJEhAKCGFjY2VwdGVkGAIgASgIEhEKCWNhbmNlbGxlZBgDIAEoCBIbChNleHBpcmVzX3VuaXhfbWlsbGlzGAQgASgEIi8KC0NhbmNlbExlYXNlEhAKCGxlYXNlX2lkGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJZCg1Db21wbGV0aW9uQWNrEhAKCGxlYXNlX2lkGAEgASgJEhAKCGFjY2VwdGVkGAIgASgIEhQKDGFydGlmYWN0X2lkcxgDIAMoCRIOCgZkZXRhaWwYBCABKAkiLQoNUHJvdG9jb2xFcnJvchIMCgRjb2RlGAEgASgJEg4KBmRldGFpbBgCIAEoCSLfAgoNV29ya2VyUmVxdWVzdBI2CghyZWdpc3RlchgBIAEoCzIiLmNsaXBtaWxsLndvcmtlci52MS5SZWdpc3RlcldvcmtlckgAEjcKDHdvcmtfcmVxdWVzdBgCIAEoCzIfLmNsaXBtaWxsLndvcmtlci52MS5Xb3JrUmVxdWVzdEgAEj8KEGxlYXNlX2FjY2VwdGFuY2UYAyABKAsyIy5jbGlwbWlsbC53b3JrZXIudjEuTGVhc2VBY2NlcHRhbmNlSAASMgoJaGVhcnRiZWF0GAQgASgLMh0uY2xpcG1pbGwud29ya2VyLnYxLkhlYXJ0YmVhdEgAEjAKCGNvbXBsZXRlGAUgASgLMhwuY2xpcG1pbGwud29ya2VyLnYxLkNvbXBsZXRlSAASLgoHZGVjbGluZRgGIAEoCzIbLmNsaXBtaWxsLndvcmtlci52MS5EZWNsaW5lSABCBgoEYm9keSLcAwoOV29ya2VyUmVzcG9uc2USPgoJY2hhbGxlbmdlGAEgASgLMikuY2xpcG1pbGwud29ya2VyLnYxLlJlZ2lzdHJhdGlvbkNoYWxsZW5nZUgAEj8KEHJlZ2lzdHJhdGlvbl9hY2sYAiABKAsyIy5jbGlwbWlsbC53b3JrZXIudjEuUmVnaXN0cmF0aW9uQWNrSAASMwoKdGFza19sZWFzZRgDIAEoCzIdLmNsaXBtaWxsLndvcmtlci52MS5UYXNrTGVhc2VIABItCgdub193b3JrGAQgASgLMhouY2xpcG1pbGwud29ya2VyLnYxLk5vV29ya0gAEjkKDWhlYXJ0YmVhdF9hY2sYBSABKAsyIC5jbGlwbWlsbC53b3JrZXIudjEuSGVhcnRiZWF0QWNrSAASMQoGY2FuY2VsGAYgASgLMh8uY2xpcG1pbGwud29ya2VyLnYxLkNhbmNlbExlYXNlSAASOwoOY29tcGxldGlvbl9hY2sYByABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuQ29tcGxldGlvbkFja0gAEjIKBWVycm9yGAggASgLMiEuY2xpcG1pbGwud29ya2VyLnYxLlByb3RvY29sRXJyb3JIAEIGCgRib2R5KrcBCg1EZWNsaW5lUmVhc29uEh4KGkRFQ0xJTkVfUkVBU09OX1VOU1BFQ0lGSUVEEAASIwofREVDTElORV9SRUFTT05fVU5TVVBQT1JURURfS0lORBABEh8KG0RFQ0xJTkVfUkVBU09OX1ZFUlNJT05fU0tFVxACEiUKIURFQ0xJTkVfUkVBU09OX1JFU09VUkNFX0VYSEFVU1RFRBADEhkKFURFQ0xJTkVfUkVBU09OX1BPTElDWRAEKpgBCgtUYXNrT3V0Y29tZRIcChhUQVNLX09VVENPTUVfVU5TUEVDSUZJRUQQABIaChZUQVNLX09VVENPTUVfU1VDQ0VFREVEEAESGgoWVEFTS19PVVRDT01FX1JFVFJZQUJMRRACEhcKE1RBU0tfT1VUQ09NRV9GQUlMRUQQAxIaChZUQVNLX09VVENPTUVfQ0FOQ0VMTEVEEAQqpwEKDEZhaWx1cmVDbGFzcxIdChlGQUlMVVJFX0NMQVNTX1VOU1BFQ0lGSUVEEAASGwoXRkFJTFVSRV9DTEFTU19UUkFOU0lFTlQQARIfChtGQUlMVVJFX0NMQVNTX0RFVEVSTUlOSVNUSUMQAhIfChtGQUlMVVJFX0NMQVNTX0NPUlJVUFRfTU9ERUwQAxIZChVGQUlMVVJFX0NMQVNTX05FVFdPUksQBGIGcHJvdG8z", [file_clipmill_shm_v1_shm]);
 
 /**
  * Advertised once at startup. The signature field exists from day one
@@ -125,6 +127,39 @@ export type TaskLease = Message<"clipmill.worker.v1.TaskLease"> & {
    * @generated from field: uint64 lease_ttl_ms = 6;
    */
   leaseTtlMs: bigint;
+
+  /**
+   * The daemon owns this private CAS staging area. Workers may create only
+   * the relative paths they later declare in Complete.staged_outputs.
+   *
+   * @generated from field: string staging_id = 7;
+   */
+  stagingId: string;
+
+  /**
+   * @generated from field: string staging_dir = 8;
+   */
+  stagingDir: string;
+
+  /**
+   * @generated from field: repeated string input_artifact_ids = 9;
+   */
+  inputArtifactIds: string[];
+
+  /**
+   * @generated from field: clipmill.shm.v1.BufferDescriptor shared_buffer = 10;
+   */
+  sharedBuffer?: BufferDescriptor | undefined;
+
+  /**
+   * @generated from field: string output_kind = 11;
+   */
+  outputKind: string;
+
+  /**
+   * @generated from field: uint32 attempt = 12;
+   */
+  attempt: number;
 };
 
 /**
@@ -250,6 +285,14 @@ export type Complete = Message<"clipmill.worker.v1.Complete"> & {
    * @generated from field: string detail = 5;
    */
   detail: string;
+
+  /**
+   * Workers declare staged paths and observations; the daemon independently
+   * validates, hashes, commits, assigns artifact IDs, and roots the result.
+   *
+   * @generated from field: repeated clipmill.worker.v1.StagedOutput staged_outputs = 6;
+   */
+  stagedOutputs: StagedOutput[];
 };
 
 /**
@@ -258,6 +301,400 @@ export type Complete = Message<"clipmill.worker.v1.Complete"> & {
  */
 export const CompleteSchema: GenMessage<Complete> = /*@__PURE__*/
   messageDesc(file_clipmill_worker_v1_worker, 5);
+
+/**
+ * @generated from message clipmill.worker.v1.StagedOutput
+ */
+export type StagedOutput = Message<"clipmill.worker.v1.StagedOutput"> & {
+  /**
+   * @generated from field: string relative_path = 1;
+   */
+  relativePath: string;
+
+  /**
+   * @generated from field: uint64 byte_size = 2;
+   */
+  byteSize: bigint;
+
+  /**
+   * @generated from field: string sha256 = 3;
+   */
+  sha256: string;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.StagedOutput.
+ * Use `create(StagedOutputSchema)` to create a new message.
+ */
+export const StagedOutputSchema: GenMessage<StagedOutput> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 6);
+
+/**
+ * The daemon sends a fresh nonce for every connection. Registration
+ * signatures cover this challenge and a canonical capability descriptor,
+ * preventing descriptor replay.
+ *
+ * @generated from message clipmill.worker.v1.RegistrationChallenge
+ */
+export type RegistrationChallenge = Message<"clipmill.worker.v1.RegistrationChallenge"> & {
+  /**
+   * @generated from field: bytes nonce = 1;
+   */
+  nonce: Uint8Array;
+
+  /**
+   * @generated from field: repeated string supported_protocol_versions = 2;
+   */
+  supportedProtocolVersions: string[];
+
+  /**
+   * @generated from field: uint64 issued_unix_millis = 3;
+   */
+  issuedUnixMillis: bigint;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.RegistrationChallenge.
+ * Use `create(RegistrationChallengeSchema)` to create a new message.
+ */
+export const RegistrationChallengeSchema: GenMessage<RegistrationChallenge> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 7);
+
+/**
+ * @generated from message clipmill.worker.v1.RegisterWorker
+ */
+export type RegisterWorker = Message<"clipmill.worker.v1.RegisterWorker"> & {
+  /**
+   * @generated from field: clipmill.worker.v1.CapabilityDescriptor descriptor = 1;
+   */
+  descriptor?: CapabilityDescriptor | undefined;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.RegisterWorker.
+ * Use `create(RegisterWorkerSchema)` to create a new message.
+ */
+export const RegisterWorkerSchema: GenMessage<RegisterWorker> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 8);
+
+/**
+ * @generated from message clipmill.worker.v1.RegistrationAck
+ */
+export type RegistrationAck = Message<"clipmill.worker.v1.RegistrationAck"> & {
+  /**
+   * @generated from field: bool accepted = 1;
+   */
+  accepted: boolean;
+
+  /**
+   * @generated from field: string session_id = 2;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: string detail = 3;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.RegistrationAck.
+ * Use `create(RegistrationAckSchema)` to create a new message.
+ */
+export const RegistrationAckSchema: GenMessage<RegistrationAck> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 9);
+
+/**
+ * @generated from message clipmill.worker.v1.WorkRequest
+ */
+export type WorkRequest = Message<"clipmill.worker.v1.WorkRequest"> & {
+  /**
+   * @generated from field: uint64 max_wait_ms = 1;
+   */
+  maxWaitMs: bigint;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.WorkRequest.
+ * Use `create(WorkRequestSchema)` to create a new message.
+ */
+export const WorkRequestSchema: GenMessage<WorkRequest> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 10);
+
+/**
+ * @generated from message clipmill.worker.v1.NoWork
+ */
+export type NoWork = Message<"clipmill.worker.v1.NoWork"> & {
+  /**
+   * @generated from field: uint64 retry_after_ms = 1;
+   */
+  retryAfterMs: bigint;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.NoWork.
+ * Use `create(NoWorkSchema)` to create a new message.
+ */
+export const NoWorkSchema: GenMessage<NoWork> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 11);
+
+/**
+ * @generated from message clipmill.worker.v1.LeaseAcceptance
+ */
+export type LeaseAcceptance = Message<"clipmill.worker.v1.LeaseAcceptance"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: bool accepted = 2;
+   */
+  accepted: boolean;
+
+  /**
+   * @generated from field: clipmill.worker.v1.DeclineReason reason = 3;
+   */
+  reason: DeclineReason;
+
+  /**
+   * @generated from field: string detail = 4;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.LeaseAcceptance.
+ * Use `create(LeaseAcceptanceSchema)` to create a new message.
+ */
+export const LeaseAcceptanceSchema: GenMessage<LeaseAcceptance> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 12);
+
+/**
+ * @generated from message clipmill.worker.v1.HeartbeatAck
+ */
+export type HeartbeatAck = Message<"clipmill.worker.v1.HeartbeatAck"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: bool accepted = 2;
+   */
+  accepted: boolean;
+
+  /**
+   * @generated from field: bool cancelled = 3;
+   */
+  cancelled: boolean;
+
+  /**
+   * @generated from field: uint64 expires_unix_millis = 4;
+   */
+  expiresUnixMillis: bigint;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.HeartbeatAck.
+ * Use `create(HeartbeatAckSchema)` to create a new message.
+ */
+export const HeartbeatAckSchema: GenMessage<HeartbeatAck> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 13);
+
+/**
+ * @generated from message clipmill.worker.v1.CancelLease
+ */
+export type CancelLease = Message<"clipmill.worker.v1.CancelLease"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.CancelLease.
+ * Use `create(CancelLeaseSchema)` to create a new message.
+ */
+export const CancelLeaseSchema: GenMessage<CancelLease> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 14);
+
+/**
+ * @generated from message clipmill.worker.v1.CompletionAck
+ */
+export type CompletionAck = Message<"clipmill.worker.v1.CompletionAck"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: bool accepted = 2;
+   */
+  accepted: boolean;
+
+  /**
+   * @generated from field: repeated string artifact_ids = 3;
+   */
+  artifactIds: string[];
+
+  /**
+   * @generated from field: string detail = 4;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.CompletionAck.
+ * Use `create(CompletionAckSchema)` to create a new message.
+ */
+export const CompletionAckSchema: GenMessage<CompletionAck> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 15);
+
+/**
+ * @generated from message clipmill.worker.v1.ProtocolError
+ */
+export type ProtocolError = Message<"clipmill.worker.v1.ProtocolError"> & {
+  /**
+   * @generated from field: string code = 1;
+   */
+  code: string;
+
+  /**
+   * @generated from field: string detail = 2;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.ProtocolError.
+ * Use `create(ProtocolErrorSchema)` to create a new message.
+ */
+export const ProtocolErrorSchema: GenMessage<ProtocolError> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 16);
+
+/**
+ * @generated from message clipmill.worker.v1.WorkerRequest
+ */
+export type WorkerRequest = Message<"clipmill.worker.v1.WorkerRequest"> & {
+  /**
+   * @generated from oneof clipmill.worker.v1.WorkerRequest.body
+   */
+  body: {
+    /**
+     * @generated from field: clipmill.worker.v1.RegisterWorker register = 1;
+     */
+    value: RegisterWorker;
+    case: "register";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.WorkRequest work_request = 2;
+     */
+    value: WorkRequest;
+    case: "workRequest";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.LeaseAcceptance lease_acceptance = 3;
+     */
+    value: LeaseAcceptance;
+    case: "leaseAcceptance";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.Heartbeat heartbeat = 4;
+     */
+    value: Heartbeat;
+    case: "heartbeat";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.Complete complete = 5;
+     */
+    value: Complete;
+    case: "complete";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.Decline decline = 6;
+     */
+    value: Decline;
+    case: "decline";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message clipmill.worker.v1.WorkerRequest.
+ * Use `create(WorkerRequestSchema)` to create a new message.
+ */
+export const WorkerRequestSchema: GenMessage<WorkerRequest> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 17);
+
+/**
+ * @generated from message clipmill.worker.v1.WorkerResponse
+ */
+export type WorkerResponse = Message<"clipmill.worker.v1.WorkerResponse"> & {
+  /**
+   * @generated from oneof clipmill.worker.v1.WorkerResponse.body
+   */
+  body: {
+    /**
+     * @generated from field: clipmill.worker.v1.RegistrationChallenge challenge = 1;
+     */
+    value: RegistrationChallenge;
+    case: "challenge";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.RegistrationAck registration_ack = 2;
+     */
+    value: RegistrationAck;
+    case: "registrationAck";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.TaskLease task_lease = 3;
+     */
+    value: TaskLease;
+    case: "taskLease";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.NoWork no_work = 4;
+     */
+    value: NoWork;
+    case: "noWork";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.HeartbeatAck heartbeat_ack = 5;
+     */
+    value: HeartbeatAck;
+    case: "heartbeatAck";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.CancelLease cancel = 6;
+     */
+    value: CancelLease;
+    case: "cancel";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.CompletionAck completion_ack = 7;
+     */
+    value: CompletionAck;
+    case: "completionAck";
+  } | {
+    /**
+     * @generated from field: clipmill.worker.v1.ProtocolError error = 8;
+     */
+    value: ProtocolError;
+    case: "error";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message clipmill.worker.v1.WorkerResponse.
+ * Use `create(WorkerResponseSchema)` to create a new message.
+ */
+export const WorkerResponseSchema: GenMessage<WorkerResponse> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 18);
 
 /**
  * @generated from enum clipmill.worker.v1.DeclineReason

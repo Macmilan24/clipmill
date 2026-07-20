@@ -60,10 +60,32 @@ export {
   HeartbeatSchema,
   DeclineSchema,
   CompleteSchema,
+  StagedOutputSchema,
+  RegistrationChallengeSchema,
+  RegisterWorkerSchema,
+  RegistrationAckSchema,
+  WorkRequestSchema,
+  NoWorkSchema,
+  LeaseAcceptanceSchema,
+  HeartbeatAckSchema,
+  CancelLeaseSchema,
+  CompletionAckSchema,
+  ProtocolErrorSchema,
+  WorkerRequestSchema,
+  WorkerResponseSchema,
+  DeclineReason,
+  TaskOutcome,
+  FailureClass,
 } from './gen/proto/clipmill/worker/v1/worker_pb.js';
 
 // Shared-memory descriptors.
-export { BufferDescriptorSchema, DataType } from './gen/proto/clipmill/shm/v1/shm_pb.js';
+export {
+  BufferDescriptorSchema,
+  MapRequestSchema,
+  MapAcknowledgementSchema,
+  DataType,
+  TransportType,
+} from './gen/proto/clipmill/shm/v1/shm_pb.js';
 
 // Time primitives.
 export {

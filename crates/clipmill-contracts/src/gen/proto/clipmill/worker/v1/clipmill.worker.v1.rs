@@ -47,6 +47,20 @@ pub struct TaskLease {
     pub heartbeat_interval_ms: u64,
     #[prost(uint64, tag = "6")]
     pub lease_ttl_ms: u64,
+    /// The daemon owns this private CAS staging area. Workers may create only
+    /// the relative paths they later declare in Complete.staged_outputs.
+    #[prost(string, tag = "7")]
+    pub staging_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub staging_dir: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "9")]
+    pub input_artifact_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "10")]
+    pub shared_buffer: ::core::option::Option<super::super::shm::v1::BufferDescriptor>,
+    #[prost(string, tag = "11")]
+    pub output_kind: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "12")]
+    pub attempt: u32,
 }
 /// Structured progress: real work units with a bounded estimate. A total of
 /// zero means the total is not yet known.
@@ -78,7 +92,7 @@ pub struct Decline {
     #[prost(string, tag = "3")]
     pub detail: ::prost::alloc::string::String,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Complete {
     #[prost(string, tag = "1")]
     pub lease_id: ::prost::alloc::string::String,
@@ -92,6 +106,152 @@ pub struct Complete {
     pub failure_class: i32,
     #[prost(string, tag = "5")]
     pub detail: ::prost::alloc::string::String,
+    /// Workers declare staged paths and observations; the daemon independently
+    /// validates, hashes, commits, assigns artifact IDs, and roots the result.
+    #[prost(message, repeated, tag = "6")]
+    pub staged_outputs: ::prost::alloc::vec::Vec<StagedOutput>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StagedOutput {
+    #[prost(string, tag = "1")]
+    pub relative_path: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub byte_size: u64,
+    #[prost(string, tag = "3")]
+    pub sha256: ::prost::alloc::string::String,
+}
+/// The daemon sends a fresh nonce for every connection. Registration
+/// signatures cover this challenge and a canonical capability descriptor,
+/// preventing descriptor replay.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RegistrationChallenge {
+    #[prost(bytes = "vec", tag = "1")]
+    pub nonce: ::prost::alloc::vec::Vec<u8>,
+    #[prost(string, repeated, tag = "2")]
+    pub supported_protocol_versions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(uint64, tag = "3")]
+    pub issued_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RegisterWorker {
+    #[prost(message, optional, tag = "1")]
+    pub descriptor: ::core::option::Option<CapabilityDescriptor>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RegistrationAck {
+    #[prost(bool, tag = "1")]
+    pub accepted: bool,
+    #[prost(string, tag = "2")]
+    pub session_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub detail: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorkRequest {
+    #[prost(uint64, tag = "1")]
+    pub max_wait_ms: u64,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct NoWork {
+    #[prost(uint64, tag = "1")]
+    pub retry_after_ms: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LeaseAcceptance {
+    #[prost(string, tag = "1")]
+    pub lease_id: ::prost::alloc::string::String,
+    #[prost(bool, tag = "2")]
+    pub accepted: bool,
+    #[prost(enumeration = "DeclineReason", tag = "3")]
+    pub reason: i32,
+    #[prost(string, tag = "4")]
+    pub detail: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HeartbeatAck {
+    #[prost(string, tag = "1")]
+    pub lease_id: ::prost::alloc::string::String,
+    #[prost(bool, tag = "2")]
+    pub accepted: bool,
+    #[prost(bool, tag = "3")]
+    pub cancelled: bool,
+    #[prost(uint64, tag = "4")]
+    pub expires_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CancelLease {
+    #[prost(string, tag = "1")]
+    pub lease_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub reason: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CompletionAck {
+    #[prost(string, tag = "1")]
+    pub lease_id: ::prost::alloc::string::String,
+    #[prost(bool, tag = "2")]
+    pub accepted: bool,
+    #[prost(string, repeated, tag = "3")]
+    pub artifact_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag = "4")]
+    pub detail: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ProtocolError {
+    #[prost(string, tag = "1")]
+    pub code: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub detail: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WorkerRequest {
+    #[prost(oneof = "worker_request::Body", tags = "1, 2, 3, 4, 5, 6")]
+    pub body: ::core::option::Option<worker_request::Body>,
+}
+/// Nested message and enum types in `WorkerRequest`.
+pub mod worker_request {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Body {
+        #[prost(message, tag = "1")]
+        Register(super::RegisterWorker),
+        #[prost(message, tag = "2")]
+        WorkRequest(super::WorkRequest),
+        #[prost(message, tag = "3")]
+        LeaseAcceptance(super::LeaseAcceptance),
+        #[prost(message, tag = "4")]
+        Heartbeat(super::Heartbeat),
+        #[prost(message, tag = "5")]
+        Complete(super::Complete),
+        #[prost(message, tag = "6")]
+        Decline(super::Decline),
+    }
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorkerResponse {
+    #[prost(oneof = "worker_response::Body", tags = "1, 2, 3, 4, 5, 6, 7, 8")]
+    pub body: ::core::option::Option<worker_response::Body>,
+}
+/// Nested message and enum types in `WorkerResponse`.
+pub mod worker_response {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Body {
+        #[prost(message, tag = "1")]
+        Challenge(super::RegistrationChallenge),
+        #[prost(message, tag = "2")]
+        RegistrationAck(super::RegistrationAck),
+        #[prost(message, tag = "3")]
+        TaskLease(super::TaskLease),
+        #[prost(message, tag = "4")]
+        NoWork(super::NoWork),
+        #[prost(message, tag = "5")]
+        HeartbeatAck(super::HeartbeatAck),
+        #[prost(message, tag = "6")]
+        Cancel(super::CancelLease),
+        #[prost(message, tag = "7")]
+        CompletionAck(super::CompletionAck),
+        #[prost(message, tag = "8")]
+        Error(super::ProtocolError),
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
