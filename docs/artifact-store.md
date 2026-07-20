@@ -89,4 +89,6 @@ durably deduplicates both successful and failed completion acknowledgements.
 Worker or daemon death abandons uncommitted staging without exposing a partial
 object. W7 uses the same publication ordering for signed device profiles and
 retains the active generation through a system root. The broader Phase 0 claim
-still requires W8.
+still requires W8's integrated security gates and a committed, verified
+Seed-40 attestation; no private corpus bytes or paths are CAS inputs or
+repository artifacts.
