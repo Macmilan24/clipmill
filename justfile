@@ -75,6 +75,11 @@ gate-device:
 gate-eval-smoke:
     ./tools/drills/eval-smoke.sh 1
 
+# W8 rights-holder gate. The media, full signed manifest, license records, and
+# private Ed25519 key remain outside Git. Only OUTPUT_DIR is safe to commit.
+gate-seed40 corpus_dir manifest license_attestation signing_key output_dir="eval/seed40" corpus_public_key="":
+    ./tools/drills/seed40-drill.sh "{{corpus_dir}}" "{{manifest}}" "{{license_attestation}}" "{{signing_key}}" "{{output_dir}}" "{{corpus_public_key}}"
+
 # Exit gate: Local Lock. Replays the CI namespace job in a no-network
 # container (Docker/OrbStack); the egress canary must be blocked.
 gate-lock:
@@ -88,8 +93,14 @@ gate-lock:
         exit 1
     fi
 
-# All Phase 0 gates in sequence.
-gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-lock
+# W8 public security and supply-chain policy checks.
+gate-security:
+    ./tools/security/security-gate.sh
+
+# All reproducible Phase 0 gates plus the committed private-run attestation.
+# Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
+gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-security gate-lock
+    ./tools/drills/verify-phase0-attestation.sh
 
 # Launch the desktop shell. Lands with W9/W10.
 app:
