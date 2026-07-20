@@ -21,7 +21,7 @@ use clipmill_contracts::proto::ipc::v1::{
     TaskState, request, response,
 };
 use clipmill_core::{ProjectId, Sha256Digest};
-use clipmilld::{Config, Daemon, DaemonError};
+use clipmilld::{Config, Daemon, DaemonError, verify_device_profile};
 use serde_json::Map;
 use tempfile::TempDir;
 use tokio::{
@@ -461,7 +461,7 @@ async fn invalid_and_unavailable_requests_return_stable_errors() {
         matches!(missing.body, Some(response::Body::Error(error)) if error.code == ErrorCode::NotFound as i32)
     );
 
-    let unavailable = send(
+    let profile = send(
         &socket,
         Request {
             request_id: "unavailable".to_owned(),
@@ -471,10 +471,13 @@ async fn invalid_and_unavailable_requests_return_stable_errors() {
         },
     )
     .await
-    .expect("unavailable response");
-    assert!(
-        matches!(unavailable.body, Some(response::Body::Error(error)) if error.code == ErrorCode::Unavailable as i32)
-    );
+    .expect("device profile response");
+    let Some(response::Body::GetDeviceProfile(profile)) = profile.body else {
+        panic!("expected a measured device profile");
+    };
+    let verified = verify_device_profile(&profile.profile_json, None).expect("verified profile");
+    assert_eq!(verified.measurement_generation, 1);
+    assert!(profile.artifact_id.starts_with("sha256:"));
 
     stop(shutdown, task).await;
 }

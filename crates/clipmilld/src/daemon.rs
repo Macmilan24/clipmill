@@ -2,7 +2,7 @@ use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::{
     fs,
     future::Future,
-    io,
+    io::{self, Read},
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -15,12 +15,15 @@ use tokio::{
     time::{MissedTickBehavior, interval, timeout},
 };
 
+use clipmill_artifacts::ArtifactPath;
+
 use crate::{
     ArtifactCoordinator, Config, DaemonError,
     artifacts::{ArtifactActor, ArtifactHandle},
     db::DbActor,
+    device::{DeviceProfiler, verify_profile},
     ipc::{FrameError, handle_connection},
-    jobs::{EventHub, Scheduler},
+    jobs::{EventHub, ResourceCapacity, Scheduler},
     lock::DaemonLock,
     service::Service,
     shm::{ShmBroker, handle_shm_connection},
@@ -85,6 +88,47 @@ impl Daemon {
                 )));
             }
         };
+        let device_profiler = match DeviceProfiler::new(
+            &config.ffprobe,
+            &config.paths.device_attestation_key,
+            &config.paths.device_profile_scratch_dir,
+        ) {
+            Ok(profiler) => profiler,
+            Err(error) => {
+                artifacts.shutdown().await?;
+                database.shutdown().await?;
+                return Err(DaemonError::Ipc(format!(
+                    "cannot initialize device profiler: {error}"
+                )));
+            }
+        };
+        let live_scheduler_capacity = match device_profiler.scheduler_capacity().await {
+            Ok(capacity) => capacity,
+            Err(error) => {
+                artifacts.shutdown().await?;
+                database.shutdown().await?;
+                return Err(DaemonError::Ipc(format!(
+                    "cannot measure scheduler capacity: {error}"
+                )));
+            }
+        };
+        let hardware_fingerprint = match device_profiler.hardware_fingerprint().await {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => {
+                artifacts.shutdown().await?;
+                database.shutdown().await?;
+                return Err(DaemonError::Ipc(format!(
+                    "cannot fingerprint scheduler device: {error}"
+                )));
+            }
+        };
+        let scheduler_capacity = startup_profile_capacity(
+            &database.handle(),
+            &artifacts.handle(),
+            &hardware_fingerprint,
+            live_scheduler_capacity,
+        )
+        .await;
         let daemon_epoch = ulid::Ulid::new().to_string();
         let events = EventHub::new();
         match database
@@ -124,6 +168,8 @@ impl Daemon {
             events.clone(),
             daemon_epoch.clone(),
             sources.clone(),
+            device_profiler.clone(),
+            scheduler_capacity,
             config.builtin_fixture_executor,
         );
         let shm = ShmBroker::default();
@@ -160,6 +206,8 @@ impl Daemon {
             events,
             scheduler.handle(),
             sources,
+            artifacts.handle(),
+            device_profiler,
         );
 
         Ok(Self {
@@ -434,6 +482,59 @@ async fn run_artifact_maintenance(
     }
 }
 
+async fn startup_profile_capacity(
+    database: &crate::db::DbHandle,
+    artifacts: &ArtifactHandle,
+    hardware_fingerprint: &str,
+    live: ResourceCapacity,
+) -> ResourceCapacity {
+    let Ok(Some(record)) = database
+        .current_device_profile(hardware_fingerprint.to_owned())
+        .await
+    else {
+        return live;
+    };
+    let (Some(profile_json), Some(artifact_id)) = (record.profile_json, record.artifact_id) else {
+        tracing::warn!("active device profile omitted durable payload state");
+        return live;
+    };
+    let Ok(verified) = verify_profile(&profile_json, Some(hardware_fingerprint)) else {
+        tracing::warn!(%artifact_id, "active device profile signature is invalid");
+        return live;
+    };
+    let Ok(lease) = artifacts.open(artifact_id).await else {
+        tracing::warn!(%artifact_id, "active device profile artifact is unavailable");
+        return live;
+    };
+    let Ok(path) = "profile.json".parse::<ArtifactPath>() else {
+        return live;
+    };
+    let mut artifact_profile = String::new();
+    let verified_payload = lease
+        .open_verified(&path)
+        .ok()
+        .and_then(|mut file| file.read_to_string(&mut artifact_profile).ok())
+        .is_some()
+        && artifact_profile == profile_json;
+    if !verified_payload {
+        tracing::warn!(%artifact_id, "active device profile artifact failed verification");
+        return live;
+    }
+    let measured =
+        ResourceCapacity::measured(verified.logical_cores, verified.available_memory_bytes);
+    tracing::info!(
+        %artifact_id,
+        generation = verified.measurement_generation,
+        backends = ?verified.available_backends,
+        "scheduler consumed verified cached device profile"
+    );
+    ResourceCapacity {
+        cpu_threads: measured.cpu_threads.min(live.cpu_threads).max(1),
+        ram_bytes: measured.ram_bytes.min(live.ram_bytes),
+        disk_bytes: measured.disk_bytes.min(live.disk_bytes),
+    }
+}
+
 fn latency_millis(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
@@ -479,6 +580,7 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
         &config.paths.backups_dir,
         &config.paths.artifacts_dir,
         &config.paths.probe_scratch_dir,
+        &config.paths.device_profile_scratch_dir,
         &config.paths.worker_trust_dir,
         &config.paths.run_dir,
     ] {

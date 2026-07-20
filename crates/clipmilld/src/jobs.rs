@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io::Write,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -10,10 +10,11 @@ use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
 };
 use clipmill_contracts::proto::{
-    ipc::v1::{self, JobState},
+    ipc::v1::{self, DeviceProfilePayloadV1, JobState},
     worker::v1::{FailureClass, ProgressUnits},
 };
 use clipmill_core::{ArtifactId, JobId, LeaseId, ProjectId, Sha256Digest, TaskId};
+use prost::Message;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use tokio::{
@@ -25,11 +26,14 @@ use tokio::{
 use crate::{
     artifacts::ArtifactHandle,
     db::{DbHandle, StoreError},
+    device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
     sources::{SourceInspector, SourceProbeError},
 };
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) const LEASE_TTL: Duration = Duration::from_secs(15);
+pub(crate) const DEVICE_PROFILE_KEY_VERSION: &str = "clipmill.device-profile.v1";
+pub(crate) const SYSTEM_PROJECT_ID: &str = "prj_00000000000000000000000000";
 const SCHEDULER_TICK: Duration = Duration::from_millis(100);
 const MAX_BUILTIN_TASKS: usize = 4;
 
@@ -55,6 +59,7 @@ pub(crate) struct ResourceCapacity {
 }
 
 impl ResourceCapacity {
+    #[cfg(test)]
     pub(crate) fn w4_builtin() -> Self {
         let cpu_threads = std::thread::available_parallelism()
             .map_or(1, std::num::NonZeroUsize::get)
@@ -62,6 +67,19 @@ impl ResourceCapacity {
         Self {
             cpu_threads: u32::try_from(cpu_threads).unwrap_or(u32::MAX),
             ram_bytes: 512 * 1024 * 1024,
+            disk_bytes: 512 * 1024 * 1024,
+        }
+    }
+
+    pub(crate) fn measured(logical_cores: u32, available_memory_bytes: u64) -> Self {
+        let maximum_threads = u32::try_from(MAX_BUILTIN_TASKS).unwrap_or(u32::MAX);
+        Self {
+            cpu_threads: logical_cores.clamp(1, maximum_threads),
+            ram_bytes: available_memory_bytes
+                .saturating_mul(3)
+                .checked_div(4)
+                .unwrap_or(available_memory_bytes)
+                .max(64 * 1024 * 1024),
             disk_bytes: 512 * 1024 * 1024,
         }
     }
@@ -243,6 +261,51 @@ impl JobPlan {
                     preemption_cost: 1,
                 },
                 implementation: "ffprobe-8.1.2+clipmill-map-v1".to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
+        }
+    }
+
+    pub(crate) fn device_profile(
+        hardware_fingerprint: String,
+        measurement_generation: u64,
+        now: u64,
+    ) -> Self {
+        let payload = DeviceProfilePayloadV1 {
+            key_version: DEVICE_PROFILE_KEY_VERSION.to_owned(),
+            hardware_fingerprint,
+            measurement_generation,
+        }
+        .encode_to_vec();
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: SYSTEM_PROJECT_ID.to_owned(),
+            kind: "device-profile".to_owned(),
+            source_id: None,
+            payload: payload.clone(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: "device-profile".to_owned(),
+                input_kinds: Vec::new(),
+                output_kind: "evidence.device_profile.v1".to_owned(),
+                payload,
+                dependencies: Vec::new(),
+                resources: ResourceDeclaration {
+                    cpu_threads: 1,
+                    ram_bytes: 64 * 1024 * 1024,
+                    accelerator_class: String::new(),
+                    vram_bytes: 0,
+                    disk_bytes: 32 * 1024 * 1024,
+                    network_policy: "local-lock".to_owned(),
+                    thermal_class: "light".to_owned(),
+                    determinism_class: "generation-scoped".to_owned(),
+                    checkpoint_support: false,
+                    preemption_cost: 1,
+                },
+                implementation: "clipmill-device-profiler@1.0.0".to_owned(),
                 max_attempts: 3,
                 is_final: true,
             }],
@@ -444,27 +507,52 @@ pub(crate) struct Scheduler {
 #[derive(Clone, Debug)]
 pub(crate) struct SchedulerHandle {
     notify: Arc<Notify>,
+    capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
+    capacity_limit: ResourceCapacity,
 }
 
 impl SchedulerHandle {
     pub(crate) fn notify(&self) {
         self.notify.notify_one();
     }
+
+    pub(crate) fn apply_device_profile(&self, profile: &VerifiedDeviceProfile) {
+        let measured =
+            ResourceCapacity::measured(profile.logical_cores, profile.available_memory_bytes);
+        let capacity = ResourceCapacity {
+            cpu_threads: measured
+                .cpu_threads
+                .min(self.capacity_limit.cpu_threads)
+                .max(1),
+            ram_bytes: measured.ram_bytes.min(self.capacity_limit.ram_bytes),
+            disk_bytes: measured.disk_bytes.min(self.capacity_limit.disk_bytes),
+        };
+        if let Ok(mut pending) = self.capacity_update.lock() {
+            *pending = Some(capacity);
+        }
+        self.notify.notify_one();
+    }
 }
 
 impl Scheduler {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
         database: DbHandle,
         artifacts: ArtifactHandle,
         events: EventHub,
         daemon_epoch: String,
         sources: SourceInspector,
+        device_profiler: DeviceProfiler,
+        capacity: ResourceCapacity,
         builtin_fixture_executor: bool,
     ) -> Self {
         debug_assert!(LEASE_TTL >= HEARTBEAT_INTERVAL.saturating_mul(3));
         let notify = Arc::new(Notify::new());
+        let capacity_update = Arc::new(Mutex::new(None));
         let handle = SchedulerHandle {
             notify: Arc::clone(&notify),
+            capacity_update: Arc::clone(&capacity_update),
+            capacity_limit: capacity,
         };
         let (stopped, stop) = oneshot::channel();
         let task = tokio::spawn(run_scheduler(
@@ -473,6 +561,9 @@ impl Scheduler {
             events,
             daemon_epoch,
             sources,
+            device_profiler,
+            capacity,
+            capacity_update,
             builtin_fixture_executor,
             notify,
             stop,
@@ -505,6 +596,9 @@ async fn run_scheduler(
     events: EventHub,
     daemon_epoch: String,
     sources: SourceInspector,
+    device_profiler: DeviceProfiler,
+    capacity: ResourceCapacity,
+    capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     builtin_fixture_executor: bool,
     notify: Arc<Notify>,
     mut stop: oneshot::Receiver<()>,
@@ -512,8 +606,8 @@ async fn run_scheduler(
     let mut schedule = interval(SCHEDULER_TICK);
     schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut running = JoinSet::new();
-    let mut available_capacity = ResourceCapacity::w4_builtin();
-    let mut builtin_capabilities = vec!["probe-source".to_owned()];
+    let mut available_capacity = capacity;
+    let mut builtin_capabilities = vec!["probe-source".to_owned(), "device-profile".to_owned()];
     if builtin_fixture_executor {
         builtin_capabilities
             .extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
@@ -540,6 +634,17 @@ async fn run_scheduler(
             .await
         {
             events.publish_all(expired);
+        }
+        if running.is_empty()
+            && let Ok(mut pending) = capacity_update.lock()
+            && let Some(measured) = pending.take()
+        {
+            available_capacity = measured;
+            tracing::info!(
+                cpu_threads = measured.cpu_threads,
+                ram_bytes = measured.ram_bytes,
+                "scheduler applied verified device profile capacity"
+            );
         }
         while running.len() < MAX_BUILTIN_TASKS && available_capacity.cpu_threads > 0 {
             let now = now_millis();
@@ -574,9 +679,10 @@ async fn run_scheduler(
             let artifacts = artifacts.clone();
             let events = events.clone();
             let sources = sources.clone();
+            let device_profiler = device_profiler.clone();
             let notify = Arc::clone(&notify);
             running.spawn(async move {
-                execute_task(database, artifacts, events, sources, task).await;
+                execute_task(database, artifacts, events, sources, device_profiler, task).await;
                 notify.notify_one();
                 resources
             });
@@ -587,11 +693,13 @@ async fn run_scheduler(
     while running.join_next().await.is_some() {}
 }
 
+#[allow(clippy::too_many_lines)]
 async fn execute_task(
     database: DbHandle,
     artifacts: ArtifactHandle,
     events: EventHub,
     sources: SourceInspector,
+    device_profiler: DeviceProfiler,
     task: LeasedTask,
 ) {
     tracing::debug!(
@@ -610,6 +718,9 @@ async fn execute_task(
         }
         match task.kind.as_str() {
             "probe-source" => execute_probe_artifact(&database, &artifacts, &sources, &task).await,
+            "device-profile" => {
+                execute_device_artifact(&database, &artifacts, &device_profiler, &task).await
+            }
             _ => execute_demo_artifact(&artifacts, &task)
                 .await
                 .map_err(TaskExecutionError::transient),
@@ -792,6 +903,122 @@ async fn execute_probe_artifact(
                 .create_file(&path)
                 .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
             write_and_sync(&mut file, &source.source_map_json)
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+            drop(file);
+            let lease = artifacts
+                .commit(staging.id().clone(), vec![path], BTreeMap::new())
+                .await
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+            Ok(lease.artifact_id())
+        }
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+async fn execute_device_artifact(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    profiler: &DeviceProfiler,
+    task: &LeasedTask,
+) -> Result<ArtifactId, TaskExecutionError> {
+    let payload = DeviceProfilePayloadV1::decode(task.payload.as_slice())
+        .map_err(|_| TaskExecutionError::deterministic("device profile payload is invalid"))?;
+    if payload.key_version != DEVICE_PROFILE_KEY_VERSION || payload.measurement_generation == 0 {
+        return Err(TaskExecutionError::deterministic(
+            "device profile payload version or generation is invalid",
+        ));
+    }
+    payload
+        .hardware_fingerprint
+        .parse::<ArtifactId>()
+        .map_err(|_| TaskExecutionError::deterministic("device fingerprint is invalid"))?;
+    let record = database
+        .device_profile_for_job(task.job_id.clone())
+        .await
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    if record.hardware_fingerprint != payload.hardware_fingerprint
+        || record.measurement_generation != payload.measurement_generation
+    {
+        return Err(TaskExecutionError::deterministic(
+            "device job does not match its durable generation",
+        ));
+    }
+    let profile_json = if let Some(profile_json) = record.profile_json {
+        profile_json
+    } else {
+        let measured = profiler
+            .measure(
+                &payload.hardware_fingerprint,
+                payload.measurement_generation,
+            )
+            .await
+            .map_err(|error| match error {
+                crate::device::DeviceProfileError::FingerprintMismatch => {
+                    TaskExecutionError::deterministic("DEVICE_CHANGED")
+                }
+                _ => TaskExecutionError::transient(error.to_string()),
+            })?;
+        database
+            .store_device_profile_json(task.job_id.clone(), measured, now_millis())
+            .await
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?
+            .profile_json
+            .ok_or_else(|| {
+                TaskExecutionError::deterministic("stored device measurement is missing")
+            })?
+    };
+    verify_profile(&profile_json, Some(&payload.hardware_fingerprint))
+        .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    let digest = payload
+        .hardware_fingerprint
+        .strip_prefix("sha256:")
+        .ok_or_else(|| TaskExecutionError::deterministic("device fingerprint is invalid"))?
+        .parse::<Sha256Digest>()
+        .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    let mut config = Map::new();
+    config.insert(
+        "measurement_generation".to_owned(),
+        Value::Number(payload.measurement_generation.into()),
+    );
+    config.insert(
+        "profile_algorithm".to_owned(),
+        Value::String("clipmill.device-profile.measure.v1".to_owned()),
+    );
+    let recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
+        kind: task.output_kind.clone(),
+        source_fingerprint: digest,
+        timebase: Timebase {
+            num: 1,
+            den: 90_000,
+        },
+        producer: Producer {
+            stage: task.kind.clone(),
+            implementation: task.implementation.clone(),
+            model_digest: None,
+        },
+        inputs: Vec::new(),
+        policy: NetworkPolicy::LocalLock,
+        config,
+        semantic_version: "clipmill.device_profile.v1".to_owned(),
+    })
+    .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    match artifacts
+        .prepare(recipe)
+        .await
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?
+    {
+        PrepareOutcome::Hit(lease) => Ok(lease.artifact_id()),
+        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::transient(
+            "device profile artifact key is already in flight".to_owned(),
+        )),
+        PrepareOutcome::Miss(staging) => {
+            let path = "profile.json"
+                .parse::<ArtifactPath>()
+                .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+            let mut file = staging
+                .create_file(&path)
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+            write_and_sync(&mut file, profile_json.as_bytes())
                 .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
             drop(file);
             let lease = artifacts

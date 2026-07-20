@@ -197,7 +197,9 @@ pub(super) fn submit_job(
         });
     }
     let project_exists: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM projects WHERE project_id = ?1)",
+        "SELECT EXISTS(
+            SELECT 1 FROM projects WHERE project_id = ?1 AND is_system = 0
+         )",
         [&plan.project_id],
         |row| row.get(0),
     )?;
@@ -216,6 +218,35 @@ pub(super) fn submit_job(
             return Err(StoreError::NotFound);
         }
     }
+    let events = insert_job_plan(&transaction, plan)?;
+    let job = get_job_tx(&transaction, &plan.job_id)?;
+    let response = Response {
+        request_id: request_id.to_owned(),
+        body: Some(response::Body::SubmitJob(SubmitJobResponse {
+            job_id: plan.job_id.clone(),
+            job: Some(job.into()),
+        })),
+    }
+    .encode_to_vec();
+    remember(
+        &transaction,
+        request_id,
+        request_hash,
+        &response,
+        plan.created_unix_millis,
+    )?;
+    transaction.commit()?;
+    Ok(MutationResult {
+        bytes: response,
+        events,
+    })
+}
+
+pub(super) fn insert_job_plan(
+    transaction: &Transaction<'_>,
+    plan: &JobPlan,
+) -> Result<Vec<TaskEventRecord>, StoreError> {
+    validate_plan(plan)?;
     let now = sqlite_u64(plan.created_unix_millis, "job timestamp")?;
     transaction.execute(
         "INSERT INTO jobs(
@@ -298,7 +329,7 @@ pub(super) fn submit_job(
             "waiting: dependencies"
         };
         events.push(insert_event(
-            &transaction,
+            transaction,
             &plan.project_id,
             &plan.job_id,
             &task.task_id,
@@ -312,30 +343,21 @@ pub(super) fn submit_job(
             plan.created_unix_millis,
         )?);
     }
-    let job = get_job_tx(&transaction, &plan.job_id)?;
-    let response = Response {
-        request_id: request_id.to_owned(),
-        body: Some(response::Body::SubmitJob(SubmitJobResponse {
-            job_id: plan.job_id.clone(),
-            job: Some(job.into()),
-        })),
-    }
-    .encode_to_vec();
-    remember(
-        &transaction,
-        request_id,
-        request_hash,
-        &response,
-        plan.created_unix_millis,
-    )?;
-    transaction.commit()?;
-    Ok(MutationResult {
-        bytes: response,
-        events,
-    })
+    Ok(events)
 }
 
 pub(super) fn get_job(connection: &Connection, job_id: &str) -> Result<JobRecord, StoreError> {
+    let visible: bool = connection.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM jobs j JOIN projects p ON p.project_id = j.project_id
+            WHERE j.job_id = ?1 AND p.is_system = 0
+         )",
+        [job_id],
+        |row| row.get(0),
+    )?;
+    if !visible {
+        return Err(StoreError::NotFound);
+    }
     get_job_from(connection, job_id)
 }
 
@@ -344,7 +366,9 @@ pub(super) fn list_jobs(
     project_id: &str,
 ) -> Result<Vec<JobRecord>, StoreError> {
     let project_exists: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM projects WHERE project_id = ?1)",
+        "SELECT EXISTS(
+            SELECT 1 FROM projects WHERE project_id = ?1 AND is_system = 0
+         )",
         [project_id],
         |row| row.get(0),
     )?;
@@ -747,6 +771,7 @@ pub(super) fn lease_next_task(
             worker_id: "builtin-fixture".to_owned(),
             capabilities: [
                 "probe-source",
+                "device-profile",
                 "demo-seed",
                 "demo-left",
                 "demo-right",
@@ -906,7 +931,8 @@ pub(super) fn complete_task(
     if status != 1 {
         return Err(StoreError::Conflict);
     }
-    let (job_id, project_id, source_id, attempt, is_final, cancel_requested): (
+    let (job_id, project_id, job_kind, source_id, attempt, is_final, cancel_requested): (
+        String,
         String,
         String,
         Option<String>,
@@ -914,7 +940,7 @@ pub(super) fn complete_task(
         bool,
         bool,
     ) = transaction.query_row(
-        "SELECT t.job_id, j.project_id, j.source_id, t.attempt,
+        "SELECT t.job_id, j.project_id, j.kind, j.source_id, t.attempt,
                 t.is_final, j.cancel_requested
          FROM tasks t JOIN jobs j ON j.job_id = t.job_id WHERE t.task_id = ?1",
         [&task_id],
@@ -926,6 +952,7 @@ pub(super) fn complete_task(
                 row.get(3)?,
                 row.get(4)?,
                 row.get(5)?,
+                row.get(6)?,
             ))
         },
     )?;
@@ -984,21 +1011,28 @@ pub(super) fn complete_task(
                 |row| row.get(0),
             )?
         };
-        transaction.execute(
-            "INSERT OR IGNORE INTO project_artifact_roots(project_id, artifact_id)
-             VALUES (?1, ?2)",
-            params![project_id, final_artifact],
-        )?;
-        if let Some(source_id) = source_id {
+        if job_kind == "device-profile" {
+            let final_artifact_id = final_artifact
+                .parse::<ArtifactId>()
+                .map_err(|_| StoreError::InvalidData("device artifact id is invalid"))?;
+            super::device_store::activate_profile(&transaction, &job_id, final_artifact_id, now)?;
+        } else {
             transaction.execute(
-                "INSERT OR IGNORE INTO source_artifact_roots(source_id, artifact_id)
+                "INSERT OR IGNORE INTO project_artifact_roots(project_id, artifact_id)
                  VALUES (?1, ?2)",
-                params![source_id, final_artifact],
+                params![project_id, final_artifact],
             )?;
-            transaction.execute(
-                "UPDATE sources SET source_map_artifact_id = ?1 WHERE source_id = ?2",
-                params![final_artifact, source_id],
-            )?;
+            if let Some(source_id) = source_id {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO source_artifact_roots(source_id, artifact_id)
+                     VALUES (?1, ?2)",
+                    params![source_id, final_artifact],
+                )?;
+                transaction.execute(
+                    "UPDATE sources SET source_map_artifact_id = ?1 WHERE source_id = ?2",
+                    params![final_artifact, source_id],
+                )?;
+            }
         }
         transaction.execute(
             "UPDATE jobs SET state = ?1, updated_unix_millis = ?2 WHERE job_id = ?3",
@@ -1168,6 +1202,9 @@ fn fail_task_inner(
                 job_id
             ],
         )?;
+        if kind == "device-profile" {
+            super::device_store::fail_profile(&transaction, &job_id, now)?;
+        }
         events.extend(cancel_remaining_tasks(
             &transaction,
             &project_id,
