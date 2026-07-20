@@ -15,6 +15,9 @@ mod unix_main {
         /// Override the Unix-domain socket path.
         #[arg(long)]
         socket: Option<PathBuf>,
+        /// Override the authenticated worker Unix-domain socket path.
+        #[arg(long)]
+        worker_socket: Option<PathBuf>,
         /// Retain unreachable artifacts for this duration before collection.
         #[arg(long, value_parser = humantime::parse_duration)]
         artifact_gc_grace: Option<Duration>,
@@ -48,9 +51,10 @@ mod unix_main {
     }
 
     async fn run(arguments: Arguments) -> Result<(), clipmilld::DaemonError> {
-        let config = Config::resolve_full(
+        let config = Config::resolve_daemon(
             arguments.data_dir,
             arguments.socket,
+            arguments.worker_socket,
             arguments.artifact_gc_grace,
             arguments.ffprobe,
         )?;

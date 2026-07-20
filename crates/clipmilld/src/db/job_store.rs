@@ -11,8 +11,8 @@ use sha2::{Digest, Sha256};
 
 use super::{StoreError, remember, replay};
 use crate::jobs::{
-    EventFilter, JobPlan, JobRecord, LeaseSelection, LeasedTask, ResourceCapacity,
-    ResourceDeclaration, TaskCompletion, TaskEventRecord, TaskRecord, is_terminal_job,
+    EventFilter, JobPlan, JobRecord, LeaseRequest, LeaseSelection, LeasedTask, ResourceDeclaration,
+    TaskCompletion, TaskEventRecord, TaskRecord, is_terminal_job,
 };
 
 #[derive(Debug)]
@@ -40,6 +40,7 @@ struct SelectedTaskRow {
 
 type FailedTaskRow = (String, String, String, String, String, Vec<u8>, i64, i64);
 type CompletionLeaseRow = (String, i64, Option<Vec<u8>>, Option<Vec<u8>>);
+type CompletionReplayRow = (String, Option<Vec<u8>>, Option<Vec<u8>>);
 
 pub(super) const CREATE_V3_TABLES: &str = "
     CREATE TABLE jobs (
@@ -518,14 +519,14 @@ pub(super) fn recover_jobs(
 }
 
 #[allow(clippy::too_many_lines)]
-pub(super) fn lease_next_task(
+pub(super) fn lease_next_task_for_worker(
     connection: &mut Connection,
-    lease_id: &str,
-    daemon_epoch: &str,
-    now: u64,
-    expires: u64,
-    capacity: ResourceCapacity,
+    request: &LeaseRequest,
 ) -> Result<LeaseSelection, StoreError> {
+    let capability_filter = format!(",{},", request.capabilities.join(","));
+    let now = request.now_unix_millis;
+    let expires = request.expires_unix_millis;
+    let capacity = request.capacity;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut events = fail_open_circuit_breakers(&transaction, now)?;
     let selected: Option<SelectedTaskRow> = transaction
@@ -557,6 +558,7 @@ pub(super) fn lease_next_task(
                AND t.accelerator_class = ''
                AND t.vram_bytes = 0
                AND t.network_policy = 'local-lock'
+               AND instr(?10, ',' || t.kind || ',') > 0
              ORDER BY j.created_unix_millis, j.job_id, t.ordinal
              LIMIT 1",
             params![
@@ -569,6 +571,7 @@ pub(super) fn lease_next_task(
                 i64::from(capacity.cpu_threads),
                 sqlite_u64(capacity.ram_bytes, "available task RAM")?,
                 sqlite_u64(capacity.disk_bytes, "available task disk")?,
+                capability_filter,
             ],
             |row| {
                 Ok(SelectedTaskRow {
@@ -633,11 +636,12 @@ pub(super) fn lease_next_task(
         "INSERT INTO task_leases(
             lease_id, task_id, worker_id, daemon_epoch, status,
             acquired_unix_millis, expires_unix_millis, last_heartbeat_unix_millis
-         ) VALUES (?1, ?2, 'builtin-w4', ?3, 1, ?4, ?5, ?4)",
+         ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?5)",
         params![
-            lease_id,
+            request.lease_id,
             selected.task_id,
-            daemon_epoch,
+            request.worker_id,
+            request.daemon_epoch,
             now_sql,
             expires_sql
         ],
@@ -699,7 +703,7 @@ pub(super) fn lease_next_task(
             job_id: selected.job_id,
             source_id: selected.source_id,
             task_id: selected.task_id,
-            lease_id: lease_id.to_owned(),
+            lease_id: request.lease_id.clone(),
             kind: selected.kind,
             output_kind: selected.output_kind,
             payload: selected.payload,
@@ -723,26 +727,146 @@ pub(super) fn lease_next_task(
     })
 }
 
-pub(super) fn heartbeat_task(
+#[cfg(test)]
+pub(super) fn lease_next_task(
+    connection: &mut Connection,
+    lease_id: &str,
+    daemon_epoch: &str,
+    now: u64,
+    expires: u64,
+    capacity: crate::jobs::ResourceCapacity,
+) -> Result<LeaseSelection, StoreError> {
+    lease_next_task_for_worker(
+        connection,
+        &LeaseRequest {
+            lease_id: lease_id.to_owned(),
+            daemon_epoch: daemon_epoch.to_owned(),
+            now_unix_millis: now,
+            expires_unix_millis: expires,
+            capacity,
+            worker_id: "builtin-fixture".to_owned(),
+            capabilities: [
+                "probe-source",
+                "demo-seed",
+                "demo-left",
+                "demo-right",
+                "demo-join",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+        },
+    )
+}
+
+pub(super) fn heartbeat_task_with_progress(
     connection: &mut Connection,
     lease_id: &str,
     now: u64,
     expires: u64,
-) -> Result<(), StoreError> {
+    progress: Option<&clipmill_contracts::proto::worker::v1::ProgressUnits>,
+) -> Result<Vec<TaskEventRecord>, StoreError> {
+    if let Some(progress) = progress
+        && (progress.unit.is_empty()
+            || progress.unit.chars().count() > 64
+            || progress.unit.chars().any(char::is_control)
+            || (progress.total > 0 && progress.done > progress.total))
+    {
+        return Err(StoreError::InvalidData("worker progress is invalid"));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let now = sqlite_u64(now, "heartbeat timestamp")?;
     let expires = sqlite_u64(expires, "heartbeat expiry")?;
-    let updated = connection.execute(
+    let updated = transaction.execute(
         "UPDATE task_leases
          SET last_heartbeat_unix_millis = ?1, expires_unix_millis = ?2
          WHERE lease_id = ?3 AND status = 1
            AND expires_unix_millis > ?1",
         params![now, expires, lease_id],
     )?;
-    if updated == 1 {
-        Ok(())
-    } else {
-        Err(StoreError::Conflict)
+    if updated != 1 {
+        return Err(StoreError::Conflict);
     }
+    let mut events = Vec::new();
+    if let Some(progress) = progress {
+        let (task_id, job_id, project_id, attempt): (String, String, String, i64) = transaction
+            .query_row(
+                "SELECT t.task_id, t.job_id, j.project_id, t.attempt
+                 FROM task_leases l
+                 JOIN tasks t ON t.task_id = l.task_id
+                 JOIN jobs j ON j.job_id = t.job_id
+                 WHERE l.lease_id = ?1",
+                [lease_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+        transaction.execute(
+            "UPDATE tasks SET progress_unit = ?1, progress_done = ?2,
+                progress_total = ?3, updated_unix_millis = ?4 WHERE task_id = ?5",
+            params![
+                progress.unit,
+                sqlite_u64(progress.done, "progress done")?,
+                sqlite_u64(progress.total, "progress total")?,
+                now,
+                task_id
+            ],
+        )?;
+        events.push(insert_event(
+            &transaction,
+            &project_id,
+            &job_id,
+            &task_id,
+            TaskState::Running as i32,
+            u32_from_i64(attempt, "task attempt")?,
+            &progress.unit,
+            progress.done,
+            progress.total,
+            "",
+            FailureClass::Unspecified as i32,
+            u64_from_i64(now, "heartbeat timestamp")?,
+        )?);
+    }
+    transaction.commit()?;
+    Ok(events)
+}
+
+#[cfg(test)]
+pub(super) fn heartbeat_task(
+    connection: &mut Connection,
+    lease_id: &str,
+    now: u64,
+    expires: u64,
+) -> Result<Vec<TaskEventRecord>, StoreError> {
+    heartbeat_task_with_progress(connection, lease_id, now, expires, None)
+}
+
+pub(super) fn replay_task_completion(
+    connection: &Connection,
+    lease_id: &str,
+    worker_id: &str,
+    completion_hash: &[u8; 32],
+) -> Result<Option<Vec<u8>>, StoreError> {
+    let row: Option<CompletionReplayRow> = connection
+        .query_row(
+            "SELECT worker_id, completion_hash, completion_response
+             FROM task_leases WHERE lease_id = ?1",
+            [lease_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let Some((stored_worker_id, stored_hash, response)) = row else {
+        return Err(StoreError::NotFound);
+    };
+    if stored_worker_id != worker_id {
+        return Err(StoreError::Conflict);
+    }
+    let Some(stored_hash) = stored_hash else {
+        return Ok(None);
+    };
+    if stored_hash.as_slice() != completion_hash {
+        return Err(StoreError::Conflict);
+    }
+    response.map(Some).ok_or(StoreError::InvalidData(
+        "completed lease omitted durable response",
+    ))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -901,6 +1025,38 @@ pub(super) fn fail_task(
     detail: &str,
     now: u64,
 ) -> Result<Vec<TaskEventRecord>, StoreError> {
+    Ok(fail_task_inner(connection, lease_id, failure_class, detail, now, None)?.events)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn complete_failed_task(
+    connection: &mut Connection,
+    lease_id: &str,
+    failure_class: i32,
+    detail: &str,
+    completion_hash: &[u8; 32],
+    completion_response: &[u8],
+    now: u64,
+) -> Result<TaskCompletion, StoreError> {
+    fail_task_inner(
+        connection,
+        lease_id,
+        failure_class,
+        detail,
+        now,
+        Some((completion_hash, completion_response)),
+    )
+}
+
+#[allow(clippy::too_many_lines)]
+fn fail_task_inner(
+    connection: &mut Connection,
+    lease_id: &str,
+    failure_class: i32,
+    detail: &str,
+    now: u64,
+    completion: Option<(&[u8; 32], &[u8])>,
+) -> Result<TaskCompletion, StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let row: Option<FailedTaskRow> = transaction
         .query_row(
@@ -939,10 +1095,18 @@ pub(super) fn fail_task(
     let backoff_seconds = 1_u64 << u32::try_from(attempt.saturating_sub(1)).unwrap_or(0).min(2);
     let next_attempt = now.saturating_add(backoff_seconds * 1_000);
     let now_sql = sqlite_u64(now, "failure timestamp")?;
-    transaction.execute(
-        "UPDATE task_leases SET status = 3 WHERE lease_id = ?1",
-        [lease_id],
-    )?;
+    if let Some((completion_hash, completion_response)) = completion {
+        transaction.execute(
+            "UPDATE task_leases SET status = 3, completion_hash = ?1,
+                completion_response = ?2 WHERE lease_id = ?3",
+            params![completion_hash.as_slice(), completion_response, lease_id],
+        )?;
+    } else {
+        transaction.execute(
+            "UPDATE task_leases SET status = 3 WHERE lease_id = ?1",
+            [lease_id],
+        )?;
+    }
     transaction.execute(
         "UPDATE tasks SET state = ?1, next_attempt_unix_millis = ?2,
             wait_reason = ?3, failure_class = ?4, failure_detail = ?5,
@@ -1018,7 +1182,10 @@ pub(super) fn fail_task(
         )?;
     }
     transaction.commit()?;
-    Ok(events)
+    Ok(TaskCompletion {
+        response: completion.map_or_else(Vec::new, |(_, response)| response.to_vec()),
+        events,
+    })
 }
 
 #[allow(clippy::too_many_lines)]

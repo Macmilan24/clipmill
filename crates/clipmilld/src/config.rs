@@ -11,6 +11,7 @@ use crate::DaemonError;
 
 const DATA_DIR_ENV: &str = "CLIPMILL_DATA_DIR";
 const SOCKET_ENV: &str = "CLIPMILL_SOCKET";
+const WORKER_SOCKET_ENV: &str = "CLIPMILL_WORKER_SOCKET";
 const ARTIFACT_GC_GRACE_ENV: &str = "CLIPMILL_ARTIFACT_GC_GRACE";
 const FFPROBE_ENV: &str = "CLIPMILL_FFPROBE";
 const DEFAULT_ARTIFACT_GC_GRACE: Duration = Duration::from_hours(168);
@@ -20,6 +21,7 @@ pub struct Config {
     pub paths: Paths,
     pub artifact_gc_grace: Duration,
     pub ffprobe: PathBuf,
+    pub(crate) builtin_fixture_executor: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -31,11 +33,21 @@ pub struct Paths {
     pub run_dir: PathBuf,
     pub database: PathBuf,
     pub socket: PathBuf,
+    pub worker_socket: PathBuf,
+    pub shm_socket: PathBuf,
     pub lock: PathBuf,
     pub probe_scratch_dir: PathBuf,
+    pub worker_trust_dir: PathBuf,
 }
 
 impl Config {
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_builtin_fixture_executor_for_tests(mut self) -> Self {
+        self.builtin_fixture_executor = true;
+        self
+    }
+
     pub fn resolve(
         cli_data_dir: Option<PathBuf>,
         cli_socket: Option<PathBuf>,
@@ -57,20 +69,41 @@ impl Config {
         cli_artifact_gc_grace: Option<Duration>,
         cli_ffprobe: Option<PathBuf>,
     ) -> Result<Self, DaemonError> {
+        Self::resolve_daemon(
+            cli_data_dir,
+            cli_socket,
+            None,
+            cli_artifact_gc_grace,
+            cli_ffprobe,
+        )
+    }
+
+    pub fn resolve_daemon(
+        cli_data_dir: Option<PathBuf>,
+        cli_socket: Option<PathBuf>,
+        cli_worker_socket: Option<PathBuf>,
+        cli_artifact_gc_grace: Option<Duration>,
+        cli_ffprobe: Option<PathBuf>,
+    ) -> Result<Self, DaemonError> {
         let platform_default = ProjectDirs::from("dev", "clipmill", "ClipMill")
             .map(|dirs| dirs.data_dir().to_path_buf())
             .ok_or(DaemonError::PlatformDataDirectory)?;
-        Self::from_sources_with_gc(
+        let mut config = Self::from_all_sources(
             cli_data_dir,
             cli_socket,
+            cli_worker_socket,
             cli_artifact_gc_grace,
             env::var_os(DATA_DIR_ENV),
             env::var_os(SOCKET_ENV),
+            env::var_os(WORKER_SOCKET_ENV),
             env::var_os(ARTIFACT_GC_GRACE_ENV),
             cli_ffprobe,
             env::var_os(FFPROBE_ENV),
             platform_default,
-        )
+        )?;
+        config.builtin_fixture_executor =
+            env::var_os("CLIPMILL_TEST_BUILTIN_WORKER").is_some_and(|value| value == "1");
+        Ok(config)
     }
 
     pub fn from_sources(
@@ -105,6 +138,35 @@ impl Config {
         env_ffprobe: Option<OsString>,
         platform_default: PathBuf,
     ) -> Result<Self, DaemonError> {
+        Self::from_all_sources(
+            cli_data_dir,
+            cli_socket,
+            None,
+            cli_artifact_gc_grace,
+            env_data_dir,
+            env_socket,
+            None,
+            env_artifact_gc_grace,
+            cli_ffprobe,
+            env_ffprobe,
+            platform_default,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_all_sources(
+        cli_data_dir: Option<PathBuf>,
+        cli_socket: Option<PathBuf>,
+        cli_worker_socket: Option<PathBuf>,
+        cli_artifact_gc_grace: Option<Duration>,
+        env_data_dir: Option<OsString>,
+        env_socket: Option<OsString>,
+        env_worker_socket: Option<OsString>,
+        env_artifact_gc_grace: Option<OsString>,
+        cli_ffprobe: Option<PathBuf>,
+        env_ffprobe: Option<OsString>,
+        platform_default: PathBuf,
+    ) -> Result<Self, DaemonError> {
         let data_dir = cli_data_dir
             .or_else(|| env_data_dir.map(PathBuf::from))
             .unwrap_or(platform_default);
@@ -125,6 +187,17 @@ impl Config {
             .or_else(|| env_socket.map(PathBuf::from))
             .unwrap_or_else(|| run_dir.join("clipmilld.sock"));
         validate_socket(&socket)?;
+        let worker_socket = cli_worker_socket
+            .or_else(|| env_worker_socket.map(PathBuf::from))
+            .unwrap_or_else(|| run_dir.join("clipmill-workers.sock"));
+        validate_socket(&worker_socket)?;
+        let shm_socket = run_dir.join("clipmill-shm.sock");
+        validate_socket(&shm_socket)?;
+        if socket == worker_socket || socket == shm_socket || worker_socket == shm_socket {
+            return Err(DaemonError::InvalidPath(
+                "control, worker, and shared-memory sockets must be distinct",
+            ));
+        }
         let ffprobe = cli_ffprobe
             .or_else(|| env_ffprobe.map(PathBuf::from))
             .unwrap_or_else(|| PathBuf::from("ffprobe"));
@@ -139,13 +212,17 @@ impl Config {
                 artifacts_dir: data_dir.join("artifacts"),
                 lock: run_dir.join("daemon.lock"),
                 probe_scratch_dir: state_dir.join("probe-scratch"),
+                worker_trust_dir: state_dir.join("worker-trust"),
                 data_dir,
                 state_dir,
                 run_dir,
                 socket,
+                worker_socket,
+                shm_socket,
             },
             artifact_gc_grace,
             ffprobe,
+            builtin_fixture_executor: false,
         })
     }
 }
@@ -248,6 +325,18 @@ mod tests {
         );
         assert_eq!(config.artifact_gc_grace, Duration::from_hours(168));
         assert_eq!(config.ffprobe, PathBuf::from("ffprobe"));
+        assert_eq!(
+            config.paths.worker_socket,
+            PathBuf::from("/default/data/run/clipmill-workers.sock")
+        );
+        assert_eq!(
+            config.paths.shm_socket,
+            PathBuf::from("/default/data/run/clipmill-shm.sock")
+        );
+        assert_eq!(
+            config.paths.worker_trust_dir,
+            PathBuf::from("/default/data/state/worker-trust")
+        );
     }
 
     #[test]
@@ -325,5 +414,45 @@ mod tests {
         )
         .expect("environment FFprobe");
         assert_eq!(environment.ffprobe, PathBuf::from("/env/ffprobe"));
+    }
+
+    #[test]
+    fn worker_socket_uses_cli_environment_default_precedence() {
+        let cli = Config::from_all_sources(
+            None,
+            None,
+            Some(PathBuf::from("/cli/workers.sock")),
+            None,
+            None,
+            None,
+            Some(OsString::from("/env/workers.sock")),
+            None,
+            None,
+            None,
+            PathBuf::from("/default/data"),
+        )
+        .expect("CLI worker socket");
+        assert_eq!(cli.paths.worker_socket, PathBuf::from("/cli/workers.sock"));
+        assert!(!cli.builtin_fixture_executor);
+
+        let environment = Config::from_all_sources(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(OsString::from("/env/workers.sock")),
+            None,
+            None,
+            None,
+            PathBuf::from("/default/data"),
+        )
+        .expect("environment worker socket");
+        assert_eq!(
+            environment.paths.worker_socket,
+            PathBuf::from("/env/workers.sock")
+        );
+        assert!(!environment.builtin_fixture_executor);
     }
 }

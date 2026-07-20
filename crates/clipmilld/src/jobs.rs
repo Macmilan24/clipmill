@@ -418,6 +418,17 @@ pub(crate) struct LeaseSelection {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct LeaseRequest {
+    pub lease_id: String,
+    pub daemon_epoch: String,
+    pub now_unix_millis: u64,
+    pub expires_unix_millis: u64,
+    pub capacity: ResourceCapacity,
+    pub worker_id: String,
+    pub capabilities: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct TaskCompletion {
     pub response: Vec<u8>,
     pub events: Vec<TaskEventRecord>,
@@ -448,6 +459,7 @@ impl Scheduler {
         events: EventHub,
         daemon_epoch: String,
         sources: SourceInspector,
+        builtin_fixture_executor: bool,
     ) -> Self {
         debug_assert!(LEASE_TTL >= HEARTBEAT_INTERVAL.saturating_mul(3));
         let notify = Arc::new(Notify::new());
@@ -461,6 +473,7 @@ impl Scheduler {
             events,
             daemon_epoch,
             sources,
+            builtin_fixture_executor,
             notify,
             stop,
         ));
@@ -485,12 +498,14 @@ impl Scheduler {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_scheduler(
     database: DbHandle,
     artifacts: ArtifactHandle,
     events: EventHub,
     daemon_epoch: String,
     sources: SourceInspector,
+    builtin_fixture_executor: bool,
     notify: Arc<Notify>,
     mut stop: oneshot::Receiver<()>,
 ) {
@@ -498,6 +513,11 @@ async fn run_scheduler(
     schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut running = JoinSet::new();
     let mut available_capacity = ResourceCapacity::w4_builtin();
+    let mut builtin_capabilities = vec!["probe-source".to_owned()];
+    if builtin_fixture_executor {
+        builtin_capabilities
+            .extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
+    }
     loop {
         tokio::select! {
             biased;
@@ -525,13 +545,15 @@ async fn run_scheduler(
             let now = now_millis();
             let lease = LeaseId::new().to_string();
             let leased = database
-                .lease_next_task(
-                    lease,
-                    daemon_epoch.clone(),
-                    now,
-                    now.saturating_add(duration_millis(LEASE_TTL)),
-                    available_capacity,
-                )
+                .lease_next_task(LeaseRequest {
+                    lease_id: lease,
+                    daemon_epoch: daemon_epoch.clone(),
+                    now_unix_millis: now,
+                    expires_unix_millis: now.saturating_add(duration_millis(LEASE_TTL)),
+                    capacity: available_capacity,
+                    worker_id: "builtin-fixture".to_owned(),
+                    capabilities: builtin_capabilities.clone(),
+                })
                 .await;
             let Ok(selection) = leased else {
                 break;
@@ -601,15 +623,17 @@ async fn execute_task(
             result = &mut work => break Some(result),
             _ = heartbeat.tick() => {
                 let now = now_millis();
-                if database
+                if let Ok(task_events) = database
                     .heartbeat_task(
                         lease_id.clone(),
                         now,
                         now.saturating_add(duration_millis(LEASE_TTL)),
+                        None,
                     )
                     .await
-                    .is_err()
                 {
+                    events.publish_all(task_events);
+                } else {
                     tracing::debug!(task_id = task.task_id, "task lease heartbeat was rejected");
                     break None;
                 }
@@ -783,13 +807,41 @@ async fn execute_demo_artifact(
     artifacts: &ArtifactHandle,
     task: &LeasedTask,
 ) -> Result<ArtifactId, String> {
+    let recipe = demo_recipe(task)?;
+    match artifacts
+        .prepare(recipe)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        PrepareOutcome::Hit(lease) => Ok(lease.artifact_id()),
+        PrepareOutcome::InFlight { .. } => Err("artifact key is already in flight".to_owned()),
+        PrepareOutcome::Miss(staging) => {
+            let path = "result.json"
+                .parse::<ArtifactPath>()
+                .map_err(|error| error.to_string())?;
+            let output = demo_output(task)?;
+            let mut file = staging
+                .create_file(&path)
+                .map_err(|error| error.to_string())?;
+            write_and_sync(&mut file, &output).map_err(|error| error.to_string())?;
+            drop(file);
+            let lease = artifacts
+                .commit(staging.id().clone(), vec![path], BTreeMap::new())
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(lease.artifact_id())
+        }
+    }
+}
+
+pub(crate) fn demo_recipe(task: &LeasedTask) -> Result<ArtifactRecipe, String> {
     let mut source_hasher = Sha256::new();
     source_hasher.update(b"clipmill.demo.source.v1\0");
     source_hasher.update(&task.payload);
     let source_fingerprint = Sha256Digest::from_bytes(source_hasher.finalize().into());
     let mut config = Map::new();
     config.insert("task_kind".to_owned(), Value::String(task.kind.clone()));
-    let recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
+    ArtifactRecipe::try_from_spec(RecipeSpec {
         kind: task.output_kind.clone(),
         source_fingerprint,
         timebase: Timebase {
@@ -806,36 +858,16 @@ async fn execute_demo_artifact(
         config,
         semantic_version: "1.0.0".to_owned(),
     })
-    .map_err(|error| error.to_string())?;
-    match artifacts
-        .prepare(recipe)
-        .await
-        .map_err(|error| error.to_string())?
-    {
-        PrepareOutcome::Hit(lease) => Ok(lease.artifact_id()),
-        PrepareOutcome::InFlight { .. } => Err("artifact key is already in flight".to_owned()),
-        PrepareOutcome::Miss(staging) => {
-            let path = "result.json"
-                .parse::<ArtifactPath>()
-                .map_err(|error| error.to_string())?;
-            let output = serde_json_canonicalizer::to_vec(&json!({
-                "inputs": task.input_artifact_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                "kind": task.kind,
-                "payload_sha256": format!("sha256:{}", Sha256Digest::from_bytes(Sha256::digest(&task.payload).into())),
-            }))
-            .map_err(|error| error.to_string())?;
-            let mut file = staging
-                .create_file(&path)
-                .map_err(|error| error.to_string())?;
-            write_and_sync(&mut file, &output).map_err(|error| error.to_string())?;
-            drop(file);
-            let lease = artifacts
-                .commit(staging.id().clone(), vec![path], BTreeMap::new())
-                .await
-                .map_err(|error| error.to_string())?;
-            Ok(lease.artifact_id())
-        }
-    }
+    .map_err(|error| error.to_string())
+}
+
+pub(crate) fn demo_output(task: &LeasedTask) -> Result<Vec<u8>, String> {
+    serde_json_canonicalizer::to_vec(&json!({
+        "inputs": task.input_artifact_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "kind": task.kind,
+        "payload_sha256": format!("sha256:{}", Sha256Digest::from_bytes(Sha256::digest(&task.payload).into())),
+    }))
+    .map_err(|error| error.to_string())
 }
 
 fn write_and_sync(file: &mut File, bytes: &[u8]) -> std::io::Result<()> {

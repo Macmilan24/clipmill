@@ -193,6 +193,10 @@ impl ArtifactActor {
                                 log_commit(context.as_ref(), &result, started);
                                 let _reply = reply.send(result);
                             }
+                            Command::Abandon { staging_id, reply } => {
+                                staging_context.remove(&staging_id);
+                                let _reply = reply.send(store.abandon(&staging_id));
+                            }
                             Command::Open { artifact_id, reply } => {
                                 let started = Instant::now();
                                 let result = store.open(artifact_id);
@@ -293,6 +297,21 @@ impl ArtifactHandle {
                 quality,
                 reply,
             })
+            .await
+            .map_err(|_| ArtifactServiceError::Stopped)?;
+        received
+            .await
+            .map_err(|_| ArtifactServiceError::Stopped)?
+            .map_err(Into::into)
+    }
+
+    pub(crate) async fn abandon(
+        &self,
+        staging_id: StagingId,
+    ) -> Result<bool, ArtifactServiceError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Abandon { staging_id, reply })
             .await
             .map_err(|_| ArtifactServiceError::Stopped)?;
         received
@@ -439,6 +458,10 @@ enum Command {
         paths: Vec<ArtifactPath>,
         quality: BTreeMap<String, f64>,
         reply: oneshot::Sender<Result<ArtifactLease, ArtifactError>>,
+    },
+    Abandon {
+        staging_id: StagingId,
+        reply: oneshot::Sender<Result<bool, ArtifactError>>,
     },
     Open {
         artifact_id: ArtifactId,

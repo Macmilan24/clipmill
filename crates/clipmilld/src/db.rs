@@ -20,8 +20,7 @@ use ulid::Ulid;
 
 use crate::DaemonError;
 use crate::jobs::{
-    EventFilter, JobPlan, JobRecord, LeaseSelection, ResourceCapacity, TaskCompletion,
-    TaskEventRecord,
+    EventFilter, JobPlan, JobRecord, LeaseRequest, LeaseSelection, TaskCompletion, TaskEventRecord,
 };
 
 mod job_store;
@@ -187,34 +186,40 @@ impl DbActor {
                                         recovered_unix_millis,
                                     ));
                                 }
-                                Command::LeaseNextTask {
-                                    lease_id,
-                                    daemon_epoch,
-                                    now_unix_millis,
-                                    expires_unix_millis,
-                                    capacity,
-                                    reply,
-                                } => {
-                                    let _result = reply.send(job_store::lease_next_task(
-                                        &mut connection,
-                                        &lease_id,
-                                        &daemon_epoch,
-                                        now_unix_millis,
-                                        expires_unix_millis,
-                                        capacity,
-                                    ));
+                                Command::LeaseNextTask { request, reply } => {
+                                    let _result =
+                                        reply.send(job_store::lease_next_task_for_worker(
+                                            &mut connection,
+                                            &request,
+                                        ));
                                 }
                                 Command::HeartbeatTask {
                                     lease_id,
                                     now_unix_millis,
                                     expires_unix_millis,
+                                    progress,
                                     reply,
                                 } => {
-                                    let _result = reply.send(job_store::heartbeat_task(
-                                        &mut connection,
+                                    let _result =
+                                        reply.send(job_store::heartbeat_task_with_progress(
+                                            &mut connection,
+                                            &lease_id,
+                                            now_unix_millis,
+                                            expires_unix_millis,
+                                            progress.as_ref(),
+                                        ));
+                                }
+                                Command::ReplayTaskCompletion {
+                                    lease_id,
+                                    worker_id,
+                                    completion_hash,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::replay_task_completion(
+                                        &connection,
                                         &lease_id,
-                                        now_unix_millis,
-                                        expires_unix_millis,
+                                        &worker_id,
+                                        &completion_hash,
                                     ));
                                 }
                                 Command::CompleteTask {
@@ -247,6 +252,25 @@ impl DbActor {
                                         failure_class,
                                         &detail,
                                         failed_unix_millis,
+                                    ));
+                                }
+                                Command::CompleteFailedTask {
+                                    lease_id,
+                                    failure_class,
+                                    detail,
+                                    completion_hash,
+                                    completion_response,
+                                    completed_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::complete_failed_task(
+                                        &mut connection,
+                                        &lease_id,
+                                        failure_class,
+                                        &detail,
+                                        &completion_hash,
+                                        &completion_response,
+                                        completed_unix_millis,
                                     ));
                                 }
                                 Command::ExpireTaskLeases {
@@ -549,22 +573,11 @@ impl DbHandle {
 
     pub(crate) async fn lease_next_task(
         &self,
-        lease_id: String,
-        daemon_epoch: String,
-        now_unix_millis: u64,
-        expires_unix_millis: u64,
-        capacity: ResourceCapacity,
+        request: LeaseRequest,
     ) -> Result<LeaseSelection, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
-            .send(Command::LeaseNextTask {
-                lease_id,
-                daemon_epoch,
-                now_unix_millis,
-                expires_unix_millis,
-                capacity,
-                reply,
-            })
+            .send(Command::LeaseNextTask { request, reply })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -575,13 +588,34 @@ impl DbHandle {
         lease_id: String,
         now_unix_millis: u64,
         expires_unix_millis: u64,
-    ) -> Result<(), StoreError> {
+        progress: Option<clipmill_contracts::proto::worker::v1::ProgressUnits>,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::HeartbeatTask {
                 lease_id,
                 now_unix_millis,
                 expires_unix_millis,
+                progress,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn replay_task_completion(
+        &self,
+        lease_id: String,
+        worker_id: String,
+        completion_hash: [u8; 32],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ReplayTaskCompletion {
+                lease_id,
+                worker_id,
+                completion_hash,
                 reply,
             })
             .await
@@ -626,6 +660,32 @@ impl DbHandle {
                 failure_class,
                 detail,
                 failed_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn complete_failed_task(
+        &self,
+        lease_id: String,
+        failure_class: i32,
+        detail: String,
+        completion_hash: [u8; 32],
+        completion_response: Vec<u8>,
+        completed_unix_millis: u64,
+    ) -> Result<TaskCompletion, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::CompleteFailedTask {
+                lease_id,
+                failure_class,
+                detail,
+                completion_hash,
+                completion_response,
+                completed_unix_millis,
                 reply,
             })
             .await
@@ -819,18 +879,21 @@ enum Command {
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
     },
     LeaseNextTask {
-        lease_id: String,
-        daemon_epoch: String,
-        now_unix_millis: u64,
-        expires_unix_millis: u64,
-        capacity: ResourceCapacity,
+        request: LeaseRequest,
         reply: oneshot::Sender<Result<LeaseSelection, StoreError>>,
     },
     HeartbeatTask {
         lease_id: String,
         now_unix_millis: u64,
         expires_unix_millis: u64,
-        reply: oneshot::Sender<Result<(), StoreError>>,
+        progress: Option<clipmill_contracts::proto::worker::v1::ProgressUnits>,
+        reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    ReplayTaskCompletion {
+        lease_id: String,
+        worker_id: String,
+        completion_hash: [u8; 32],
+        reply: oneshot::Sender<Result<Option<Vec<u8>>, StoreError>>,
     },
     CompleteTask {
         lease_id: String,
@@ -846,6 +909,15 @@ enum Command {
         detail: String,
         failed_unix_millis: u64,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    CompleteFailedTask {
+        lease_id: String,
+        failure_class: i32,
+        detail: String,
+        completion_hash: [u8; 32],
+        completion_response: Vec<u8>,
+        completed_unix_millis: u64,
+        reply: oneshot::Sender<Result<TaskCompletion, StoreError>>,
     },
     ExpireTaskLeases {
         now_unix_millis: u64,
@@ -1739,6 +1811,70 @@ mod tests {
                 .state,
             JobState::Cancelled as i32
         );
+    }
+
+    #[test]
+    fn failed_worker_completions_replay_only_to_the_original_worker() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Failure replay", 10);
+        create_project(&mut connection, "create-failure", &[1; 32], &project).expect("project");
+        let project_id = project.project_id.parse().expect("project id");
+        let plan = JobPlan::demo(&project_id, b"retryable".to_vec(), 20);
+        job_store::submit_job(&mut connection, "submit-failure", &[2; 32], &plan).expect("submit");
+        let lease = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15_030,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("lease")
+        .task
+        .expect("runnable task");
+        let response = b"durable failure acknowledgement";
+        let completed = job_store::complete_failed_task(
+            &mut connection,
+            &lease.lease_id,
+            FailureClass::Transient as i32,
+            "retryable fixture",
+            &[7; 32],
+            response,
+            40,
+        )
+        .expect("record failed completion");
+        assert_eq!(completed.response, response);
+        assert_eq!(completed.events.len(), 1);
+        assert_eq!(completed.events[0].state, TaskState::Retryable as i32);
+        assert_eq!(
+            job_store::replay_task_completion(
+                &connection,
+                &lease.lease_id,
+                "builtin-fixture",
+                &[7; 32],
+            )
+            .expect("replay"),
+            Some(response.to_vec())
+        );
+        assert!(matches!(
+            job_store::replay_task_completion(
+                &connection,
+                &lease.lease_id,
+                "wrk_01J00000000000000000000000",
+                &[7; 32],
+            ),
+            Err(StoreError::Conflict)
+        ));
+        assert!(matches!(
+            job_store::replay_task_completion(
+                &connection,
+                &lease.lease_id,
+                "builtin-fixture",
+                &[8; 32],
+            ),
+            Err(StoreError::Conflict)
+        ));
     }
 
     #[test]
