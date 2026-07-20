@@ -81,6 +81,9 @@ database actors.
 The cache drill hard-kills real daemon-backed publisher processes and verifies
 all acknowledged roots and visible payloads after restart. W4 adds active task
 output roots and transitive task inputs to GC reachability, then proves local
-task/job recovery with a separate job kill drill. External worker recovery and
-external-worker recovery remains W6, so the broader Phase 0 claim is not yet
-complete.
+task/job recovery with a separate job kill drill. W6 extends that proof through
+authenticated external workers: the daemon prepares lease-scoped staging,
+validates the exact declaration, publishes and roots outputs itself, and
+durably deduplicates both successful and failed completion acknowledgements.
+Worker or daemon death abandons uncommitted staging without exposing a partial
+object. The broader Phase 0 claim still requires W7 and W8.
