@@ -85,6 +85,18 @@ worse than no badge: it would assert a guarantee nobody checked. Note that the
 daemon currently answers `true` unconditionally — correct for Phase 0, which has
 no egress path at all, but it should become a real policy read when one exists.
 
+## Linux dependency posture
+
+Tauri's Linux WebView is WebKitGTK, which still targets GTK3 while gtk-rs has
+moved to GTK4. cargo-deny therefore reports 16 advisories against the shell's
+graph. All 16 are `unmaintained`; none are vulnerabilities and none are
+unsound. They are listed by exact id in `deny.toml` rather than by relaxing the
+advisory class, so a genuine vulnerability in any of those same crates still
+fails the gate.
+
+macOS uses WKWebView and links none of it. Revisit when webkit2gtk-rs targets
+GTK4.
+
 ## Gates
 
 - `just gate-tokens` — token CSS is reproducible; renderer typechecks, tests, builds.
