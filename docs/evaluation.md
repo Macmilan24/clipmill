@@ -68,6 +68,21 @@ writes exactly four public files under `eval/seed40/`:
 
 `just gate-phase0` verifies that exact committed file set without access to the
 private corpus. It fails if a signature, count, cache identity, outcome,
-license total, canonical byte, or path-leak invariant changes. Phase 0 remains
-incomplete until the real four-file proof is committed, all required checks are
-green, and the W8 pull request is merged to protected `main`.
+license total, canonical byte, or path-leak invariant changes.
+
+## Recorded Phase 0 baseline
+
+The completed baseline contains 40 private technical derivatives of Blender
+Foundation Open Movies: 21 derived from
+[Sintel](https://durian.blender.org/sharing/) under CC BY 3.0 and 19 from
+[Elephants Dream](https://orange.blender.org/blog/a-call-for-textures/) under
+CC BY 2.5. It records 39 verified valid sources and one deliberately truncated
+hostile source. The complete source URLs, byte hashes, attribution, license
+evidence, transformations, media, and signing keys remain outside Git.
+
+Protected `main` contains only the four safe files in `eval/seed40`. Their
+signed run records all 40 cold/warm outcomes, identical warm source-map IDs,
+the structured hostile failure, hardware-profile identity, contract and
+sidecar versions, timings, cache results, and aggregate license counts without
+private paths or media bytes. Together with the green W8 security and offline
+matrix, this is the Phase 0 exit proof.

@@ -88,7 +88,7 @@ validates the exact declaration, publishes and roots outputs itself, and
 durably deduplicates both successful and failed completion acknowledgements.
 Worker or daemon death abandons uncommitted staging without exposing a partial
 object. W7 uses the same publication ordering for signed device profiles and
-retains the active generation through a system root. The broader Phase 0 claim
-still requires W8's integrated security gates and a committed, verified
-Seed-40 attestation; no private corpus bytes or paths are CAS inputs or
+retains the active generation through a system root. W8 closes the broader
+Phase 0 claim with integrated security gates and the committed, verified
+Seed-40 attestation. No private corpus bytes or paths are CAS inputs or
 repository artifacts.
