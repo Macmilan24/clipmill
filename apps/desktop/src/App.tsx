@@ -1,7 +1,10 @@
-import { type JSX, useCallback, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, type JSX, useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
 import { type Theme, ThemeController } from '@clipmill/tokens';
+
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 import {
   type ConnectionState,
@@ -12,7 +15,7 @@ import {
 } from './daemon/client.js';
 import { ModelsDevice } from './screens/ModelsDevice.js';
 import { PhasePlaceholder } from './screens/PhasePlaceholder.js';
-import { Sidebar } from './shell/Sidebar.js';
+import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
 import { DEFAULT_SECTION_ID, findSection } from './shell/navigation.js';
 
@@ -36,13 +39,12 @@ export function App(): JSX.Element {
     [],
   );
 
-  const [theme, setTheme] = useState<Theme>(() => {
-    const initial = ThemeController.resolveInitial(
+  const [theme, setTheme] = useState<Theme>(() =>
+    ThemeController.resolveInitial(
       typeof localStorage === 'undefined' ? null : localStorage,
       typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches,
-    );
-    return initial;
-  });
+    ),
+  );
 
   const [sectionId, setSectionId] = useState(DEFAULT_SECTION_ID);
   const [state, setState] = useState<ConnectionState>({ status: 'connecting' });
@@ -112,11 +114,16 @@ export function App(): JSX.Element {
   const section = findSection(sectionId);
 
   return (
-    <>
+    <TooltipProvider delayDuration={300}>
       <div className="ambient" aria-hidden="true" />
-      <div className="shell">
-        <Sidebar activeId={sectionId} onSelect={setSectionId} state={state} />
-        <div className="main">
+      <SidebarProvider
+        // The shell is fixed at the design's width and never collapses; the
+        // provider is here for the menu primitives, not for responsiveness.
+        style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
+        className="relative z-1 h-full min-h-0"
+      >
+        <AppSidebar activeId={sectionId} onSelect={setSectionId} state={state} />
+        <SidebarInset className="min-w-0 bg-transparent">
           <TopBar
             breadcrumb={section.breadcrumb}
             theme={theme}
@@ -124,7 +131,7 @@ export function App(): JSX.Element {
             state={state}
             profile={profile}
           />
-          <main className="content">
+          <main className="min-h-0 flex-1 overflow-y-auto p-6">
             {section.availability.kind === 'live' ? (
               <ModelsDevice
                 state={state}
@@ -141,8 +148,8 @@ export function App(): JSX.Element {
               <PhasePlaceholder section={section} />
             )}
           </main>
-        </div>
-      </div>
-    </>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

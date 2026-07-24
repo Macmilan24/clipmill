@@ -49,6 +49,42 @@ daemon that was killed and respawned reports a new start time, so the key
 changes and the device profile is fetched again. Keying on "connected" alone
 would miss a restart that happened between two ticks.
 
+## Component system
+
+Components are [shadcn/ui](https://ui.shadcn.com) (MIT), vendored into
+`src/components/ui`. Copy-paste rather than a runtime dependency is the point:
+the source is ours, so it can be restyled to this design instead of fighting a
+library's own visual language, and it can be redistributed under AGPL.
+
+Two libraries were considered and not adopted. **HeroUI** (Apache-2.0) is
+excellent but ships an opinionated look and a second accessibility stack
+(React Aria alongside Radix); one primitive stack is worth more here than any
+individual component. **Aceternity UI** was rejected on licensing: its stated
+terms forbid redistributing the source files, which cannot be reconciled with
+AGPL's requirement to distribute source. Note that a vendored component is not
+an npm dependency, so `tools/security/check-node-licenses.py` would not have
+caught it — vendored source has to be licence-checked by hand.
+
+### One palette, not two
+
+shadcn components are written against fixed semantic variable names
+(`--background`, `--primary`, `--border`, …). Left alone, those become a second
+palette beside the design tokens, and the two drift.
+
+Instead every semantic name is generated as an _alias_ for a `--cm-*`
+primitive. Aliases are emitted once rather than per theme: `var()` resolves at
+use time, so when the attribute swaps the primitive underneath, the semantic
+name follows. Surfaces map to the glass values, not to opaque fills, or every
+shadcn component would punch a hole through the shell.
+
+### cn() knows the type scale
+
+`tailwind-merge` only recognises Tailwind's stock class groups, so `text-body`
+was invisible to it: passing it to a component that already carries `text-sm`
+left both classes, and stylesheet order silently picked the winner — the
+navigation rendered at 14px instead of the design's 13px. `cn()` extends the
+merger with the custom font-size group so the override is deterministic.
+
 ## Theme
 
 The design ships a light and a dark artboard for every screen, with identical

@@ -1,15 +1,15 @@
 import {
-  CpuIcon,
-  type IconComponent,
-  LibraryIcon,
-  PlusSquareIcon,
-  SearchSparkleIcon,
-  SettingsIcon,
-  SlidersIcon,
-  SparkleRectIcon,
-  SwatchIcon,
-  UploadIcon,
-} from './icons.js';
+  Cpu,
+  Library,
+  type LucideIcon,
+  Palette,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  Sparkles,
+  SquarePlus,
+  Upload,
+} from 'lucide-react';
 
 /**
  * Either the section is backed by something real today, or it names the phase
@@ -24,20 +24,20 @@ export interface NavSection {
   readonly id: string;
   readonly label: string;
   readonly breadcrumb: string;
-  readonly icon: IconComponent;
+  readonly icon: LucideIcon;
   readonly availability: Availability;
 }
 
 /**
- * Order and labels are fixed by the design and must not be regrouped, renamed,
- * or reordered.
+ * Order, labels, and icons are fixed by the design and must not be regrouped,
+ * renamed, or reordered.
  */
 export const NAV_SECTIONS: readonly NavSection[] = [
   {
     id: 'library',
     label: 'Library',
     breadcrumb: 'Library',
-    icon: LibraryIcon,
+    icon: Library,
     availability: {
       kind: 'planned',
       phase: 1,
@@ -48,7 +48,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     id: 'new-project',
     label: 'New Project',
     breadcrumb: 'New Project',
-    icon: PlusSquareIcon,
+    icon: SquarePlus,
     availability: {
       kind: 'planned',
       phase: 1,
@@ -60,7 +60,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     id: 'results',
     label: 'Results',
     breadcrumb: 'Results',
-    icon: SparkleRectIcon,
+    icon: Sparkles,
     availability: {
       kind: 'planned',
       phase: 1,
@@ -71,7 +71,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     id: 'editor',
     label: 'Editor',
     breadcrumb: 'Editor',
-    icon: SlidersIcon,
+    icon: SlidersHorizontal,
     availability: {
       kind: 'planned',
       phase: 1,
@@ -82,7 +82,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     id: 'discovery',
     label: 'Discovery',
     breadcrumb: 'Discovery',
-    icon: SearchSparkleIcon,
+    icon: Search,
     availability: {
       kind: 'planned',
       phase: 2,
@@ -93,7 +93,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     id: 'brand',
     label: 'Brand',
     breadcrumb: 'Brand',
-    icon: SwatchIcon,
+    icon: Palette,
     availability: {
       kind: 'planned',
       phase: 4,
@@ -104,14 +104,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     id: 'models',
     label: 'Models',
     breadcrumb: 'Models & Device',
-    icon: CpuIcon,
+    icon: Cpu,
     availability: { kind: 'live' },
   },
   {
     id: 'export',
     label: 'Export',
     breadcrumb: 'Export',
-    icon: UploadIcon,
+    icon: Upload,
     availability: {
       kind: 'planned',
       phase: 1,
@@ -122,7 +122,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     id: 'settings',
     label: 'Settings',
     breadcrumb: 'Settings',
-    icon: SettingsIcon,
+    icon: Settings,
     availability: {
       kind: 'planned',
       phase: 1,

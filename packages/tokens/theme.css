@@ -1,0 +1,89 @@
+/* Pro-Studio Precision v1.0.0 shadcn semantic layer — GENERATED. Do not edit.
+ * Each name below is an alias for a --cm-* primitive from tokens.css, so the
+ * component library and the design system cannot drift into two palettes.
+ */
+
+:root {
+  --background: var(--cm-bg-top);
+  --foreground: var(--cm-text-primary);
+  --card: var(--cm-glass);
+  --card-foreground: var(--cm-text-primary);
+  --popover: var(--cm-glass-elevated);
+  --popover-foreground: var(--cm-text-primary);
+  --primary: var(--cm-accent);
+  --secondary: var(--cm-glass-elevated);
+  --secondary-foreground: var(--cm-text-primary);
+  --muted: var(--cm-recessed);
+  --muted-foreground: var(--cm-text-muted);
+  --accent: var(--cm-accent-selected);
+  --accent-foreground: var(--cm-text-primary);
+  --destructive: var(--cm-semantic-danger);
+  --border: var(--cm-glass-border);
+  --input: var(--cm-recessed-border);
+  --ring: var(--cm-accent-focus);
+  --sidebar: var(--cm-glass);
+  --sidebar-foreground: var(--cm-text-secondary);
+  --sidebar-primary: var(--cm-accent);
+  --sidebar-accent: var(--cm-accent-selected);
+  --sidebar-accent-foreground: var(--cm-text-primary);
+  --sidebar-border: var(--cm-glass-border);
+  --sidebar-ring: var(--cm-accent-focus);
+  --success: var(--cm-semantic-success);
+  --warning: var(--cm-semantic-warning);
+  --outbound: var(--cm-semantic-outbound);
+  --primary-foreground: #ffffff;
+  --destructive-foreground: #ffffff;
+  --sidebar-primary-foreground: #ffffff;
+
+  /* shadcn derives sm/md/lg/xl from this; 12px yields 8px controls and 16px cards. */
+  --radius: var(--cm-radius-panel);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-outbound: var(--outbound);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+
+  --font-sans: var(--cm-font-ui);
+  --font-mono: var(--cm-font-mono);
+
+  --text-page-title: var(--cm-type-page-title);
+  --text-card-title: var(--cm-type-card-title);
+  --text-section-title: var(--cm-type-section-title);
+  --text-body: var(--cm-type-body);
+  --text-label: var(--cm-type-label);
+  --text-meta: var(--cm-type-meta);
+  --text-technical: var(--cm-type-technical);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
