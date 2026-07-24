@@ -8,3 +8,7 @@ LICENSE
 # by an ed25519 signature: reformatting them would not just fail the check, it
 # would invalidate the attestation they exist to prove.
 eval/seed40/
+# Generated from tokens.json by packages/tokens/scripts/build-css.mjs; the
+# generator owns their formatting and CI checks them for drift.
+packages/tokens/tokens.css
+packages/tokens/tailwind-preset.css
