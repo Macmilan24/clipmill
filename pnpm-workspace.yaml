@@ -1,3 +1,11 @@
 packages:
   - packages/*
   - apps/desktop
+overrides:
+  # GHSA-v2hh-gcrm-f6hx: host confusion via a literal IPv6 authority. Reached
+  # transitively through ajv, which still resolves the vulnerable 3.1.3.
+  #
+  # Pinned to the patch rather than an open range: `>=3.1.4` resolves to 4.x,
+  # a semver-major move inside the JSON Schema validator the contract fixtures
+  # depend on. Drop this once ajv widens its own range.
+  fast-uri@<3.1.4: '3.1.4'
