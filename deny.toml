@@ -6,6 +6,38 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+# Every entry below is `unmaintained`, not a vulnerability and not unsound —
+# verified against the cargo-deny output, which reported 16 unmaintained and
+# zero of either other kind. They are the GTK3/gtk-rs stack that Tauri's Linux
+# WebView backend links against, plus proc-macro-error reached through it.
+#
+# There is no alternative to accept: WebKitGTK is the Linux WebView, and the
+# gtk-rs project has moved to GTK4 while webkit2gtk still targets GTK3. The
+# desktop shell is macOS-primary (WKWebView, none of this applies) and Linux is
+# a supported build target, so the exposure is a maintenance risk on one
+# platform's UI layer, not a known defect.
+#
+# Listed by exact id rather than relaxing the advisory class, so a real
+# vulnerability in any of these crates still fails the gate. Revisit when
+# webkit2gtk-rs targets GTK4.
+ignore = [
+  "RUSTSEC-2024-0370", # proc-macro-error
+  "RUSTSEC-2024-0411", # gtk3-rs: gtk
+  "RUSTSEC-2024-0412", # gtk3-rs: atk
+  "RUSTSEC-2024-0413", # gtk3-rs: gdk
+  "RUSTSEC-2024-0414", # gtk3-rs: gdkwayland-sys
+  "RUSTSEC-2024-0415", # gtk3-rs: gdkx11
+  "RUSTSEC-2024-0416", # gtk3-rs: atk-sys
+  "RUSTSEC-2024-0417", # gtk3-rs: gdk-sys
+  "RUSTSEC-2024-0418", # gtk3-rs: gdkx11-sys
+  "RUSTSEC-2024-0419", # gtk3-rs: gtk-sys
+  "RUSTSEC-2024-0420", # gtk3-rs: gtk3-macros
+  "RUSTSEC-2025-0075", # unmaintained, reached through the GTK3 stack
+  "RUSTSEC-2025-0080", # unmaintained, reached through the GTK3 stack
+  "RUSTSEC-2025-0081", # unmaintained, reached through the GTK3 stack
+  "RUSTSEC-2025-0098", # unmaintained, reached through the GTK3 stack
+  "RUSTSEC-2025-0100", # unmaintained, reached through the GTK3 stack
+]
 
 [licenses]
 version = 2
