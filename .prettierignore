@@ -11,4 +11,8 @@ eval/seed40/
 # Generated from tokens.json by packages/tokens/scripts/build-css.mjs; the
 # generator owns their formatting and CI checks them for drift.
 packages/tokens/tokens.css
-packages/tokens/tailwind-preset.css
+packages/tokens/theme.css
+# Vendored shadcn/ui components (MIT). Kept close to upstream so `shadcn diff`
+# stays meaningful; restyling happens through the token layer, not by reflowing
+# their source.
+apps/desktop/src/components/ui/

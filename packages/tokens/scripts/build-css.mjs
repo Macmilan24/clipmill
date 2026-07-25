@@ -2,10 +2,12 @@
 /**
  * Compile tokens.json into the two CSS artifacts the shell consumes:
  *
- *   tokens.css          framework-agnostic custom properties, dark by default,
- *                       overridden wholesale by :root[data-theme='light'].
- *   tailwind-preset.css Tailwind v4 @theme mapping so utilities resolve to the
- *                       same variables instead of duplicating literals.
+ *   tokens.css   framework-agnostic custom properties, dark by default,
+ *                overridden wholesale by :root[data-theme='light'].
+ *   theme.css    the shadcn/ui semantic names (--background, --primary, …) as
+ *                aliases onto those primitives, plus the Tailwind v4 @theme
+ *                mapping, so the component library and the design system can
+ *                never drift into two palettes.
  *
  * Both outputs are committed and re-checked in CI (decision R2): the generator
  * is the only writer, so a hand edit shows up as drift rather than surviving.
@@ -16,6 +18,52 @@ import { fileURLToPath } from 'node:url';
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PREFIX = '--cm';
+
+/**
+ * shadcn semantic name -> the --cm-* primitive it stands for.
+ *
+ * Surfaces map to glass rather than to opaque fills: a card in this design is a
+ * blurred translucent layer, so `bg-card` has to resolve to the glass value or
+ * every shadcn component would punch an opaque hole through the shell.
+ */
+const SHADCN_ALIASES = {
+    background: 'bg-top',
+    foreground: 'text-primary',
+    card: 'glass',
+    'card-foreground': 'text-primary',
+    popover: 'glass-elevated',
+    'popover-foreground': 'text-primary',
+    primary: 'accent',
+    secondary: 'glass-elevated',
+    'secondary-foreground': 'text-primary',
+    muted: 'recessed',
+    'muted-foreground': 'text-muted',
+    accent: 'accent-selected',
+    'accent-foreground': 'text-primary',
+    destructive: 'semantic-danger',
+    border: 'glass-border',
+    input: 'recessed-border',
+    ring: 'accent-focus',
+    // The sidebar is one continuous glass surface touching the viewport edges.
+    sidebar: 'glass',
+    'sidebar-foreground': 'text-secondary',
+    'sidebar-primary': 'accent',
+    'sidebar-accent': 'accent-selected',
+    'sidebar-accent-foreground': 'text-primary',
+    'sidebar-border': 'glass-border',
+    'sidebar-ring': 'accent-focus',
+    // Semantic states, kept on the design's reserved meanings.
+    success: 'semantic-success',
+    warning: 'semantic-warning',
+    outbound: 'semantic-outbound',
+};
+
+/** Semantic names with no primitive behind them: text that sits on the accent. */
+const SHADCN_LITERALS = {
+    'primary-foreground': '#ffffff',
+    'destructive-foreground': '#ffffff',
+    'sidebar-primary-foreground': '#ffffff',
+};
 
 /** Groups that are identical in both themes and therefore emitted once. */
 const SHARED_GROUPS = [
@@ -97,35 +145,59 @@ ${TokenSheetBuilder.#declarations(this.#themeEntries('light'))}
 `;
     }
 
-    buildTailwindPreset() {
+    /**
+     * shadcn/ui components are written against a fixed set of semantic variable
+     * names (--background, --primary, --border, …). Rather than let that become
+     * a second palette living alongside ours, every one of those names is an
+     * alias for a --cm-* primitive.
+     *
+     * Aliases are emitted once, not per theme: `var()` resolves at use time, so
+     * when the data-theme attribute swaps the primitive underneath, the semantic
+     * name follows. One switch still drives the entire surface.
+     */
+    buildThemeCss() {
         const { name, version } = this.#tokens.meta;
-        const map = (entries, prefix) =>
-            TokenSheetBuilder.#declarations(
-                entries.map(([name_]) => [
-                    `${prefix}-${name_.slice(PREFIX.length + 1)}`,
-                    `var(${name_})`,
-                ]),
-            );
 
-        // Theme-varying values are mapped from the dark key set: both themes
-        // declare the same names, so either side yields an identical mapping.
-        return `/* ${name} v${version} Tailwind v4 preset — GENERATED. Do not edit. */
+        const aliases = Object.entries(SHADCN_ALIASES).map(([semantic, primitive]) => [
+            `  --${semantic}`,
+            `var(${PREFIX}-${primitive})`,
+        ]);
+        const literals = Object.entries(SHADCN_LITERALS).map(([semantic, value]) => [
+            `  --${semantic}`,
+            value,
+        ]);
+        const themeMappings = Object.keys(SHADCN_ALIASES)
+            .concat(Object.keys(SHADCN_LITERALS))
+            .map((semantic) => [`  --color-${semantic}`, `var(--${semantic})`]);
+
+        return `/* ${name} v${version} shadcn semantic layer — GENERATED. Do not edit.
+ * Each name below is an alias for a --cm-* primitive from tokens.css, so the
+ * component library and the design system cannot drift into two palettes.
+ */
+
+:root {
+${TokenSheetBuilder.#declarations(aliases, '')}
+${TokenSheetBuilder.#declarations(literals, '')}
+
+  /* shadcn derives sm/md/lg/xl from this; 12px yields 8px controls and 16px cards. */
+  --radius: var(${PREFIX}-radius-panel);
+}
+
 @theme inline {
-${map(
-    this.#sharedEntries().filter(
-        ([name_]) => name_.startsWith(`${PREFIX}-accent`) || name_.startsWith(`${PREFIX}-semantic`),
-    ),
-    '  --color',
-)}
-${map(this.#themeEntries('dark'), '  --color')}
+${TokenSheetBuilder.#declarations(themeMappings, '')}
 
-  --font-ui: var(${PREFIX}-font-ui);
+  --font-sans: var(${PREFIX}-font-ui);
   --font-mono: var(${PREFIX}-font-mono);
 
-${map(
-    this.#sharedEntries().filter(([name_]) => name_.startsWith(`${PREFIX}-radius`)),
-    '  --radius',
+${TokenSheetBuilder.#declarations(
+    Object.keys(this.#tokens.type).map((key) => [`  --text-${key}`, `var(${PREFIX}-type-${key})`]),
+    '',
 )}
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 `;
     }
@@ -136,7 +208,7 @@ const builder = new TokenSheetBuilder(tokens);
 
 const outputs = [
     ['tokens.css', builder.buildTokensCss()],
-    ['tailwind-preset.css', builder.buildTailwindPreset()],
+    ['theme.css', builder.buildThemeCss()],
 ];
 
 const shouldCheck = process.argv.includes('--check');

@@ -1,6 +1,15 @@
+import { Film } from 'lucide-react';
 import type { JSX } from 'react';
 
-import { FilmIcon } from '../shell/icons.js';
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty';
+
 import type { NavSection } from '../shell/navigation.js';
 
 /**
@@ -17,21 +26,31 @@ export function PhasePlaceholder({ section }: { readonly section: NavSection }):
 
   return (
     <>
-      <div className="page-header">
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h1 className="t-page-title">{section.breadcrumb}</h1>
-          <p>Not built yet — and deliberately not mocked.</p>
+          <h1 className="text-page-title font-(--cm-weight-heading) tracking-[-0.01em]">
+            {section.breadcrumb}
+          </h1>
+          <p className="mt-1 text-meta text-[var(--cm-text-secondary)]">
+            Not built yet — and deliberately not mocked.
+          </p>
         </div>
       </div>
 
-      <section className="glass card empty" aria-label={`${section.label} is not available yet`}>
-        <span className="empty-well">
-          <FilmIcon />
-        </span>
-        <h2 className="t-card-title">Arrives in Phase {phase}</h2>
-        <p>{summary}</p>
-        <p className="mono muted">phase 0 · harness only · contracts, daemon, artifacts, workers</p>
-      </section>
+      <Empty className="glass rounded-xl" aria-label={`${section.label} is not available yet`}>
+        <EmptyHeader>
+          <EmptyMedia variant="icon" className="glass-elevated size-14 rounded-full">
+            <Film className="size-6" />
+          </EmptyMedia>
+          <EmptyTitle className="text-card-title">Arrives in Phase {phase}</EmptyTitle>
+          <EmptyDescription>{summary}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <p className="mono text-technical text-[var(--cm-text-muted)]">
+            phase 0 · harness only · contracts, daemon, artifacts, workers
+          </p>
+        </EmptyContent>
+      </Empty>
     </>
   );
 }

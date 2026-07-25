@@ -10,7 +10,7 @@
     ".": "./src/index.ts",
     "./tokens.json": "./src/tokens.json",
     "./tokens.css": "./tokens.css",
-    "./tailwind-preset.css": "./tailwind-preset.css"
+    "./theme.css": "./theme.css"
   },
   "scripts": {
     "build": "node scripts/build-css.mjs",

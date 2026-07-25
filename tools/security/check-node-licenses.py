@@ -22,6 +22,8 @@ ALLOWED_TERMS = {
     "CC0-1.0",
     "ISC",
     "MIT",
+    # MIT without the attribution clause; strictly more permissive than MIT.
+    "MIT-0",
     "MPL-2.0",
     "Python-2.0",
     "Unlicense",

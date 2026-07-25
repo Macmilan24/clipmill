@@ -1,11 +1,23 @@
+import { Moon, Sun } from 'lucide-react';
 import type { JSX } from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
 import type { Theme } from '@clipmill/tokens';
 
-import { formatBytes } from '../deviceProfile.js';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+
 import type { ConnectionState } from '../daemon/client.js';
-import { MoonIcon, SunIcon } from './icons.js';
+import { formatBytes } from '../deviceProfile.js';
 
 interface TopBarProps {
   readonly breadcrumb: string;
@@ -15,14 +27,14 @@ interface TopBarProps {
   readonly profile: DeviceProfile | null;
 }
 
-function statusLabel(state: ConnectionState): { text: string; className: string } {
+function statusLabel(state: ConnectionState): { text: string; tone: string } {
   switch (state.status) {
     case 'connected':
-      return { text: `daemon ${state.daemonVersion}`, className: 'success' };
+      return { text: `daemon ${state.daemonVersion}`, tone: 'text-[var(--color-success)]' };
     case 'connecting':
-      return { text: 'connecting', className: 'warning' };
+      return { text: 'connecting', tone: 'text-[var(--color-warning)]' };
     default:
-      return { text: 'daemon offline', className: 'danger' };
+      return { text: 'daemon offline', tone: 'text-[var(--color-destructive)]' };
   }
 }
 
@@ -42,39 +54,57 @@ export function TopBar({
   const total = profile?.memory.total_bytes;
   const available = profile?.phase0?.available_memory_bytes;
   const used = total !== undefined && available !== undefined ? total - available : undefined;
-  const ratio = used !== undefined && total !== undefined && total > 0 ? used / total : 0;
+  const ratio = used !== undefined && total !== undefined && total > 0 ? (used / total) * 100 : 0;
+  const nextTheme = theme === 'dark' ? 'light' : 'dark';
 
   return (
-    <header className="topbar glass">
-      <span className="breadcrumb">{breadcrumb}</span>
+    <header className="glass flex h-13 flex-none items-center justify-between rounded-none border-x-0 border-t-0 px-6 shadow-none">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbPage className="text-body text-[var(--cm-text-secondary)]">
+              {breadcrumb}
+            </BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
 
-      <div className="system-cluster">
+      <div className="flex items-center gap-4 text-[var(--cm-text-secondary)]">
         {used === undefined ? null : (
-          <span className="meter">
-            <span className="mono">
-              RAM {formatBytes(used)}/{formatBytes(total)}
-            </span>
-            <span className="meter-track">
-              <span className="meter-fill" style={{ width: `${Math.round(ratio * 100)}%` }} />
-            </span>
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex items-center gap-1.5">
+                <span className="mono text-technical">
+                  RAM {formatBytes(used)}/{formatBytes(total)}
+                </span>
+                <Progress value={ratio} className="h-1 w-10" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Measured at the last device profile, not sampled live</TooltipContent>
+          </Tooltip>
         )}
 
-        <span className={`mono ${status.className}`}>{status.text}</span>
+        <span className={cn('mono text-technical', status.tone)}>{status.text}</span>
 
-        <button
-          type="button"
-          className="icon-button"
-          onClick={onToggleTheme}
-          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        >
-          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onToggleTheme}
+              aria-label={`Switch to ${nextTheme} theme`}
+            >
+              {theme === 'dark' ? <Sun /> : <Moon />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Switch to {nextTheme} theme</TooltipContent>
+        </Tooltip>
 
-        <span className="avatar" aria-hidden="true">
-          S
-        </span>
+        <Avatar className="size-7 border border-[var(--cm-glass-border)]">
+          <AvatarFallback className="glass-elevated text-meta font-(--cm-weight-heading)">
+            S
+          </AvatarFallback>
+        </Avatar>
       </div>
     </header>
   );
