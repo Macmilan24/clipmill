@@ -15,6 +15,7 @@ CATEGORIES = {
         "contracts/**",
         "crates/clipmilld/src/sources.rs",
         "crates/clipmilld/src/probe.rs",
+        "crates/clipmilld/src/media.rs",
         "eval/harness/**",
     ),
     "IPC and worker authentication": (
@@ -33,6 +34,7 @@ CATEGORIES = {
     "Subprocess and sandbox": (
         "crates/clipmilld/src/probe.rs",
         "crates/clipmilld/src/device.rs",
+        "crates/clipmilld/src/media.rs",
         "workers/**",
         "tools/fetch-ffmpeg.sh",
     ),

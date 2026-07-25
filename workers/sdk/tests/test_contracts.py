@@ -79,8 +79,11 @@ def test_invalid_source_map_fixtures_are_rejected(name: str) -> None:
     with pytest.raises(ValidationError):
         SourceMap.model_validate_json(raw)
 
+
 def test_ingest_source_payload_fixtures_enforce_the_w11_key_version() -> None:
-    valid = json.loads((FIXTURES / "proto" / "ingest_source" / "valid" / "payload.json").read_text())
+    valid = json.loads(
+        (FIXTURES / "proto" / "ingest_source" / "valid" / "payload.json").read_text()
+    )
     message = json_format.ParseDict(valid, daemon_pb2.IngestSourcePayloadV1())
     assert message.key_version == "clipmill.ingest-source.v1"
     assert message.source_id.startswith("src_")

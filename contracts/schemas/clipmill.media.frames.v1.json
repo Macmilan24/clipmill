@@ -4,7 +4,14 @@
   "title": "MediaFrames",
   "description": "Sampled analysis frames decoded from the proxy for perception workers (book ch. 12/13): face detection reads these JPEGs instead of decoding video. The sampled interval is part of the recipe config, so different extractions cache independently; each frame names its exact source edit-time tick.",
   "type": "object",
-  "required": ["schema_version", "source_fingerprint", "frame_rate", "frame_height", "frames", "coverage"],
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "frame_rate",
+    "frame_height",
+    "frames",
+    "coverage"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {

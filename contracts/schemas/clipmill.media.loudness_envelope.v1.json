@@ -4,7 +4,14 @@
   "title": "MediaLoudnessEnvelope",
   "description": "EBU R128 loudness sampled at a fixed cadence over the 48 kHz rendition (book ch. 12/13). Timestamps are integer ticks at 1/90000 (D06); loudness values are measurements in LUFS/LU, which are legitimately real-valued. Downstream prosody features and the audio lane read this envelope instead of re-measuring.",
   "type": "object",
-  "required": ["schema_version", "source_fingerprint", "cadence_hz", "points", "summary", "coverage"],
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "cadence_hz",
+    "points",
+    "summary",
+    "coverage"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {

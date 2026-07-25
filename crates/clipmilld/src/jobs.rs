@@ -1395,6 +1395,135 @@ pub(crate) fn is_terminal_job(state: i32) -> bool {
 }
 
 #[cfg(test)]
+mod ingest_plan_tests {
+    #![allow(clippy::expect_used)]
+
+    use clipmill_core::ProjectId;
+
+    use super::JobPlan;
+    use crate::media;
+
+    fn kinds(plan: &JobPlan) -> Vec<&str> {
+        plan.tasks.iter().map(|task| task.kind.as_str()).collect()
+    }
+
+    #[test]
+    fn full_source_plan_decodes_video_once_and_fans_into_one_manifest() {
+        let plan = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            b"payload".to_vec(),
+            true,
+            true,
+            7,
+        )
+        .expect("plan");
+        assert_eq!(plan.kind, "ingest-source");
+        assert_eq!(plan.tasks.len(), 9);
+        let finals = plan
+            .tasks
+            .iter()
+            .filter(|task| task.is_final)
+            .collect::<Vec<_>>();
+        assert_eq!(finals.len(), 1);
+        let manifest = finals[0];
+        assert_eq!(manifest.kind, media::KIND_MANIFEST);
+        assert_eq!(
+            manifest.dependencies.len(),
+            plan.tasks.len() - 1,
+            "the fan-in manifest depends on every derivative"
+        );
+        assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
+        for task in &plan.tasks {
+            assert_eq!(
+                task.input_kinds.len(),
+                task.dependencies.len(),
+                "{} must declare one input kind per dependency",
+                task.kind
+            );
+        }
+        let ordinals = plan
+            .tasks
+            .iter()
+            .map(|task| task.ordinal)
+            .collect::<Vec<_>>();
+        assert_eq!(ordinals, (0..9).collect::<Vec<_>>());
+        let decode_source = plan
+            .tasks
+            .iter()
+            .filter(|task| task.dependencies.is_empty() && task.kind != media::KIND_MANIFEST)
+            .map(|task| task.kind.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            decode_source,
+            vec![
+                media::KIND_PROXY,
+                media::KIND_AUDIO_16K,
+                media::KIND_AUDIO_48K,
+                media::KIND_REFERENCE_INDEX
+            ],
+            "only the proxy decodes source video; everything else chains off artifacts"
+        );
+    }
+
+    #[test]
+    fn audio_only_sources_skip_the_video_chain() {
+        let plan = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            Vec::new(),
+            false,
+            true,
+            7,
+        )
+        .expect("plan");
+        let kinds = kinds(&plan);
+        assert!(!kinds.contains(&media::KIND_PROXY));
+        assert!(!kinds.contains(&media::KIND_FILMSTRIP));
+        assert!(!kinds.contains(&media::KIND_FRAMES));
+        assert!(kinds.contains(&media::KIND_AUDIO_16K));
+        assert!(kinds.contains(&media::KIND_LOUDNESS));
+        assert!(kinds.contains(&media::KIND_AUDIO_PEAKS));
+        assert!(kinds.contains(&media::KIND_REFERENCE_INDEX));
+        assert!(kinds.contains(&media::KIND_MANIFEST));
+    }
+
+    #[test]
+    fn video_only_sources_skip_the_audio_chain() {
+        let plan = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            Vec::new(),
+            true,
+            false,
+            7,
+        )
+        .expect("plan");
+        let kinds = kinds(&plan);
+        assert!(kinds.contains(&media::KIND_PROXY));
+        assert!(kinds.contains(&media::KIND_FILMSTRIP));
+        assert!(kinds.contains(&media::KIND_FRAMES));
+        assert!(!kinds.contains(&media::KIND_AUDIO_16K));
+        assert!(!kinds.contains(&media::KIND_AUDIO_48K));
+        assert!(!kinds.contains(&media::KIND_LOUDNESS));
+        assert!(!kinds.contains(&media::KIND_AUDIO_PEAKS));
+    }
+
+    #[test]
+    fn streamless_sources_are_rejected_at_planning() {
+        let rejected = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            Vec::new(),
+            false,
+            false,
+            7,
+        );
+        assert!(rejected.is_err());
+    }
+}
+
+#[cfg(test)]
 mod resource_tests {
     use std::collections::BTreeSet;
 

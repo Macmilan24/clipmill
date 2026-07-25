@@ -4,7 +4,14 @@
   "title": "MediaFilmstrip",
   "description": "Timeline thumbnail tiles decoded from the proxy at a fixed cadence (book ch. 12). Each tile names its file inside the artifact and the source edit-time tick it represents, so the timeline lane never derives positions from file ordering.",
   "type": "object",
-  "required": ["schema_version", "source_fingerprint", "tile_height", "interval_ticks", "tiles", "coverage"],
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "tile_height",
+    "interval_ticks",
+    "tiles",
+    "coverage"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {

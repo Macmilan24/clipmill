@@ -4,7 +4,14 @@
   "title": "MediaProxy",
   "description": "Descriptor for the mezzanine proxy derived at ingest (book ch. 12): constant-frame-rate short-GOP H.264 with normalized AAC, the single decode every preview and analysis surface reads instead of the original. The descriptor states what was actually encoded, verified by probing the output, so consumers never guess.",
   "type": "object",
-  "required": ["schema_version", "source_fingerprint", "file", "duration_ticks", "coverage", "video"],
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "file",
+    "duration_ticks",
+    "coverage",
+    "video"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
