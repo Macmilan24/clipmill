@@ -1,0 +1,14 @@
+{
+  "channels": 1,
+  "codec": "mp3",
+  "coverage": {
+    "end_ticks": 180000,
+    "start_ticks": 0
+  },
+  "duration_ticks": 180000,
+  "file": "audio.wav",
+  "sample_count": 32000,
+  "sample_rate": 16000,
+  "schema_version": "clipmill.media.audio.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006"
+}

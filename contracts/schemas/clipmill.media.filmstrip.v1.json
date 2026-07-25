@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.media.filmstrip.v1.json",
+  "title": "MediaFilmstrip",
+  "description": "Timeline thumbnail tiles decoded from the proxy at a fixed cadence (book ch. 12). Each tile names its file inside the artifact and the source edit-time tick it represents, so the timeline lane never derives positions from file ordering.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "tile_height",
+    "interval_ticks",
+    "tiles",
+    "coverage"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.media.filmstrip.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "tile_height": {
+      "description": "Pixel height every tile was scaled to; width follows the display aspect.",
+      "type": "integer",
+      "minimum": 16
+    },
+    "interval_ticks": {
+      "description": "Nominal ticks at 1/90000 between consecutive tiles.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "tiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "t_ticks"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "t_ticks": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

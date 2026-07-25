@@ -1,0 +1,15 @@
+{
+  "coverage": {
+    "end_ticks": 180000,
+    "start_ticks": 0
+  },
+  "schema_version": "clipmill.media.reference_index.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "streams": [
+    {
+      "index": 0,
+      "kind": "video",
+      "packet_count": 60
+    }
+  ]
+}

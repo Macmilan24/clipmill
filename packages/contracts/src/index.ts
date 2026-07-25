@@ -4,6 +4,14 @@ export { canonicalJson } from './canonical.js';
 export type { ArtifactManifest } from './gen/schemas/artifact-manifest.js';
 export type { SourceMap } from './gen/schemas/source-map.js';
 export type { DeviceProfile } from './gen/schemas/device-profile.js';
+export type { MediaProxy } from './gen/schemas/media-proxy.js';
+export type { MediaAudio } from './gen/schemas/media-audio.js';
+export type { MediaLoudnessEnvelope } from './gen/schemas/media-loudness-envelope.js';
+export type { MediaReferenceIndex } from './gen/schemas/media-reference-index.js';
+export type { MediaFilmstrip } from './gen/schemas/media-filmstrip.js';
+export type { MediaAudioPeaks } from './gen/schemas/media-audio-peaks.js';
+export type { MediaFrames } from './gen/schemas/media-frames.js';
+export type { MediaIngestManifest } from './gen/schemas/media-ingest-manifest.js';
 
 // IPC control plane.
 export { PingRequestSchema, PingResponseSchema } from './gen/proto/clipmill/ipc/v1/ping_pb.js';
@@ -26,6 +34,7 @@ export {
   SubmitJobResponseSchema,
   DemoDagPayloadV1Schema,
   ProbeSourcePayloadV1Schema,
+  IngestSourcePayloadV1Schema,
   DeviceProfilePayloadV1Schema,
   SubscribeTaskEventsRequestSchema,
   SubscribeTaskEventsResponseSchema,

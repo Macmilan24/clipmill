@@ -1,5 +1,6 @@
 """The Phase 0 contracts exit gate, Python leg."""
 
+import importlib
 import json
 from pathlib import Path
 
@@ -77,3 +78,63 @@ def test_invalid_source_map_fixtures_are_rejected(name: str) -> None:
     raw = (FIXTURES / "source_map" / "invalid" / name).read_text()
     with pytest.raises(ValidationError):
         SourceMap.model_validate_json(raw)
+
+
+def test_ingest_source_payload_fixtures_enforce_the_w11_key_version() -> None:
+    valid = json.loads(
+        (FIXTURES / "proto" / "ingest_source" / "valid" / "payload.json").read_text()
+    )
+    message = json_format.ParseDict(valid, daemon_pb2.IngestSourcePayloadV1())
+    assert message.key_version == "clipmill.ingest-source.v1"
+    assert message.source_id.startswith("src_")
+
+    invalid = json.loads(
+        (FIXTURES / "proto" / "ingest_source" / "invalid" / "wrong-version.json").read_text()
+    )
+    parsed = json_format.ParseDict(invalid, daemon_pb2.IngestSourcePayloadV1())
+    assert parsed.key_version != "clipmill.ingest-source.v1"
+
+
+MEDIA_FIXTURES = [
+    ("media.proxy", "media_proxy", "MediaProxy", "float-ticks.json"),
+    ("media.audio", "media_audio", "MediaAudio", "wrong-codec.json"),
+    (
+        "media.loudness_envelope",
+        "media_loudness_envelope",
+        "MediaLoudnessEnvelope",
+        "float-ticks.json",
+    ),
+    (
+        "media.reference_index",
+        "media_reference_index",
+        "MediaReferenceIndex",
+        "missing-keyframes.json",
+    ),
+    ("media.filmstrip", "media_filmstrip", "MediaFilmstrip", "float-ticks.json"),
+    ("media.audio_peaks", "media_audio_peaks", "MediaAudioPeaks", "out-of-range.json"),
+    ("media.frames", "media_frames", "MediaFrames", "missing-coverage.json"),
+    ("media.ingest_manifest", "media_ingest_manifest", "MediaIngestManifest", "unknown-kind.json"),
+]
+
+
+@pytest.mark.parametrize(("fixture_dir", "module", "model", "_invalid"), MEDIA_FIXTURES)
+def test_valid_media_fixtures_roundtrip_canonically(
+    fixture_dir: str, module: str, model: str, _invalid: str
+) -> None:
+    schemas = importlib.import_module(f"clipmill_worker_sdk.gen.schemas.{module}")
+    model_type = getattr(schemas, model)
+    raw = (FIXTURES / fixture_dir / "valid" / "minimal.json").read_text()
+    parsed = model_type.model_validate_json(raw)
+    reserialized = parsed.model_dump(mode="json", exclude_none=True)
+    assert canonical(reserialized) == raw, f"{fixture_dir} round-trip must be byte-identical"
+
+
+@pytest.mark.parametrize(("fixture_dir", "module", "model", "invalid"), MEDIA_FIXTURES)
+def test_invalid_media_fixtures_are_rejected(
+    fixture_dir: str, module: str, model: str, invalid: str
+) -> None:
+    schemas = importlib.import_module(f"clipmill_worker_sdk.gen.schemas.{module}")
+    model_type = getattr(schemas, model)
+    raw = (FIXTURES / fixture_dir / "invalid" / invalid).read_text()
+    with pytest.raises(ValidationError):
+        model_type.model_validate_json(raw)

@@ -816,7 +816,7 @@ fn parse_ratio(value: &str) -> Result<(i128, i128), SourceProbeError> {
     Ok((num, den))
 }
 
-fn decimal_seconds_to_ticks(value: &str) -> Result<i128, SourceProbeError> {
+pub(crate) fn decimal_seconds_to_ticks(value: &str) -> Result<i128, SourceProbeError> {
     let negative = value.starts_with('-');
     let unsigned = value.trim_start_matches(['-', '+']);
     let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, ""));
@@ -847,7 +847,7 @@ fn decimal_seconds_to_ticks(value: &str) -> Result<i128, SourceProbeError> {
     )
 }
 
-fn to_edit_ticks(value: i128, num: i128, den: i128) -> Result<i128, SourceProbeError> {
+pub(crate) fn to_edit_ticks(value: i128, num: i128, den: i128) -> Result<i128, SourceProbeError> {
     let numerator = value
         .checked_mul(num)
         .and_then(|value| value.checked_mul(90_000))

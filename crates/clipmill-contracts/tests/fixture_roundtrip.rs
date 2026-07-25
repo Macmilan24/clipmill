@@ -6,7 +6,8 @@
 #![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
 use clipmill_contracts::proto::ipc::v1::{
-    DemoDagPayloadV1, DeviceProfilePayloadV1, PingRequest, ProbeSourcePayloadV1,
+    DemoDagPayloadV1, DeviceProfilePayloadV1, IngestSourcePayloadV1, PingRequest,
+    ProbeSourcePayloadV1,
 };
 use clipmill_contracts::schemas::artifact_manifest::ArtifactManifest;
 use prost::Message;
@@ -71,6 +72,93 @@ fn invalid_manifests_are_rejected() {
             "{rel} must fail to parse into the typed contract"
         );
     }
+}
+
+#[test]
+fn valid_media_fixtures_parse_and_roundtrip_canonically() {
+    fn roundtrip<T: serde::de::DeserializeOwned + serde::Serialize>(rel: &str) {
+        let raw = read(rel);
+        let parsed: T = match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(err) => panic!("valid fixture {rel} rejected: {err}"),
+        };
+        let reserialized = match serde_json::to_value(&parsed) {
+            Ok(value) => value,
+            Err(err) => panic!("reserialize failed for {rel}: {err}"),
+        };
+        assert_eq!(
+            canonical(&reserialized),
+            raw,
+            "canonical round-trip must be byte-identical for {rel}"
+        );
+    }
+    use clipmill_contracts::schemas::{
+        media_audio::MediaAudio, media_audio_peaks::MediaAudioPeaks,
+        media_filmstrip::MediaFilmstrip, media_frames::MediaFrames,
+        media_ingest_manifest::MediaIngestManifest, media_loudness_envelope::MediaLoudnessEnvelope,
+        media_proxy::MediaProxy, media_reference_index::MediaReferenceIndex,
+    };
+    roundtrip::<MediaProxy>("contracts/fixtures/media.proxy/valid/minimal.json");
+    roundtrip::<MediaAudio>("contracts/fixtures/media.audio/valid/minimal.json");
+    roundtrip::<MediaLoudnessEnvelope>(
+        "contracts/fixtures/media.loudness_envelope/valid/minimal.json",
+    );
+    roundtrip::<MediaReferenceIndex>("contracts/fixtures/media.reference_index/valid/minimal.json");
+    roundtrip::<MediaFilmstrip>("contracts/fixtures/media.filmstrip/valid/minimal.json");
+    roundtrip::<MediaAudioPeaks>("contracts/fixtures/media.audio_peaks/valid/minimal.json");
+    roundtrip::<MediaFrames>("contracts/fixtures/media.frames/valid/minimal.json");
+    roundtrip::<MediaIngestManifest>("contracts/fixtures/media.ingest_manifest/valid/minimal.json");
+}
+
+#[test]
+fn invalid_media_fixtures_are_rejected() {
+    use clipmill_contracts::schemas::{
+        media_audio::MediaAudio, media_frames::MediaFrames,
+        media_ingest_manifest::MediaIngestManifest, media_proxy::MediaProxy,
+    };
+    let rejected_proxy = serde_json::from_str::<MediaProxy>(&read(
+        "contracts/fixtures/media.proxy/invalid/float-ticks.json",
+    ));
+    assert!(rejected_proxy.is_err(), "float ticks must not parse (D06)");
+    let rejected_audio = serde_json::from_str::<MediaAudio>(&read(
+        "contracts/fixtures/media.audio/invalid/wrong-codec.json",
+    ));
+    assert!(rejected_audio.is_err(), "non-PCM codec must not parse");
+    let rejected_frames = serde_json::from_str::<MediaFrames>(&read(
+        "contracts/fixtures/media.frames/invalid/missing-coverage.json",
+    ));
+    assert!(rejected_frames.is_err(), "missing coverage must not parse");
+    let rejected_manifest = serde_json::from_str::<MediaIngestManifest>(&read(
+        "contracts/fixtures/media.ingest_manifest/invalid/unknown-kind.json",
+    ));
+    assert!(rejected_manifest.is_err(), "unknown kind must not parse");
+}
+
+#[test]
+fn ingest_source_payload_fixtures_enforce_the_w11_key_version() {
+    let valid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/ingest_source/valid/payload.json",
+    ))
+    .expect("valid ingest fixture JSON");
+    let message = IngestSourcePayloadV1 {
+        key_version: valid["keyVersion"].as_str().unwrap_or_default().to_owned(),
+        source_id: valid["sourceId"].as_str().unwrap_or_default().to_owned(),
+    };
+    assert_eq!(message.key_version, "clipmill.ingest-source.v1");
+    assert!(message.source_id.starts_with("src_"));
+    assert_eq!(
+        IngestSourcePayloadV1::decode(message.encode_to_vec().as_slice()).expect("round-trip"),
+        message
+    );
+
+    let invalid: serde_json::Value = serde_json::from_str(&read(
+        "contracts/fixtures/proto/ingest_source/invalid/wrong-version.json",
+    ))
+    .expect("invalid ingest fixture remains syntactically valid JSON");
+    assert_ne!(
+        invalid["keyVersion"].as_str().unwrap_or_default(),
+        "clipmill.ingest-source.v1"
+    );
 }
 
 #[test]

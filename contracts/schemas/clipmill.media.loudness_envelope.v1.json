@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.media.loudness_envelope.v1.json",
+  "title": "MediaLoudnessEnvelope",
+  "description": "EBU R128 loudness sampled at a fixed cadence over the 48 kHz rendition (book ch. 12/13). Timestamps are integer ticks at 1/90000 (D06); loudness values are measurements in LUFS/LU, which are legitimately real-valued. Downstream prosody features and the audio lane read this envelope instead of re-measuring.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "cadence_hz",
+    "points",
+    "summary",
+    "coverage"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.media.loudness_envelope.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "cadence_hz": {
+      "description": "Envelope sampling cadence in points per second.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["t_ticks", "momentary_lufs"],
+        "additionalProperties": false,
+        "properties": {
+          "t_ticks": { "type": "integer", "minimum": 0 },
+          "momentary_lufs": { "type": "number" },
+          "short_term_lufs": { "type": "number" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["integrated_lufs"],
+      "additionalProperties": false,
+      "properties": {
+        "integrated_lufs": { "type": "number" },
+        "loudness_range_lu": { "type": "number" },
+        "sample_peak_dbfs": { "type": "number" }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

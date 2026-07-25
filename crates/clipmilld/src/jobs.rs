@@ -27,6 +27,7 @@ use crate::{
     artifacts::ArtifactHandle,
     db::{DbHandle, StoreError},
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
+    media::{self, MediaRunner, ProgressSlot},
     sources::{SourceInspector, SourceProbeError},
 };
 
@@ -300,6 +301,104 @@ impl JobPlan {
         }
     }
 
+    /// The W11 ingest fan-out (book ch. 12): decode the source video once
+    /// into the proxy, render the PCM diets straight from the source's audio,
+    /// then hang every other derivative off an already-committed artifact.
+    /// The single final task is the fan-in manifest whose recipe inputs are
+    /// all children, because the job store roots exactly one artifact per job
+    /// and garbage collection walks recipe inputs from the roots.
+    pub(crate) fn ingest_source(
+        project_id: &ProjectId,
+        source_id: String,
+        payload: Vec<u8>,
+        has_video: bool,
+        has_audio: bool,
+        now: u64,
+    ) -> Result<Self, &'static str> {
+        if !has_video && !has_audio {
+            return Err("source carries neither video nor audio");
+        }
+        let mut builder = IngestPlanBuilder::new(payload);
+        let proxy = has_video.then(|| {
+            builder.derivative(
+                media::KIND_PROXY,
+                "media.proxy.v1",
+                "ffmpeg-8.1.2+clipmill-proxy-v1",
+                ingest_resources(2, 256, 512),
+                &[],
+            )
+        });
+        let audio_16k = has_audio.then(|| {
+            builder.derivative(
+                media::KIND_AUDIO_16K,
+                "media.audio_16k.v1",
+                "ffmpeg-8.1.2+clipmill-audio-v1",
+                ingest_resources(1, 64, 128),
+                &[],
+            )
+        });
+        let audio_48k = has_audio.then(|| {
+            builder.derivative(
+                media::KIND_AUDIO_48K,
+                "media.audio_48k.v1",
+                "ffmpeg-8.1.2+clipmill-audio-v1",
+                ingest_resources(1, 64, 256),
+                &[],
+            )
+        });
+        builder.derivative(
+            media::KIND_REFERENCE_INDEX,
+            "media.reference_index.v1",
+            "ffprobe-8.1.2+clipmill-refindex-v1",
+            ingest_resources(1, 128, 64),
+            &[],
+        );
+        if let Some(audio_48k) = &audio_48k {
+            builder.derivative(
+                media::KIND_LOUDNESS,
+                "media.loudness_envelope.v1",
+                "ffmpeg-8.1.2+clipmill-loudness-v1",
+                ingest_resources(1, 64, 32),
+                std::slice::from_ref(audio_48k),
+            );
+        }
+        if let Some(audio_16k) = &audio_16k {
+            builder.derivative(
+                media::KIND_AUDIO_PEAKS,
+                "media.audio_peaks.v1",
+                "clipmill-audio-peaks@1.0.0",
+                ingest_resources(1, 64, 32),
+                std::slice::from_ref(audio_16k),
+            );
+        }
+        if let Some(proxy) = &proxy {
+            builder.derivative(
+                media::KIND_FILMSTRIP,
+                "media.filmstrip.v1",
+                "ffmpeg-8.1.2+clipmill-filmstrip-v1",
+                ingest_resources(1, 128, 128),
+                std::slice::from_ref(proxy),
+            );
+            builder.derivative(
+                media::KIND_FRAMES,
+                "media.frames.v1",
+                "ffmpeg-8.1.2+clipmill-frames-v1",
+                ingest_resources(1, 128, 256),
+                std::slice::from_ref(proxy),
+            );
+        }
+        let (payload, tasks) = builder.finish_with_manifest();
+        Ok(Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "ingest-source".to_owned(),
+            source_id: Some(source_id),
+            payload,
+            created_unix_millis: now,
+            tasks,
+        })
+    }
+
     pub(crate) fn device_profile(
         hardware_fingerprint: String,
         measurement_generation: u64,
@@ -343,6 +442,123 @@ impl JobPlan {
                 is_final: true,
             }],
         }
+    }
+}
+
+fn ingest_resources(
+    cpu_threads: u32,
+    ram_mebibytes: u64,
+    disk_mebibytes: u64,
+) -> ResourceDeclaration {
+    ResourceDeclaration {
+        cpu_threads,
+        ram_bytes: ram_mebibytes * 1024 * 1024,
+        accelerator_class: String::new(),
+        vram_bytes: 0,
+        disk_bytes: disk_mebibytes * 1024 * 1024,
+        network_policy: "local-lock".to_owned(),
+        thermal_class: "sustained".to_owned(),
+        determinism_class: "deterministic".to_owned(),
+        checkpoint_support: false,
+        preemption_cost: 2,
+    }
+}
+
+/// A derivative already added to an ingest plan, usable as a dependency.
+#[derive(Clone)]
+struct DerivativeHandle {
+    task_id: String,
+    output_kind: String,
+}
+
+/// Accumulates the ingest fan-out and closes it with the fan-in manifest,
+/// keeping ordinals dense and dependency/input-kind lists aligned (the plan
+/// validator requires one input kind per dependency).
+struct IngestPlanBuilder {
+    payload: Vec<u8>,
+    tasks: Vec<TaskSpec>,
+    children: Vec<DerivativeHandle>,
+}
+
+impl IngestPlanBuilder {
+    fn new(payload: Vec<u8>) -> Self {
+        Self {
+            payload,
+            tasks: Vec::new(),
+            children: Vec::new(),
+        }
+    }
+
+    fn derivative(
+        &mut self,
+        kind: &str,
+        output_kind: &str,
+        implementation: &str,
+        resources: ResourceDeclaration,
+        dependencies: &[DerivativeHandle],
+    ) -> DerivativeHandle {
+        let handle = DerivativeHandle {
+            task_id: TaskId::new().to_string(),
+            output_kind: output_kind.to_owned(),
+        };
+        self.tasks.push(TaskSpec {
+            task_id: handle.task_id.clone(),
+            ordinal: u32::try_from(self.tasks.len()).unwrap_or(u32::MAX),
+            kind: kind.to_owned(),
+            input_kinds: dependencies
+                .iter()
+                .map(|dependency| dependency.output_kind.clone())
+                .collect(),
+            output_kind: output_kind.to_owned(),
+            payload: self.payload.clone(),
+            dependencies: dependencies
+                .iter()
+                .map(|dependency| dependency.task_id.clone())
+                .collect(),
+            resources,
+            implementation: implementation.to_owned(),
+            max_attempts: 3,
+            is_final: false,
+        });
+        self.children.push(handle.clone());
+        handle
+    }
+
+    fn finish_with_manifest(mut self) -> (Vec<u8>, Vec<TaskSpec>) {
+        let manifest = TaskSpec {
+            task_id: TaskId::new().to_string(),
+            ordinal: u32::try_from(self.tasks.len()).unwrap_or(u32::MAX),
+            kind: media::KIND_MANIFEST.to_owned(),
+            input_kinds: self
+                .children
+                .iter()
+                .map(|child| child.output_kind.clone())
+                .collect(),
+            output_kind: "media.ingest_manifest.v1".to_owned(),
+            payload: self.payload.clone(),
+            dependencies: self
+                .children
+                .iter()
+                .map(|child| child.task_id.clone())
+                .collect(),
+            resources: ResourceDeclaration {
+                cpu_threads: 1,
+                ram_bytes: 32 * 1024 * 1024,
+                accelerator_class: String::new(),
+                vram_bytes: 0,
+                disk_bytes: 8 * 1024 * 1024,
+                network_policy: "local-lock".to_owned(),
+                thermal_class: "light".to_owned(),
+                determinism_class: "deterministic".to_owned(),
+                checkpoint_support: false,
+                preemption_cost: 1,
+            },
+            implementation: "clipmill-ingest-manifest@1.0.0".to_owned(),
+            max_attempts: 3,
+            is_final: true,
+        };
+        self.tasks.push(manifest);
+        (self.payload, self.tasks)
     }
 }
 
@@ -579,6 +795,7 @@ impl Scheduler {
         daemon_epoch: String,
         sources: SourceInspector,
         device_profiler: DeviceProfiler,
+        media: MediaRunner,
         capacity: ResourceCapacity,
         builtin_fixture_executor: bool,
     ) -> Self {
@@ -598,6 +815,7 @@ impl Scheduler {
             daemon_epoch,
             sources,
             device_profiler,
+            media,
             capacity,
             capacity_update,
             builtin_fixture_executor,
@@ -633,6 +851,7 @@ async fn run_scheduler(
     daemon_epoch: String,
     sources: SourceInspector,
     device_profiler: DeviceProfiler,
+    media: MediaRunner,
     capacity: ResourceCapacity,
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     builtin_fixture_executor: bool,
@@ -644,6 +863,7 @@ async fn run_scheduler(
     let mut running = JoinSet::new();
     let mut available_capacity = capacity;
     let mut builtin_capabilities = vec!["probe-source".to_owned(), "device-profile".to_owned()];
+    builtin_capabilities.extend(media::INGEST_TASK_KINDS.map(str::to_owned));
     if builtin_fixture_executor {
         builtin_capabilities
             .extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
@@ -716,9 +936,19 @@ async fn run_scheduler(
             let events = events.clone();
             let sources = sources.clone();
             let device_profiler = device_profiler.clone();
+            let media = media.clone();
             let notify = Arc::clone(&notify);
             running.spawn(async move {
-                execute_task(database, artifacts, events, sources, device_profiler, task).await;
+                execute_task(
+                    database,
+                    artifacts,
+                    events,
+                    sources,
+                    device_profiler,
+                    media,
+                    task,
+                )
+                .await;
                 notify.notify_one();
                 resources
             });
@@ -736,6 +966,7 @@ async fn execute_task(
     events: EventHub,
     sources: SourceInspector,
     device_profiler: DeviceProfiler,
+    media: MediaRunner,
     task: LeasedTask,
 ) {
     tracing::debug!(
@@ -746,6 +977,7 @@ async fn execute_task(
         "executing built-in durable task"
     );
     let lease_id = task.lease_id.clone();
+    let progress = ProgressSlot::default();
     let work = async {
         if let Ok(delay) = std::env::var("CLIPMILL_W4_STEP_DELAY_MS")
             && let Ok(delay) = delay.parse::<u64>()
@@ -756,6 +988,12 @@ async fn execute_task(
             "probe-source" => execute_probe_artifact(&database, &artifacts, &sources, &task).await,
             "device-profile" => {
                 execute_device_artifact(&database, &artifacts, &device_profiler, &task).await
+            }
+            kind if media::is_ingest_kind(kind) => {
+                media::execute_ingest_task(
+                    &database, &artifacts, &media, &sources, &task, &progress,
+                )
+                .await
             }
             _ => execute_demo_artifact(&artifacts, &task)
                 .await
@@ -775,7 +1013,7 @@ async fn execute_task(
                         lease_id.clone(),
                         now,
                         now.saturating_add(duration_millis(LEASE_TTL)),
-                        None,
+                        progress.take(),
                     )
                     .await
                 {
@@ -840,20 +1078,20 @@ async fn execute_task(
 }
 
 #[derive(Debug)]
-struct TaskExecutionError {
+pub(crate) struct TaskExecutionError {
     classification: FailureClass,
     detail: String,
 }
 
 impl TaskExecutionError {
-    fn transient(detail: String) -> Self {
+    pub(crate) fn transient(detail: String) -> Self {
         Self {
             classification: FailureClass::Transient,
             detail,
         }
     }
 
-    fn deterministic(detail: impl Into<String>) -> Self {
+    pub(crate) fn deterministic(detail: impl Into<String>) -> Self {
         Self {
             classification: FailureClass::Deterministic,
             detail: detail.into(),
@@ -894,7 +1132,7 @@ async fn execute_probe_artifact(
     let mut config = Map::new();
     config.insert(
         "ffmpeg_bom".to_owned(),
-        Value::String("ffmpeg-8.1.2-btb-n8.1.2".to_owned()),
+        Value::String(media::FFMPEG_BOM.to_owned()),
     );
     config.insert(
         "probe_algorithm".to_owned(),
@@ -1154,6 +1392,135 @@ pub(crate) fn is_terminal_job(state: i32) -> bool {
     state == JobState::Succeeded as i32
         || state == JobState::Failed as i32
         || state == JobState::Cancelled as i32
+}
+
+#[cfg(test)]
+mod ingest_plan_tests {
+    #![allow(clippy::expect_used)]
+
+    use clipmill_core::ProjectId;
+
+    use super::JobPlan;
+    use crate::media;
+
+    fn kinds(plan: &JobPlan) -> Vec<&str> {
+        plan.tasks.iter().map(|task| task.kind.as_str()).collect()
+    }
+
+    #[test]
+    fn full_source_plan_decodes_video_once_and_fans_into_one_manifest() {
+        let plan = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            b"payload".to_vec(),
+            true,
+            true,
+            7,
+        )
+        .expect("plan");
+        assert_eq!(plan.kind, "ingest-source");
+        assert_eq!(plan.tasks.len(), 9);
+        let finals = plan
+            .tasks
+            .iter()
+            .filter(|task| task.is_final)
+            .collect::<Vec<_>>();
+        assert_eq!(finals.len(), 1);
+        let manifest = finals[0];
+        assert_eq!(manifest.kind, media::KIND_MANIFEST);
+        assert_eq!(
+            manifest.dependencies.len(),
+            plan.tasks.len() - 1,
+            "the fan-in manifest depends on every derivative"
+        );
+        assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
+        for task in &plan.tasks {
+            assert_eq!(
+                task.input_kinds.len(),
+                task.dependencies.len(),
+                "{} must declare one input kind per dependency",
+                task.kind
+            );
+        }
+        let ordinals = plan
+            .tasks
+            .iter()
+            .map(|task| task.ordinal)
+            .collect::<Vec<_>>();
+        assert_eq!(ordinals, (0..9).collect::<Vec<_>>());
+        let decode_source = plan
+            .tasks
+            .iter()
+            .filter(|task| task.dependencies.is_empty() && task.kind != media::KIND_MANIFEST)
+            .map(|task| task.kind.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            decode_source,
+            vec![
+                media::KIND_PROXY,
+                media::KIND_AUDIO_16K,
+                media::KIND_AUDIO_48K,
+                media::KIND_REFERENCE_INDEX
+            ],
+            "only the proxy decodes source video; everything else chains off artifacts"
+        );
+    }
+
+    #[test]
+    fn audio_only_sources_skip_the_video_chain() {
+        let plan = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            Vec::new(),
+            false,
+            true,
+            7,
+        )
+        .expect("plan");
+        let kinds = kinds(&plan);
+        assert!(!kinds.contains(&media::KIND_PROXY));
+        assert!(!kinds.contains(&media::KIND_FILMSTRIP));
+        assert!(!kinds.contains(&media::KIND_FRAMES));
+        assert!(kinds.contains(&media::KIND_AUDIO_16K));
+        assert!(kinds.contains(&media::KIND_LOUDNESS));
+        assert!(kinds.contains(&media::KIND_AUDIO_PEAKS));
+        assert!(kinds.contains(&media::KIND_REFERENCE_INDEX));
+        assert!(kinds.contains(&media::KIND_MANIFEST));
+    }
+
+    #[test]
+    fn video_only_sources_skip_the_audio_chain() {
+        let plan = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            Vec::new(),
+            true,
+            false,
+            7,
+        )
+        .expect("plan");
+        let kinds = kinds(&plan);
+        assert!(kinds.contains(&media::KIND_PROXY));
+        assert!(kinds.contains(&media::KIND_FILMSTRIP));
+        assert!(kinds.contains(&media::KIND_FRAMES));
+        assert!(!kinds.contains(&media::KIND_AUDIO_16K));
+        assert!(!kinds.contains(&media::KIND_AUDIO_48K));
+        assert!(!kinds.contains(&media::KIND_LOUDNESS));
+        assert!(!kinds.contains(&media::KIND_AUDIO_PEAKS));
+    }
+
+    #[test]
+    fn streamless_sources_are_rejected_at_planning() {
+        let rejected = JobPlan::ingest_source(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            Vec::new(),
+            false,
+            false,
+            7,
+        );
+        assert!(rejected.is_err());
+    }
 }
 
 #[cfg(test)]

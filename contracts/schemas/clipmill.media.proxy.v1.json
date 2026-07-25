@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.media.proxy.v1.json",
+  "title": "MediaProxy",
+  "description": "Descriptor for the mezzanine proxy derived at ingest (book ch. 12): constant-frame-rate short-GOP H.264 with normalized AAC, the single decode every preview and analysis surface reads instead of the original. The descriptor states what was actually encoded, verified by probing the output, so consumers never guess.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "file",
+    "duration_ticks",
+    "coverage",
+    "video"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.media.proxy.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "file": {
+      "description": "Artifact-relative path of the proxy container.",
+      "type": "string",
+      "minLength": 1
+    },
+    "container": {
+      "description": "Container format of the proxy, e.g. 'mov,mp4,m4a,3gp,3g2,mj2'.",
+      "type": "string"
+    },
+    "duration_ticks": {
+      "description": "Encoded proxy duration in ticks at 1/90000.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "video": {
+      "type": "object",
+      "required": ["codec", "width", "height", "frame_rate", "gop_frames"],
+      "additionalProperties": false,
+      "properties": {
+        "codec": { "type": "string" },
+        "width": { "type": "integer", "minimum": 2 },
+        "height": { "type": "integer", "minimum": 2 },
+        "frame_rate": { "$ref": "#/$defs/timebase" },
+        "gop_frames": {
+          "description": "Keyframe interval the encoder was pinned to; the seek granularity every scrubbing surface may assume.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "pix_fmt": { "type": "string" }
+      }
+    },
+    "audio": {
+      "description": "Present only when the source carries audio.",
+      "type": "object",
+      "required": ["codec", "sample_rate", "channels"],
+      "additionalProperties": false,
+      "properties": {
+        "codec": { "type": "string" },
+        "sample_rate": { "type": "integer", "minimum": 1 },
+        "channels": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timebase": {
+      "type": "object",
+      "required": ["num", "den"],
+      "additionalProperties": false,
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "coverage": {
+      "description": "The half-open source edit-time interval this derivative covers, in ticks at 1/90000. Absence of coverage is never implicit (book ch. 13).",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "audio": {
+    "channels": 2,
+    "codec": "aac",
+    "sample_rate": 48000
+  },
+  "container": "mov,mp4,m4a,3gp,3g2,mj2",
+  "coverage": {
+    "end_ticks": 180000,
+    "start_ticks": 0
+  },
+  "duration_ticks": 180000,
+  "file": "proxy.mp4",
+  "schema_version": "clipmill.media.proxy.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "video": {
+    "codec": "h264",
+    "frame_rate": {
+      "den": 1001,
+      "num": 30000
+    },
+    "gop_frames": 30,
+    "height": 720,
+    "pix_fmt": "yuv420p",
+    "width": 1280
+  }
+}

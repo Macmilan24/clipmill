@@ -240,6 +240,14 @@ class ProbeSourcePayloadV1(_message.Message):
     source_id: str
     def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
 
+class IngestSourcePayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

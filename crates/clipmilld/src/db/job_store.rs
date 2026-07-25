@@ -1047,10 +1047,15 @@ pub(super) fn complete_task(
                      VALUES (?1, ?2)",
                     params![source_id, final_artifact],
                 )?;
-                transaction.execute(
-                    "UPDATE sources SET source_map_artifact_id = ?1 WHERE source_id = ?2",
-                    params![final_artifact, source_id],
-                )?;
+                // Only the probe job publishes the source map; other
+                // source-scoped jobs (ingest) root their own final artifact
+                // without stealing the source-map pointer.
+                if job_kind == "probe-source" {
+                    transaction.execute(
+                        "UPDATE sources SET source_map_artifact_id = ?1 WHERE source_id = ?2",
+                        params![final_artifact, source_id],
+                    )?;
+                }
             }
         }
         transaction.execute(

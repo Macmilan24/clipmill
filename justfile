@@ -65,6 +65,12 @@ gate-media:
 gate-workers:
     ./tools/drills/worker-drill.sh 50
 
+# W11 coverage: the ingest fan-out derives every media derivative through
+# sandboxed FFmpeg, all artifacts verify, warm re-ingest is a cache identity,
+# mutated sources refuse deterministically, and kill recovery meets the SLO.
+gate-ingest:
+    ./tools/drills/ingest-drill.sh 1
+
 # W7 coverage: measured runtime/capacity, bounded codec/shared-memory probes,
 # Ed25519 attestation, durable caching, and fingerprint generations.
 gate-device:

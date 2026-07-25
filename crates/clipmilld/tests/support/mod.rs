@@ -7,10 +7,10 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CancelJobRequest, CreateProjectRequest, DemoDagPayloadV1, GetJobRequest, GetSourceRequest, Job,
-    ListJobsRequest, ListProjectsRequest, ListSourcesRequest, PingRequest, ProbeSourcePayloadV1,
-    Project, RegisterSourceRequest, RegisterSourceResponse, Request, Response, Source,
-    SubmitJobRequest, request, response,
+    CancelJobRequest, CreateProjectRequest, DemoDagPayloadV1, GetJobRequest, GetSourceRequest,
+    IngestSourcePayloadV1, Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    PingRequest, ProbeSourcePayloadV1, Project, RegisterSourceRequest, RegisterSourceResponse,
+    Request, Response, Source, SubmitJobRequest, request, response,
 };
 use prost::Message;
 use tokio::{
@@ -257,6 +257,38 @@ pub async fn submit_probe(
             .ok_or_else(|| "submit probe response omitted job".to_owned()),
         Some(response::Body::Error(error)) => Err(error.message),
         _ => Err("unexpected submit probe response".to_owned()),
+    }
+}
+
+pub async fn submit_ingest(
+    socket: &Path,
+    request_id: &str,
+    project_id: &str,
+    source_id: &str,
+) -> Result<Job, String> {
+    let payload = IngestSourcePayloadV1 {
+        key_version: "clipmill.ingest-source.v1".to_owned(),
+        source_id: source_id.to_owned(),
+    }
+    .encode_to_vec();
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::SubmitJob(SubmitJobRequest {
+                project_id: project_id.to_owned(),
+                kind: "ingest-source".to_owned(),
+                payload,
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::SubmitJob(submitted)) => submitted
+            .job
+            .ok_or_else(|| "submit ingest response omitted job".to_owned()),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected submit ingest response".to_owned()),
     }
 }
 

@@ -1,0 +1,20 @@
+{
+  "coverage": {
+    "end_ticks": 180000,
+    "start_ticks": 0
+  },
+  "interval_ticks": 90000,
+  "schema_version": "clipmill.media.filmstrip.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "tile_height": 90,
+  "tiles": [
+    {
+      "file": "tile_00001.jpg",
+      "t_ticks": 0
+    },
+    {
+      "file": "tile_00002.jpg",
+      "t_ticks": 90000
+    }
+  ]
+}
