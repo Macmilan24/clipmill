@@ -1,6 +1,11 @@
 packages:
   - packages/*
   - apps/desktop
+allowBuilds:
+  # Vite's bundler. Its install script links the platform-native binary, which
+  # the shell cannot be built without. Reviewed and allowed deliberately: it is
+  # the only package in the tree permitted to run install scripts.
+  esbuild: true
 overrides:
   # GHSA-v2hh-gcrm-f6hx: host confusion via a literal IPv6 authority. Reached
   # transitively through ajv, which still resolves the vulnerable 3.1.3.

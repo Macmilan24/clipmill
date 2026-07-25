@@ -1,0 +1,33 @@
+[package]
+name = "clipmill-shell"
+description = "ClipMill desktop shell: Tauri 2 host process that owns the daemon connection."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "clipmill_shell"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# The WebView gets no filesystem, shell, or network plugin: those crates are
+# not compiled into this binary at all, so the sandbox is a build fact rather
+# than a runtime policy the renderer could talk its way past.
+tauri = { version = "2", features = [] }
+clipmill-contracts = { workspace = true }
+clipmilld = { workspace = true }
+prost = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

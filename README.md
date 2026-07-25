@@ -16,7 +16,9 @@ unless you explicitly send it somewhere.
 > one-use read-only shared memory, measured and signed device profiles, and the
 > signed offline evaluation harness on macOS and Linux. The integrated security
 > workflow and signed, rights-cleared Seed-40 cold/warm proof close the Phase 0
-> exit. Nothing here makes clips yet.
+> exit. The desktop shell now boots in both themes and reports this machine's
+> real measured hardware over the daemon socket, reconnecting on its own when
+> the daemon dies. Nothing here makes clips yet.
 
 ## Why
 
@@ -64,9 +66,35 @@ boundary with a versioned contract:
 - `just`, `buf`
 - macOS (primary) or Linux; Windows support arrives later
 
+On Linux the shell additionally needs the WebView toolkit:
+
+```sh
+sudo apt-get install libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+  libjavascriptcoregtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
+```
+
 ```sh
 just setup   # fetch pinned FFmpeg and sync all workspaces
+just app     # launch the desktop shell against a live daemon
 ```
+
+## The desktop shell
+
+`apps/desktop` is a Tauri 2 host with a React renderer. The split is deliberate:
+
+- The **renderer has no capabilities** — no filesystem, shell, or HTTP plugin is
+  compiled into the binary at all, so there is no ACL to misconfigure and no
+  code path to re-enable them. It reaches the daemon through exactly three
+  commands (`daemon_state`, `reconnect_daemon`, `device_profile`).
+- The **host owns the socket**, starts `clipmilld` when it is not already
+  running, and publishes every connection transition as an event.
+- **One theme switch.** The design ships a light and a dark artboard per screen;
+  `packages/tokens` expresses that as one token document, generated into
+  `tokens.css` and checked for drift in CI. Components never branch on theme.
+- **Phase 0 ships one real screen.** Models & Device renders measured hardware,
+  probed capabilities, and a Local Lock badge bound to the daemon's own answer —
+  including saying `unknown` when the daemon is unreachable. The other eight
+  sections state which phase builds them instead of showing a mockup.
 
 ## License
 

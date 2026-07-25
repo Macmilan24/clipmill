@@ -97,11 +97,26 @@ gate-lock:
 gate-security:
     ./tools/security/security-gate.sh
 
+# W9 coverage: design tokens generate their CSS reproducibly, and the shell
+# renderer typechecks, tests, and builds.
+gate-tokens:
+    pnpm --filter @clipmill/tokens check-drift
+    pnpm --filter @clipmill/tokens test
+    pnpm --filter @clipmill/desktop typecheck
+    pnpm --filter @clipmill/desktop test
+    pnpm --filter @clipmill/desktop build
+
+# W10 coverage: the shell reads real measured hardware over the real socket,
+# then reports the loss when the daemon is killed underneath it.
+gate-shell:
+    cargo build -p clipmilld
+    cargo test -p clipmill-shell -- --ignored --nocapture
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
-gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-security gate-lock
+gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock
     ./tools/drills/verify-phase0-attestation.sh
 
-# Launch the desktop shell. Lands with W9/W10.
+# Launch the desktop shell against a live daemon.
 app:
-    @echo "app: not yet implemented - the Tauri shell lands in W9/W10" && exit 1
+    pnpm --filter @clipmill/desktop tauri dev

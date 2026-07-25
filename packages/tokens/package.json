@@ -3,10 +3,22 @@
   "version": "0.0.1",
   "private": true,
   "license": "AGPL-3.0-only",
-  "description": "Pro-Studio Precision design tokens: tokens.json -> CSS variables + Tailwind preset (built in W9)",
+  "description": "Pro-Studio Precision design tokens: tokens.json -> CSS variables + Tailwind v4 preset.",
   "type": "module",
   "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.json": "./src/tokens.json",
+    "./tokens.css": "./tokens.css",
+    "./tailwind-preset.css": "./tailwind-preset.css"
+  },
   "scripts": {
-    "typecheck": "tsc -p ."
+    "build": "node scripts/build-css.mjs",
+    "check-drift": "node scripts/build-css.mjs --check",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.0"
   }
 }
