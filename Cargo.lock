@@ -472,6 +472,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-edit-ir"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-shell"
 version = "0.0.1"
 dependencies = [

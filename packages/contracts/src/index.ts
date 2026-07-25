@@ -4,6 +4,7 @@ export { canonicalJson } from './canonical.js';
 export type { ArtifactManifest } from './gen/schemas/artifact-manifest.js';
 export type { SourceMap } from './gen/schemas/source-map.js';
 export type { DeviceProfile } from './gen/schemas/device-profile.js';
+export type { EditIr } from './gen/schemas/edit-ir.js';
 export type { MediaProxy } from './gen/schemas/media-proxy.js';
 export type { MediaAudio } from './gen/schemas/media-audio.js';
 export type { MediaLoudnessEnvelope } from './gen/schemas/media-loudness-envelope.js';
