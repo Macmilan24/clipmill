@@ -48,3 +48,43 @@ describe('ping proto', () => {
     expect(toBinary(PingRequestSchema, message)).toEqual(bytes);
   });
 });
+
+describe('media ingest contracts', () => {
+  const cases = [
+    { dir: 'media.proxy', invalid: 'float-ticks.json' },
+    { dir: 'media.audio', invalid: 'wrong-codec.json' },
+    { dir: 'media.loudness_envelope', invalid: 'float-ticks.json' },
+    { dir: 'media.reference_index', invalid: 'missing-keyframes.json' },
+    { dir: 'media.filmstrip', invalid: 'float-ticks.json' },
+    { dir: 'media.audio_peaks', invalid: 'out-of-range.json' },
+    { dir: 'media.frames', invalid: 'missing-coverage.json' },
+    { dir: 'media.ingest_manifest', invalid: 'unknown-kind.json' },
+  ];
+
+  const validators = new Map<string, ReturnType<typeof ajv.compile>>();
+  const validatorFor = (dir: string) => {
+    let cached = validators.get(dir);
+    if (!cached) {
+      const mediaSchema = JSON.parse(
+        readFileSync(join(repo, 'contracts', 'schemas', `clipmill.${dir}.v1.json`), 'utf8'),
+      ) as Record<string, unknown>;
+      cached = ajv.compile(mediaSchema);
+      validators.set(dir, cached);
+    }
+    return cached;
+  };
+
+  it.each(cases)('$dir valid fixture validates and round-trips canonically', ({ dir }) => {
+    const validateMedia = validatorFor(dir);
+    const raw = readFileSync(join(fixtures, dir, 'valid', 'minimal.json'), 'utf8');
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    expect(validateMedia(parsed), ajv.errorsText(validateMedia.errors)).toBe(true);
+    expect(canonicalJson(parsed)).toBe(raw);
+  });
+
+  it.each(cases)('$dir invalid fixture $invalid fails', ({ dir, invalid }) => {
+    const validateMedia = validatorFor(dir);
+    const raw = readFileSync(join(fixtures, dir, 'invalid', invalid), 'utf8');
+    expect(validateMedia(JSON.parse(raw))).toBe(false);
+  });
+});

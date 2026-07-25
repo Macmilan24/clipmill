@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.media.reference_index.v1.json",
+  "title": "MediaReferenceIndex",
+  "description": "The exact-seek substrate for the original source (book ch. 12/17): every video keyframe with its edit-time tick and byte position, demuxed without decoding. The render compiler plans '-ss keyframe + accurate trim' from this index instead of trusting container duration math.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "streams", "video_keyframes", "coverage"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.media.reference_index.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "streams": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "kind", "packet_count"],
+        "additionalProperties": false,
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "kind": { "enum": ["video", "audio", "subtitle", "data"] },
+          "packet_count": { "type": "integer", "minimum": 0 },
+          "duration_ticks": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "video_keyframes": {
+      "description": "Keyframes across all video streams, ordered by (stream_index, pts_ticks).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stream_index", "pts_ticks"],
+        "additionalProperties": false,
+        "properties": {
+          "stream_index": { "type": "integer", "minimum": 0 },
+          "pts_ticks": {
+            "description": "Presentation tick at 1/90000 in source edit time.",
+            "type": "integer"
+          },
+          "byte_pos": {
+            "description": "Byte position of the packet in the container when the demuxer reports one.",
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

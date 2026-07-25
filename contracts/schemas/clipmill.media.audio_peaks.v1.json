@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.media.audio_peaks.v1.json",
+  "title": "MediaAudioPeaks",
+  "description": "Waveform min/max buckets computed from the 16 kHz mono rendition (book ch. 12). Values are raw signed 16-bit sample extremes per fixed-width bucket; the waveform lane renders these directly without touching audio bytes.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "bucket_ticks", "peaks", "coverage"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.media.audio_peaks.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "bucket_ticks": {
+      "description": "Width of each bucket in ticks at 1/90000.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "peaks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["min", "max"],
+        "additionalProperties": false,
+        "properties": {
+          "min": { "type": "integer", "minimum": -32768, "maximum": 32767 },
+          "max": { "type": "integer", "minimum": -32768, "maximum": 32767 }
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

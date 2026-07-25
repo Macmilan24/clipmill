@@ -1,0 +1,27 @@
+{
+  "coverage": {
+    "end_ticks": 45000,
+    "start_ticks": 0
+  },
+  "frame_height": 360,
+  "frame_rate": {
+    "den": 1,
+    "num": 6
+  },
+  "frames": [
+    {
+      "file": "frame_00001.jpg",
+      "t_ticks": 0
+    },
+    {
+      "file": "frame_00002.jpg",
+      "t_ticks": 15000
+    },
+    {
+      "file": "frame_00003.jpg",
+      "t_ticks": 30000
+    }
+  ],
+  "schema_version": "clipmill.media.frames.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006"
+}

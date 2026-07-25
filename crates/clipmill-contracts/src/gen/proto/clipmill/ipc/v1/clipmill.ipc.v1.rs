@@ -206,6 +206,17 @@ pub struct ProbeSourcePayloadV1 {
     #[prost(string, tag = "2")]
     pub source_id: ::prost::alloc::string::String,
 }
+/// Versioned payload for the daemon-owned ingest fan-out (book ch. 12): one
+/// job derives the proxy, PCM renditions, loudness envelope, reference index,
+/// filmstrip, waveform peaks, and analysis frames, then roots a single fan-in
+/// ingest manifest. Local paths never travel in job payloads.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct IngestSourcePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.

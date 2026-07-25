@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.media.frames.v1.json",
+  "title": "MediaFrames",
+  "description": "Sampled analysis frames decoded from the proxy for perception workers (book ch. 12/13): face detection reads these JPEGs instead of decoding video. The sampled interval is part of the recipe config, so different extractions cache independently; each frame names its exact source edit-time tick.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "frame_rate", "frame_height", "frames", "coverage"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.media.frames.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "frame_rate": {
+      "description": "Nominal sampling rate, frames per second as a rational.",
+      "$ref": "#/$defs/timebase"
+    },
+    "frame_height": {
+      "description": "Pixel height every frame was scaled to; width follows the display aspect.",
+      "type": "integer",
+      "minimum": 16
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "t_ticks"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "t_ticks": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timebase": {
+      "type": "object",
+      "required": ["num", "den"],
+      "additionalProperties": false,
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

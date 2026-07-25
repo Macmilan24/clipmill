@@ -1,0 +1,23 @@
+{
+  "bucket_ticks": 9000,
+  "coverage": {
+    "end_ticks": 27000,
+    "start_ticks": 0
+  },
+  "peaks": [
+    {
+      "max": 8191,
+      "min": -8192
+    },
+    {
+      "max": 12000,
+      "min": -11000
+    },
+    {
+      "max": 0,
+      "min": 0
+    }
+  ],
+  "schema_version": "clipmill.media.audio_peaks.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006"
+}

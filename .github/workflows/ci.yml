@@ -50,22 +50,26 @@ jobs:
         run: python3 tools/schema-lint/check.py contracts/schemas/*.json
       - name: Fixture validation (valid must pass, invalid must fail)
         run: |
-          uvx check-jsonschema --schemafile contracts/schemas/clipmill.artifact.manifest.v1.json \
-            contracts/fixtures/artifact.manifest/valid/*.json
-          for f in contracts/fixtures/artifact.manifest/invalid/*.json; do
-            if uvx check-jsonschema --schemafile contracts/schemas/clipmill.artifact.manifest.v1.json "$f" 2>/dev/null; then
-              echo "::error::invalid fixture $f unexpectedly passed schema validation"
-              exit 1
-            fi
+          # Every fixtures/<name>/ with a valid/ subdirectory validates against
+          # contracts/schemas/clipmill.<name>.v1.json (proto/ has no schema).
+          checked=0
+          for dir in contracts/fixtures/*/; do
+            name="$(basename "$dir")"
+            schema="contracts/schemas/clipmill.${name}.v1.json"
+            [ -f "$schema" ] && [ -d "${dir}valid" ] || continue
+            uvx check-jsonschema --schemafile "$schema" "$dir"valid/*.json
+            for f in "$dir"invalid/*.json; do
+              if uvx check-jsonschema --schemafile "$schema" "$f" 2>/dev/null; then
+                echo "::error::invalid fixture $f unexpectedly passed schema validation"
+                exit 1
+              fi
+            done
+            checked=$((checked + 1))
           done
-          uvx check-jsonschema --schemafile contracts/schemas/clipmill.source_map.v1.json \
-            contracts/fixtures/source_map/valid/*.json
-          for f in contracts/fixtures/source_map/invalid/*.json; do
-            if uvx check-jsonschema --schemafile contracts/schemas/clipmill.source_map.v1.json "$f" 2>/dev/null; then
-              echo "::error::invalid source-map fixture $f unexpectedly passed schema validation"
-              exit 1
-            fi
-          done
+          if [ "$checked" -lt 11 ]; then
+            echo "::error::fixture loop found only $checked schema directories - the dir/schema naming pairing broke"
+            exit 1
+          fi
       - name: Codegen drift (generated code must match contracts/)
         run: |
           ./tools/codegen/generate.sh

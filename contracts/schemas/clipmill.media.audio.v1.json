@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.media.audio.v1.json",
+  "title": "MediaAudio",
+  "description": "Descriptor for a normalized PCM audio rendition derived at ingest (book ch. 12). One schema serves both artifact kinds: media.audio_16k.v1 (16 kHz mono, the speech-model diet) and media.audio_48k.v1 (48 kHz stereo, the measurement/render diet). The artifact kind states the lineage; this document states what the bytes actually are.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "file",
+    "codec",
+    "sample_rate",
+    "channels",
+    "sample_count",
+    "duration_ticks",
+    "coverage"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.media.audio.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "file": {
+      "description": "Artifact-relative path of the WAV payload.",
+      "type": "string",
+      "minLength": 1
+    },
+    "codec": { "type": "string", "enum": ["pcm_s16le"] },
+    "sample_rate": { "type": "integer", "minimum": 1 },
+    "channels": { "type": "integer", "minimum": 1 },
+    "sample_count": {
+      "description": "Frames of audio (per-channel samples), the exact payload length.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "duration_ticks": {
+      "description": "Rendition duration in ticks at 1/90000.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

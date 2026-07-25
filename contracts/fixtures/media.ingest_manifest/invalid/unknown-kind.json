@@ -1,0 +1,10 @@
+{
+  "children": [
+    {
+      "artifact_id": "sha256:0a0a000000000000000000000000000000000000000000000000000000000001",
+      "kind": "media.mystery.v1"
+    }
+  ],
+  "schema_version": "clipmill.media.ingest_manifest.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006"
+}

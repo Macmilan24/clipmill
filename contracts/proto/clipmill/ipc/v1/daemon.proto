@@ -140,6 +140,15 @@ message ProbeSourcePayloadV1 {
   string source_id = 2;
 }
 
+// Versioned payload for the daemon-owned ingest fan-out (book ch. 12): one
+// job derives the proxy, PCM renditions, loudness envelope, reference index,
+// filmstrip, waveform peaks, and analysis frames, then roots a single fan-in
+// ingest manifest. Local paths never travel in job payloads.
+message IngestSourcePayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.

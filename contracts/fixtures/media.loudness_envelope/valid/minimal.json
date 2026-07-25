@@ -1,0 +1,25 @@
+{
+  "cadence_hz": 10,
+  "coverage": {
+    "end_ticks": 27000,
+    "start_ticks": 0
+  },
+  "points": [
+    {
+      "momentary_lufs": -23.4,
+      "short_term_lufs": -22.9,
+      "t_ticks": 9000
+    },
+    {
+      "momentary_lufs": -18.1,
+      "t_ticks": 18000
+    }
+  ],
+  "schema_version": "clipmill.media.loudness_envelope.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000006",
+  "summary": {
+    "integrated_lufs": -19.7,
+    "loudness_range_lu": 4.2,
+    "sample_peak_dbfs": -1.3
+  }
+}
