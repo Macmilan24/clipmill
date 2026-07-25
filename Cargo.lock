@@ -482,6 +482,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-render"
+version = "0.0.1"
+dependencies = [
+ "clipmill-edit-ir",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-shell"
 version = "0.0.1"
 dependencies = [

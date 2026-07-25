@@ -1,0 +1,290 @@
+{
+  "assets": [
+    {
+      "hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "license": "own_content"
+    }
+  ],
+  "audio": {
+    "gain_curve": [
+      {
+        "gain_db": 0.0,
+        "t_ticks": 0
+      },
+      {
+        "gain_db": 2.0,
+        "t_ticks": 270000
+      }
+    ],
+    "target_lufs": -14.0,
+    "true_peak_dbtp": -1.0
+  },
+  "captions": {
+    "cues": [
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_1",
+        "end_ticks": 108108,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 48048,
+                "start_ticks": 18018,
+                "text": "the"
+              },
+              {
+                "end_ticks": 78078,
+                "start_ticks": 48048,
+                "text": "first"
+              },
+              {
+                "end_ticks": 108108,
+                "start_ticks": 78078,
+                "text": "slice"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 18018
+      },
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_2",
+        "end_ticks": 198198,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 126126,
+                "start_ticks": 108108,
+                "text": "renders"
+              },
+              {
+                "end_ticks": 144144,
+                "start_ticks": 126126,
+                "text": "from"
+              },
+              {
+                "end_ticks": 162162,
+                "start_ticks": 144144,
+                "text": "the"
+              }
+            ]
+          },
+          {
+            "words": [
+              {
+                "end_ticks": 180180,
+                "start_ticks": 162162,
+                "text": "edit"
+              },
+              {
+                "end_ticks": 198198,
+                "start_ticks": 180180,
+                "text": "document"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 108108
+      },
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_3",
+        "end_ticks": 288288,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 213213,
+                "start_ticks": 198198,
+                "text": "every"
+              },
+              {
+                "end_ticks": 228228,
+                "start_ticks": 213213,
+                "text": "timestamp"
+              },
+              {
+                "end_ticks": 243243,
+                "start_ticks": 228228,
+                "text": "is"
+              }
+            ]
+          },
+          {
+            "words": [
+              {
+                "end_ticks": 258258,
+                "start_ticks": 243243,
+                "text": "an"
+              },
+              {
+                "end_ticks": 273273,
+                "start_ticks": 258258,
+                "text": "integer"
+              },
+              {
+                "end_ticks": 288288,
+                "start_ticks": 273273,
+                "text": "tick"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 198198
+      },
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_4",
+        "end_ticks": 378378,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 306306,
+                "start_ticks": 288288,
+                "text": "line"
+              },
+              {
+                "end_ticks": 324324,
+                "start_ticks": 306306,
+                "text": "breaks"
+              },
+              {
+                "end_ticks": 342342,
+                "start_ticks": 324324,
+                "text": "are"
+              }
+            ]
+          },
+          {
+            "words": [
+              {
+                "end_ticks": 360360,
+                "start_ticks": 342342,
+                "text": "decided"
+              },
+              {
+                "end_ticks": 378378,
+                "start_ticks": 360360,
+                "text": "once"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 288288
+      },
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_5",
+        "end_ticks": 468468,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 408408,
+                "start_ticks": 378378,
+                "text": "and"
+              },
+              {
+                "end_ticks": 438438,
+                "start_ticks": 408408,
+                "text": "stored"
+              },
+              {
+                "end_ticks": 468468,
+                "start_ticks": 438438,
+                "text": "here"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 378378
+      },
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_6",
+        "end_ticks": 537537,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 480480,
+                "start_ticks": 468468,
+                "text": "so"
+              },
+              {
+                "end_ticks": 495495,
+                "start_ticks": 480480,
+                "text": "preview"
+              },
+              {
+                "end_ticks": 510510,
+                "start_ticks": 495495,
+                "text": "and"
+              }
+            ]
+          },
+          {
+            "words": [
+              {
+                "end_ticks": 525525,
+                "start_ticks": 510510,
+                "text": "render"
+              },
+              {
+                "end_ticks": 537537,
+                "start_ticks": 525525,
+                "text": "agree"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 468468
+      }
+    ],
+    "style_ref": "clipmill.captions.karaoke.v1"
+  },
+  "rationale": {
+    "candidate_id": "cand_first_slice",
+    "decisions": [
+      "hand-authored demonstration document: the first thing ClipMill renders",
+      "rationale is carried here to prove the renderer never reads it"
+    ]
+  },
+  "timebase": {
+    "den": 90000,
+    "num": 1
+  },
+  "version": "ir/1",
+  "video": {
+    "segments": [
+      {
+        "in_ticks": 180000,
+        "layout": {
+          "state": "fit"
+        },
+        "out_ticks": 540000,
+        "segment_id": "seg_open",
+        "source_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "in_ticks": 900000,
+        "layout": {
+          "state": "fit"
+        },
+        "out_ticks": 1080000,
+        "segment_id": "seg_close",
+        "source_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ]
+  }
+}
