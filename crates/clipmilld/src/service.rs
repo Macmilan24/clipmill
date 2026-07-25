@@ -7,9 +7,10 @@ use clipmill_artifacts::ArtifactPath;
 use clipmill_contracts::proto::ipc::v1::{
     CreateProjectRequest, DemoDagPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
     GetDeviceProfileResponse, GetJobResponse, GetProjectResponse, GetSourceResponse,
-    HealthResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
-    ProbeSourcePayloadV1, RegisterSourceRequest, Request, Response, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request, response,
+    HealthResponse, IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse,
+    ListSourcesResponse, PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest, Request,
+    Response, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request,
+    response,
 };
 use clipmill_core::{JobId, ProjectId, SourceId, TaskEventCursor};
 use prost::Message;
@@ -29,6 +30,7 @@ const REQUEST_ID_MAX_CHARS: usize = 128;
 const PROJECT_NAME_MAX_CHARS: usize = 200;
 const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
 const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
+const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -469,11 +471,62 @@ impl Service {
                     now,
                 )
             }
+            "ingest-source" => {
+                let Ok(payload) = IngestSourcePayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "ingest job payload is not a valid IngestSourcePayloadV1",
+                    );
+                };
+                if payload.key_version != INGEST_SOURCE_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "ingest job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                let (has_video, has_audio) = source_stream_kinds(&source.source_map_json);
+                match JobPlan::ingest_source(
+                    &project_id,
+                    source_id.to_string(),
+                    submit.payload.clone(),
+                    has_video,
+                    has_audio,
+                    now,
+                ) {
+                    Ok(plan) => plan,
+                    Err(message) => {
+                        return error_reply(request_id, ErrorCode::InvalidArgument, message);
+                    }
+                }
+            }
             _ => {
                 return error_reply(
                     request_id,
                     ErrorCode::Unavailable,
-                    "job kind is not available in W5",
+                    "job kind is not available",
                 );
             }
         };
@@ -879,6 +932,24 @@ impl Service {
             Err(error) => store_error_reply(request_id, &error),
         }
     }
+}
+
+/// Read which stream kinds the registered source map observed, so the ingest
+/// plan only schedules derivatives the source can actually produce.
+fn source_stream_kinds(source_map_json: &[u8]) -> (bool, bool) {
+    let Ok(map) = serde_json::from_slice::<serde_json::Value>(source_map_json) else {
+        return (false, false);
+    };
+    let mut has_video = false;
+    let mut has_audio = false;
+    for stream in map["streams"].as_array().into_iter().flatten() {
+        match stream["kind"].as_str() {
+            Some("video") => has_video = true,
+            Some("audio") => has_audio = true,
+            _ => {}
+        }
+    }
+    (has_video, has_audio)
 }
 
 pub(crate) fn request_kind(request: &Request) -> &'static str {

@@ -88,6 +88,19 @@ impl Daemon {
                 )));
             }
         };
+        let media_runner = match crate::media::MediaRunner::new(
+            config.ffprobe.clone(),
+            config.paths.media_scratch_dir.clone(),
+        ) {
+            Ok(runner) => runner,
+            Err(error) => {
+                artifacts.shutdown().await?;
+                database.shutdown().await?;
+                return Err(DaemonError::Ipc(format!(
+                    "cannot initialize media runner: {error}"
+                )));
+            }
+        };
         let device_profiler = match DeviceProfiler::new(
             &config.ffprobe,
             &config.paths.device_attestation_key,
@@ -169,6 +182,7 @@ impl Daemon {
             daemon_epoch.clone(),
             sources.clone(),
             device_profiler.clone(),
+            media_runner,
             scheduler_capacity,
             config.builtin_fixture_executor,
         );
@@ -583,6 +597,7 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
         &config.paths.backups_dir,
         &config.paths.artifacts_dir,
         &config.paths.probe_scratch_dir,
+        &config.paths.media_scratch_dir,
         &config.paths.device_profile_scratch_dir,
         &config.paths.worker_trust_dir,
         &config.paths.run_dir,

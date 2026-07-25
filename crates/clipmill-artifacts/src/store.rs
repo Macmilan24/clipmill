@@ -491,6 +491,16 @@ impl ArtifactLease {
             .collect())
     }
 
+    /// Verify one payload file and return its on-disk path for sidecar
+    /// processes that must read by filename. Committed payloads are immutable
+    /// (mode 0400) so the verified bytes are the bytes the sidecar reads; the
+    /// lease pin keeps garbage collection away while the path is in use.
+    pub fn verified_path(&self, path: &ArtifactPath) -> Result<PathBuf, ArtifactError> {
+        let file = self.open_verified(path)?;
+        drop(file);
+        Ok(self.dir.join(path.as_path()))
+    }
+
     pub fn open_verified(&self, path: &ArtifactPath) -> Result<File, ArtifactError> {
         let record = self
             .manifest

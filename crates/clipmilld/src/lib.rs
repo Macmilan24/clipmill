@@ -11,6 +11,7 @@ mod error;
 mod ipc;
 mod jobs;
 mod lock;
+mod media;
 mod service;
 #[cfg(unix)]
 mod shm;
