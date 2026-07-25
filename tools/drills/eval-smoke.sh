@@ -96,6 +96,14 @@ if len(successful) != 4 or len(hostile) != 1:
     raise SystemExit("eval-smoke: public corpus outcomes are incomplete")
 if any(item.get("warm_cache_hit") is not True for item in successful):
     raise SystemExit("eval-smoke: a warm source-map run was not a cache hit")
+if any(
+    item.get("source_map_artifact_id") != item.get("cold_source_map_artifact_id")
+    or item.get("source_map_artifact_id") != item.get("warm_source_map_artifact_id")
+    for item in successful
+):
+    raise SystemExit("eval-smoke: a warm source-map artifact ID changed")
+if any(item.get("warm_observed_result") != "structured_failure" for item in hostile):
+    raise SystemExit("eval-smoke: hostile media did not repeat its structured failure")
 if private_root in raw or '"absolute_path"' in raw:
     raise SystemExit("eval-smoke: run manifest leaked a private media path")
 PY

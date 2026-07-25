@@ -42,4 +42,7 @@ CARGO_NET_OFFLINE=true ./tools/drills/device-drill.sh 5
 echo "==> signed public-corpus evaluation smoke test, offline"
 CARGO_NET_OFFLINE=true ./tools/drills/eval-smoke.sh 1
 
-echo "network-denial: OK (canary blocked; suite and all Phase 0 smoke drills green with zero egress)"
+echo "==> repository security policy and hostile-boundary smoke tests, offline"
+CARGO_NET_OFFLINE=true ./tools/security/security-gate.sh
+
+echo "network-denial: OK (canary blocked; suite, security, and Phase 0 smoke drills green with zero egress)"

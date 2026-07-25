@@ -5,8 +5,9 @@ exclusive network broker, OS enforcement, and a project-visible audit.
 
 In Phase 0, CI enters a Linux network namespace with no interfaces, verifies an
 egress canary cannot connect, and runs the Rust workspace tests plus W3 cache,
-W4 durable-job, W5 pinned media/source, W6 external-worker recovery, and W7
-device-profile/public-evaluation smoke drills offline. The daemon, scheduler,
+W4 durable-job, W5 pinned media/source, W6 external-worker recovery, W7
+device-profile/public-evaluation, and W8 repository-security smoke drills
+offline. The daemon, scheduler,
 artifact store, FFmpeg/FFprobe sidecars, Python worker SDK, echo worker,
 evaluation harness, and shared-memory broker have no network-capable
 dependency or request path, and health reports

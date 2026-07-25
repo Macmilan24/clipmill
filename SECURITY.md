@@ -4,6 +4,11 @@ ClipMill's security posture is central to its promise: media parsing is
 sandboxed, the UI WebView has no filesystem/shell/network privileges, and
 Local Lock means zero egress — enforced by CI, not by promise.
 
+The current trust boundaries, controls, falsification gates, and explicitly
+deferred risks are maintained in the [Phase 0 threat model](docs/threat-model.md).
+Pull requests that change a sensitive boundary must complete the threat-review
+checklist; CI derives the required categories from the diff.
+
 ## Reporting a vulnerability
 
 Please report vulnerabilities **privately** via

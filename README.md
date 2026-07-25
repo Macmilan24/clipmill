@@ -6,7 +6,7 @@ every stage of the intelligence running on your own machine. No upload, no
 cloud dependency, no per-minute pricing: your footage never leaves your disk
 unless you explicitly send it somewhere.
 
-> **Status: pre-alpha, Phase 0 ("Harness"), W7.** Contracts, the durable daemon,
+> **Status: pre-alpha, Phase 0 ("Harness") complete.** Contracts, the durable daemon,
 > filesystem artifact CAS, reusable durable DAG scheduler, local-source
 > evidence pipeline, and authenticated external-worker runtime are implemented:
 > private Unix-socket IPC, SQLite/WAL roots and leases, deterministic cache keys,
@@ -14,8 +14,9 @@ unless you explicitly send it somewhere.
 > hard-kill drills, pinned FFprobe supervision, immutable source fingerprints,
 > rational source maps, signed worker registration, daemon-owned output staging,
 > one-use read-only shared memory, measured and signed device profiles, and the
-> signed offline evaluation harness on macOS and Linux. The private Seed-40 and
-> integrated security exit remain W8. Nothing here makes clips yet.
+> signed offline evaluation harness on macOS and Linux. The integrated security
+> workflow and signed, rights-cleared Seed-40 cold/warm proof close the Phase 0
+> exit. Nothing here makes clips yet.
 
 ## Why
 

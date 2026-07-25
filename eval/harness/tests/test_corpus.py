@@ -67,6 +67,8 @@ def test_signed_corpus_verifies_every_byte_and_license(tmp_path: Path) -> None:
     )
     assert corpus.corpus_id == "fixture"
     assert corpus.items[0].sha256 == hashlib.sha256(b"verified media").hexdigest()
+    assert len(corpus.manifest_sha256) == 64
+    assert len(corpus.license_attestation_sha256) == 64
 
 
 def test_media_and_signature_tampering_are_rejected(tmp_path: Path) -> None:
@@ -96,4 +98,31 @@ def test_symlinks_and_license_gaps_are_rejected(tmp_path: Path) -> None:
     (tmp_path / "media.bin").write_bytes(b"verified media")
     licenses.write_text("{}", encoding="utf-8")
     with pytest.raises(CorpusError):
+        verify_corpus(tmp_path, manifest, licenses)
+
+
+def test_evaluation_only_rights_grant_is_accepted(tmp_path: Path) -> None:
+    manifest, licenses, key = signed_corpus(tmp_path)
+    value = json.loads(licenses.read_text(encoding="utf-8"))
+    unsigned = {field: entry for field, entry in value.items() if field != "signature"}
+    unsigned["licenses"][0]["redistributable"] = False
+    unsigned["licenses"][0]["evaluation_permitted"] = True
+    licenses.write_bytes(canonical_json(sign_document(unsigned, key, LICENSE_DOMAIN)))
+
+    corpus = verify_corpus(tmp_path, manifest, licenses)
+
+    assert corpus.licenses[0].redistributable is False
+    assert corpus.licenses[0].evaluation_permitted is True
+
+
+def test_license_without_distribution_or_evaluation_rights_is_rejected(
+    tmp_path: Path,
+) -> None:
+    manifest, licenses, key = signed_corpus(tmp_path)
+    value = json.loads(licenses.read_text(encoding="utf-8"))
+    unsigned = {field: entry for field, entry in value.items() if field != "signature"}
+    unsigned["licenses"][0]["redistributable"] = False
+    licenses.write_bytes(canonical_json(sign_document(unsigned, key, LICENSE_DOMAIN)))
+
+    with pytest.raises(CorpusError, match="license record"):
         verify_corpus(tmp_path, manifest, licenses)

@@ -130,4 +130,13 @@ response-loss replay, signed-CAS verification, generation invalidation, and
 restart reuse. Its public evaluation gate drives a real daemon through signed
 CFR/VFR/rotation/audio-offset/malformed fixtures, verifies cold and warm CAS
 outputs, and runs offline on both operating systems. The private Seed-40 and
-integrated security exit remain W8, so Phase 0 is not yet complete.
+integrated security exit are completed by W8's signed public proof and
+fail-closed repository gates.
+
+W8 does not widen the daemon's recovery protocol. It integrates the existing
+daemon, CAS, job, source, worker, shared-memory, profile, and evaluation proofs
+under the no-network and threat-review workflows. The real rights-cleared
+Seed-40 run produced the four-file signed public attestation verified on
+protected `main`, closing Phase 0. Production firewall enforcement and the
+signed worker/model registry remain Phase 4; desktop and release security
+remain outside Phase 0.
