@@ -10,6 +10,7 @@ const JOB_PREFIX: &str = "job_";
 const TASK_PREFIX: &str = "tsk_";
 const LEASE_PREFIX: &str = "lse_";
 const WORKER_PREFIX: &str = "wrk_";
+const EDIT_DOC_PREFIX: &str = "edt_";
 
 /// A durable task-event replay cursor.
 ///
@@ -266,6 +267,12 @@ define_prefixed_id!(
     WorkerId,
     WorkerIdError,
     WORKER_PREFIX
+);
+define_prefixed_id!(
+    /// An edit-document identifier serialized as `edt_<ULID>`.
+    EditDocId,
+    EditDocIdError,
+    EDIT_DOC_PREFIX
 );
 
 #[cfg(test)]

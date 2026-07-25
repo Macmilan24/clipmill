@@ -22,7 +22,7 @@ mod worker;
 pub use artifacts::{ArtifactCoordinator, ArtifactServiceError};
 pub use config::{Config, Paths};
 #[cfg(unix)]
-pub use daemon::Daemon;
+pub use daemon::{Daemon, EditLog};
 pub use device::{
     DeviceProfileError, VerifiedDeviceProfile, verify_profile as verify_device_profile,
 };

@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -57,6 +57,14 @@ pub mod request {
         GetSource(super::GetSourceRequest),
         #[prost(message, tag = "24")]
         ListSources(super::ListSourcesRequest),
+        #[prost(message, tag = "25")]
+        CreateEditDoc(super::CreateEditDocRequest),
+        #[prost(message, tag = "26")]
+        ApplyEditCommand(super::ApplyEditCommandRequest),
+        #[prost(message, tag = "27")]
+        GetEditDoc(super::GetEditDocRequest),
+        #[prost(message, tag = "28")]
+        SnapshotEditDoc(super::SnapshotEditDocRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -67,7 +75,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -109,6 +117,14 @@ pub mod response {
         GetSource(super::GetSourceResponse),
         #[prost(message, tag = "25")]
         ListSources(super::ListSourcesResponse),
+        #[prost(message, tag = "26")]
+        CreateEditDoc(super::CreateEditDocResponse),
+        #[prost(message, tag = "27")]
+        ApplyEditCommand(super::ApplyEditCommandResponse),
+        #[prost(message, tag = "28")]
+        GetEditDoc(super::GetEditDocResponse),
+        #[prost(message, tag = "29")]
+        SnapshotEditDoc(super::SnapshotEditDocResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -425,6 +441,86 @@ pub struct GetDeviceProfileResponse {
     /// for shells that do not read the artifact store directly.
     #[prost(string, tag = "2")]
     pub profile_json: ::prost::alloc::string::String,
+}
+// ---- Edit documents (the Edit IR, ch. 17) ----
+//
+// The live document and its command log are project state (SQLite, single
+// writer). Renders read an immutable `edit.ir.v1` snapshot artifact instead,
+// so an edit in progress can never change what a render was asked to produce.
+
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EditDoc {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub project_id: ::prost::alloc::string::String,
+    /// Number of commands applied; also the command log's high-water mark.
+    #[prost(uint64, tag = "3")]
+    pub revision: u64,
+    /// The clipmill.edit_ir.v1 document as canonical JSON.
+    #[prost(string, tag = "4")]
+    pub document_json: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "5")]
+    pub created_unix_millis: u64,
+    #[prost(uint64, tag = "6")]
+    pub updated_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateEditDocRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    /// Initial document. Empty starts from the empty document.
+    #[prost(string, tag = "2")]
+    pub document_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateEditDocResponse {
+    #[prost(message, optional, tag = "1")]
+    pub doc: ::core::option::Option<EditDoc>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ApplyEditCommandRequest {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+    /// The revision the client last observed. A mismatch is reported as a
+    /// conflict rather than silently rebasing someone else's edit.
+    #[prost(uint64, tag = "2")]
+    pub expected_revision: u64,
+    #[prost(string, tag = "3")]
+    pub command_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ApplyEditCommandResponse {
+    #[prost(message, optional, tag = "1")]
+    pub doc: ::core::option::Option<EditDoc>,
+    /// The command that undoes this one. The daemon keeps no undo stack; it
+    /// hands back the inverse and durably logs it beside the command.
+    #[prost(string, tag = "2")]
+    pub inverse_command_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetEditDocRequest {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetEditDocResponse {
+    #[prost(message, optional, tag = "1")]
+    pub doc: ::core::option::Option<EditDoc>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SnapshotEditDocRequest {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SnapshotEditDocResponse {
+    /// Content address of the edit.ir.v1 artifact the renderer consumes.
+    #[prost(string, tag = "1")]
+    pub artifact_id: ::prost::alloc::string::String,
+    /// Revision the snapshot froze.
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

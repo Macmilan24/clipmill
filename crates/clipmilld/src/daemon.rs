@@ -262,6 +262,27 @@ impl Daemon {
         ArtifactCoordinator::new(self.artifacts.handle(), self.database.handle())
     }
 
+    /// The document a command log started from, plus every logged step.
+    ///
+    /// This is an in-process lifecycle interface for archival and for drills
+    /// that must verify replay against a restarted daemon; like the artifact
+    /// coordinator it is deliberately not part of the control API.
+    pub async fn edit_log(&self, doc_id: String) -> Result<EditLog, DaemonError> {
+        let (initial_document, entries) = self
+            .database
+            .handle()
+            .get_edit_log(doc_id)
+            .await
+            .map_err(|error| DaemonError::Ipc(error.to_string()))?;
+        Ok(EditLog {
+            initial_document,
+            commands: entries
+                .into_iter()
+                .map(|entry| (entry.revision, entry.command_json, entry.inverse_json))
+                .collect(),
+        })
+    }
+
     #[allow(clippy::too_many_lines)]
     pub async fn serve_until<F>(self, shutdown: F) -> Result<(), DaemonError>
     where
@@ -706,4 +727,12 @@ impl Drop for SocketGuard {
     fn drop(&mut self) {
         self.remove();
     }
+}
+
+/// An edit document's durable history: the document it started from and every
+/// logged `(revision, command, inverse)` step.
+#[derive(Clone, Debug)]
+pub struct EditLog {
+    pub initial_document: String,
+    pub commands: Vec<(u64, String, String)>,
 }

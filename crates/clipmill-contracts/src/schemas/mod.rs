@@ -9,6 +9,10 @@ pub mod artifact_manifest;
 pub mod device_profile;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/edit_ir.rs"]
+pub mod edit_ir;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/media_audio.rs"]
 pub mod media_audio;
 

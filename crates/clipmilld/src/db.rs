@@ -29,9 +29,11 @@ mod source_store;
 pub(crate) use source_store::SourceRecord;
 mod device_store;
 pub(crate) use device_store::{BeginDeviceProfile, DeviceProfileRecord, DeviceProfileState};
+mod edit_store;
+pub(crate) use edit_store::{EditCommandRecord, EditDocRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -354,6 +356,50 @@ impl DbActor {
                                 Command::ListSources { project_id, reply } => {
                                     let _result = reply
                                         .send(source_store::list_sources(&connection, &project_id));
+                                }
+                                Command::CreateEditDoc {
+                                    request_id,
+                                    request_hash,
+                                    project_id,
+                                    document_json,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(edit_store::create_edit_doc(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &project_id,
+                                        &document_json,
+                                        now_unix_millis,
+                                    ));
+                                }
+                                Command::ApplyEdit {
+                                    request_id,
+                                    request_hash,
+                                    doc_id,
+                                    expected_revision,
+                                    command_json,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(edit_store::apply_edit_command(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &doc_id,
+                                        expected_revision,
+                                        &command_json,
+                                        now_unix_millis,
+                                    ));
+                                }
+                                Command::GetEditDoc { doc_id, reply } => {
+                                    let _result =
+                                        reply.send(edit_store::get_edit_doc(&connection, &doc_id));
+                                }
+                                Command::GetEditLog { doc_id, reply } => {
+                                    let _result =
+                                        reply.send(edit_store::get_edit_log(&connection, &doc_id));
                                 }
                                 Command::BeginDeviceProfile {
                                     request_id,
@@ -850,6 +896,75 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    pub(crate) async fn create_edit_doc(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        document_json: String,
+        now_unix_millis: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::CreateEditDoc {
+                request_id,
+                request_hash,
+                project_id,
+                document_json,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn apply_edit_command(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        doc_id: String,
+        expected_revision: u64,
+        command_json: String,
+        now_unix_millis: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ApplyEdit {
+                request_id,
+                request_hash,
+                doc_id,
+                expected_revision,
+                command_json,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn get_edit_doc(&self, doc_id: String) -> Result<EditDocRecord, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::GetEditDoc { doc_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn get_edit_log(
+        &self,
+        doc_id: String,
+    ) -> Result<(String, Vec<EditCommandRecord>), StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::GetEditLog { doc_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn remember_source_hit(
         &self,
         request_id: String,
@@ -978,6 +1093,31 @@ impl DbHandle {
 
 #[derive(Debug)]
 enum Command {
+    CreateEditDoc {
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        document_json: String,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
+    ApplyEdit {
+        request_id: String,
+        request_hash: [u8; 32],
+        doc_id: String,
+        expected_revision: u64,
+        command_json: String,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
+    GetEditDoc {
+        doc_id: String,
+        reply: oneshot::Sender<Result<EditDocRecord, StoreError>>,
+    },
+    GetEditLog {
+        doc_id: String,
+        reply: oneshot::Sender<Result<(String, Vec<EditCommandRecord>), StoreError>>,
+    },
     Create {
         request_id: String,
         request_hash: [u8; 32],
@@ -1279,8 +1419,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(job_store::CREATE_V3_TABLES)?;
         transaction.execute_batch(source_store::CREATE_V4_TABLES)?;
         transaction.execute_batch(device_store::CREATE_V5_TABLES)?;
+        transaction.execute_batch(edit_store::CREATE_V6_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 5;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 6;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1297,7 +1438,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 5 {
             transaction.execute_batch(device_store::CREATE_V5_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 5;")?;
+        if version < 6 {
+            transaction.execute_batch(edit_store::CREATE_V6_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 6;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -1592,7 +1736,7 @@ mod tests {
 
     use super::{
         CREATE_V1_TABLES, CREATE_V2_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION,
-        StoreError, attach_artifact_root, create_project, delete_project, device_store,
+        StoreError, attach_artifact_root, create_project, delete_project, device_store, edit_store,
         enforce_integrity_check, enforce_sqlite_version, get_project, job_store,
         list_artifact_roots, list_projects, open_database, source_store,
     };
@@ -1614,6 +1758,209 @@ mod tests {
             project_id: id.to_owned(),
             name: name.to_owned(),
             created_unix_millis: at,
+        }
+    }
+
+    /// The command log is the document's history of record: replaying it over
+    /// the initial document must land on exactly the live bytes, or an
+    /// archive restored from the log would silently differ from what the user
+    /// last saw.
+    #[test]
+    fn replaying_the_command_log_reproduces_the_live_document() {
+        use clipmill_edit_ir::{EditCommand, EditDocument};
+
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        create_project(
+            &mut connection,
+            "create-project",
+            &[1; 32],
+            &project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Edits", 1),
+        )
+        .expect("project");
+
+        let created = edit_store::create_edit_doc(
+            &mut connection,
+            "create-doc",
+            &[2; 32],
+            "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            &sample_edit_document(),
+            10,
+        )
+        .expect("create edit doc");
+        let doc_id = created_doc_id(&created);
+
+        let commands = [
+            EditCommand::SetLayout {
+                segment_id: "seg_a".to_owned(),
+                state: clipmill_edit_ir::LayoutState::SpeakerFill,
+            },
+            EditCommand::EditCaptionText {
+                cue_id: "cue_a".to_owned(),
+                word_index: 1,
+                text: "TWO".to_owned(),
+            },
+            EditCommand::Trim {
+                segment_id: "seg_a".to_owned(),
+                in_ticks: 90_000,
+                out_ticks: 900_000,
+            },
+            EditCommand::SetGain {
+                t_ticks: 0,
+                gain_db: -2.5,
+            },
+        ];
+        for (index, command) in commands.iter().enumerate() {
+            let json =
+                String::from_utf8(command.to_canonical_json().expect("serialize")).expect("utf-8");
+            edit_store::apply_edit_command(
+                &mut connection,
+                &format!("apply-{index}"),
+                &[u8::try_from(index).unwrap_or(0) + 8; 32],
+                &doc_id,
+                index as u64,
+                &json,
+                20 + index as u64,
+            )
+            .expect("apply command");
+        }
+
+        let live = edit_store::get_edit_doc(&connection, &doc_id).expect("live document");
+        assert_eq!(live.revision, 4);
+        let (initial_json, log) = edit_store::get_edit_log(&connection, &doc_id).expect("log");
+        assert_eq!(log.len(), 4);
+        assert_eq!(
+            log.iter().map(|entry| entry.revision).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
+
+        let mut replayed =
+            EditDocument::from_canonical_json(initial_json.as_bytes()).expect("initial document");
+        for entry in &log {
+            let command = EditCommand::from_canonical_json(entry.command_json.as_bytes())
+                .expect("logged command parses");
+            command
+                .apply(&mut replayed)
+                .expect("logged command applies");
+        }
+        assert_eq!(
+            String::from_utf8(replayed.to_canonical_json().expect("canonical")).expect("utf-8"),
+            live.document_json,
+            "replaying the durable log must reproduce the live document byte for byte"
+        );
+
+        // Undoing with the stored inverse walks back to the previous state.
+        let last = log.last().expect("last entry");
+        let inverse = EditCommand::from_canonical_json(last.inverse_json.as_bytes())
+            .expect("stored inverse parses");
+        inverse.apply(&mut replayed).expect("inverse applies");
+        assert!(
+            replayed.audio.gain_curve.is_empty(),
+            "the stored inverse must undo the change it was recorded for"
+        );
+    }
+
+    /// Editing a revision the client has not seen is a conflict, not a
+    /// silent rebase that discards whichever edit lost the race.
+    #[test]
+    fn applying_against_a_stale_revision_conflicts() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        create_project(
+            &mut connection,
+            "create-project",
+            &[1; 32],
+            &project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Edits", 1),
+        )
+        .expect("project");
+        let created = edit_store::create_edit_doc(
+            &mut connection,
+            "create-doc",
+            &[2; 32],
+            "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "",
+            10,
+        )
+        .expect("create edit doc");
+        let doc_id = created_doc_id(&created);
+        let command =
+            serde_json::json!({"op": "set_gain", "t_ticks": 0, "gain_db": -3.0}).to_string();
+        edit_store::apply_edit_command(
+            &mut connection,
+            "apply-0",
+            &[3; 32],
+            &doc_id,
+            0,
+            &command,
+            20,
+        )
+        .expect("first apply");
+        let stale = edit_store::apply_edit_command(
+            &mut connection,
+            "apply-1",
+            &[4; 32],
+            &doc_id,
+            0,
+            &command,
+            21,
+        );
+        assert!(matches!(stale, Err(StoreError::Conflict)));
+        let replayed = edit_store::apply_edit_command(
+            &mut connection,
+            "apply-0",
+            &[3; 32],
+            &doc_id,
+            0,
+            &command,
+            22,
+        )
+        .expect("retrying the same request replays its response");
+        assert_eq!(
+            edit_store::get_edit_doc(&connection, &doc_id)
+                .expect("doc")
+                .revision,
+            1,
+            "a replayed request must not apply the command twice"
+        );
+        assert!(!replayed.is_empty());
+    }
+
+    fn sample_edit_document() -> String {
+        let fingerprint = format!("sha256:{}", "ab".repeat(32));
+        serde_json::json!({
+            "version": "ir/1",
+            "timebase": {"num": 1, "den": 90000},
+            "video": {"segments": [{
+                "segment_id": "seg_a",
+                "source_fingerprint": fingerprint,
+                "in_ticks": 0,
+                "out_ticks": 900_000,
+                "layout": {"state": "fit"},
+            }]},
+            "captions": {"style_ref": "clean", "cues": [{
+                "cue_id": "cue_a",
+                "start_ticks": 0,
+                "end_ticks": 90_000,
+                "region": "lower_safe",
+                "anim": "karaoke",
+                "lines": [{"words": [
+                    {"text": "one", "start_ticks": 0, "end_ticks": 45_000},
+                    {"text": "two", "start_ticks": 45_000, "end_ticks": 90_000},
+                ]}],
+            }]},
+            "audio": {"target_lufs": -14.0, "true_peak_dbtp": -1.0},
+        })
+        .to_string()
+    }
+
+    fn created_doc_id(response: &[u8]) -> String {
+        let decoded =
+            clipmill_contracts::proto::ipc::v1::Response::decode(response).expect("decode");
+        match decoded.body {
+            Some(clipmill_contracts::proto::ipc::v1::response::Body::CreateEditDoc(created)) => {
+                created.doc.expect("doc").doc_id
+            }
+            _ => panic!("unexpected create response"),
         }
     }
 

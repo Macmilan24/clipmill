@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.edit_ir.v1.json",
+  "title": "EditIr",
+  "description": "The edit document (book ch. 17): a versioned, multi-track, non-destructive timeline that the preview, the render compiler, and later the NLE exporter all read. No subsystem may render, preview, or export from any other representation. All time is integer ticks at 1/90000 (D06); a segment's program position is the sum of the durations before it and is never stored, so a trim cannot leave a stale offset behind.",
+  "type": "object",
+  "required": ["version", "timebase", "video", "captions", "audio"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "ir/1" },
+    "timebase": {
+      "type": "object",
+      "required": ["num", "den"],
+      "additionalProperties": false,
+      "properties": {
+        "num": { "const": 1 },
+        "den": { "const": 90000 }
+      }
+    },
+    "video": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "segments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/videoSegment" }
+        }
+      }
+    },
+    "captions": {
+      "type": "object",
+      "required": ["style_ref"],
+      "additionalProperties": false,
+      "properties": {
+        "style_ref": {
+          "description": "Named caption preset; the style itself lives with the presets, not in every document.",
+          "type": "string"
+        },
+        "cues": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/captionCue" }
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "required": ["target_lufs", "true_peak_dbtp"],
+      "additionalProperties": false,
+      "properties": {
+        "target_lufs": {
+          "description": "Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.",
+          "type": "number"
+        },
+        "true_peak_dbtp": { "type": "number" },
+        "gain_curve": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["t_ticks", "gain_db"],
+            "additionalProperties": false,
+            "properties": {
+              "t_ticks": { "type": "integer", "minimum": 0 },
+              "gain_db": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "assets": {
+      "description": "Assets referenced by content hash, each carrying the licence record the render manifest echoes.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["hash", "license"],
+        "additionalProperties": false,
+        "properties": {
+          "hash": { "$ref": "#/$defs/sha256" },
+          "license": { "type": "string" }
+        }
+      }
+    },
+    "rationale": {
+      "description": "Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": { "type": "string" },
+        "decisions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "cropRect": {
+      "description": "Integer pixel rectangle in the source frame's coordinate space.",
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "videoSegment": {
+      "type": "object",
+      "required": ["segment_id", "source_fingerprint", "in_ticks", "out_ticks", "layout"],
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": { "type": "string", "minLength": 1 },
+        "source_fingerprint": { "$ref": "#/$defs/sha256" },
+        "in_ticks": { "type": "integer", "minimum": 0 },
+        "out_ticks": { "type": "integer", "minimum": 1 },
+        "layout": {
+          "type": "object",
+          "required": ["state"],
+          "additionalProperties": false,
+          "properties": {
+            "state": { "enum": ["speaker_fill", "fit"] },
+            "crop_path": {
+              "description": "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["t_ticks", "rect"],
+                "additionalProperties": false,
+                "properties": {
+                  "t_ticks": { "type": "integer", "minimum": 0 },
+                  "rect": { "$ref": "#/$defs/cropRect" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "captionCue": {
+      "type": "object",
+      "required": ["cue_id", "start_ticks", "end_ticks", "region", "anim", "lines"],
+      "additionalProperties": false,
+      "properties": {
+        "cue_id": { "type": "string", "minLength": 1 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 1 },
+        "region": { "enum": ["lower_safe", "upper_safe", "center"] },
+        "anim": { "enum": ["none", "karaoke"] },
+        "lines": {
+          "description": "Line breaks are decided once and stored here — the parity keystone. Preview and render must never re-wrap text independently.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["words"],
+            "additionalProperties": false,
+            "properties": {
+              "words": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["text", "start_ticks", "end_ticks"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": { "type": "string", "minLength": 1 },
+                    "start_ticks": { "type": "integer", "minimum": 0 },
+                    "end_ticks": { "type": "integer", "minimum": 1 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

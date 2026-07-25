@@ -1,0 +1,104 @@
+{
+  "assets": [
+    {
+      "hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "license": "own_content"
+    }
+  ],
+  "audio": {
+    "gain_curve": [
+      {
+        "gain_db": 0.0,
+        "t_ticks": 0
+      },
+      {
+        "gain_db": -3.5,
+        "t_ticks": 150000
+      }
+    ],
+    "target_lufs": -14.0,
+    "true_peak_dbtp": -1.0
+  },
+  "captions": {
+    "cues": [
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_1",
+        "end_ticks": 80000,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 20000,
+                "start_ticks": 0,
+                "text": "preview"
+              },
+              {
+                "end_ticks": 45000,
+                "start_ticks": 20000,
+                "text": "and"
+              }
+            ]
+          },
+          {
+            "words": [
+              {
+                "end_ticks": 80000,
+                "start_ticks": 45000,
+                "text": "render"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 0
+      }
+    ],
+    "style_ref": "clean"
+  },
+  "rationale": {
+    "candidate_id": "cand_1",
+    "decisions": [
+      "hook lands in the first second of the selected span",
+      "end snapped to the shot cut eight frames into the deletion"
+    ]
+  },
+  "timebase": {
+    "den": 90000,
+    "num": 1
+  },
+  "version": "ir/1",
+  "video": {
+    "segments": [
+      {
+        "in_ticks": 1235.0004,
+        "layout": {
+          "crop_path": [
+            {
+              "rect": {
+                "height": 1080,
+                "width": 608,
+                "x": 236,
+                "y": 0
+              },
+              "t_ticks": 0
+            },
+            {
+              "rect": {
+                "height": 1080,
+                "width": 608,
+                "x": 300,
+                "y": 0
+              },
+              "t_ticks": 270000
+            }
+          ],
+          "state": "speaker_fill"
+        },
+        "out_ticks": 111690000,
+        "segment_id": "seg_1",
+        "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    ]
+  }
+}

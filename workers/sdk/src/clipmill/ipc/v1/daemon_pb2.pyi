@@ -63,7 +63,7 @@ JOB_STATE_CANCEL_REQUESTED: JobState
 JOB_STATE_CANCELLED: JobState
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -80,6 +80,10 @@ class Request(_message.Message):
     REGISTER_SOURCE_FIELD_NUMBER: _ClassVar[int]
     GET_SOURCE_FIELD_NUMBER: _ClassVar[int]
     LIST_SOURCES_FIELD_NUMBER: _ClassVar[int]
+    CREATE_EDIT_DOC_FIELD_NUMBER: _ClassVar[int]
+    APPLY_EDIT_COMMAND_FIELD_NUMBER: _ClassVar[int]
+    GET_EDIT_DOC_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_EDIT_DOC_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -96,10 +100,14 @@ class Request(_message.Message):
     register_source: RegisterSourceRequest
     get_source: GetSourceRequest
     list_sources: ListSourcesRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ...) -> None: ...
+    create_edit_doc: CreateEditDocRequest
+    apply_edit_command: ApplyEditCommandRequest
+    get_edit_doc: GetEditDocRequest
+    snapshot_edit_doc: SnapshotEditDocRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -118,6 +126,10 @@ class Response(_message.Message):
     REGISTER_SOURCE_FIELD_NUMBER: _ClassVar[int]
     GET_SOURCE_FIELD_NUMBER: _ClassVar[int]
     LIST_SOURCES_FIELD_NUMBER: _ClassVar[int]
+    CREATE_EDIT_DOC_FIELD_NUMBER: _ClassVar[int]
+    APPLY_EDIT_COMMAND_FIELD_NUMBER: _ClassVar[int]
+    GET_EDIT_DOC_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_EDIT_DOC_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -136,7 +148,11 @@ class Response(_message.Message):
     register_source: RegisterSourceResponse
     get_source: GetSourceResponse
     list_sources: ListSourcesResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ...) -> None: ...
+    create_edit_doc: CreateEditDocResponse
+    apply_edit_command: ApplyEditCommandResponse
+    get_edit_doc: GetEditDocResponse
+    snapshot_edit_doc: SnapshotEditDocResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -457,3 +473,77 @@ class GetDeviceProfileResponse(_message.Message):
     artifact_id: str
     profile_json: str
     def __init__(self, artifact_id: _Optional[str] = ..., profile_json: _Optional[str] = ...) -> None: ...
+
+class EditDoc(_message.Message):
+    __slots__ = ("doc_id", "project_id", "revision", "document_json", "created_unix_millis", "updated_unix_millis")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_JSON_FIELD_NUMBER: _ClassVar[int]
+    CREATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    project_id: str
+    revision: int
+    document_json: str
+    created_unix_millis: int
+    updated_unix_millis: int
+    def __init__(self, doc_id: _Optional[str] = ..., project_id: _Optional[str] = ..., revision: _Optional[int] = ..., document_json: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ...) -> None: ...
+
+class CreateEditDocRequest(_message.Message):
+    __slots__ = ("project_id", "document_json")
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_JSON_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    document_json: str
+    def __init__(self, project_id: _Optional[str] = ..., document_json: _Optional[str] = ...) -> None: ...
+
+class CreateEditDocResponse(_message.Message):
+    __slots__ = ("doc",)
+    DOC_FIELD_NUMBER: _ClassVar[int]
+    doc: EditDoc
+    def __init__(self, doc: _Optional[_Union[EditDoc, _Mapping]] = ...) -> None: ...
+
+class ApplyEditCommandRequest(_message.Message):
+    __slots__ = ("doc_id", "expected_revision", "command_json")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    COMMAND_JSON_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    expected_revision: int
+    command_json: str
+    def __init__(self, doc_id: _Optional[str] = ..., expected_revision: _Optional[int] = ..., command_json: _Optional[str] = ...) -> None: ...
+
+class ApplyEditCommandResponse(_message.Message):
+    __slots__ = ("doc", "inverse_command_json")
+    DOC_FIELD_NUMBER: _ClassVar[int]
+    INVERSE_COMMAND_JSON_FIELD_NUMBER: _ClassVar[int]
+    doc: EditDoc
+    inverse_command_json: str
+    def __init__(self, doc: _Optional[_Union[EditDoc, _Mapping]] = ..., inverse_command_json: _Optional[str] = ...) -> None: ...
+
+class GetEditDocRequest(_message.Message):
+    __slots__ = ("doc_id",)
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    def __init__(self, doc_id: _Optional[str] = ...) -> None: ...
+
+class GetEditDocResponse(_message.Message):
+    __slots__ = ("doc",)
+    DOC_FIELD_NUMBER: _ClassVar[int]
+    doc: EditDoc
+    def __init__(self, doc: _Optional[_Union[EditDoc, _Mapping]] = ...) -> None: ...
+
+class SnapshotEditDocRequest(_message.Message):
+    __slots__ = ("doc_id",)
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    def __init__(self, doc_id: _Optional[str] = ...) -> None: ...
+
+class SnapshotEditDocResponse(_message.Message):
+    __slots__ = ("artifact_id", "revision")
+    ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    artifact_id: str
+    revision: int
+    def __init__(self, artifact_id: _Optional[str] = ..., revision: _Optional[int] = ...) -> None: ...

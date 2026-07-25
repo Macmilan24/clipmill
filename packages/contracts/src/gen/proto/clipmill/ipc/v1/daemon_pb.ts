@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file clipmill/ipc/v1/daemon.proto.
  */
 export const file_clipmill_ipc_v1_daemon: GenFile = /*@__PURE__*/
-  fileDesc("ChxjbGlwbWlsbC9pcGMvdjEvZGFlbW9uLnByb3RvEg9jbGlwbWlsbC5pcGMudjEirAcKB1JlcXVlc3QSEgoKcmVxdWVzdF9pZBgBIAEoCRIsCgRwaW5nGAogASgLMhwuY2xpcG1pbGwuaXBjLnYxLlBpbmdSZXF1ZXN0SAASMAoGaGVhbHRoGAsgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkhlYWx0aFJlcXVlc3RIABI/Cg5jcmVhdGVfcHJvamVjdBgMIAEoCzIlLmNsaXBtaWxsLmlwYy52MS5DcmVhdGVQcm9qZWN0UmVxdWVzdEgAEjkKC2dldF9wcm9qZWN0GA0gASgLMiIuY2xpcG1pbGwuaXBjLnYxLkdldFByb2plY3RSZXF1ZXN0SAASPQoNbGlzdF9wcm9qZWN0cxgOIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5MaXN0UHJvamVjdHNSZXF1ZXN0SAASPwoOZGVsZXRlX3Byb2plY3QYDyABKAsyJS5jbGlwbWlsbC5pcGMudjEuRGVsZXRlUHJvamVjdFJlcXVlc3RIABI3CgpzdWJtaXRfam9iGBAgASgLMiEuY2xpcG1pbGwuaXBjLnYxLlN1Ym1pdEpvYlJlcXVlc3RIABJMChVzdWJzY3JpYmVfdGFza19ldmVudHMYESABKAsyKy5jbGlwbWlsbC5pcGMudjEuU3Vic2NyaWJlVGFza0V2ZW50c1JlcXVlc3RIABJGChJnZXRfZGV2aWNlX3Byb2ZpbGUYEiABKAsyKC5jbGlwbWlsbC5pcGMudjEuR2V0RGV2aWNlUHJvZmlsZVJlcXVlc3RIABIxCgdnZXRfam9iGBMgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkdldEpvYlJlcXVlc3RIABI1CglsaXN0X2pvYnMYFCABKAsyIC5jbGlwbWlsbC5pcGMudjEuTGlzdEpvYnNSZXF1ZXN0SAASNwoKY2FuY2VsX2pvYhgVIAEoCzIhLmNsaXBtaWxsLmlwYy52MS5DYW5jZWxKb2JSZXF1ZXN0SAASQQoPcmVnaXN0ZXJfc291cmNlGBYgASgLMiYuY2xpcG1pbGwuaXBjLnYxLlJlZ2lzdGVyU291cmNlUmVxdWVzdEgAEjcKCmdldF9zb3VyY2UYFyABKAsyIS5jbGlwbWlsbC5pcGMudjEuR2V0U291cmNlUmVxdWVzdEgAEjsKDGxpc3Rfc291cmNlcxgYIAEoCzIjLmNsaXBtaWxsLmlwYy52MS5MaXN0U291cmNlc1JlcXVlc3RIAEIGCgRib2R5IpcICghSZXNwb25zZRISCgpyZXF1ZXN0X2lkGAEgASgJEicKBWVycm9yGAkgASgLMhYuY2xpcG1pbGwuaXBjLnYxLkVycm9ySAASLQoEcGluZxgKIAEoCzIdLmNsaXBtaWxsLmlwYy52MS5QaW5nUmVzcG9uc2VIABIxCgZoZWFsdGgYCyABKAsyHy5jbGlwbWlsbC5pcGMudjEuSGVhbHRoUmVzcG9uc2VIABJACg5jcmVhdGVfcHJvamVjdBgMIAEoCzImLmNsaXBtaWxsLmlwYy52MS5DcmVhdGVQcm9qZWN0UmVzcG9uc2VIABI6CgtnZXRfcHJvamVjdBgNIAEoCzIjLmNsaXBtaWxsLmlwYy52MS5HZXRQcm9qZWN0UmVzcG9uc2VIABI+Cg1saXN0X3Byb2plY3RzGA4gASgLMiUuY2xpcG1pbGwuaXBjLnYxLkxpc3RQcm9qZWN0c1Jlc3BvbnNlSAASQAoOZGVsZXRlX3Byb2plY3QYDyABKAsyJi5jbGlwbWlsbC5pcGMudjEuRGVsZXRlUHJvamVjdFJlc3BvbnNlSAASOAoKc3VibWl0X2pvYhgQIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5TdWJtaXRKb2JSZXNwb25zZUgAEjAKCnRhc2tfZXZlbnQYESABKAsyGi5jbGlwbWlsbC5pcGMudjEuVGFza0V2ZW50SAASRwoSZ2V0X2RldmljZV9wcm9maWxlGBIgASgLMikuY2xpcG1pbGwuaXBjLnYxLkdldERldmljZVByb2ZpbGVSZXNwb25zZUgAEjIKB2dldF9qb2IYEyABKAsyHy5jbGlwbWlsbC5pcGMudjEuR2V0Sm9iUmVzcG9uc2VIABI2CglsaXN0X2pvYnMYFCABKAsyIS5jbGlwbWlsbC5pcGMudjEuTGlzdEpvYnNSZXNwb25zZUgAEjgKCmNhbmNlbF9qb2IYFSABKAsyIi5jbGlwbWlsbC5pcGMudjEuQ2FuY2VsSm9iUmVzcG9uc2VIABJNChVzdWJzY3JpYmVfdGFza19ldmVudHMYFiABKAsyLC5jbGlwbWlsbC5pcGMudjEuU3Vic2NyaWJlVGFza0V2ZW50c1Jlc3BvbnNlSAASQgoPcmVnaXN0ZXJfc291cmNlGBcgASgLMicuY2xpcG1pbGwuaXBjLnYxLlJlZ2lzdGVyU291cmNlUmVzcG9uc2VIABI4CgpnZXRfc291cmNlGBggASgLMiIuY2xpcG1pbGwuaXBjLnYxLkdldFNvdXJjZVJlc3BvbnNlSAASPAoMbGlzdF9zb3VyY2VzGBkgASgLMiQuY2xpcG1pbGwuaXBjLnYxLkxpc3RTb3VyY2VzUmVzcG9uc2VIAEIGCgRib2R5IkIKBUVycm9yEigKBGNvZGUYASABKA4yGi5jbGlwbWlsbC5pcGMudjEuRXJyb3JDb2RlEg8KB21lc3NhZ2UYAiABKAkiDwoNSGVhbHRoUmVxdWVzdCJZCg5IZWFsdGhSZXNwb25zZRIWCg5kYWVtb25fdmVyc2lvbhgBIAEoCRIbChNzdGFydGVkX3VuaXhfbWlsbGlzGAIgASgEEhIKCmxvY2FsX2xvY2sYAyABKAgiSAoHUHJvamVjdBISCgpwcm9qZWN0X2lkGAEgASgJEgwKBG5hbWUYAiABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgDIAEoBCIkChRDcmVhdGVQcm9qZWN0UmVxdWVzdBIMCgRuYW1lGAEgASgJIkIKFUNyZWF0ZVByb2plY3RSZXNwb25zZRIpCgdwcm9qZWN0GAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLlByb2plY3QiJwoRR2V0UHJvamVjdFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI/ChJHZXRQcm9qZWN0UmVzcG9uc2USKQoHcHJvamVjdBgBIAEoCzIYLmNsaXBtaWxsLmlwYy52MS5Qcm9qZWN0IhUKE0xpc3RQcm9qZWN0c1JlcXVlc3QiQgoUTGlzdFByb2plY3RzUmVzcG9uc2USKgoIcHJvamVjdHMYASADKAsyGC5jbGlwbWlsbC5pcGMudjEuUHJvamVjdCIqChREZWxldGVQcm9qZWN0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJIhcKFURlbGV0ZVByb2plY3RSZXNwb25zZSJFChBTdWJtaXRKb2JSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDAoEa2luZBgCIAEoCRIPCgdwYXlsb2FkGAMgASgMIjUKEERlbW9EYWdQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDAoEc2VlZBgCIAEoDCI+ChRQcm9iZVNvdXJjZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkiPwoVSW5nZXN0U291cmNlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCSJrChZEZXZpY2VQcm9maWxlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhwKFGhhcmR3YXJlX2ZpbmdlcnByaW50GAIgASgJEh4KFm1lYXN1cmVtZW50X2dlbmVyYXRpb24YAyABKAQiRgoRU3VibWl0Sm9iUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEiEKA2pvYhgCIAEoCzIULmNsaXBtaWxsLmlwYy52MS5Kb2IiWAoaU3Vic2NyaWJlVGFza0V2ZW50c1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIOCgZqb2JfaWQYAiABKAkSFgoOYWZ0ZXJfZXZlbnRfaWQYAyABKAQiNwobU3Vic2NyaWJlVGFza0V2ZW50c1Jlc3BvbnNlEhgKEGN1cnJlbnRfZXZlbnRfaWQYASABKAQilQIKCVRhc2tFdmVudBIOCgZqb2JfaWQYASABKAkSDwoHdGFza19pZBgCIAEoCRIpCgVzdGF0ZRgDIAEoDjIaLmNsaXBtaWxsLmlwYy52MS5UYXNrU3RhdGUSMwoIcHJvZ3Jlc3MYBCABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuUHJvZ3Jlc3NVbml0cxITCgt3YWl0X3JlYXNvbhgFIAEoCRIWCg5hdF91bml4X21pbGxpcxgGIAEoBBIQCghldmVudF9pZBgHIAEoBBIPCgdhdHRlbXB0GAggASgNEjcKDWZhaWx1cmVfY2xhc3MYCSABKA4yIC5jbGlwbWlsbC53b3JrZXIudjEuRmFpbHVyZUNsYXNzIq8CCgNKb2ISDgoGam9iX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDAoEa2luZBgDIAEoCRIoCgVzdGF0ZRgEIAEoDjIZLmNsaXBtaWxsLmlwYy52MS5Kb2JTdGF0ZRIbChNjcmVhdGVkX3VuaXhfbWlsbGlzGAUgASgEEhsKE3VwZGF0ZWRfdW5peF9taWxsaXMYBiABKAQSJAoFdGFza3MYByADKAsyFS5jbGlwbWlsbC5pcGMudjEuVGFzaxIbChNvdXRwdXRfYXJ0aWZhY3RfaWRzGAggAygJEjcKDWZhaWx1cmVfY2xhc3MYCSABKA4yIC5jbGlwbWlsbC53b3JrZXIudjEuRmFpbHVyZUNsYXNzEhYKDmZhaWx1cmVfZGV0YWlsGAogASgJIt0BCgRUYXNrEg8KB3Rhc2tfaWQYASABKAkSDAoEa2luZBgCIAEoCRIpCgVzdGF0ZRgDIAEoDjIaLmNsaXBtaWxsLmlwYy52MS5UYXNrU3RhdGUSDwoHYXR0ZW1wdBgEIAEoDRIUCgxtYXhfYXR0ZW1wdHMYBSABKA0SMwoIcHJvZ3Jlc3MYBiABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuUHJvZ3Jlc3NVbml0cxITCgt3YWl0X3JlYXNvbhgHIAEoCRIaChJvdXRwdXRfYXJ0aWZhY3RfaWQYCCABKAkiHwoNR2V0Sm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiMwoOR2V0Sm9iUmVzcG9uc2USIQoDam9iGAEgASgLMhQuY2xpcG1pbGwuaXBjLnYxLkpvYiIlCg9MaXN0Sm9ic1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI2ChBMaXN0Sm9ic1Jlc3BvbnNlEiIKBGpvYnMYASADKAsyFC5jbGlwbWlsbC5pcGMudjEuSm9iIiIKEENhbmNlbEpvYlJlcXVlc3QSDgoGam9iX2lkGAEgASgJIjYKEUNhbmNlbEpvYlJlc3BvbnNlEiEKA2pvYhgBIAEoCzIULmNsaXBtaWxsLmlwYy52MS5Kb2IiyQEKBlNvdXJjZRIRCglzb3VyY2VfaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIVCg1hYnNvbHV0ZV9wYXRoGAMgASgJEhEKCWJ5dGVfc2l6ZRgEIAEoBBIVCg1zYW1wbGVfc2hhMjU2GAUgASgJEhoKEnNvdXJjZV9maW5nZXJwcmludBgGIAEoCRIeChZzb3VyY2VfbWFwX2FydGlmYWN0X2lkGAcgASgJEhsKE2NyZWF0ZWRfdW5peF9taWxsaXMYCCABKAQiQgoVUmVnaXN0ZXJTb3VyY2VSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFQoNYWJzb2x1dGVfcGF0aBgCIAEoCSJgChZSZWdpc3RlclNvdXJjZVJlc3BvbnNlEicKBnNvdXJjZRgBIAEoCzIXLmNsaXBtaWxsLmlwYy52MS5Tb3VyY2USHQoVb2JzZXJ2YXRpb25fY2FjaGVfaGl0GAIgASgIIiUKEEdldFNvdXJjZVJlcXVlc3QSEQoJc291cmNlX2lkGAEgASgJIjwKEUdldFNvdXJjZVJlc3BvbnNlEicKBnNvdXJjZRgBIAEoCzIXLmNsaXBtaWxsLmlwYy52MS5Tb3VyY2UiKAoSTGlzdFNvdXJjZXNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkiPwoTTGlzdFNvdXJjZXNSZXNwb25zZRIoCgdzb3VyY2VzGAEgAygLMhcuY2xpcG1pbGwuaXBjLnYxLlNvdXJjZSIsChdHZXREZXZpY2VQcm9maWxlUmVxdWVzdBIRCglyZW1lYXN1cmUYASABKAgiRQoYR2V0RGV2aWNlUHJvZmlsZVJlc3BvbnNlEhMKC2FydGlmYWN0X2lkGAEgASgJEhQKDHByb2ZpbGVfanNvbhgCIAEoCSrOAQoJRXJyb3JDb2RlEhoKFkVSUk9SX0NPREVfVU5TUEVDSUZJRUQQABIfChtFUlJPUl9DT0RFX0lOVkFMSURfQVJHVU1FTlQQARIYChRFUlJPUl9DT0RFX05PVF9GT1VORBACEhcKE0VSUk9SX0NPREVfQ09ORkxJQ1QQAxIaChZFUlJPUl9DT0RFX1VOQVZBSUxBQkxFEAQSHAoYRVJST1JfQ09ERV9QT0xJQ1lfREVOSUVEEAUSFwoTRVJST1JfQ09ERV9JTlRFUk5BTBAGKtUBCglUYXNrU3RhdGUSGgoWVEFTS19TVEFURV9VTlNQRUNJRklFRBAAEhYKElRBU0tfU1RBVEVfUExBTk5FRBABEhcKE1RBU0tfU1RBVEVfQURNSVRURUQQAhIWChJUQVNLX1NUQVRFX1JVTk5JTkcQAxIYChRUQVNLX1NUQVRFX1NVQ0NFRURFRBAEEhgKFFRBU0tfU1RBVEVfUkVUUllBQkxFEAUSFQoRVEFTS19TVEFURV9GQUlMRUQQBhIYChRUQVNLX1NUQVRFX0NBTkNFTExFRBAHKrsBCghKb2JTdGF0ZRIZChVKT0JfU1RBVEVfVU5TUEVDSUZJRUQQABIVChFKT0JfU1RBVEVfUExBTk5FRBABEhUKEUpPQl9TVEFURV9SVU5OSU5HEAISFwoTSk9CX1NUQVRFX1NVQ0NFRURFRBADEhQKEEpPQl9TVEFURV9GQUlMRUQQBBIeChpKT0JfU1RBVEVfQ0FOQ0VMX1JFUVVFU1RFRBAFEhcKE0pPQl9TVEFURV9DQU5DRUxMRUQQBmIGcHJvdG8z", [file_clipmill_ipc_v1_ping, file_clipmill_worker_v1_worker]);
+  fileDesc("ChxjbGlwbWlsbC9pcGMvdjEvZGFlbW9uLnByb3RvEg9jbGlwbWlsbC5pcGMudjEiuAkKB1JlcXVlc3QSEgoKcmVxdWVzdF9pZBgBIAEoCRIsCgRwaW5nGAogASgLMhwuY2xpcG1pbGwuaXBjLnYxLlBpbmdSZXF1ZXN0SAASMAoGaGVhbHRoGAsgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkhlYWx0aFJlcXVlc3RIABI/Cg5jcmVhdGVfcHJvamVjdBgMIAEoCzIlLmNsaXBtaWxsLmlwYy52MS5DcmVhdGVQcm9qZWN0UmVxdWVzdEgAEjkKC2dldF9wcm9qZWN0GA0gASgLMiIuY2xpcG1pbGwuaXBjLnYxLkdldFByb2plY3RSZXF1ZXN0SAASPQoNbGlzdF9wcm9qZWN0cxgOIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5MaXN0UHJvamVjdHNSZXF1ZXN0SAASPwoOZGVsZXRlX3Byb2plY3QYDyABKAsyJS5jbGlwbWlsbC5pcGMudjEuRGVsZXRlUHJvamVjdFJlcXVlc3RIABI3CgpzdWJtaXRfam9iGBAgASgLMiEuY2xpcG1pbGwuaXBjLnYxLlN1Ym1pdEpvYlJlcXVlc3RIABJMChVzdWJzY3JpYmVfdGFza19ldmVudHMYESABKAsyKy5jbGlwbWlsbC5pcGMudjEuU3Vic2NyaWJlVGFza0V2ZW50c1JlcXVlc3RIABJGChJnZXRfZGV2aWNlX3Byb2ZpbGUYEiABKAsyKC5jbGlwbWlsbC5pcGMudjEuR2V0RGV2aWNlUHJvZmlsZVJlcXVlc3RIABIxCgdnZXRfam9iGBMgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkdldEpvYlJlcXVlc3RIABI1CglsaXN0X2pvYnMYFCABKAsyIC5jbGlwbWlsbC5pcGMudjEuTGlzdEpvYnNSZXF1ZXN0SAASNwoKY2FuY2VsX2pvYhgVIAEoCzIhLmNsaXBtaWxsLmlwYy52MS5DYW5jZWxKb2JSZXF1ZXN0SAASQQoPcmVnaXN0ZXJfc291cmNlGBYgASgLMiYuY2xpcG1pbGwuaXBjLnYxLlJlZ2lzdGVyU291cmNlUmVxdWVzdEgAEjcKCmdldF9zb3VyY2UYFyABKAsyIS5jbGlwbWlsbC5pcGMudjEuR2V0U291cmNlUmVxdWVzdEgAEjsKDGxpc3Rfc291cmNlcxgYIAEoCzIjLmNsaXBtaWxsLmlwYy52MS5MaXN0U291cmNlc1JlcXVlc3RIABJACg9jcmVhdGVfZWRpdF9kb2MYGSABKAsyJS5jbGlwbWlsbC5pcGMudjEuQ3JlYXRlRWRpdERvY1JlcXVlc3RIABJGChJhcHBseV9lZGl0X2NvbW1hbmQYGiABKAsyKC5jbGlwbWlsbC5pcGMudjEuQXBwbHlFZGl0Q29tbWFuZFJlcXVlc3RIABI6CgxnZXRfZWRpdF9kb2MYGyABKAsyIi5jbGlwbWlsbC5pcGMudjEuR2V0RWRpdERvY1JlcXVlc3RIABJEChFzbmFwc2hvdF9lZGl0X2RvYxgcIAEoCzInLmNsaXBtaWxsLmlwYy52MS5TbmFwc2hvdEVkaXREb2NSZXF1ZXN0SABCBgoEYm9keSKnCgoIUmVzcG9uc2USEgoKcmVxdWVzdF9pZBgBIAEoCRInCgVlcnJvchgJIAEoCzIWLmNsaXBtaWxsLmlwYy52MS5FcnJvckgAEi0KBHBpbmcYCiABKAsyHS5jbGlwbWlsbC5pcGMudjEuUGluZ1Jlc3BvbnNlSAASMQoGaGVhbHRoGAsgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkhlYWx0aFJlc3BvbnNlSAASQAoOY3JlYXRlX3Byb2plY3QYDCABKAsyJi5jbGlwbWlsbC5pcGMudjEuQ3JlYXRlUHJvamVjdFJlc3BvbnNlSAASOgoLZ2V0X3Byb2plY3QYDSABKAsyIy5jbGlwbWlsbC5pcGMudjEuR2V0UHJvamVjdFJlc3BvbnNlSAASPgoNbGlzdF9wcm9qZWN0cxgOIAEoCzIlLmNsaXBtaWxsLmlwYy52MS5MaXN0UHJvamVjdHNSZXNwb25zZUgAEkAKDmRlbGV0ZV9wcm9qZWN0GA8gASgLMiYuY2xpcG1pbGwuaXBjLnYxLkRlbGV0ZVByb2plY3RSZXNwb25zZUgAEjgKCnN1Ym1pdF9qb2IYECABKAsyIi5jbGlwbWlsbC5pcGMudjEuU3VibWl0Sm9iUmVzcG9uc2VIABIwCgp0YXNrX2V2ZW50GBEgASgLMhouY2xpcG1pbGwuaXBjLnYxLlRhc2tFdmVudEgAEkcKEmdldF9kZXZpY2VfcHJvZmlsZRgSIAEoCzIpLmNsaXBtaWxsLmlwYy52MS5HZXREZXZpY2VQcm9maWxlUmVzcG9uc2VIABIyCgdnZXRfam9iGBMgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkdldEpvYlJlc3BvbnNlSAASNgoJbGlzdF9qb2JzGBQgASgLMiEuY2xpcG1pbGwuaXBjLnYxLkxpc3RKb2JzUmVzcG9uc2VIABI4CgpjYW5jZWxfam9iGBUgASgLMiIuY2xpcG1pbGwuaXBjLnYxLkNhbmNlbEpvYlJlc3BvbnNlSAASTQoVc3Vic2NyaWJlX3Rhc2tfZXZlbnRzGBYgASgLMiwuY2xpcG1pbGwuaXBjLnYxLlN1YnNjcmliZVRhc2tFdmVudHNSZXNwb25zZUgAEkIKD3JlZ2lzdGVyX3NvdXJjZRgXIAEoCzInLmNsaXBtaWxsLmlwYy52MS5SZWdpc3RlclNvdXJjZVJlc3BvbnNlSAASOAoKZ2V0X3NvdXJjZRgYIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5HZXRTb3VyY2VSZXNwb25zZUgAEjwKDGxpc3Rfc291cmNlcxgZIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5MaXN0U291cmNlc1Jlc3BvbnNlSAASQQoPY3JlYXRlX2VkaXRfZG9jGBogASgLMiYuY2xpcG1pbGwuaXBjLnYxLkNyZWF0ZUVkaXREb2NSZXNwb25zZUgAEkcKEmFwcGx5X2VkaXRfY29tbWFuZBgbIAEoCzIpLmNsaXBtaWxsLmlwYy52MS5BcHBseUVkaXRDb21tYW5kUmVzcG9uc2VIABI7CgxnZXRfZWRpdF9kb2MYHCABKAsyIy5jbGlwbWlsbC5pcGMudjEuR2V0RWRpdERvY1Jlc3BvbnNlSAASRQoRc25hcHNob3RfZWRpdF9kb2MYHSABKAsyKC5jbGlwbWlsbC5pcGMudjEuU25hcHNob3RFZGl0RG9jUmVzcG9uc2VIAEIGCgRib2R5IkIKBUVycm9yEigKBGNvZGUYASABKA4yGi5jbGlwbWlsbC5pcGMudjEuRXJyb3JDb2RlEg8KB21lc3NhZ2UYAiABKAkiDwoNSGVhbHRoUmVxdWVzdCJZCg5IZWFsdGhSZXNwb25zZRIWCg5kYWVtb25fdmVyc2lvbhgBIAEoCRIbChNzdGFydGVkX3VuaXhfbWlsbGlzGAIgASgEEhIKCmxvY2FsX2xvY2sYAyABKAgiSAoHUHJvamVjdBISCgpwcm9qZWN0X2lkGAEgASgJEgwKBG5hbWUYAiABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgDIAEoBCIkChRDcmVhdGVQcm9qZWN0UmVxdWVzdBIMCgRuYW1lGAEgASgJIkIKFUNyZWF0ZVByb2plY3RSZXNwb25zZRIpCgdwcm9qZWN0GAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLlByb2plY3QiJwoRR2V0UHJvamVjdFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI/ChJHZXRQcm9qZWN0UmVzcG9uc2USKQoHcHJvamVjdBgBIAEoCzIYLmNsaXBtaWxsLmlwYy52MS5Qcm9qZWN0IhUKE0xpc3RQcm9qZWN0c1JlcXVlc3QiQgoUTGlzdFByb2plY3RzUmVzcG9uc2USKgoIcHJvamVjdHMYASADKAsyGC5jbGlwbWlsbC5pcGMudjEuUHJvamVjdCIqChREZWxldGVQcm9qZWN0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJIhcKFURlbGV0ZVByb2plY3RSZXNwb25zZSJFChBTdWJtaXRKb2JSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDAoEa2luZBgCIAEoCRIPCgdwYXlsb2FkGAMgASgMIjUKEERlbW9EYWdQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDAoEc2VlZBgCIAEoDCI+ChRQcm9iZVNvdXJjZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkiPwoVSW5nZXN0U291cmNlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCSJrChZEZXZpY2VQcm9maWxlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhwKFGhhcmR3YXJlX2ZpbmdlcnByaW50GAIgASgJEh4KFm1lYXN1cmVtZW50X2dlbmVyYXRpb24YAyABKAQiRgoRU3VibWl0Sm9iUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEiEKA2pvYhgCIAEoCzIULmNsaXBtaWxsLmlwYy52MS5Kb2IiWAoaU3Vic2NyaWJlVGFza0V2ZW50c1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIOCgZqb2JfaWQYAiABKAkSFgoOYWZ0ZXJfZXZlbnRfaWQYAyABKAQiNwobU3Vic2NyaWJlVGFza0V2ZW50c1Jlc3BvbnNlEhgKEGN1cnJlbnRfZXZlbnRfaWQYASABKAQilQIKCVRhc2tFdmVudBIOCgZqb2JfaWQYASABKAkSDwoHdGFza19pZBgCIAEoCRIpCgVzdGF0ZRgDIAEoDjIaLmNsaXBtaWxsLmlwYy52MS5UYXNrU3RhdGUSMwoIcHJvZ3Jlc3MYBCABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuUHJvZ3Jlc3NVbml0cxITCgt3YWl0X3JlYXNvbhgFIAEoCRIWCg5hdF91bml4X21pbGxpcxgGIAEoBBIQCghldmVudF9pZBgHIAEoBBIPCgdhdHRlbXB0GAggASgNEjcKDWZhaWx1cmVfY2xhc3MYCSABKA4yIC5jbGlwbWlsbC53b3JrZXIudjEuRmFpbHVyZUNsYXNzIq8CCgNKb2ISDgoGam9iX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDAoEa2luZBgDIAEoCRIoCgVzdGF0ZRgEIAEoDjIZLmNsaXBtaWxsLmlwYy52MS5Kb2JTdGF0ZRIbChNjcmVhdGVkX3VuaXhfbWlsbGlzGAUgASgEEhsKE3VwZGF0ZWRfdW5peF9taWxsaXMYBiABKAQSJAoFdGFza3MYByADKAsyFS5jbGlwbWlsbC5pcGMudjEuVGFzaxIbChNvdXRwdXRfYXJ0aWZhY3RfaWRzGAggAygJEjcKDWZhaWx1cmVfY2xhc3MYCSABKA4yIC5jbGlwbWlsbC53b3JrZXIudjEuRmFpbHVyZUNsYXNzEhYKDmZhaWx1cmVfZGV0YWlsGAogASgJIt0BCgRUYXNrEg8KB3Rhc2tfaWQYASABKAkSDAoEa2luZBgCIAEoCRIpCgVzdGF0ZRgDIAEoDjIaLmNsaXBtaWxsLmlwYy52MS5UYXNrU3RhdGUSDwoHYXR0ZW1wdBgEIAEoDRIUCgxtYXhfYXR0ZW1wdHMYBSABKA0SMwoIcHJvZ3Jlc3MYBiABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuUHJvZ3Jlc3NVbml0cxITCgt3YWl0X3JlYXNvbhgHIAEoCRIaChJvdXRwdXRfYXJ0aWZhY3RfaWQYCCABKAkiHwoNR2V0Sm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiMwoOR2V0Sm9iUmVzcG9uc2USIQoDam9iGAEgASgLMhQuY2xpcG1pbGwuaXBjLnYxLkpvYiIlCg9MaXN0Sm9ic1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI2ChBMaXN0Sm9ic1Jlc3BvbnNlEiIKBGpvYnMYASADKAsyFC5jbGlwbWlsbC5pcGMudjEuSm9iIiIKEENhbmNlbEpvYlJlcXVlc3QSDgoGam9iX2lkGAEgASgJIjYKEUNhbmNlbEpvYlJlc3BvbnNlEiEKA2pvYhgBIAEoCzIULmNsaXBtaWxsLmlwYy52MS5Kb2IiyQEKBlNvdXJjZRIRCglzb3VyY2VfaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIVCg1hYnNvbHV0ZV9wYXRoGAMgASgJEhEKCWJ5dGVfc2l6ZRgEIAEoBBIVCg1zYW1wbGVfc2hhMjU2GAUgASgJEhoKEnNvdXJjZV9maW5nZXJwcmludBgGIAEoCRIeChZzb3VyY2VfbWFwX2FydGlmYWN0X2lkGAcgASgJEhsKE2NyZWF0ZWRfdW5peF9taWxsaXMYCCABKAQiQgoVUmVnaXN0ZXJTb3VyY2VSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFQoNYWJzb2x1dGVfcGF0aBgCIAEoCSJgChZSZWdpc3RlclNvdXJjZVJlc3BvbnNlEicKBnNvdXJjZRgBIAEoCzIXLmNsaXBtaWxsLmlwYy52MS5Tb3VyY2USHQoVb2JzZXJ2YXRpb25fY2FjaGVfaGl0GAIgASgIIiUKEEdldFNvdXJjZVJlcXVlc3QSEQoJc291cmNlX2lkGAEgASgJIjwKEUdldFNvdXJjZVJlc3BvbnNlEicKBnNvdXJjZRgBIAEoCzIXLmNsaXBtaWxsLmlwYy52MS5Tb3VyY2UiKAoSTGlzdFNvdXJjZXNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkiPwoTTGlzdFNvdXJjZXNSZXNwb25zZRIoCgdzb3VyY2VzGAEgAygLMhcuY2xpcG1pbGwuaXBjLnYxLlNvdXJjZSIsChdHZXREZXZpY2VQcm9maWxlUmVxdWVzdBIRCglyZW1lYXN1cmUYASABKAgiRQoYR2V0RGV2aWNlUHJvZmlsZVJlc3BvbnNlEhMKC2FydGlmYWN0X2lkGAEgASgJEhQKDHByb2ZpbGVfanNvbhgCIAEoCSKQAQoHRWRpdERvYxIOCgZkb2NfaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIQCghyZXZpc2lvbhgDIAEoBBIVCg1kb2N1bWVudF9qc29uGAQgASgJEhsKE2NyZWF0ZWRfdW5peF9taWxsaXMYBSABKAQSGwoTdXBkYXRlZF91bml4X21pbGxpcxgGIAEoBCJBChRDcmVhdGVFZGl0RG9jUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhUKDWRvY3VtZW50X2pzb24YAiABKAkiPgoVQ3JlYXRlRWRpdERvY1Jlc3BvbnNlEiUKA2RvYxgBIAEoCzIYLmNsaXBtaWxsLmlwYy52MS5FZGl0RG9jIloKF0FwcGx5RWRpdENvbW1hbmRSZXF1ZXN0Eg4KBmRvY19pZBgBIAEoCRIZChFleHBlY3RlZF9yZXZpc2lvbhgCIAEoBBIUCgxjb21tYW5kX2pzb24YAyABKAkiXwoYQXBwbHlFZGl0Q29tbWFuZFJlc3BvbnNlEiUKA2RvYxgBIAEoCzIYLmNsaXBtaWxsLmlwYy52MS5FZGl0RG9jEhwKFGludmVyc2VfY29tbWFuZF9qc29uGAIgASgJIiMKEUdldEVkaXREb2NSZXF1ZXN0Eg4KBmRvY19pZBgBIAEoCSI7ChJHZXRFZGl0RG9jUmVzcG9uc2USJQoDZG9jGAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLkVkaXREb2MiKAoWU25hcHNob3RFZGl0RG9jUmVxdWVzdBIOCgZkb2NfaWQYASABKAkiQAoXU25hcHNob3RFZGl0RG9jUmVzcG9uc2USEwoLYXJ0aWZhY3RfaWQYASABKAkSEAoIcmV2aXNpb24YAiABKAQqzgEKCUVycm9yQ29kZRIaChZFUlJPUl9DT0RFX1VOU1BFQ0lGSUVEEAASHwobRVJST1JfQ09ERV9JTlZBTElEX0FSR1VNRU5UEAESGAoURVJST1JfQ09ERV9OT1RfRk9VTkQQAhIXChNFUlJPUl9DT0RFX0NPTkZMSUNUEAMSGgoWRVJST1JfQ09ERV9VTkFWQUlMQUJMRRAEEhwKGEVSUk9SX0NPREVfUE9MSUNZX0RFTklFRBAFEhcKE0VSUk9SX0NPREVfSU5URVJOQUwQBirVAQoJVGFza1N0YXRlEhoKFlRBU0tfU1RBVEVfVU5TUEVDSUZJRUQQABIWChJUQVNLX1NUQVRFX1BMQU5ORUQQARIXChNUQVNLX1NUQVRFX0FETUlUVEVEEAISFgoSVEFTS19TVEFURV9SVU5OSU5HEAMSGAoUVEFTS19TVEFURV9TVUNDRUVERUQQBBIYChRUQVNLX1NUQVRFX1JFVFJZQUJMRRAFEhUKEVRBU0tfU1RBVEVfRkFJTEVEEAYSGAoUVEFTS19TVEFURV9DQU5DRUxMRUQQByq7AQoISm9iU3RhdGUSGQoVSk9CX1NUQVRFX1VOU1BFQ0lGSUVEEAASFQoRSk9CX1NUQVRFX1BMQU5ORUQQARIVChFKT0JfU1RBVEVfUlVOTklORxACEhcKE0pPQl9TVEFURV9TVUNDRUVERUQQAxIUChBKT0JfU1RBVEVfRkFJTEVEEAQSHgoaSk9CX1NUQVRFX0NBTkNFTF9SRVFVRVNURUQQBRIXChNKT0JfU1RBVEVfQ0FOQ0VMTEVEEAZiBnByb3RvMw", [file_clipmill_ipc_v1_ping, file_clipmill_worker_v1_worker]);
 
 /**
  * One request frame. request_id is client-chosen and echoed back.
@@ -125,6 +125,30 @@ export type Request = Message<"clipmill.ipc.v1.Request"> & {
      */
     value: ListSourcesRequest;
     case: "listSources";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.CreateEditDocRequest create_edit_doc = 25;
+     */
+    value: CreateEditDocRequest;
+    case: "createEditDoc";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.ApplyEditCommandRequest apply_edit_command = 26;
+     */
+    value: ApplyEditCommandRequest;
+    case: "applyEditCommand";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.GetEditDocRequest get_edit_doc = 27;
+     */
+    value: GetEditDocRequest;
+    case: "getEditDoc";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.SnapshotEditDocRequest snapshot_edit_doc = 28;
+     */
+    value: SnapshotEditDocRequest;
+    case: "snapshotEditDoc";
   } | { case: undefined; value?: undefined };
 };
 
@@ -252,6 +276,30 @@ export type Response = Message<"clipmill.ipc.v1.Response"> & {
      */
     value: ListSourcesResponse;
     case: "listSources";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.CreateEditDocResponse create_edit_doc = 26;
+     */
+    value: CreateEditDocResponse;
+    case: "createEditDoc";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.ApplyEditCommandResponse apply_edit_command = 27;
+     */
+    value: ApplyEditCommandResponse;
+    case: "applyEditCommand";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.GetEditDocResponse get_edit_doc = 28;
+     */
+    value: GetEditDocResponse;
+    case: "getEditDoc";
+  } | {
+    /**
+     * @generated from field: clipmill.ipc.v1.SnapshotEditDocResponse snapshot_edit_doc = 29;
+     */
+    value: SnapshotEditDocResponse;
+    case: "snapshotEditDoc";
   } | { case: undefined; value?: undefined };
 };
 
@@ -1186,6 +1234,225 @@ export type GetDeviceProfileResponse = Message<"clipmill.ipc.v1.GetDeviceProfile
  */
 export const GetDeviceProfileResponseSchema: GenMessage<GetDeviceProfileResponse> = /*@__PURE__*/
   messageDesc(file_clipmill_ipc_v1_daemon, 39);
+
+/**
+ * @generated from message clipmill.ipc.v1.EditDoc
+ */
+export type EditDoc = Message<"clipmill.ipc.v1.EditDoc"> & {
+  /**
+   * @generated from field: string doc_id = 1;
+   */
+  docId: string;
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId: string;
+
+  /**
+   * Number of commands applied; also the command log's high-water mark.
+   *
+   * @generated from field: uint64 revision = 3;
+   */
+  revision: bigint;
+
+  /**
+   * The clipmill.edit_ir.v1 document as canonical JSON.
+   *
+   * @generated from field: string document_json = 4;
+   */
+  documentJson: string;
+
+  /**
+   * @generated from field: uint64 created_unix_millis = 5;
+   */
+  createdUnixMillis: bigint;
+
+  /**
+   * @generated from field: uint64 updated_unix_millis = 6;
+   */
+  updatedUnixMillis: bigint;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.EditDoc.
+ * Use `create(EditDocSchema)` to create a new message.
+ */
+export const EditDocSchema: GenMessage<EditDoc> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 40);
+
+/**
+ * @generated from message clipmill.ipc.v1.CreateEditDocRequest
+ */
+export type CreateEditDocRequest = Message<"clipmill.ipc.v1.CreateEditDocRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * Initial document. Empty starts from the empty document.
+   *
+   * @generated from field: string document_json = 2;
+   */
+  documentJson: string;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.CreateEditDocRequest.
+ * Use `create(CreateEditDocRequestSchema)` to create a new message.
+ */
+export const CreateEditDocRequestSchema: GenMessage<CreateEditDocRequest> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 41);
+
+/**
+ * @generated from message clipmill.ipc.v1.CreateEditDocResponse
+ */
+export type CreateEditDocResponse = Message<"clipmill.ipc.v1.CreateEditDocResponse"> & {
+  /**
+   * @generated from field: clipmill.ipc.v1.EditDoc doc = 1;
+   */
+  doc?: EditDoc | undefined;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.CreateEditDocResponse.
+ * Use `create(CreateEditDocResponseSchema)` to create a new message.
+ */
+export const CreateEditDocResponseSchema: GenMessage<CreateEditDocResponse> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 42);
+
+/**
+ * @generated from message clipmill.ipc.v1.ApplyEditCommandRequest
+ */
+export type ApplyEditCommandRequest = Message<"clipmill.ipc.v1.ApplyEditCommandRequest"> & {
+  /**
+   * @generated from field: string doc_id = 1;
+   */
+  docId: string;
+
+  /**
+   * The revision the client last observed. A mismatch is reported as a
+   * conflict rather than silently rebasing someone else's edit.
+   *
+   * @generated from field: uint64 expected_revision = 2;
+   */
+  expectedRevision: bigint;
+
+  /**
+   * @generated from field: string command_json = 3;
+   */
+  commandJson: string;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.ApplyEditCommandRequest.
+ * Use `create(ApplyEditCommandRequestSchema)` to create a new message.
+ */
+export const ApplyEditCommandRequestSchema: GenMessage<ApplyEditCommandRequest> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 43);
+
+/**
+ * @generated from message clipmill.ipc.v1.ApplyEditCommandResponse
+ */
+export type ApplyEditCommandResponse = Message<"clipmill.ipc.v1.ApplyEditCommandResponse"> & {
+  /**
+   * @generated from field: clipmill.ipc.v1.EditDoc doc = 1;
+   */
+  doc?: EditDoc | undefined;
+
+  /**
+   * The command that undoes this one. The daemon keeps no undo stack; it
+   * hands back the inverse and durably logs it beside the command.
+   *
+   * @generated from field: string inverse_command_json = 2;
+   */
+  inverseCommandJson: string;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.ApplyEditCommandResponse.
+ * Use `create(ApplyEditCommandResponseSchema)` to create a new message.
+ */
+export const ApplyEditCommandResponseSchema: GenMessage<ApplyEditCommandResponse> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 44);
+
+/**
+ * @generated from message clipmill.ipc.v1.GetEditDocRequest
+ */
+export type GetEditDocRequest = Message<"clipmill.ipc.v1.GetEditDocRequest"> & {
+  /**
+   * @generated from field: string doc_id = 1;
+   */
+  docId: string;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.GetEditDocRequest.
+ * Use `create(GetEditDocRequestSchema)` to create a new message.
+ */
+export const GetEditDocRequestSchema: GenMessage<GetEditDocRequest> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 45);
+
+/**
+ * @generated from message clipmill.ipc.v1.GetEditDocResponse
+ */
+export type GetEditDocResponse = Message<"clipmill.ipc.v1.GetEditDocResponse"> & {
+  /**
+   * @generated from field: clipmill.ipc.v1.EditDoc doc = 1;
+   */
+  doc?: EditDoc | undefined;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.GetEditDocResponse.
+ * Use `create(GetEditDocResponseSchema)` to create a new message.
+ */
+export const GetEditDocResponseSchema: GenMessage<GetEditDocResponse> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 46);
+
+/**
+ * @generated from message clipmill.ipc.v1.SnapshotEditDocRequest
+ */
+export type SnapshotEditDocRequest = Message<"clipmill.ipc.v1.SnapshotEditDocRequest"> & {
+  /**
+   * @generated from field: string doc_id = 1;
+   */
+  docId: string;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.SnapshotEditDocRequest.
+ * Use `create(SnapshotEditDocRequestSchema)` to create a new message.
+ */
+export const SnapshotEditDocRequestSchema: GenMessage<SnapshotEditDocRequest> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 47);
+
+/**
+ * @generated from message clipmill.ipc.v1.SnapshotEditDocResponse
+ */
+export type SnapshotEditDocResponse = Message<"clipmill.ipc.v1.SnapshotEditDocResponse"> & {
+  /**
+   * Content address of the edit.ir.v1 artifact the renderer consumes.
+   *
+   * @generated from field: string artifact_id = 1;
+   */
+  artifactId: string;
+
+  /**
+   * Revision the snapshot froze.
+   *
+   * @generated from field: uint64 revision = 2;
+   */
+  revision: bigint;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.SnapshotEditDocResponse.
+ * Use `create(SnapshotEditDocResponseSchema)` to create a new message.
+ */
+export const SnapshotEditDocResponseSchema: GenMessage<SnapshotEditDocResponse> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 48);
 
 /**
  * @generated from enum clipmill.ipc.v1.ErrorCode

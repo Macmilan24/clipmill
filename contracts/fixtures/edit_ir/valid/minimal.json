@@ -1,0 +1,15 @@
+{
+  "audio": {
+    "target_lufs": -14.0,
+    "true_peak_dbtp": -1.0
+  },
+  "captions": {
+    "style_ref": "clean"
+  },
+  "timebase": {
+    "den": 90000,
+    "num": 1
+  },
+  "version": "ir/1",
+  "video": {}
+}

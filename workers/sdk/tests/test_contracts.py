@@ -95,6 +95,26 @@ def test_ingest_source_payload_fixtures_enforce_the_w11_key_version() -> None:
     assert parsed.key_version != "clipmill.ingest-source.v1"
 
 
+EDIT_IR_INVALID = ["wrong-timebase.json", "float-ticks.json", "empty-caption-line.json"]
+
+
+@pytest.mark.parametrize("name", ["clip.json", "minimal.json"])
+def test_valid_edit_ir_fixtures_roundtrip_canonically(name: str) -> None:
+    schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.edit_ir")
+    raw = (FIXTURES / "edit_ir" / "valid" / name).read_text()
+    parsed = schemas.EditIr.model_validate_json(raw)
+    reserialized = parsed.model_dump(mode="json", exclude_none=True)
+    assert canonical(reserialized) == raw, f"edit_ir/{name} round-trip must be byte-identical"
+
+
+@pytest.mark.parametrize("name", EDIT_IR_INVALID)
+def test_invalid_edit_ir_fixtures_are_rejected(name: str) -> None:
+    schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.edit_ir")
+    raw = (FIXTURES / "edit_ir" / "invalid" / name).read_text()
+    with pytest.raises(ValidationError):
+        schemas.EditIr.model_validate_json(raw)
+
+
 MEDIA_FIXTURES = [
     ("media.proxy", "media_proxy", "MediaProxy", "float-ticks.json"),
     ("media.audio", "media_audio", "MediaAudio", "wrong-codec.json"),

@@ -28,6 +28,10 @@ message Request {
     RegisterSourceRequest register_source = 22;
     GetSourceRequest get_source = 23;
     ListSourcesRequest list_sources = 24;
+    CreateEditDocRequest create_edit_doc = 25;
+    ApplyEditCommandRequest apply_edit_command = 26;
+    GetEditDocRequest get_edit_doc = 27;
+    SnapshotEditDocRequest snapshot_edit_doc = 28;
   }
 }
 
@@ -53,6 +57,10 @@ message Response {
     RegisterSourceResponse register_source = 23;
     GetSourceResponse get_source = 24;
     ListSourcesResponse list_sources = 25;
+    CreateEditDocResponse create_edit_doc = 26;
+    ApplyEditCommandResponse apply_edit_command = 27;
+    GetEditDocResponse get_edit_doc = 28;
+    SnapshotEditDocResponse snapshot_edit_doc = 29;
   }
 }
 
@@ -316,4 +324,65 @@ message GetDeviceProfileResponse {
   // The profile document itself (clipmill.device_profile.v1 JSON), inlined
   // for shells that do not read the artifact store directly.
   string profile_json = 2;
+}
+
+// ---- Edit documents (the Edit IR, ch. 17) ----
+//
+// The live document and its command log are project state (SQLite, single
+// writer). Renders read an immutable `edit.ir.v1` snapshot artifact instead,
+// so an edit in progress can never change what a render was asked to produce.
+
+message EditDoc {
+  string doc_id = 1;
+  string project_id = 2;
+  // Number of commands applied; also the command log's high-water mark.
+  uint64 revision = 3;
+  // The clipmill.edit_ir.v1 document as canonical JSON.
+  string document_json = 4;
+  uint64 created_unix_millis = 5;
+  uint64 updated_unix_millis = 6;
+}
+
+message CreateEditDocRequest {
+  string project_id = 1;
+  // Initial document. Empty starts from the empty document.
+  string document_json = 2;
+}
+
+message CreateEditDocResponse {
+  EditDoc doc = 1;
+}
+
+message ApplyEditCommandRequest {
+  string doc_id = 1;
+  // The revision the client last observed. A mismatch is reported as a
+  // conflict rather than silently rebasing someone else's edit.
+  uint64 expected_revision = 2;
+  string command_json = 3;
+}
+
+message ApplyEditCommandResponse {
+  EditDoc doc = 1;
+  // The command that undoes this one. The daemon keeps no undo stack; it
+  // hands back the inverse and durably logs it beside the command.
+  string inverse_command_json = 2;
+}
+
+message GetEditDocRequest {
+  string doc_id = 1;
+}
+
+message GetEditDocResponse {
+  EditDoc doc = 1;
+}
+
+message SnapshotEditDocRequest {
+  string doc_id = 1;
+}
+
+message SnapshotEditDocResponse {
+  // Content address of the edit.ir.v1 artifact the renderer consumes.
+  string artifact_id = 1;
+  // Revision the snapshot froze.
+  uint64 revision = 2;
 }
