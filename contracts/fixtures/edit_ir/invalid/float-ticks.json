@@ -59,7 +59,8 @@
   "rationale": {
     "candidate_id": "cand_1",
     "decisions": [
-      "hook lands in the first second"
+      "hook lands in the first second of the selected span",
+      "end snapped to the shot cut eight frames into the deletion"
     ]
   },
   "timebase": {

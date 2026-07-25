@@ -65,6 +65,12 @@ gate-media:
 gate-workers:
     ./tools/drills/worker-drill.sh 50
 
+# W12 coverage: every edit command inverts exactly, a command log replays onto
+# the live document byte for byte, acknowledged edits survive a killed daemon,
+# and render snapshots are content-addressed without their rationale.
+gate-ir:
+    ./tools/drills/ir-drill.sh 1
+
 # W11 coverage: the ingest fan-out derives every media derivative through
 # sandboxed FFmpeg, all artifacts verify, warm re-ingest is a cache identity,
 # mutated sources refuse deterministically, and kill recovery meets the SLO.

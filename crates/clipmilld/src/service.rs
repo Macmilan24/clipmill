@@ -3,16 +3,18 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use clipmill_artifacts::ArtifactPath;
-use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectRequest, DemoDagPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
-    GetDeviceProfileResponse, GetJobResponse, GetProjectResponse, GetSourceResponse,
-    HealthResponse, IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse,
-    ListSourcesResponse, PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest, Request,
-    Response, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request,
-    response,
+use clipmill_artifacts::{
+    ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
 };
-use clipmill_core::{JobId, ProjectId, SourceId, TaskEventCursor};
+use clipmill_contracts::proto::ipc::v1::{
+    ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1, Error,
+    ErrorCode, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
+    GetJobResponse, GetProjectResponse, GetSourceResponse, HealthResponse, IngestSourcePayloadV1,
+    ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
+    ProbeSourcePayloadV1, RegisterSourceRequest, Request, Response, SnapshotEditDocResponse,
+    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request, response,
+};
+use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
 use sha2::{Digest, Sha256};
 
@@ -28,6 +30,9 @@ use tokio::time::{Instant, sleep};
 
 const REQUEST_ID_MAX_CHARS: usize = 128;
 const PROJECT_NAME_MAX_CHARS: usize = 200;
+/// Edit documents and commands travel inline; the frame cap is the real
+/// limit, this keeps a hostile payload from reaching the parser at all.
+const MAX_EDIT_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
 const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
 const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
@@ -284,6 +289,18 @@ impl Service {
             request::Body::GetDeviceProfile(get) => {
                 self.get_device_profile(request_id, request_hash, &get)
                     .await
+            }
+            request::Body::CreateEditDoc(create) => {
+                self.create_edit_doc(request_id, request_hash, &create)
+                    .await
+            }
+            request::Body::ApplyEditCommand(apply) => {
+                self.apply_edit_command(request_id, request_hash, &apply)
+                    .await
+            }
+            request::Body::GetEditDoc(get) => self.get_edit_doc(request_id, &get.doc_id).await,
+            request::Body::SnapshotEditDoc(snapshot) => {
+                self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
             }
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
@@ -752,6 +769,286 @@ impl Service {
         }
     }
 
+    async fn create_edit_doc(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        create: &CreateEditDocRequest,
+    ) -> Reply {
+        let project_id = match create.project_id.parse::<ProjectId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        if create.document_json.len() > MAX_EDIT_DOCUMENT_BYTES {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "initial edit document exceeds 8 MiB",
+            );
+        }
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        match self
+            .database
+            .create_edit_doc(
+                request_id.clone(),
+                request_hash,
+                project_id.to_string(),
+                create.document_json.clone(),
+                now,
+            )
+            .await
+        {
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    async fn apply_edit_command(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        apply: &ApplyEditCommandRequest,
+    ) -> Reply {
+        let doc_id = match apply.doc_id.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        if apply.command_json.len() > MAX_EDIT_DOCUMENT_BYTES {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "edit command exceeds 8 MiB",
+            );
+        }
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        match self
+            .database
+            .apply_edit_command(
+                request_id.clone(),
+                request_hash,
+                doc_id.to_string(),
+                apply.expected_revision,
+                apply.command_json.clone(),
+                now,
+            )
+            .await
+        {
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    async fn get_edit_doc(&self, request_id: String, value: &str) -> Reply {
+        let doc_id = match value.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        match self.database.get_edit_doc(doc_id.to_string()).await {
+            Ok(record) => response_reply(
+                request_id,
+                response::Body::GetEditDoc(GetEditDocResponse {
+                    doc: Some(record.into()),
+                }),
+            ),
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    /// Freeze the current document into the immutable `edit.ir.v1` artifact a
+    /// render consumes.
+    ///
+    /// The snapshot carries the render projection, not the whole document:
+    /// `rationale` explains an edit and is never rendered, so keeping it out
+    /// of this artifact makes "explanation cannot perturb pixels" a property
+    /// of the content address rather than a promise. Re-explaining an edit
+    /// therefore cannot invalidate a render cache.
+    async fn snapshot_edit_doc(&self, request_id: String, value: &str) -> Reply {
+        let doc_id = match value.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let Some(artifacts) = &self.artifacts else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "artifact publication is not available",
+            );
+        };
+        let record = match self.database.get_edit_doc(doc_id.to_string()).await {
+            Ok(record) => record,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let document = match clipmill_edit_ir::EditDocument::from_canonical_json(
+            record.document_json.as_bytes(),
+        ) {
+            Ok(document) => document,
+            Err(error) => {
+                tracing::warn!(%error, "stored edit document failed to parse");
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    "stored edit document is not valid",
+                );
+            }
+        };
+        let Ok(project_id) = record.project_id.parse::<ProjectId>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "stored edit document has an invalid project",
+            );
+        };
+        let Ok((recipe, payload)) = Self::snapshot_recipe(&document) else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "edit document could not be projected for render",
+            );
+        };
+        let artifact_id = match Self::publish_snapshot(artifacts, recipe, &payload).await {
+            Ok(artifact_id) => artifact_id,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        if let Err(error) = self
+            .database
+            .attach_artifact_root(project_id, artifact_id)
+            .await
+        {
+            return store_error_reply(request_id, &error);
+        }
+        response_reply(
+            request_id,
+            response::Body::SnapshotEditDoc(SnapshotEditDocResponse {
+                artifact_id: artifact_id.to_string(),
+                revision: record.revision,
+            }),
+        )
+    }
+
+    /// The render projection and the recipe that content-addresses it.
+    /// Identical documents therefore resolve to one artifact, and a changed
+    /// rationale resolves to the same one.
+    fn snapshot_recipe(
+        document: &clipmill_edit_ir::EditDocument,
+    ) -> Result<(ArtifactRecipe, Vec<u8>), ()> {
+        let projection = document.render_projection().map_err(|_| ())?;
+        let payload = serde_json_canonicalizer::to_vec(&projection).map_err(|_| ())?;
+        let payload_digest = Sha256Digest::from_bytes(Sha256::digest(&payload).into());
+        // Lineage points at the media when there is any; a document with no
+        // segments is its own origin.
+        let source_fingerprint = document
+            .video
+            .segments
+            .first()
+            .and_then(|segment| segment.source_fingerprint.strip_prefix("sha256:"))
+            .and_then(|digest| digest.parse::<Sha256Digest>().ok())
+            .unwrap_or(payload_digest);
+        let mut config = serde_json::Map::new();
+        config.insert(
+            "document_sha256".to_owned(),
+            serde_json::Value::String(format!("sha256:{payload_digest}")),
+        );
+        config.insert(
+            "projection".to_owned(),
+            serde_json::Value::String("render".to_owned()),
+        );
+        let recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
+            kind: "edit.ir.v1".to_owned(),
+            source_fingerprint,
+            timebase: Timebase {
+                num: 1,
+                den: 90_000,
+            },
+            producer: Producer {
+                stage: "snapshot-edit-doc".to_owned(),
+                implementation: "clipmill-edit-ir@1.0.0".to_owned(),
+                model_digest: None,
+            },
+            inputs: Vec::new(),
+            policy: NetworkPolicy::LocalLock,
+            config,
+            semantic_version: "clipmill.edit_ir.v1".to_owned(),
+        })
+        .map_err(|_| ())?;
+        Ok((recipe, payload))
+    }
+
+    /// Publish the snapshot bytes, or explain why not. A failed staging area
+    /// is abandoned so a retry can re-prepare the same key.
+    async fn publish_snapshot(
+        artifacts: &ArtifactHandle,
+        recipe: ArtifactRecipe,
+        payload: &[u8],
+    ) -> Result<clipmill_core::ArtifactId, (ErrorCode, &'static str)> {
+        match artifacts.prepare(recipe).await {
+            Ok(PrepareOutcome::Hit(lease)) => Ok(lease.artifact_id()),
+            Ok(PrepareOutcome::InFlight { .. }) => Err((
+                ErrorCode::Unavailable,
+                "an identical snapshot is already being published; retry",
+            )),
+            Ok(PrepareOutcome::Miss(staging)) => {
+                let staging_id = staging.id().clone();
+                let staged = Self::write_snapshot(&staging, payload);
+                let path = match staged {
+                    Ok(path) => path,
+                    Err(message) => {
+                        let _abandoned = artifacts.abandon(staging_id).await;
+                        return Err((ErrorCode::Internal, message));
+                    }
+                };
+                artifacts
+                    .commit(staging_id, vec![path], std::collections::BTreeMap::new())
+                    .await
+                    .map(|lease| lease.artifact_id())
+                    .map_err(|error| {
+                        tracing::warn!(%error, "edit snapshot could not be committed");
+                        (ErrorCode::Internal, "edit snapshot could not be published")
+                    })
+            }
+            Err(error) => {
+                tracing::warn!(%error, "edit snapshot could not be prepared");
+                Err((ErrorCode::Internal, "edit snapshot could not be prepared"))
+            }
+        }
+    }
+
+    fn write_snapshot(
+        staging: &clipmill_artifacts::StagingArea,
+        payload: &[u8],
+    ) -> Result<ArtifactPath, &'static str> {
+        use std::io::Write;
+        let path = "edit-ir.json"
+            .parse::<ArtifactPath>()
+            .map_err(|_| "edit snapshot path is invalid")?;
+        let mut file = staging
+            .create_file(&path)
+            .map_err(|_| "edit snapshot could not be staged")?;
+        file.write_all(payload)
+            .and_then(|()| file.sync_all())
+            .map_err(|_| "edit snapshot could not be written")?;
+        Ok(path)
+    }
+
     async fn register_source(
         &self,
         request_id: String,
@@ -969,6 +1266,10 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::RegisterSource(_)) => "register_source",
         Some(request::Body::GetSource(_)) => "get_source",
         Some(request::Body::ListSources(_)) => "list_sources",
+        Some(request::Body::CreateEditDoc(_)) => "create_edit_doc",
+        Some(request::Body::ApplyEditCommand(_)) => "apply_edit_command",
+        Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
+        Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         None => "missing_body",
     }
 }

@@ -12,6 +12,7 @@ clap.workspace = true
 clipmill-artifacts.workspace = true
 clipmill-contracts.workspace = true
 clipmill-core.workspace = true
+clipmill-edit-ir.workspace = true
 directories.workspace = true
 ed25519-dalek.workspace = true
 fs2.workspace = true
@@ -38,6 +39,7 @@ mmap-io.workspace = true
 memfd.workspace = true
 
 [dev-dependencies]
+clipmill-edit-ir.workspace = true
 tempfile = "3.23"
 
 [lints]
