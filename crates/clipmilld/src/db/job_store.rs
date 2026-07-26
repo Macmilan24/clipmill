@@ -1360,6 +1360,35 @@ pub(super) fn expire_task_leases(
     Ok(events)
 }
 
+/// The final artifact of the most recent succeeded job of `kind` for a source.
+///
+/// The render compiler uses it to find a source's reference index without the
+/// caller having to thread artifact ids through the request: a client should
+/// be able to ask for a render of a document, not first have to know which
+/// ingest job produced which keyframe map. Absence is a normal answer — a
+/// source that was never ingested simply decodes from its start.
+pub(super) fn latest_source_job_artifact(
+    connection: &Connection,
+    source_id: &str,
+    kind: &str,
+) -> Result<Option<String>, StoreError> {
+    let artifact_id = connection
+        .query_row(
+            "SELECT t.output_artifact_id
+             FROM jobs j
+             JOIN tasks t ON t.job_id = j.job_id
+             WHERE j.source_id = ?1 AND j.kind = ?2 AND j.state = ?3
+               AND t.is_final = 1 AND t.output_artifact_id IS NOT NULL
+             ORDER BY j.created_unix_millis DESC, j.job_id DESC
+             LIMIT 1",
+            params![source_id, kind, JobState::Succeeded as i32],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    Ok(artifact_id)
+}
+
 pub(super) fn current_event_id(connection: &Connection) -> Result<u64, StoreError> {
     let value: i64 = connection.query_row(
         "SELECT COALESCE(MAX(event_id), 0) FROM task_events",

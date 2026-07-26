@@ -14,6 +14,7 @@ const SOCKET_ENV: &str = "CLIPMILL_SOCKET";
 const WORKER_SOCKET_ENV: &str = "CLIPMILL_WORKER_SOCKET";
 const ARTIFACT_GC_GRACE_ENV: &str = "CLIPMILL_ARTIFACT_GC_GRACE";
 const FFPROBE_ENV: &str = "CLIPMILL_FFPROBE";
+const FONTS_DIR_ENV: &str = "CLIPMILL_FONTS_DIR";
 const DEFAULT_ARTIFACT_GC_GRACE: Duration = Duration::from_hours(168);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,6 +22,10 @@ pub struct Config {
     pub paths: Paths,
     pub artifact_gc_grace: Duration,
     pub ffprobe: PathBuf,
+    /// The only directory libass may resolve caption fonts from. Renders that
+    /// could pick up a host-installed face are renders nobody else can
+    /// reproduce, so this holds exactly the pinned font (book ch. 19).
+    pub fonts_dir: PathBuf,
     pub(crate) builtin_fixture_executor: bool,
 }
 
@@ -104,6 +109,9 @@ impl Config {
             env::var_os(FFPROBE_ENV),
             platform_default,
         )?;
+        if let Some(fonts_dir) = env::var_os(FONTS_DIR_ENV) {
+            config.fonts_dir = PathBuf::from(fonts_dir);
+        }
         config.builtin_fixture_executor =
             env::var_os("CLIPMILL_TEST_BUILTIN_WORKER").is_some_and(|value| value == "1");
         Ok(config)
@@ -208,6 +216,8 @@ impl Config {
             return Err(DaemonError::InvalidPath("FFprobe path is empty"));
         }
 
+        let fonts_dir = default_fonts_dir(&ffprobe);
+
         Ok(Self {
             paths: Paths {
                 database: state_dir.join("clipmill.db"),
@@ -228,9 +238,20 @@ impl Config {
             },
             artifact_gc_grace,
             ffprobe,
+            fonts_dir,
             builtin_fixture_executor: false,
         })
     }
+}
+
+/// Fonts sit beside the pinned sidecars: `.cache/bin/ffprobe` implies
+/// `.cache/fonts`, and a packaged layout keeps the same shape.
+fn default_fonts_dir(ffprobe: &Path) -> PathBuf {
+    ffprobe
+        .parent()
+        .and_then(Path::parent)
+        .filter(|root| !root.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("fonts"), |root| root.join("fonts"))
 }
 
 fn parse_duration(value: &OsString) -> Result<Duration, DaemonError> {

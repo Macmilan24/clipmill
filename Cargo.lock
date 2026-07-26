@@ -517,6 +517,7 @@ dependencies = [
  "clipmill-contracts",
  "clipmill-core",
  "clipmill-edit-ir",
+ "clipmill-render",
  "directories",
  "ed25519-dalek",
  "fs2",
