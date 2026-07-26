@@ -1,0 +1,27 @@
+[project]
+name = "clipmill-worker-align"
+version = "0.1.0"
+description = "Forced alignment (wav2vec2 CTC on onnxruntime): when each word was said, measured against the audio"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+  "clipmill-worker-sdk",
+  "numpy>=2",
+  "onnxruntime>=1.20",
+]
+
+[project.scripts]
+clipmill-worker-align = "clipmill_worker_align:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv.sources]
+clipmill-worker-sdk = { path = "../sdk", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clipmill_worker_align"]

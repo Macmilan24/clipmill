@@ -125,7 +125,7 @@ jobs:
           uvx ruff format --check .
       - name: pytest (all projects)
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align eval/harness; do
             echo "==> $project"
             (cd "$project" && uv sync --quiet && uv run pytest)
           done
@@ -419,7 +419,7 @@ jobs:
           enable-cache: true
       - name: Sync every frozen Python environment
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Audit every Python lockfile
@@ -458,7 +458,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate
