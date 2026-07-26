@@ -71,7 +71,7 @@ def test_a_corrupted_payload_is_refused_rather_than_read(tmp_path: Path) -> None
     context = context_for(tmp_path, artifact_id)
     # One byte, changed after publication.
     (object_dir / "result.json").write_bytes(b'{"segments":[0]}')
-    with pytest.raises(ArtifactVerificationError, match="SHA-256|size"):
+    with pytest.raises(ArtifactVerificationError, match=r"SHA-256|size"):
         context.open_artifact(artifact_id)
 
 

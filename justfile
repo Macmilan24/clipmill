@@ -78,6 +78,13 @@ gate-ir:
 gate-ingest:
     ./tools/drills/ingest-drill.sh 1
 
+# W14 coverage: a stage exists only if it is registered; a worker is admitted
+# against the device the machine actually has rather than its own claim; a
+# worker reads the daemon's store without trusting it; and weights that forbid
+# what users do with the output are refused by policy.
+gate-worker2:
+    ./tools/drills/worker2-drill.sh 1
+
 # W13 coverage — the first-slice milestone: the published Edit IR renders to a
 # 1080x1920 clip with burned karaoke captions, matching sidecars, normalised
 # loudness, and a manifest whose digests match its files; the same document
