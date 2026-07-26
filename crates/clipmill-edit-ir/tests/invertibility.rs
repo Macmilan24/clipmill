@@ -546,7 +546,7 @@ fn invalid_documents_are_refused() {
 #[test]
 fn published_contract_fixtures_load_into_the_operational_document() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for name in ["clip.json", "minimal.json"] {
+    for name in ["clip.json", "minimal.json", "first_slice.json"] {
         let path = repo.join("contracts/fixtures/edit_ir/valid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {
             panic!("cannot read {}: {error}", path.display());

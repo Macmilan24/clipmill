@@ -98,7 +98,7 @@ def test_ingest_source_payload_fixtures_enforce_the_w11_key_version() -> None:
 EDIT_IR_INVALID = ["wrong-timebase.json", "float-ticks.json", "empty-caption-line.json"]
 
 
-@pytest.mark.parametrize("name", ["clip.json", "minimal.json"])
+@pytest.mark.parametrize("name", ["clip.json", "minimal.json", "first_slice.json"])
 def test_valid_edit_ir_fixtures_roundtrip_canonically(name: str) -> None:
     schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.edit_ir")
     raw = (FIXTURES / "edit_ir" / "valid" / name).read_text()
@@ -113,6 +113,31 @@ def test_invalid_edit_ir_fixtures_are_rejected(name: str) -> None:
     raw = (FIXTURES / "edit_ir" / "invalid" / name).read_text()
     with pytest.raises(ValidationError):
         schemas.EditIr.model_validate_json(raw)
+
+
+RENDER_CLIP_INVALID = [
+    "float-frame-count.json",
+    "unknown-determinism.json",
+    "unprefixed-output-digest.json",
+    "no-outputs.json",
+]
+
+
+@pytest.mark.parametrize("name", ["first_slice.json", "model_assisted.json"])
+def test_valid_render_manifest_fixtures_roundtrip_canonically(name: str) -> None:
+    schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.render_clip")
+    raw = (FIXTURES / "render.clip" / "valid" / name).read_text()
+    parsed = schemas.RenderClipManifest.model_validate_json(raw)
+    reserialized = parsed.model_dump(mode="json", exclude_none=True)
+    assert canonical(reserialized) == raw, f"render.clip/{name} round-trip must be byte-identical"
+
+
+@pytest.mark.parametrize("name", RENDER_CLIP_INVALID)
+def test_invalid_render_manifest_fixtures_are_rejected(name: str) -> None:
+    schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.render_clip")
+    raw = (FIXTURES / "render.clip" / "invalid" / name).read_text()
+    with pytest.raises(ValidationError):
+        schemas.RenderClipManifest.model_validate_json(raw)
 
 
 MEDIA_FIXTURES = [

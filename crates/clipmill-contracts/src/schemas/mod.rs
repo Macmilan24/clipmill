@@ -45,5 +45,9 @@ pub mod media_proxy;
 pub mod media_reference_index;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/render_clip.rs"]
+pub mod render_clip;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/source_map.rs"]
 pub mod source_map;

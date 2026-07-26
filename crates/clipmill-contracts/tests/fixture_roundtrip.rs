@@ -111,6 +111,95 @@ fn valid_media_fixtures_parse_and_roundtrip_canonically() {
 }
 
 #[test]
+fn render_manifest_fixtures_state_what_was_produced() {
+    use clipmill_contracts::schemas::render_clip::{
+        RenderClipManifest, RenderClipManifestDeterminism as Determinism,
+        RenderClipManifestProgramSegmentsItemLayout as Layout,
+    };
+    for rel in [
+        "contracts/fixtures/render.clip/valid/first_slice.json",
+        "contracts/fixtures/render.clip/valid/model_assisted.json",
+    ] {
+        let raw = read(rel);
+        let parsed: RenderClipManifest = match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(err) => panic!("valid fixture {rel} rejected: {err}"),
+        };
+        let reserialized = match serde_json::to_value(&parsed) {
+            Ok(value) => value,
+            Err(err) => panic!("reserialize failed for {rel}: {err}"),
+        };
+        assert_eq!(
+            canonical(&reserialized),
+            raw,
+            "canonical round-trip must be byte-identical for {rel}"
+        );
+        // Every published file carries a digest a recipient can verify, and
+        // the loudness figures are measurements rather than restated targets.
+        assert!(!parsed.outputs.is_empty());
+        assert!(parsed.program.frame_count > 0);
+        assert!(parsed.loudness.measured_output.integrated_lufs != parsed.loudness.target_lufs);
+    }
+
+    let first_slice: RenderClipManifest = serde_json::from_str(&read(
+        "contracts/fixtures/render.clip/valid/first_slice.json",
+    ))
+    .unwrap_or_else(|err| panic!("{err}"));
+    assert!(matches!(first_slice.determinism, Determinism::ByteStable));
+    // A hand-authored document discloses nothing, because nothing was modelled.
+    assert!(first_slice.ai_use_summary.assistance.is_empty());
+    assert!(first_slice.ai_use_summary.generated.is_empty());
+    assert!(!first_slice.ai_use_summary.requires_youtube_ai_disclosure);
+    assert!(
+        first_slice
+            .program
+            .segments
+            .iter()
+            .all(|segment| matches!(segment.layout, Layout::Fit))
+    );
+
+    let assisted: RenderClipManifest = serde_json::from_str(&read(
+        "contracts/fixtures/render.clip/valid/model_assisted.json",
+    ))
+    .unwrap_or_else(|err| panic!("{err}"));
+    let assistance = assisted
+        .ai_use_summary
+        .assistance
+        .iter()
+        .map(|item| item.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(assistance, ["asr_captions", "reframe"]);
+    assert!(assisted.ai_use_summary.generated.is_empty());
+}
+
+#[test]
+fn invalid_render_manifest_fixtures_are_rejected() {
+    use clipmill_contracts::schemas::render_clip::RenderClipManifest;
+    // `no-outputs` belongs to the schema and the Python leg: typify enforces
+    // string patterns and enums through newtypes, but not array bounds, so
+    // asserting it here would test a claim this type does not make.
+    for (fixture, why) in [
+        (
+            "float-frame-count",
+            "a fractional frame count must not parse",
+        ),
+        (
+            "unknown-determinism",
+            "an unlisted determinism class must not parse",
+        ),
+        (
+            "unprefixed-output-digest",
+            "an output digest without its algorithm must not parse",
+        ),
+    ] {
+        let rejected = serde_json::from_str::<RenderClipManifest>(&read(&format!(
+            "contracts/fixtures/render.clip/invalid/{fixture}.json"
+        )));
+        assert!(rejected.is_err(), "{why}");
+    }
+}
+
+#[test]
 fn invalid_media_fixtures_are_rejected() {
     use clipmill_contracts::schemas::{
         media_audio::MediaAudio, media_frames::MediaFrames,

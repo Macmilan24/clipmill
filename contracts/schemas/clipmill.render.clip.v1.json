@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.render.clip.v1.json",
+  "title": "RenderClipManifest",
+  "description": "The render manifest that ships beside a finished clip (book ch. 17, appendix B). It answers, without anyone re-deriving anything: which Edit IR produced these pixels, which engine and font rasterized them, what the loudness actually measured, what rights position the user attested, and where a model's work appears. Rendering is model-free by construction, so anything listed under ai_use_summary entered through the document, never through the renderer.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ir_hash",
+    "ir_artifact_id",
+    "profile",
+    "engine",
+    "determinism",
+    "ai_use_summary",
+    "rights",
+    "input_source_fingerprints",
+    "program",
+    "loudness",
+    "caption_windows",
+    "outputs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.render.clip.v1"
+    },
+    "ir_hash": {
+      "description": "Digest of the canonical Edit IR snapshot this render read. The snapshot carries the render projection only, so re-explaining an edit cannot change this value.",
+      "$ref": "#/$defs/sha256"
+    },
+    "ir_artifact_id": {
+      "description": "Content address of that snapshot artifact.",
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": { "$ref": "#/$defs/profile" },
+    "engine": {
+      "description": "Everything outside the document that could change the output.",
+      "type": "object",
+      "required": ["app", "ffmpeg", "font_sha256", "font_family"],
+      "additionalProperties": false,
+      "properties": {
+        "app": { "type": "string", "minLength": 1 },
+        "ffmpeg": {
+          "description": "Pinned FFmpeg substrate identity (decision R4).",
+          "type": "string",
+          "minLength": 1
+        },
+        "font_sha256": {
+          "description": "Digest of the single font libass was allowed to see.",
+          "$ref": "#/$defs/sha256"
+        },
+        "font_family": { "type": "string", "minLength": 1 }
+      }
+    },
+    "determinism": {
+      "description": "byte_stable where the encoder reproduces bytes for identical inputs on this platform; semantic where only the decoded result is guaranteed to match.",
+      "enum": ["byte_stable", "semantic"]
+    },
+    "ai_use_summary": {
+      "description": "Where a model's work appears in the result. Supplied by whoever authored the document rather than inferred here: a disclosure a renderer guessed is a disclosure nobody checked.",
+      "type": "object",
+      "required": ["assistance", "generated", "requires_youtube_ai_disclosure"],
+      "additionalProperties": false,
+      "properties": {
+        "assistance": {
+          "description": "Model work that shaped existing footage, e.g. asr_captions, reframe.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "generated": {
+          "description": "Synthesised imagery or audio.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "requires_youtube_ai_disclosure": { "type": "boolean" }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "required": ["source_attestation", "gates_passed"],
+      "additionalProperties": false,
+      "properties": {
+        "source_attestation": {
+          "description": "What the user attested about the footage, echoed verbatim.",
+          "type": "string",
+          "minLength": 1
+        },
+        "gates_passed": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "input_source_fingerprints": {
+      "description": "Every source that contributed frames, in document order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/sha256" }
+    },
+    "program": {
+      "type": "object",
+      "required": ["duration_ticks", "frame_count", "segments"],
+      "additionalProperties": false,
+      "properties": {
+        "duration_ticks": {
+          "description": "Program duration in ticks at 1/90000.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "frame_count": {
+          "description": "Frames the encoder was pinned to produce, and the count the finished file was verified to carry.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "segment_id",
+              "source_fingerprint",
+              "in_ticks",
+              "out_ticks",
+              "layout",
+              "frame_count"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "segment_id": { "type": "string", "minLength": 1 },
+              "source_fingerprint": { "$ref": "#/$defs/sha256" },
+              "in_ticks": { "type": "integer", "minimum": 0 },
+              "out_ticks": { "type": "integer", "minimum": 0 },
+              "layout": { "enum": ["fit", "speaker_fill"] },
+              "frame_count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "loudness": {
+      "description": "Targets and both measurements. The output figure is re-decoded from the finished file rather than predicted from the filter's arguments.",
+      "type": "object",
+      "required": ["target_lufs", "target_true_peak_dbtp", "measured_input", "measured_output"],
+      "additionalProperties": false,
+      "properties": {
+        "target_lufs": { "type": "number" },
+        "target_true_peak_dbtp": { "type": "number" },
+        "measured_input": { "$ref": "#/$defs/measured_loudness" },
+        "measured_output": { "$ref": "#/$defs/measured_loudness" }
+      }
+    },
+    "caption_windows": {
+      "description": "The frames each cue occupies in the finished file, so checking captions against the IR is reading a number rather than re-deriving one.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cue_id", "first_frame", "end_frame"],
+        "additionalProperties": false,
+        "properties": {
+          "cue_id": { "type": "string", "minLength": 1 },
+          "first_frame": { "type": "integer", "minimum": 0 },
+          "end_frame": {
+            "description": "Exclusive: the first frame the cue is no longer drawn on.",
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "outputs": {
+      "description": "Every published file, with the digest a recipient can verify.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "bytes"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "measured_loudness": {
+      "type": "object",
+      "required": ["integrated_lufs", "true_peak_dbtp", "loudness_range_lu"],
+      "additionalProperties": false,
+      "properties": {
+        "integrated_lufs": { "type": "number" },
+        "true_peak_dbtp": { "type": "number" },
+        "loudness_range_lu": { "type": "number" }
+      }
+    },
+    "colour": {
+      "description": "An ASS colour. Alpha is inverted there, so 0 transparency is opaque.",
+      "type": "object",
+      "required": ["red", "green", "blue", "transparency"],
+      "additionalProperties": false,
+      "properties": {
+        "red": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "green": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "blue": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "transparency": { "type": "integer", "minimum": 0, "maximum": 255 }
+      }
+    },
+    "profile": {
+      "description": "Every knob that decides what the encoder produces. The profile is part of the render recipe, so changing any of it produces a different artifact rather than different pixels under the same content address.",
+      "type": "object",
+      "required": [
+        "profile_id",
+        "width",
+        "height",
+        "frame_rate",
+        "video_codec",
+        "crf",
+        "preset",
+        "pixel_format",
+        "audio_codec",
+        "audio_bitrate",
+        "audio_sample_rate",
+        "audio_channels",
+        "loudness",
+        "caption_style",
+        "fit_background_sigma"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": { "type": "string", "minLength": 1 },
+        "width": { "type": "integer", "minimum": 2 },
+        "height": { "type": "integer", "minimum": 2 },
+        "frame_rate": {
+          "type": "object",
+          "required": ["num", "den"],
+          "additionalProperties": false,
+          "properties": {
+            "num": { "type": "integer", "minimum": 1 },
+            "den": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "video_codec": { "type": "string", "minLength": 1 },
+        "crf": { "type": "integer", "minimum": 0, "maximum": 63 },
+        "preset": { "type": "string", "minLength": 1 },
+        "pixel_format": { "type": "string", "minLength": 1 },
+        "audio_codec": { "type": "string", "minLength": 1 },
+        "audio_bitrate": { "type": "integer", "minimum": 1 },
+        "audio_sample_rate": { "type": "integer", "minimum": 1 },
+        "audio_channels": { "type": "integer", "minimum": 1 },
+        "loudness": {
+          "type": "object",
+          "required": ["integrated_lufs", "true_peak_dbtp", "range_lu"],
+          "additionalProperties": false,
+          "properties": {
+            "integrated_lufs": { "type": "number" },
+            "true_peak_dbtp": { "type": "number" },
+            "range_lu": { "type": "number" }
+          }
+        },
+        "caption_style": {
+          "description": "The subset of ASS styling Phase 1 exposes. Line breaking is deliberately absent: breaks are decided once and stored in the Edit IR, and libass is configured never to re-wrap.",
+          "type": "object",
+          "required": [
+            "style_ref",
+            "font_family",
+            "font_size",
+            "spoken",
+            "unspoken",
+            "outline",
+            "shadow",
+            "outline_width",
+            "shadow_depth",
+            "bold",
+            "margin_horizontal",
+            "margin_vertical"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "style_ref": { "type": "string", "minLength": 1 },
+            "font_family": { "type": "string", "minLength": 1 },
+            "font_size": { "type": "integer", "minimum": 1 },
+            "spoken": { "$ref": "#/$defs/colour" },
+            "unspoken": { "$ref": "#/$defs/colour" },
+            "outline": { "$ref": "#/$defs/colour" },
+            "shadow": { "$ref": "#/$defs/colour" },
+            "outline_width": { "type": "integer", "minimum": 0 },
+            "shadow_depth": { "type": "integer", "minimum": 0 },
+            "bold": { "type": "boolean" },
+            "margin_horizontal": { "type": "integer", "minimum": 0 },
+            "margin_vertical": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "fit_background_sigma": {
+          "description": "Blur applied to the filled background behind a letterboxed frame.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
