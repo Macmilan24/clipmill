@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from clipmill_worker_sdk.confidence import distribution
+
 # Silero's own asymmetry, kept: a window has to be clearly speech to open a
 # segment and clearly not speech to close one. A single threshold makes the
 # boundary chatter across a breath, producing dozens of one-window segments
@@ -105,13 +107,13 @@ def segment(
     for start_sample, end_sample, window_scores in raw:
         if end_sample - start_sample < parameters.min_speech_samples:
             continue
-        ordered = sorted(window_scores)
+        p50, p10 = distribution(window_scores)
         spans.append(
             SpeechSpan(
                 start_sample=start_sample,
                 end_sample=min(end_sample, total_samples),
-                p50=_quantile(ordered, 0.5),
-                p10=_quantile(ordered, 0.1),
+                p50=p50,
+                p10=p10,
             )
         )
 
@@ -154,19 +156,6 @@ def _pad(spans: list[SpeechSpan], padding: int, total_samples: int) -> list[Spee
             start = max(start, boundary)
         padded.append(SpeechSpan(start, end, span.p50, span.p10))
     return padded
-
-
-def _quantile(ordered: Sequence[float], fraction: float) -> float:
-    """Nearest-rank, on an already-sorted sequence.
-
-    Nearest-rank rather than interpolated so the reported confidence is always
-    a score the model actually produced, not an average of two it did not.
-    """
-
-    if not ordered:
-        return 0.0
-    rank = max(round(fraction * (len(ordered) - 1)), 0)
-    return float(ordered[min(rank, len(ordered) - 1)])
 
 
 __all__ = [

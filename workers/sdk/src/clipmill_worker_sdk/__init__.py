@@ -10,6 +10,7 @@ from .client import (
     WorkerClient,
     WorkerConfiguration,
 )
+from .confidence import distribution
 from .documents import canonical_bytes
 from .identity import SUPPORTED_PROTOCOLS, WorkerIdentity
 from .shared_memory import MappedBuffer, map_shared_buffer
@@ -36,6 +37,7 @@ __all__ = [
     "WorkerConfiguration",
     "WorkerIdentity",
     "canonical_bytes",
+    "distribution",
     "map_shared_buffer",
     "read_pcm_audio",
     "require_model",

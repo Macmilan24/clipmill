@@ -32,6 +32,7 @@ test:
     cd workers/sdk && uv run pytest
     cd workers/echo && uv run pytest
     cd workers/vad && uv run pytest
+    cd workers/asr-whispercpp && uv run pytest
     cd eval/harness && uv run pytest
     pnpm typecheck
     pnpm test
