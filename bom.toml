@@ -29,6 +29,28 @@ ffmpeg_sha256 = "56452c0bfc4ee0325cd615d62f46ba8264f62eed34f727c2224c6c84fa7b871
 ffprobe_url = "https://ffmpeg.martin-riedl.de/download/linux/amd64/1783011670_8.1.2/ffprobe.zip"
 ffprobe_sha256 = "c6f2d36e98f9a4445fad0b0be539f4c4faf13fd502116bf131becd53f56cd390"
 
+[fonts]
+# Captions rasterize through libass, which resolves a face by family name from
+# whatever fontconfig can see. A render that picks up a host-installed font is
+# a render nobody else can reproduce, so exactly one pinned face is staged into
+# a private directory per render and libass is pointed at that alone (ch. 19).
+
+[fonts.captions]
+family = "Inter"
+style = "Bold"
+version = "4.1"
+license = "OFL-1.1"
+provider = "https://github.com/rsms/inter (upstream release archive)"
+archive_url = "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
+archive_sha256 = "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e"
+# The archive is pinned, and so is the one member taken out of it: the render
+# manifest states this digest, so a font swap changes the recorded engine
+# identity instead of quietly changing the pixels.
+member = "extras/ttf/Inter-Bold.ttf"
+member_sha256 = "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+license_member = "LICENSE.txt"
+license_sha256 = "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+
 [sqlite]
 # WAL-reset corruption race fixed in 3.51.3 (2026-03-13); the daemon refuses
 # to enable WAL below this version at runtime (decision R3).

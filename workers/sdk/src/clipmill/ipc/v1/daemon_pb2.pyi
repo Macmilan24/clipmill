@@ -264,6 +264,22 @@ class IngestSourcePayloadV1(_message.Message):
     source_id: str
     def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
 
+class RenderClipPayloadV1(_message.Message):
+    __slots__ = ("key_version", "doc_id", "ir_artifact_id", "source_attestation", "gates_passed", "ai_assistance")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ATTESTATION_FIELD_NUMBER: _ClassVar[int]
+    GATES_PASSED_FIELD_NUMBER: _ClassVar[int]
+    AI_ASSISTANCE_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    doc_id: str
+    ir_artifact_id: str
+    source_attestation: str
+    gates_passed: _containers.RepeatedScalarFieldContainer[str]
+    ai_assistance: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, key_version: _Optional[str] = ..., doc_id: _Optional[str] = ..., ir_artifact_id: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

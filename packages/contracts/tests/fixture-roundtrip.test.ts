@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/canonical.js';
 import type { ArtifactManifest } from '../src/gen/schemas/artifact-manifest.js';
 import type { EditIr } from '../src/gen/schemas/edit-ir.js';
+import type { RenderClipManifest } from '../src/gen/schemas/render-clip.js';
 import { PingRequestSchema } from '../src/index.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -60,13 +61,16 @@ describe('edit IR contract', () => {
   // canonical documents. JavaScript cannot tell -14.0 from -14, so an
   // integral-valued loudness target could never survive a byte comparison
   // here; the shell only ever reads these documents.
-  it.each(['clip.json', 'minimal.json'])('valid fixture %s validates', (name) => {
-    const raw = readFileSync(join(fixtures, 'edit_ir', 'valid', name), 'utf8');
-    const parsed = JSON.parse(raw) as EditIr;
-    expect(validateEdit(parsed), ajv.errorsText(validateEdit.errors)).toBe(true);
-    expect(parsed.version).toBe('ir/1');
-    expect(parsed.timebase.den).toBe(90000);
-  });
+  it.each(['clip.json', 'minimal.json', 'first_slice.json'])(
+    'valid fixture %s validates',
+    (name) => {
+      const raw = readFileSync(join(fixtures, 'edit_ir', 'valid', name), 'utf8');
+      const parsed = JSON.parse(raw) as EditIr;
+      expect(validateEdit(parsed), ajv.errorsText(validateEdit.errors)).toBe(true);
+      expect(parsed.version).toBe('ir/1');
+      expect(parsed.timebase.den).toBe(90000);
+    },
+  );
 
   it('exposes the stored line breaks the preview must not recompute', () => {
     const raw = readFileSync(join(fixtures, 'edit_ir', 'valid', 'clip.json'), 'utf8');
@@ -82,6 +86,49 @@ describe('edit IR contract', () => {
       expect(validateEdit(JSON.parse(raw))).toBe(false);
     },
   );
+});
+
+describe('render manifest contract', () => {
+  const renderSchema = JSON.parse(
+    readFileSync(join(repo, 'contracts', 'schemas', 'clipmill.render.clip.v1.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const validateRender = ajv.compile(renderSchema);
+
+  // As with the edit IR, byte-identity is asserted in Rust and Python; here the
+  // shell only reads manifests, so the checks are the ones a reader relies on.
+  it.each(['first_slice.json', 'model_assisted.json'])('valid fixture %s validates', (name) => {
+    const raw = readFileSync(join(fixtures, 'render.clip', 'valid', name), 'utf8');
+    const parsed = JSON.parse(raw) as RenderClipManifest;
+    expect(validateRender(parsed), ajv.errorsText(validateRender.errors)).toBe(true);
+    expect(parsed.profile.width).toBe(1080);
+    expect(parsed.profile.height).toBe(1920);
+    expect(parsed.outputs.length).toBeGreaterThan(0);
+  });
+
+  it('states where a model touched the result, and where one did not', () => {
+    const plain = JSON.parse(
+      readFileSync(join(fixtures, 'render.clip', 'valid', 'first_slice.json'), 'utf8'),
+    ) as RenderClipManifest;
+    expect(plain.ai_use_summary.assistance).toEqual([]);
+    expect(plain.ai_use_summary.generated).toEqual([]);
+    expect(plain.ai_use_summary.requires_youtube_ai_disclosure).toBe(false);
+
+    const assisted = JSON.parse(
+      readFileSync(join(fixtures, 'render.clip', 'valid', 'model_assisted.json'), 'utf8'),
+    ) as RenderClipManifest;
+    expect(assisted.ai_use_summary.assistance).toEqual(['asr_captions', 'reframe']);
+    expect(assisted.ai_use_summary.generated).toEqual([]);
+  });
+
+  it.each([
+    'float-frame-count.json',
+    'unknown-determinism.json',
+    'unprefixed-output-digest.json',
+    'no-outputs.json',
+  ])('invalid fixture %s fails', (name) => {
+    const raw = readFileSync(join(fixtures, 'render.clip', 'invalid', name), 'utf8');
+    expect(validateRender(JSON.parse(raw))).toBe(false);
+  });
 });
 
 describe('media ingest contracts', () => {

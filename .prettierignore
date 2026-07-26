@@ -4,6 +4,11 @@ node_modules/
 **/gen/
 pnpm-lock.yaml
 LICENSE
+# Contract fixtures are canonical JSON: sorted keys, two-space indent, one
+# trailing newline. Their formatting is asserted byte-for-byte by the Rust and
+# Python round-trip tests, so it belongs to those tests rather than to Prettier,
+# which collapses short arrays onto one line and breaks the comparison.
+contracts/fixtures/
 # Signed Phase 0 exit evidence. These files are RFC 8785 canonical JSON covered
 # by an ed25519 signature: reformatting them would not just fail the check, it
 # would invalidate the attestation they exist to prove.

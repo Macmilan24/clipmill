@@ -357,6 +357,18 @@ impl DbActor {
                                     let _result = reply
                                         .send(source_store::list_sources(&connection, &project_id));
                                 }
+                                Command::LatestSourceJobArtifact {
+                                    source_id,
+                                    kind,
+                                    reply,
+                                } => {
+                                    let _result =
+                                        reply.send(job_store::latest_source_job_artifact(
+                                            &connection,
+                                            &source_id,
+                                            &kind,
+                                        ));
+                                }
                                 Command::CreateEditDoc {
                                     request_id,
                                     request_hash,
@@ -998,6 +1010,24 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    /// Final artifact of the newest succeeded job of `kind` for a source.
+    pub(crate) async fn latest_source_job_artifact(
+        &self,
+        source_id: String,
+        kind: String,
+    ) -> Result<Option<String>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::LatestSourceJobArtifact {
+                source_id,
+                kind,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn begin_device_profile(
         &self,
         request_id: String,
@@ -1254,6 +1284,11 @@ enum Command {
     ListSources {
         project_id: String,
         reply: oneshot::Sender<Result<Vec<SourceRecord>, StoreError>>,
+    },
+    LatestSourceJobArtifact {
+        source_id: String,
+        kind: String,
+        reply: oneshot::Sender<Result<Option<String>, StoreError>>,
     },
     BeginDeviceProfile {
         request_id: String,

@@ -19,6 +19,7 @@ codegen:
 lint:
     cargo fmt --check
     cargo clippy --workspace --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
     uvx ruff check .
     uvx ruff format --check .
     pnpm lint
@@ -76,6 +77,14 @@ gate-ir:
 # mutated sources refuse deterministically, and kill recovery meets the SLO.
 gate-ingest:
     ./tools/drills/ingest-drill.sh 1
+
+# W13 coverage — the first-slice milestone: the published Edit IR renders to a
+# 1080x1920 clip with burned karaoke captions, matching sidecars, normalised
+# loudness, and a manifest whose digests match its files; the same document
+# renders to the same bytes in a fresh store; a repeat is a cache identity; an
+# unattested render is refused; a killed daemon recovers.
+gate-render:
+    ./tools/drills/render-drill.sh 1
 
 # W7 coverage: measured runtime/capacity, bounded codec/shared-memory probes,
 # Ed25519 attestation, durable caching, and fingerprint generations.

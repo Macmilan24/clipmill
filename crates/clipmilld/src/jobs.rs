@@ -28,6 +28,7 @@ use crate::{
     db::{DbHandle, StoreError},
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
     media::{self, MediaRunner, ProgressSlot},
+    render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
 };
 
@@ -397,6 +398,49 @@ impl JobPlan {
             created_unix_millis: now,
             tasks,
         })
+    }
+
+    /// The W13 render (book ch. 17). One task, because the encode is one
+    /// FFmpeg graph and splitting it would mean a joiner that has to prove it
+    /// preserved timestamps, colour, and audio continuity — a Phase 2 trade
+    /// worth making only when profiling asks for it.
+    ///
+    /// The document arrives as an immutable snapshot artifact rather than a
+    /// document id, so the render is pinned to the revision the user approved
+    /// and an edit in flight cannot change what was asked for.
+    pub(crate) fn render_clip(project_id: &ProjectId, payload: Vec<u8>, now: u64) -> Self {
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "render-clip".to_owned(),
+            source_id: None,
+            payload: payload.clone(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: render::KIND_RENDER_CLIP.to_owned(),
+                input_kinds: Vec::new(),
+                output_kind: "render.clip.v1".to_owned(),
+                payload,
+                dependencies: Vec::new(),
+                resources: ResourceDeclaration {
+                    cpu_threads: 2,
+                    ram_bytes: 512 * 1024 * 1024,
+                    accelerator_class: String::new(),
+                    vram_bytes: 0,
+                    disk_bytes: 512 * 1024 * 1024,
+                    network_policy: "local-lock".to_owned(),
+                    thermal_class: "sustained".to_owned(),
+                    determinism_class: "deterministic".to_owned(),
+                    checkpoint_support: false,
+                    preemption_cost: 4,
+                },
+                implementation: "ffmpeg-8.1.2+clipmill-render-v1".to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
+        }
     }
 
     pub(crate) fn device_profile(
@@ -796,6 +840,7 @@ impl Scheduler {
         sources: SourceInspector,
         device_profiler: DeviceProfiler,
         media: MediaRunner,
+        fonts_dir: std::path::PathBuf,
         capacity: ResourceCapacity,
         builtin_fixture_executor: bool,
     ) -> Self {
@@ -816,6 +861,7 @@ impl Scheduler {
             sources,
             device_profiler,
             media,
+            fonts_dir,
             capacity,
             capacity_update,
             builtin_fixture_executor,
@@ -852,22 +898,26 @@ async fn run_scheduler(
     sources: SourceInspector,
     device_profiler: DeviceProfiler,
     media: MediaRunner,
+    fonts_dir: std::path::PathBuf,
     capacity: ResourceCapacity,
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     builtin_fixture_executor: bool,
     notify: Arc<Notify>,
     mut stop: oneshot::Receiver<()>,
 ) {
+    let executors = BuiltinExecutors {
+        database: database.clone(),
+        artifacts,
+        sources,
+        device_profiler,
+        media,
+        fonts_dir,
+    };
     let mut schedule = interval(SCHEDULER_TICK);
     schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut running = JoinSet::new();
     let mut available_capacity = capacity;
-    let mut builtin_capabilities = vec!["probe-source".to_owned(), "device-profile".to_owned()];
-    builtin_capabilities.extend(media::INGEST_TASK_KINDS.map(str::to_owned));
-    if builtin_fixture_executor {
-        builtin_capabilities
-            .extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
-    }
+    let builtin_capabilities = builtin_capabilities(builtin_fixture_executor);
     loop {
         tokio::select! {
             biased;
@@ -931,24 +981,11 @@ async fn run_scheduler(
                 );
                 break;
             }
-            let database = database.clone();
-            let artifacts = artifacts.clone();
+            let executors = executors.clone();
             let events = events.clone();
-            let sources = sources.clone();
-            let device_profiler = device_profiler.clone();
-            let media = media.clone();
             let notify = Arc::clone(&notify);
             running.spawn(async move {
-                execute_task(
-                    database,
-                    artifacts,
-                    events,
-                    sources,
-                    device_profiler,
-                    media,
-                    task,
-                )
-                .await;
+                execute_task(executors, events, task).await;
                 notify.notify_one();
                 resources
             });
@@ -960,15 +997,81 @@ async fn run_scheduler(
 }
 
 #[allow(clippy::too_many_lines)]
-async fn execute_task(
+/// Everything the daemon's own executors need. Grouped so that adding a
+/// stage does not mean widening three signatures.
+#[derive(Clone)]
+struct BuiltinExecutors {
     database: DbHandle,
     artifacts: ArtifactHandle,
-    events: EventHub,
     sources: SourceInspector,
     device_profiler: DeviceProfiler,
     media: MediaRunner,
-    task: LeasedTask,
-) {
+    fonts_dir: std::path::PathBuf,
+}
+
+impl BuiltinExecutors {
+    async fn run(
+        &self,
+        task: &LeasedTask,
+        progress: &ProgressSlot,
+    ) -> Result<ArtifactId, TaskExecutionError> {
+        match task.kind.as_str() {
+            "probe-source" => {
+                execute_probe_artifact(&self.database, &self.artifacts, &self.sources, task).await
+            }
+            "device-profile" => {
+                execute_device_artifact(
+                    &self.database,
+                    &self.artifacts,
+                    &self.device_profiler,
+                    task,
+                )
+                .await
+            }
+            kind if media::is_ingest_kind(kind) => {
+                media::execute_ingest_task(
+                    &self.database,
+                    &self.artifacts,
+                    &self.media,
+                    &self.sources,
+                    task,
+                    progress,
+                )
+                .await
+            }
+            kind if render::is_render_kind(kind) => {
+                render::execute_render_task(
+                    &RenderContext {
+                        database: &self.database,
+                        artifacts: &self.artifacts,
+                        media: &self.media,
+                        sources: &self.sources,
+                        fonts_dir: &self.fonts_dir,
+                    },
+                    task,
+                    progress,
+                )
+                .await
+            }
+            _ => execute_demo_artifact(&self.artifacts, task)
+                .await
+                .map_err(TaskExecutionError::transient),
+        }
+    }
+}
+
+/// Task kinds the daemon executes itself, rather than leasing to a worker.
+fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
+    let mut kinds = vec!["probe-source".to_owned(), "device-profile".to_owned()];
+    kinds.extend(media::INGEST_TASK_KINDS.map(str::to_owned));
+    kinds.push(render::KIND_RENDER_CLIP.to_owned());
+    if builtin_fixture_executor {
+        kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
+    }
+    kinds
+}
+
+async fn execute_task(executors: BuiltinExecutors, events: EventHub, task: LeasedTask) {
     tracing::debug!(
         project_id = task.project_id,
         job_id = task.job_id,
@@ -976,6 +1079,7 @@ async fn execute_task(
         attempt = task.attempt,
         "executing built-in durable task"
     );
+    let database = executors.database.clone();
     let lease_id = task.lease_id.clone();
     let progress = ProgressSlot::default();
     let work = async {
@@ -984,21 +1088,7 @@ async fn execute_task(
         {
             tokio::time::sleep(Duration::from_millis(delay.min(30_000))).await;
         }
-        match task.kind.as_str() {
-            "probe-source" => execute_probe_artifact(&database, &artifacts, &sources, &task).await,
-            "device-profile" => {
-                execute_device_artifact(&database, &artifacts, &device_profiler, &task).await
-            }
-            kind if media::is_ingest_kind(kind) => {
-                media::execute_ingest_task(
-                    &database, &artifacts, &media, &sources, &task, &progress,
-                )
-                .await
-            }
-            _ => execute_demo_artifact(&artifacts, &task)
-                .await
-                .map_err(TaskExecutionError::transient),
-        }
+        executors.run(&task, &progress).await
     };
     tokio::pin!(work);
     let mut heartbeat = interval(HEARTBEAT_INTERVAL);

@@ -233,6 +233,30 @@ pub struct IngestSourcePayloadV1 {
     #[prost(string, tag = "2")]
     pub source_id: ::prost::alloc::string::String,
 }
+/// Versioned payload for the render compiler (book ch. 17). The render is
+/// pinned to an immutable edit.ir.v1 snapshot rather than a live document, so
+/// an edit in progress can never change what a render was asked to produce.
+/// Rights and AI-use disclosure travel with the request because they are
+/// attestations the user makes, not facts a renderer can infer.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RenderClipPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub doc_id: ::prost::alloc::string::String,
+    /// Content address of the edit.ir.v1 snapshot to render.
+    #[prost(string, tag = "3")]
+    pub ir_artifact_id: ::prost::alloc::string::String,
+    /// Echoed verbatim into the render manifest, e.g. "own_content".
+    #[prost(string, tag = "4")]
+    pub source_attestation: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "5")]
+    pub gates_passed: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Model work that shaped the footage, e.g. "asr_captions", "reframe".
+    /// Empty for a hand-authored document, which is the Phase 1 truth.
+    #[prost(string, repeated, tag = "6")]
+    pub ai_assistance: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.

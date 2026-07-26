@@ -11,8 +11,9 @@ use clipmill_contracts::proto::ipc::v1::{
     ErrorCode, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
     GetJobResponse, GetProjectResponse, GetSourceResponse, HealthResponse, IngestSourcePayloadV1,
     ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
-    ProbeSourcePayloadV1, RegisterSourceRequest, Request, Response, SnapshotEditDocResponse,
-    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, request, response,
+    ProbeSourcePayloadV1, RegisterSourceRequest, RenderClipPayloadV1, Request, Response,
+    SnapshotEditDocResponse, SubmitJobRequest, SubscribeTaskEventsRequest,
+    SubscribeTaskEventsResponse, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
@@ -36,6 +37,7 @@ const MAX_EDIT_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
 const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
 const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
+const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -538,6 +540,69 @@ impl Service {
                         return error_reply(request_id, ErrorCode::InvalidArgument, message);
                     }
                 }
+            }
+            "render-clip" => {
+                let Ok(payload) = RenderClipPayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "render job payload is not a valid RenderClipPayloadV1",
+                    );
+                };
+                if payload.key_version != RENDER_CLIP_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "render job payload key_version is unsupported",
+                    );
+                }
+                // The snapshot must belong to a document in this project.
+                // Rendering someone else's document through a project id the
+                // caller happens to hold would be a cross-project read.
+                let doc = match self.database.get_edit_doc(payload.doc_id.clone()).await {
+                    Ok(doc) => doc,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if doc.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "edit document does not belong to the requested project",
+                    );
+                }
+                if payload
+                    .ir_artifact_id
+                    .parse::<clipmill_core::ArtifactId>()
+                    .is_err()
+                {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "render job names no edit snapshot to render",
+                    );
+                }
+                if payload.source_attestation.trim().is_empty() {
+                    // The manifest states a rights position; there is no
+                    // honest default for one the user never made.
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "a render requires a rights attestation",
+                    );
+                }
+                if let Some(unknown) = payload
+                    .ai_assistance
+                    .iter()
+                    .find(|token| !crate::render::ai_assistance_is_known(token))
+                {
+                    tracing::debug!(%unknown, "render declined an unrecognised disclosure token");
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "AI-use disclosure carries a token this version does not define",
+                    );
+                }
+                JobPlan::render_clip(&project_id, submit.payload.clone(), now)
             }
             _ => {
                 return error_reply(

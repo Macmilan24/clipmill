@@ -157,6 +157,24 @@ message IngestSourcePayloadV1 {
   string source_id = 2;
 }
 
+// Versioned payload for the render compiler (book ch. 17). The render is
+// pinned to an immutable edit.ir.v1 snapshot rather than a live document, so
+// an edit in progress can never change what a render was asked to produce.
+// Rights and AI-use disclosure travel with the request because they are
+// attestations the user makes, not facts a renderer can infer.
+message RenderClipPayloadV1 {
+  string key_version = 1;
+  string doc_id = 2;
+  // Content address of the edit.ir.v1 snapshot to render.
+  string ir_artifact_id = 3;
+  // Echoed verbatim into the render manifest, e.g. "own_content".
+  string source_attestation = 4;
+  repeated string gates_passed = 5;
+  // Model work that shaped the footage, e.g. "asr_captions", "reframe".
+  // Empty for a hand-authored document, which is the Phase 1 truth.
+  repeated string ai_assistance = 6;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.

@@ -128,7 +128,7 @@ pub(crate) enum MediaError {
 }
 
 impl MediaError {
-    fn into_task_error(self) -> TaskExecutionError {
+    pub(crate) fn into_task_error(self) -> TaskExecutionError {
         match self {
             Self::Failed | Self::InvalidOutput(_) | Self::OutputLimit => {
                 TaskExecutionError::deterministic(self.to_string())
@@ -155,11 +155,16 @@ pub(crate) struct MediaRunner {
 
 /// One FFmpeg invocation: arguments after the fixed containment prefix,
 /// relative output names resolved against `output_dir`.
-struct FfmpegSpec {
-    args: Vec<OsString>,
-    output_dir: PathBuf,
-    duration_hint_millis: u64,
-    max_output_bytes: u64,
+pub(crate) struct FfmpegSpec {
+    pub args: Vec<OsString>,
+    pub output_dir: PathBuf,
+    pub duration_hint_millis: u64,
+    pub max_output_bytes: u64,
+    /// Return the sidecar's diagnostics on success. Only the loudness
+    /// measurement pass needs them, and only to read five numbers out of the
+    /// filter's own JSON report; the text itself is never logged or published
+    /// because FFmpeg diagnostics can embed local paths.
+    pub capture_stderr: bool,
 }
 
 impl MediaRunner {
@@ -182,7 +187,11 @@ impl MediaRunner {
         })
     }
 
-    async fn run_ffmpeg(&self, spec: FfmpegSpec, progress: ProgressSlot) -> Result<(), MediaError> {
+    pub(crate) async fn run_ffmpeg(
+        &self,
+        spec: FfmpegSpec,
+        progress: ProgressSlot,
+    ) -> Result<String, MediaError> {
         let ffmpeg = self.ffmpeg.clone();
         let scratch = self.scratch.clone();
         tokio::task::spawn_blocking(move || {
@@ -193,7 +202,7 @@ impl MediaRunner {
     }
 
     /// Bounded FFprobe over a committed output or the registered source.
-    async fn run_ffprobe_json(
+    pub(crate) async fn run_ffprobe_json(
         &self,
         target: PathBuf,
         entries: Vec<OsString>,
@@ -227,7 +236,7 @@ fn run_ffmpeg_blocking(
     scratch: &Path,
     spec: &FfmpegSpec,
     progress: &ProgressSlot,
-) -> Result<(), MediaError> {
+) -> Result<String, MediaError> {
     let work = scratch.join(format!("media_{}", Ulid::new()));
     fs::create_dir(&work).map_err(io_error)?;
     fs::set_permissions(&work, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
@@ -315,7 +324,13 @@ fn run_ffmpeg_blocking(
             spec.duration_hint_millis,
         );
     }
-    Ok(())
+    if !spec.capture_stderr {
+        return Ok(String::new());
+    }
+    if fs::metadata(&stderr_path).map_or(0, |meta| meta.len()) > MAX_STDERR_BYTES {
+        return Err(MediaError::OutputLimit);
+    }
+    fs::read_to_string(&stderr_path).map_err(io_error)
 }
 
 fn run_ffprobe_blocking(
@@ -590,7 +605,7 @@ async fn source_context(
     })
 }
 
-fn ticks_to_millis(ticks: i64) -> u64 {
+pub(crate) fn ticks_to_millis(ticks: i64) -> u64 {
     u64::try_from(i128::from(ticks.max(0)) / TICKS_PER_MILLI).unwrap_or(0)
 }
 
@@ -620,12 +635,12 @@ fn media_recipe(
     .map_err(|error| TaskExecutionError::deterministic(error.to_string()))
 }
 
-enum Prepared {
+pub(crate) enum Prepared {
     Hit(ArtifactId),
     Staged(clipmill_artifacts::StagingArea),
 }
 
-async fn prepare_or_hit(
+pub(crate) async fn prepare_or_hit(
     artifacts: &ArtifactHandle,
     recipe: ArtifactRecipe,
 ) -> Result<Prepared, TaskExecutionError> {
@@ -644,13 +659,16 @@ async fn prepare_or_hit(
 
 /// Quarantine a failed staging area so retries can re-prepare the same key
 /// instead of colliding with an abandoned in-flight entry.
-async fn abandon_staging(artifacts: &ArtifactHandle, staging_id: clipmill_core::StagingId) {
+pub(crate) async fn abandon_staging(
+    artifacts: &ArtifactHandle,
+    staging_id: clipmill_core::StagingId,
+) {
     if let Err(error) = artifacts.abandon(staging_id).await {
         tracing::warn!(%error, "failed ingest staging could not be abandoned");
     }
 }
 
-fn write_canonical_json(
+pub(crate) fn write_canonical_json(
     staging: &clipmill_artifacts::StagingArea,
     path: &ArtifactPath,
     value: &Value,
@@ -666,13 +684,13 @@ fn write_canonical_json(
     Ok(())
 }
 
-fn artifact_path(value: &str) -> Result<ArtifactPath, TaskExecutionError> {
+pub(crate) fn artifact_path(value: &str) -> Result<ArtifactPath, TaskExecutionError> {
     value
         .parse::<ArtifactPath>()
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))
 }
 
-async fn commit_staging(
+pub(crate) async fn commit_staging(
     artifacts: &ArtifactHandle,
     staging_id: clipmill_core::StagingId,
     paths: Vec<ArtifactPath>,
@@ -686,7 +704,7 @@ async fn commit_staging(
 
 /// Open one verified input artifact and resolve the on-disk path of one of
 /// its payload files for sidecar consumption.
-async fn verified_input_file(
+pub(crate) async fn verified_input_file(
     artifacts: &ArtifactHandle,
     artifact_id: ArtifactId,
     file: &str,
@@ -703,7 +721,10 @@ async fn verified_input_file(
 }
 
 /// Read the JSON descriptor a media artifact carries beside its payload.
-fn read_descriptor(lease: &ArtifactLease, file: &str) -> Result<Value, TaskExecutionError> {
+pub(crate) fn read_descriptor(
+    lease: &ArtifactLease,
+    file: &str,
+) -> Result<Value, TaskExecutionError> {
     let path = artifact_path(file)?;
     let mut reader = lease
         .open_verified(&path)
@@ -804,8 +825,9 @@ async fn execute_proxy(
             output_dir: staging.path().to_path_buf(),
             duration_hint_millis: ticks_to_millis(context.duration_ticks),
             max_output_bytes: 8 * 1024 * 1024 * 1024,
+            capture_stderr: false,
         };
-        media
+        let _diagnostics = media
             .run_ffmpeg(spec, progress.clone())
             .await
             .map_err(MediaError::into_task_error)?;
@@ -941,8 +963,9 @@ async fn execute_audio(
             output_dir: staging.path().to_path_buf(),
             duration_hint_millis: ticks_to_millis(context.duration_ticks),
             max_output_bytes: 4 * 1024 * 1024 * 1024,
+            capture_stderr: false,
         };
-        media
+        let _diagnostics = media
             .run_ffmpeg(spec, progress.clone())
             .await
             .map_err(MediaError::into_task_error)?;
@@ -1104,8 +1127,9 @@ async fn execute_loudness(
             output_dir: staging.path().to_path_buf(),
             duration_hint_millis: ticks_to_millis(duration_ticks),
             max_output_bytes: 512 * 1024 * 1024,
+            capture_stderr: false,
         };
-        media
+        let _diagnostics = media
             .run_ffmpeg(spec, progress.clone())
             .await
             .map_err(MediaError::into_task_error)?;
@@ -1422,8 +1446,9 @@ async fn execute_tiles(
             output_dir: staging.path().to_path_buf(),
             duration_hint_millis: ticks_to_millis(duration_ticks),
             max_output_bytes: 4 * 1024 * 1024 * 1024,
+            capture_stderr: false,
         };
-        media
+        let _diagnostics = media
             .run_ffmpeg(spec, progress.clone())
             .await
             .map_err(MediaError::into_task_error)?;

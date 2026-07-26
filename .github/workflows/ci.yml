@@ -66,7 +66,7 @@ jobs:
             done
             checked=$((checked + 1))
           done
-          if [ "$checked" -lt 12 ]; then
+          if [ "$checked" -lt 13 ]; then
             echo "::error::fixture loop found only $checked schema directories - the dir/schema naming pairing broke"
             exit 1
           fi
@@ -173,6 +173,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
       - name: Fetch and verify pinned FFmpeg sidecars
         run: ./tools/fetch-ffmpeg.sh
       - run: ./tools/drills/media-drill.sh 1
@@ -192,6 +199,38 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: ./tools/drills/ir-drill.sh 1
 
+  render-conformance:
+    name: render-conformance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
+      - name: Fetch and verify the pinned FFmpeg sidecars and caption font
+        run: ./tools/fetch-ffmpeg.sh
+      - run: ./tools/drills/render-drill.sh 1
+      - name: Publish the rendered first slice
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: first-slice-${{ matrix.os }}
+          path: target/render-demo/
+          if-no-files-found: ignore
+          retention-days: 7
+
   ingest-conformance:
     name: ingest-conformance (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -205,6 +244,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
       - name: Fetch and verify pinned FFmpeg sidecars
         run: ./tools/fetch-ffmpeg.sh
       - run: ./tools/drills/ingest-drill.sh 1
@@ -228,6 +274,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
       - name: Fetch and verify pinned FFmpeg sidecars
         run: ./tools/fetch-ffmpeg.sh
       - name: Build the daemon the shell talks to
@@ -270,6 +323,13 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
       - name: Fetch and verify pinned FFmpeg sidecars
         run: ./tools/fetch-ffmpeg.sh
       - run: uv sync --frozen --project eval/harness
@@ -300,6 +360,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
       - name: Prefetch and build everything (outside the namespace)
         run: |
           ./tools/fetch-ffmpeg.sh
@@ -362,6 +429,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
       - name: Install locked inputs and pinned FFmpeg sidecars
         run: |
           ./tools/fetch-ffmpeg.sh

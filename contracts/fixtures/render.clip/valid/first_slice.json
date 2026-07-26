@@ -1,0 +1,173 @@
+{
+  "ai_use_summary": {
+    "assistance": [],
+    "generated": [],
+    "requires_youtube_ai_disclosure": false
+  },
+  "caption_windows": [
+    {
+      "cue_id": "cue_1",
+      "end_frame": 36,
+      "first_frame": 6
+    },
+    {
+      "cue_id": "cue_2",
+      "end_frame": 66,
+      "first_frame": 36
+    },
+    {
+      "cue_id": "cue_3",
+      "end_frame": 96,
+      "first_frame": 66
+    },
+    {
+      "cue_id": "cue_4",
+      "end_frame": 126,
+      "first_frame": 96
+    },
+    {
+      "cue_id": "cue_5",
+      "end_frame": 156,
+      "first_frame": 126
+    },
+    {
+      "cue_id": "cue_6",
+      "end_frame": 179,
+      "first_frame": 156
+    }
+  ],
+  "determinism": "byte_stable",
+  "engine": {
+    "app": "clipmilld 0.0.1",
+    "ffmpeg": "ffmpeg-8.1.2-btb-n8.1.2",
+    "font_family": "Inter",
+    "font_sha256": "sha256:288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+  },
+  "input_source_fingerprints": [
+    "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  ],
+  "ir_artifact_id": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+  "ir_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "loudness": {
+    "measured_input": {
+      "integrated_lufs": -19.53,
+      "loudness_range_lu": 7.5,
+      "true_peak_dbtp": -2.05
+    },
+    "measured_output": {
+      "integrated_lufs": -14.02,
+      "loudness_range_lu": 7.4,
+      "true_peak_dbtp": -1.31
+    },
+    "target_lufs": -14.0,
+    "target_true_peak_dbtp": -1.0
+  },
+  "outputs": [
+    {
+      "bytes": 2418331,
+      "path": "clip.mp4",
+      "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+      "bytes": 1842,
+      "path": "clip.ass",
+      "sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    {
+      "bytes": 412,
+      "path": "clip.srt",
+      "sha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    {
+      "bytes": 448,
+      "path": "clip.vtt",
+      "sha256": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    }
+  ],
+  "profile": {
+    "audio_bitrate": 192000,
+    "audio_channels": 2,
+    "audio_codec": "aac",
+    "audio_sample_rate": 48000,
+    "caption_style": {
+      "bold": true,
+      "font_family": "Inter",
+      "font_size": 84,
+      "margin_horizontal": 90,
+      "margin_vertical": 260,
+      "outline": {
+        "blue": 0,
+        "green": 0,
+        "red": 0,
+        "transparency": 0
+      },
+      "outline_width": 5,
+      "shadow": {
+        "blue": 0,
+        "green": 0,
+        "red": 0,
+        "transparency": 0
+      },
+      "shadow_depth": 2,
+      "spoken": {
+        "blue": 46,
+        "green": 216,
+        "red": 255,
+        "transparency": 0
+      },
+      "style_ref": "clipmill.captions.karaoke.v1",
+      "unspoken": {
+        "blue": 255,
+        "green": 255,
+        "red": 255,
+        "transparency": 0
+      }
+    },
+    "crf": 18,
+    "fit_background_sigma": 40,
+    "frame_rate": {
+      "den": 1001,
+      "num": 30000
+    },
+    "height": 1920,
+    "loudness": {
+      "integrated_lufs": -14.0,
+      "range_lu": 11.0,
+      "true_peak_dbtp": -1.0
+    },
+    "pixel_format": "yuv420p",
+    "preset": "medium",
+    "profile_id": "clipmill.render.vertical_1080x1920.v1",
+    "video_codec": "libx264",
+    "width": 1080
+  },
+  "program": {
+    "duration_ticks": 540000,
+    "frame_count": 180,
+    "segments": [
+      {
+        "frame_count": 120,
+        "in_ticks": 180000,
+        "layout": "fit",
+        "out_ticks": 540000,
+        "segment_id": "seg_open",
+        "source_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "frame_count": 60,
+        "in_ticks": 900000,
+        "layout": "fit",
+        "out_ticks": 1080000,
+        "segment_id": "seg_close",
+        "source_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ]
+  },
+  "rights": {
+    "gates_passed": [
+      "duration_60s"
+    ],
+    "source_attestation": "own_content"
+  },
+  "schema_version": "clipmill.render.clip.v1"
+}

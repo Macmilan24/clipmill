@@ -183,6 +183,7 @@ impl Daemon {
             sources.clone(),
             device_profiler.clone(),
             media_runner,
+            config.fonts_dir.clone(),
             scheduler_capacity,
             config.builtin_fixture_executor,
         );
