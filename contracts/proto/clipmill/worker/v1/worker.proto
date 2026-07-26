@@ -21,12 +21,23 @@ message CapabilityDescriptor {
   // Worker protocol version, e.g. "1.0". The daemon serves the current and
   // the previous minor.
   string protocol_version = 4;
-  // What this worker runs on and how much it may use.
-  string backend = 5; // e.g. "cpu", "metal", "cuda"
+  // The runtime this worker executes on, which decides what hardware it
+  // needs: "cpu" and "onnx-cpu" need none, "mlx" and "coreml" need Metal,
+  // "cuda" needs CUDA. The daemon admits against the *verified* device
+  // profile, so a worker cannot claim hardware the machine never measured.
+  string backend = 5;
   uint64 max_memory_bytes = 6;
   // Ed25519 public key and signature over the descriptor fields.
   bytes public_key = 7;
   bytes signature = 8;
+  // Real declared resources (protocol 1.2). A worker that under-declares
+  // starves; one that over-declares is capacity-rejected rather than
+  // admitted into a machine that cannot hold it.
+  uint32 cpu_threads = 9;
+  // Dedicated video memory the worker may use. Zero on unified-memory
+  // machines, where the budget is max_memory_bytes and counting both would
+  // reserve the same bytes twice.
+  uint64 vram_bytes = 10;
 }
 
 // A leased unit of work. Payload is opaque here; its shape is the leased
@@ -47,6 +58,11 @@ message TaskLease {
   clipmill.shm.v1.BufferDescriptor shared_buffer = 10;
   string output_kind = 11;
   uint32 attempt = 12;
+  // Root of the daemon's content-addressed store. Workers open inputs by
+  // artifact id beneath it and verify every payload against the manifest
+  // before reading it: the store is the daemon's, and a worker that trusted
+  // it blindly would turn a corrupt object into a corrupt result.
+  string artifact_root = 13;
 }
 
 // Structured progress: real work units with a bounded estimate. A total of

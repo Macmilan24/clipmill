@@ -1,0 +1,262 @@
+//! The pinned model registry, as the daemon reads it.
+//!
+//! A model is a *versioned input to an artifact*, not an ambient capability
+//! (book ch. 11). Its identity therefore has to be a value the daemon can put
+//! in a recipe: that is the manifest digest below, computed over the pinned
+//! files rather than over the manifest's prose, so re-wording a comment does
+//! not invalidate a transcript while re-pinning a weight does.
+//!
+//! Nothing here downloads anything. Acquisition is `tools/fetch-models.sh`,
+//! outside the Local Lock; the daemon only ever reads what is already on disk,
+//! verifies it, and refuses when it does not match.
+
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
+
+use clipmill_core::Sha256Digest;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use thiserror::Error;
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ModelManifest {
+    pub name: String,
+    pub capability: String,
+    #[allow(
+        dead_code,
+        reason = "stated in the manifest for operators and the fetcher"
+    )]
+    pub family: String,
+    pub runtime: String,
+    pub backend: String,
+    pub quantization: String,
+    pub source: ModelSource,
+    pub license: ModelLicense,
+    pub memory: ModelMemory,
+    pub files: Vec<ModelFile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ModelSource {
+    pub repo: String,
+    pub revision: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ModelLicense {
+    pub spdx: String,
+    pub class: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ModelMemory {
+    pub weights_bytes: u64,
+    pub runtime_overhead_bytes: u64,
+}
+
+impl ModelMemory {
+    /// What a worker must actually have free to run this model. Admission
+    /// checks the sum, because a machine that fits the weights and not the
+    /// runtime cannot run the model either.
+    pub fn resident_bytes(&self) -> u64 {
+        self.weights_bytes
+            .saturating_add(self.runtime_overhead_bytes)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ModelFile {
+    pub path: String,
+    pub sha256: String,
+    #[allow(
+        dead_code,
+        reason = "pinned for the fetcher; the daemon only reads digests"
+    )]
+    pub bytes: u64,
+}
+
+impl ModelManifest {
+    /// The model's identity for an artifact recipe.
+    ///
+    /// Computed over the pinned name, revision, and file digests — never over
+    /// the manifest text. A comment change must not invalidate a cached
+    /// transcript, and a re-pinned weight must.
+    pub fn digest(&self) -> Sha256Digest {
+        let mut hasher = Sha256::new();
+        hasher.update(b"clipmill.model.identity.v1\0");
+        hasher.update(self.name.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(self.source.repo.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(self.source.revision.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(self.quantization.as_bytes());
+        hasher.update(b"\0");
+        // Sorted, so the manifest's file order cannot change the identity.
+        let mut files = self
+            .files
+            .iter()
+            .map(|file| (file.path.as_str(), file.sha256.as_str()))
+            .collect::<Vec<_>>();
+        files.sort_unstable();
+        for (path, sha256) in files {
+            hasher.update(path.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(sha256.as_bytes());
+            hasher.update(b"\0");
+        }
+        Sha256Digest::from_bytes(hasher.finalize().into())
+    }
+
+    /// One line an operator can read: what is pinned, and what it costs.
+    pub fn summary(&self) -> String {
+        format!(
+            "{} ({} via {} on {}, {}, {} MiB resident, {})",
+            self.name,
+            self.capability,
+            self.runtime,
+            self.backend,
+            self.quantization,
+            self.memory.resident_bytes() / (1024 * 1024),
+            self.license.spdx,
+        )
+    }
+}
+
+/// Every manifest under a registry directory, keyed by model name.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ModelRegistry {
+    models: BTreeMap<String, ModelManifest>,
+}
+
+impl ModelRegistry {
+    pub fn load(directory: &Path) -> Result<Self, ModelError> {
+        let mut models = BTreeMap::new();
+        // A daemon with no registry can still run every model-free stage, so
+        // its absence is not a startup failure.
+        let Ok(entries) = fs::read_dir(directory) else {
+            return Ok(Self::default());
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "toml") {
+                continue;
+            }
+            let text = fs::read_to_string(&path).map_err(|error| ModelError::Unreadable {
+                path: path.clone(),
+                detail: error.to_string(),
+            })?;
+            let manifest: ModelManifest =
+                toml::from_str(&text).map_err(|error| ModelError::Unreadable {
+                    path: path.clone(),
+                    detail: error.to_string(),
+                })?;
+            if manifest.files.is_empty() {
+                return Err(ModelError::Unreadable {
+                    path,
+                    detail: "a model must pin at least one file".to_owned(),
+                });
+            }
+            models.insert(manifest.name.clone(), manifest);
+        }
+        Ok(Self { models })
+    }
+
+    pub fn get(&self, name: &str) -> Option<&ModelManifest> {
+        self.models.get(name)
+    }
+
+    pub fn len(&self) -> usize {
+        self.models.len()
+    }
+
+    /// What this daemon has pinned, for the startup log. Operators asking
+    /// "which model produced this?" should not have to read TOML to find out.
+    pub fn summaries(&self) -> Vec<String> {
+        self.models.values().map(ModelManifest::summary).collect()
+    }
+
+    /// The licence classes present, so the daemon can state its rights
+    /// position rather than implying one.
+    pub fn license_classes(&self) -> std::collections::BTreeSet<&str> {
+        self.models
+            .values()
+            .map(|manifest| manifest.license.class.as_str())
+            .collect()
+    }
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum ModelError {
+    #[error("model manifest {path} is unreadable: {detail}")]
+    Unreadable { path: PathBuf, detail: String },
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use std::path::Path;
+
+    use super::ModelRegistry;
+
+    fn published_registry() -> ModelRegistry {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+        ModelRegistry::load(&path).expect("the published registry loads")
+    }
+
+    #[test]
+    fn the_published_registry_pins_every_phase_one_capability() {
+        let registry = published_registry();
+        assert!(registry.len() >= 6, "expected the phase's pinned models");
+        let capabilities = registry.summaries().join(" ");
+        for capability in ["vad", "asr", "forced-align", "detect-faces"] {
+            assert!(
+                capabilities.contains(capability),
+                "no model offers {capability}"
+            );
+        }
+        // Every pinned licence must be one that permits publication.
+        assert_eq!(
+            registry.license_classes(),
+            ["permissive"].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn a_missing_registry_is_not_a_startup_failure() {
+        let registry = ModelRegistry::load(Path::new("/nonexistent/registry")).expect("loads");
+        assert_eq!(registry.len(), 0);
+    }
+
+    /// The identity must follow the pinned bytes, not the prose around them.
+    #[test]
+    fn the_digest_tracks_the_pins_rather_than_the_manifest_text() {
+        let registry = published_registry();
+        let model = registry.get("silero-vad").expect("silero-vad is pinned");
+        let baseline = model.digest();
+
+        let mut reordered = model.clone();
+        reordered.files.reverse();
+        assert_eq!(reordered.digest(), baseline, "file order is not identity");
+
+        let mut relabelled = model.clone();
+        relabelled.family = "something else entirely".to_owned();
+        assert_eq!(relabelled.digest(), baseline, "prose is not identity");
+
+        let mut repinned = model.clone();
+        repinned.files[0].sha256 = "0".repeat(64);
+        assert_ne!(
+            repinned.digest(),
+            baseline,
+            "a re-pinned weight is a new model"
+        );
+
+        let mut moved = model.clone();
+        moved.source.revision = "f".repeat(40);
+        assert_ne!(moved.digest(), baseline, "a new revision is a new model");
+    }
+}

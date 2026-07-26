@@ -4,6 +4,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DaemonError {
+    #[error("pinned model registry is unusable: {0}")]
+    ModelRegistry(String),
     #[error("another ClipMill daemon already owns {0}")]
     AlreadyRunning(PathBuf),
     #[error("database actor stopped unexpectedly")]

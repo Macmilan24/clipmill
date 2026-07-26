@@ -828,6 +828,17 @@ impl SchedulerHandle {
         }
         self.notify.notify_one();
     }
+
+    /// What this machine actually has, as last verified. Falls back to the
+    /// boot-time limit until a device profile has been verified, so admission
+    /// is never checked against nothing.
+    pub(crate) fn machine_capacity(&self) -> ResourceCapacity {
+        self.capacity_update
+            .lock()
+            .ok()
+            .and_then(|pending| *pending)
+            .unwrap_or(self.capacity_limit)
+    }
 }
 
 impl Scheduler {
@@ -841,6 +852,7 @@ impl Scheduler {
         device_profiler: DeviceProfiler,
         media: MediaRunner,
         fonts_dir: std::path::PathBuf,
+        models: Arc<crate::models::ModelRegistry>,
         capacity: ResourceCapacity,
         builtin_fixture_executor: bool,
     ) -> Self {
@@ -862,6 +874,7 @@ impl Scheduler {
             device_profiler,
             media,
             fonts_dir,
+            models,
             capacity,
             capacity_update,
             builtin_fixture_executor,
@@ -899,6 +912,7 @@ async fn run_scheduler(
     device_profiler: DeviceProfiler,
     media: MediaRunner,
     fonts_dir: std::path::PathBuf,
+    models: Arc<crate::models::ModelRegistry>,
     capacity: ResourceCapacity,
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     builtin_fixture_executor: bool,
@@ -912,6 +926,7 @@ async fn run_scheduler(
         device_profiler,
         media,
         fonts_dir,
+        models,
     };
     let mut schedule = interval(SCHEDULER_TICK);
     schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -1007,6 +1022,7 @@ struct BuiltinExecutors {
     device_profiler: DeviceProfiler,
     media: MediaRunner,
     fonts_dir: std::path::PathBuf,
+    models: std::sync::Arc<crate::models::ModelRegistry>,
 }
 
 impl BuiltinExecutors {
@@ -1053,7 +1069,7 @@ impl BuiltinExecutors {
                 )
                 .await
             }
-            _ => execute_demo_artifact(&self.artifacts, task)
+            _ => execute_demo_artifact(&self.artifacts, &self.models, task)
                 .await
                 .map_err(TaskExecutionError::transient),
         }
@@ -1396,9 +1412,10 @@ async fn execute_device_artifact(
 
 async fn execute_demo_artifact(
     artifacts: &ArtifactHandle,
+    models: &crate::models::ModelRegistry,
     task: &LeasedTask,
 ) -> Result<ArtifactId, String> {
-    let recipe = demo_recipe(task)?;
+    let recipe = crate::recipes::worker_recipe(task, models).map_err(|error| error.to_string())?;
     match artifacts
         .prepare(recipe)
         .await
@@ -1423,33 +1440,6 @@ async fn execute_demo_artifact(
             Ok(lease.artifact_id())
         }
     }
-}
-
-pub(crate) fn demo_recipe(task: &LeasedTask) -> Result<ArtifactRecipe, String> {
-    let mut source_hasher = Sha256::new();
-    source_hasher.update(b"clipmill.demo.source.v1\0");
-    source_hasher.update(&task.payload);
-    let source_fingerprint = Sha256Digest::from_bytes(source_hasher.finalize().into());
-    let mut config = Map::new();
-    config.insert("task_kind".to_owned(), Value::String(task.kind.clone()));
-    ArtifactRecipe::try_from_spec(RecipeSpec {
-        kind: task.output_kind.clone(),
-        source_fingerprint,
-        timebase: Timebase {
-            num: 1,
-            den: 90_000,
-        },
-        producer: Producer {
-            stage: task.kind.clone(),
-            implementation: task.implementation.clone(),
-            model_digest: None,
-        },
-        inputs: task.input_artifact_ids.clone(),
-        policy: NetworkPolicy::LocalLock,
-        config,
-        semantic_version: "1.0.0".to_owned(),
-    })
-    .map_err(|error| error.to_string())
 }
 
 pub(crate) fn demo_output(task: &LeasedTask) -> Result<Vec<u8>, String> {

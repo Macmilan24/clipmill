@@ -1,0 +1,61 @@
+# The accelerated ASR primary on Apple silicon. Selected per device by measured benchmark, never by static config.
+#
+# Every file is pinned by digest and the revision is pinned by commit, so
+# `fetch-models.sh` verifies rather than trusts. The licence class is what
+# `check-models.py` enforces: weights ship inside what users publish.
+name = "qwen3-asr-mlx"
+capability = "asr"
+family = "qwen3-asr"
+runtime = "mlx"
+backend = "mlx"
+quantization = "int4"
+
+[source]
+provider = "https://huggingface.co"
+repo = "mlx-community/Qwen3-ASR-1.7B-4bit"
+revision = "78a389c776a5483b2d0d4ea5494e11012e0d6159"
+
+[license]
+spdx = "Apache-2.0"
+class = "permissive"
+
+[memory]
+# Exact on-disk weight bytes, and the allowance a runtime needs on top.
+# Admission adds them; a worker that cannot fit both is not given the task.
+weights_bytes = 1605879758
+runtime_overhead_bytes = 2147483648
+
+[[files]]
+path = "chat_template.json"
+sha256 = "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff"
+bytes = 1161
+
+[[files]]
+path = "config.json"
+sha256 = "539c6c9d482349066e2e740241e39896f3bf4de0866c245f6539c85dbb19d93c"
+bytes = 7188
+
+[[files]]
+path = "generation_config.json"
+sha256 = "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c"
+bytes = 142
+
+[[files]]
+path = "model.safetensors"
+sha256 = "9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45"
+bytes = 1603081617
+
+[[files]]
+path = "preprocessor_config.json"
+sha256 = "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"
+bytes = 330
+
+[[files]]
+path = "tokenizer_config.json"
+sha256 = "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"
+bytes = 12487
+
+[[files]]
+path = "vocab.json"
+sha256 = "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+bytes = 2776833

@@ -175,6 +175,28 @@ impl Daemon {
                     return Err(error);
                 }
             };
+        // Read once at startup: the registry is pinned configuration, and a
+        // daemon that re-read it per task could key two artifacts of one job
+        // against different model identities.
+        let models = Arc::new(
+            match crate::models::ModelRegistry::load(&config.models_dir) {
+                Ok(registry) => {
+                    for summary in registry.summaries() {
+                        tracing::info!(model = summary, "pinned model");
+                    }
+                    tracing::info!(
+                        models = registry.len(),
+                        licenses = ?registry.license_classes(),
+                        "pinned model registry loaded"
+                    );
+                    registry
+                }
+                Err(error) => {
+                    tracing::error!(%error, "pinned model registry is unreadable");
+                    return Err(DaemonError::ModelRegistry(error.to_string()));
+                }
+            },
+        );
         let scheduler = Scheduler::start(
             database.handle(),
             artifacts.handle(),
@@ -184,6 +206,7 @@ impl Daemon {
             device_profiler.clone(),
             media_runner,
             config.fonts_dir.clone(),
+            Arc::clone(&models),
             scheduler_capacity,
             config.builtin_fixture_executor,
         );
@@ -196,6 +219,8 @@ impl Daemon {
             daemon_epoch.clone(),
             &config.paths.worker_trust_dir,
             shm,
+            Arc::clone(&models),
+            config.paths.artifacts_dir.clone(),
         ) {
             Ok(service) => service,
             Err(error) => {

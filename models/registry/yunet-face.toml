@@ -1,0 +1,33 @@
+# Face detection for the reframe solver. Chosen for having no PyTorch dependency tail.
+#
+# Every file is pinned by digest and the revision is pinned by commit, so
+# `fetch-models.sh` verifies rather than trusts. The licence class is what
+# `check-models.py` enforces: weights ship inside what users publish.
+name = "yunet-face"
+capability = "detect-faces"
+family = "yunet"
+runtime = "onnxruntime"
+backend = "onnx-cpu"
+quantization = "none"
+
+[source]
+provider = "https://huggingface.co"
+repo = "opencv/opencv_zoo"
+revision = "d4938dfc9d4ec5d098bfa33e98b3f3345a236586"
+
+[license]
+spdx = "MIT"
+class = "permissive"
+file = "models/face_detection_yunet/LICENSE"
+sha256 = "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958"
+
+[memory]
+# Exact on-disk weight bytes, and the allowance a runtime needs on top.
+# Admission adds them; a worker that cannot fit both is not given the task.
+weights_bytes = 232589
+runtime_overhead_bytes = 67108864
+
+[[files]]
+path = "models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+sha256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+bytes = 232589

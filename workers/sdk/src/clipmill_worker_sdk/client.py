@@ -13,6 +13,12 @@ from pathlib import Path
 
 from clipmill.worker.v1 import worker_pb2
 
+from .artifacts import (
+    ArtifactVerificationError,
+    VerifiedArtifact,
+    artifact_file,
+    open_artifact,
+)
 from .framing import recv_frame, send_frame
 from .identity import WorkerIdentity
 from .shared_memory import MappedBuffer, map_shared_buffer
@@ -84,6 +90,26 @@ class TaskContext:
             value.CopyFrom(self._progress)
             return value
 
+    def open_artifact(self, artifact_id: str) -> VerifiedArtifact:
+        """Open one of this task's inputs, verified against its manifest.
+
+        The store belongs to the daemon; a worker that read it blindly would
+        turn a corrupt object into a corrupt result and publish it under a
+        content address claiming it is fine. Every payload is hashed before it
+        is used, and only artifacts this lease named may be opened.
+        """
+
+        if artifact_id not in self.lease.input_artifact_ids:
+            raise ArtifactVerificationError("this lease does not name that artifact as an input")
+        if not self.lease.artifact_root:
+            raise ArtifactVerificationError("the lease carried no artifact store root")
+        return open_artifact(Path(self.lease.artifact_root), artifact_id)
+
+    def artifact_file(self, artifact: VerifiedArtifact, relative: str) -> Path:
+        """Resolve one verified payload file inside an opened artifact."""
+
+        return artifact_file(artifact, relative)
+
 
 @dataclass(frozen=True, slots=True)
 class WorkerConfiguration:
@@ -92,9 +118,14 @@ class WorkerConfiguration:
     identity: WorkerIdentity
     family: str
     capabilities: tuple[str, ...]
-    protocol_version: str = "1.1"
+    protocol_version: str = "1.2"
     backend: str = "cpu"
     max_memory_bytes: int = 256 * 1024 * 1024
+    # Declared honestly: under-declaring starves the worker, over-declaring
+    # gets it capacity-rejected rather than admitted into a machine that
+    # cannot hold it.
+    cpu_threads: int = 1
+    vram_bytes: int = 0
 
 
 class WorkerClient:
@@ -310,6 +341,8 @@ class WorkerClient:
                 protocol_version=self.configuration.protocol_version,
                 backend=self.configuration.backend,
                 max_memory_bytes=self.configuration.max_memory_bytes,
+                cpu_threads=self.configuration.cpu_threads,
+                vram_bytes=self.configuration.vram_bytes,
             )
             send_frame(
                 stream,

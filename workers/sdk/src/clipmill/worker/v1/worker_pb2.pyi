@@ -48,7 +48,7 @@ FAILURE_CLASS_CORRUPT_MODEL: FailureClass
 FAILURE_CLASS_NETWORK: FailureClass
 
 class CapabilityDescriptor(_message.Message):
-    __slots__ = ("worker_id", "family", "capabilities", "protocol_version", "backend", "max_memory_bytes", "public_key", "signature")
+    __slots__ = ("worker_id", "family", "capabilities", "protocol_version", "backend", "max_memory_bytes", "public_key", "signature", "cpu_threads", "vram_bytes")
     WORKER_ID_FIELD_NUMBER: _ClassVar[int]
     FAMILY_FIELD_NUMBER: _ClassVar[int]
     CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
@@ -57,6 +57,8 @@ class CapabilityDescriptor(_message.Message):
     MAX_MEMORY_BYTES_FIELD_NUMBER: _ClassVar[int]
     PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
     SIGNATURE_FIELD_NUMBER: _ClassVar[int]
+    CPU_THREADS_FIELD_NUMBER: _ClassVar[int]
+    VRAM_BYTES_FIELD_NUMBER: _ClassVar[int]
     worker_id: str
     family: str
     capabilities: _containers.RepeatedScalarFieldContainer[str]
@@ -65,10 +67,12 @@ class CapabilityDescriptor(_message.Message):
     max_memory_bytes: int
     public_key: bytes
     signature: bytes
-    def __init__(self, worker_id: _Optional[str] = ..., family: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., protocol_version: _Optional[str] = ..., backend: _Optional[str] = ..., max_memory_bytes: _Optional[int] = ..., public_key: _Optional[bytes] = ..., signature: _Optional[bytes] = ...) -> None: ...
+    cpu_threads: int
+    vram_bytes: int
+    def __init__(self, worker_id: _Optional[str] = ..., family: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., protocol_version: _Optional[str] = ..., backend: _Optional[str] = ..., max_memory_bytes: _Optional[int] = ..., public_key: _Optional[bytes] = ..., signature: _Optional[bytes] = ..., cpu_threads: _Optional[int] = ..., vram_bytes: _Optional[int] = ...) -> None: ...
 
 class TaskLease(_message.Message):
-    __slots__ = ("task_id", "lease_id", "kind", "payload", "heartbeat_interval_ms", "lease_ttl_ms", "staging_id", "staging_dir", "input_artifact_ids", "shared_buffer", "output_kind", "attempt")
+    __slots__ = ("task_id", "lease_id", "kind", "payload", "heartbeat_interval_ms", "lease_ttl_ms", "staging_id", "staging_dir", "input_artifact_ids", "shared_buffer", "output_kind", "attempt", "artifact_root")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     LEASE_ID_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
@@ -81,6 +85,7 @@ class TaskLease(_message.Message):
     SHARED_BUFFER_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_KIND_FIELD_NUMBER: _ClassVar[int]
     ATTEMPT_FIELD_NUMBER: _ClassVar[int]
+    ARTIFACT_ROOT_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     lease_id: str
     kind: str
@@ -93,7 +98,8 @@ class TaskLease(_message.Message):
     shared_buffer: _shm_pb2.BufferDescriptor
     output_kind: str
     attempt: int
-    def __init__(self, task_id: _Optional[str] = ..., lease_id: _Optional[str] = ..., kind: _Optional[str] = ..., payload: _Optional[bytes] = ..., heartbeat_interval_ms: _Optional[int] = ..., lease_ttl_ms: _Optional[int] = ..., staging_id: _Optional[str] = ..., staging_dir: _Optional[str] = ..., input_artifact_ids: _Optional[_Iterable[str]] = ..., shared_buffer: _Optional[_Union[_shm_pb2.BufferDescriptor, _Mapping]] = ..., output_kind: _Optional[str] = ..., attempt: _Optional[int] = ...) -> None: ...
+    artifact_root: str
+    def __init__(self, task_id: _Optional[str] = ..., lease_id: _Optional[str] = ..., kind: _Optional[str] = ..., payload: _Optional[bytes] = ..., heartbeat_interval_ms: _Optional[int] = ..., lease_ttl_ms: _Optional[int] = ..., staging_id: _Optional[str] = ..., staging_dir: _Optional[str] = ..., input_artifact_ids: _Optional[_Iterable[str]] = ..., shared_buffer: _Optional[_Union[_shm_pb2.BufferDescriptor, _Mapping]] = ..., output_kind: _Optional[str] = ..., attempt: _Optional[int] = ..., artifact_root: _Optional[str] = ...) -> None: ...
 
 class ProgressUnits(_message.Message):
     __slots__ = ("unit", "done", "total")

@@ -12,6 +12,8 @@ mod ipc;
 mod jobs;
 mod lock;
 mod media;
+mod models;
+mod recipes;
 mod render;
 mod service;
 #[cfg(unix)]
