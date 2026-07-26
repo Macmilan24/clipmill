@@ -110,13 +110,20 @@ case "$ffmpeg_version_output" in
 esac
 ffmpeg_filters_output="$(.cache/bin/ffmpeg -hide_banner -filters 2>/dev/null)"
 for filter in subtitles ass; do
-  if ! printf '%s\n' "$ffmpeg_filters_output" | grep -Eq "^ *[.TSC]+ +$filter +"; then
+  # A here-string rather than a pipe: `grep -q` stops at its first match, and a
+  # writer still mid-output gets EPIPE, which `pipefail` would report as a
+  # failed probe. That race is not reproducible on demand, so it must not be
+  # possible at all.
+  if ! grep -Eq "^ *[.TSC]+ +$filter +" <<<"$ffmpeg_filters_output"; then
     echo "fetch-ffmpeg: the pinned FFmpeg build has no $filter filter" >&2
     exit 1
   fi
 done
 
-.cache/bin/ffmpeg -version | head -1
-.cache/bin/ffprobe -version | head -1
+# Same reason: capture, then take the first line, rather than piping into a
+# reader that exits early.
+printf '%s\n' "${ffmpeg_version_output%%$'\n'*}"
+ffprobe_version_output="$(.cache/bin/ffprobe -hide_banner -version)"
+printf '%s\n' "${ffprobe_version_output%%$'\n'*}"
 echo "font: $font_family $font_style ($(bom_get fonts.captions license)) at $font_target"
 echo "fetch-ffmpeg: OK (.cache/bin, .cache/fonts; libass present)"
