@@ -91,6 +91,9 @@ pub(crate) struct WorkerService {
     shm: ShmBroker,
     models: Arc<ModelRegistry>,
     artifact_root: Arc<PathBuf>,
+    /// Where the pinned weights were installed. Handed to workers on the
+    /// lease; never part of any artifact key.
+    weights_root: Arc<PathBuf>,
     accepting_work: Arc<AtomicBool>,
     drop_completion_ack_once: Arc<AtomicBool>,
 }
@@ -107,6 +110,7 @@ impl WorkerService {
         shm: ShmBroker,
         models: Arc<ModelRegistry>,
         artifact_root: PathBuf,
+        weights_root: PathBuf,
     ) -> Result<Self, WorkerError> {
         Ok(Self {
             database,
@@ -119,6 +123,7 @@ impl WorkerService {
             shm,
             models,
             artifact_root: Arc::new(artifact_root),
+            weights_root: Arc::new(weights_root),
             accepting_work: Arc::new(AtomicBool::new(true)),
             drop_completion_ack_once: Arc::new(AtomicBool::new(
                 std::env::var_os("CLIPMILL_TEST_DROP_COMPLETION_ACK_ONCE")
@@ -364,6 +369,15 @@ impl WorkerService {
                         output_kind: task.output_kind.clone(),
                         attempt: task.attempt,
                         artifact_root: self.artifact_root.to_string_lossy().into_owned(),
+                        // Only what this stage was registered to run. A worker
+                        // handed every pinned model would be free to choose,
+                        // and the artifact key would still name the one the
+                        // registry expected.
+                        models: recipes::lookup(&task.kind)
+                            .and_then(|recipe| recipe.model)
+                            .and_then(|name| self.models.binding(name, &self.weights_root))
+                            .into_iter()
+                            .collect(),
                     };
                     *active = Some(ActiveLease {
                         task,

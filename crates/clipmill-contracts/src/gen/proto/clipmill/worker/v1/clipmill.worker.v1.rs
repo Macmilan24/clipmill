@@ -43,7 +43,7 @@ pub struct CapabilityDescriptor {
 }
 /// A leased unit of work. Payload is opaque here; its shape is the leased
 /// stage's own versioned contract.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TaskLease {
     #[prost(string, tag = "1")]
     pub task_id: ::prost::alloc::string::String,
@@ -78,6 +78,51 @@ pub struct TaskLease {
     /// it blindly would turn a corrupt object into a corrupt result.
     #[prost(string, tag = "13")]
     pub artifact_root: ::prost::alloc::string::String,
+    /// Weights this task may load, resolved from the daemon's pinned registry.
+    ///
+    /// Paths travel here rather than in the payload because the payload is
+    /// hashed into the artifact key: a machine-specific directory in the key
+    /// would give the same transcript two different content addresses on two
+    /// machines. What identifies the model — its manifest digest — reaches the
+    /// key through the recipe instead.
+    #[prost(message, repeated, tag = "14")]
+    pub models: ::prost::alloc::vec::Vec<ModelBinding>,
+}
+/// Where one pinned model's files are, and what they must hash to.
+///
+/// The daemon fetched and verified these before the lease was issued, and the
+/// worker verifies them again before loading. That is not redundant: weights
+/// are executable-adjacent inputs read by a parser, the acquisition and the
+/// load can be separated by days, and "the daemon checked it earlier" is not a
+/// statement about the bytes on disk right now.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ModelBinding {
+    /// Registry name, e.g. "silero-vad".
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Absolute directory containing the pinned files.
+    #[prost(string, tag = "2")]
+    pub root: ::prost::alloc::string::String,
+    /// sha256:... over the pinned revision and file digests. The worker echoes
+    /// this as the producing model's identity in the artifact it publishes.
+    #[prost(string, tag = "3")]
+    pub digest: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "4")]
+    pub files: ::prost::alloc::vec::Vec<ModelFile>,
+    /// What the model does: "vad", "asr", "forced-align".
+    #[prost(string, tag = "5")]
+    pub capability: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ModelFile {
+    /// Path relative to ModelBinding.root.
+    #[prost(string, tag = "1")]
+    pub path: ::prost::alloc::string::String,
+    /// Bare lowercase hex, matching the pinned manifest.
+    #[prost(string, tag = "2")]
+    pub sha256: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub bytes: u64,
 }
 /// Structured progress: real work units with a bounded estimate. A total of
 /// zero means the total is not yet known.
@@ -243,14 +288,14 @@ pub mod worker_request {
         Decline(super::Decline),
     }
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WorkerResponse {
     #[prost(oneof = "worker_response::Body", tags = "1, 2, 3, 4, 5, 6, 7, 8")]
     pub body: ::core::option::Option<worker_response::Body>,
 }
 /// Nested message and enum types in `WorkerResponse`.
 pub mod worker_response {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Body {
         #[prost(message, tag = "1")]
         Challenge(super::RegistrationChallenge),

@@ -221,6 +221,7 @@ impl Daemon {
             shm,
             Arc::clone(&models),
             config.paths.artifacts_dir.clone(),
+            config.weights_dir.clone(),
         ) {
             Ok(service) => service,
             Err(error) => {

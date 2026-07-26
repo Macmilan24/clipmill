@@ -280,6 +280,62 @@ class RenderClipPayloadV1(_message.Message):
     ai_assistance: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, key_version: _Optional[str] = ..., doc_id: _Optional[str] = ..., ir_artifact_id: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ...) -> None: ...
 
+class TranscribeSourcePayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "language", "detection")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    DETECTION_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    language: str
+    detection: SpeechDetectionV1
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., detection: _Optional[_Union[SpeechDetectionV1, _Mapping]] = ...) -> None: ...
+
+class SpeechDetectionV1(_message.Message):
+    __slots__ = ("threshold", "min_speech_ticks", "min_silence_ticks", "speech_pad_ticks")
+    THRESHOLD_FIELD_NUMBER: _ClassVar[int]
+    MIN_SPEECH_TICKS_FIELD_NUMBER: _ClassVar[int]
+    MIN_SILENCE_TICKS_FIELD_NUMBER: _ClassVar[int]
+    SPEECH_PAD_TICKS_FIELD_NUMBER: _ClassVar[int]
+    threshold: float
+    min_speech_ticks: int
+    min_silence_ticks: int
+    speech_pad_ticks: int
+    def __init__(self, threshold: _Optional[float] = ..., min_speech_ticks: _Optional[int] = ..., min_silence_ticks: _Optional[int] = ..., speech_pad_ticks: _Optional[int] = ...) -> None: ...
+
+class SpeechStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "source_fingerprint", "audio_artifact_id", "detection", "recognition", "alignment")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    AUDIO_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    DETECTION_FIELD_NUMBER: _ClassVar[int]
+    RECOGNITION_FIELD_NUMBER: _ClassVar[int]
+    ALIGNMENT_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    source_fingerprint: str
+    audio_artifact_id: str
+    detection: SpeechDetectionV1
+    recognition: SpeechRecognitionV1
+    alignment: SpeechAlignmentV1
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., audio_artifact_id: _Optional[str] = ..., detection: _Optional[_Union[SpeechDetectionV1, _Mapping]] = ..., recognition: _Optional[_Union[SpeechRecognitionV1, _Mapping]] = ..., alignment: _Optional[_Union[SpeechAlignmentV1, _Mapping]] = ...) -> None: ...
+
+class SpeechRecognitionV1(_message.Message):
+    __slots__ = ("language", "conditioned_on_previous")
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    CONDITIONED_ON_PREVIOUS_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    conditioned_on_previous: bool
+    def __init__(self, language: _Optional[str] = ..., conditioned_on_previous: _Optional[bool] = ...) -> None: ...
+
+class SpeechAlignmentV1(_message.Message):
+    __slots__ = ("min_score",)
+    MIN_SCORE_FIELD_NUMBER: _ClassVar[int]
+    min_score: float
+    def __init__(self, min_score: _Optional[float] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

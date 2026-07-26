@@ -16,6 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use clipmill_contracts::proto::worker::v1::{ModelBinding, ModelFile as ModelFileBinding};
 use clipmill_core::Sha256Digest;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -71,10 +72,8 @@ impl ModelMemory {
 pub(crate) struct ModelFile {
     pub path: String,
     pub sha256: String,
-    #[allow(
-        dead_code,
-        reason = "pinned for the fetcher; the daemon only reads digests"
-    )]
+    /// Carried through to the worker so a truncated file is refused before an
+    /// ONNX parser is pointed at it, rather than after.
     pub bytes: u64,
 }
 
@@ -179,6 +178,40 @@ impl ModelRegistry {
         self.models.values().map(ModelManifest::summary).collect()
     }
 
+    /// What a worker needs to load one pinned model: where the files are, and
+    /// what each must hash to.
+    ///
+    /// The path travels on the lease rather than in the task payload because
+    /// the payload is hashed into the artifact key, and a machine-specific
+    /// directory in the key would give one transcript two content addresses
+    /// on two machines. Identity reaches the key by a different road: the
+    /// manifest digest, through the recipe.
+    ///
+    /// Nothing is verified here. The daemon hands over the digests it pinned
+    /// and the worker checks the bytes immediately before loading them, which
+    /// is the only check close enough to the load to mean anything.
+    pub fn binding(&self, name: &str, weights_root: &Path) -> Option<ModelBinding> {
+        let manifest = self.get(name)?;
+        Some(ModelBinding {
+            name: manifest.name.clone(),
+            root: weights_root
+                .join(&manifest.name)
+                .to_string_lossy()
+                .into_owned(),
+            digest: manifest.digest().to_string(),
+            capability: manifest.capability.clone(),
+            files: manifest
+                .files
+                .iter()
+                .map(|file| ModelFileBinding {
+                    path: file.path.clone(),
+                    sha256: file.sha256.clone(),
+                    bytes: file.bytes,
+                })
+                .collect(),
+        })
+    }
+
     /// The licence classes present, so the daemon can state its rights
     /// position rather than implying one.
     pub fn license_classes(&self) -> std::collections::BTreeSet<&str> {
@@ -245,6 +278,51 @@ mod tests {
                 "{capability} is pinned only on accelerated backends"
             );
         }
+    }
+
+    /// The binding is what a worker actually loads from, so it has to carry
+    /// enough to refuse a bad file — and it must not carry the model's path
+    /// anywhere the artifact key can see it.
+    #[test]
+    fn a_binding_hands_over_a_path_and_the_digests_to_check_it_against() {
+        let registry = published_registry();
+        let binding = registry
+            .binding("silero-vad", Path::new("/opt/clipmill/models"))
+            .expect("silero-vad is pinned");
+
+        assert_eq!(binding.root, "/opt/clipmill/models/silero-vad");
+        assert_eq!(binding.capability, "vad");
+        assert_eq!(
+            binding.digest,
+            registry
+                .get("silero-vad")
+                .expect("pinned")
+                .digest()
+                .to_string(),
+            "the worker echoes this as the producing model's identity"
+        );
+        assert!(!binding.files.is_empty());
+        for file in &binding.files {
+            assert_eq!(file.sha256.len(), 64, "a bare hex digest, as pinned");
+            assert!(
+                file.bytes > 0,
+                "so a truncated file is refused before it is parsed"
+            );
+        }
+
+        // The directory is the only machine-specific value here, and it lives
+        // on the lease rather than in the payload the recipe hashes.
+        let elsewhere = registry
+            .binding("silero-vad", Path::new("/somewhere/else"))
+            .expect("pinned");
+        assert_ne!(elsewhere.root, binding.root);
+        assert_eq!(elsewhere.digest, binding.digest);
+    }
+
+    #[test]
+    fn a_model_nobody_pinned_has_no_binding() {
+        let registry = published_registry();
+        assert!(registry.binding("not-a-model", Path::new("/opt")).is_none());
     }
 
     #[test]

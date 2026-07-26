@@ -257,6 +257,83 @@ pub struct RenderClipPayloadV1 {
     #[prost(string, repeated, tag = "6")]
     pub ai_assistance: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+/// Versioned payload for the speech chain (book ch. 13): voice activity, then
+/// recognition, then forced alignment, then the assembly that fuses them. The
+/// request names a source; the daemon resolves it to the 16 kHz rendition
+/// ingest already produced, because a speech worker's job is to read what was
+/// decoded once, not to open the original file again.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TranscribeSourcePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// BCP 47 primary subtag, or empty to let the recognizer decide.
+    #[prost(string, tag = "3")]
+    pub language: ::prost::alloc::string::String,
+    /// Zero leaves each parameter at the daemon's default, so a caller with no
+    /// opinion does not have to have one.
+    #[prost(message, optional, tag = "4")]
+    pub detection: ::core::option::Option<SpeechDetectionV1>,
+}
+/// Where speech is judged to be. These are the operator-facing knobs: raising
+/// the threshold transcribes less and risks clipping a quiet sentence, and
+/// lengthening the minimum silence merges two utterances into one.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct SpeechDetectionV1 {
+    #[prost(double, tag = "1")]
+    pub threshold: f64,
+    #[prost(uint64, tag = "2")]
+    pub min_speech_ticks: u64,
+    #[prost(uint64, tag = "3")]
+    pub min_silence_ticks: u64,
+    #[prost(uint64, tag = "4")]
+    pub speech_pad_ticks: u64,
+}
+/// What one stage of the speech chain is asked to do.
+///
+/// Deliberately narrower than the job payload above: this is hashed into the
+/// stage's artifact key, so anything a stage does not read must not appear
+/// here. A recognizer payload carrying the voice-activity threshold would make
+/// re-tuning voice activity invalidate every cached transcript, including the
+/// ones whose inputs did not change at all.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpeechStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    /// The 16 kHz mono rendition. A content address, so the key it produces is
+    /// the same on every machine.
+    #[prost(string, tag = "4")]
+    pub audio_artifact_id: ::prost::alloc::string::String,
+    /// Exactly one of the following is set, matching `stage`.
+    #[prost(message, optional, tag = "5")]
+    pub detection: ::core::option::Option<SpeechDetectionV1>,
+    #[prost(message, optional, tag = "6")]
+    pub recognition: ::core::option::Option<SpeechRecognitionV1>,
+    #[prost(message, optional, tag = "7")]
+    pub alignment: ::core::option::Option<SpeechAlignmentV1>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SpeechRecognitionV1 {
+    #[prost(string, tag = "1")]
+    pub language: ::prost::alloc::string::String,
+    /// Whether each window may see the previous window's text. False by default:
+    /// one bad window should not be able to poison the rest of the recording.
+    #[prost(bool, tag = "2")]
+    pub conditioned_on_previous: bool,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct SpeechAlignmentV1 {
+    /// Below this, a span is reported unaligned rather than placed. An aligner
+    /// that always answers is an aligner whose answers cannot be trusted.
+    #[prost(double, tag = "1")]
+    pub min_score: f64,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.
