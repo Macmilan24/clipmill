@@ -143,7 +143,9 @@
     ]
   },
   "rights": {
-    "gates_passed": ["duration_60s"],
+    "gates_passed": [
+      "duration_60s"
+    ],
     "source_attestation": "own_content"
   },
   "schema_version": "clipmill.render.clip.v1"

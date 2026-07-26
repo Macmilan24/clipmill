@@ -1,6 +1,9 @@
 {
   "ai_use_summary": {
-    "assistance": ["asr_captions", "reframe"],
+    "assistance": [
+      "asr_captions",
+      "reframe"
+    ],
     "generated": [],
     "requires_youtube_ai_disclosure": false
   },
@@ -164,7 +167,9 @@
     ]
   },
   "rights": {
-    "gates_passed": ["duration_60s"],
+    "gates_passed": [
+      "duration_60s"
+    ],
     "source_attestation": "own_content"
   },
   "schema_version": "clipmill.render.clip.v1"
