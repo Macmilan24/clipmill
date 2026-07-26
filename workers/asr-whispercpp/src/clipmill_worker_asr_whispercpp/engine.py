@@ -20,6 +20,7 @@ accelerator would make the declaration false in both directions.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -49,7 +50,10 @@ class WhisperCppRecognizer:
         self.language = language
         self._whisper = Model(
             str(model.path(weights)),
-            redirect_whispercpp_logs_to=False,
+            # whisper.cpp narrates its model load on stderr. The daemon already
+            # captures a worker's output, and thirty lines of tensor shapes per
+            # lease buries the diagnostics that matter.
+            redirect_whispercpp_logs_to=os.devnull,
             context_params=ContextParams(use_gpu=False),
             n_threads=1,
             temperature=0.0,

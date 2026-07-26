@@ -88,6 +88,15 @@ gate-ingest:
 gate-worker2:
     ./tools/drills/worker2-drill.sh 1
 
+# W15 coverage: the speech chain. Stage algorithms against hand-written inputs
+# — the cases no real recording contains — then the pinned models over a
+# fixture whose word timing is known by construction rather than by
+# annotation: voice activity finds the utterances the fixture was built from,
+# recognition returns its words, alignment places them within 120 ms, and a
+# second run produces byte-identical output.
+gate-speech iterations="1":
+    ./tools/drills/speech-drill.sh {{iterations}}
+
 # W13 coverage — the first-slice milestone: the published Edit IR renders to a
 # 1080x1920 clip with burned karaoke captions, matching sidecars, normalised
 # loudness, and a manifest whose digests match its files; the same document
