@@ -92,9 +92,14 @@ class WorkerConfiguration:
     identity: WorkerIdentity
     family: str
     capabilities: tuple[str, ...]
-    protocol_version: str = "1.1"
+    protocol_version: str = "1.2"
     backend: str = "cpu"
     max_memory_bytes: int = 256 * 1024 * 1024
+    # Declared honestly: under-declaring starves the worker, over-declaring
+    # gets it capacity-rejected rather than admitted into a machine that
+    # cannot hold it.
+    cpu_threads: int = 1
+    vram_bytes: int = 0
 
 
 class WorkerClient:
@@ -310,6 +315,8 @@ class WorkerClient:
                 protocol_version=self.configuration.protocol_version,
                 backend=self.configuration.backend,
                 max_memory_bytes=self.configuration.max_memory_bytes,
+                cpu_threads=self.configuration.cpu_threads,
+                vram_bytes=self.configuration.vram_bytes,
             )
             send_frame(
                 stream,

@@ -17,9 +17,10 @@ pub struct CapabilityDescriptor {
     /// the previous minor.
     #[prost(string, tag = "4")]
     pub protocol_version: ::prost::alloc::string::String,
-    /// What this worker runs on and how much it may use.
-    ///
-    /// e.g. "cpu", "metal", "cuda"
+    /// The runtime this worker executes on, which decides what hardware it
+    /// needs: "cpu" and "onnx-cpu" need none, "mlx" and "coreml" need Metal,
+    /// "cuda" needs CUDA. The daemon admits against the *verified* device
+    /// profile, so a worker cannot claim hardware the machine never measured.
     #[prost(string, tag = "5")]
     pub backend: ::prost::alloc::string::String,
     #[prost(uint64, tag = "6")]
@@ -29,6 +30,16 @@ pub struct CapabilityDescriptor {
     pub public_key: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "8")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
+    /// Real declared resources (protocol 1.2). A worker that under-declares
+    /// starves; one that over-declares is capacity-rejected rather than
+    /// admitted into a machine that cannot hold it.
+    #[prost(uint32, tag = "9")]
+    pub cpu_threads: u32,
+    /// Dedicated video memory the worker may use. Zero on unified-memory
+    /// machines, where the budget is max_memory_bytes and counting both would
+    /// reserve the same bytes twice.
+    #[prost(uint64, tag = "10")]
+    pub vram_bytes: u64,
 }
 /// A leased unit of work. Payload is opaque here; its shape is the leased
 /// stage's own versioned contract.

@@ -42,8 +42,39 @@ use crate::{
 const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
-const CURRENT_PROTOCOL: &str = "1.1";
-const PREVIOUS_PROTOCOL: &str = "1.0";
+const CURRENT_PROTOCOL: &str = "1.2";
+const PREVIOUS_PROTOCOL: &str = "1.1";
+
+/// Runtimes a worker may declare, and the accelerator class each one needs.
+///
+/// The names are runtimes rather than chips, because that is what a worker
+/// actually knows about itself. Mapping to an accelerator class is the
+/// daemon's job, and doing it in one place is what stops "mlx" and "metal"
+/// from drifting into two different meanings.
+const BACKENDS: [(&str, BackendRequirement); 6] = [
+    ("cpu", BackendRequirement::CpuOnly),
+    ("onnx-cpu", BackendRequirement::CpuOnly),
+    ("mlx", BackendRequirement::Accelerator("metal")),
+    ("coreml", BackendRequirement::Accelerator("metal")),
+    // Protocol 1.1 workers named the chip, not the runtime.
+    ("metal", BackendRequirement::Accelerator("metal")),
+    ("cuda", BackendRequirement::Accelerator("cuda")),
+];
+
+/// What a backend needs the machine to have.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BackendRequirement {
+    CpuOnly,
+    /// The accelerator class the verified device profile must report.
+    Accelerator(&'static str),
+}
+
+fn backend_requirement(backend: &str) -> Option<BackendRequirement> {
+    BACKENDS
+        .iter()
+        .find(|(name, _)| *name == backend)
+        .map(|(_, requirement)| *requirement)
+}
 const NO_WORK_MAX_WAIT: Duration = Duration::from_secs(1);
 const NO_WORK_RETRY: Duration = Duration::from_millis(250);
 const SIGNING_DOMAIN: &[u8] = b"clipmill.worker.registration.v1\0";
@@ -209,6 +240,13 @@ impl WorkerService {
         result
     }
 
+    fn admitted_capacity(
+        &self,
+        descriptor: &CapabilityDescriptor,
+    ) -> Result<ResourceCapacity, &'static str> {
+        admit_capacity(descriptor, self.scheduler.machine_capacity())
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn pull_task(
         &self,
@@ -227,17 +265,21 @@ impl WorkerService {
         if !wait.is_zero() {
             sleep(wait).await;
         }
-        if descriptor.backend != "cpu" {
-            return Err(WorkerError::Protocol(
-                "Phase 0 demo tasks require the declared cpu backend",
-            ));
-        }
-        let capacity = ResourceCapacity {
-            cpu_threads: 1,
-            ram_bytes: descriptor.max_memory_bytes,
-            disk_bytes: 512 * 1024 * 1024,
-            accelerator_mask: 0,
-            vram_bytes: 0,
+        let capacity = match self.admitted_capacity(descriptor) {
+            Ok(capacity) => capacity,
+            Err(detail) => {
+                tracing::info!(
+                    worker_id = descriptor.worker_id,
+                    backend = descriptor.backend,
+                    detail,
+                    "worker declined: declared resources exceed the verified device"
+                );
+                return Ok(WorkerResponse {
+                    body: Some(worker_response::Body::NoWork(NoWork {
+                        retry_after_ms: duration_millis(NO_WORK_RETRY),
+                    })),
+                });
+            }
         };
         for _cache_attempt in 0..8 {
             let now = now_millis();
@@ -686,12 +728,28 @@ fn validate_registration(
         descriptor.protocol_version.as_str(),
         CURRENT_PROTOCOL | PREVIOUS_PROTOCOL
     ) || !valid_word(&descriptor.family)
-        || !matches!(descriptor.backend.as_str(), "cpu" | "metal" | "cuda")
+        || backend_requirement(&descriptor.backend).is_none()
         || descriptor.max_memory_bytes == 0
         || descriptor.max_memory_bytes > i64::MAX as u64
+        || descriptor.vram_bytes > i64::MAX as u64
         || descriptor.capabilities.is_empty()
         || descriptor.capabilities.len() > 64
     {
+        return Err(WorkerError::InvalidDescriptor);
+    }
+    // A 1.1 worker declares no thread count and is taken at its word as one.
+    // A 1.2 worker that declares an absurd one is refused rather than left to
+    // starve every other stage on the machine.
+    if descriptor.protocol_version == CURRENT_PROTOCOL
+        && (descriptor.cpu_threads == 0 || descriptor.cpu_threads > 1024)
+    {
+        return Err(WorkerError::InvalidDescriptor);
+    }
+    if descriptor.protocol_version == PREVIOUS_PROTOCOL
+        && (descriptor.cpu_threads != 0 || descriptor.vram_bytes != 0)
+    {
+        // Those fields are not covered by a 1.1 signature, so honouring them
+        // would let an attacker widen a worker's budget without resigning.
         return Err(WorkerError::InvalidDescriptor);
     }
     let mut previous = None;
@@ -738,8 +796,63 @@ pub(crate) fn registration_preimage(
     bytes.extend_from_slice(descriptor.backend.as_bytes());
     bytes.push(0);
     bytes.extend_from_slice(&descriptor.max_memory_bytes.to_be_bytes());
+    // Protocol 1.2 added declared resources. They join the preimage so a
+    // worker cannot widen its own budget after signing; 1.1 signatures keep
+    // their original shape, which is what lets both versions be served.
+    if descriptor.protocol_version == CURRENT_PROTOCOL {
+        bytes.extend_from_slice(&descriptor.cpu_threads.to_be_bytes());
+        bytes.extend_from_slice(&descriptor.vram_bytes.to_be_bytes());
+    }
     bytes.extend_from_slice(&descriptor.public_key);
     bytes
+}
+
+/// What a worker may actually reserve.
+///
+/// The declaration is a request, not a fact: it is clamped by what the
+/// verified device profile measured, so a worker cannot claim hardware this
+/// machine never had. On unified memory the same bytes back both system and
+/// video allocations, so counting VRAM separately would reserve them twice
+/// and starve the machine at half load.
+fn admit_capacity(
+    descriptor: &CapabilityDescriptor,
+    machine: ResourceCapacity,
+) -> Result<ResourceCapacity, &'static str> {
+    let requirement =
+        backend_requirement(&descriptor.backend).ok_or("backend is not one this daemon serves")?;
+    let accelerator_mask = match requirement {
+        BackendRequirement::CpuOnly => 0,
+        BackendRequirement::Accelerator(class) => {
+            let bit = crate::jobs::accelerator_bit(class)
+                .ok_or("backend maps to no accelerator class")?;
+            if machine.accelerator_mask & bit == 0 {
+                return Err("the verified device profile measured no such accelerator");
+            }
+            bit
+        }
+    };
+    let cpu_threads = descriptor.cpu_threads.max(1);
+    if cpu_threads > machine.cpu_threads {
+        return Err("declared threads exceed the machine");
+    }
+    if descriptor.max_memory_bytes > machine.ram_bytes {
+        return Err("declared memory exceeds the machine");
+    }
+    // Unified memory: one budget, and it was already counted as RAM.
+    let vram_bytes = if machine.vram_bytes == 0 {
+        0
+    } else if descriptor.vram_bytes > machine.vram_bytes {
+        return Err("declared video memory exceeds the machine");
+    } else {
+        descriptor.vram_bytes
+    };
+    Ok(ResourceCapacity {
+        cpu_threads,
+        ram_bytes: descriptor.max_memory_bytes,
+        disk_bytes: machine.disk_bytes,
+        accelerator_mask,
+        vram_bytes,
+    })
 }
 
 fn valid_word(value: &str) -> bool {
@@ -962,8 +1075,9 @@ mod tests {
     use tokio::io::AsyncWriteExt;
 
     use super::{
-        ActiveWorker, MAX_FRAME_BYTES, WorkerError, read_request, registration_preimage,
-        valid_word, validate_registration,
+        ActiveWorker, CURRENT_PROTOCOL, MAX_FRAME_BYTES, PREVIOUS_PROTOCOL, ResourceCapacity,
+        WorkerError, admit_capacity, read_request, registration_preimage, valid_word,
+        validate_registration,
     };
 
     fn signed_descriptor(
@@ -972,7 +1086,10 @@ mod tests {
         let signing = SigningKey::from_bytes(&[7; 32]);
         let challenge = RegistrationChallenge {
             nonce: vec![8; 32],
-            supported_protocol_versions: vec!["1.1".to_owned(), "1.0".to_owned()],
+            supported_protocol_versions: vec![
+                CURRENT_PROTOCOL.to_owned(),
+                PREVIOUS_PROTOCOL.to_owned(),
+            ],
             issued_unix_millis: 1,
         };
         let mut descriptor = CapabilityDescriptor {
@@ -984,6 +1101,9 @@ mod tests {
             max_memory_bytes: 1024,
             public_key: signing.verifying_key().to_bytes().to_vec(),
             signature: Vec::new(),
+            // Only 1.2 signs these, so a 1.1 descriptor must leave them unset.
+            cpu_threads: u32::from(protocol_version == CURRENT_PROTOCOL),
+            vram_bytes: 0,
         };
         descriptor.signature = signing
             .sign(&registration_preimage(&challenge, &descriptor))
@@ -996,24 +1116,142 @@ mod tests {
     fn registration_preimage_is_order_sensitive_and_excludes_signature() {
         let challenge = RegistrationChallenge {
             nonce: vec![7; 32],
-            supported_protocol_versions: vec!["1.1".to_owned()],
+            supported_protocol_versions: vec![CURRENT_PROTOCOL.to_owned()],
             issued_unix_millis: 1,
         };
         let mut descriptor = CapabilityDescriptor {
             worker_id: "wrk_01J00000000000000000000000".to_owned(),
             family: "echo".to_owned(),
             capabilities: vec!["demo-left".to_owned(), "demo-right".to_owned()],
-            protocol_version: "1.1".to_owned(),
+            protocol_version: CURRENT_PROTOCOL.to_owned(),
             backend: "cpu".to_owned(),
             max_memory_bytes: 1024,
             public_key: vec![3; 32],
             signature: vec![4; 64],
+            cpu_threads: 1,
+            vram_bytes: 0,
         };
         let first = registration_preimage(&challenge, &descriptor);
         descriptor.signature = vec![9; 64];
         assert_eq!(first, registration_preimage(&challenge, &descriptor));
         descriptor.capabilities.reverse();
         assert_ne!(first, registration_preimage(&challenge, &descriptor));
+    }
+
+    fn machine(threads: u32, ram: u64, mask: u32, vram: u64) -> ResourceCapacity {
+        ResourceCapacity {
+            cpu_threads: threads,
+            ram_bytes: ram,
+            disk_bytes: 512 * 1024 * 1024,
+            accelerator_mask: mask,
+            vram_bytes: vram,
+        }
+    }
+
+    fn declaring(backend: &str, threads: u32, ram: u64, vram: u64) -> CapabilityDescriptor {
+        CapabilityDescriptor {
+            worker_id: "wrk_01J00000000000000000000000".to_owned(),
+            family: "asr".to_owned(),
+            capabilities: vec!["demo-left".to_owned()],
+            protocol_version: CURRENT_PROTOCOL.to_owned(),
+            backend: backend.to_owned(),
+            max_memory_bytes: ram,
+            public_key: vec![3; 32],
+            signature: vec![4; 64],
+            cpu_threads: threads,
+            vram_bytes: vram,
+        }
+    }
+
+    const METAL: u32 = 1 << 4;
+
+    /// A worker declaring an accelerator this machine never measured is
+    /// declined, not admitted and left to fail at load time.
+    #[test]
+    fn a_worker_cannot_claim_hardware_the_device_never_measured() {
+        let cpu_only = machine(8, 16 << 30, 0, 0);
+        assert!(admit_capacity(&declaring("mlx", 2, 4 << 30, 0), cpu_only).is_err());
+        assert!(admit_capacity(&declaring("cuda", 2, 4 << 30, 0), cpu_only).is_err());
+        // A CPU runtime needs no accelerator and is admitted on the same box.
+        let admitted = admit_capacity(&declaring("onnx-cpu", 2, 4 << 30, 0), cpu_only)
+            .expect("a cpu runtime fits a cpu machine");
+        assert_eq!(admitted.accelerator_mask, 0);
+        assert_eq!(admitted.cpu_threads, 2);
+    }
+
+    #[test]
+    fn an_accelerated_worker_is_admitted_where_the_accelerator_exists() {
+        let apple = machine(10, 32 << 30, METAL, 0);
+        let admitted =
+            admit_capacity(&declaring("mlx", 4, 8 << 30, 0), apple).expect("metal is available");
+        assert_eq!(admitted.accelerator_mask, METAL);
+        assert_eq!(admitted.ram_bytes, 8 << 30);
+    }
+
+    /// On unified memory the same bytes back both allocations, so counting
+    /// VRAM again would reserve them twice and starve the machine at half load.
+    #[test]
+    fn unified_memory_is_budgeted_once() {
+        let apple = machine(10, 32 << 30, METAL, 0);
+        let admitted = admit_capacity(&declaring("mlx", 4, 8 << 30, 6 << 30), apple)
+            .expect("unified memory is one budget");
+        assert_eq!(admitted.vram_bytes, 0, "VRAM was already counted as RAM");
+
+        // A discrete card is a separate budget and is checked on its own.
+        let discrete = machine(16, 64 << 30, 1 << 2, 8 << 30);
+        let admitted = admit_capacity(&declaring("cuda", 4, 8 << 30, 6 << 30), discrete)
+            .expect("the card holds it");
+        assert_eq!(admitted.vram_bytes, 6 << 30);
+        assert!(admit_capacity(&declaring("cuda", 4, 8 << 30, 12 << 30), discrete).is_err());
+    }
+
+    #[test]
+    fn over_declared_resources_are_refused_rather_than_clamped() {
+        let small = machine(2, 4 << 30, 0, 0);
+        assert!(admit_capacity(&declaring("cpu", 8, 1 << 30, 0), small).is_err());
+        assert!(admit_capacity(&declaring("cpu", 1, 32 << 30, 0), small).is_err());
+        assert!(admit_capacity(&declaring("wishful-thinking", 1, 1 << 30, 0), small).is_err());
+    }
+
+    /// Declared resources joined the signature in 1.2. A 1.1 descriptor that
+    /// carries them is refused, because its signature does not cover them and
+    /// honouring them would let a worker widen its own budget after signing.
+    #[test]
+    fn declared_resources_are_only_honoured_where_the_signature_covers_them() {
+        let challenge = RegistrationChallenge {
+            nonce: vec![7; 32],
+            supported_protocol_versions: vec![CURRENT_PROTOCOL.to_owned()],
+            issued_unix_millis: 1,
+        };
+        let mut descriptor = declaring("cpu", 4, 1 << 30, 0);
+        let baseline = registration_preimage(&challenge, &descriptor);
+        descriptor.cpu_threads = 8;
+        assert_ne!(
+            baseline,
+            registration_preimage(&challenge, &descriptor),
+            "1.2 must sign its declared threads"
+        );
+
+        let mut legacy = declaring("cpu", 0, 1 << 30, 0);
+        legacy.protocol_version = PREVIOUS_PROTOCOL.to_owned();
+        let legacy_baseline = registration_preimage(&challenge, &legacy);
+        legacy.cpu_threads = 8;
+        assert_eq!(
+            legacy_baseline,
+            registration_preimage(&challenge, &legacy),
+            "1.1 signatures keep their original shape"
+        );
+
+        let trust = BTreeMap::new();
+        let mut smuggled = declaring("cpu", 4, 1 << 30, 0);
+        smuggled.protocol_version = PREVIOUS_PROTOCOL.to_owned();
+        assert!(
+            matches!(
+                validate_registration(&smuggled, &challenge, &trust),
+                Err(WorkerError::InvalidDescriptor)
+            ),
+            "a 1.1 worker may not declare unsigned resources"
+        );
     }
 
     #[test]
@@ -1026,7 +1264,9 @@ mod tests {
 
     #[test]
     fn current_and_previous_protocols_require_fresh_trusted_signatures() {
-        for protocol in ["1.1", "1.0"] {
+        // The daemon serves the current minor and the one before it; 1.0
+        // fell out of that window when declared resources arrived in 1.2.
+        for protocol in [CURRENT_PROTOCOL, PREVIOUS_PROTOCOL] {
             let (descriptor, challenge, public) = signed_descriptor(protocol);
             let trust = BTreeMap::from([(descriptor.worker_id.clone(), public)]);
             validate_registration(&descriptor, &challenge, &trust).expect("trusted registration");

@@ -48,7 +48,7 @@ FAILURE_CLASS_CORRUPT_MODEL: FailureClass
 FAILURE_CLASS_NETWORK: FailureClass
 
 class CapabilityDescriptor(_message.Message):
-    __slots__ = ("worker_id", "family", "capabilities", "protocol_version", "backend", "max_memory_bytes", "public_key", "signature")
+    __slots__ = ("worker_id", "family", "capabilities", "protocol_version", "backend", "max_memory_bytes", "public_key", "signature", "cpu_threads", "vram_bytes")
     WORKER_ID_FIELD_NUMBER: _ClassVar[int]
     FAMILY_FIELD_NUMBER: _ClassVar[int]
     CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
@@ -57,6 +57,8 @@ class CapabilityDescriptor(_message.Message):
     MAX_MEMORY_BYTES_FIELD_NUMBER: _ClassVar[int]
     PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
     SIGNATURE_FIELD_NUMBER: _ClassVar[int]
+    CPU_THREADS_FIELD_NUMBER: _ClassVar[int]
+    VRAM_BYTES_FIELD_NUMBER: _ClassVar[int]
     worker_id: str
     family: str
     capabilities: _containers.RepeatedScalarFieldContainer[str]
@@ -65,7 +67,9 @@ class CapabilityDescriptor(_message.Message):
     max_memory_bytes: int
     public_key: bytes
     signature: bytes
-    def __init__(self, worker_id: _Optional[str] = ..., family: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., protocol_version: _Optional[str] = ..., backend: _Optional[str] = ..., max_memory_bytes: _Optional[int] = ..., public_key: _Optional[bytes] = ..., signature: _Optional[bytes] = ...) -> None: ...
+    cpu_threads: int
+    vram_bytes: int
+    def __init__(self, worker_id: _Optional[str] = ..., family: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., protocol_version: _Optional[str] = ..., backend: _Optional[str] = ..., max_memory_bytes: _Optional[int] = ..., public_key: _Optional[bytes] = ..., signature: _Optional[bytes] = ..., cpu_threads: _Optional[int] = ..., vram_bytes: _Optional[int] = ...) -> None: ...
 
 class TaskLease(_message.Message):
     __slots__ = ("task_id", "lease_id", "kind", "payload", "heartbeat_interval_ms", "lease_ttl_ms", "staging_id", "staging_dir", "input_artifact_ids", "shared_buffer", "output_kind", "attempt")

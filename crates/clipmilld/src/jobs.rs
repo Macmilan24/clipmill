@@ -828,6 +828,17 @@ impl SchedulerHandle {
         }
         self.notify.notify_one();
     }
+
+    /// What this machine actually has, as last verified. Falls back to the
+    /// boot-time limit until a device profile has been verified, so admission
+    /// is never checked against nothing.
+    pub(crate) fn machine_capacity(&self) -> ResourceCapacity {
+        self.capacity_update
+            .lock()
+            .ok()
+            .and_then(|pending| *pending)
+            .unwrap_or(self.capacity_limit)
+    }
 }
 
 impl Scheduler {

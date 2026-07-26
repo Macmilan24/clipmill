@@ -122,11 +122,13 @@ fn w6_additive_worker_and_shared_memory_contracts_roundtrip() {
         worker_id: "wrk_01J00000000000000000000000".to_owned(),
         family: "echo".to_owned(),
         capabilities: vec!["demo-seed".to_owned()],
-        protocol_version: "1.1".to_owned(),
+        protocol_version: "1.2".to_owned(),
         backend: "cpu".to_owned(),
         max_memory_bytes: 268_435_456,
         public_key: vec![0; 32],
         signature: vec![0; 64],
+        cpu_threads: 2,
+        vram_bytes: 0,
     };
     let request = WorkerRequest {
         body: Some(worker_request::Body::Register(
