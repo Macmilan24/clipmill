@@ -58,6 +58,11 @@ message TaskLease {
   clipmill.shm.v1.BufferDescriptor shared_buffer = 10;
   string output_kind = 11;
   uint32 attempt = 12;
+  // Root of the daemon's content-addressed store. Workers open inputs by
+  // artifact id beneath it and verify every payload against the manifest
+  // before reading it: the store is the daemon's, and a worker that trusted
+  // it blindly would turn a corrupt object into a corrupt result.
+  string artifact_root = 13;
 }
 
 // Structured progress: real work units with a bounded estimate. A total of

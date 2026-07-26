@@ -72,6 +72,12 @@ pub struct TaskLease {
     pub output_kind: ::prost::alloc::string::String,
     #[prost(uint32, tag = "12")]
     pub attempt: u32,
+    /// Root of the daemon's content-addressed store. Workers open inputs by
+    /// artifact id beneath it and verify every payload against the manifest
+    /// before reading it: the store is the daemon's, and a worker that trusted
+    /// it blindly would turn a corrupt object into a corrupt result.
+    #[prost(string, tag = "13")]
+    pub artifact_root: ::prost::alloc::string::String,
 }
 /// Structured progress: real work units with a bounded estimate. A total of
 /// zero means the total is not yet known.

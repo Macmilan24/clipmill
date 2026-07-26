@@ -90,6 +90,7 @@ pub(crate) struct WorkerService {
     active_workers: Arc<Mutex<BTreeSet<String>>>,
     shm: ShmBroker,
     models: Arc<ModelRegistry>,
+    artifact_root: Arc<PathBuf>,
     accepting_work: Arc<AtomicBool>,
     drop_completion_ack_once: Arc<AtomicBool>,
 }
@@ -105,6 +106,7 @@ impl WorkerService {
         trust_dir: &Path,
         shm: ShmBroker,
         models: Arc<ModelRegistry>,
+        artifact_root: PathBuf,
     ) -> Result<Self, WorkerError> {
         Ok(Self {
             database,
@@ -116,6 +118,7 @@ impl WorkerService {
             active_workers: Arc::new(Mutex::new(BTreeSet::new())),
             shm,
             models,
+            artifact_root: Arc::new(artifact_root),
             accepting_work: Arc::new(AtomicBool::new(true)),
             drop_completion_ack_once: Arc::new(AtomicBool::new(
                 std::env::var_os("CLIPMILL_TEST_DROP_COMPLETION_ACK_ONCE")
@@ -360,6 +363,7 @@ impl WorkerService {
                         shared_buffer: Some(shared_buffer),
                         output_kind: task.output_kind.clone(),
                         attempt: task.attempt,
+                        artifact_root: self.artifact_root.to_string_lossy().into_owned(),
                     };
                     *active = Some(ActiveLease {
                         task,

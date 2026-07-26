@@ -220,6 +220,7 @@ impl Daemon {
             &config.paths.worker_trust_dir,
             shm,
             Arc::clone(&models),
+            config.paths.artifacts_dir.clone(),
         ) {
             Ok(service) => service,
             Err(error) => {
