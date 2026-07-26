@@ -16,6 +16,7 @@ repo = "onnx-community/silero-vad"
 revision = "e71cae966052b992a7eca6b17738916ce0eca4ec"
 
 [license]
+source = "repo-file"
 spdx = "MIT"
 class = "permissive"
 file = "LICENSE"

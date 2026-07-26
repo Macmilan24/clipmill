@@ -16,6 +16,7 @@ repo = "mlx-community/Qwen3-ForcedAligner-0.6B-4bit"
 revision = "2f652af86ae0c73fe189b9429225c908ce4bf020"
 
 [license]
+source = "repo-metadata"
 spdx = "Apache-2.0"
 class = "permissive"
 

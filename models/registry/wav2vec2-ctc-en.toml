@@ -1,0 +1,59 @@
+# Forced alignment for the universal fallback path: word timing from acoustic
+# posteriors, never from a decoder's token positions (book ch. 13).
+#
+# Every file is pinned by digest and the revision is pinned by commit, so
+# `fetch-models.sh` verifies rather than trusts. The licence class is what
+# `check-models.py` enforces: weights ship inside what users publish.
+name = "wav2vec2-ctc-en"
+capability = "forced-align"
+family = "wav2vec2-ctc"
+runtime = "onnxruntime"
+backend = "onnx-cpu"
+quantization = "none"
+
+[source]
+provider = "https://huggingface.co"
+repo = "onnx-community/wav2vec2-base-960h-ONNX"
+revision = "729c1a6730fb549c20a1c73a3d3f96f11020225e"
+
+[license]
+# This repository is an ONNX export that states no licence of its own. It
+# states a base model, and that model states Apache-2.0. Recording the chain
+# is the difference between a term we verified and a term we assumed: the
+# policy checks the upstream by name and commit, so nobody has to remember why
+# an unlicensed-looking repository was allowed through.
+source = "inherited"
+spdx = "Apache-2.0"
+class = "permissive"
+
+[license.inherited_from]
+repo = "facebook/wav2vec2-base-960h"
+revision = "22aad52d435eb6dbaf354bdad9b0da84ce7d6156"
+spdx = "Apache-2.0"
+
+[memory]
+# Exact on-disk weight bytes, and the allowance a runtime needs on top.
+# Admission adds them; a worker that cannot fit both is not given the task.
+# The aligner scores one utterance at a time, so the overhead is bounded by
+# the longest chunk rather than by the recording.
+weights_bytes = 377912464
+runtime_overhead_bytes = 805306368
+
+[[files]]
+path = "onnx/model.onnx"
+sha256 = "00b7cc69516c1ab63c429e63a2b543e4d42bb77441ec5b98ee935de175b00de1"
+bytes = 377911891
+
+[[files]]
+# The CTC label set: uppercase English, an apostrophe, and '|' as the word
+# delimiter. Alignment reads it rather than assuming an ordering.
+path = "vocab.json"
+sha256 = "4178db26b3c7570f6a47f14ac6a1c7b32950b8c2800fb097287e53776934f1c5"
+bytes = 358
+
+[[files]]
+# States the sample rate and that the waveform is normalized before it is
+# scored. Assuming either would silently mis-time every word.
+path = "preprocessor_config.json"
+sha256 = "8cdfd65ff4115423185a1512bdae100e2e0cd744f5b322417429944aaafd0827"
+bytes = 215

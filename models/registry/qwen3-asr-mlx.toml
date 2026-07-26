@@ -16,6 +16,7 @@ repo = "mlx-community/Qwen3-ASR-1.7B-4bit"
 revision = "78a389c776a5483b2d0d4ea5494e11012e0d6159"
 
 [license]
+source = "repo-metadata"
 spdx = "Apache-2.0"
 class = "permissive"
 

@@ -226,6 +226,27 @@ mod tests {
         );
     }
 
+    /// The speech chain has to run on a machine with no accelerator at all,
+    /// or the phase's "end-to-end offline on reference machines" gate is a
+    /// claim about one laptop. Every capability the chain needs must therefore
+    /// have at least one pinned model that a plain CPU can load.
+    #[test]
+    fn every_speech_capability_has_a_cpu_only_fallback() {
+        let registry = published_registry();
+        for capability in ["vad", "asr", "forced-align"] {
+            let fallbacks = registry
+                .models
+                .values()
+                .filter(|manifest| manifest.capability == capability)
+                .filter(|manifest| matches!(manifest.backend.as_str(), "cpu" | "onnx-cpu"))
+                .count();
+            assert!(
+                fallbacks > 0,
+                "{capability} is pinned only on accelerated backends"
+            );
+        }
+    }
+
     #[test]
     fn a_missing_registry_is_not_a_startup_failure() {
         let registry = ModelRegistry::load(Path::new("/nonexistent/registry")).expect("loads");
