@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.speech.vad.v1.json",
+  "title": "SpeechVad",
+  "description": "Where speech is, decided before anything transcribes it (book ch. 13). The first link in the speech chain: it bounds what ASR decodes, and its silence edges become candidate cut points for the boundary lattice. Every interval is integer ticks at 1/90000. Absence is explicit — a region nobody analyzed is not a region where nobody spoke.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "audio_artifact_id",
+    "producer",
+    "detection",
+    "coverage",
+    "speech_ticks",
+    "segments",
+    "silences",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.speech.vad.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "audio_artifact_id": {
+      "description": "The 16 kHz mono rendition this pass read, verified before use.",
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "detection": {
+      "description": "The decision parameters, recorded so a later pass knows what to change rather than guessing. They are part of the artifact key: a different threshold is a different observation, not a correction of this one.",
+      "type": "object",
+      "required": [
+        "threshold",
+        "min_speech_ticks",
+        "min_silence_ticks",
+        "speech_pad_ticks",
+        "window_samples"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "description": "Speech probability at or above which a window counts as speech.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "min_speech_ticks": {
+          "description": "Segments shorter than this are dropped rather than reported.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "min_silence_ticks": {
+          "description": "A gap shorter than this does not end a segment.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "speech_pad_ticks": {
+          "description": "Padding added to each side of a segment, so a decoder is not handed a word already in progress.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "window_samples": {
+          "description": "Samples per scored window; the resolution of every boundary below.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "speech_ticks": {
+      "description": "Total speech duration, so a consumer can state 'this recording is 8% speech' without walking the segments.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "segments": {
+      "description": "Speech, in source time, ordered and non-overlapping.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/speech_segment" }
+    },
+    "silences": {
+      "description": "The gaps between speech, including any leading and trailing silence. Carried explicitly rather than left to be derived, because these are the edges the boundary lattice is allowed to cut on and a consumer should not have to reconstruct them correctly.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/interval" }
+    },
+    "invalid_regions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "interval": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "speech_segment": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "confidence": {
+      "description": "A distribution, not a scalar: p10 is what the segment is worth if the model is having a bad time, and downstream stages that widen uncertainty need both numbers.",
+      "type": "object",
+      "required": ["p50", "p10"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 1 },
+        "p10": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "model_digest": { "$ref": "#/$defs/sha256" },
+        "calibration": {
+          "description": "Which calibration mapped raw model scores onto the confidences above.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "coverage": {
+      "description": "What was actually examined. A skipped pass, a below-threshold result, and a genuinely empty result are three different facts, and no downstream stage may read an empty segment list as 'nobody spoke'.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" },
+        "sampling_plan": { "type": "string", "minLength": 1 }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": ["no_audio", "not_analyzed", "decode_failed"]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

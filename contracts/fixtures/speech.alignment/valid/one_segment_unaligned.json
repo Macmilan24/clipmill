@@ -1,0 +1,80 @@
+{
+  "asr_artifact_id": "sha256:a52a000000000000000000000000000000000000000000000000000000000002",
+  "audio_artifact_id": "sha256:a0d1000000000000000000000000000000000000000000000000000000000016",
+  "coverage": {
+    "aligned_ticks": 115200,
+    "analyzed": true,
+    "end_ticks": 900000,
+    "sampling_plan": "align-per-utterance",
+    "start_ticks": 0
+  },
+  "frame_ticks": 1800,
+  "invalid_regions": [
+    {
+      "end_ticks": 828000,
+      "reason": "alignment_unavailable",
+      "start_ticks": 396000
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-worker-align@0.1.0+wav2vec2-ctc",
+    "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000cc",
+    "stage": "speech-align"
+  },
+  "schema_version": "clipmill.speech.alignment.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "unaligned": [
+    {
+      "detail": "no character in the segment is in the model's label set",
+      "reason": "out_of_vocabulary",
+      "segment_index": 1,
+      "text": "Every timestamp is an integer tick."
+    }
+  ],
+  "words": [
+    {
+      "confidence": {
+        "p10": 0.96,
+        "p50": 0.99
+      },
+      "end_ticks": 52200,
+      "index": 0,
+      "segment_index": 0,
+      "start_ticks": 45000,
+      "text": "The"
+    },
+    {
+      "confidence": {
+        "p10": 0.94,
+        "p50": 0.98
+      },
+      "end_ticks": 73800,
+      "index": 1,
+      "segment_index": 0,
+      "start_ticks": 54000,
+      "text": "first"
+    },
+    {
+      "confidence": {
+        "p10": 0.91,
+        "p50": 0.97
+      },
+      "end_ticks": 108000,
+      "index": 2,
+      "segment_index": 0,
+      "start_ticks": 75600,
+      "text": "slice"
+    },
+    {
+      "confidence": {
+        "p10": 0.89,
+        "p50": 0.96
+      },
+      "end_ticks": 160200,
+      "index": 3,
+      "segment_index": 0,
+      "start_ticks": 109800,
+      "text": "renders"
+    }
+  ]
+}

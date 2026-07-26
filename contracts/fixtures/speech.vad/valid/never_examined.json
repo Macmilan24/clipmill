@@ -1,0 +1,34 @@
+{
+  "audio_artifact_id": "sha256:a0d1000000000000000000000000000000000000000000000000000000000016",
+  "coverage": {
+    "analyzed": false,
+    "end_ticks": 900000,
+    "sampling_plan": "vad-full-16k",
+    "start_ticks": 0
+  },
+  "detection": {
+    "min_silence_ticks": 9000,
+    "min_speech_ticks": 22500,
+    "speech_pad_ticks": 2700,
+    "threshold": 0.5,
+    "window_samples": 512
+  },
+  "invalid_regions": [
+    {
+      "detail": "the sixteen kilohertz rendition was unavailable",
+      "end_ticks": 900000,
+      "reason": "not_analyzed",
+      "start_ticks": 0
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-worker-vad@0.1.0+silero-v5",
+    "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000aa",
+    "stage": "speech-vad"
+  },
+  "schema_version": "clipmill.speech.vad.v1",
+  "segments": [],
+  "silences": [],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "speech_ticks": 0
+}

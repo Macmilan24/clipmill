@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.speech.asr.v1.json",
+  "title": "SpeechAsr",
+  "description": "What was said, from a recognizer batched over voice activity (book ch. 13). Text and token confidence only: the intervals here are the decoder's own bookkeeping and are named as hints because word timing comes from forced alignment, never from decoder token positions. One contract serves every implementation — whisper.cpp on any CPU, an accelerated primary where one is available — so the daemon can choose between them by measured benchmark rather than by brand.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "audio_artifact_id",
+    "vad_artifact_id",
+    "producer",
+    "language",
+    "decoding",
+    "timing_authority",
+    "coverage",
+    "segments",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.speech.asr.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "audio_artifact_id": {
+      "description": "The 16 kHz mono rendition this pass decoded, verified before use.",
+      "$ref": "#/$defs/sha256"
+    },
+    "vad_artifact_id": {
+      "description": "The voice activity that bounded the decode. Recorded because re-running with different speech boundaries is a different observation.",
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "language": {
+      "description": "BCP 47 primary subtag of the recognized language.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 16
+    },
+    "language_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "decoding": {
+      "description": "How the text was produced. Greedy decoding at temperature zero is not a quality preference — it is what makes two runs of the same audio agree, which is what lets a cached transcript be trusted.",
+      "type": "object",
+      "required": ["strategy", "temperature", "beam_size", "conditioned_on_previous"],
+      "additionalProperties": false,
+      "properties": {
+        "strategy": { "type": "string", "enum": ["greedy", "beam"] },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 1 },
+        "beam_size": { "type": "integer", "minimum": 0 },
+        "conditioned_on_previous": {
+          "description": "Whether each window saw the previous window's text. False keeps one bad window from poisoning the rest.",
+          "type": "boolean"
+        },
+        "initial_prompt_digest": {
+          "description": "Digest of any vocabulary hint given to the decoder, so a hinted transcript is never confused with an unhinted one.",
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "timing_authority": {
+      "description": "Stated once, at the top, so no consumer can reach the hint fields below without having read this: the intervals in this artifact are decoder bookkeeping. Word timing is the forced aligner's output and nothing else.",
+      "const": "forced_alignment"
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "segments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asr_segment" }
+    },
+    "invalid_regions": {
+      "description": "Speech the recognizer could not turn into text. Explicit, because a downstream stage reading a gap as silence would place a cut in the middle of a sentence.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "asr_segment": {
+      "type": "object",
+      "required": [
+        "index",
+        "vad_segment_index",
+        "hint_start_ticks",
+        "hint_end_ticks",
+        "text",
+        "confidence",
+        "tokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "vad_segment_index": {
+          "description": "Which speech segment this decode covered.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "hint_start_ticks": {
+          "description": "Decoder bookkeeping, not word timing. Useful for batching and progress; never for cutting.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "hint_end_ticks": {
+          "description": "Decoder bookkeeping, not word timing.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "tokens": {
+          "description": "Per-token confidences, kept because a segment average hides the one hallucinated proper noun that ranking would otherwise quote.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/token" }
+        }
+      }
+    },
+    "token": {
+      "type": "object",
+      "required": ["text", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "confidence": {
+      "description": "A distribution, not a scalar: p10 is what the segment is worth if the model is having a bad time, and downstream stages that widen uncertainty need both numbers.",
+      "type": "object",
+      "required": ["p50", "p10"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 1 },
+        "p10": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "model_digest": { "$ref": "#/$defs/sha256" },
+        "calibration": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coverage": {
+      "description": "What was actually decoded. Speech the pass never reached is not speech that turned out to be empty.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed", "decoded_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" },
+        "decoded_ticks": {
+          "description": "Speech duration actually handed to the recognizer.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "sampling_plan": { "type": "string", "minLength": 1 }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": ["not_analyzed", "decode_failed", "below_threshold", "no_audio"]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

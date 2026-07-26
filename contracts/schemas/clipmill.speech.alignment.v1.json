@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.speech.alignment.v1.json",
+  "title": "SpeechAlignment",
+  "description": "When each word was said, measured against the audio rather than inferred from a decoder's tokens (book ch. 13). This is the artifact every word-snapped edit in the system ultimately rests on: trims, caption cues, and the boundary optimizer all refuse to cut mid-word, and this is where 'mid-word' is defined. A stage that cannot align a span says so instead of spreading the words evenly and hoping.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "audio_artifact_id",
+    "asr_artifact_id",
+    "producer",
+    "frame_ticks",
+    "coverage",
+    "words",
+    "unaligned",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.speech.alignment.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "audio_artifact_id": {
+      "description": "The 16 kHz mono rendition scored, verified before use.",
+      "$ref": "#/$defs/sha256"
+    },
+    "asr_artifact_id": {
+      "description": "The text that was aligned. Alignment answers 'when', never 'what' — re-transcribing produces a new alignment rather than editing this one.",
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "frame_ticks": {
+      "description": "The scoring stride, in ticks. Every boundary below is a multiple of it, so a consumer can state the resolution of a word edge instead of implying more precision than was measured.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "words": {
+      "description": "Ordered by time. A word appears here only if it was actually located in the audio.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/word" }
+    },
+    "unaligned": {
+      "description": "Text the aligner could not place. Listed rather than dropped, so assembly can carry the words with honest interpolated timing and mark the span, instead of silently losing what was said.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/unaligned_span" }
+    },
+    "invalid_regions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "word": {
+      "type": "object",
+      "required": ["index", "segment_index", "text", "start_ticks", "end_ticks", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "segment_index": {
+          "description": "The ASR segment this word came from.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": { "type": "string", "minLength": 1 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "unaligned_span": {
+      "type": "object",
+      "required": ["segment_index", "text", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "segment_index": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "no_scoreable_text",
+            "out_of_vocabulary",
+            "score_below_threshold",
+            "audio_unavailable"
+          ]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    },
+    "confidence": {
+      "description": "A distribution, not a scalar: p10 is what the word's timing is worth if the model is having a bad time.",
+      "type": "object",
+      "required": ["p50", "p10"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 1 },
+        "p10": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "model_digest": { "$ref": "#/$defs/sha256" },
+        "calibration": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed", "aligned_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" },
+        "aligned_ticks": {
+          "description": "Speech duration this pass actually placed words within.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "sampling_plan": { "type": "string", "minLength": 1 }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": ["not_analyzed", "alignment_unavailable", "no_audio"]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

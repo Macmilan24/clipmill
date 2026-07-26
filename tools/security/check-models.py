@@ -185,8 +185,7 @@ def _check_license_provenance(license_table: dict, spdx: object) -> list[str]:
     # exists to catch. Equality is the only claim the chain actually supports.
     if inherited.get("spdx") != spdx:
         problems.append(
-            f"inherited licence {inherited.get('spdx')!r} does not match the "
-            f"claimed {spdx!r}"
+            f"inherited licence {inherited.get('spdx')!r} does not match the claimed {spdx!r}"
         )
     return problems
 

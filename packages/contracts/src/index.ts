@@ -14,6 +14,10 @@ export type { MediaAudioPeaks } from './gen/schemas/media-audio-peaks.js';
 export type { MediaFrames } from './gen/schemas/media-frames.js';
 export type { MediaIngestManifest } from './gen/schemas/media-ingest-manifest.js';
 export type { RenderClipManifest } from './gen/schemas/render-clip.js';
+export type { SpeechVad } from './gen/schemas/speech-vad.js';
+export type { SpeechAsr } from './gen/schemas/speech-asr.js';
+export type { SpeechAlignment } from './gen/schemas/speech-alignment.js';
+export type { SpeechTranscript } from './gen/schemas/speech-transcript.js';
 
 // IPC control plane.
 export { PingRequestSchema, PingResponseSchema } from './gen/proto/clipmill/ipc/v1/ping_pb.js';
