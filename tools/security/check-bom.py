@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import platform as host_platform
 import re
 import subprocess
@@ -18,6 +19,9 @@ LICENSE_POLICY = {
     "macos-arm64": ("gpl-v3", True),
     "linux-amd64": ("gpl-v3-nonfree", False),
 }
+# Fonts ship inside the rendered pixels of every clip a user publishes, so the
+# licence has to permit that without a per-user grant.
+FONT_LICENSE_ALLOWLIST = {"OFL-1.1", "Apache-2.0", "CC0-1.0"}
 
 
 def main() -> int:
@@ -25,6 +29,7 @@ def main() -> int:
     parser.add_argument("--bom", type=Path, default=Path("bom.toml"))
     parser.add_argument("--ffmpeg", type=Path, default=Path(".cache/bin/ffmpeg"))
     parser.add_argument("--ffprobe", type=Path, default=Path(".cache/bin/ffprobe"))
+    parser.add_argument("--fonts", type=Path, default=Path(".cache/fonts"))
     options = parser.parse_args()
     try:
         bom = tomllib.loads(options.bom.read_text(encoding="utf-8"))
@@ -70,6 +75,7 @@ def main() -> int:
         allow_nonfree = ffmpeg[current_platform]["license_mode"] == "gpl-v3-nonfree"
         for name, path in (("ffmpeg", options.ffmpeg), ("ffprobe", options.ffprobe)):
             _verify_binary(name, path, version, allow_nonfree)
+        _verify_font(bom, options.fonts)
     except (
         KeyError,
         OSError,
@@ -81,7 +87,7 @@ def main() -> int:
         return 1
     print(
         "bom-policy: OK (pinned hashes; runtime license flags match the "
-        "platform distribution policy; SQLite floor)"
+        "platform distribution policy; SQLite floor; caption font and libass)"
     )
     return 0
 
@@ -116,6 +122,44 @@ def _verify_binary(name: str, path: Path, version: str, allow_nonfree: bool) -> 
     has_nonfree = "--enable-nonfree" in output
     if has_nonfree != allow_nonfree:
         raise ValueError(f"installed {name} nonfree mode differs from its BOM policy")
+    # Captions burn in through libass. A build without it cannot produce a
+    # compliant clip, so its absence is a policy failure rather than a
+    # surprise discovered mid-render.
+    if name == "ffmpeg" and "--enable-libass" not in output:
+        raise ValueError("installed ffmpeg has no libass; captions cannot be burned in")
+
+
+def _verify_font(bom: dict, fonts_dir: Path) -> None:
+    """The one face libass may see, pinned by archive *and* member digest."""
+    captions = bom["fonts"]["captions"]
+    family = str(captions["family"])
+    style = str(captions["style"])
+    if not family.isalnum() or not style.isalnum():
+        raise ValueError("caption font family and style must be simple names")
+    if captions.get("license") not in FONT_LICENSE_ALLOWLIST:
+        raise ValueError(f"caption font license {captions.get('license')!r} is not permitted")
+    provider_host = urlparse(str(captions["provider"]).split(" ", 1)[0]).hostname
+    archive = urlparse(str(captions["archive_url"]))
+    if archive.scheme != "https" or archive.hostname != provider_host:
+        raise ValueError("caption font archive has an untrusted provider")
+    if str(captions["version"]) not in archive.path:
+        raise ValueError("caption font URL omits its version identity")
+    for key in ("archive_sha256", "member_sha256", "license_sha256"):
+        if SHA256_PATTERN.fullmatch(str(captions.get(key))) is None:
+            raise ValueError(f"caption font {key} is invalid")
+    member = Path(str(captions["member"]))
+    if member.is_absolute() or ".." in member.parts:
+        raise ValueError("caption font member escapes its archive")
+
+    installed = fonts_dir / f"{family}-{style}.ttf"
+    if installed.is_symlink() or not installed.is_file():
+        raise ValueError(f"pinned caption font is missing or unsafe: {installed}")
+    digest = hashlib.sha256(installed.read_bytes()).hexdigest()
+    if digest != captions["member_sha256"]:
+        raise ValueError("installed caption font does not match its pinned digest")
+    licence = fonts_dir / f"{family}-LICENSE.txt"
+    if not licence.is_file():
+        raise ValueError(f"caption font licence text was not installed beside it: {licence}")
 
 
 if __name__ == "__main__":
