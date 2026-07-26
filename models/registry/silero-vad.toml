@@ -1,0 +1,33 @@
+# Voice activity detection: the stage that decides where speech is, before anything transcribes it.
+#
+# Every file is pinned by digest and the revision is pinned by commit, so
+# `fetch-models.sh` verifies rather than trusts. The licence class is what
+# `check-models.py` enforces: weights ship inside what users publish.
+name = "silero-vad"
+capability = "vad"
+family = "silero"
+runtime = "onnxruntime"
+backend = "onnx-cpu"
+quantization = "none"
+
+[source]
+provider = "https://huggingface.co"
+repo = "onnx-community/silero-vad"
+revision = "e71cae966052b992a7eca6b17738916ce0eca4ec"
+
+[license]
+spdx = "MIT"
+class = "permissive"
+file = "LICENSE"
+sha256 = "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b"
+
+[memory]
+# Exact on-disk weight bytes, and the allowance a runtime needs on top.
+# Admission adds them; a worker that cannot fit both is not given the task.
+weights_bytes = 2243022
+runtime_overhead_bytes = 67108864
+
+[[files]]
+path = "onnx/model.onnx"
+sha256 = "a4a068cd6cf1ea8355b84327595838ca748ec29a25bc91fc82e6c299ccdc5808"
+bytes = 2243022

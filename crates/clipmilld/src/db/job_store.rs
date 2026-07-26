@@ -1575,6 +1575,14 @@ fn validate_plan(plan: &JobPlan) -> Result<(), StoreError> {
         task.task_id
             .parse::<TaskId>()
             .map_err(|_| StoreError::InvalidData("task id is invalid"))?;
+        // The registry is the authority on which stages exist. Refusing here
+        // means an unregistered kind never reaches a worker that cannot serve
+        // it, and never publishes under an address nobody assigned it.
+        if !crate::recipes::plan_declaration_is_registered(&task.kind, &task.output_kind) {
+            return Err(StoreError::InvalidData(
+                "task kind is not a registered stage, or does not publish its registered artifact kind",
+            ));
+        }
         if !valid_label(&task.kind, 128)
             || !valid_label(&task.output_kind, 128)
             || task.input_kinds.iter().any(|kind| !valid_label(kind, 128))

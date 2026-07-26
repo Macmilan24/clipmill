@@ -32,8 +32,10 @@ use crate::{
     db::{DbHandle, StoreError},
     jobs::{
         EventHub, HEARTBEAT_INTERVAL, LEASE_TTL, LeaseRequest, LeasedTask, ResourceCapacity,
-        SchedulerHandle, demo_recipe,
+        SchedulerHandle,
     },
+    models::ModelRegistry,
+    recipes,
     shm::ShmBroker,
 };
 
@@ -56,11 +58,13 @@ pub(crate) struct WorkerService {
     trust: Arc<BTreeMap<String, [u8; 32]>>,
     active_workers: Arc<Mutex<BTreeSet<String>>>,
     shm: ShmBroker,
+    models: Arc<ModelRegistry>,
     accepting_work: Arc<AtomicBool>,
     drop_completion_ack_once: Arc<AtomicBool>,
 }
 
 impl WorkerService {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         database: DbHandle,
         artifacts: ArtifactHandle,
@@ -69,6 +73,7 @@ impl WorkerService {
         daemon_epoch: String,
         trust_dir: &Path,
         shm: ShmBroker,
+        models: Arc<ModelRegistry>,
     ) -> Result<Self, WorkerError> {
         Ok(Self {
             database,
@@ -79,6 +84,7 @@ impl WorkerService {
             trust: Arc::new(load_trust(trust_dir)?),
             active_workers: Arc::new(Mutex::new(BTreeSet::new())),
             shm,
+            models,
             accepting_work: Arc::new(AtomicBool::new(true)),
             drop_completion_ack_once: Arc::new(AtomicBool::new(
                 std::env::var_os("CLIPMILL_TEST_DROP_COMPLETION_ACK_ONCE")
@@ -256,7 +262,8 @@ impl WorkerService {
                     })),
                 });
             };
-            let recipe = demo_recipe(&task).map_err(WorkerError::Artifact)?;
+            let recipe = recipes::worker_recipe(&task, &self.models)
+                .map_err(|error| WorkerError::Artifact(error.to_string()))?;
             match self.artifacts.prepare(recipe).await? {
                 PrepareOutcome::Hit(artifact) => {
                     self.complete_cache_hit(&task, artifact.artifact_id())

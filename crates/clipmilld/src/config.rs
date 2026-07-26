@@ -15,6 +15,7 @@ const WORKER_SOCKET_ENV: &str = "CLIPMILL_WORKER_SOCKET";
 const ARTIFACT_GC_GRACE_ENV: &str = "CLIPMILL_ARTIFACT_GC_GRACE";
 const FFPROBE_ENV: &str = "CLIPMILL_FFPROBE";
 const FONTS_DIR_ENV: &str = "CLIPMILL_FONTS_DIR";
+const MODELS_DIR_ENV: &str = "CLIPMILL_MODELS_DIR";
 const DEFAULT_ARTIFACT_GC_GRACE: Duration = Duration::from_hours(168);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -26,6 +27,8 @@ pub struct Config {
     /// could pick up a host-installed face are renders nobody else can
     /// reproduce, so this holds exactly the pinned font (book ch. 19).
     pub fonts_dir: PathBuf,
+    /// Directory of pinned model manifests. Read at startup; never written.
+    pub models_dir: PathBuf,
     pub(crate) builtin_fixture_executor: bool,
 }
 
@@ -111,6 +114,9 @@ impl Config {
         )?;
         if let Some(fonts_dir) = env::var_os(FONTS_DIR_ENV) {
             config.fonts_dir = PathBuf::from(fonts_dir);
+        }
+        if let Some(models_dir) = env::var_os(MODELS_DIR_ENV) {
+            config.models_dir = PathBuf::from(models_dir);
         }
         config.builtin_fixture_executor =
             env::var_os("CLIPMILL_TEST_BUILTIN_WORKER").is_some_and(|value| value == "1");
@@ -217,6 +223,7 @@ impl Config {
         }
 
         let fonts_dir = default_fonts_dir(&ffprobe);
+        let models_dir = PathBuf::from("models/registry");
 
         Ok(Self {
             paths: Paths {
@@ -239,6 +246,7 @@ impl Config {
             artifact_gc_grace,
             ffprobe,
             fonts_dir,
+            models_dir,
             builtin_fixture_executor: false,
         })
     }

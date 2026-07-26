@@ -1,0 +1,61 @@
+# Forced alignment as its own stage: word timing never comes from a decoder's tokens.
+#
+# Every file is pinned by digest and the revision is pinned by commit, so
+# `fetch-models.sh` verifies rather than trusts. The licence class is what
+# `check-models.py` enforces: weights ship inside what users publish.
+name = "qwen3-aligner-mlx"
+capability = "forced-align"
+family = "qwen3-aligner"
+runtime = "mlx"
+backend = "mlx"
+quantization = "int4"
+
+[source]
+provider = "https://huggingface.co"
+repo = "mlx-community/Qwen3-ForcedAligner-0.6B-4bit"
+revision = "2f652af86ae0c73fe189b9429225c908ce4bf020"
+
+[license]
+spdx = "Apache-2.0"
+class = "permissive"
+
+[memory]
+# Exact on-disk weight bytes, and the allowance a runtime needs on top.
+# Admission adds them; a worker that cannot fit both is not given the task.
+weights_bytes = 974103872
+runtime_overhead_bytes = 1073741824
+
+[[files]]
+path = "chat_template.json"
+sha256 = "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff"
+bytes = 1161
+
+[[files]]
+path = "config.json"
+sha256 = "9dacc5554afee13ac6e300bebb178295ab358d5e8ab500d937741208c961a3b5"
+bytes = 6940
+
+[[files]]
+path = "generation_config.json"
+sha256 = "948d089b23bca1d214e768d59c4438365665f52ec6d33678f4062206b3fbbb8c"
+bytes = 115
+
+[[files]]
+path = "model.safetensors"
+sha256 = "630bcfbaccf2635940bbe94ad5475fd60ee4f47259b62d36deff806d60bcf24c"
+bytes = 971305827
+
+[[files]]
+path = "preprocessor_config.json"
+sha256 = "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"
+bytes = 330
+
+[[files]]
+path = "tokenizer_config.json"
+sha256 = "3ab80063f8511deb9566e6ad438d17b7a6277fcffd52d92854112f19d36bd81c"
+bytes = 12666
+
+[[files]]
+path = "vocab.json"
+sha256 = "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+bytes = 2776833

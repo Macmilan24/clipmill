@@ -1,0 +1,31 @@
+# The universal ASR fallback. It runs everywhere, which is why it lands before the accelerated primary.
+#
+# Every file is pinned by digest and the revision is pinned by commit, so
+# `fetch-models.sh` verifies rather than trusts. The licence class is what
+# `check-models.py` enforces: weights ship inside what users publish.
+name = "whisper-base"
+capability = "asr"
+family = "whisper.cpp"
+runtime = "whisper.cpp"
+backend = "cpu"
+quantization = "ggml-f16"
+
+[source]
+provider = "https://huggingface.co"
+repo = "ggerganov/whisper.cpp"
+revision = "5359861c739e955e79d9a303bcbc70fb988958b1"
+
+[license]
+spdx = "MIT"
+class = "permissive"
+
+[memory]
+# Exact on-disk weight bytes, and the allowance a runtime needs on top.
+# Admission adds them; a worker that cannot fit both is not given the task.
+weights_bytes = 147951465
+runtime_overhead_bytes = 268435456
+
+[[files]]
+path = "ggml-base.bin"
+sha256 = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+bytes = 147951465
