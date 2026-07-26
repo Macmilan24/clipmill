@@ -151,6 +151,41 @@ const REGISTRY: &[Recipe] = &[
         executor: Executor::Builtin,
         model: None,
     },
+    // The W15 speech chain (book ch. 13). Three leased stages that each run a
+    // model, and one builtin that runs none.
+    //
+    // The model names below are what put a model's digest into an artifact
+    // key. Re-pinning whisper invalidates every transcript and nothing else;
+    // re-pinning the aligner invalidates every alignment and leaves the text
+    // alone. That is the whole reason the chain is three stages.
+    Recipe {
+        kind: "speech-vad",
+        output_kind: "speech.vad.v1",
+        semantic_version: "clipmill.speech.vad.v1",
+        executor: Executor::Worker,
+        model: Some("silero-vad"),
+    },
+    Recipe {
+        kind: "speech-asr",
+        output_kind: "speech.asr.v1",
+        semantic_version: "clipmill.speech.asr.v1",
+        executor: Executor::Worker,
+        model: Some("whisper-base"),
+    },
+    Recipe {
+        kind: "speech-align",
+        output_kind: "speech.alignment.v1",
+        semantic_version: "clipmill.speech.alignment.v1",
+        executor: Executor::Worker,
+        model: Some("wav2vec2-ctc-en"),
+    },
+    Recipe {
+        kind: "speech-transcript",
+        output_kind: "speech.transcript.v1",
+        semantic_version: "clipmill.speech.transcript.v1",
+        executor: Executor::Builtin,
+        model: None,
+    },
     // The reference worker family. It carries no model, which is precisely
     // why it is the right shape to prove the leased path with.
     Recipe {
@@ -333,8 +368,7 @@ mod tests {
     }
 
     /// A stage that runs a model must name it, so the model's digest can join
-    /// the artifact key. Nothing in Phase 1's current set runs one; the speech
-    /// stack is where this earns its keep.
+    /// the artifact key.
     #[test]
     fn a_registered_model_name_is_never_empty() {
         for recipe in REGISTRY {
@@ -344,5 +378,37 @@ mod tests {
                 recipe.kind
             );
         }
+    }
+
+    /// Every model a stage names must be one the published registry pins,
+    /// because a stage that names a model cannot be keyed without it — the
+    /// task would be refused at lease time rather than at review time.
+    #[test]
+    fn every_named_model_is_pinned() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+        let models = crate::models::ModelRegistry::load(&path).expect("the registry loads");
+        for recipe in REGISTRY {
+            if let Some(name) = recipe.model {
+                assert!(
+                    models.get(name).is_some(),
+                    "{} names {name}, which nothing pins",
+                    recipe.kind
+                );
+            }
+        }
+    }
+
+    /// The three model-running speech stages are leased; the assembly that
+    /// fuses them runs in the daemon, because it loads nothing.
+    #[test]
+    fn the_speech_chain_leases_exactly_the_stages_that_run_a_model() {
+        for kind in ["speech-vad", "speech-asr", "speech-align"] {
+            let recipe = lookup(kind).expect("registered");
+            assert_eq!(recipe.executor, Executor::Worker, "{kind}");
+            assert!(recipe.model.is_some(), "{kind} runs a model");
+        }
+        let assembly = lookup("speech-transcript").expect("registered");
+        assert_eq!(assembly.executor, Executor::Builtin);
+        assert!(assembly.model.is_none(), "assembly runs no model");
     }
 }

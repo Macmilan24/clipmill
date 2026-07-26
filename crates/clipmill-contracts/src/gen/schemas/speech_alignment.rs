@@ -838,6 +838,11 @@ impl SpeechAlignment {
 #[doc = "    },"]
 #[doc = "    \"text\": {"]
 #[doc = "      \"type\": \"string\""]
+#[doc = "    },"]
+#[doc = "    \"word_index\": {"]
+#[doc = "      \"description\": \"Position of this word within its utterance's text, when a single word could not be placed. Absent when the whole utterance failed, which has no single position. Assembly needs it to put the word back between its neighbours; without it, text and timing could only be re-associated by guessing.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -852,6 +857,9 @@ pub struct UnalignedSpan {
     pub reason: UnalignedSpanReason,
     pub segment_index: u64,
     pub text: ::std::string::String,
+    #[doc = "Position of this word within its utterance's text, when a single word could not be placed. Absent when the whole utterance failed, which has no single position. Assembly needs it to put the word back between its neighbours; without it, text and timing could only be re-associated by guessing."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub word_index: ::std::option::Option<u64>,
 }
 impl UnalignedSpan {
     pub fn builder() -> builder::UnalignedSpan {
@@ -1636,6 +1644,7 @@ pub mod builder {
         reason: ::std::result::Result<super::UnalignedSpanReason, ::std::string::String>,
         segment_index: ::std::result::Result<u64, ::std::string::String>,
         text: ::std::result::Result<::std::string::String, ::std::string::String>,
+        word_index: ::std::result::Result<::std::option::Option<u64>, ::std::string::String>,
     }
     impl ::std::default::Default for UnalignedSpan {
         fn default() -> Self {
@@ -1644,6 +1653,7 @@ pub mod builder {
                 reason: Err("no value supplied for reason".to_string()),
                 segment_index: Err("no value supplied for segment_index".to_string()),
                 text: Err("no value supplied for text".to_string()),
+                word_index: Ok(Default::default()),
             }
         }
     }
@@ -1688,6 +1698,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for text: {e}"));
             self
         }
+        pub fn word_index<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<u64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.word_index = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for word_index: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<UnalignedSpan> for super::UnalignedSpan {
         type Error = super::error::ConversionError;
@@ -1699,6 +1719,7 @@ pub mod builder {
                 reason: value.reason?,
                 segment_index: value.segment_index?,
                 text: value.text?,
+                word_index: value.word_index?,
             })
         }
     }
@@ -1709,6 +1730,7 @@ pub mod builder {
                 reason: Ok(value.reason),
                 segment_index: Ok(value.segment_index),
                 text: Ok(value.text),
+                word_index: Ok(value.word_index),
             }
         }
     }

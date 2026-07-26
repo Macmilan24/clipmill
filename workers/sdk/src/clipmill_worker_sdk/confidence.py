@@ -19,12 +19,19 @@ LOW_QUANTILE = 0.1
 
 
 def quantile(values: Sequence[float], fraction: float) -> float:
-    """Nearest-rank quantile of an unsorted sequence."""
+    """Nearest-rank quantile of an unsorted sequence.
+
+    The rank is floored after adding a half rather than handed to `round`.
+    Python rounds halves to even and Rust rounds them away from zero, and the
+    daemon computes this same quantile over the same numbers when it assembles
+    a transcript — so the built-in would make the two languages disagree about
+    a published confidence whenever a list has an even length.
+    """
 
     if not values:
         return 0.0
     ordered = sorted(values)
-    rank = max(round(fraction * (len(ordered) - 1)), 0)
+    rank = max(int(fraction * (len(ordered) - 1) + 0.5), 0)
     return float(ordered[min(rank, len(ordered) - 1)])
 
 

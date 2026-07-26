@@ -13,7 +13,7 @@ use clipmill_contracts::proto::ipc::v1::{
     ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
     ProbeSourcePayloadV1, RegisterSourceRequest, RenderClipPayloadV1, Request, Response,
     SnapshotEditDocResponse, SubmitJobRequest, SubscribeTaskEventsRequest,
-    SubscribeTaskEventsResponse, request, response,
+    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
@@ -38,6 +38,7 @@ const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
 const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
 const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
+const TRANSCRIBE_SOURCE_KEY_VERSION: &str = "clipmill.transcribe-source.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -48,6 +49,9 @@ pub(crate) struct Service {
     sources: Option<SourceInspector>,
     artifacts: Option<ArtifactHandle>,
     device_profiler: Option<DeviceProfiler>,
+    /// Read when planning a stage that runs a model, so the plan's resource
+    /// declaration comes from what the registry pinned rather than a guess.
+    models: std::sync::Arc<crate::models::ModelRegistry>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -100,9 +104,11 @@ impl Service {
             sources: None,
             artifacts: None,
             device_profiler: None,
+            models: std::sync::Arc::default(),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn with_scheduler(
         database: DbHandle,
         started_unix_millis: u64,
@@ -111,6 +117,7 @@ impl Service {
         sources: SourceInspector,
         artifacts: ArtifactHandle,
         device_profiler: DeviceProfiler,
+        models: std::sync::Arc<crate::models::ModelRegistry>,
     ) -> Self {
         Self {
             database,
@@ -120,7 +127,41 @@ impl Service {
             sources: Some(sources),
             artifacts: Some(artifacts),
             device_profiler: Some(device_profiler),
+            models,
         }
+    }
+
+    /// The 16 kHz rendition ingest produced for a source, with the source's
+    /// fingerprint.
+    ///
+    /// Resolved through the ingest manifest rather than by searching the
+    /// store, because the manifest is the job's single rooted artifact and its
+    /// children are what garbage collection keeps reachable. Anything found
+    /// another way might be an object nobody is holding on to.
+    async fn ingested_speech_audio(&self, source_id: &str) -> Option<(String, String)> {
+        let artifacts = self.artifacts.as_ref()?;
+        let manifest_id = self
+            .database
+            .latest_source_job_artifact(source_id.to_owned(), "ingest-source".to_owned())
+            .await
+            .ok()
+            .flatten()?
+            .parse::<clipmill_core::ArtifactId>()
+            .ok()?;
+        let (lease, _) =
+            crate::media::verified_input_file(artifacts, manifest_id, "ingest-manifest.json")
+                .await
+                .ok()?;
+        let manifest = crate::media::read_descriptor(&lease, "ingest-manifest.json").ok()?;
+        let audio = manifest["children"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|child| child["kind"] == "media.audio_16k.v1")
+            .and_then(|child| child["artifact_id"].as_str())
+            .map(ToOwned::to_owned)?;
+        let fingerprint = manifest["source_fingerprint"].as_str()?.to_owned();
+        Some((audio, fingerprint))
     }
 
     #[must_use]
@@ -540,6 +581,68 @@ impl Service {
                         return error_reply(request_id, ErrorCode::InvalidArgument, message);
                     }
                 }
+            }
+            "transcribe-source" => {
+                let Ok(payload) = TranscribeSourcePayloadV1::decode(submit.payload.as_slice())
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "transcribe job payload is not a valid TranscribeSourcePayloadV1",
+                    );
+                };
+                if payload.key_version != TRANSCRIBE_SOURCE_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "transcribe job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                // The speech chain reads what ingest already decoded. Asking
+                // it to transcribe a source nobody ingested is a request with
+                // no audio behind it, and saying so is more useful than
+                // planning four tasks that will each fail to find their input.
+                let Some((audio_artifact_id, fingerprint)) =
+                    self.ingested_speech_audio(&source_id.to_string()).await
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has no ingested 16 kHz audio to transcribe",
+                    );
+                };
+                JobPlan::transcribe_source(
+                    &project_id,
+                    source_id.to_string(),
+                    crate::jobs::SpeechAudio {
+                        artifact_id: &audio_artifact_id,
+                        source_fingerprint: &fingerprint,
+                    },
+                    &payload,
+                    &self.models,
+                    now,
+                )
             }
             "render-clip" => {
                 let Ok(payload) = RenderClipPayloadV1::decode(submit.payload.as_slice()) else {

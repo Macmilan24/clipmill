@@ -19,6 +19,7 @@ mod service;
 #[cfg(unix)]
 mod shm;
 mod sources;
+mod speech;
 #[cfg(unix)]
 mod worker;
 

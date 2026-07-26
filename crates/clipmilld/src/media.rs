@@ -96,7 +96,7 @@ pub(crate) struct ProgressSlot {
 }
 
 impl ProgressSlot {
-    fn set(&self, unit: &str, done: u64, total: u64) {
+    pub(crate) fn set(&self, unit: &str, done: u64, total: u64) {
         if let Ok(mut slot) = self.inner.lock() {
             *slot = Some(ProgressUnits {
                 unit: unit.to_owned(),

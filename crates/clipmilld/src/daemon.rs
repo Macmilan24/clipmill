@@ -249,6 +249,7 @@ impl Daemon {
             sources,
             artifacts.handle(),
             device_profiler,
+            Arc::clone(&models),
         );
 
         Ok(Self {

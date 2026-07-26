@@ -80,6 +80,11 @@
       "additionalProperties": false,
       "properties": {
         "segment_index": { "type": "integer", "minimum": 0 },
+        "word_index": {
+          "description": "Position of this word within its utterance's text, when a single word could not be placed. Absent when the whole utterance failed, which has no single position. Assembly needs it to put the word back between its neighbours; without it, text and timing could only be re-associated by guessing.",
+          "type": "integer",
+          "minimum": 0
+        },
         "text": { "type": "string" },
         "reason": {
           "type": "string",

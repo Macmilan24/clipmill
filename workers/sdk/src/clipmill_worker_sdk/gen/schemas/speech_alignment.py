@@ -25,6 +25,10 @@ class UnalignedSpan(BaseModel):
         extra='forbid',
     )
     segment_index: conint(ge=0)
+    word_index: conint(ge=0) | None = Field(
+        None,
+        description="Position of this word within its utterance's text, when a single word could not be placed. Absent when the whole utterance failed, which has no single position. Assembly needs it to put the word back between its neighbours; without it, text and timing could only be re-associated by guessing.",
+    )
     text: str
     reason: Reason
     detail: constr(min_length=1) | None = None

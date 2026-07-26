@@ -73,6 +73,10 @@ export interface Confidence {
 }
 export interface UnalignedSpan {
   segment_index: number;
+  /**
+   * Position of this word within its utterance's text, when a single word could not be placed. Absent when the whole utterance failed, which has no single position. Assembly needs it to put the word back between its neighbours; without it, text and timing could only be re-associated by guessing.
+   */
+  word_index?: number;
   text: string;
   reason: "no_scoreable_text" | "out_of_vocabulary" | "score_below_threshold" | "audio_unavailable";
   detail?: string;

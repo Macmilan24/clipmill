@@ -158,7 +158,14 @@ def _align_segment(
 
     scoreable, unscoreable = vocabulary.encode(segment.text.split())
     missed = [
-        UnalignedSpan(segment_index=segment.index, text=word.text, reason=word.reason)
+        UnalignedSpan(
+            segment_index=segment.index,
+            # Where the word sits in the utterance, so assembly can put it back
+            # between its neighbours rather than guessing.
+            word_index=word.index,
+            text=word.text,
+            reason=word.reason,
+        )
         for word in unscoreable
     ]
     if not scoreable:
@@ -216,6 +223,7 @@ def _align_segment(
             missed.append(
                 UnalignedSpan(
                     segment_index=segment.index,
+                    word_index=word.index,
                     text=word.text,
                     reason="score_below_threshold",
                     detail=f"median frame score {p50:.4f} is below {minimum_score:.4f}",

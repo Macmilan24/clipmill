@@ -1,7 +1,7 @@
 {
   "confidence": {
     "p10": 0.88,
-    "p50": 0.9701
+    "p50": 0.975
   },
   "coverage": {
     "aligned_ticks": 351000,
