@@ -28,6 +28,7 @@ fn source() -> SourceInput {
         width: 1_920,
         height: 1_080,
         has_audio: true,
+        duration_ticks: 1_350_000,
         keyframe_ticks: vec![0, 180_000, 360_000, 540_000, 900_000],
     }
 }
@@ -537,6 +538,27 @@ fn an_empty_program_is_refused() {
         refuses(&EditDocument::default(), &[source()]),
         RenderError::EmptyProgram
     ));
+}
+
+/// A document authored against a longer cut of the same footage must be
+/// refused with its reason, not encoded into a file that is quietly short.
+#[test]
+fn a_segment_past_the_end_of_its_source_is_refused() {
+    let mut input = source();
+    input.duration_ticks = 400_000;
+    assert!(matches!(
+        refuses(&first_slice(), &[input]),
+        RenderError::SegmentPastEndOfSource(_)
+    ));
+}
+
+/// A source whose observation states no duration is taken on trust: the
+/// encoder's frame-count check is still there as the backstop.
+#[test]
+fn a_source_of_unstated_length_is_not_refused() {
+    let mut input = source();
+    input.duration_ticks = 0;
+    assert!(compile(&first_slice(), &[input], &RenderProfile::default()).is_ok());
 }
 
 #[test]

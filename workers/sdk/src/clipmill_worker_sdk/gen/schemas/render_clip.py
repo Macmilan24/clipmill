@@ -207,7 +207,7 @@ class RenderClipManifest(BaseModel):
         ...,
         description='Digest of the canonical Edit IR snapshot this render read. The snapshot carries the render projection only, so re-explaining an edit cannot change this value.',
     )
-    ir_artifact_id: constr(min_length=1) = Field(
+    ir_artifact_id: Sha256 = Field(
         ..., description='Content address of that snapshot artifact.'
     )
     profile: Profile

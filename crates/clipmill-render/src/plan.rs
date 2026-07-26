@@ -38,6 +38,9 @@ pub struct SourceInput {
     pub width: i64,
     pub height: i64,
     pub has_audio: bool,
+    /// Source duration in ticks. Zero means the observation did not state one,
+    /// in which case spans are taken on trust rather than refused.
+    pub duration_ticks: i64,
     /// Video keyframe positions in edit ticks, from the source's reference
     /// index. Empty means "seek from the start" rather than "guess".
     pub keyframe_ticks: Vec<i64>,
@@ -276,6 +279,28 @@ impl RenderPlan {
     }
 }
 
+/// Everything about the caption track that must hold before an encoder is
+/// asked to burn it in.
+fn check_captions(document: &EditDocument, duration_ticks: i64) -> Result<(), RenderError> {
+    for cue in &document.captions.cues {
+        if cue.start_ticks >= duration_ticks {
+            return Err(RenderError::CueOutsideProgram(cue.cue_id.clone()));
+        }
+        if matches!(cue.anim, CaptionAnimation::Karaoke) && cue.word_count() == 0 {
+            return Err(RenderError::CueOutsideProgram(cue.cue_id.clone()));
+        }
+        for word in cue.words() {
+            if let Some(character) = unrenderable_character(&word.text) {
+                return Err(RenderError::UnrenderableCaptionText {
+                    cue_id: cue.cue_id.clone(),
+                    character,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn compile(
     document: &EditDocument,
     sources: &[SourceInput],
@@ -294,22 +319,7 @@ pub fn compile(
     }
     let rate = profile.rate();
     let duration_ticks = document.program_duration_ticks();
-    for cue in &document.captions.cues {
-        if cue.start_ticks >= duration_ticks {
-            return Err(RenderError::CueOutsideProgram(cue.cue_id.clone()));
-        }
-        if matches!(cue.anim, CaptionAnimation::Karaoke) && cue.word_count() == 0 {
-            return Err(RenderError::CueOutsideProgram(cue.cue_id.clone()));
-        }
-        for word in cue.words() {
-            if let Some(character) = unrenderable_character(&word.text) {
-                return Err(RenderError::UnrenderableCaptionText {
-                    cue_id: cue.cue_id.clone(),
-                    character,
-                });
-            }
-        }
-    }
+    check_captions(document, duration_ticks)?;
 
     let mut spans = Vec::with_capacity(document.video.segments.len());
     let mut segments = Vec::with_capacity(document.video.segments.len());
@@ -319,6 +329,13 @@ pub fn compile(
             .iter()
             .find(|source| source.fingerprint == segment.source_fingerprint)
             .ok_or_else(|| RenderError::UnresolvedSource(segment.source_fingerprint.clone()))?;
+        if source.duration_ticks > 0 && segment.out_ticks > source.duration_ticks {
+            // Catch this here rather than letting the encoder run for minutes
+            // and then produce a file one frame-count check short of the plan.
+            return Err(RenderError::SegmentPastEndOfSource(
+                segment.segment_id.clone(),
+            ));
+        }
         let seek_ticks = source.seek_target(segment.in_ticks);
         spans.push(DecodeSpan {
             segment_id: segment.segment_id.clone(),
@@ -393,6 +410,8 @@ pub enum RenderError {
     EmptyProgram,
     #[error("no registered source matches fingerprint {0}")]
     UnresolvedSource(String),
+    #[error("segment {0} reaches past the end of its source")]
+    SegmentPastEndOfSource(String),
     #[error("the plan referenced segment {0}, which the document does not contain")]
     UnknownSegment(String),
     #[error("caption style {0} is not available to this render profile")]

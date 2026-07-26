@@ -138,7 +138,11 @@ fn render_manifest_fixtures_state_what_was_produced() {
         // the loudness figures are measurements rather than restated targets.
         assert!(!parsed.outputs.is_empty());
         assert!(parsed.program.frame_count > 0);
-        assert!(parsed.loudness.measured_output.integrated_lufs != parsed.loudness.target_lufs);
+        // The measurement is a reading, not the target echoed back.
+        assert!(
+            (parsed.loudness.measured_output.integrated_lufs - parsed.loudness.target_lufs).abs()
+                > f64::EPSILON
+        );
     }
 
     let first_slice: RenderClipManifest = serde_json::from_str(&read(

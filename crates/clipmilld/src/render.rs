@@ -216,12 +216,14 @@ async fn resolve_sources(
         let map: Value = serde_json::from_slice(&record.source_map_json)
             .map_err(|_| TaskExecutionError::deterministic("source map is not valid JSON"))?;
         let (width, height, has_audio) = frame_shape(&map)?;
+        let duration_ticks = map["container"]["duration_ticks"].as_i64().unwrap_or(0);
         inputs.push(SourceInput {
             fingerprint,
             path: record.observation.absolute_path.clone(),
             width,
             height,
             has_audio,
+            duration_ticks,
             keyframe_ticks: keyframe_ticks(context, &record.source_id).await,
         });
     }

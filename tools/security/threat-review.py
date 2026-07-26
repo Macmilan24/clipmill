@@ -16,6 +16,8 @@ CATEGORIES = {
         "crates/clipmilld/src/sources.rs",
         "crates/clipmilld/src/probe.rs",
         "crates/clipmilld/src/media.rs",
+        "crates/clipmilld/src/render.rs",
+        "crates/clipmill-render/**",
         "eval/harness/**",
     ),
     "IPC and worker authentication": (
@@ -35,6 +37,7 @@ CATEGORIES = {
         "crates/clipmilld/src/probe.rs",
         "crates/clipmilld/src/device.rs",
         "crates/clipmilld/src/media.rs",
+        "crates/clipmilld/src/render.rs",
         "workers/**",
         "tools/fetch-ffmpeg.sh",
     ),

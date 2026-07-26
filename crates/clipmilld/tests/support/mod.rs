@@ -7,10 +7,11 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CancelJobRequest, CreateProjectRequest, DemoDagPayloadV1, GetJobRequest, GetSourceRequest,
-    IngestSourcePayloadV1, Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
-    PingRequest, ProbeSourcePayloadV1, Project, RegisterSourceRequest, RegisterSourceResponse,
-    Request, Response, Source, SubmitJobRequest, request, response,
+    CancelJobRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1, GetJobRequest,
+    GetSourceRequest, IngestSourcePayloadV1, Job, ListJobsRequest, ListProjectsRequest,
+    ListSourcesRequest, PingRequest, ProbeSourcePayloadV1, Project, RegisterSourceRequest,
+    RegisterSourceResponse, RenderClipPayloadV1, Request, Response, SnapshotEditDocRequest, Source,
+    SubmitJobRequest, request, response,
 };
 use prost::Message;
 use tokio::{
@@ -418,4 +419,97 @@ async fn read_varint(stream: &mut UnixStream) -> Result<u64, String> {
         }
     }
     Err("malformed response length".to_owned())
+}
+
+pub async fn create_edit_doc(
+    socket: &Path,
+    request_id: &str,
+    project_id: &str,
+    document_json: &str,
+) -> Result<String, String> {
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::CreateEditDoc(CreateEditDocRequest {
+                project_id: project_id.to_owned(),
+                document_json: document_json.to_owned(),
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::CreateEditDoc(created)) => created
+            .doc
+            .map(|doc| doc.doc_id)
+            .ok_or_else(|| "create edit doc response omitted the document".to_owned()),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected create edit doc response".to_owned()),
+    }
+}
+
+/// Freeze a document into the immutable snapshot a render reads.
+pub async fn snapshot_edit_doc(
+    socket: &Path,
+    request_id: &str,
+    doc_id: &str,
+) -> Result<String, String> {
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::SnapshotEditDoc(SnapshotEditDocRequest {
+                doc_id: doc_id.to_owned(),
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::SnapshotEditDoc(taken)) => Ok(taken.artifact_id),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected snapshot response".to_owned()),
+    }
+}
+
+pub struct RenderRequest<'a> {
+    pub project_id: &'a str,
+    pub doc_id: &'a str,
+    pub ir_artifact_id: &'a str,
+    pub source_attestation: &'a str,
+    pub ai_assistance: Vec<String>,
+}
+
+pub async fn submit_render(
+    socket: &Path,
+    request_id: &str,
+    render: &RenderRequest<'_>,
+) -> Result<Job, String> {
+    let payload = RenderClipPayloadV1 {
+        key_version: "clipmill.render-clip.v1".to_owned(),
+        doc_id: render.doc_id.to_owned(),
+        ir_artifact_id: render.ir_artifact_id.to_owned(),
+        source_attestation: render.source_attestation.to_owned(),
+        gates_passed: vec!["duration_60s".to_owned()],
+        ai_assistance: render.ai_assistance.clone(),
+    }
+    .encode_to_vec();
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::SubmitJob(SubmitJobRequest {
+                project_id: render.project_id.to_owned(),
+                kind: "render-clip".to_owned(),
+                payload,
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::SubmitJob(submitted)) => submitted
+            .job
+            .ok_or_else(|| "submit render response omitted job".to_owned()),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected submit render response".to_owned()),
+    }
 }

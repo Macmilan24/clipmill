@@ -30,8 +30,7 @@
     },
     "ir_artifact_id": {
       "description": "Content address of that snapshot artifact.",
-      "type": "string",
-      "minLength": 1
+      "$ref": "#/$defs/sha256"
     },
     "profile": { "$ref": "#/$defs/profile" },
     "engine": {

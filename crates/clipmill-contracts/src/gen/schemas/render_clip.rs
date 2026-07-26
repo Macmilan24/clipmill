@@ -1103,8 +1103,7 @@ impl<'de> ::serde::Deserialize<'de> for ProfileVideoCodec {
 #[doc = "    },"]
 #[doc = "    \"ir_artifact_id\": {"]
 #[doc = "      \"description\": \"Content address of that snapshot artifact.\","]
-#[doc = "      \"type\": \"string\","]
-#[doc = "      \"minLength\": 1"]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
 #[doc = "    },"]
 #[doc = "    \"ir_hash\": {"]
 #[doc = "      \"description\": \"Digest of the canonical Edit IR snapshot this render read. The snapshot carries the render projection only, so re-explaining an edit cannot change this value.\","]
@@ -1270,7 +1269,7 @@ pub struct RenderClipManifest {
     #[doc = "Every source that contributed frames, in document order."]
     pub input_source_fingerprints: ::std::vec::Vec<Sha256>,
     #[doc = "Content address of that snapshot artifact."]
-    pub ir_artifact_id: RenderClipManifestIrArtifactId,
+    pub ir_artifact_id: Sha256,
     #[doc = "Digest of the canonical Edit IR snapshot this render read. The snapshot carries the render projection only, so re-explaining an edit cannot change this value."]
     pub ir_hash: Sha256,
     pub loudness: RenderClipManifestLoudness,
@@ -1912,75 +1911,6 @@ impl ::std::convert::TryFrom<::std::string::String> for RenderClipManifestEngine
     }
 }
 impl<'de> ::serde::Deserialize<'de> for RenderClipManifestEngineFontFamily {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-#[doc = "Content address of that snapshot artifact."]
-#[doc = r""]
-#[doc = r" <details><summary>JSON schema</summary>"]
-#[doc = r""]
-#[doc = r" ```json"]
-#[doc = "{"]
-#[doc = "  \"description\": \"Content address of that snapshot artifact.\","]
-#[doc = "  \"type\": \"string\","]
-#[doc = "  \"minLength\": 1"]
-#[doc = "}"]
-#[doc = r" ```"]
-#[doc = r" </details>"]
-#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct RenderClipManifestIrArtifactId(::std::string::String);
-impl ::std::ops::Deref for RenderClipManifestIrArtifactId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<RenderClipManifestIrArtifactId> for ::std::string::String {
-    fn from(value: RenderClipManifestIrArtifactId) -> Self {
-        value.0
-    }
-}
-impl ::std::str::FromStr for RenderClipManifestIrArtifactId {
-    type Err = self::error::ConversionError;
-    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for RenderClipManifestIrArtifactId {
-    type Error = self::error::ConversionError;
-    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for RenderClipManifestIrArtifactId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for RenderClipManifestIrArtifactId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for RenderClipManifestIrArtifactId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -3402,8 +3332,7 @@ pub mod builder {
         engine: ::std::result::Result<super::RenderClipManifestEngine, ::std::string::String>,
         input_source_fingerprints:
             ::std::result::Result<::std::vec::Vec<super::Sha256>, ::std::string::String>,
-        ir_artifact_id:
-            ::std::result::Result<super::RenderClipManifestIrArtifactId, ::std::string::String>,
+        ir_artifact_id: ::std::result::Result<super::Sha256, ::std::string::String>,
         ir_hash: ::std::result::Result<super::Sha256, ::std::string::String>,
         loudness: ::std::result::Result<super::RenderClipManifestLoudness, ::std::string::String>,
         outputs: ::std::result::Result<
@@ -3491,7 +3420,7 @@ pub mod builder {
         }
         pub fn ir_artifact_id<T>(mut self, value: T) -> Self
         where
-            T: ::std::convert::TryInto<super::RenderClipManifestIrArtifactId>,
+            T: ::std::convert::TryInto<super::Sha256>,
             T::Error: ::std::fmt::Display,
         {
             self.ir_artifact_id = value
