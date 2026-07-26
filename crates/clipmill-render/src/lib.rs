@@ -12,7 +12,7 @@
 //! them:
 //!
 //! * **Frames are decided once.** Every timestamp the renderer emits comes
-//!   from an integer frame index computed in [`timing`], so a cue's first
+//!   from an integer frame index computed by [`FrameRate`], so a cue's first
 //!   frame is a fact the preview can be compared against rather than the
 //!   result of whichever rounding a call site reached for.
 //! * **Nothing is re-decided downstream.** Line breaks come from the document

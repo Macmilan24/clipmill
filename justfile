@@ -19,6 +19,7 @@ codegen:
 lint:
     cargo fmt --check
     cargo clippy --workspace --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
     uvx ruff check .
     uvx ruff format --check .
     pnpm lint
