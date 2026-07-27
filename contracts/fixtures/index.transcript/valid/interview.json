@@ -1,0 +1,582 @@
+{
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 6426000,
+    "start_ticks": 0
+  },
+  "edges": [
+    {
+      "end_ticks": 261000,
+      "kind": "silence",
+      "start_ticks": 225000
+    },
+    {
+      "end_ticks": 657000,
+      "kind": "silence",
+      "start_ticks": 621000
+    },
+    {
+      "end_ticks": 1143000,
+      "kind": "silence",
+      "start_ticks": 1107000
+    },
+    {
+      "end_ticks": 1494000,
+      "kind": "silence",
+      "start_ticks": 1458000
+    },
+    {
+      "end_ticks": 2259000,
+      "kind": "silence",
+      "start_ticks": 1899000
+    },
+    {
+      "end_ticks": 2565000,
+      "kind": "silence",
+      "start_ticks": 2529000
+    },
+    {
+      "end_ticks": 3006000,
+      "kind": "silence",
+      "start_ticks": 2970000
+    },
+    {
+      "end_ticks": 3357000,
+      "kind": "silence",
+      "start_ticks": 3321000
+    },
+    {
+      "end_ticks": 3798000,
+      "kind": "silence",
+      "start_ticks": 3762000
+    },
+    {
+      "end_ticks": 4653000,
+      "kind": "silence",
+      "start_ticks": 4293000
+    },
+    {
+      "end_ticks": 5004000,
+      "kind": "silence",
+      "start_ticks": 4968000
+    },
+    {
+      "end_ticks": 5490000,
+      "kind": "silence",
+      "start_ticks": 5454000
+    },
+    {
+      "end_ticks": 5931000,
+      "kind": "silence",
+      "start_ticks": 5895000
+    },
+    {
+      "end_ticks": 6426000,
+      "kind": "silence",
+      "start_ticks": 6336000
+    }
+  ],
+  "inputs": {
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "producer": {
+    "implementation": "clipmill-evidence-index@1.0.0",
+    "stage": "index-transcript"
+  },
+  "schema_version": "clipmill.index.transcript.v1",
+  "segmentation": {
+    "block_sentences": 2,
+    "boundary_cutoff": 0.5,
+    "stopwords": "english-minimal.v1",
+    "utterance_gap_ticks": 27000
+  },
+  "sentences": [
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 225000,
+      "first_word_index": 0,
+      "index": 0,
+      "start_ticks": 0,
+      "terminator": "punctuation",
+      "text": "What makes a renderer deterministic",
+      "utterance_index": 0,
+      "word_count": 5,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 621000,
+      "first_word_index": 5,
+      "index": 1,
+      "start_ticks": 261000,
+      "terminator": "punctuation",
+      "text": "The encoder settings are pinned to one profile",
+      "utterance_index": 1,
+      "word_count": 8,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1107000,
+      "first_word_index": 13,
+      "index": 2,
+      "start_ticks": 657000,
+      "terminator": "punctuation",
+      "text": "Every frame lands on the same tick on every machine",
+      "utterance_index": 2,
+      "word_count": 10,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1458000,
+      "first_word_index": 23,
+      "index": 3,
+      "start_ticks": 1143000,
+      "terminator": "punctuation",
+      "text": "Nobody can reproduce a build that drifts",
+      "utterance_index": 3,
+      "word_count": 7,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1899000,
+      "first_word_index": 30,
+      "index": 4,
+      "start_ticks": 1494000,
+      "terminator": "punctuation",
+      "text": "That is the whole reason the profile is frozen",
+      "utterance_index": 4,
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2529000,
+      "first_word_index": 39,
+      "index": 5,
+      "start_ticks": 2259000,
+      "terminator": "punctuation",
+      "text": "How does alignment measure word timing",
+      "utterance_index": 5,
+      "word_count": 6,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2970000,
+      "first_word_index": 45,
+      "index": 6,
+      "start_ticks": 2565000,
+      "terminator": "punctuation",
+      "text": "A CTC model scores each frame against the text",
+      "utterance_index": 6,
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3321000,
+      "first_word_index": 54,
+      "index": 7,
+      "start_ticks": 3006000,
+      "terminator": "punctuation",
+      "text": "The peaks become word boundaries in ticks",
+      "utterance_index": 7,
+      "word_count": 7,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3762000,
+      "first_word_index": 61,
+      "index": 8,
+      "start_ticks": 3357000,
+      "terminator": "punctuation",
+      "text": "Interpolated timing is labelled and never presented as measured",
+      "utterance_index": 8,
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4293000,
+      "first_word_index": 70,
+      "index": 9,
+      "start_ticks": 3798000,
+      "terminator": "punctuation",
+      "text": "Precision here is what stops a cut landing inside a word",
+      "utterance_index": 9,
+      "word_count": 11,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4968000,
+      "first_word_index": 81,
+      "index": 10,
+      "start_ticks": 4653000,
+      "terminator": "punctuation",
+      "text": "What breaks when the timebase is wrong",
+      "utterance_index": 10,
+      "word_count": 7,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5454000,
+      "first_word_index": 88,
+      "index": 11,
+      "start_ticks": 5004000,
+      "terminator": "punctuation",
+      "text": "A caption drifts a frame further out with every cut",
+      "utterance_index": 11,
+      "word_count": 10,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5895000,
+      "first_word_index": 98,
+      "index": 12,
+      "start_ticks": 5490000,
+      "terminator": "punctuation",
+      "text": "Viewers read it as sloppiness rather than as arithmetic",
+      "utterance_index": 12,
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6336000,
+      "first_word_index": 107,
+      "index": 13,
+      "start_ticks": 5931000,
+      "terminator": "punctuation",
+      "text": "Integer ticks against a stated timebase remove the question",
+      "utterance_index": 13,
+      "word_count": 9,
+      "words_per_minute": 120.0
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "topics": [
+    {
+      "end_ticks": 1458000,
+      "first_sentence_index": 0,
+      "index": 0,
+      "keywords": [
+        {
+          "count": 2,
+          "term": "every"
+        },
+        {
+          "count": 1,
+          "term": "build"
+        },
+        {
+          "count": 1,
+          "term": "deterministic"
+        },
+        {
+          "count": 1,
+          "term": "encoder"
+        },
+        {
+          "count": 1,
+          "term": "lands"
+        }
+      ],
+      "opening_depth": 0.0,
+      "sentence_count": 4,
+      "start_ticks": 0
+    },
+    {
+      "end_ticks": 6336000,
+      "first_sentence_index": 4,
+      "index": 1,
+      "keywords": [
+        {
+          "count": 3,
+          "term": "word"
+        },
+        {
+          "count": 2,
+          "term": "against"
+        },
+        {
+          "count": 2,
+          "term": "cut"
+        },
+        {
+          "count": 2,
+          "term": "ticks"
+        },
+        {
+          "count": 2,
+          "term": "timebase"
+        }
+      ],
+      "opening_depth": 0.29275459046508423,
+      "sentence_count": 10,
+      "start_ticks": 1494000
+    }
+  ],
+  "utterances": [
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 225000,
+      "first_word_index": 0,
+      "index": 0,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 0,
+      "start_ticks": 0,
+      "text": "What makes a renderer deterministic",
+      "word_count": 5,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 621000,
+      "first_word_index": 5,
+      "index": 1,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 261000,
+      "text": "The encoder settings are pinned to one profile",
+      "word_count": 8,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1107000,
+      "first_word_index": 13,
+      "index": 2,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 657000,
+      "text": "Every frame lands on the same tick on every machine",
+      "word_count": 10,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1458000,
+      "first_word_index": 23,
+      "index": 3,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 1143000,
+      "text": "Nobody can reproduce a build that drifts",
+      "word_count": 7,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1899000,
+      "first_word_index": 30,
+      "index": 4,
+      "pause_after_ticks": 360000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 1494000,
+      "text": "That is the whole reason the profile is frozen",
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2529000,
+      "first_word_index": 39,
+      "index": 5,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 360000,
+      "start_ticks": 2259000,
+      "text": "How does alignment measure word timing",
+      "word_count": 6,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2970000,
+      "first_word_index": 45,
+      "index": 6,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 2565000,
+      "text": "A CTC model scores each frame against the text",
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3321000,
+      "first_word_index": 54,
+      "index": 7,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 3006000,
+      "text": "The peaks become word boundaries in ticks",
+      "word_count": 7,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3762000,
+      "first_word_index": 61,
+      "index": 8,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 3357000,
+      "text": "Interpolated timing is labelled and never presented as measured",
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4293000,
+      "first_word_index": 70,
+      "index": 9,
+      "pause_after_ticks": 360000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 3798000,
+      "text": "Precision here is what stops a cut landing inside a word",
+      "word_count": 11,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4968000,
+      "first_word_index": 81,
+      "index": 10,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 360000,
+      "start_ticks": 4653000,
+      "text": "What breaks when the timebase is wrong",
+      "word_count": 7,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5454000,
+      "first_word_index": 88,
+      "index": 11,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 5004000,
+      "text": "A caption drifts a frame further out with every cut",
+      "word_count": 10,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5895000,
+      "first_word_index": 98,
+      "index": 12,
+      "pause_after_ticks": 36000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 5490000,
+      "text": "Viewers read it as sloppiness rather than as arithmetic",
+      "word_count": 9,
+      "words_per_minute": 120.0
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6336000,
+      "first_word_index": 107,
+      "index": 13,
+      "pause_after_ticks": 90000,
+      "pause_before_ticks": 36000,
+      "start_ticks": 5931000,
+      "text": "Integer ticks against a stated timebase remove the question",
+      "word_count": 9,
+      "words_per_minute": 120.0
+    }
+  ]
+}

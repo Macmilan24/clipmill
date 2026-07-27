@@ -392,6 +392,42 @@ class IndexStagePayloadV1(_message.Message):
     shots_artifact_id: str
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., transcript_artifact_id: _Optional[str] = ..., shots_artifact_id: _Optional[str] = ...) -> None: ...
 
+class DiscoverCandidatesPayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "duration")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    DURATION_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    duration: ClipDurationV1
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ...) -> None: ...
+
+class ClipDurationV1(_message.Message):
+    __slots__ = ("min_ticks", "max_ticks")
+    MIN_TICKS_FIELD_NUMBER: _ClassVar[int]
+    MAX_TICKS_FIELD_NUMBER: _ClassVar[int]
+    min_ticks: int
+    max_ticks: int
+    def __init__(self, min_ticks: _Optional[int] = ..., max_ticks: _Optional[int] = ...) -> None: ...
+
+class DiscoverStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "index_artifact_id", "transcript_artifact_id", "loudness_artifact_id", "duration", "exploration_floor")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    INDEX_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    TRANSCRIPT_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    LOUDNESS_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    DURATION_FIELD_NUMBER: _ClassVar[int]
+    EXPLORATION_FLOOR_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    index_artifact_id: str
+    transcript_artifact_id: str
+    loudness_artifact_id: str
+    duration: ClipDurationV1
+    exploration_floor: int
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., index_artifact_id: _Optional[str] = ..., transcript_artifact_id: _Optional[str] = ..., loudness_artifact_id: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., exploration_floor: _Optional[int] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

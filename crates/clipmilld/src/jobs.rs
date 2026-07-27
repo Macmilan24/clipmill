@@ -11,7 +11,8 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, DetectShotsPayloadV1, DeviceProfilePayloadV1, IndexStagePayloadV1,
+        self, ClipDurationV1, DetectShotsPayloadV1, DeviceProfilePayloadV1,
+        DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1, IndexStagePayloadV1,
         IndexTranscriptPayloadV1, JobState, ShotsStagePayloadV1, SpeechAlignmentV1,
         SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
     },
@@ -31,7 +32,7 @@ use crate::{
     artifacts::ArtifactHandle,
     db::{DbHandle, StoreError},
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
-    evidence,
+    discovery, evidence,
     media::{self, MediaRunner, ProgressSlot},
     render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
@@ -47,6 +48,9 @@ pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
 
 /// Key version the evidence-index stage payload carries.
 pub(crate) const INDEX_STAGE_KEY_VERSION: &str = "clipmill.index-stage.v1";
+
+/// Key version the discovery stage payload carries.
+pub(crate) const DISCOVER_STAGE_KEY_VERSION: &str = "clipmill.discover-stage.v1";
 
 /// The one implementation of shot detection. Unlike the speech stages there is
 /// nothing to select between: the stage runs no model, so there is no cost to
@@ -741,6 +745,73 @@ impl JobPlan {
         }
     }
 
+    /// The proposer mesh over a published index (book ch. 15).
+    ///
+    /// One builtin task, naming its three documents in its payload for the
+    /// same reason the index does: all of them were published by earlier jobs,
+    /// and a task's inputs are the outputs of the tasks it depends on.
+    pub(crate) fn discover_candidates(
+        project_id: &ProjectId,
+        source_id: String,
+        discovery_inputs: DiscoveryInputs<'_>,
+        request: &DiscoverCandidatesPayloadV1,
+        now: u64,
+    ) -> Self {
+        let mut input_kinds = vec![
+            "index.transcript.v1".to_owned(),
+            "speech.transcript.v1".to_owned(),
+        ];
+        if discovery_inputs.loudness.is_some() {
+            input_kinds.push("media.loudness_envelope.v1".to_owned());
+        }
+        let payload = DiscoverStagePayloadV1 {
+            key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
+            stage: discovery::KIND_DISCOVER.to_owned(),
+            index_artifact_id: discovery_inputs.index.to_owned(),
+            transcript_artifact_id: discovery_inputs.transcript.to_owned(),
+            loudness_artifact_id: discovery_inputs.loudness.unwrap_or_default().to_owned(),
+            duration: request.duration.or(Some(ClipDurationV1 {
+                min_ticks: 0,
+                max_ticks: 0,
+            })),
+            // Zero means the daemon's default, so a caller with no opinion
+            // does not have to have one.
+            exploration_floor: 0,
+        };
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: discovery::KIND_DISCOVER.to_owned(),
+            source_id: Some(source_id),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: discovery::KIND_DISCOVER.to_owned(),
+                input_kinds,
+                output_kind: "discovery.candidates.v1".to_owned(),
+                payload: payload.encode_to_vec(),
+                dependencies: Vec::new(),
+                resources: ResourceDeclaration {
+                    cpu_threads: 1,
+                    ram_bytes: 512 * 1024 * 1024,
+                    accelerator_class: String::new(),
+                    vram_bytes: 0,
+                    disk_bytes: 128 * 1024 * 1024,
+                    network_policy: "local-lock".to_owned(),
+                    thermal_class: "light".to_owned(),
+                    determinism_class: "deterministic".to_owned(),
+                    checkpoint_support: false,
+                    preemption_cost: 1,
+                },
+                implementation: discovery::IMPLEMENTATION.to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
+        }
+    }
+
     pub(crate) fn device_profile(
         hardware_fingerprint: String,
         measurement_generation: u64,
@@ -807,6 +878,15 @@ pub(crate) struct EvidenceInputs<'a> {
     pub transcript: &'a str,
     /// Absent for a source with no video.
     pub shots: Option<&'a str>,
+}
+
+/// The published documents discovery reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DiscoveryInputs<'a> {
+    pub index: &'a str,
+    pub transcript: &'a str,
+    /// Absent for a source with no audio.
+    pub loudness: Option<&'a str>,
 }
 
 /// What one leased speech stage needs, taken from the model it will load.
@@ -1483,6 +1563,9 @@ impl BuiltinExecutors {
             evidence::KIND_INDEX => {
                 evidence::execute_index_task(&self.artifacts, task, progress).await
             }
+            discovery::KIND_DISCOVER => {
+                discovery::execute_discover_task(&self.artifacts, task, progress).await
+            }
             kind if render::is_render_kind(kind) => {
                 render::execute_render_task(
                     &RenderContext {
@@ -1511,6 +1594,7 @@ fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
     kinds.push(render::KIND_RENDER_CLIP.to_owned());
     kinds.push(speech::KIND_TRANSCRIPT.to_owned());
     kinds.push(evidence::KIND_INDEX.to_owned());
+    kinds.push(discovery::KIND_DISCOVER.to_owned());
     if builtin_fixture_executor {
         kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
     }
@@ -2305,5 +2389,118 @@ mod index_tests {
         let text = String::from_utf8_lossy(&encoded);
         assert!(!text.contains('/'), "a path reached the artifact key");
         assert!(!text.contains(std::env::temp_dir().to_string_lossy().as_ref()));
+    }
+}
+
+#[cfg(test)]
+mod discovery_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use clipmill_contracts::proto::ipc::v1::{
+        ClipDurationV1, DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1,
+    };
+    use clipmill_core::ProjectId;
+    use prost::Message;
+
+    use super::{DISCOVER_STAGE_KEY_VERSION, DiscoveryInputs, JobPlan, discovery};
+
+    const INDEX: &str = "sha256:1de0000000000000000000000000000000000000000000000000000000000011";
+    const TRANSCRIPT: &str =
+        "sha256:7a11000000000000000000000000000000000000000000000000000000000042";
+    const LOUDNESS: &str =
+        "sha256:10ad000000000000000000000000000000000000000000000000000000000099";
+
+    fn plan(loudness: Option<&str>, duration: Option<ClipDurationV1>) -> JobPlan {
+        JobPlan::discover_candidates(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            DiscoveryInputs {
+                index: INDEX,
+                transcript: TRANSCRIPT,
+                loudness,
+            },
+            &DiscoverCandidatesPayloadV1 {
+                key_version: "clipmill.discover-candidates.v1".to_owned(),
+                source_id: "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+                duration,
+            },
+            7,
+        )
+    }
+
+    fn payload(plan: &JobPlan) -> DiscoverStagePayloadV1 {
+        DiscoverStagePayloadV1::decode(plan.tasks[0].payload.as_slice()).expect("a stage payload")
+    }
+
+    #[test]
+    fn discovery_is_one_builtin_task_that_names_what_it_reads() {
+        let plan = plan(None, None);
+        assert_eq!(plan.tasks.len(), 1);
+        let task = &plan.tasks[0];
+        assert_eq!(task.kind, discovery::KIND_DISCOVER);
+        assert_eq!(task.output_kind, "discovery.candidates.v1");
+        assert_eq!(task.implementation, discovery::IMPLEMENTATION);
+        assert!(task.is_final);
+        assert!(task.dependencies.is_empty());
+        let payload = payload(&plan);
+        assert_eq!(payload.key_version, DISCOVER_STAGE_KEY_VERSION);
+        assert_eq!(payload.index_artifact_id, INDEX);
+        assert_eq!(payload.transcript_artifact_id, TRANSCRIPT);
+    }
+
+    /// A source with no audio keys differently from one whose loudness was
+    /// measured, because a search that weighed prosody is a different search.
+    #[test]
+    fn prosody_changes_the_key_and_the_declared_inputs() {
+        let silent = plan(None, None);
+        let heard = plan(Some(LOUDNESS), None);
+        assert!(payload(&silent).loudness_artifact_id.is_empty());
+        assert_eq!(payload(&heard).loudness_artifact_id, LOUDNESS);
+        assert_ne!(silent.tasks[0].payload, heard.tasks[0].payload);
+        assert_eq!(
+            silent.tasks[0].input_kinds,
+            ["index.transcript.v1", "speech.transcript.v1"]
+        );
+        assert_eq!(
+            heard.tasks[0].input_kinds,
+            [
+                "index.transcript.v1",
+                "speech.transcript.v1",
+                "media.loudness_envelope.v1"
+            ]
+        );
+    }
+
+    /// Asking for a different clip length is a different search, so it must
+    /// reach the key rather than filtering a shared result.
+    #[test]
+    fn the_requested_length_reaches_the_keyed_payload() {
+        let default = plan(None, None);
+        let asked = plan(
+            None,
+            Some(ClipDurationV1 {
+                min_ticks: 30 * 90_000,
+                max_ticks: 60 * 90_000,
+            }),
+        );
+        assert_ne!(default.tasks[0].payload, asked.tasks[0].payload);
+        let duration = payload(&asked).duration.expect("a stated range");
+        assert_eq!(duration.min_ticks, 30 * 90_000);
+    }
+
+    #[test]
+    fn discovery_asks_for_nothing_it_does_not_use() {
+        let resources = &plan(None, None).tasks[0].resources;
+        assert!(resources.accelerator_class.is_empty());
+        assert_eq!(resources.vram_bytes, 0);
+        assert_eq!(resources.network_policy, "local-lock");
+        assert_eq!(resources.determinism_class, "deterministic");
+    }
+
+    #[test]
+    fn the_keyed_payload_carries_no_path() {
+        let encoded = plan(Some(LOUDNESS), None).tasks[0].payload.clone();
+        let text = String::from_utf8_lossy(&encoded);
+        assert!(!text.contains('/'), "a path reached the artifact key");
     }
 }

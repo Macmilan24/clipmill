@@ -1,0 +1,872 @@
+{
+  "candidates": [
+    {
+      "boundary_lattice": {
+        "ends": [
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000,
+          2970000,
+          3006000,
+          3321000,
+          3357000,
+          3762000,
+          3798000,
+          4293000,
+          4653000,
+          4968000,
+          5004000,
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [
+          {
+            "count": 20,
+            "reason": "too_short"
+          }
+        ],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000
+        ]
+      },
+      "cluster_id": "cl_74081c6ffeb61780",
+      "evidence": [
+        {
+          "index": 2,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_4e44c1081231cb8d",
+      "intervals": [
+        {
+          "end_ticks": 1458000,
+          "start_ticks": 0.5
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.55,
+      "proposer": {
+        "name": "insight-quote",
+        "rubric": "tfidf-specificity-claim-prosody.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 2,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000,
+          2970000,
+          3006000,
+          3321000,
+          3357000,
+          3762000,
+          3798000,
+          4293000,
+          4653000,
+          4968000,
+          5004000,
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [],
+        "starts": [
+          0
+        ]
+      },
+      "cluster_id": "cl_74081c6ffeb61780",
+      "evidence": [
+        {
+          "index": 0,
+          "kind": "sentence"
+        },
+        {
+          "index": 1,
+          "kind": "sentence"
+        },
+        {
+          "index": 2,
+          "kind": "sentence"
+        },
+        {
+          "index": 3,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_a69cb9bf8e801216",
+      "intervals": [
+        {
+          "end_ticks": 1458000,
+          "start_ticks": 0
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.6598076211353316,
+      "proposer": {
+        "name": "question-answer",
+        "rubric": "punctuation-and-wh-pattern.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 0,
+          "kind": "sentence"
+        },
+        "payoff": {
+          "index": 3,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000,
+          2970000,
+          3006000,
+          3321000,
+          3357000,
+          3762000,
+          3798000,
+          4293000,
+          4653000,
+          4968000,
+          5004000,
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [],
+        "starts": [
+          0
+        ]
+      },
+      "cluster_id": "cl_74081c6ffeb61780",
+      "evidence": [
+        {
+          "index": 0,
+          "kind": "sentence"
+        },
+        {
+          "index": 1,
+          "kind": "sentence"
+        },
+        {
+          "index": 2,
+          "kind": "sentence"
+        },
+        {
+          "index": 3,
+          "kind": "sentence"
+        },
+        {
+          "index": 0,
+          "kind": "topic"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_b01970ca497ec279",
+      "intervals": [
+        {
+          "end_ticks": 1458000,
+          "start_ticks": 0
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.5,
+      "proposer": {
+        "name": "narrative-arc",
+        "rubric": "topic-span-open-close.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 0,
+          "kind": "sentence"
+        },
+        "payoff": {
+          "index": 2,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000,
+          2970000,
+          3006000,
+          3321000,
+          3357000,
+          3762000,
+          3798000,
+          4293000,
+          4653000,
+          4968000,
+          5004000,
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [
+          {
+            "count": 18,
+            "reason": "too_short"
+          }
+        ],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000,
+          1107000,
+          1143000
+        ]
+      },
+      "cluster_id": "cl_7d53a9f82203a445",
+      "evidence": [
+        {
+          "index": 3,
+          "kind": "sentence"
+        },
+        {
+          "index": 4,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_22cdc9811efaa7bf",
+      "intervals": [
+        {
+          "end_ticks": 2529000,
+          "start_ticks": 1143000
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.4193575542456608,
+      "proposer": {
+        "name": "insight-quote",
+        "rubric": "tfidf-specificity-claim-prosody.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 3,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000,
+          1107000,
+          1143000,
+          1458000,
+          1494000
+        ]
+      },
+      "cluster_id": "cl_57edb0f74c204156",
+      "evidence": [
+        {
+          "index": 4,
+          "kind": "sentence"
+        },
+        {
+          "index": 5,
+          "kind": "sentence"
+        },
+        {
+          "index": 6,
+          "kind": "sentence"
+        },
+        {
+          "index": 7,
+          "kind": "sentence"
+        },
+        {
+          "index": 8,
+          "kind": "sentence"
+        },
+        {
+          "index": 9,
+          "kind": "sentence"
+        },
+        {
+          "index": 10,
+          "kind": "sentence"
+        },
+        {
+          "index": 11,
+          "kind": "sentence"
+        },
+        {
+          "index": 12,
+          "kind": "sentence"
+        },
+        {
+          "index": 13,
+          "kind": "sentence"
+        },
+        {
+          "index": 1,
+          "kind": "topic"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_9c884016c479866c",
+      "intervals": [
+        {
+          "end_ticks": 6336000,
+          "start_ticks": 1494000
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.3963772952325421,
+      "proposer": {
+        "name": "narrative-arc",
+        "rubric": "topic-span-open-close.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 4,
+          "kind": "sentence"
+        },
+        "payoff": {
+          "index": 12,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          2970000,
+          3006000,
+          3321000,
+          3357000,
+          3762000,
+          3798000,
+          4293000,
+          4653000,
+          4968000,
+          5004000,
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [
+          {
+            "count": 18,
+            "reason": "too_short"
+          }
+        ],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000,
+          1107000,
+          1143000,
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000
+        ]
+      },
+      "cluster_id": "cl_905b59fd6899f0f4",
+      "evidence": [
+        {
+          "index": 6,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_6e2869cc7732dfac",
+      "intervals": [
+        {
+          "end_ticks": 3321000,
+          "start_ticks": 1899000
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.3713706605392046,
+      "proposer": {
+        "name": "insight-quote",
+        "rubric": "tfidf-specificity-claim-prosody.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 6,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          3762000,
+          3798000,
+          4293000,
+          4653000,
+          4968000,
+          5004000,
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [
+          {
+            "count": 18,
+            "reason": "too_short"
+          }
+        ],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000,
+          1107000,
+          1143000,
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000,
+          2970000,
+          3006000,
+          3321000,
+          3357000
+        ]
+      },
+      "cluster_id": "cl_d7c57ae49799a737",
+      "evidence": [
+        {
+          "index": 8,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_81ddbc9f98bf8e3d",
+      "intervals": [
+        {
+          "end_ticks": 3762000,
+          "start_ticks": 2259000
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.40914340566088103,
+      "proposer": {
+        "name": "insight-quote",
+        "rubric": "tfidf-specificity-claim-prosody.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 8,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          4293000,
+          4653000,
+          4968000,
+          5004000,
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000,
+          1107000,
+          1143000,
+          1458000,
+          1494000,
+          1899000,
+          2259000
+        ]
+      },
+      "cluster_id": "cl_1cd0186b36c78667",
+      "evidence": [
+        {
+          "index": 5,
+          "kind": "sentence"
+        },
+        {
+          "index": 6,
+          "kind": "sentence"
+        },
+        {
+          "index": 7,
+          "kind": "sentence"
+        },
+        {
+          "index": 8,
+          "kind": "sentence"
+        },
+        {
+          "index": 9,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_b4edc61d0ed612f2",
+      "intervals": [
+        {
+          "end_ticks": 4293000,
+          "start_ticks": 2259000
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.7,
+      "proposer": {
+        "name": "question-answer",
+        "rubric": "punctuation-and-wh-pattern.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 5,
+          "kind": "sentence"
+        },
+        "payoff": {
+          "index": 9,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000,
+          1107000,
+          1143000,
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000,
+          2970000,
+          3006000,
+          3321000,
+          3357000,
+          3762000,
+          3798000,
+          4293000,
+          4653000
+        ]
+      },
+      "cluster_id": "cl_74f196abf59ee73b",
+      "evidence": [
+        {
+          "index": 10,
+          "kind": "sentence"
+        },
+        {
+          "index": 11,
+          "kind": "sentence"
+        },
+        {
+          "index": 12,
+          "kind": "sentence"
+        },
+        {
+          "index": 13,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_ca46854369cdb2cd",
+      "intervals": [
+        {
+          "end_ticks": 6336000,
+          "start_ticks": 4653000
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.6598076211353316,
+      "proposer": {
+        "name": "question-answer",
+        "rubric": "punctuation-and-wh-pattern.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 10,
+          "kind": "sentence"
+        },
+        "payoff": {
+          "index": 13,
+          "kind": "sentence"
+        }
+      }
+    },
+    {
+      "boundary_lattice": {
+        "ends": [
+          5454000,
+          5490000,
+          5895000,
+          5931000,
+          6336000,
+          6426000
+        ],
+        "phi_rejects": [
+          {
+            "count": 15,
+            "reason": "too_short"
+          }
+        ],
+        "starts": [
+          0,
+          225000,
+          261000,
+          621000,
+          657000,
+          1107000,
+          1143000,
+          1458000,
+          1494000,
+          1899000,
+          2259000,
+          2529000,
+          2565000,
+          2970000,
+          3006000,
+          3321000,
+          3357000,
+          3762000,
+          3798000,
+          4293000,
+          4653000,
+          4968000,
+          5004000
+        ]
+      },
+      "cluster_id": "cl_74f196abf59ee73b",
+      "evidence": [
+        {
+          "index": 11,
+          "kind": "sentence"
+        }
+      ],
+      "exclusions": [],
+      "id": "cand_9e00833e98155fe9",
+      "intervals": [
+        {
+          "end_ticks": 6336000,
+          "start_ticks": 4968000
+        }
+      ],
+      "layout_requirements": [],
+      "prelim_score": 0.3973145757322396,
+      "proposer": {
+        "name": "insight-quote",
+        "rubric": "tfidf-specificity-claim-prosody.v1",
+        "version": "1.0.0"
+      },
+      "roles": {
+        "hook": {
+          "index": 11,
+          "kind": "sentence"
+        }
+      }
+    }
+  ],
+  "clusters": [
+    {
+      "id": "cl_1cd0186b36c78667",
+      "members": [
+        "cand_b4edc61d0ed612f2"
+      ],
+      "representative": "cand_b4edc61d0ed612f2",
+      "similarity": 1.0
+    },
+    {
+      "id": "cl_57edb0f74c204156",
+      "members": [
+        "cand_9c884016c479866c"
+      ],
+      "representative": "cand_9c884016c479866c",
+      "similarity": 1.0
+    },
+    {
+      "id": "cl_74081c6ffeb61780",
+      "members": [
+        "cand_4e44c1081231cb8d",
+        "cand_a69cb9bf8e801216",
+        "cand_b01970ca497ec279"
+      ],
+      "representative": "cand_a69cb9bf8e801216",
+      "similarity": 0.6
+    },
+    {
+      "id": "cl_74f196abf59ee73b",
+      "members": [
+        "cand_9e00833e98155fe9",
+        "cand_ca46854369cdb2cd"
+      ],
+      "representative": "cand_ca46854369cdb2cd",
+      "similarity": 0.5314171122994653
+    },
+    {
+      "id": "cl_7d53a9f82203a445",
+      "members": [
+        "cand_22cdc9811efaa7bf"
+      ],
+      "representative": "cand_22cdc9811efaa7bf",
+      "similarity": 1.0
+    },
+    {
+      "id": "cl_905b59fd6899f0f4",
+      "members": [
+        "cand_6e2869cc7732dfac"
+      ],
+      "representative": "cand_6e2869cc7732dfac",
+      "similarity": 1.0
+    },
+    {
+      "id": "cl_d7c57ae49799a737",
+      "members": [
+        "cand_81ddbc9f98bf8e3d"
+      ],
+      "representative": "cand_81ddbc9f98bf8e3d",
+      "similarity": 1.0
+    }
+  ],
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 6426000,
+    "start_ticks": 0
+  },
+  "duration_target": {
+    "max_ticks": 16200000,
+    "min_ticks": 1350000
+  },
+  "inputs": {
+    "index_artifact_id": "sha256:1de0000000000000000000000000000000000000000000000000000000000011",
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "producer": {
+    "implementation": "clipmill-discovery-mesh@1.0.0",
+    "stage": "discover-candidates"
+  },
+  "proposers": [
+    {
+      "candidates": 2,
+      "proposer": {
+        "name": "narrative-arc",
+        "rubric": "topic-span-open-close.v1",
+        "version": "1.0.0"
+      },
+      "seeds": 2
+    },
+    {
+      "candidates": 5,
+      "proposer": {
+        "name": "insight-quote",
+        "rubric": "tfidf-specificity-claim-prosody.v1",
+        "version": "1.0.0"
+      },
+      "seeds": 6
+    },
+    {
+      "candidates": 3,
+      "proposer": {
+        "name": "question-answer",
+        "rubric": "punctuation-and-wh-pattern.v1",
+        "version": "1.0.0"
+      },
+      "seeds": 3
+    }
+  ],
+  "schema_version": "clipmill.discovery.candidates.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007"
+}

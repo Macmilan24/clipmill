@@ -12,6 +12,7 @@ clap.workspace = true
 clipmill-artifacts.workspace = true
 clipmill-contracts.workspace = true
 clipmill-core.workspace = true
+clipmill-discovery.workspace = true
 clipmill-edit-ir.workspace = true
 clipmill-evidence.workspace = true
 clipmill-render.workspace = true

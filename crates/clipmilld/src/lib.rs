@@ -6,6 +6,7 @@ mod config;
 mod daemon;
 mod db;
 mod device;
+mod discovery;
 mod error;
 mod evidence;
 mod implementations;
