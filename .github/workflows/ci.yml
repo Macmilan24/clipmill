@@ -479,9 +479,14 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          uv sync --frozen --project workers/sdk
-          uv sync --frozen --project workers/echo
-          uv sync --frozen --project eval/harness
+          # Every locked environment, not a hand-kept subset. The security gate
+          # runs inside the namespace and walks all of them, and uv there has no
+          # network — so a list maintained by hand is a list that goes stale the
+          # first time somebody adds a worker, and fails in the one job whose
+          # whole purpose is to have no way of recovering.
+          while IFS= read -r lockfile; do
+            uv sync --frozen --project "$(dirname "$lockfile")"
+          done < <(find . -name uv.lock -not -path './.git/*' -not -path './target/*' | sort)
           cargo test --workspace --no-run
       - name: Run the suite inside a no-network namespace
         run: unshare -rn ./tools/drills/network-denial.sh
