@@ -80,6 +80,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="origin/main")
     parser.add_argument("--body", default=os.environ.get("PR_BODY", ""))
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help=(
+            "print the declarations this branch needs and exit, so a PR body "
+            "can be written against them rather than corrected afterwards"
+        ),
+    )
     options = parser.parse_args()
     try:
         result = subprocess.run(
@@ -97,6 +105,15 @@ def main() -> int:
         for category, patterns in CATEGORIES.items()
         if any(_matches(path, patterns) for path in changed)
     }
+    if options.list:
+        # The failure this avoids is not a missing check but a missed one: an
+        # author reviews the boundaries they were thinking about and learns
+        # from CI about the ones they were not. A drill script touches
+        # filesystem publication; a workflow file touches egress and secrets.
+        # Neither is obvious from the diff you meant to write.
+        for category in sorted(required):
+            print(f"- [x] {category}")
+        return 0
     if not required:
         print("threat-review: OK (no sensitive boundary changed)")
         return 0
