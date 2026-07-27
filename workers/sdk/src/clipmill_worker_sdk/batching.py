@@ -4,6 +4,13 @@ The recognizer is the expensive stage, so what it is handed matters more than
 how fast it runs. Voice activity already decided where speech is; this decides
 how that becomes calls to a decoder with a bounded context.
 
+Shared rather than per-family. Every recognizer answers the same two questions
+— which speech to hand over, and what to do with a run longer than its context
+— and two implementations that answered them differently would produce decode
+windows that are not comparable, which is exactly what the measured selection
+between them assumes they are. The limit is the argument, because it is the
+one part that really is per-model.
+
 Pure, so the decisions are testable without loading a model — which is the
 point, because the interesting cases (a segment longer than the decoder's
 context, a segment that runs to the last sample) are the ones a fixture
@@ -18,7 +25,8 @@ from dataclasses import dataclass
 # Whisper's encoder sees a fixed 30-second window. Handing it more means the
 # tail is silently discarded, so a longer speech segment has to be split.
 # Staying under the limit rather than at it leaves room for the model's own
-# padding without truncating a word at the boundary.
+# padding without truncating a word at the boundary. A recognizer with a wider
+# context passes its own.
 MAX_WINDOW_SECONDS = 28
 
 

@@ -31,6 +31,7 @@ from clipmill_worker_sdk import (
 )
 from clipmill_worker_sdk.artifacts import ArtifactVerificationError
 from clipmill_worker_sdk.audio import AUDIO_DESCRIPTOR, AUDIO_PAYLOAD, PcmAudio, read_pcm_audio
+from clipmill_worker_sdk.batching import DecodeWindow, decode_windows
 from clipmill_worker_sdk.confidence import distribution
 from clipmill_worker_sdk.documents import canonical_bytes
 from clipmill_worker_sdk.gen.schemas.speech_asr import (
@@ -47,7 +48,6 @@ from clipmill_worker_sdk.gen.schemas.speech_vad import SpeechVad
 from clipmill_worker_sdk.ticks import samples_to_ticks, samples_to_ticks_ceil, ticks_to_samples
 from clipmill_worker_sdk.weights import ModelVerificationError, VerifiedModel, require_model
 
-from .batching import DecodeWindow, decode_windows
 from .engine import IMPLEMENTATION, WhisperCppRecognizer, decode_pcm16
 
 __version__ = "0.1.0"

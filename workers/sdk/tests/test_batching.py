@@ -11,7 +11,7 @@ from __future__ import annotations
 from itertools import pairwise
 
 import pytest
-from clipmill_worker_asr_whispercpp.batching import (
+from clipmill_worker_sdk.batching import (
     MAX_WINDOW_SECONDS,
     decode_windows,
 )
