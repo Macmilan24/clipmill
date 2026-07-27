@@ -49,7 +49,7 @@ gate-contracts:
     git diff --exit-code -- crates/clipmill-contracts/src/gen packages/contracts/src/gen workers/sdk/src/clipmill workers/sdk/src/clipmill_worker_sdk/gen
     python3 tools/schema-lint/check.py contracts/schemas/*.json
     cargo test -p clipmill-contracts
-    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py
+    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py
     pnpm --filter @clipmill/contracts test
 
 # W2 coverage: acknowledged project mutations survive forced termination.
@@ -118,6 +118,16 @@ gate-asr-mlx signing_key output_dir="models/attestations/mlx-selection":
 # byte-identical, and a proxy that is not video refused with a reason.
 gate-shots iterations="1":
     ./tools/drills/shots-drill.sh {{iterations}}
+
+# W17 coverage: the structure read out of a transcript. The levels against
+# transcripts written by hand — a speaker who never pauses, a recognizer that
+# punctuates nothing, a segment whose text and word count disagree — then every
+# committed transcript indexed against a reviewed golden, the invariants
+# discovery never rechecks (units tile the words, topics tile the sentences,
+# every unit resolves to words somebody measured), and a second pass producing
+# the same bytes.
+gate-evidence iterations="1":
+    ./tools/drills/evidence-drill.sh {{iterations}}
 
 # W13 coverage — the first-slice milestone: the published Edit IR renders to a
 # 1080x1920 clip with burned karaoke captions, matching sidecars, normalised

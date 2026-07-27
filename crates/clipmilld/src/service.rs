@@ -10,10 +10,11 @@ use clipmill_contracts::proto::ipc::v1::{
     ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1,
     DetectShotsPayloadV1, Error, ErrorCode, GetDeviceProfileRequest, GetDeviceProfileResponse,
     GetEditDocResponse, GetJobResponse, GetProjectResponse, GetSourceResponse, HealthResponse,
-    IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest, RenderClipPayloadV1, Request,
-    Response, SnapshotEditDocResponse, SubmitJobRequest, SubscribeTaskEventsRequest,
-    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse,
+    ListSourcesResponse, PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest,
+    RenderClipPayloadV1, Request, Response, SnapshotEditDocResponse, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
+    response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
@@ -40,6 +41,7 @@ const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
 const TRANSCRIBE_SOURCE_KEY_VERSION: &str = "clipmill.transcribe-source.v1";
 const DETECT_SHOTS_KEY_VERSION: &str = "clipmill.detect-shots.v1";
+const INDEX_TRANSCRIPT_KEY_VERSION: &str = "clipmill.index-transcript.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -715,6 +717,80 @@ impl Service {
                     },
                     &payload,
                     crate::media::FFMPEG_BOM,
+                    now,
+                )
+            }
+            "index-transcript" => {
+                let Ok(payload) = IndexTranscriptPayloadV1::decode(submit.payload.as_slice())
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "index job payload is not a valid IndexTranscriptPayloadV1",
+                    );
+                };
+                if payload.key_version != INDEX_TRANSCRIPT_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "index job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                // The index reads what the speech chain published. A source
+                // with no transcript is one nobody has transcribed, and saying
+                // so beats planning a task with nothing to read.
+                let Ok(Some(transcript)) = self
+                    .database
+                    .latest_source_job_artifact(
+                        source_id.to_string(),
+                        "transcribe-source".to_owned(),
+                    )
+                    .await
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has no published transcript to index",
+                    );
+                };
+                // Shot cuts are optional: a source with no video has none, and
+                // an index built without them is a different document rather
+                // than the same one with a shorter edge list.
+                let shots = self
+                    .database
+                    .latest_source_job_artifact(source_id.to_string(), "detect-shots".to_owned())
+                    .await
+                    .ok()
+                    .flatten();
+                JobPlan::index_transcript(
+                    &project_id,
+                    source_id.to_string(),
+                    crate::jobs::EvidenceInputs {
+                        transcript: &transcript,
+                        shots: shots.as_deref(),
+                    },
+                    &payload,
                     now,
                 )
             }

@@ -1,0 +1,17 @@
+[package]
+name = "clipmill-evidence"
+description = "Structure read out of a transcript: utterances, sentences, cut edges, and lexical topics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+clipmill-contracts.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

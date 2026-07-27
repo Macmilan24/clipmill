@@ -1,0 +1,137 @@
+{
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 900000,
+    "start_ticks": 0
+  },
+  "edges": [
+    {
+      "end_ticks": 45000,
+      "kind": "silence",
+      "start_ticks": 0
+    },
+    {
+      "end_ticks": 396000,
+      "kind": "silence",
+      "start_ticks": 288000
+    },
+    {
+      "end_ticks": 900000,
+      "kind": "silence",
+      "start_ticks": 828000
+    }
+  ],
+  "inputs": {
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "producer": {
+    "implementation": "clipmill-evidence-index@1.0.0",
+    "stage": "index-transcript"
+  },
+  "schema_version": "clipmill.index.transcript.v1",
+  "segmentation": {
+    "block_sentences": 2,
+    "boundary_cutoff": 0.5,
+    "stopwords": "english-minimal.v1",
+    "utterance_gap_ticks": 27000
+  },
+  "sentences": [
+    {
+      "confidence": {
+        "p10": 0.89,
+        "p50": 0.98
+      },
+      "end_ticks": 160200,
+      "first_word_index": 0,
+      "index": 0,
+      "start_ticks": 0.5,
+      "terminator": "punctuation",
+      "text": "The first slice renders",
+      "utterance_index": 0,
+      "word_count": 4,
+      "words_per_minute": 187.5
+    },
+    {
+      "confidence": {
+        "p10": 0.9,
+        "p50": 0.98
+      },
+      "end_ticks": 631800,
+      "first_word_index": 4,
+      "index": 1,
+      "start_ticks": 396000,
+      "terminator": "punctuation",
+      "text": "Every timestamp is an integer tick",
+      "utterance_index": 1,
+      "word_count": 6,
+      "words_per_minute": 137.40458015267177
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "topics": [
+    {
+      "end_ticks": 631800,
+      "first_sentence_index": 0,
+      "index": 0,
+      "keywords": [
+        {
+          "count": 1,
+          "term": "every"
+        },
+        {
+          "count": 1,
+          "term": "first"
+        },
+        {
+          "count": 1,
+          "term": "integer"
+        },
+        {
+          "count": 1,
+          "term": "renders"
+        },
+        {
+          "count": 1,
+          "term": "slice"
+        }
+      ],
+      "opening_depth": 0.0,
+      "sentence_count": 2,
+      "start_ticks": 45000
+    }
+  ],
+  "utterances": [
+    {
+      "confidence": {
+        "p10": 0.89,
+        "p50": 0.98
+      },
+      "end_ticks": 160200,
+      "first_word_index": 0,
+      "index": 0,
+      "pause_after_ticks": 235800,
+      "pause_before_ticks": 45000,
+      "start_ticks": 45000,
+      "text": "The first slice renders",
+      "word_count": 4,
+      "words_per_minute": 187.5
+    },
+    {
+      "confidence": {
+        "p10": 0.9,
+        "p50": 0.98
+      },
+      "end_ticks": 631800,
+      "first_word_index": 4,
+      "index": 1,
+      "pause_after_ticks": 268200,
+      "pause_before_ticks": 235800,
+      "start_ticks": 396000,
+      "text": "Every timestamp is an integer tick",
+      "word_count": 6,
+      "words_per_minute": 137.40458015267177
+    }
+  ]
+}

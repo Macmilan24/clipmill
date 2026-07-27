@@ -219,6 +219,16 @@ const REGISTRY: &[Recipe] = &[
         capability: None,
         tools: &[],
     },
+    // The W17 evidence index (book ch. 14). Builtin and modelless, like the
+    // speech assembly: it reads two published documents and writes a third.
+    Recipe {
+        kind: "index-transcript",
+        output_kind: "index.transcript.v1",
+        semantic_version: "clipmill.index.transcript.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        tools: &[],
+    },
     // The W16 shot detector (book ch. 13). Leased, but modelless: it is
     // arithmetic over decoded pixels, so there is no capability to bind and no
     // model digest to key against. What makes its output reproducible is the

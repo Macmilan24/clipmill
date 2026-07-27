@@ -280,6 +280,35 @@ message ShotsStagePayloadV1 {
   string decoder_bom = 6;
 }
 
+// Versioned payload for the evidence index (book ch. 14). The request names a
+// source; the daemon resolves it to the transcript already published for it,
+// and to the shot detection if there is one. Nothing tunable travels here yet:
+// the segmentation parameters are the daemon's, and adding a knob to this
+// message later is additive.
+message IndexTranscriptPayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+}
+
+// What the evidence index is asked to read.
+//
+// The artifacts arrive here rather than through task dependencies because both
+// were published by earlier jobs: a task's inputs are the outputs of the tasks
+// it depends on, and this job depends on nothing. Content addresses are safe
+// in a payload the artifact key hashes — unlike a path, the same address means
+// the same bytes on every machine.
+message IndexStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  // The transcript to index. Its own document carries the source fingerprint,
+  // so naming one here as well would be a second copy that could disagree.
+  string transcript_artifact_id = 3;
+  // Empty for a source with no video, which is a different key from one whose
+  // cuts were simply never looked for.
+  string shots_artifact_id = 4;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.

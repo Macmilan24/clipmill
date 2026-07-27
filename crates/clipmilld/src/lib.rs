@@ -7,6 +7,7 @@ mod daemon;
 mod db;
 mod device;
 mod error;
+mod evidence;
 mod implementations;
 #[cfg(unix)]
 mod ipc;
