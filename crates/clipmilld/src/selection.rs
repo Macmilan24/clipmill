@@ -16,7 +16,11 @@
 //! binding falls back to the portable implementation — stated as a fallback,
 //! never presented as a choice somebody measured.
 
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -194,6 +198,22 @@ fn binding_of(implementation: &Implementation, reason: SelectedBy) -> Binding {
     }
 }
 
+/// What a device profile learned about its implementations.
+#[derive(Clone, Debug)]
+pub(crate) struct Selection {
+    /// The `selection` block, ready to be signed with the rest of the profile.
+    pub value: Value,
+    /// Accelerator classes something was measured actually running on.
+    ///
+    /// This is the only evidence the daemon accepts that an accelerator is
+    /// usable. It cannot load MLX to look, and "macOS on ARM has Metal" is a
+    /// static platform default — the thing D19 exists to replace. A model that
+    /// ran on this machine and reported how fast it was is a stronger claim
+    /// than any probe, so the scheduler admits an accelerated worker exactly
+    /// when a benchmark has demonstrated the accelerator, and not before.
+    pub proven_accelerators: BTreeSet<&'static str>,
+}
+
 /// The `selection` block of a device profile: the bindings, and the evidence.
 #[allow(
     clippy::too_many_lines,
@@ -203,10 +223,11 @@ pub(crate) fn measure(
     benchmark_path: &Path,
     hardware_fingerprint: &str,
     models: &ModelRegistry,
-) -> Value {
+) -> Selection {
     let measurements = read_benchmark(benchmark_path, hardware_fingerprint);
     let mut bindings = Vec::new();
     let mut candidates = Vec::new();
+    let mut proven_accelerators = BTreeSet::new();
     for capability in implementations::candidates_for_capability_names() {
         let registered = implementations::candidates_for_capability(capability).collect::<Vec<_>>();
         let mut runnable: Vec<(&Implementation, f64, u64)> = Vec::new();
@@ -247,6 +268,9 @@ pub(crate) fn measure(
                 Some(entry) => match runnable_measurement(entry) {
                     Some((factor, peak)) => {
                         runnable.push((implementation, factor, peak));
+                        if !implementation.accelerator_class.is_empty() {
+                            proven_accelerators.insert(implementation.accelerator_class);
+                        }
                         candidates.push(json!({
                             "backend": implementation.backend,
                             "capability": implementation.capability,
@@ -313,7 +337,10 @@ pub(crate) fn measure(
             bindings.push(entry);
         }
     }
-    json!({ "bindings": bindings, "candidates": candidates })
+    Selection {
+        value: json!({ "bindings": bindings, "candidates": candidates }),
+        proven_accelerators,
+    }
 }
 
 fn runnable_measurement(entry: &BenchmarkMeasurement) -> Option<(f64, u64)> {
@@ -372,7 +399,18 @@ mod tests {
     use serde_json::{Value, json};
     use tempfile::TempDir;
 
-    use super::{Bindings, measure};
+    use super::{Bindings, Selection, measure};
+
+    /// Every test here is about the block the profile publishes; the
+    /// accelerator half is exercised where it is consumed.
+    fn measure_value(
+        benchmark_path: &Path,
+        hardware_fingerprint: &str,
+        models: &ModelRegistry,
+    ) -> Value {
+        let Selection { value, .. } = measure(benchmark_path, hardware_fingerprint, models);
+        value
+    }
     use crate::models::ModelRegistry;
 
     const FINGERPRINT: &str =
@@ -417,7 +455,7 @@ mod tests {
     #[test]
     fn a_device_with_no_benchmark_falls_back_and_says_so() {
         let models = registry();
-        let selection = measure(
+        let selection = measure_value(
             Path::new("/nonexistent/benchmark.json"),
             FINGERPRINT,
             &models,
@@ -474,7 +512,7 @@ mod tests {
             }),
         );
 
-        let selection = measure(&path, FINGERPRINT, &models);
+        let selection = measure_value(&path, FINGERPRINT, &models);
         let asr = binding_for(&selection, "asr");
         assert_eq!(asr["model"], "qwen3-asr-mlx");
         assert_eq!(asr["selected_by"], "measured");
@@ -513,7 +551,7 @@ mod tests {
             }),
         );
 
-        let selection = measure(&path, FINGERPRINT, &models);
+        let selection = measure_value(&path, FINGERPRINT, &models);
         assert_eq!(
             binding_for(&selection, "asr")["selected_by"],
             "unmeasured_fallback"
@@ -550,7 +588,7 @@ mod tests {
             }),
         );
 
-        let selection = measure(&path, FINGERPRINT, &models);
+        let selection = measure_value(&path, FINGERPRINT, &models);
         assert_eq!(
             binding_for(&selection, "asr")["selected_by"],
             "unmeasured_fallback",
@@ -599,7 +637,7 @@ mod tests {
             }),
         );
 
-        let selection = measure(&path, FINGERPRINT, &models);
+        let selection = measure_value(&path, FINGERPRINT, &models);
         let asr = binding_for(&selection, "asr");
         assert_eq!(asr["model"], "whisper-base");
         assert_eq!(
@@ -631,7 +669,7 @@ mod tests {
             }),
         );
 
-        let selection = measure(&path, FINGERPRINT, &models);
+        let selection = measure_value(&path, FINGERPRINT, &models);
         assert_eq!(
             binding_for(&selection, "asr")["selected_by"],
             "unmeasured_fallback"
@@ -646,7 +684,7 @@ mod tests {
     #[test]
     fn bindings_survive_the_round_trip_through_a_profile() {
         let models = registry();
-        let selection = measure(Path::new("/nonexistent"), FINGERPRINT, &models);
+        let selection = measure_value(Path::new("/nonexistent"), FINGERPRINT, &models);
         let profile = json!({ "selection": selection });
         let bindings = Bindings::from_profile(&profile);
 

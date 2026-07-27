@@ -240,6 +240,14 @@ impl DeviceProfiler {
                 })]
             })
             .unwrap_or_default();
+        // Taken before the profile is built, because two of its fields depend
+        // on it: the selection block itself, and the accelerators the
+        // scheduler is willing to admit workers onto.
+        let selection = measure_selection(
+            &self.inner.speech_benchmark,
+            &identity.hardware_fingerprint,
+            &self.inner.models,
+        );
         let cpu_available = codec.encode_fps.is_some() && codec.decode_fps.is_some();
         let hardware_available = hardware.milliseconds.is_some();
         let mut capability_results = vec![json!({
@@ -254,6 +262,19 @@ impl DeviceProfiler {
             "capability": "video-roundtrip",
             "detail": hardware.unavailable_reason.clone().unwrap_or_else(|| "bounded synthetic round trip completed".to_owned()),
         }));
+        // An accelerator counts as available once a model has been measured
+        // running on it. Nothing here probes for a device: a benchmark bound
+        // to this hardware that reported a real-time factor is proof the
+        // runtime works, where a probe would only be proof that a driver
+        // answered.
+        for class in &selection.proven_accelerators {
+            capability_results.push(json!({
+                "available": true,
+                "backend": class,
+                "capability": "model-inference",
+                "detail": "an implementation was measured running on this accelerator",
+            }));
+        }
         let hardware_roundtrip = if let Some(milliseconds) = hardware.milliseconds {
             json!({
                 "available": true,
@@ -308,11 +329,7 @@ impl DeviceProfiler {
             // Which implementation each capability is bound to, and the
             // measurement behind it (D19). Signed with everything else, so a
             // binding cannot be edited into the profile after the fact.
-            "selection": measure_selection(
-                &self.inner.speech_benchmark,
-                &identity.hardware_fingerprint,
-                &self.inner.models,
-            ),
+            "selection": selection.value,
         });
         let unsigned = canonical_unsigned_profile(&profile)?;
         let mut signing_preimage =
@@ -1250,6 +1267,13 @@ mod tests {
                 .iter()
                 .any(crate::selection::Binding::was_measured)
         );
+        // And no accelerator is admissible, because nothing has been measured
+        // running on one. A machine that claimed Metal here on the strength of
+        // being a Mac would be asserting a static platform default.
+        assert!(
+            !verified.available_backends.contains("metal"),
+            "an unbenchmarked device must not advertise an accelerator"
+        );
     }
 
     /// The benchmark decides the binding, and the signature covers it. An
@@ -1290,6 +1314,14 @@ mod tests {
             .expect("a binding for recognition");
         assert_eq!(asr.model, "qwen3-asr-mlx");
         assert!(asr.was_measured());
+        // Having run a model on it is the only evidence this daemon accepts
+        // that an accelerator works. Without it the scheduler would decline
+        // the very worker the binding just chose, and the task would starve.
+        assert!(
+            verified.available_backends.contains("metal"),
+            "a measured MLX run must make Metal admissible: {:?}",
+            verified.available_backends
+        );
 
         let rebound = profile.replacen("qwen3-asr-mlx", "whisper-base00", 1);
         assert_ne!(rebound, profile, "the substitution has to have happened");

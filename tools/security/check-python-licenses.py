@@ -16,6 +16,16 @@ ALLOWED = {
     "BSD-2-Clause",
     "BSD-3-Clause",
     "CC0-1.0",
+    # Python 1.6's licence, and the one term here that is a judgement rather
+    # than a formality. It reaches this project once, through `regex`, whose
+    # expression is "Apache-2.0 AND CNRI-Python" because parts of it descend
+    # from CPython's own `re`. The terms are permissive; what the FSF objects
+    # to is a choice-of-venue clause it reads as an extra restriction under
+    # GPL section 7. Nothing here modifies `regex`, it arrives as an unmodified
+    # wheel behind the accelerated recognizer, and CPython itself ships under
+    # a licence lineage this project already depends on — but the objection is
+    # real and this allowance is deliberate rather than incidental.
+    "CNRI-Python",
     "ISC",
     "MIT",
     "MIT-0",
@@ -34,8 +44,10 @@ ALLOWED = {
 ALIASES = {
     "3-Clause BSD License": "BSD-3-Clause",
     "Apache 2.0": "Apache-2.0",
+    "Apache 2.0 License": "Apache-2.0",
     "Apache License 2.0": "Apache-2.0",
     "BSD License": "BSD-3-Clause",
+    "ISC License": "ISC",
     "MIT License": "MIT",
 }
 PACKAGE_OVERRIDES = {"annotated-types": "MIT"}
@@ -89,16 +101,26 @@ def check_current_environment() -> int:
         license_name = PACKAGE_OVERRIDES.get(name)
         if license_name is None and raw_license and raw_license != "UNKNOWN":
             license_name = ALIASES.get(raw_license, raw_license)
-        if license_name is None:
+        # A `License` field is not required to hold an identifier, and some
+        # packages put the whole licence text there — SciPy ships its BSD
+        # notice in full. Prose is not a claim this tool can read, so it falls
+        # through to the classifiers, which are the same package's own OSI
+        # declaration in a form with only one possible meaning. Recognizable
+        # expressions are never overridden this way: what is trusted here is
+        # the package, and this only chooses which of its two statements to
+        # believe.
+        if license_name is None or not is_allowed(license_name):
             classifiers = distribution.metadata.get_all("Classifier", [])
             matches = {
                 CLASSIFIER_LICENSES[value] for value in classifiers if value in CLASSIFIER_LICENSES
             }
-            if len(matches) == 1:
+            if len(matches) == 1 and not _is_identifier(license_name):
                 license_name = matches.pop()
         checked += 1
         if not is_allowed(license_name):
-            rejected.append(f"{name}=={distribution.version}: {license_name or 'UNKNOWN'}")
+            rejected.append(
+                f"{name}=={distribution.version}: {_summarize(license_name) or 'UNKNOWN'}"
+            )
     if rejected:
         for rejection in sorted(rejected):
             print(f"python-licenses: rejected {rejection}", file=sys.stderr)
@@ -136,6 +158,30 @@ def is_allowed(expression: str | None) -> bool:
     if len(terms) > 1:
         return any(term in ALLOWED for term in terms)
     return False
+
+
+def _is_identifier(value: str | None) -> bool:
+    """Whether a declaration is shaped like an SPDX expression at all.
+
+    The point of the distinction is that a package declaring `GPL-3.0-only`
+    must be refused on its own words, while a package declaring three
+    paragraphs of BSD text has said nothing this tool can act on and its
+    classifiers are the better source. A single line of identifier-shaped
+    tokens is a claim; a paragraph is not.
+    """
+
+    if not value or "\n" in value or len(value) > 128:
+        return False
+    return " " not in value.replace(" AND ", "").replace(" OR ", "")
+
+
+def _summarize(value: str | None) -> str | None:
+    """A rejection has to be readable, and some of these are a page long."""
+
+    if value is None:
+        return None
+    first = value.strip().splitlines()[0] if value.strip() else value
+    return first if len(first) <= 120 else first[:117] + "..."
 
 
 def canonical_name(value: str) -> str:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from .attestation import (
 )
 from .client import DaemonClient
 from .corpus import verify_corpus
+from .mlx import build_mlx_attestation, verify_mlx_attestation, write_mlx_attestation
 from .runner import run_corpus, write_run_manifest
 from .smoke import build_smoke_corpus
 
@@ -76,6 +78,25 @@ def main(arguments: list[str] | None = None) -> int:
                 f"{bundle.corpus_metadata['items_total']} Seed-40 items"
             )
             return 0
+        if options.command == "attest-mlx":
+            bundle = build_mlx_attestation(
+                json.loads(options.profile.read_text(encoding="utf-8")),
+                json.loads(options.timing.read_text(encoding="utf-8")),
+                load_private_signing_key(options.signing_key),
+            )
+            write_mlx_attestation(options.output_dir, bundle)
+            verify_mlx_attestation(options.output_dir)
+            digest = _sha256(options.output_dir / "mlx-attestation.json")
+            print(f"MLX selection attested; wrote sha256:{digest}")
+            return 0
+        if options.command == "verify-mlx-attestation":
+            bundle = verify_mlx_attestation(options.attestation_dir)
+            bound = ", ".join(
+                f"{binding['capability']}={binding['model']}"
+                for binding in bundle.attestation["bindings"]
+            )
+            print(f"verified MLX selection attestation: {bound}")
+            return 0
         if options.command == "smoke":
             root, manifest_path, license_path = build_smoke_corpus(
                 options.work_dir,
@@ -117,6 +138,15 @@ def _parser() -> argparse.ArgumentParser:
 
     verify_attestation = subcommands.add_parser("verify-attestation")
     verify_attestation.add_argument("--attestation-dir", type=Path, required=True)
+
+    attest_mlx = subcommands.add_parser("attest-mlx")
+    attest_mlx.add_argument("--profile", type=Path, required=True)
+    attest_mlx.add_argument("--timing", type=Path, required=True)
+    attest_mlx.add_argument("--signing-key", type=Path, required=True)
+    attest_mlx.add_argument("--output-dir", type=Path, required=True)
+
+    verify_mlx = subcommands.add_parser("verify-mlx-attestation")
+    verify_mlx.add_argument("--attestation-dir", type=Path, required=True)
 
     smoke = subcommands.add_parser("smoke")
     _daemon_arguments(smoke)

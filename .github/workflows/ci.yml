@@ -125,7 +125,7 @@ jobs:
           uvx ruff format --check .
       - name: pytest (all projects)
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx eval/harness; do
             echo "==> $project"
             (cd "$project" && uv sync --quiet && uv run pytest)
           done
@@ -463,7 +463,7 @@ jobs:
           enable-cache: true
       - name: Sync every frozen Python environment
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Audit every Python lockfile
@@ -502,7 +502,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate
@@ -515,6 +515,11 @@ jobs:
         run: python3 tools/security/threat-review.py --base "$PR_BASE"
       - name: Verify committed signed Seed-40 exit evidence
         run: ./tools/drills/verify-phase0-attestation.sh
+      # The accelerated speech path cannot be measured here — no hosted runner
+      # has an Apple GPU — so what CI checks is the signed evidence from the
+      # machine that could, exactly as it checks the Seed-40 proof.
+      - name: Verify committed signed MLX selection evidence
+        run: ./tools/drills/verify-mlx-attestation.sh
 
   ts:
     name: ts

@@ -31,6 +31,7 @@ import json
 import os
 import platform
 import resource
+import subprocess
 import sys
 import time
 import tomllib
@@ -79,7 +80,18 @@ def main() -> int:
         required=True,
         help="the daemon's hardware fingerprint; the measurement is worthless without it",
     )
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--only",
+        help=(
+            "measure one implementation and print it as JSON. This is how the "
+            "full run works internally: peak resident size is a process "
+            "high-water mark that never falls, so measuring several models in "
+            "one process would report the largest one's footprint for all of "
+            "them. A fresh process per candidate is the only way the number "
+            "means what it says."
+        ),
+    )
     options = parser.parse_args()
 
     if not _is_fingerprint(options.fingerprint):
@@ -87,7 +99,17 @@ def main() -> int:
         return 2
 
     audio, seconds = _load_fixture(options.fixture)
-    measurements = [_measure(candidate, audio, seconds, options) for candidate in CANDIDATES]
+    if options.only is not None:
+        chosen = next((c for c in CANDIDATES if c.implementation == options.only), None)
+        if chosen is None:
+            print(f"speech-benchmark: no candidate named {options.only}", file=sys.stderr)
+            return 2
+        print(json.dumps(asdict(_measure(chosen, audio, seconds, options))))
+        return 0
+    if options.output is None:
+        parser.error("--output is required unless --only is given")
+
+    measurements = [_measure_in_child(candidate, options) for candidate in CANDIDATES]
     document = {
         "schema_version": SCHEMA,
         "hardware_fingerprint": options.fingerprint,
@@ -130,6 +152,49 @@ class Measurement:
     unavailable_reason: str | None = None
 
 
+def _measure_in_child(candidate: Candidate, options) -> Measurement:
+    """One candidate, in a process of its own.
+
+    A crash is an answer here rather than an interruption: an implementation
+    that takes the interpreter down with it is one this device cannot run, and
+    saying so is more useful than losing the other four measurements.
+    """
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--fixture",
+            str(options.fixture),
+            "--models",
+            str(options.models),
+            "--registry",
+            str(options.registry),
+            "--fingerprint",
+            options.fingerprint,
+            "--only",
+            candidate.implementation,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        try:
+            return Measurement(**json.loads(result.stdout.strip().splitlines()[-1]))
+        except (IndexError, TypeError, ValueError):
+            pass
+    detail = (result.stderr.strip().splitlines() or ["no output"])[-1]
+    return Measurement(
+        implementation=candidate.implementation,
+        capability=candidate.capability,
+        model=candidate.model,
+        model_digest=_UNPINNED,
+        runnable=False,
+        unavailable_reason=f"the measurement process failed: {detail}"[:512],
+    )
+
+
 def _measure(candidate: Candidate, audio: np.ndarray, seconds: float, options) -> Measurement:
     try:
         model = _verified(candidate, options)
@@ -142,7 +207,6 @@ def _measure(candidate: Candidate, audio: np.ndarray, seconds: float, options) -
             runnable=False,
             unavailable_reason=f"weights are unavailable: {error}",
         )
-    before = _peak_resident_bytes()
     started = time.perf_counter()
     try:
         _run(candidate, model, audio)
@@ -163,10 +227,11 @@ def _measure(candidate: Candidate, audio: np.ndarray, seconds: float, options) -
         model_digest=model.digest,
         runnable=True,
         real_time_factor=round(seconds / elapsed, 4),
-        # The process high-water mark, not the model's own accounting: what
-        # decides whether a machine can run two stages at once is what the
-        # operating system had to find room for.
-        peak_resident_bytes=max(_peak_resident_bytes(), before),
+        # This process's high-water mark, and this process measured exactly
+        # one implementation. What decides whether a machine can run two
+        # stages at once is what the operating system had to find room for,
+        # not what a runtime says it allocated.
+        peak_resident_bytes=_peak_resident_bytes(),
     )
 
 
