@@ -474,6 +474,7 @@ impl JobPlan {
         audio: SpeechAudio<'_>,
         request: &TranscribeSourcePayloadV1,
         models: &crate::models::ModelRegistry,
+        bindings: &crate::selection::Bindings,
         now: u64,
     ) -> Self {
         let stage_payload = |stage: &str, fill: &dyn Fn(&mut SpeechStagePayloadV1)| {
@@ -493,25 +494,33 @@ impl JobPlan {
         let align = TaskId::new().to_string();
         let transcript = TaskId::new().to_string();
 
+        // The device's answer, frozen into the plan. Every leased stage below
+        // records the implementation this machine chose, which is what its
+        // artifact key is computed from and what the scheduler routes it by.
+        // Re-measuring the device later moves the next plan and nothing that
+        // has already been published.
+        let chosen = |kind: &str| speech_implementation(kind, bindings);
         let leased = |task_id: String,
                       ordinal: u32,
                       kind: &str,
                       input_kinds: Vec<String>,
                       output_kind: &str,
                       payload: Vec<u8>,
-                      dependencies: Vec<String>,
-                      implementation: &str| TaskSpec {
-            task_id,
-            ordinal,
-            kind: kind.to_owned(),
-            input_kinds,
-            output_kind: output_kind.to_owned(),
-            payload,
-            dependencies,
-            resources: speech_resources(kind, models, 1),
-            implementation: implementation.to_owned(),
-            max_attempts: 3,
-            is_final: false,
+                      dependencies: Vec<String>| {
+            let implementation = chosen(kind);
+            TaskSpec {
+                task_id,
+                ordinal,
+                kind: kind.to_owned(),
+                input_kinds,
+                output_kind: output_kind.to_owned(),
+                payload,
+                dependencies,
+                resources: speech_resources(implementation, models, 1),
+                implementation: implementation.name.to_owned(),
+                max_attempts: 3,
+                is_final: false,
+            }
         };
 
         let tasks = vec![
@@ -525,7 +534,6 @@ impl JobPlan {
                     payload.detection.clone_from(&request.detection);
                 }),
                 Vec::new(),
-                "clipmill-worker-vad@0.1.0",
             ),
             leased(
                 asr.clone(),
@@ -540,7 +548,6 @@ impl JobPlan {
                     });
                 }),
                 vec![vad.clone()],
-                "clipmill-worker-asr@0.1.0",
             ),
             leased(
                 align.clone(),
@@ -552,7 +559,6 @@ impl JobPlan {
                     payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
                 }),
                 vec![asr.clone()],
-                "clipmill-worker-align@0.1.0",
             ),
             TaskSpec {
                 task_id: transcript,
@@ -657,21 +663,47 @@ pub(crate) struct SpeechAudio<'a> {
 /// checks the sum. Guessing here would either starve the stage or admit it
 /// onto a machine that cannot hold it, and the registry is the only place
 /// that knows which.
-fn speech_resources(
+/// The implementation this device bound a speech stage to.
+///
+/// Falls back to the portable candidate when the profile has nothing to say,
+/// which is the state of a daemon that has not measured its device yet. The
+/// fallback is a real registered implementation rather than a synthesized one,
+/// so a task planned before the first measurement is keyed exactly like a task
+/// planned after a measurement that chose the same thing.
+fn speech_implementation(
     kind: &str,
+    bindings: &crate::selection::Bindings,
+) -> &'static crate::implementations::Implementation {
+    bindings
+        .for_stage(kind)
+        .and_then(|binding| crate::implementations::lookup(&binding.implementation))
+        .or_else(|| crate::implementations::portable_for_stage(kind))
+        .unwrap_or_else(|| unreachable!("{kind} is planned without a registered implementation"))
+}
+
+/// What a stage costs, taken from the model it was actually bound to.
+///
+/// The accelerator class comes from the implementation, so the scheduler's
+/// existing capability match does the routing: an MLX task declares `metal`
+/// and only reaches a worker whose verified device profile reports one, while
+/// the portable candidate declares nothing and reaches anybody.
+fn speech_resources(
+    implementation: &crate::implementations::Implementation,
     models: &crate::models::ModelRegistry,
     cpu_threads: u32,
 ) -> ResourceDeclaration {
-    let resident = crate::recipes::lookup(kind)
-        .and_then(|recipe| recipe.model)
-        .and_then(|name| models.get(name))
+    let resident = models
+        .get(implementation.model)
         .map_or(512 * 1024 * 1024, |manifest| {
             manifest.memory.resident_bytes()
         });
     ResourceDeclaration {
         cpu_threads,
         ram_bytes: resident,
-        accelerator_class: String::new(),
+        accelerator_class: implementation.accelerator_class.to_owned(),
+        // Unified memory on Apple silicon: the weights are already counted in
+        // RAM above, and counting them again as VRAM would refuse a machine
+        // that can run the model comfortably.
         vram_bytes: 0,
         disk_bytes: 128 * 1024 * 1024,
         network_policy: "local-lock".to_owned(),
@@ -995,6 +1027,11 @@ pub(crate) struct SchedulerHandle {
     notify: Arc<Notify>,
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     capacity_limit: ResourceCapacity,
+    /// Which implementation each speech stage is bound to, as last verified
+    /// (D19). Read when a job is planned, never when a task is leased: a
+    /// re-measurement that arrives mid-job must not change what a task already
+    /// in flight means.
+    bindings: Arc<Mutex<crate::selection::Bindings>>,
 }
 
 impl SchedulerHandle {
@@ -1019,6 +1056,33 @@ impl SchedulerHandle {
         if let Ok(mut pending) = self.capacity_update.lock() {
             *pending = Some(capacity);
         }
+        // A profile predating selection carries no bindings. Keeping the
+        // portable defaults is the only safe reading of that: it is a profile
+        // that says nothing about implementations, not one that says every
+        // capability has none.
+        if !profile.bindings.is_empty()
+            && let Ok(mut bindings) = self.bindings.lock()
+        {
+            for binding in profile.bindings.iter() {
+                // Said differently on purpose. An operator wondering why a
+                // machine with an accelerator is running the CPU path should
+                // find the answer in the log rather than in the profile JSON.
+                let note = if binding.was_measured() {
+                    "capability bound to the implementation a benchmark chose"
+                } else {
+                    "capability bound to its portable implementation; no benchmark covers this device"
+                };
+                tracing::info!(
+                    capability = binding.capability,
+                    implementation = binding.implementation,
+                    model = binding.model,
+                    backend = binding.backend,
+                    selected_by = binding.selected_by,
+                    note
+                );
+            }
+            bindings.clone_from(&profile.bindings);
+        }
         self.notify.notify_one();
     }
 
@@ -1031,6 +1095,14 @@ impl SchedulerHandle {
             .ok()
             .and_then(|pending| *pending)
             .unwrap_or(self.capacity_limit)
+    }
+
+    /// The bindings a new plan should be built against.
+    pub(crate) fn bindings(&self) -> crate::selection::Bindings {
+        self.bindings
+            .lock()
+            .map(|bindings| bindings.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -1056,6 +1128,10 @@ impl Scheduler {
             notify: Arc::clone(&notify),
             capacity_update: Arc::clone(&capacity_update),
             capacity_limit: capacity,
+            // Until a profile is verified, every stage takes the candidate
+            // that runs anywhere — the honest default for a device nobody has
+            // measured.
+            bindings: Arc::new(Mutex::new(crate::selection::Bindings::portable())),
         };
         let (stopped, stop) = oneshot::channel();
         let task = tokio::spawn(run_scheduler(

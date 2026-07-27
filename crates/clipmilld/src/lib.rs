@@ -7,6 +7,7 @@ mod daemon;
 mod db;
 mod device;
 mod error;
+mod implementations;
 #[cfg(unix)]
 mod ipc;
 mod jobs;
@@ -15,6 +16,7 @@ mod media;
 mod models;
 mod recipes;
 mod render;
+mod selection;
 mod service;
 #[cfg(unix)]
 mod shm;

@@ -18,7 +18,12 @@ use thiserror::Error;
 use tokio::{process::Command, sync::OnceCell, time::timeout};
 use ulid::Ulid;
 
-use crate::{jobs::ResourceCapacity, shm::benchmark_shared_memory};
+use crate::{
+    jobs::ResourceCapacity,
+    models::ModelRegistry,
+    selection::{Bindings, measure as measure_selection},
+    shm::benchmark_shared_memory,
+};
 
 const PROFILE_SCHEMA: &str = "clipmill.device_profile.v1";
 const FINGERPRINT_DOMAIN: &[u8] = b"clipmill.device.fingerprint.v1\0";
@@ -35,6 +40,14 @@ pub(crate) struct DeviceProfiler {
 struct ProfilerInner {
     ffmpeg: PathBuf,
     scratch: PathBuf,
+    /// Where `tools/bench/speech-benchmark.py` leaves what it measured. Inside
+    /// the daemon's own 0700 state directory, so writing it already requires
+    /// being the user the daemon runs as — the same standing the attestation
+    /// key has.
+    speech_benchmark: PathBuf,
+    /// What the registry pins right now. A benchmark is believed only where it
+    /// names these digests, so a re-pinned weight retires its own measurement.
+    models: Arc<ModelRegistry>,
     signing_key: SigningKey,
     identity: OnceCell<DeviceIdentity>,
 }
@@ -112,6 +125,10 @@ pub struct VerifiedDeviceProfile {
     pub logical_cores: u32,
     pub available_memory_bytes: u64,
     pub available_backends: BTreeSet<String>,
+    /// Which implementation each stage is bound to on this device. Read from
+    /// the same signed bytes as everything else here: a binding that arrived
+    /// by any other road is one nobody attested.
+    pub(crate) bindings: Bindings,
 }
 
 #[derive(Debug, Error)]
@@ -143,6 +160,8 @@ impl DeviceProfiler {
         ffprobe: &Path,
         attestation_key: &Path,
         scratch: &Path,
+        speech_benchmark: &Path,
+        models: Arc<ModelRegistry>,
     ) -> Result<Self, DeviceProfileError> {
         create_private_directory(scratch)?;
         let signing_key = load_or_create_signing_key(attestation_key)?;
@@ -150,6 +169,8 @@ impl DeviceProfiler {
             inner: Arc::new(ProfilerInner {
                 ffmpeg: ffmpeg_sibling(ffprobe),
                 scratch: scratch.to_path_buf(),
+                speech_benchmark: speech_benchmark.to_path_buf(),
+                models,
                 signing_key,
                 identity: OnceCell::new(),
             }),
@@ -284,6 +305,14 @@ impl DeviceProfiler {
                 "os_version": identity.platform.os_version,
             },
             "schema_version": PROFILE_SCHEMA,
+            // Which implementation each capability is bound to, and the
+            // measurement behind it (D19). Signed with everything else, so a
+            // binding cannot be edited into the profile after the fact.
+            "selection": measure_selection(
+                &self.inner.speech_benchmark,
+                &identity.hardware_fingerprint,
+                &self.inner.models,
+            ),
         });
         let unsigned = canonical_unsigned_profile(&profile)?;
         let mut signing_preimage =
@@ -519,6 +548,10 @@ pub fn verify_profile(
         .map_err(|error| DeviceProfileError::Json(error.to_string()))?;
     serde_json::from_value::<DeviceProfile>(value.clone())
         .map_err(|error| DeviceProfileError::Json(error.to_string()))?;
+    // Read before the attestation object is removed, but from the same bytes
+    // the signature covers — a binding that is not inside what was signed is
+    // not a binding this daemon attested.
+    let bindings = Bindings::from_profile(&value);
     let canonical = serde_json_canonicalizer::to_vec(&value)
         .map_err(|error| DeviceProfileError::Json(error.to_string()))?;
     if canonical != profile_json.as_bytes() {
@@ -593,6 +626,7 @@ pub fn verify_profile(
         logical_cores,
         available_memory_bytes,
         available_backends,
+        bindings,
     })
 }
 
@@ -1155,22 +1189,34 @@ fn sync_directory(path: &Path) -> Result<(), DeviceProfileError> {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use std::fs;
+    use std::{fs, path::Path, sync::Arc};
 
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tempfile::TempDir;
 
     use super::{DeviceProfiler, verify_profile};
+    use crate::{models::ModelRegistry, selection::Bindings};
+
+    fn registry() -> Arc<ModelRegistry> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+        Arc::new(ModelRegistry::load(&path).expect("the published registry loads"))
+    }
+
+    fn profiler(temp: &TempDir) -> DeviceProfiler {
+        DeviceProfiler::new(
+            temp.path().join("missing-ffprobe").as_path(),
+            temp.path().join("device.key").as_path(),
+            temp.path().join("scratch").as_path(),
+            temp.path().join("speech-benchmark.json").as_path(),
+            registry(),
+        )
+        .expect("profiler")
+    }
 
     #[tokio::test]
     async fn measured_profile_is_canonical_signed_and_generation_scoped() {
         let temp = TempDir::new().expect("temp");
-        let profiler = DeviceProfiler::new(
-            temp.path().join("missing-ffprobe").as_path(),
-            temp.path().join("device.key").as_path(),
-            temp.path().join("scratch").as_path(),
-        )
-        .expect("profiler");
+        let profiler = profiler(&temp);
         let fingerprint = profiler.hardware_fingerprint().await.expect("fingerprint");
         let profile = profiler.measure(&fingerprint, 7).await.expect("profile");
         let verified = verify_profile(&profile, Some(&fingerprint)).expect("verify");
@@ -1186,15 +1232,77 @@ mod tests {
         );
     }
 
+    /// A machine nobody has benchmarked still publishes a binding for every
+    /// capability, and every one of them says it was not measured. Selection
+    /// that silently produced nothing would leave the plan factory guessing.
+    #[tokio::test]
+    async fn an_unbenchmarked_device_still_attests_a_complete_binding() {
+        let temp = TempDir::new().expect("temp");
+        let profiler = profiler(&temp);
+        let fingerprint = profiler.hardware_fingerprint().await.expect("fingerprint");
+        let profile = profiler.measure(&fingerprint, 1).await.expect("profile");
+        let verified = verify_profile(&profile, Some(&fingerprint)).expect("verify");
+
+        assert_eq!(verified.bindings, Bindings::portable());
+        assert!(
+            !verified
+                .bindings
+                .iter()
+                .any(crate::selection::Binding::was_measured)
+        );
+    }
+
+    /// The benchmark decides the binding, and the signature covers it. An
+    /// attacker who could edit the choice after the fact would be choosing
+    /// which model produced somebody's transcript.
+    #[tokio::test]
+    async fn a_benchmark_moves_the_binding_and_the_signature_covers_it() {
+        let temp = TempDir::new().expect("temp");
+        let models = registry();
+        let profiler = profiler(&temp);
+        let fingerprint = profiler.hardware_fingerprint().await.expect("fingerprint");
+        let digest = format!(
+            "sha256:{}",
+            models.get("qwen3-asr-mlx").expect("pinned").digest()
+        );
+        fs::write(
+            temp.path().join("speech-benchmark.json"),
+            serde_json::to_vec(&json!({
+                "schema_version": "clipmill.speech_benchmark.v1",
+                "hardware_fingerprint": fingerprint,
+                "measurements": [{
+                    "implementation": "clipmill-worker-speech-mlx@0.1.0/asr",
+                    "model_digest": digest,
+                    "runnable": true,
+                    "real_time_factor": 22.5,
+                    "peak_resident_bytes": 3_400_000_000_u64,
+                }],
+            }))
+            .expect("json"),
+        )
+        .expect("write");
+
+        let profile = profiler.measure(&fingerprint, 2).await.expect("profile");
+        let verified = verify_profile(&profile, Some(&fingerprint)).expect("verify");
+        let asr = verified
+            .bindings
+            .for_stage("speech-asr")
+            .expect("a binding for recognition");
+        assert_eq!(asr.model, "qwen3-asr-mlx");
+        assert!(asr.was_measured());
+
+        let rebound = profile.replacen("qwen3-asr-mlx", "whisper-base00", 1);
+        assert_ne!(rebound, profile, "the substitution has to have happened");
+        assert!(
+            verify_profile(&rebound, Some(&fingerprint)).is_err(),
+            "a binding edited after signing is not one this device attested"
+        );
+    }
+
     #[tokio::test]
     async fn signature_rejects_tampering() {
         let temp = TempDir::new().expect("temp");
-        let profiler = DeviceProfiler::new(
-            temp.path().join("missing-ffprobe").as_path(),
-            temp.path().join("device.key").as_path(),
-            temp.path().join("scratch").as_path(),
-        )
-        .expect("profiler");
+        let profiler = profiler(&temp);
         let fingerprint = profiler.hardware_fingerprint().await.expect("fingerprint");
         let profile = profiler.measure(&fingerprint, 1).await.expect("profile");
         let tampered = profile.replacen(

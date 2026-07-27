@@ -55,6 +55,11 @@ pub struct Paths {
     pub worker_trust_dir: PathBuf,
     pub device_attestation_key: PathBuf,
     pub device_profile_scratch_dir: PathBuf,
+    /// What `tools/bench/speech-benchmark.py` measured on this machine. Inside
+    /// the private state directory beside the attestation key, because the
+    /// daemon believes it on exactly the same grounds: whoever can write here
+    /// is already the user the daemon runs as.
+    pub speech_benchmark: PathBuf,
 }
 
 impl Config {
@@ -246,6 +251,7 @@ impl Config {
                 worker_trust_dir: state_dir.join("worker-trust"),
                 device_attestation_key: state_dir.join("device-attestation.key"),
                 device_profile_scratch_dir: state_dir.join("device-profile-scratch"),
+                speech_benchmark: state_dir.join("speech-benchmark.json"),
                 data_dir,
                 state_dir,
                 run_dir,
@@ -390,6 +396,10 @@ mod tests {
         assert_eq!(
             config.paths.device_profile_scratch_dir,
             PathBuf::from("/default/data/state/device-profile-scratch")
+        );
+        assert_eq!(
+            config.paths.speech_benchmark,
+            PathBuf::from("/default/data/state/speech-benchmark.json")
         );
     }
 

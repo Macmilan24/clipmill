@@ -369,12 +369,17 @@ impl WorkerService {
                         output_kind: task.output_kind.clone(),
                         attempt: task.attempt,
                         artifact_root: self.artifact_root.to_string_lossy().into_owned(),
-                        // Only what this stage was registered to run. A worker
+                        // Only the model this task was planned to run. A worker
                         // handed every pinned model would be free to choose,
                         // and the artifact key would still name the one the
-                        // registry expected.
+                        // plan decided on. Resolved through the same road the
+                        // key took, so the two cannot disagree.
                         models: recipes::lookup(&task.kind)
-                            .and_then(|recipe| recipe.model)
+                            .and_then(|recipe| recipe.capability)
+                            .and_then(|capability| {
+                                recipes::model_for(&task.kind, capability, &task.implementation)
+                                    .ok()
+                            })
                             .and_then(|name| self.models.binding(name, &self.weights_root))
                             .into_iter()
                             .collect(),

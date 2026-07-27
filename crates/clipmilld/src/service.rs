@@ -632,6 +632,15 @@ impl Service {
                         "this source has no ingested 16 kHz audio to transcribe",
                     );
                 };
+                // Which implementation runs each stage is decided here, once,
+                // from the last verified device profile — and written into the
+                // plan. A job's stages therefore agree with each other even if
+                // the device is re-measured while they run.
+                let bindings = self
+                    .scheduler
+                    .as_ref()
+                    .map(crate::jobs::SchedulerHandle::bindings)
+                    .unwrap_or_default();
                 JobPlan::transcribe_source(
                     &project_id,
                     source_id.to_string(),
@@ -641,6 +650,7 @@ impl Service {
                     },
                     &payload,
                     &self.models,
+                    &bindings,
                     now,
                 )
             }
