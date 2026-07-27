@@ -8,6 +8,7 @@ setup:
     ./tools/fetch-ffmpeg.sh
     cd workers/sdk && uv sync
     cd workers/echo && uv sync
+    cd workers/shots && uv sync
     cd eval/harness && uv sync
     pnpm install
 
@@ -35,6 +36,7 @@ test:
     cd workers/asr-whispercpp && uv run pytest
     cd workers/align && uv run pytest
     cd workers/speech-mlx && uv run pytest
+    cd workers/shots && uv run pytest
     cd eval/harness && uv run pytest
     pnpm typecheck
     pnpm test
@@ -107,6 +109,15 @@ gate-speech iterations="1":
 # anything (R18's pattern, applied to D19).
 gate-asr-mlx signing_key output_dir="models/attestations/mlx-selection":
     ./tools/drills/asr-mlx-drill.sh --signing-key "{{signing_key}}" --output-dir "{{output_dir}}"
+
+# W16 coverage: shot detection. Stage arithmetic against frames written by hand
+# — a cut on the first frame, a flash, a recording that never changes — then the
+# detector over a fixture whose cuts are known by construction and encoded
+# exactly as the ingest proxy is: every cut found and none invented, a pan
+# faster than a screen width per second not mistaken for one, a second pass
+# byte-identical, and a proxy that is not video refused with a reason.
+gate-shots iterations="1":
+    ./tools/drills/shots-drill.sh {{iterations}}
 
 # W13 coverage — the first-slice milestone: the published Edit IR renders to a
 # 1080x1920 clip with burned karaoke captions, matching sidecars, normalised

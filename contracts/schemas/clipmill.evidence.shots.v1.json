@@ -29,13 +29,7 @@
     "detection": {
       "description": "The decision parameters, recorded so a later pass knows what to change rather than guessing. They are part of the artifact key: a different threshold is a different observation, not a correction of this one. The decoder identity belongs here for the same reason — a different build can hand the detector different pixels.",
       "type": "object",
-      "required": [
-        "threshold",
-        "min_shot_ticks",
-        "analysis_height",
-        "frame_rate",
-        "decoder"
-      ],
+      "required": ["threshold", "min_shot_ticks", "analysis_height", "frame_rate", "decoder"],
       "additionalProperties": false,
       "properties": {
         "threshold": {

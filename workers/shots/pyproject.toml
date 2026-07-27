@@ -7,7 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
   "clipmill-worker-sdk",
   "numpy>=2",
-  "opencv-python-headless>=4.10",
   "scenedetect>=0.7,<0.8",
 ]
 
@@ -20,15 +19,18 @@ dev = ["pytest>=8"]
 [tool.uv.sources]
 clipmill-worker-sdk = { path = "../sdk", editable = true }
 
-[tool.uv]
-# PySceneDetect asks for `opencv-python`, whose wheel carries a GUI stack this
-# worker never opens and which needs libGL present merely to import — so on a
-# headless Linux machine the desktop build fails at `import cv2` before doing
-# any work. The marker below drops that requirement and the direct dependency
-# above supplies the same OpenCV without the window bindings. Only the array
-# operations are used: colour conversion and channel splitting, never video
-# I/O, which stays with the pinned FFmpeg the daemon hands us.
-override-dependencies = ["opencv-python; sys_platform == 'nonesuch'"]
+# OpenCV arrives through PySceneDetect, which asks for the desktop
+# `opencv-python` wheel rather than the headless one. Swapping it for
+# `opencv-python-headless` under a uv override works locally and breaks the
+# supply-chain audit: pip does not read uv's overrides, so it re-resolves
+# scenedetect's own requirement and finds a package the exported lockfile does
+# not pin. A worker whose dependencies cannot be audited is a worse trade than
+# a wheel carrying window bindings nobody calls, so the declared dependency is
+# taken as declared and Linux CI installs the GL library its import needs.
+#
+# Nothing here imports cv2 directly. Only the detector does, and only for
+# colour conversion and channel splitting — never for video I/O, which stays
+# with the pinned FFmpeg the daemon hands us on the lease.
 
 [build-system]
 requires = ["hatchling"]
