@@ -239,6 +239,24 @@ const REGISTRY: &[Recipe] = &[
         capability: None,
         tools: &[],
     },
+    // The W19 ranking baseline (book ch. 16), and the fan-in that roots a
+    // whole analysis.
+    Recipe {
+        kind: "rank-candidates",
+        output_kind: "ranking.set.v1",
+        semantic_version: "clipmill.ranking.set.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        tools: &[],
+    },
+    Recipe {
+        kind: "analysis-manifest",
+        output_kind: "analysis.manifest.v1",
+        semantic_version: "clipmill.analysis.manifest.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        tools: &[],
+    },
     // The W16 shot detector (book ch. 13). Leased, but modelless: it is
     // arithmetic over decoded pixels, so there is no capability to bind and no
     // model digest to key against. What makes its output reproducible is the

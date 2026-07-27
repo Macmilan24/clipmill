@@ -35,6 +35,15 @@ if [ "$ITERATIONS" -lt 1 ]; then
   exit 2
 fi
 
+# What the goldens looked like before this run. Compared afterwards rather than
+# diffed against git, because the question is whether *this run* rewrote them —
+# not whether the working tree happens to be dirty, which it legitimately is
+# while somebody is changing what the goldens should say.
+fingerprint() {
+  find "$1" -type f -name '*.json' -print0 | sort -z | xargs -0 shasum -a 256 2>/dev/null | shasum -a 256
+}
+goldens_before="$(fingerprint contracts/fixtures/discovery.candidates)"
+
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
@@ -73,10 +82,11 @@ for iteration in $(seq 1 "$ITERATIONS"); do
   ran
 done
 
-# The one thing the tests cannot assert about themselves: that the golden is a
-# committed file somebody reviewed rather than one this run produced.
-if ! git diff --quiet -- contracts/fixtures/discovery.candidates; then
-  echo "discovery-drill: the committed candidate goldens changed during this run" >&2
+# A gate that regenerated its own goldens would pass for any behaviour at all,
+# so the one thing the tests above cannot assert about themselves is asserted
+# here: nothing this run did changed the files it was checking against.
+if [ "$(fingerprint contracts/fixtures/discovery.candidates)" != "$goldens_before" ]; then
+  echo "discovery-drill: this run rewrote the committed candidate goldens" >&2
   git --no-pager diff --stat -- contracts/fixtures/discovery.candidates >&2
   exit 1
 fi

@@ -5,11 +5,12 @@
 //! it decides lives in `clipmill-discovery`, which does no I/O — this module
 //! reads the inputs, keys the result, and publishes it.
 //!
-//! Three documents arrive as content addresses in the payload rather than
-//! through dependencies, because all three were published by earlier jobs and a
-//! task's inputs are the outputs of the tasks it depends on. Each is checked
-//! against the artifact kind its own manifest declares, so a payload pointing
-//! at a transcript where an index belongs is refused rather than searched.
+//! Its three documents arrive one of two ways, both real. Submitted as a
+//! standalone job they are content addresses in the payload; run inside the
+//! analyze DAG they are the outputs of the tasks it depends on. Either way each
+//! is checked against the artifact kind its own manifest declares, so a payload
+//! pointing at a transcript where an index belongs is refused rather than
+//! searched, and the key covers the addresses whichever route found them.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::DiscoverStagePayloadV1;
@@ -24,6 +25,7 @@ use serde_json::{Map, json};
 
 use crate::{
     artifacts::ArtifactHandle,
+    inputs::{self, Wanted},
     jobs::{DISCOVER_STAGE_KEY_VERSION, LeasedTask, TaskExecutionError},
     media::{self, ProgressSlot},
 };
@@ -53,39 +55,29 @@ pub(crate) async fn execute_discover_task(
             "task payload does not describe discovery",
         ));
     }
-    if payload.index_artifact_id.is_empty() || payload.transcript_artifact_id.is_empty() {
-        return Err(TaskExecutionError::deterministic(
-            "discovery has no index or no transcript to read",
-        ));
-    }
-
-    let index: IndexTranscript = read_input(
+    let resolved = inputs::resolve(
         artifacts,
-        &payload.index_artifact_id,
-        "index.transcript.v1",
-        "index.json",
-    )
-    .await?;
-    let transcript: SpeechTranscript = read_input(
-        artifacts,
-        &payload.transcript_artifact_id,
-        "speech.transcript.v1",
-        "transcript.json",
-    )
-    .await?;
-    let loudness: Option<MediaLoudnessEnvelope> = if payload.loudness_artifact_id.is_empty() {
-        None
-    } else {
-        Some(
-            read_input(
-                artifacts,
-                &payload.loudness_artifact_id,
+        task,
+        &[
+            Wanted::required("index.transcript.v1", payload.index_artifact_id.as_str()),
+            Wanted::required(
+                "speech.transcript.v1",
+                payload.transcript_artifact_id.as_str(),
+            ),
+            Wanted::optional(
                 "media.loudness_envelope.v1",
-                "loudness.json",
-            )
-            .await?,
-        )
-    };
+                payload.loudness_artifact_id.as_str(),
+            ),
+        ],
+    )
+    .await?;
+    let index: IndexTranscript = resolved.read("index.transcript.v1", "index.json")?;
+    let transcript: SpeechTranscript = resolved.read("speech.transcript.v1", "transcript.json")?;
+    let loudness: Option<MediaLoudnessEnvelope> =
+        resolved.read_optional("media.loudness_envelope.v1", "loudness.json")?;
+    let index_id = resolved.address("index.transcript.v1")?;
+    let transcript_id = resolved.address("speech.transcript.v1")?;
+    let loudness_id = resolved.optional_address("media.loudness_envelope.v1");
     progress.set("stages", 1, 3);
 
     let parameters = parameters_of(&payload);
@@ -94,9 +86,9 @@ pub(crate) async fn execute_discover_task(
         &transcript,
         loudness.as_ref(),
         Inputs {
-            index: &payload.index_artifact_id,
-            transcript: &payload.transcript_artifact_id,
-            loudness: Some(payload.loudness_artifact_id.as_str()).filter(|id| !id.is_empty()),
+            index: &index_id,
+            transcript: &transcript_id,
+            loudness: loudness_id.as_deref(),
         },
         parameters,
         IMPLEMENTATION,
@@ -148,7 +140,7 @@ pub(crate) async fn execute_discover_task(
             implementation: IMPLEMENTATION.to_owned(),
             model_digest: None,
         },
-        inputs: inputs_for(&payload)?,
+        inputs: resolved.addresses(),
         policy: NetworkPolicy::LocalLock,
         config,
         semantic_version: "clipmill.discovery.candidates.v1".to_owned(),
@@ -200,50 +192,85 @@ pub(crate) fn parameters_of(payload: &DiscoverStagePayloadV1) -> Parameters {
         },
     }
 }
-
-/// Open one named artifact and read one document out of it, checking the kind
-/// its manifest declares rather than trusting the payload's word for it.
-async fn read_input<T: serde::de::DeserializeOwned>(
-    artifacts: &ArtifactHandle,
-    artifact_id: &str,
-    expected_kind: &str,
-    file: &str,
-) -> Result<T, TaskExecutionError> {
-    let parsed: ArtifactId = artifact_id
-        .parse()
-        .map_err(|_| TaskExecutionError::deterministic("input artifact id is not an address"))?;
-    let lease = artifacts
-        .open(parsed)
-        .await
-        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    if lease.kind() != expected_kind {
-        return Err(TaskExecutionError::deterministic(format!(
-            "discovery was pointed at a {}, not a {expected_kind}",
-            lease.kind()
-        )));
-    }
-    media::read_artifact_document(&lease, file)
-}
-
-/// The addresses this stage read, in a stable order, for the artifact key.
-pub(crate) fn inputs_for(
-    payload: &DiscoverStagePayloadV1,
-) -> Result<Vec<ArtifactId>, TaskExecutionError> {
-    let mut inputs = Vec::new();
-    for address in [
-        payload.index_artifact_id.as_str(),
-        payload.transcript_artifact_id.as_str(),
-        payload.loudness_artifact_id.as_str(),
-    ] {
-        if address.is_empty() {
-            continue;
-        }
-        inputs.push(address.parse::<ArtifactId>().map_err(|_| {
-            TaskExecutionError::deterministic("input artifact id is not an address")
-        })?);
-    }
-    Ok(inputs)
-}
-
 #[cfg(test)]
-mod tests;
+mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use clipmill_contracts::proto::ipc::v1::{ClipDurationV1, DiscoverStagePayloadV1};
+
+    use super::{KIND_DISCOVER, parameters_of};
+    use crate::jobs::DISCOVER_STAGE_KEY_VERSION;
+
+    const INDEX: &str = "sha256:1de0000000000000000000000000000000000000000000000000000000000011";
+    const TRANSCRIPT: &str =
+        "sha256:7a11000000000000000000000000000000000000000000000000000000000042";
+
+    fn payload() -> DiscoverStagePayloadV1 {
+        DiscoverStagePayloadV1 {
+            key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
+            stage: KIND_DISCOVER.to_owned(),
+            index_artifact_id: INDEX.to_owned(),
+            transcript_artifact_id: TRANSCRIPT.to_owned(),
+            loudness_artifact_id: String::new(),
+            duration: None,
+            exploration_floor: 0,
+        }
+    }
+
+    /// Zero means "no opinion" on the wire, so a caller who does not care about
+    /// clip length does not have to know what the daemon would pick.
+    #[test]
+    fn an_unset_length_takes_the_daemon_default() {
+        assert_eq!(
+            parameters_of(&payload()),
+            clipmill_discovery::Parameters::DEFAULT
+        );
+        let zeroed = DiscoverStagePayloadV1 {
+            duration: Some(ClipDurationV1 {
+                min_ticks: 0,
+                max_ticks: 0,
+            }),
+            ..payload()
+        };
+        assert_eq!(
+            parameters_of(&zeroed),
+            clipmill_discovery::Parameters::DEFAULT
+        );
+    }
+
+    #[test]
+    fn a_stated_length_is_honoured_exactly() {
+        let asked = DiscoverStagePayloadV1 {
+            duration: Some(ClipDurationV1 {
+                min_ticks: 30 * 90_000,
+                max_ticks: 60 * 90_000,
+            }),
+            exploration_floor: 5,
+            ..payload()
+        };
+        let parameters = parameters_of(&asked);
+        assert_eq!(parameters.min_ticks, 30 * 90_000);
+        assert_eq!(parameters.max_ticks, 60 * 90_000);
+        assert_eq!(parameters.exploration_floor, 5);
+    }
+
+    /// One half stated and the other left alone is a real request: a caller who
+    /// wants clips no shorter than thirty seconds should not have to name a
+    /// ceiling as well.
+    #[test]
+    fn half_a_length_leaves_the_other_half_at_the_default() {
+        let asked = DiscoverStagePayloadV1 {
+            duration: Some(ClipDurationV1 {
+                min_ticks: 30 * 90_000,
+                max_ticks: 0,
+            }),
+            ..payload()
+        };
+        let parameters = parameters_of(&asked);
+        assert_eq!(parameters.min_ticks, 30 * 90_000);
+        assert_eq!(
+            parameters.max_ticks,
+            clipmill_discovery::Parameters::DEFAULT.max_ticks
+        );
+    }
+}

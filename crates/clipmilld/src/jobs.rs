@@ -13,8 +13,9 @@ use clipmill_contracts::proto::{
     ipc::v1::{
         self, ClipDurationV1, DetectShotsPayloadV1, DeviceProfilePayloadV1,
         DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1, IndexStagePayloadV1,
-        IndexTranscriptPayloadV1, JobState, ShotsStagePayloadV1, SpeechAlignmentV1,
-        SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
+        IndexTranscriptPayloadV1, JobState, RankCandidatesPayloadV1, RankStagePayloadV1,
+        ShotsStagePayloadV1, SpeechAlignmentV1, SpeechRecognitionV1, SpeechStagePayloadV1,
+        TranscribeSourcePayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -34,6 +35,7 @@ use crate::{
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
     discovery, evidence,
     media::{self, MediaRunner, ProgressSlot},
+    ranking,
     render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
     speech,
@@ -51,6 +53,9 @@ pub(crate) const INDEX_STAGE_KEY_VERSION: &str = "clipmill.index-stage.v1";
 
 /// Key version the discovery stage payload carries.
 pub(crate) const DISCOVER_STAGE_KEY_VERSION: &str = "clipmill.discover-stage.v1";
+
+/// Key version the ranking stage payload carries.
+pub(crate) const RANK_STAGE_KEY_VERSION: &str = "clipmill.rank-stage.v1";
 
 /// The one implementation of shot detection. Unlike the speech stages there is
 /// nothing to select between: the stage runs no model, so there is no cost to
@@ -812,6 +817,55 @@ impl JobPlan {
         }
     }
 
+    /// The ranking baseline over a searched cohort (book ch. 16).
+    ///
+    /// One builtin task naming its three documents in its payload, for the
+    /// same reason the two stages before it do: all of them were published by
+    /// earlier jobs, and a task's inputs are the outputs of the tasks it
+    /// depends on.
+    pub(crate) fn rank_candidates(
+        project_id: &ProjectId,
+        source_id: String,
+        ranking_inputs: RankingJobInputs<'_>,
+        request: &RankCandidatesPayloadV1,
+        now: u64,
+    ) -> Self {
+        let payload = RankStagePayloadV1 {
+            key_version: RANK_STAGE_KEY_VERSION.to_owned(),
+            stage: ranking::KIND_RANK.to_owned(),
+            candidates_artifact_id: ranking_inputs.candidates.to_owned(),
+            index_artifact_id: ranking_inputs.index.to_owned(),
+            transcript_artifact_id: ranking_inputs.transcript.to_owned(),
+            count: request.count,
+            diversity_milli: request.diversity_milli,
+        };
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: ranking::KIND_RANK.to_owned(),
+            source_id: Some(source_id),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: ranking::KIND_RANK.to_owned(),
+                input_kinds: vec![
+                    "discovery.candidates.v1".to_owned(),
+                    "index.transcript.v1".to_owned(),
+                    "speech.transcript.v1".to_owned(),
+                ],
+                output_kind: "ranking.set.v1".to_owned(),
+                payload: payload.encode_to_vec(),
+                dependencies: Vec::new(),
+                resources: rank_resources(),
+                implementation: ranking::IMPLEMENTATION.to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
+        }
+    }
+
     pub(crate) fn device_profile(
         hardware_fingerprint: String,
         measurement_generation: u64,
@@ -878,6 +932,31 @@ pub(crate) struct EvidenceInputs<'a> {
     pub transcript: &'a str,
     /// Absent for a source with no video.
     pub shots: Option<&'a str>,
+}
+
+/// The published documents ranking reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RankingJobInputs<'a> {
+    pub candidates: &'a str,
+    pub index: &'a str,
+    pub transcript: &'a str,
+}
+
+/// What the ranking stage costs. Exhaustive over a lattice the design keeps
+/// under a few hundred pairs, so this is arithmetic rather than search.
+fn rank_resources() -> ResourceDeclaration {
+    ResourceDeclaration {
+        cpu_threads: 1,
+        ram_bytes: 512 * 1024 * 1024,
+        accelerator_class: String::new(),
+        vram_bytes: 0,
+        disk_bytes: 128 * 1024 * 1024,
+        network_policy: "local-lock".to_owned(),
+        thermal_class: "light".to_owned(),
+        determinism_class: "deterministic".to_owned(),
+        checkpoint_support: false,
+        preemption_cost: 1,
+    }
 }
 
 /// The published documents discovery reads.
@@ -1566,6 +1645,7 @@ impl BuiltinExecutors {
             discovery::KIND_DISCOVER => {
                 discovery::execute_discover_task(&self.artifacts, task, progress).await
             }
+            ranking::KIND_RANK => ranking::execute_rank_task(&self.artifacts, task, progress).await,
             kind if render::is_render_kind(kind) => {
                 render::execute_render_task(
                     &RenderContext {
@@ -1595,6 +1675,7 @@ fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
     kinds.push(speech::KIND_TRANSCRIPT.to_owned());
     kinds.push(evidence::KIND_INDEX.to_owned());
     kinds.push(discovery::KIND_DISCOVER.to_owned());
+    kinds.push(ranking::KIND_RANK.to_owned());
     if builtin_fixture_executor {
         kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
     }

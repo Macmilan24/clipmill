@@ -22,12 +22,15 @@
 //!
 //! Nothing in this crate does any I/O.
 
+mod boundary;
 mod clustering;
 #[cfg(test)]
 pub(crate) mod fixture;
 mod lattice;
 mod proposers;
 mod prosody;
+pub mod ranking;
+mod scorecard;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,6 +41,8 @@ use clipmill_contracts::schemas::speech_transcript::SpeechTranscript;
 use sha2::{Digest, Sha256};
 
 pub use proposers::VERSION as PROPOSER_VERSION;
+pub use ranking::{Inputs as RankingInputs, RankingError, Request, rank};
+pub use scorecard::RUBRIC as SCORER_RUBRIC;
 
 /// Who produced a candidate set.
 pub const STAGE: &str = "discover-candidates";
@@ -422,7 +427,26 @@ fn clamp_unit(value: f64) -> f64 {
     if value.is_nan() {
         0.0
     } else {
-        value.clamp(0.0, 1.0)
+        published(value.clamp(0.0, 1.0))
+    }
+}
+
+/// Six decimal places, applied to every float that reaches a published
+/// document.
+///
+/// Two reasons, and the second is the load-bearing one. A score carrying
+/// seventeen significant digits claims a precision no hand-set weight has. And
+/// a document whose bytes depend on the last bits of a double is a document
+/// three languages cannot agree about: Rust's JSON parser is only exact with
+/// `float_roundtrip` enabled, and even where every reader is exact, an artifact
+/// key computed over such a value is one nobody can reproduce by recomputing
+/// the number a slightly different way. Six places is far more resolution than
+/// any of these measurements has, and short decimals survive every parser.
+pub(crate) fn published(value: f64) -> f64 {
+    if value.is_finite() {
+        (value * 1_000_000.0).round() / 1_000_000.0
+    } else {
+        0.0
     }
 }
 

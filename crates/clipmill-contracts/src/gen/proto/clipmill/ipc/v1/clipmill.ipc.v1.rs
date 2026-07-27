@@ -477,6 +477,68 @@ pub struct DiscoverStagePayloadV1 {
     #[prost(uint64, tag = "7")]
     pub exploration_floor: u64,
 }
+/// Versioned payload for ranking (book ch. 16). The request names a source; the
+/// daemon resolves it to the candidate set, the index, and the transcript.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RankCandidatesPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// Zero leaves the count and the diversity trade-off at the daemon's
+    /// defaults.
+    #[prost(uint64, tag = "3")]
+    pub count: u64,
+    /// Thousandths, so the value that reaches an artifact key is an integer.
+    #[prost(uint64, tag = "4")]
+    pub diversity_milli: u64,
+}
+/// What the ranking stage is asked to score.
+///
+/// The three documents are named as content addresses when this runs as a
+/// standalone job, and left empty when it runs inside the analyze DAG, where
+/// they arrive as the outputs of the tasks it depends on. The key is computed
+/// from the addresses either way, so the two routes share a cache entry.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RankStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub candidates_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub index_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub transcript_artifact_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "6")]
+    pub count: u64,
+    #[prost(uint64, tag = "7")]
+    pub diversity_milli: u64,
+}
+/// Versioned payload for the whole analysis (book ch. 15/16): probe, ingest,
+/// the speech chain, shot detection, the evidence index, discovery, and
+/// ranking, planned as one DAG whose single rooted artifact names every stage.
+/// This is what a new project submits and what evaluation runs.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AnalyzeSourcePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// BCP 47 primary subtag, or empty to let the recognizer decide.
+    #[prost(string, tag = "3")]
+    pub language: ::prost::alloc::string::String,
+    /// Zero leaves each of these at the daemon's default, so a caller with no
+    /// opinion does not have to have one.
+    #[prost(message, optional, tag = "4")]
+    pub duration: ::core::option::Option<ClipDurationV1>,
+    #[prost(uint64, tag = "5")]
+    pub count: u64,
+    #[prost(uint64, tag = "6")]
+    pub diversity_milli: u64,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.

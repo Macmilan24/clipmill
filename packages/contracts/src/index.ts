@@ -21,6 +21,8 @@ export type { SpeechTranscript } from './gen/schemas/speech-transcript.js';
 export type { EvidenceShots } from './gen/schemas/evidence-shots.js';
 export type { IndexTranscript } from './gen/schemas/index-transcript.js';
 export type { DiscoveryCandidates } from './gen/schemas/discovery-candidates.js';
+export type { RankingSet } from './gen/schemas/ranking-set.js';
+export type { AnalysisManifest } from './gen/schemas/analysis-manifest.js';
 
 // IPC control plane.
 export { PingRequestSchema, PingResponseSchema } from './gen/proto/clipmill/ipc/v1/ping_pb.js';

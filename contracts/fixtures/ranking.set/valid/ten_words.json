@@ -1,0 +1,31 @@
+{
+  "cohort": [],
+  "inputs": {
+    "candidates_artifact_id": "sha256:ca4d000000000000000000000000000000000000000000000000000000000077",
+    "index_artifact_id": "sha256:1de0000000000000000000000000000000000000000000000000000000000011",
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "producer": {
+    "implementation": "clipmill-ranking-baseline@1.0.0",
+    "stage": "rank-candidates"
+  },
+  "requested": {
+    "count": 10,
+    "diversity": 0.7
+  },
+  "rubric": {
+    "boundary": "boundary-j-handset.v1",
+    "scorer": "scorecard-handset.v1",
+    "selector": "mmr-handset.v1"
+  },
+  "schema_version": "clipmill.ranking.set.v1",
+  "selected": [],
+  "shortfall": [
+    {
+      "count": 10,
+      "detail": "the recording holds no further candidate to select",
+      "reason": "cohort_exhausted"
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007"
+}

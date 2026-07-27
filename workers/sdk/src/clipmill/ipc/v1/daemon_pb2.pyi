@@ -428,6 +428,52 @@ class DiscoverStagePayloadV1(_message.Message):
     exploration_floor: int
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., index_artifact_id: _Optional[str] = ..., transcript_artifact_id: _Optional[str] = ..., loudness_artifact_id: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., exploration_floor: _Optional[int] = ...) -> None: ...
 
+class RankCandidatesPayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "count", "diversity_milli")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    count: int
+    diversity_milli: int
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+
+class RankStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "candidates_artifact_id", "index_artifact_id", "transcript_artifact_id", "count", "diversity_milli")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    CANDIDATES_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    INDEX_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    TRANSCRIPT_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    candidates_artifact_id: str
+    index_artifact_id: str
+    transcript_artifact_id: str
+    count: int
+    diversity_milli: int
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., candidates_artifact_id: _Optional[str] = ..., index_artifact_id: _Optional[str] = ..., transcript_artifact_id: _Optional[str] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+
+class AnalyzeSourcePayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    DURATION_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    language: str
+    duration: ClipDurationV1
+    count: int
+    diversity_milli: int
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

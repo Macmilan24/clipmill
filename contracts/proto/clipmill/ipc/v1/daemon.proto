@@ -347,6 +347,51 @@ message DiscoverStagePayloadV1 {
   uint64 exploration_floor = 7;
 }
 
+// Versioned payload for ranking (book ch. 16). The request names a source; the
+// daemon resolves it to the candidate set, the index, and the transcript.
+message RankCandidatesPayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // Zero leaves the count and the diversity trade-off at the daemon's
+  // defaults.
+  uint64 count = 3;
+  // Thousandths, so the value that reaches an artifact key is an integer.
+  uint64 diversity_milli = 4;
+}
+
+// What the ranking stage is asked to score.
+//
+// The three documents are named as content addresses when this runs as a
+// standalone job, and left empty when it runs inside the analyze DAG, where
+// they arrive as the outputs of the tasks it depends on. The key is computed
+// from the addresses either way, so the two routes share a cache entry.
+message RankStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string candidates_artifact_id = 3;
+  string index_artifact_id = 4;
+  string transcript_artifact_id = 5;
+  uint64 count = 6;
+  uint64 diversity_milli = 7;
+}
+
+// Versioned payload for the whole analysis (book ch. 15/16): probe, ingest,
+// the speech chain, shot detection, the evidence index, discovery, and
+// ranking, planned as one DAG whose single rooted artifact names every stage.
+// This is what a new project submits and what evaluation runs.
+message AnalyzeSourcePayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // BCP 47 primary subtag, or empty to let the recognizer decide.
+  string language = 3;
+  // Zero leaves each of these at the daemon's default, so a caller with no
+  // opinion does not have to have one.
+  ClipDurationV1 duration = 4;
+  uint64 count = 5;
+  uint64 diversity_milli = 6;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.
