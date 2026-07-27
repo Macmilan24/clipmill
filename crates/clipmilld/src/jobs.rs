@@ -10,7 +10,10 @@ use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
 };
 use clipmill_contracts::proto::{
-    ipc::v1::{self, DeviceProfilePayloadV1, JobState},
+    ipc::v1::{
+        self, DeviceProfilePayloadV1, JobState, SpeechAlignmentV1, SpeechRecognitionV1,
+        SpeechStagePayloadV1, TranscribeSourcePayloadV1,
+    },
     worker::v1::{FailureClass, ProgressUnits},
 };
 use clipmill_core::{ArtifactId, JobId, LeaseId, ProjectId, Sha256Digest, TaskId};
@@ -30,7 +33,12 @@ use crate::{
     media::{self, MediaRunner, ProgressSlot},
     render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
+    speech,
 };
+
+/// Key version every speech stage payload carries, so a worker can refuse a
+/// payload the daemon never meant for it.
+pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) const LEASE_TTL: Duration = Duration::from_secs(15);
@@ -443,6 +451,158 @@ impl JobPlan {
         }
     }
 
+    /// The W15 speech chain (book ch. 13): voice activity, then recognition,
+    /// then forced alignment, then the assembly that fuses them.
+    ///
+    /// Strictly serial, and not for want of trying: each stage's input is the
+    /// previous stage's output. What the split buys is not parallelism but
+    /// blast radius — re-pinning the recognizer invalidates transcripts and
+    /// leaves voice activity alone, and a failed alignment costs word timing
+    /// without costing anyone the text.
+    ///
+    /// Each stage carries only the parameters it reads, because the payload is
+    /// hashed into the artifact key: a recognizer payload carrying the voice
+    /// activity threshold would make re-tuning voice activity invalidate every
+    /// cached transcript, including ones whose inputs never changed.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "four task specifications, which is what the DAG is"
+    )]
+    pub(crate) fn transcribe_source(
+        project_id: &ProjectId,
+        source_id: String,
+        audio: SpeechAudio<'_>,
+        request: &TranscribeSourcePayloadV1,
+        models: &crate::models::ModelRegistry,
+        bindings: &crate::selection::Bindings,
+        now: u64,
+    ) -> Self {
+        let stage_payload = |stage: &str, fill: &dyn Fn(&mut SpeechStagePayloadV1)| {
+            let mut payload = SpeechStagePayloadV1 {
+                key_version: SPEECH_STAGE_KEY_VERSION.to_owned(),
+                stage: stage.to_owned(),
+                source_fingerprint: audio.source_fingerprint.to_owned(),
+                audio_artifact_id: audio.artifact_id.to_owned(),
+                ..SpeechStagePayloadV1::default()
+            };
+            fill(&mut payload);
+            payload.encode_to_vec()
+        };
+
+        let vad = TaskId::new().to_string();
+        let asr = TaskId::new().to_string();
+        let align = TaskId::new().to_string();
+        let transcript = TaskId::new().to_string();
+
+        // The device's answer, frozen into the plan. Every leased stage below
+        // records the implementation this machine chose, which is what its
+        // artifact key is computed from and what the scheduler routes it by.
+        // Re-measuring the device later moves the next plan and nothing that
+        // has already been published.
+        let chosen = |kind: &str| speech_implementation(kind, bindings);
+        let leased = |task_id: String,
+                      ordinal: u32,
+                      kind: &str,
+                      input_kinds: Vec<String>,
+                      output_kind: &str,
+                      payload: Vec<u8>,
+                      dependencies: Vec<String>| {
+            let implementation = chosen(kind);
+            TaskSpec {
+                task_id,
+                ordinal,
+                kind: kind.to_owned(),
+                input_kinds,
+                output_kind: output_kind.to_owned(),
+                payload,
+                dependencies,
+                resources: speech_resources(implementation, models, 1),
+                implementation: implementation.name.to_owned(),
+                max_attempts: 3,
+                is_final: false,
+            }
+        };
+
+        let tasks = vec![
+            leased(
+                vad.clone(),
+                0,
+                "speech-vad",
+                Vec::new(),
+                "speech.vad.v1",
+                stage_payload("speech-vad", &|payload| {
+                    payload.detection.clone_from(&request.detection);
+                }),
+                Vec::new(),
+            ),
+            leased(
+                asr.clone(),
+                1,
+                "speech-asr",
+                vec!["speech.vad.v1".to_owned()],
+                "speech.asr.v1",
+                stage_payload("speech-asr", &|payload| {
+                    payload.recognition = Some(SpeechRecognitionV1 {
+                        language: request.language.clone(),
+                        conditioned_on_previous: false,
+                    });
+                }),
+                vec![vad.clone()],
+            ),
+            leased(
+                align.clone(),
+                2,
+                "speech-align",
+                vec!["speech.asr.v1".to_owned()],
+                "speech.alignment.v1",
+                stage_payload("speech-align", &|payload| {
+                    payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
+                }),
+                vec![asr.clone()],
+            ),
+            TaskSpec {
+                task_id: transcript,
+                ordinal: 3,
+                kind: speech::KIND_TRANSCRIPT.to_owned(),
+                // Named in dependency order, but assembly matches its inputs
+                // by the kind each artifact declares rather than by position.
+                input_kinds: vec![
+                    "speech.vad.v1".to_owned(),
+                    "speech.asr.v1".to_owned(),
+                    "speech.alignment.v1".to_owned(),
+                ],
+                output_kind: "speech.transcript.v1".to_owned(),
+                payload: stage_payload(speech::KIND_TRANSCRIPT, &|_| {}),
+                dependencies: vec![vad, asr, align],
+                resources: ResourceDeclaration {
+                    cpu_threads: 1,
+                    ram_bytes: 128 * 1024 * 1024,
+                    accelerator_class: String::new(),
+                    vram_bytes: 0,
+                    disk_bytes: 64 * 1024 * 1024,
+                    network_policy: "local-lock".to_owned(),
+                    thermal_class: "light".to_owned(),
+                    determinism_class: "deterministic".to_owned(),
+                    checkpoint_support: false,
+                    preemption_cost: 1,
+                },
+                implementation: speech::IMPLEMENTATION.to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            },
+        ];
+
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "transcribe-source".to_owned(),
+            source_id: Some(source_id),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks,
+        }
+    }
+
     pub(crate) fn device_profile(
         hardware_fingerprint: String,
         measurement_generation: u64,
@@ -486,6 +646,71 @@ impl JobPlan {
                 is_final: true,
             }],
         }
+    }
+}
+
+/// The rendition the speech chain reads, and the source behind it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SpeechAudio<'a> {
+    pub artifact_id: &'a str,
+    pub source_fingerprint: &'a str,
+}
+
+/// What one leased speech stage needs, taken from the model it will load.
+///
+/// Sized from the pinned manifest rather than guessed: the registry already
+/// states each model's weights and its runtime's allowance, and admission
+/// checks the sum. Guessing here would either starve the stage or admit it
+/// onto a machine that cannot hold it, and the registry is the only place
+/// that knows which.
+/// The implementation this device bound a speech stage to.
+///
+/// Falls back to the portable candidate when the profile has nothing to say,
+/// which is the state of a daemon that has not measured its device yet. The
+/// fallback is a real registered implementation rather than a synthesized one,
+/// so a task planned before the first measurement is keyed exactly like a task
+/// planned after a measurement that chose the same thing.
+fn speech_implementation(
+    kind: &str,
+    bindings: &crate::selection::Bindings,
+) -> &'static crate::implementations::Implementation {
+    bindings
+        .for_stage(kind)
+        .and_then(|binding| crate::implementations::lookup(&binding.implementation))
+        .or_else(|| crate::implementations::portable_for_stage(kind))
+        .unwrap_or_else(|| unreachable!("{kind} is planned without a registered implementation"))
+}
+
+/// What a stage costs, taken from the model it was actually bound to.
+///
+/// The accelerator class comes from the implementation, so the scheduler's
+/// existing capability match does the routing: an MLX task declares `metal`
+/// and only reaches a worker whose verified device profile reports one, while
+/// the portable candidate declares nothing and reaches anybody.
+fn speech_resources(
+    implementation: &crate::implementations::Implementation,
+    models: &crate::models::ModelRegistry,
+    cpu_threads: u32,
+) -> ResourceDeclaration {
+    let resident = models
+        .get(implementation.model)
+        .map_or(512 * 1024 * 1024, |manifest| {
+            manifest.memory.resident_bytes()
+        });
+    ResourceDeclaration {
+        cpu_threads,
+        ram_bytes: resident,
+        accelerator_class: implementation.accelerator_class.to_owned(),
+        // Unified memory on Apple silicon: the weights are already counted in
+        // RAM above, and counting them again as VRAM would refuse a machine
+        // that can run the model comfortably.
+        vram_bytes: 0,
+        disk_bytes: 128 * 1024 * 1024,
+        network_policy: "local-lock".to_owned(),
+        thermal_class: "sustained".to_owned(),
+        determinism_class: "deterministic".to_owned(),
+        checkpoint_support: false,
+        preemption_cost: 3,
     }
 }
 
@@ -802,6 +1027,11 @@ pub(crate) struct SchedulerHandle {
     notify: Arc<Notify>,
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     capacity_limit: ResourceCapacity,
+    /// Which implementation each speech stage is bound to, as last verified
+    /// (D19). Read when a job is planned, never when a task is leased: a
+    /// re-measurement that arrives mid-job must not change what a task already
+    /// in flight means.
+    bindings: Arc<Mutex<crate::selection::Bindings>>,
 }
 
 impl SchedulerHandle {
@@ -826,6 +1056,33 @@ impl SchedulerHandle {
         if let Ok(mut pending) = self.capacity_update.lock() {
             *pending = Some(capacity);
         }
+        // A profile predating selection carries no bindings. Keeping the
+        // portable defaults is the only safe reading of that: it is a profile
+        // that says nothing about implementations, not one that says every
+        // capability has none.
+        if !profile.bindings.is_empty()
+            && let Ok(mut bindings) = self.bindings.lock()
+        {
+            for binding in profile.bindings.iter() {
+                // Said differently on purpose. An operator wondering why a
+                // machine with an accelerator is running the CPU path should
+                // find the answer in the log rather than in the profile JSON.
+                let note = if binding.was_measured() {
+                    "capability bound to the implementation a benchmark chose"
+                } else {
+                    "capability bound to its portable implementation; no benchmark covers this device"
+                };
+                tracing::info!(
+                    capability = binding.capability,
+                    implementation = binding.implementation,
+                    model = binding.model,
+                    backend = binding.backend,
+                    selected_by = binding.selected_by,
+                    note
+                );
+            }
+            bindings.clone_from(&profile.bindings);
+        }
         self.notify.notify_one();
     }
 
@@ -838,6 +1095,14 @@ impl SchedulerHandle {
             .ok()
             .and_then(|pending| *pending)
             .unwrap_or(self.capacity_limit)
+    }
+
+    /// The bindings a new plan should be built against.
+    pub(crate) fn bindings(&self) -> crate::selection::Bindings {
+        self.bindings
+            .lock()
+            .map(|bindings| bindings.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -863,6 +1128,10 @@ impl Scheduler {
             notify: Arc::clone(&notify),
             capacity_update: Arc::clone(&capacity_update),
             capacity_limit: capacity,
+            // Until a profile is verified, every stage takes the candidate
+            // that runs anywhere — the honest default for a device nobody has
+            // measured.
+            bindings: Arc::new(Mutex::new(crate::selection::Bindings::portable())),
         };
         let (stopped, stop) = oneshot::channel();
         let task = tokio::spawn(run_scheduler(
@@ -1055,6 +1324,9 @@ impl BuiltinExecutors {
                 )
                 .await
             }
+            speech::KIND_TRANSCRIPT => {
+                speech::execute_transcript_task(&self.artifacts, task, progress).await
+            }
             kind if render::is_render_kind(kind) => {
                 render::execute_render_task(
                     &RenderContext {
@@ -1081,6 +1353,7 @@ fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
     let mut kinds = vec!["probe-source".to_owned(), "device-profile".to_owned()];
     kinds.extend(media::INGEST_TASK_KINDS.map(str::to_owned));
     kinds.push(render::KIND_RENDER_CLIP.to_owned());
+    kinds.push(speech::KIND_TRANSCRIPT.to_owned());
     if builtin_fixture_executor {
         kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
     }

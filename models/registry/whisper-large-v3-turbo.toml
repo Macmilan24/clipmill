@@ -16,6 +16,7 @@ repo = "ggerganov/whisper.cpp"
 revision = "5359861c739e955e79d9a303bcbc70fb988958b1"
 
 [license]
+source = "repo-metadata"
 spdx = "MIT"
 class = "permissive"
 

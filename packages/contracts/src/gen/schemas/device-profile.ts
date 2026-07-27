@@ -27,6 +27,33 @@ export type HardwareRoundtrip1 =
   | {
       available?: false;
     };
+/**
+ * One implementation that could serve a capability, measured over the benchmark fixture or refused with a reason.
+ */
+export type ImplementationCandidate = {
+  capability: string;
+  implementation: string;
+  model: string;
+  /**
+   * The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old.
+   */
+  model_digest: string;
+  backend: string;
+  runnable: boolean;
+  /**
+   * Benchmark audio seconds divided by wall-clock seconds. Above 1 is faster than real time. A rate, not a timeline position.
+   */
+  real_time_factor?: number;
+  peak_resident_bytes?: number;
+  unavailable_reason?: string;
+} & ImplementationCandidate1;
+export type ImplementationCandidate1 =
+  | {
+      runnable?: true;
+    }
+  | {
+      runnable?: false;
+    };
 
 /**
  * The measured device profile (book ch. 11): backend selection is driven by measurement, not static per-platform defaults (D19). Cached as an artifact; re-measured when hardware or runtimes change. Rates (fps, bytes/s) are measurements, not timeline positions, so they may be numbers.
@@ -81,6 +108,13 @@ export interface DeviceProfile {
     hardware_roundtrip: HardwareRoundtrip;
     attestation: DeviceAttestation;
   };
+  /**
+   * Which implementation each model-running capability is bound to on this device, and the measurement that decided it (D19). Absent on profiles taken before any capability had candidates. A binding names one implementation; the candidate list beside it is the evidence, including the candidates that could not run here and why — a device that cannot say why it rejected an implementation cannot be asked to justify its choice.
+   */
+  selection?: {
+    bindings: ImplementationBinding[];
+    candidates: ImplementationCandidate[];
+  };
 }
 export interface RuntimeIdentity {
   kind: string;
@@ -104,4 +138,19 @@ export interface DeviceAttestation {
   algorithm: "ed25519";
   public_key: string;
   signature: string;
+}
+/**
+ * One capability's chosen implementation, and how it was chosen.
+ */
+export interface ImplementationBinding {
+  capability: string;
+  stage: string;
+  implementation: string;
+  model: string;
+  backend: string;
+  /**
+   * measured — a benchmark ranked two or more runnable candidates. sole_candidate — only one candidate could run here, so nothing was ranked. unmeasured_fallback — candidates exist but no valid benchmark covers this device, so the portable one was taken. The three are kept apart because a choice nobody measured must never read as one somebody did.
+   */
+  selected_by: "measured" | "sole_candidate" | "unmeasured_fallback";
+  detail?: string;
 }

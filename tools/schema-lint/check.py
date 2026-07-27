@@ -6,6 +6,12 @@ Any JSON Schema property whose name suggests a time quantity
 Times in ClipMill contracts are rational integers — ticks against an
 explicit timebase — never float seconds.
 
+A *rate* is not a time quantity. Frames per second, bytes per second, and a
+real-time factor are dimensionless or per-second measurements: none of them can
+express a position on a timeline or a length of one, which is the whole thing
+D06 protects. They are excluded by suffix rather than by name, so the exception
+cannot be claimed by inventing a field called `start_time_rate`.
+
 Usage: python tools/schema-lint/check.py contracts/schemas/*.json
 Exits non-zero listing every violation.
 """
@@ -16,6 +22,7 @@ import sys
 from pathlib import Path
 
 TIME_NAME = re.compile(r"(?:^|_)(?:time|start|end|duration|offset)(?:_|$)|(?:_at$)")
+RATE_NAME = re.compile(r"(?:_factor|_per_second)$")
 
 
 def walk(node: object, path: str, violations: list[str], source: Path) -> None:
@@ -26,6 +33,7 @@ def walk(node: object, path: str, violations: list[str], source: Path) -> None:
                 here = f"{path}.{name}" if path else name
                 if (
                     TIME_NAME.search(name)
+                    and not RATE_NAME.search(name)
                     and isinstance(subschema, dict)
                     and subschema.get("type") == "number"
                 ):

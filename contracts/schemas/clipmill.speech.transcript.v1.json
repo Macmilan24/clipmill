@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.speech.transcript.v1.json",
+  "title": "SpeechTranscript",
+  "description": "The speech chain's single published observation: voice activity, recognized text, and measured word timing fused into one document that downstream stages read instead of the three artifacts behind it (book ch. 13, App. B). It carries what an observation is required to carry — rational intervals, a confidence distribution rather than a bare scalar, an explicit coverage statement, every producing model's identity, and the regions known to be invalid — so that discovery, ranking, captions, and the editor can request evidence by minimum quality and say why when it is missing.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "inputs",
+    "producers",
+    "language",
+    "confidence",
+    "coverage",
+    "words",
+    "segments",
+    "silences",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.speech.transcript.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "inputs": {
+      "description": "The three artifacts fused here, so any claim in this document can be walked back to the pass that made it.",
+      "type": "object",
+      "required": ["vad_artifact_id", "asr_artifact_id", "alignment_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "vad_artifact_id": { "$ref": "#/$defs/sha256" },
+        "asr_artifact_id": { "$ref": "#/$defs/sha256" },
+        "alignment_artifact_id": { "$ref": "#/$defs/sha256" },
+        "audio_artifact_id": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "producers": {
+      "description": "One entry per contributing stage, each with the digest of the model that ran. A transcript that cannot name the models behind it cannot support the AI-use disclosure a render manifest has to make.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/producer" }
+    },
+    "language": { "type": "string", "minLength": 2, "maxLength": 16 },
+    "language_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "confidence": {
+      "description": "Over the words below. Ranking reads p10, not p50, when it decides whether a quote is safe to put on screen.",
+      "$ref": "#/$defs/confidence"
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "words": {
+      "description": "The authoritative word list, ordered by time. Every word carries timing and says how that timing was obtained.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/word" }
+    },
+    "segments": {
+      "description": "Recognizer segments, as index ranges into the word list rather than duplicated text, so the two can never disagree.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/segment" }
+    },
+    "silences": {
+      "description": "Carried through from voice activity: these are where a cut is allowed to land without severing speech.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/interval" }
+    },
+    "invalid_regions": {
+      "description": "Spans this transcript does not vouch for, including any whose word timing was interpolated rather than measured. The boundary optimizer refuses to place an edit inside one.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "interval": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "word": {
+      "type": "object",
+      "required": [
+        "index",
+        "segment_index",
+        "text",
+        "start_ticks",
+        "end_ticks",
+        "confidence",
+        "timing"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "segment_index": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "timing": {
+          "description": "How the interval was obtained. 'aligned' was measured against the audio; 'interpolated' was spread across a span the aligner could not place, and every such word's span also appears in invalid_regions. Dropping the text would lose what was said; presenting it as measured would be a lie — labelling it is the only honest option.",
+          "type": "string",
+          "enum": ["aligned", "interpolated"]
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "required": [
+        "index",
+        "start_ticks",
+        "end_ticks",
+        "text",
+        "first_word_index",
+        "word_count",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "first_word_index": { "type": "integer", "minimum": 0 },
+        "word_count": { "type": "integer", "minimum": 0 },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "required": ["p50", "p10"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 1 },
+        "p10": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "model_digest": { "$ref": "#/$defs/sha256" },
+        "calibration": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coverage": {
+      "description": "Three separate numbers because they answer three separate questions: how much of the recording was examined, how much of it was speech, and how much of that speech has timing anyone measured.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed", "speech_ticks", "aligned_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" },
+        "speech_ticks": { "type": "integer", "minimum": 0 },
+        "aligned_ticks": { "type": "integer", "minimum": 0 },
+        "sampling_plan": { "type": "string", "minLength": 1 }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "not_analyzed",
+            "no_audio",
+            "decode_failed",
+            "alignment_unavailable",
+            "timing_interpolated"
+          ]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

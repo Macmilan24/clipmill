@@ -101,10 +101,37 @@ impl Daemon {
                 )));
             }
         };
+        // Read once at startup: the registry is pinned configuration, and a
+        // daemon that re-read it per task could key two artifacts of one job
+        // against different model identities. It has to exist before the
+        // profiler, which measures nothing about a model it cannot identify.
+        let models = Arc::new(
+            match crate::models::ModelRegistry::load(&config.models_dir) {
+                Ok(registry) => {
+                    for summary in registry.summaries() {
+                        tracing::info!(model = summary, "pinned model");
+                    }
+                    tracing::info!(
+                        models = registry.len(),
+                        licenses = ?registry.license_classes(),
+                        "pinned model registry loaded"
+                    );
+                    registry
+                }
+                Err(error) => {
+                    tracing::error!(%error, "pinned model registry is unreadable");
+                    artifacts.shutdown().await?;
+                    database.shutdown().await?;
+                    return Err(DaemonError::ModelRegistry(error.to_string()));
+                }
+            },
+        );
         let device_profiler = match DeviceProfiler::new(
             &config.ffprobe,
             &config.paths.device_attestation_key,
             &config.paths.device_profile_scratch_dir,
+            &config.paths.speech_benchmark,
+            Arc::clone(&models),
         ) {
             Ok(profiler) => profiler,
             Err(error) => {
@@ -175,28 +202,6 @@ impl Daemon {
                     return Err(error);
                 }
             };
-        // Read once at startup: the registry is pinned configuration, and a
-        // daemon that re-read it per task could key two artifacts of one job
-        // against different model identities.
-        let models = Arc::new(
-            match crate::models::ModelRegistry::load(&config.models_dir) {
-                Ok(registry) => {
-                    for summary in registry.summaries() {
-                        tracing::info!(model = summary, "pinned model");
-                    }
-                    tracing::info!(
-                        models = registry.len(),
-                        licenses = ?registry.license_classes(),
-                        "pinned model registry loaded"
-                    );
-                    registry
-                }
-                Err(error) => {
-                    tracing::error!(%error, "pinned model registry is unreadable");
-                    return Err(DaemonError::ModelRegistry(error.to_string()));
-                }
-            },
-        );
         let scheduler = Scheduler::start(
             database.handle(),
             artifacts.handle(),
@@ -221,6 +226,7 @@ impl Daemon {
             shm,
             Arc::clone(&models),
             config.paths.artifacts_dir.clone(),
+            config.weights_dir.clone(),
         ) {
             Ok(service) => service,
             Err(error) => {
@@ -248,6 +254,7 @@ impl Daemon {
             sources,
             artifacts.handle(),
             device_profiler,
+            Arc::clone(&models),
         );
 
         Ok(Self {

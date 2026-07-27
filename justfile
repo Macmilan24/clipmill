@@ -31,6 +31,10 @@ test:
     cargo test --workspace
     cd workers/sdk && uv run pytest
     cd workers/echo && uv run pytest
+    cd workers/vad && uv run pytest
+    cd workers/asr-whispercpp && uv run pytest
+    cd workers/align && uv run pytest
+    cd workers/speech-mlx && uv run pytest
     cd eval/harness && uv run pytest
     pnpm typecheck
     pnpm test
@@ -43,7 +47,7 @@ gate-contracts:
     git diff --exit-code -- crates/clipmill-contracts/src/gen packages/contracts/src/gen workers/sdk/src/clipmill workers/sdk/src/clipmill_worker_sdk/gen
     python3 tools/schema-lint/check.py contracts/schemas/*.json
     cargo test -p clipmill-contracts
-    cd workers/sdk && uv run pytest tests/test_contracts.py
+    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py
     pnpm --filter @clipmill/contracts test
 
 # W2 coverage: acknowledged project mutations survive forced termination.
@@ -84,6 +88,25 @@ gate-ingest:
 # what users do with the output are refused by policy.
 gate-worker2:
     ./tools/drills/worker2-drill.sh 1
+
+# W15 coverage: the speech chain. Stage algorithms against hand-written inputs
+# — the cases no real recording contains — then the pinned models over a
+# fixture whose word timing is known by construction rather than by
+# annotation: voice activity finds the utterances the fixture was built from,
+# recognition returns its words, alignment places them within 120 ms, and a
+# second run produces byte-identical output.
+gate-speech iterations="1":
+    ./tools/drills/speech-drill.sh {{iterations}}
+
+# W15 coverage on hardware CI does not have: the accelerated speech path.
+# Measures every implementation the daemon can plan, asserts this device binds
+# recognition and alignment to MLX *by measurement* rather than by default,
+# holds the accelerated aligner to the same 120 ms bar, and signs the result.
+# The private key never enters Git; only the public half and the signed
+# document do, and CI verifies those without pretending to have measured
+# anything (R18's pattern, applied to D19).
+gate-asr-mlx signing_key output_dir="models/attestations/mlx-selection":
+    ./tools/drills/asr-mlx-drill.sh --signing-key "{{signing_key}}" --output-dir "{{output_dir}}"
 
 # W13 coverage — the first-slice milestone: the published Edit IR renders to a
 # 1080x1920 clip with burned karaoke captions, matching sidecars, normalised

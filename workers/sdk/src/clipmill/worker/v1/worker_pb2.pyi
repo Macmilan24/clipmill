@@ -72,7 +72,7 @@ class CapabilityDescriptor(_message.Message):
     def __init__(self, worker_id: _Optional[str] = ..., family: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., protocol_version: _Optional[str] = ..., backend: _Optional[str] = ..., max_memory_bytes: _Optional[int] = ..., public_key: _Optional[bytes] = ..., signature: _Optional[bytes] = ..., cpu_threads: _Optional[int] = ..., vram_bytes: _Optional[int] = ...) -> None: ...
 
 class TaskLease(_message.Message):
-    __slots__ = ("task_id", "lease_id", "kind", "payload", "heartbeat_interval_ms", "lease_ttl_ms", "staging_id", "staging_dir", "input_artifact_ids", "shared_buffer", "output_kind", "attempt", "artifact_root")
+    __slots__ = ("task_id", "lease_id", "kind", "payload", "heartbeat_interval_ms", "lease_ttl_ms", "staging_id", "staging_dir", "input_artifact_ids", "shared_buffer", "output_kind", "attempt", "artifact_root", "models")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     LEASE_ID_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
@@ -86,6 +86,7 @@ class TaskLease(_message.Message):
     OUTPUT_KIND_FIELD_NUMBER: _ClassVar[int]
     ATTEMPT_FIELD_NUMBER: _ClassVar[int]
     ARTIFACT_ROOT_FIELD_NUMBER: _ClassVar[int]
+    MODELS_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     lease_id: str
     kind: str
@@ -99,7 +100,32 @@ class TaskLease(_message.Message):
     output_kind: str
     attempt: int
     artifact_root: str
-    def __init__(self, task_id: _Optional[str] = ..., lease_id: _Optional[str] = ..., kind: _Optional[str] = ..., payload: _Optional[bytes] = ..., heartbeat_interval_ms: _Optional[int] = ..., lease_ttl_ms: _Optional[int] = ..., staging_id: _Optional[str] = ..., staging_dir: _Optional[str] = ..., input_artifact_ids: _Optional[_Iterable[str]] = ..., shared_buffer: _Optional[_Union[_shm_pb2.BufferDescriptor, _Mapping]] = ..., output_kind: _Optional[str] = ..., attempt: _Optional[int] = ..., artifact_root: _Optional[str] = ...) -> None: ...
+    models: _containers.RepeatedCompositeFieldContainer[ModelBinding]
+    def __init__(self, task_id: _Optional[str] = ..., lease_id: _Optional[str] = ..., kind: _Optional[str] = ..., payload: _Optional[bytes] = ..., heartbeat_interval_ms: _Optional[int] = ..., lease_ttl_ms: _Optional[int] = ..., staging_id: _Optional[str] = ..., staging_dir: _Optional[str] = ..., input_artifact_ids: _Optional[_Iterable[str]] = ..., shared_buffer: _Optional[_Union[_shm_pb2.BufferDescriptor, _Mapping]] = ..., output_kind: _Optional[str] = ..., attempt: _Optional[int] = ..., artifact_root: _Optional[str] = ..., models: _Optional[_Iterable[_Union[ModelBinding, _Mapping]]] = ...) -> None: ...
+
+class ModelBinding(_message.Message):
+    __slots__ = ("name", "root", "digest", "files", "capability")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    ROOT_FIELD_NUMBER: _ClassVar[int]
+    DIGEST_FIELD_NUMBER: _ClassVar[int]
+    FILES_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    root: str
+    digest: str
+    files: _containers.RepeatedCompositeFieldContainer[ModelFile]
+    capability: str
+    def __init__(self, name: _Optional[str] = ..., root: _Optional[str] = ..., digest: _Optional[str] = ..., files: _Optional[_Iterable[_Union[ModelFile, _Mapping]]] = ..., capability: _Optional[str] = ...) -> None: ...
+
+class ModelFile(_message.Message):
+    __slots__ = ("path", "sha256", "bytes")
+    PATH_FIELD_NUMBER: _ClassVar[int]
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    BYTES_FIELD_NUMBER: _ClassVar[int]
+    path: str
+    sha256: str
+    bytes: int
+    def __init__(self, path: _Optional[str] = ..., sha256: _Optional[str] = ..., bytes: _Optional[int] = ...) -> None: ...
 
 class ProgressUnits(_message.Message):
     __slots__ = ("unit", "done", "total")

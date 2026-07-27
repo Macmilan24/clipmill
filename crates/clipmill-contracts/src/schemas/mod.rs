@@ -49,5 +49,21 @@ pub mod media_reference_index;
 pub mod render_clip;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/speech_alignment.rs"]
+pub mod speech_alignment;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/speech_asr.rs"]
+pub mod speech_asr;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/speech_transcript.rs"]
+pub mod speech_transcript;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/speech_vad.rs"]
+pub mod speech_vad;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/source_map.rs"]
 pub mod source_map;

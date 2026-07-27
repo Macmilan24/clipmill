@@ -1,0 +1,207 @@
+{
+  "confidence": {
+    "p10": 0.88,
+    "p50": 0.9701
+  },
+  "coverage": {
+    "aligned_ticks": 351000,
+    "analyzed": true,
+    "end_ticks": 900000,
+    "sampling_plan": "speech-chain-v1",
+    "speech_ticks": 675000,
+    "start_ticks": 0
+  },
+  "inputs": {
+    "alignment_artifact_id": "sha256:a11a000000000000000000000000000000000000000000000000000000000003",
+    "asr_artifact_id": "sha256:a52a000000000000000000000000000000000000000000000000000000000002",
+    "audio_artifact_id": "sha256:a0d1000000000000000000000000000000000000000000000000000000000016",
+    "vad_artifact_id": "sha256:5ead000000000000000000000000000000000000000000000000000000000001"
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "language_confidence": 0.99,
+  "producers": [
+    {
+      "implementation": "clipmill-worker-vad@0.1.0+silero-v5",
+      "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000aa",
+      "stage": "speech-vad"
+    },
+    {
+      "implementation": "clipmill-worker-asr@0.1.0+whisper.cpp-1.5.0/base",
+      "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000bb",
+      "stage": "speech-asr"
+    },
+    {
+      "implementation": "clipmill-worker-align@0.1.0+wav2vec2-ctc",
+      "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000cc",
+      "stage": "speech-align"
+    },
+    {
+      "implementation": "clipmill-transcript-assembly@1.0.0",
+      "stage": "speech-transcript"
+    }
+  ],
+  "schema_version": "clipmill.speech.transcript.v1",
+  "segments": [
+    {
+      "confidence": {
+        "p10": 0.89,
+        "p50": 0.975
+      },
+      "end_ticks": 160200,
+      "first_word_index": 0,
+      "index": 0,
+      "start_ticks": 45000,
+      "text": "The first slice renders.",
+      "word_count": 4
+    },
+    {
+      "confidence": {
+        "p10": 0.88,
+        "p50": 0.9717
+      },
+      "end_ticks": 631800,
+      "first_word_index": 4,
+      "index": 1,
+      "start_ticks": 396000,
+      "text": "Every timestamp is an integer tick.",
+      "word_count": 6
+    }
+  ],
+  "silences": [
+    {
+      "end_ticks": 45000,
+      "start_ticks": 0
+    },
+    {
+      "end_ticks": 396000,
+      "start_ticks": 288000
+    },
+    {
+      "end_ticks": 900000,
+      "start_ticks": 828000
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "words": [
+    {
+      "confidence": {
+        "p10": 0.96,
+        "p50": 0.99
+      },
+      "end_ticks": 52200,
+      "index": 0,
+      "segment_index": 0,
+      "start_ticks": 45000,
+      "text": "The"
+    },
+    {
+      "confidence": {
+        "p10": 0.94,
+        "p50": 0.98
+      },
+      "end_ticks": 73800,
+      "index": 1,
+      "segment_index": 0,
+      "start_ticks": 54000,
+      "text": "first",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.91,
+        "p50": 0.97
+      },
+      "end_ticks": 108000,
+      "index": 2,
+      "segment_index": 0,
+      "start_ticks": 75600,
+      "text": "slice",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.89,
+        "p50": 0.96
+      },
+      "end_ticks": 160200,
+      "index": 3,
+      "segment_index": 0,
+      "start_ticks": 109800,
+      "text": "renders",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.95,
+        "p50": 0.98
+      },
+      "end_ticks": 421200,
+      "index": 4,
+      "segment_index": 1,
+      "start_ticks": 396000,
+      "text": "Every",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.92,
+        "p50": 0.97
+      },
+      "end_ticks": 491400,
+      "index": 5,
+      "segment_index": 1,
+      "start_ticks": 423000,
+      "text": "timestamp",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.97,
+        "p50": 0.99
+      },
+      "end_ticks": 505800,
+      "index": 6,
+      "segment_index": 1,
+      "start_ticks": 493200,
+      "text": "is",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.95,
+        "p50": 0.98
+      },
+      "end_ticks": 518400,
+      "index": 7,
+      "segment_index": 1,
+      "start_ticks": 507600,
+      "text": "an",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.9,
+        "p50": 0.96
+      },
+      "end_ticks": 576000,
+      "index": 8,
+      "segment_index": 1,
+      "start_ticks": 520200,
+      "text": "integer",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.88,
+        "p50": 0.95
+      },
+      "end_ticks": 631800,
+      "index": 9,
+      "segment_index": 1,
+      "start_ticks": 577800,
+      "text": "tick",
+      "timing": "aligned"
+    }
+  ]
+}

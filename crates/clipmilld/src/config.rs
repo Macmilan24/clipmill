@@ -16,6 +16,7 @@ const ARTIFACT_GC_GRACE_ENV: &str = "CLIPMILL_ARTIFACT_GC_GRACE";
 const FFPROBE_ENV: &str = "CLIPMILL_FFPROBE";
 const FONTS_DIR_ENV: &str = "CLIPMILL_FONTS_DIR";
 const MODELS_DIR_ENV: &str = "CLIPMILL_MODELS_DIR";
+const WEIGHTS_DIR_ENV: &str = "CLIPMILL_WEIGHTS_DIR";
 const DEFAULT_ARTIFACT_GC_GRACE: Duration = Duration::from_hours(168);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,6 +30,11 @@ pub struct Config {
     pub fonts_dir: PathBuf,
     /// Directory of pinned model manifests. Read at startup; never written.
     pub models_dir: PathBuf,
+    /// Where `tools/fetch-models.sh` installed the weights those manifests
+    /// pin. Acquisition happens outside the Local Lock and never inside the
+    /// app, so the daemon only ever reads what is already here — and hands
+    /// workers a path, never a URL.
+    pub weights_dir: PathBuf,
     pub(crate) builtin_fixture_executor: bool,
 }
 
@@ -49,6 +55,11 @@ pub struct Paths {
     pub worker_trust_dir: PathBuf,
     pub device_attestation_key: PathBuf,
     pub device_profile_scratch_dir: PathBuf,
+    /// What `tools/bench/speech-benchmark.py` measured on this machine. Inside
+    /// the private state directory beside the attestation key, because the
+    /// daemon believes it on exactly the same grounds: whoever can write here
+    /// is already the user the daemon runs as.
+    pub speech_benchmark: PathBuf,
 }
 
 impl Config {
@@ -117,6 +128,9 @@ impl Config {
         }
         if let Some(models_dir) = env::var_os(MODELS_DIR_ENV) {
             config.models_dir = PathBuf::from(models_dir);
+        }
+        if let Some(weights_dir) = env::var_os(WEIGHTS_DIR_ENV) {
+            config.weights_dir = PathBuf::from(weights_dir);
         }
         config.builtin_fixture_executor =
             env::var_os("CLIPMILL_TEST_BUILTIN_WORKER").is_some_and(|value| value == "1");
@@ -222,7 +236,8 @@ impl Config {
             return Err(DaemonError::InvalidPath("FFprobe path is empty"));
         }
 
-        let fonts_dir = default_fonts_dir(&ffprobe);
+        let fonts_dir = default_sidecar_dir(&ffprobe, "fonts");
+        let weights_dir = default_sidecar_dir(&ffprobe, "models");
         let models_dir = PathBuf::from("models/registry");
 
         Ok(Self {
@@ -236,6 +251,7 @@ impl Config {
                 worker_trust_dir: state_dir.join("worker-trust"),
                 device_attestation_key: state_dir.join("device-attestation.key"),
                 device_profile_scratch_dir: state_dir.join("device-profile-scratch"),
+                speech_benchmark: state_dir.join("speech-benchmark.json"),
                 data_dir,
                 state_dir,
                 run_dir,
@@ -247,19 +263,20 @@ impl Config {
             ffprobe,
             fonts_dir,
             models_dir,
+            weights_dir,
             builtin_fixture_executor: false,
         })
     }
 }
 
-/// Fonts sit beside the pinned sidecars: `.cache/bin/ffprobe` implies
-/// `.cache/fonts`, and a packaged layout keeps the same shape.
-fn default_fonts_dir(ffprobe: &Path) -> PathBuf {
+/// Pinned sidecars sit together: `.cache/bin/ffprobe` implies `.cache/fonts`
+/// and `.cache/models`, and a packaged layout keeps the same shape.
+fn default_sidecar_dir(ffprobe: &Path, name: &str) -> PathBuf {
     ffprobe
         .parent()
         .and_then(Path::parent)
         .filter(|root| !root.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("fonts"), |root| root.join("fonts"))
+        .map_or_else(|| PathBuf::from(name), |root| root.join(name))
 }
 
 fn parse_duration(value: &OsString) -> Result<Duration, DaemonError> {
@@ -379,6 +396,10 @@ mod tests {
         assert_eq!(
             config.paths.device_profile_scratch_dir,
             PathBuf::from("/default/data/state/device-profile-scratch")
+        );
+        assert_eq!(
+            config.paths.speech_benchmark,
+            PathBuf::from("/default/data/state/speech-benchmark.json")
         );
     }
 

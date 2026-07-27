@@ -20,7 +20,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{jobs::LeasedTask, models::ModelRegistry};
+use crate::{implementations, jobs::LeasedTask, models::ModelRegistry};
 
 /// Who runs a stage. The distinction is not cosmetic: a builtin stage builds
 /// its own recipe from facts only it has (a probe's stream layout, a render's
@@ -51,11 +51,15 @@ pub(crate) struct Recipe {
         reason = "declared per stage; consumed by the admission path"
     )]
     pub executor: Executor,
-    /// Registry name of the model this stage runs, when it runs one. The
-    /// model's digest joins the artifact key, so re-pinning a model
-    /// invalidates exactly the stages that used it — not the whole cache, and
-    /// not nothing.
-    pub model: Option<&'static str>,
+    /// The capability this stage runs a model for, when it runs one.
+    ///
+    /// Not a model name. Which model serves a capability is a per-device
+    /// decision (D19), taken when a job is planned and recorded on the task as
+    /// its implementation; naming one model here would be the static default
+    /// that decision replaces. The chosen model's digest still joins the
+    /// artifact key, so re-pinning a model invalidates exactly the stages that
+    /// used it — not the whole cache, and not nothing.
+    pub capability: Option<&'static str>,
 }
 
 /// Every kind the daemon will plan or lease.
@@ -70,14 +74,14 @@ const REGISTRY: &[Recipe] = &[
         output_kind: "evidence.source_map.v1",
         semantic_version: "clipmill.source_map.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "device-profile",
         output_kind: "evidence.device_profile.v1",
         semantic_version: "clipmill.device_profile.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     // The W11 ingest fan-out (book ch. 12).
     Recipe {
@@ -85,63 +89,63 @@ const REGISTRY: &[Recipe] = &[
         output_kind: "media.proxy.v1",
         semantic_version: "clipmill.media.proxy.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-audio-16k",
         output_kind: "media.audio_16k.v1",
         semantic_version: "clipmill.media.audio.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-audio-48k",
         output_kind: "media.audio_48k.v1",
         semantic_version: "clipmill.media.audio.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-loudness",
         output_kind: "media.loudness_envelope.v1",
         semantic_version: "clipmill.media.loudness_envelope.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-reference-index",
         output_kind: "media.reference_index.v1",
         semantic_version: "clipmill.media.reference_index.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-filmstrip",
         output_kind: "media.filmstrip.v1",
         semantic_version: "clipmill.media.filmstrip.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-audio-peaks",
         output_kind: "media.audio_peaks.v1",
         semantic_version: "clipmill.media.audio_peaks.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-frames",
         output_kind: "media.frames.v1",
         semantic_version: "clipmill.media.frames.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "ingest-manifest",
         output_kind: "media.ingest_manifest.v1",
         semantic_version: "clipmill.media.ingest_manifest.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
     },
     // The W13 render compiler (book ch. 17).
     Recipe {
@@ -149,7 +153,43 @@ const REGISTRY: &[Recipe] = &[
         output_kind: "render.clip.v1",
         semantic_version: "clipmill.render.clip.v1",
         executor: Executor::Builtin,
-        model: None,
+        capability: None,
+    },
+    // The W15 speech chain (book ch. 13). Three leased stages that each run a
+    // model, and one builtin that runs none.
+    //
+    // The capabilities below are what put a model's digest into an artifact
+    // key, by way of whichever implementation the device chose. Re-pinning
+    // whisper invalidates every transcript recognized by whisper and nothing
+    // else; re-pinning the aligner invalidates every alignment and leaves the
+    // text alone. That is the whole reason the chain is three stages.
+    Recipe {
+        kind: "speech-vad",
+        output_kind: "speech.vad.v1",
+        semantic_version: "clipmill.speech.vad.v1",
+        executor: Executor::Worker,
+        capability: Some("vad"),
+    },
+    Recipe {
+        kind: "speech-asr",
+        output_kind: "speech.asr.v1",
+        semantic_version: "clipmill.speech.asr.v1",
+        executor: Executor::Worker,
+        capability: Some("asr"),
+    },
+    Recipe {
+        kind: "speech-align",
+        output_kind: "speech.alignment.v1",
+        semantic_version: "clipmill.speech.alignment.v1",
+        executor: Executor::Worker,
+        capability: Some("forced-align"),
+    },
+    Recipe {
+        kind: "speech-transcript",
+        output_kind: "speech.transcript.v1",
+        semantic_version: "clipmill.speech.transcript.v1",
+        executor: Executor::Builtin,
+        capability: None,
     },
     // The reference worker family. It carries no model, which is precisely
     // why it is the right shape to prove the leased path with.
@@ -158,28 +198,28 @@ const REGISTRY: &[Recipe] = &[
         output_kind: "evidence.demo.seed.v1",
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "demo-left",
         output_kind: "evidence.demo.left.v1",
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "demo-right",
         output_kind: "evidence.demo.right.v1",
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
-        model: None,
+        capability: None,
     },
     Recipe {
         kind: "demo-join",
         output_kind: "evidence.demo.final.v1",
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
-        model: None,
+        capability: None,
     },
 ];
 
@@ -211,17 +251,20 @@ pub(crate) fn worker_recipe(
     // key with no model identity would let two different models' outputs
     // share one content address, which is the one failure a content-addressed
     // store cannot detect afterwards.
-    let model_digest = match recipe.model {
+    let model_digest = match recipe.capability {
         None => None,
-        Some(name) => Some(
-            models
-                .get(name)
-                .ok_or(RegistryError::MissingModel {
-                    stage: recipe.kind,
-                    model: name,
-                })?
-                .digest(),
-        ),
+        Some(capability) => {
+            let name = model_for(&task.kind, capability, &task.implementation)?;
+            Some(
+                models
+                    .get(name)
+                    .ok_or(RegistryError::MissingModel {
+                        stage: recipe.kind,
+                        model: name,
+                    })?
+                    .digest(),
+            )
+        }
     };
     let mut source_hasher = Sha256::new();
     source_hasher.update(b"clipmill.worker.payload.v1\0");
@@ -251,6 +294,37 @@ pub(crate) fn worker_recipe(
     .map_err(RegistryError::Recipe)
 }
 
+/// The model a planned task will run, resolved from the implementation the
+/// plan committed to.
+///
+/// This is the single road from a task to its model identity. The daemon calls
+/// it twice — once to key the artifact, once to hand the worker its weights —
+/// and both answers come from the one string the plan wrote down, so the key
+/// cannot describe one model while the worker loads another. Neither the
+/// device profile nor the model registry is consulted here: re-measuring a
+/// device changes what the next plan chooses and never what an existing task
+/// means.
+pub(crate) fn model_for(
+    stage: &str,
+    capability: &'static str,
+    implementation: &str,
+) -> Result<&'static str, RegistryError> {
+    let chosen = implementations::lookup(implementation).ok_or_else(|| {
+        RegistryError::UnknownImplementation {
+            stage: stage.to_owned(),
+            implementation: implementation.to_owned(),
+        }
+    })?;
+    if chosen.capability != capability || chosen.stage != stage {
+        return Err(RegistryError::ImplementationMismatch {
+            stage: stage.to_owned(),
+            implementation: implementation.to_owned(),
+            capability,
+        });
+    }
+    Ok(chosen.model)
+}
+
 /// The registry is the authority on which stages exist, so "no such stage" is
 /// its own answer rather than a malformed recipe.
 #[derive(Debug, Error)]
@@ -262,6 +336,19 @@ pub(crate) enum RegistryError {
         stage: &'static str,
         model: &'static str,
     },
+    #[error(
+        "stage {stage} was planned with implementation {implementation}, which nothing registers"
+    )]
+    UnknownImplementation {
+        stage: String,
+        implementation: String,
+    },
+    #[error("implementation {implementation} does not serve {capability} for stage {stage}")]
+    ImplementationMismatch {
+        stage: String,
+        implementation: String,
+        capability: &'static str,
+    },
     #[error(transparent)]
     Recipe(#[from] RecipeError),
 }
@@ -270,7 +357,9 @@ pub(crate) enum RegistryError {
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    use super::{Executor, REGISTRY, lookup, plan_declaration_is_registered};
+    use super::{
+        Executor, REGISTRY, RegistryError, lookup, model_for, plan_declaration_is_registered,
+    };
 
     #[test]
     fn every_kind_is_registered_exactly_once() {
@@ -332,17 +421,69 @@ mod tests {
         }
     }
 
-    /// A stage that runs a model must name it, so the model's digest can join
-    /// the artifact key. Nothing in Phase 1's current set runs one; the speech
-    /// stack is where this earns its keep.
+    /// Every capability a stage runs must have somewhere to be served from,
+    /// or the stage could be planned and then never keyed.
     #[test]
-    fn a_registered_model_name_is_never_empty() {
+    fn every_stage_capability_has_at_least_one_implementation() {
         for recipe in REGISTRY {
+            let Some(capability) = recipe.capability else {
+                continue;
+            };
             assert!(
-                recipe.model.is_none_or(|name| !name.is_empty()),
-                "{} names an empty model",
+                !capability.is_empty(),
+                "{} names no capability",
+                recipe.kind
+            );
+            assert!(
+                crate::implementations::candidates_for_stage(recipe.kind)
+                    .any(|implementation| implementation.capability == capability),
+                "{} runs {capability}, which nothing implements",
                 recipe.kind
             );
         }
+    }
+
+    /// The three model-running speech stages are leased; the assembly that
+    /// fuses them runs in the daemon, because it loads nothing.
+    #[test]
+    fn the_speech_chain_leases_exactly_the_stages_that_run_a_model() {
+        for kind in ["speech-vad", "speech-asr", "speech-align"] {
+            let recipe = lookup(kind).expect("registered");
+            assert_eq!(recipe.executor, Executor::Worker, "{kind}");
+            assert!(recipe.capability.is_some(), "{kind} runs a model");
+        }
+        let assembly = lookup("speech-transcript").expect("registered");
+        assert_eq!(assembly.executor, Executor::Builtin);
+        assert!(assembly.capability.is_none(), "assembly runs no model");
+    }
+
+    /// The key and the weights must come from the same decision. Whatever the
+    /// device chose, the model behind a task is whatever its implementation
+    /// says — never a per-stage default the plan did not agree to.
+    #[test]
+    fn a_task_resolves_to_the_model_its_implementation_names() {
+        assert_eq!(
+            model_for("speech-asr", "asr", "clipmill-worker-asr@0.1.0").expect("registered"),
+            "whisper-base"
+        );
+        assert_eq!(
+            model_for("speech-asr", "asr", "clipmill-worker-speech-mlx@0.1.0/asr")
+                .expect("registered"),
+            "qwen3-asr-mlx"
+        );
+    }
+
+    /// An implementation from another stage cannot be smuggled into a task
+    /// row: it would key the artifact against a model that stage never runs.
+    #[test]
+    fn an_implementation_from_another_stage_is_refused() {
+        assert!(matches!(
+            model_for("speech-asr", "asr", "clipmill-worker-align@0.1.0"),
+            Err(RegistryError::ImplementationMismatch { .. })
+        ));
+        assert!(matches!(
+            model_for("speech-asr", "asr", "clipmill-worker-asr@9.9.9"),
+            Err(RegistryError::UnknownImplementation { .. })
+        ));
     }
 }

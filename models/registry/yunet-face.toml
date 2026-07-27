@@ -16,6 +16,7 @@ repo = "opencv/opencv_zoo"
 revision = "d4938dfc9d4ec5d098bfa33e98b3f3345a236586"
 
 [license]
+source = "repo-file"
 spdx = "MIT"
 class = "permissive"
 file = "models/face_detection_yunet/LICENSE"

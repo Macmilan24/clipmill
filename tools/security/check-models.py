@@ -33,6 +33,18 @@ REFUSED_CLASSES = {
 }
 # SPDX identifiers that may claim the permissive class.
 PERMISSIVE_SPDX = {"MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "CC0-1.0", "ISC"}
+# How a manifest knows its own terms. Stating this is not bureaucracy: an ONNX
+# re-export that declares no licence and one that ships the upstream's LICENSE
+# file are different evidentiary positions, and the second is not improved by
+# writing it down as if it were the first.
+LICENSE_SOURCES = {
+    # A licence file in the pinned repository, pinned by digest alongside it.
+    "repo-file",
+    # The repository declares its licence in its own metadata, with no file.
+    "repo-metadata",
+    # The repository declares no licence; it declares a base model that does.
+    "inherited",
+}
 # Runtimes and backends a manifest may name. A typo here would otherwise
 # become a model nothing can load, discovered at the first transcription.
 RUNTIMES = {"onnxruntime", "whisper.cpp", "mlx", "ggml"}
@@ -127,6 +139,54 @@ def _check_license(license_table: object) -> list[str]:
         problems.append("licence text digest is malformed")
     if ("file" in license_table) != ("sha256" in license_table):
         problems.append("a licence file and its digest must appear together")
+    problems.extend(_check_license_provenance(license_table, spdx))
+    return problems
+
+
+def _check_license_provenance(license_table: dict, spdx: object) -> list[str]:
+    """Where the stated terms come from, checked against what is pinned.
+
+    Every manifest must account for how it knows its licence. The case that
+    earns this is a re-export — a conversion of somebody else's weights that
+    carries no licence of its own. Copying the upstream's SPDX into the
+    manifest and moving on would record an assumption as a fact; naming the
+    upstream repository and commit records the claim in a form a reviewer can
+    check without guessing what the author had in mind.
+    """
+
+    origin = license_table.get("source")
+    if origin not in LICENSE_SOURCES:
+        return [
+            f"licence source {origin!r} must be one of "
+            f"{', '.join(sorted(LICENSE_SOURCES))} - state how the terms are known"
+        ]
+    problems: list[str] = []
+    inherited = license_table.get("inherited_from")
+    if origin == "repo-file" and "file" not in license_table:
+        problems.append("licence source 'repo-file' names no file")
+    if origin != "repo-file" and "file" in license_table:
+        problems.append(f"licence source {origin!r} pins a licence file anyway")
+    if origin != "inherited":
+        if inherited is not None:
+            problems.append(f"licence source {origin!r} also claims an inheritance")
+        return problems
+
+    if not isinstance(inherited, dict):
+        problems.append("an inherited licence must name the model it inherits from")
+        return problems
+    repo = inherited.get("repo")
+    if not isinstance(repo, str) or repo.count("/") != 1 or repo.startswith("/"):
+        problems.append("inherited_from repo must be '<owner>/<name>'")
+    revision = inherited.get("revision")
+    if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        problems.append("inherited_from revision must be a full commit hash, not a tag")
+    # Terms may be narrowed downstream but never widened, and a manifest that
+    # claims something its upstream did not is exactly the failure this table
+    # exists to catch. Equality is the only claim the chain actually supports.
+    if inherited.get("spdx") != spdx:
+        problems.append(
+            f"inherited licence {inherited.get('spdx')!r} does not match the claimed {spdx!r}"
+        )
     return problems
 
 

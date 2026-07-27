@@ -175,6 +175,65 @@ message RenderClipPayloadV1 {
   repeated string ai_assistance = 6;
 }
 
+// Versioned payload for the speech chain (book ch. 13): voice activity, then
+// recognition, then forced alignment, then the assembly that fuses them. The
+// request names a source; the daemon resolves it to the 16 kHz rendition
+// ingest already produced, because a speech worker's job is to read what was
+// decoded once, not to open the original file again.
+message TranscribeSourcePayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // BCP 47 primary subtag, or empty to let the recognizer decide.
+  string language = 3;
+  // Zero leaves each parameter at the daemon's default, so a caller with no
+  // opinion does not have to have one.
+  SpeechDetectionV1 detection = 4;
+}
+
+// Where speech is judged to be. These are the operator-facing knobs: raising
+// the threshold transcribes less and risks clipping a quiet sentence, and
+// lengthening the minimum silence merges two utterances into one.
+message SpeechDetectionV1 {
+  double threshold = 1;
+  uint64 min_speech_ticks = 2;
+  uint64 min_silence_ticks = 3;
+  uint64 speech_pad_ticks = 4;
+}
+
+// What one stage of the speech chain is asked to do.
+//
+// Deliberately narrower than the job payload above: this is hashed into the
+// stage's artifact key, so anything a stage does not read must not appear
+// here. A recognizer payload carrying the voice-activity threshold would make
+// re-tuning voice activity invalidate every cached transcript, including the
+// ones whose inputs did not change at all.
+message SpeechStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string source_fingerprint = 3;
+  // The 16 kHz mono rendition. A content address, so the key it produces is
+  // the same on every machine.
+  string audio_artifact_id = 4;
+  // Exactly one of the following is set, matching `stage`.
+  SpeechDetectionV1 detection = 5;
+  SpeechRecognitionV1 recognition = 6;
+  SpeechAlignmentV1 alignment = 7;
+}
+
+message SpeechRecognitionV1 {
+  string language = 1;
+  // Whether each window may see the previous window's text. False by default:
+  // one bad window should not be able to poison the rest of the recording.
+  bool conditioned_on_previous = 2;
+}
+
+message SpeechAlignmentV1 {
+  // Below this, a span is reported unaligned rather than placed. An aligner
+  // that always answers is an aligner whose answers cannot be trusted.
+  double min_score = 1;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.

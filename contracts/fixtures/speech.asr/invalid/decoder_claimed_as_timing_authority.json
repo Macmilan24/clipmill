@@ -1,0 +1,96 @@
+{
+  "audio_artifact_id": "sha256:a0d1000000000000000000000000000000000000000000000000000000000016",
+  "coverage": {
+    "analyzed": true,
+    "decoded_ticks": 675000,
+    "end_ticks": 900000,
+    "sampling_plan": "asr-vad-batched",
+    "start_ticks": 0
+  },
+  "decoding": {
+    "beam_size": 0,
+    "conditioned_on_previous": false,
+    "strategy": "greedy",
+    "temperature": 0.0
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "language_confidence": 0.99,
+  "producer": {
+    "implementation": "clipmill-worker-asr@0.1.0+whisper.cpp-1.5.0/base",
+    "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000bb",
+    "stage": "speech-asr"
+  },
+  "schema_version": "clipmill.speech.asr.v1",
+  "segments": [
+    {
+      "confidence": {
+        "p10": 0.89,
+        "p50": 0.975
+      },
+      "hint_end_ticks": 288000,
+      "hint_start_ticks": 45000,
+      "index": 0,
+      "text": "The first slice renders.",
+      "tokens": [
+        {
+          "confidence": 0.99,
+          "text": " the"
+        },
+        {
+          "confidence": 0.98,
+          "text": " first"
+        },
+        {
+          "confidence": 0.97,
+          "text": " slice"
+        },
+        {
+          "confidence": 0.96,
+          "text": " renders"
+        }
+      ],
+      "vad_segment_index": 0
+    },
+    {
+      "confidence": {
+        "p10": 0.88,
+        "p50": 0.9717
+      },
+      "hint_end_ticks": 828000,
+      "hint_start_ticks": 396000,
+      "index": 1,
+      "text": "Every timestamp is an integer tick.",
+      "tokens": [
+        {
+          "confidence": 0.98,
+          "text": " every"
+        },
+        {
+          "confidence": 0.97,
+          "text": " timestamp"
+        },
+        {
+          "confidence": 0.99,
+          "text": " is"
+        },
+        {
+          "confidence": 0.98,
+          "text": " an"
+        },
+        {
+          "confidence": 0.96,
+          "text": " integer"
+        },
+        {
+          "confidence": 0.95,
+          "text": " tick"
+        }
+      ],
+      "vad_segment_index": 1
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "timing_authority": "decoder_hint",
+  "vad_artifact_id": "sha256:5ead000000000000000000000000000000000000000000000000000000000001"
+}

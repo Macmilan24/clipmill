@@ -66,7 +66,7 @@ jobs:
             done
             checked=$((checked + 1))
           done
-          if [ "$checked" -lt 13 ]; then
+          if [ "$checked" -lt 17 ]; then
             echo "::error::fixture loop found only $checked schema directories - the dir/schema naming pairing broke"
             exit 1
           fi
@@ -125,7 +125,7 @@ jobs:
           uvx ruff format --check .
       - name: pytest (all projects)
         run: |
-          for project in workers/sdk workers/echo eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx eval/harness; do
             echo "==> $project"
             (cd "$project" && uv sync --quiet && uv run pytest)
           done
@@ -216,6 +216,50 @@ jobs:
         with:
           enable-cache: true
       - run: ./tools/drills/worker2-drill.sh 1
+
+  speech-conformance:
+    name: speech-conformance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
+      - name: Fetch and verify pinned FFmpeg sidecars
+        run: ./tools/fetch-ffmpeg.sh
+      # Keyed on the manifests, so re-pinning a model fetches it again and
+      # nothing else. The weights are half a gigabyte; a cache keyed on
+      # anything looser would either serve stale digests or never hit.
+      - name: Restore the pinned speech weights
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/models
+          key: speech-models-${{ runner.os }}-${{ hashFiles('models/registry/silero-vad.toml', 'models/registry/whisper-base.toml', 'models/registry/wav2vec2-ctc-en.toml') }}
+      - name: Fetch and verify the pinned speech weights
+        run: ./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en
+      # The fixture is spoken by the platform's own voice. macOS has `say`;
+      # Linux needs one installed, and the drill refuses to guess.
+      - name: Install a speech synthesizer (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng
+      - run: ./tools/drills/speech-drill.sh 1
 
   render-conformance:
     name: render-conformance (${{ matrix.os }})
@@ -419,7 +463,7 @@ jobs:
           enable-cache: true
       - name: Sync every frozen Python environment
         run: |
-          for project in workers/sdk workers/echo eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Audit every Python lockfile
@@ -458,7 +502,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          for project in workers/sdk workers/echo eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate
@@ -471,6 +515,11 @@ jobs:
         run: python3 tools/security/threat-review.py --base "$PR_BASE"
       - name: Verify committed signed Seed-40 exit evidence
         run: ./tools/drills/verify-phase0-attestation.sh
+      # The accelerated speech path cannot be measured here — no hosted runner
+      # has an Apple GPU — so what CI checks is the signed evidence from the
+      # machine that could, exactly as it checks the Seed-40 proof.
+      - name: Verify committed signed MLX selection evidence
+        run: ./tools/drills/verify-mlx-attestation.sh
 
   ts:
     name: ts

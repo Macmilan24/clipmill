@@ -58,6 +58,18 @@ if python3 tools/security/check-models.py --registry "$refusal_registry" >/dev/n
 fi
 echo "worker2-drill: non-commercial weights refused by policy"
 
+# A re-export carries no licence of its own, so it declares the upstream whose
+# terms it inherits. Claiming terms the upstream never granted is the way that
+# declaration would rot into a rubber stamp, so the policy compares them.
+awk '/^\[license.inherited_from\]/{seen=1} {if(!seen) sub(/^spdx = "Apache-2.0"/,"spdx = \"MIT\""); print}' \
+  models/registry/wav2vec2-ctc-en.toml > "$refusal_registry/wav2vec2-ctc-en.toml"
+rm -f "$refusal_registry/silero-vad.toml"
+if python3 tools/security/check-models.py --registry "$refusal_registry" >/dev/null 2>&1; then
+  echo "worker2-drill: a model claimed terms its upstream never granted" >&2
+  exit 1
+fi
+echo "worker2-drill: a widened licence claim refused by policy"
+
 # Verify whatever is installed. Nothing is fetched here: acquisition happens
 # outside the Lock, and CI must not depend on a multi-gigabyte download.
 if [ -d .cache/models ]; then

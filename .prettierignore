@@ -13,6 +13,10 @@ contracts/fixtures/
 # by an ed25519 signature: reformatting them would not just fail the check, it
 # would invalidate the attestation they exist to prove.
 eval/seed40/
+# The same, for the accelerated speech path's measured selection: the
+# attestation is canonical JSON under an ed25519 signature taken over exactly
+# those bytes.
+models/attestations/
 # Generated from tokens.json by packages/tokens/scripts/build-css.mjs; the
 # generator owns their formatting and CI checks them for drift.
 packages/tokens/tokens.css

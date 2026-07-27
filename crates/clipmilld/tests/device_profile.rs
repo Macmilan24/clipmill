@@ -231,3 +231,155 @@ async fn pinned_ffmpeg_profile_executes_bounded_measurements() {
     );
     stop(shutdown, task).await;
 }
+
+/// Where the accelerated drill starts: a daemon fingerprints the machine, and
+/// the benchmark that runs next is bound to that fingerprint and no other.
+///
+/// Split into two ignored tests rather than one because the measurement in
+/// between happens in Python, inside the environment that loads the models.
+/// Nothing else can take it: a real-time factor measured by a process that did
+/// not load the weights is a guess.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run through tools/drills/asr-mlx-drill.sh on a machine with the accelerator"]
+async fn mlx_drill_reports_the_hardware_fingerprint() {
+    let data_dir = drill_directory();
+    let config = drill_config(&data_dir);
+    let (socket, _artifacts, shutdown, task) = running(config).await;
+    let measured = profile(
+        send(&socket, request("mlx-drill-fingerprint", false))
+            .await
+            .expect("measured profile"),
+    );
+    let verified = verify_device_profile(&measured.profile_json, None).expect("signed profile");
+    std::fs::write(
+        data_dir.join("fingerprint.txt"),
+        format!("{}\n", verified.hardware_fingerprint),
+    )
+    .expect("fingerprint is written for the benchmark");
+    stop(shutdown, task).await;
+}
+
+/// The assertion the drill exists for: with a benchmark in place, this device
+/// runs the accelerated implementations, admits the accelerator they ran on,
+/// and binds every contested capability by measurement rather than by falling
+/// back.
+///
+/// Note what is *not* asserted. Requiring MLX to win would reinstate the
+/// static per-platform default D19 removes, and would be wrong here: the first
+/// real run of this gate measured whisper.cpp-base recognizing faster than a
+/// 1.7B Qwen3 on the same machine, while the Qwen3 aligner beat the CTC one
+/// five times over. Both are correct answers, and both are answers only a
+/// measurement could give.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "run through tools/drills/asr-mlx-drill.sh on a machine with the accelerator"]
+async fn mlx_drill_asserts_the_measured_binding() {
+    let data_dir = drill_directory();
+    let config = drill_config(&data_dir);
+    let (socket, _artifacts, shutdown, task) = running(config).await;
+    // Re-measured on purpose. The first profile was taken before the benchmark
+    // existed, and serving it from cache would be exactly the mistake this
+    // gate is here to catch.
+    let measured = profile(
+        send(&socket, request("mlx-drill-binding", true))
+            .await
+            .expect("re-measured profile"),
+    );
+    verify_device_profile(&measured.profile_json, None).expect("signed profile");
+    let value: serde_json::Value =
+        serde_json::from_str(&measured.profile_json).expect("profile JSON");
+    let selection = value.get("selection").expect("a selection block");
+    let bindings = selection
+        .get("bindings")
+        .and_then(serde_json::Value::as_array)
+        .expect("bindings");
+    let candidates = selection
+        .get("candidates")
+        .and_then(serde_json::Value::as_array)
+        .expect("candidates");
+
+    for implementation in [
+        "clipmill-worker-speech-mlx@0.1.0/asr",
+        "clipmill-worker-speech-mlx@0.1.0/align",
+    ] {
+        let candidate = candidates
+            .iter()
+            .find(|candidate| {
+                candidate
+                    .get("implementation")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(implementation)
+            })
+            .unwrap_or_else(|| panic!("no candidate for {implementation}"));
+        assert_eq!(
+            candidate
+                .get("runnable")
+                .and_then(serde_json::Value::as_bool),
+            Some(true),
+            "{implementation} did not run here: {:?}",
+            candidate.get("unavailable_reason")
+        );
+    }
+    for capability in ["asr", "forced-align"] {
+        let binding = bindings
+            .iter()
+            .find(|binding| {
+                binding
+                    .get("capability")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(capability)
+            })
+            .unwrap_or_else(|| panic!("no binding for {capability}"));
+        assert_eq!(
+            binding
+                .get("selected_by")
+                .and_then(serde_json::Value::as_str),
+            Some("measured"),
+            "{capability} was bound without a measurement behind it"
+        );
+    }
+    // Having run a model on the accelerator is what makes it admissible. A
+    // profile that did not record it would leave the scheduler declining the
+    // very worker that just produced these numbers.
+    let verified = verify_device_profile(&measured.profile_json, None).expect("signed profile");
+    assert!(
+        verified.available_backends.contains("metal"),
+        "a measured MLX run must make Metal admissible: {:?}",
+        verified.available_backends
+    );
+    std::fs::write(data_dir.join("profile.json"), &measured.profile_json)
+        .expect("profile is written for the attestation");
+    stop(shutdown, task).await;
+}
+
+/// The drill's working directory, handed in rather than temporary: the
+/// fingerprint, the benchmark, and the attestation all have to be the same
+/// machine's, and a fresh temp directory per test would break that chain.
+fn drill_directory() -> PathBuf {
+    let raw = std::env::var("CLIPMILL_MLX_DRILL_DIR")
+        .expect("CLIPMILL_MLX_DRILL_DIR; run tools/drills/asr-mlx-drill.sh");
+    let path = PathBuf::from(raw);
+    assert!(path.is_absolute(), "the drill directory must be absolute");
+    std::fs::create_dir_all(&path).expect("drill directory");
+    path
+}
+
+fn drill_config(data_dir: &Path) -> Config {
+    let mut config = Config::from_sources_with_gc(
+        Some(data_dir.to_path_buf()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(workspace_tool("ffprobe")),
+        None,
+        PathBuf::from("/ignored/default"),
+    )
+    .expect("config");
+    config.models_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+    config.weights_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.cache/models")
+        .canonicalize()
+        .expect("pinned weights; run ./tools/fetch-models.sh");
+    config
+}

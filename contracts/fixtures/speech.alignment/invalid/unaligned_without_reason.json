@@ -1,0 +1,138 @@
+{
+  "asr_artifact_id": "sha256:a52a000000000000000000000000000000000000000000000000000000000002",
+  "audio_artifact_id": "sha256:a0d1000000000000000000000000000000000000000000000000000000000016",
+  "coverage": {
+    "aligned_ticks": 351000,
+    "analyzed": true,
+    "end_ticks": 900000,
+    "sampling_plan": "align-per-utterance",
+    "start_ticks": 0
+  },
+  "frame_ticks": 1800,
+  "invalid_regions": [],
+  "producer": {
+    "implementation": "clipmill-worker-align@0.1.0+wav2vec2-ctc",
+    "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000cc",
+    "stage": "speech-align"
+  },
+  "schema_version": "clipmill.speech.alignment.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "unaligned": [
+    {
+      "segment_index": 1,
+      "text": "Every timestamp is an integer tick."
+    }
+  ],
+  "words": [
+    {
+      "confidence": {
+        "p10": 0.96,
+        "p50": 0.99
+      },
+      "end_ticks": 52200,
+      "index": 0,
+      "segment_index": 0,
+      "start_ticks": 45000,
+      "text": "The"
+    },
+    {
+      "confidence": {
+        "p10": 0.94,
+        "p50": 0.98
+      },
+      "end_ticks": 73800,
+      "index": 1,
+      "segment_index": 0,
+      "start_ticks": 54000,
+      "text": "first"
+    },
+    {
+      "confidence": {
+        "p10": 0.91,
+        "p50": 0.97
+      },
+      "end_ticks": 108000,
+      "index": 2,
+      "segment_index": 0,
+      "start_ticks": 75600,
+      "text": "slice"
+    },
+    {
+      "confidence": {
+        "p10": 0.89,
+        "p50": 0.96
+      },
+      "end_ticks": 160200,
+      "index": 3,
+      "segment_index": 0,
+      "start_ticks": 109800,
+      "text": "renders"
+    },
+    {
+      "confidence": {
+        "p10": 0.95,
+        "p50": 0.98
+      },
+      "end_ticks": 421200,
+      "index": 4,
+      "segment_index": 1,
+      "start_ticks": 396000,
+      "text": "Every"
+    },
+    {
+      "confidence": {
+        "p10": 0.92,
+        "p50": 0.97
+      },
+      "end_ticks": 491400,
+      "index": 5,
+      "segment_index": 1,
+      "start_ticks": 423000,
+      "text": "timestamp"
+    },
+    {
+      "confidence": {
+        "p10": 0.97,
+        "p50": 0.99
+      },
+      "end_ticks": 505800,
+      "index": 6,
+      "segment_index": 1,
+      "start_ticks": 493200,
+      "text": "is"
+    },
+    {
+      "confidence": {
+        "p10": 0.95,
+        "p50": 0.98
+      },
+      "end_ticks": 518400,
+      "index": 7,
+      "segment_index": 1,
+      "start_ticks": 507600,
+      "text": "an"
+    },
+    {
+      "confidence": {
+        "p10": 0.9,
+        "p50": 0.96
+      },
+      "end_ticks": 576000,
+      "index": 8,
+      "segment_index": 1,
+      "start_ticks": 520200,
+      "text": "integer"
+    },
+    {
+      "confidence": {
+        "p10": 0.88,
+        "p50": 0.95
+      },
+      "end_ticks": 631800,
+      "index": 9,
+      "segment_index": 1,
+      "start_ticks": 577800,
+      "text": "tick"
+    }
+  ]
+}

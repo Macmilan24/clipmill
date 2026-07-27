@@ -12,9 +12,33 @@ belongs to `clipmilld`.
   contract types. Every worker family depends on it.
 - `echo/` — the null worker: exercises the full protocol without doing any
   work. It is the protocol's reference implementation and test target.
+- `vad/` — silero-VAD on onnxruntime: where speech is, before anything
+  transcribes it.
+- `asr-whispercpp/` — recognition on the path that runs everywhere.
+- `align/` — forced alignment on a wav2vec2 CTC model, the aligner every
+  machine has.
+- `speech-mlx/` — Qwen3-ASR and Qwen3-ForcedAligner on Apple silicon, behind
+  the same two contracts. macOS-only by dependency marker, so its lockfile
+  resolves to nothing on Linux rather than to a broken environment.
 
-Future families (`asr/`, `vision/`, `judge/`, …) follow the same shape: own
+Future families (`vision/`, `judge/`, …) follow the same shape: own
 `pyproject.toml`, own venv, `clipmill-worker-sdk` as a path dependency.
+
+## Two implementations of one capability
+
+`asr` and `forced-align` each have two families behind them, and which one runs
+is not a preference written down anywhere — it is measured. `tools/bench/speech-benchmark.py`
+runs every installed implementation over a fixture, the daemon folds what it
+measured into its signed device profile, and a job records the chosen
+implementation on each task when it is planned (D19, R19).
+
+That choice reaches the artifact key. Two implementations produce different
+bytes from the same audio, so they are different producers of different
+observations and must not share a content address; re-measuring a device
+changes what the next job chooses and never re-attributes anything already
+published. A machine nobody has benchmarked runs the portable implementation
+and its profile says `unmeasured_fallback`, so a fallback never reads as a
+choice.
 
 ## Provision and run the reference worker
 
