@@ -87,6 +87,37 @@ pub struct TaskLease {
     /// key through the recipe instead.
     #[prost(message, repeated, tag = "14")]
     pub models: ::prost::alloc::vec::Vec<ModelBinding>,
+    /// Pinned executables this task may run, resolved from the daemon's bill of
+    /// materials.
+    ///
+    /// Here for the same reason as `models`: a stage that decodes video needs the
+    /// build the daemon pinned rather than whatever the PATH happens to offer,
+    /// and the path to it is machine-specific and must stay out of the artifact
+    /// key. What identifies the tool — its BOM string — reaches the key through
+    /// the stage payload instead.
+    #[prost(message, repeated, tag = "15")]
+    pub tools: ::prost::alloc::vec::Vec<ToolBinding>,
+}
+/// Where one pinned executable is, and which build it is.
+///
+/// A worker never resolves a tool itself. Two FFmpeg builds decode the same
+/// file into different pixels, so a stage that found its own decoder would
+/// publish an observation under an address that says nothing about what
+/// produced it. The daemon fetched this binary against `bom.toml` and names it
+/// here; the worker checks it is still a real executable file before spawning
+/// it, and records `bom` in what it publishes.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ToolBinding {
+    /// Bill-of-materials name, e.g. "ffmpeg".
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Absolute path to the pinned executable.
+    #[prost(string, tag = "2")]
+    pub path: ::prost::alloc::string::String,
+    /// Build identity, e.g. "ffmpeg-8.1.2-btb-n8.1.2". This is what joins the
+    /// artifact key, by way of the stage payload.
+    #[prost(string, tag = "3")]
+    pub bom: ::prost::alloc::string::String,
 }
 /// Where one pinned model's files are, and what they must hash to.
 ///

@@ -13,8 +13,8 @@ use clipmill_artifacts::{ArtifactPath, PrepareOutcome};
 use clipmill_contracts::proto::worker::v1::{
     CapabilityDescriptor, Complete, CompletionAck, Decline, FailureClass, Heartbeat, HeartbeatAck,
     LeaseAcceptance, NoWork, ProtocolError, RegisterWorker, RegistrationAck, RegistrationChallenge,
-    StagedOutput, TaskLease, TaskOutcome, WorkerRequest, WorkerResponse, worker_request,
-    worker_response,
+    StagedOutput, TaskLease, TaskOutcome, ToolBinding, WorkerRequest, WorkerResponse,
+    worker_request, worker_response,
 };
 use clipmill_core::{LeaseId, StagingId, WorkerId};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -34,6 +34,7 @@ use crate::{
         EventHub, HEARTBEAT_INTERVAL, LEASE_TTL, LeaseRequest, LeasedTask, ResourceCapacity,
         SchedulerHandle,
     },
+    media,
     models::ModelRegistry,
     recipes,
     shm::ShmBroker,
@@ -94,6 +95,11 @@ pub(crate) struct WorkerService {
     /// Where the pinned weights were installed. Handed to workers on the
     /// lease; never part of any artifact key.
     weights_root: Arc<PathBuf>,
+    /// The pinned decoder, for stages the registry says may run one. Handed
+    /// over on the lease for the same reason as the weights: the path is
+    /// machine-specific and stays out of the key, while the build identity
+    /// travels in the payload and joins it.
+    decoder: Arc<PathBuf>,
     accepting_work: Arc<AtomicBool>,
     drop_completion_ack_once: Arc<AtomicBool>,
 }
@@ -111,6 +117,7 @@ impl WorkerService {
         models: Arc<ModelRegistry>,
         artifact_root: PathBuf,
         weights_root: PathBuf,
+        decoder: PathBuf,
     ) -> Result<Self, WorkerError> {
         Ok(Self {
             database,
@@ -124,6 +131,7 @@ impl WorkerService {
             models,
             artifact_root: Arc::new(artifact_root),
             weights_root: Arc::new(weights_root),
+            decoder: Arc::new(decoder),
             accepting_work: Arc::new(AtomicBool::new(true)),
             drop_completion_ack_once: Arc::new(AtomicBool::new(
                 std::env::var_os("CLIPMILL_TEST_DROP_COMPLETION_ACK_ONCE")
@@ -383,6 +391,16 @@ impl WorkerService {
                             .and_then(|name| self.models.binding(name, &self.weights_root))
                             .into_iter()
                             .collect(),
+                        // Only what the registry says this stage may run, and
+                        // only by the name it registered. A worker that could
+                        // ask for any pinned binary would be choosing its own
+                        // decoder with extra steps.
+                        tools: recipes::lookup(&task.kind)
+                            .map(|recipe| recipe.tools)
+                            .unwrap_or_default()
+                            .iter()
+                            .filter_map(|name| self.tool_binding(name))
+                            .collect(),
                     };
                     *active = Some(ActiveLease {
                         task,
@@ -401,6 +419,23 @@ impl WorkerService {
                 retry_after_ms: duration_millis(NO_WORK_RETRY),
             })),
         })
+    }
+
+    /// Resolve one bill-of-materials name to the binary this daemon holds.
+    ///
+    /// Only names the registry declared reach here, and only `ffmpeg` has a
+    /// path to give. An unknown name yields nothing rather than a guess, and
+    /// the worker's own refusal to run without the tool it needs is what turns
+    /// that into a stated failure instead of a silent fallback.
+    fn tool_binding(&self, name: &str) -> Option<ToolBinding> {
+        match name {
+            "ffmpeg" => Some(ToolBinding {
+                name: "ffmpeg".to_owned(),
+                path: self.decoder.to_string_lossy().into_owned(),
+                bom: media::FFMPEG_BOM.to_owned(),
+            }),
+            _ => None,
+        }
     }
 
     async fn complete_cache_hit(

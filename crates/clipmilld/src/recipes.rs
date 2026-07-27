@@ -6,8 +6,9 @@
 //! deciding what its cache key should be — and two stages could collide on one
 //! address by accident. A kind now exists only if it is registered here, and
 //! registration states the artifact kind, the semantic version that
-//! invalidates cached outputs when the stage's meaning changes, and whether a
-//! model's identity belongs in the key.
+//! invalidates cached outputs when the stage's meaning changes, whether a
+//! model's identity belongs in the key, and which pinned binaries the stage
+//! may be handed.
 //!
 //! Plan validation consults this table, so an unregistered kind is refused at
 //! submit rather than discovered by a worker that cannot serve it.
@@ -60,6 +61,17 @@ pub(crate) struct Recipe {
     /// artifact key, so re-pinning a model invalidates exactly the stages that
     /// used it — not the whole cache, and not nothing.
     pub capability: Option<&'static str>,
+    /// Pinned executables from `bom.toml` this stage may be handed on its
+    /// lease, by bill-of-materials name.
+    ///
+    /// A model is not the only versioned input a stage can have. A decoder is
+    /// one too — two FFmpeg builds hand a detector different pixels — and a
+    /// worker that resolved one from the PATH would publish observations that
+    /// two machines could disagree about while sharing a content address. So
+    /// the daemon names the binary, and the stage payload carries its build
+    /// identity into the key. Empty for every stage that needs nothing but its
+    /// inputs, which is most of them.
+    pub tools: &'static [&'static str],
 }
 
 /// Every kind the daemon will plan or lease.
@@ -75,6 +87,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.source_map.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "device-profile",
@@ -82,6 +95,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.device_profile.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     // The W11 ingest fan-out (book ch. 12).
     Recipe {
@@ -90,6 +104,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.proxy.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-audio-16k",
@@ -97,6 +112,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.audio.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-audio-48k",
@@ -104,6 +120,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.audio.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-loudness",
@@ -111,6 +128,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.loudness_envelope.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-reference-index",
@@ -118,6 +136,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.reference_index.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-filmstrip",
@@ -125,6 +144,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.filmstrip.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-audio-peaks",
@@ -132,6 +152,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.audio_peaks.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-frames",
@@ -139,6 +160,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.frames.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "ingest-manifest",
@@ -146,6 +168,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.ingest_manifest.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     // The W13 render compiler (book ch. 17).
     Recipe {
@@ -154,6 +177,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.render.clip.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
     },
     // The W15 speech chain (book ch. 13). Three leased stages that each run a
     // model, and one builtin that runs none.
@@ -169,6 +193,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.vad.v1",
         executor: Executor::Worker,
         capability: Some("vad"),
+        tools: &[],
     },
     Recipe {
         kind: "speech-asr",
@@ -176,6 +201,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.asr.v1",
         executor: Executor::Worker,
         capability: Some("asr"),
+        tools: &[],
     },
     Recipe {
         kind: "speech-align",
@@ -183,6 +209,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.alignment.v1",
         executor: Executor::Worker,
         capability: Some("forced-align"),
+        tools: &[],
     },
     Recipe {
         kind: "speech-transcript",
@@ -190,6 +217,20 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.transcript.v1",
         executor: Executor::Builtin,
         capability: None,
+        tools: &[],
+    },
+    // The W16 shot detector (book ch. 13). Leased, but modelless: it is
+    // arithmetic over decoded pixels, so there is no capability to bind and no
+    // model digest to key against. What makes its output reproducible is the
+    // decoder, and that identity travels in the payload — which the key
+    // already covers.
+    Recipe {
+        kind: "detect-shots",
+        output_kind: "evidence.shots.v1",
+        semantic_version: "clipmill.evidence.shots.v1",
+        executor: Executor::Worker,
+        capability: None,
+        tools: &["ffmpeg"],
     },
     // The reference worker family. It carries no model, which is precisely
     // why it is the right shape to prove the leased path with.
@@ -199,6 +240,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "demo-left",
@@ -206,6 +248,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "demo-right",
@@ -213,6 +256,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        tools: &[],
     },
     Recipe {
         kind: "demo-join",
@@ -220,6 +264,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        tools: &[],
     },
 ];
 
@@ -441,6 +486,55 @@ mod tests {
                 recipe.kind
             );
         }
+    }
+
+    /// A tool is only reachable by a stage that registered it, and only a
+    /// leased stage can be handed one at all — a builtin runs the sidecars
+    /// through the daemon's own supervised runner, which is a different and
+    /// narrower path than a lease.
+    #[test]
+    fn only_leased_stages_declare_tools_and_only_known_ones() {
+        let known = ["ffmpeg"];
+        let mut declaring = Vec::new();
+        for recipe in REGISTRY {
+            if recipe.tools.is_empty() {
+                continue;
+            }
+            declaring.push(recipe.kind);
+            assert_eq!(
+                recipe.executor,
+                Executor::Worker,
+                "{} is builtin and does not need a lease-delivered binary",
+                recipe.kind
+            );
+            for tool in recipe.tools {
+                assert!(
+                    known.contains(tool),
+                    "{} declares {tool}, which the daemon cannot resolve",
+                    recipe.kind
+                );
+            }
+        }
+        // Stated as a list rather than a count: a stage acquiring the right to
+        // spawn a pinned binary should show up in a diff of this test.
+        assert_eq!(declaring, ["detect-shots"]);
+    }
+
+    /// Shot detection is leased but modelless. It is the case that would break
+    /// if `capability` were ever read as "does this stage need a worker".
+    #[test]
+    fn shot_detection_is_leased_without_a_model_and_keyed_without_one() {
+        let recipe = lookup("detect-shots").expect("registered");
+        assert_eq!(recipe.executor, Executor::Worker);
+        assert!(
+            recipe.capability.is_none(),
+            "shot detection runs arithmetic over pixels, not a model"
+        );
+        assert_eq!(recipe.tools, ["ffmpeg"]);
+        assert!(plan_declaration_is_registered(
+            "detect-shots",
+            "evidence.shots.v1"
+        ));
     }
 
     /// The three model-running speech stages are leased; the assembly that

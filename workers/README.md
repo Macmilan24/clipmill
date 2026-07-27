@@ -20,9 +20,32 @@ belongs to `clipmilld`.
 - `speech-mlx/` — Qwen3-ASR and Qwen3-ForcedAligner on Apple silicon, behind
   the same two contracts. macOS-only by dependency marker, so its lockfile
   resolves to nothing on Linux rather than to a broken environment.
+- `shots/` — PySceneDetect's content detector over the mezzanine proxy: where
+  the camera changed. The only family that runs no model and the only one that
+  spawns a sidecar, for which see below.
 
 Future families (`vision/`, `judge/`, …) follow the same shape: own
 `pyproject.toml`, own venv, `clipmill-worker-sdk` as a path dependency.
+
+## A worker that runs a pinned binary
+
+A model is not the only versioned input a stage can have. Shot detection loads
+no weights at all — it is arithmetic over decoded pixels — but two FFmpeg builds
+hand that arithmetic different pixels, so the decoder is as much a part of what
+produced the observation as a model would be.
+
+It is therefore delivered the same way weights are. The stage registry states
+which pinned binaries a stage may be handed; the daemon puts an absolute path
+and a bill-of-materials build identity on the lease; and the worker refuses to
+proceed without them rather than falling back to the PATH. The path stays out of
+the artifact key, because a machine-specific directory would give the same
+footage two addresses on two machines. The build identity goes into the stage
+payload, which the key covers — so re-pinning FFmpeg invalidates shot detections
+and leaves every other stage alone.
+
+`require_tool` in the SDK is where that refusal lives: a relative path, a
+symlink standing in for the staged binary, a file nobody may execute, two
+decoders under one name, or none at all are each a stated failure.
 
 ## Two implementations of one capability
 

@@ -18,7 +18,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file clipmill/worker/v1/worker.proto.
  */
 export const file_clipmill_worker_v1_worker: GenFile = /*@__PURE__*/
-  fileDesc("Ch9jbGlwbWlsbC93b3JrZXIvdjEvd29ya2VyLnByb3RvEhJjbGlwbWlsbC53b3JrZXIudjEi5AEKFENhcGFiaWxpdHlEZXNjcmlwdG9yEhEKCXdvcmtlcl9pZBgBIAEoCRIOCgZmYW1pbHkYAiABKAkSFAoMY2FwYWJpbGl0aWVzGAMgAygJEhgKEHByb3RvY29sX3ZlcnNpb24YBCABKAkSDwoHYmFja2VuZBgFIAEoCRIYChBtYXhfbWVtb3J5X2J5dGVzGAYgASgEEhIKCnB1YmxpY19rZXkYByABKAwSEQoJc2lnbmF0dXJlGAggASgMEhMKC2NwdV90aHJlYWRzGAkgASgNEhIKCnZyYW1fYnl0ZXMYCiABKAQi8AIKCVRhc2tMZWFzZRIPCgd0YXNrX2lkGAEgASgJEhAKCGxlYXNlX2lkGAIgASgJEgwKBGtpbmQYAyABKAkSDwoHcGF5bG9hZBgEIAEoDBIdChVoZWFydGJlYXRfaW50ZXJ2YWxfbXMYBSABKAQSFAoMbGVhc2VfdHRsX21zGAYgASgEEhIKCnN0YWdpbmdfaWQYByABKAkSEwoLc3RhZ2luZ19kaXIYCCABKAkSGgoSaW5wdXRfYXJ0aWZhY3RfaWRzGAkgAygJEjgKDXNoYXJlZF9idWZmZXIYCiABKAsyIS5jbGlwbWlsbC5zaG0udjEuQnVmZmVyRGVzY3JpcHRvchITCgtvdXRwdXRfa2luZBgLIAEoCRIPCgdhdHRlbXB0GAwgASgNEhUKDWFydGlmYWN0X3Jvb3QYDSABKAkSMAoGbW9kZWxzGA4gAygLMiAuY2xpcG1pbGwud29ya2VyLnYxLk1vZGVsQmluZGluZyJ8CgxNb2RlbEJpbmRpbmcSDAoEbmFtZRgBIAEoCRIMCgRyb290GAIgASgJEg4KBmRpZ2VzdBgDIAEoCRIsCgVmaWxlcxgEIAMoCzIdLmNsaXBtaWxsLndvcmtlci52MS5Nb2RlbEZpbGUSEgoKY2FwYWJpbGl0eRgFIAEoCSI4CglNb2RlbEZpbGUSDAoEcGF0aBgBIAEoCRIOCgZzaGEyNTYYAiABKAkSDQoFYnl0ZXMYAyABKAQiOgoNUHJvZ3Jlc3NVbml0cxIMCgR1bml0GAEgASgJEgwKBGRvbmUYAiABKAQSDQoFdG90YWwYAyABKAQiUgoJSGVhcnRiZWF0EhAKCGxlYXNlX2lkGAEgASgJEjMKCHByb2dyZXNzGAIgASgLMiEuY2xpcG1pbGwud29ya2VyLnYxLlByb2dyZXNzVW5pdHMiXQoHRGVjbGluZRIPCgd0YXNrX2lkGAEgASgJEjEKBnJlYXNvbhgCIAEoDjIhLmNsaXBtaWxsLndvcmtlci52MS5EZWNsaW5lUmVhc29uEg4KBmRldGFpbBgDIAEoCSLnAQoIQ29tcGxldGUSEAoIbGVhc2VfaWQYASABKAkSMAoHb3V0Y29tZRgCIAEoDjIfLmNsaXBtaWxsLndvcmtlci52MS5UYXNrT3V0Y29tZRIUCgxhcnRpZmFjdF9pZHMYAyADKAkSNwoNZmFpbHVyZV9jbGFzcxgEIAEoDjIgLmNsaXBtaWxsLndvcmtlci52MS5GYWlsdXJlQ2xhc3MSDgoGZGV0YWlsGAUgASgJEjgKDnN0YWdlZF9vdXRwdXRzGAYgAygLMiAuY2xpcG1pbGwud29ya2VyLnYxLlN0YWdlZE91dHB1dCJICgxTdGFnZWRPdXRwdXQSFQoNcmVsYXRpdmVfcGF0aBgBIAEoCRIRCglieXRlX3NpemUYAiABKAQSDgoGc2hhMjU2GAMgASgJImcKFVJlZ2lzdHJhdGlvbkNoYWxsZW5nZRINCgVub25jZRgBIAEoDBIjChtzdXBwb3J0ZWRfcHJvdG9jb2xfdmVyc2lvbnMYAiADKAkSGgoSaXNzdWVkX3VuaXhfbWlsbGlzGAMgASgEIk4KDlJlZ2lzdGVyV29ya2VyEjwKCmRlc2NyaXB0b3IYASABKAsyKC5jbGlwbWlsbC53b3JrZXIudjEuQ2FwYWJpbGl0eURlc2NyaXB0b3IiRwoPUmVnaXN0cmF0aW9uQWNrEhAKCGFjY2VwdGVkGAEgASgIEhIKCnNlc3Npb25faWQYAiABKAkSDgoGZGV0YWlsGAMgASgJIiIKC1dvcmtSZXF1ZXN0EhMKC21heF93YWl0X21zGAEgASgEIiAKBk5vV29yaxIWCg5yZXRyeV9hZnRlcl9tcxgBIAEoBCJ4Cg9MZWFzZUFjY2VwdGFuY2USEAoIbGVhc2VfaWQYASABKAkSEAoIYWNjZXB0ZWQYAiABKAgSMQoGcmVhc29uGAMgASgOMiEuY2xpcG1pbGwud29ya2VyLnYxLkRlY2xpbmVSZWFzb24SDgoGZGV0YWlsGAQgASgJImIKDEhlYXJ0YmVhdEFjaxIQCghsZWFzZV9pZBgBIAEoCRIQCghhY2NlcHRlZBgCIAEoCBIRCgljYW5jZWxsZWQYAyABKAgSGwoTZXhwaXJlc191bml4X21pbGxpcxgEIAEoBCIvCgtDYW5jZWxMZWFzZRIQCghsZWFzZV9pZBgBIAEoCRIOCgZyZWFzb24YAiABKAkiWQoNQ29tcGxldGlvbkFjaxIQCghsZWFzZV9pZBgBIAEoCRIQCghhY2NlcHRlZBgCIAEoCBIUCgxhcnRpZmFjdF9pZHMYAyADKAkSDgoGZGV0YWlsGAQgASgJIi0KDVByb3RvY29sRXJyb3ISDAoEY29kZRgBIAEoCRIOCgZkZXRhaWwYAiABKAki3wIKDVdvcmtlclJlcXVlc3QSNgoIcmVnaXN0ZXIYASABKAsyIi5jbGlwbWlsbC53b3JrZXIudjEuUmVnaXN0ZXJXb3JrZXJIABI3Cgx3b3JrX3JlcXVlc3QYAiABKAsyHy5jbGlwbWlsbC53b3JrZXIudjEuV29ya1JlcXVlc3RIABI/ChBsZWFzZV9hY2NlcHRhbmNlGAMgASgLMiMuY2xpcG1pbGwud29ya2VyLnYxLkxlYXNlQWNjZXB0YW5jZUgAEjIKCWhlYXJ0YmVhdBgEIAEoCzIdLmNsaXBtaWxsLndvcmtlci52MS5IZWFydGJlYXRIABIwCghjb21wbGV0ZRgFIAEoCzIcLmNsaXBtaWxsLndvcmtlci52MS5Db21wbGV0ZUgAEi4KB2RlY2xpbmUYBiABKAsyGy5jbGlwbWlsbC53b3JrZXIudjEuRGVjbGluZUgAQgYKBGJvZHki3AMKDldvcmtlclJlc3BvbnNlEj4KCWNoYWxsZW5nZRgBIAEoCzIpLmNsaXBtaWxsLndvcmtlci52MS5SZWdpc3RyYXRpb25DaGFsbGVuZ2VIABI/ChByZWdpc3RyYXRpb25fYWNrGAIgASgLMiMuY2xpcG1pbGwud29ya2VyLnYxLlJlZ2lzdHJhdGlvbkFja0gAEjMKCnRhc2tfbGVhc2UYAyABKAsyHS5jbGlwbWlsbC53b3JrZXIudjEuVGFza0xlYXNlSAASLQoHbm9fd29yaxgEIAEoCzIaLmNsaXBtaWxsLndvcmtlci52MS5Ob1dvcmtIABI5Cg1oZWFydGJlYXRfYWNrGAUgASgLMiAuY2xpcG1pbGwud29ya2VyLnYxLkhlYXJ0YmVhdEFja0gAEjEKBmNhbmNlbBgGIAEoCzIfLmNsaXBtaWxsLndvcmtlci52MS5DYW5jZWxMZWFzZUgAEjsKDmNvbXBsZXRpb25fYWNrGAcgASgLMiEuY2xpcG1pbGwud29ya2VyLnYxLkNvbXBsZXRpb25BY2tIABIyCgVlcnJvchgIIAEoCzIhLmNsaXBtaWxsLndvcmtlci52MS5Qcm90b2NvbEVycm9ySABCBgoEYm9keSq3AQoNRGVjbGluZVJlYXNvbhIeChpERUNMSU5FX1JFQVNPTl9VTlNQRUNJRklFRBAAEiMKH0RFQ0xJTkVfUkVBU09OX1VOU1VQUE9SVEVEX0tJTkQQARIfChtERUNMSU5FX1JFQVNPTl9WRVJTSU9OX1NLRVcQAhIlCiFERUNMSU5FX1JFQVNPTl9SRVNPVVJDRV9FWEhBVVNURUQQAxIZChVERUNMSU5FX1JFQVNPTl9QT0xJQ1kQBCqYAQoLVGFza091dGNvbWUSHAoYVEFTS19PVVRDT01FX1VOU1BFQ0lGSUVEEAASGgoWVEFTS19PVVRDT01FX1NVQ0NFRURFRBABEhoKFlRBU0tfT1VUQ09NRV9SRVRSWUFCTEUQAhIXChNUQVNLX09VVENPTUVfRkFJTEVEEAMSGgoWVEFTS19PVVRDT01FX0NBTkNFTExFRBAEKqcBCgxGYWlsdXJlQ2xhc3MSHQoZRkFJTFVSRV9DTEFTU19VTlNQRUNJRklFRBAAEhsKF0ZBSUxVUkVfQ0xBU1NfVFJBTlNJRU5UEAESHwobRkFJTFVSRV9DTEFTU19ERVRFUk1JTklTVElDEAISHwobRkFJTFVSRV9DTEFTU19DT1JSVVBUX01PREVMEAMSGQoVRkFJTFVSRV9DTEFTU19ORVRXT1JLEARiBnByb3RvMw", [file_clipmill_shm_v1_shm]);
+  fileDesc("Ch9jbGlwbWlsbC93b3JrZXIvdjEvd29ya2VyLnByb3RvEhJjbGlwbWlsbC53b3JrZXIudjEi5AEKFENhcGFiaWxpdHlEZXNjcmlwdG9yEhEKCXdvcmtlcl9pZBgBIAEoCRIOCgZmYW1pbHkYAiABKAkSFAoMY2FwYWJpbGl0aWVzGAMgAygJEhgKEHByb3RvY29sX3ZlcnNpb24YBCABKAkSDwoHYmFja2VuZBgFIAEoCRIYChBtYXhfbWVtb3J5X2J5dGVzGAYgASgEEhIKCnB1YmxpY19rZXkYByABKAwSEQoJc2lnbmF0dXJlGAggASgMEhMKC2NwdV90aHJlYWRzGAkgASgNEhIKCnZyYW1fYnl0ZXMYCiABKAQioAMKCVRhc2tMZWFzZRIPCgd0YXNrX2lkGAEgASgJEhAKCGxlYXNlX2lkGAIgASgJEgwKBGtpbmQYAyABKAkSDwoHcGF5bG9hZBgEIAEoDBIdChVoZWFydGJlYXRfaW50ZXJ2YWxfbXMYBSABKAQSFAoMbGVhc2VfdHRsX21zGAYgASgEEhIKCnN0YWdpbmdfaWQYByABKAkSEwoLc3RhZ2luZ19kaXIYCCABKAkSGgoSaW5wdXRfYXJ0aWZhY3RfaWRzGAkgAygJEjgKDXNoYXJlZF9idWZmZXIYCiABKAsyIS5jbGlwbWlsbC5zaG0udjEuQnVmZmVyRGVzY3JpcHRvchITCgtvdXRwdXRfa2luZBgLIAEoCRIPCgdhdHRlbXB0GAwgASgNEhUKDWFydGlmYWN0X3Jvb3QYDSABKAkSMAoGbW9kZWxzGA4gAygLMiAuY2xpcG1pbGwud29ya2VyLnYxLk1vZGVsQmluZGluZxIuCgV0b29scxgPIAMoCzIfLmNsaXBtaWxsLndvcmtlci52MS5Ub29sQmluZGluZyI2CgtUb29sQmluZGluZxIMCgRuYW1lGAEgASgJEgwKBHBhdGgYAiABKAkSCwoDYm9tGAMgASgJInwKDE1vZGVsQmluZGluZxIMCgRuYW1lGAEgASgJEgwKBHJvb3QYAiABKAkSDgoGZGlnZXN0GAMgASgJEiwKBWZpbGVzGAQgAygLMh0uY2xpcG1pbGwud29ya2VyLnYxLk1vZGVsRmlsZRISCgpjYXBhYmlsaXR5GAUgASgJIjgKCU1vZGVsRmlsZRIMCgRwYXRoGAEgASgJEg4KBnNoYTI1NhgCIAEoCRINCgVieXRlcxgDIAEoBCI6Cg1Qcm9ncmVzc1VuaXRzEgwKBHVuaXQYASABKAkSDAoEZG9uZRgCIAEoBBINCgV0b3RhbBgDIAEoBCJSCglIZWFydGJlYXQSEAoIbGVhc2VfaWQYASABKAkSMwoIcHJvZ3Jlc3MYAiABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuUHJvZ3Jlc3NVbml0cyJdCgdEZWNsaW5lEg8KB3Rhc2tfaWQYASABKAkSMQoGcmVhc29uGAIgASgOMiEuY2xpcG1pbGwud29ya2VyLnYxLkRlY2xpbmVSZWFzb24SDgoGZGV0YWlsGAMgASgJIucBCghDb21wbGV0ZRIQCghsZWFzZV9pZBgBIAEoCRIwCgdvdXRjb21lGAIgASgOMh8uY2xpcG1pbGwud29ya2VyLnYxLlRhc2tPdXRjb21lEhQKDGFydGlmYWN0X2lkcxgDIAMoCRI3Cg1mYWlsdXJlX2NsYXNzGAQgASgOMiAuY2xpcG1pbGwud29ya2VyLnYxLkZhaWx1cmVDbGFzcxIOCgZkZXRhaWwYBSABKAkSOAoOc3RhZ2VkX291dHB1dHMYBiADKAsyIC5jbGlwbWlsbC53b3JrZXIudjEuU3RhZ2VkT3V0cHV0IkgKDFN0YWdlZE91dHB1dBIVCg1yZWxhdGl2ZV9wYXRoGAEgASgJEhEKCWJ5dGVfc2l6ZRgCIAEoBBIOCgZzaGEyNTYYAyABKAkiZwoVUmVnaXN0cmF0aW9uQ2hhbGxlbmdlEg0KBW5vbmNlGAEgASgMEiMKG3N1cHBvcnRlZF9wcm90b2NvbF92ZXJzaW9ucxgCIAMoCRIaChJpc3N1ZWRfdW5peF9taWxsaXMYAyABKAQiTgoOUmVnaXN0ZXJXb3JrZXISPAoKZGVzY3JpcHRvchgBIAEoCzIoLmNsaXBtaWxsLndvcmtlci52MS5DYXBhYmlsaXR5RGVzY3JpcHRvciJHCg9SZWdpc3RyYXRpb25BY2sSEAoIYWNjZXB0ZWQYASABKAgSEgoKc2Vzc2lvbl9pZBgCIAEoCRIOCgZkZXRhaWwYAyABKAkiIgoLV29ya1JlcXVlc3QSEwoLbWF4X3dhaXRfbXMYASABKAQiIAoGTm9Xb3JrEhYKDnJldHJ5X2FmdGVyX21zGAEgASgEIngKD0xlYXNlQWNjZXB0YW5jZRIQCghsZWFzZV9pZBgBIAEoCRIQCghhY2NlcHRlZBgCIAEoCBIxCgZyZWFzb24YAyABKA4yIS5jbGlwbWlsbC53b3JrZXIudjEuRGVjbGluZVJlYXNvbhIOCgZkZXRhaWwYBCABKAkiYgoMSGVhcnRiZWF0QWNrEhAKCGxlYXNlX2lkGAEgASgJEhAKCGFjY2VwdGVkGAIgASgIEhEKCWNhbmNlbGxlZBgDIAEoCBIbChNleHBpcmVzX3VuaXhfbWlsbGlzGAQgASgEIi8KC0NhbmNlbExlYXNlEhAKCGxlYXNlX2lkGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJZCg1Db21wbGV0aW9uQWNrEhAKCGxlYXNlX2lkGAEgASgJEhAKCGFjY2VwdGVkGAIgASgIEhQKDGFydGlmYWN0X2lkcxgDIAMoCRIOCgZkZXRhaWwYBCABKAkiLQoNUHJvdG9jb2xFcnJvchIMCgRjb2RlGAEgASgJEg4KBmRldGFpbBgCIAEoCSLfAgoNV29ya2VyUmVxdWVzdBI2CghyZWdpc3RlchgBIAEoCzIiLmNsaXBtaWxsLndvcmtlci52MS5SZWdpc3RlcldvcmtlckgAEjcKDHdvcmtfcmVxdWVzdBgCIAEoCzIfLmNsaXBtaWxsLndvcmtlci52MS5Xb3JrUmVxdWVzdEgAEj8KEGxlYXNlX2FjY2VwdGFuY2UYAyABKAsyIy5jbGlwbWlsbC53b3JrZXIudjEuTGVhc2VBY2NlcHRhbmNlSAASMgoJaGVhcnRiZWF0GAQgASgLMh0uY2xpcG1pbGwud29ya2VyLnYxLkhlYXJ0YmVhdEgAEjAKCGNvbXBsZXRlGAUgASgLMhwuY2xpcG1pbGwud29ya2VyLnYxLkNvbXBsZXRlSAASLgoHZGVjbGluZRgGIAEoCzIbLmNsaXBtaWxsLndvcmtlci52MS5EZWNsaW5lSABCBgoEYm9keSLcAwoOV29ya2VyUmVzcG9uc2USPgoJY2hhbGxlbmdlGAEgASgLMikuY2xpcG1pbGwud29ya2VyLnYxLlJlZ2lzdHJhdGlvbkNoYWxsZW5nZUgAEj8KEHJlZ2lzdHJhdGlvbl9hY2sYAiABKAsyIy5jbGlwbWlsbC53b3JrZXIudjEuUmVnaXN0cmF0aW9uQWNrSAASMwoKdGFza19sZWFzZRgDIAEoCzIdLmNsaXBtaWxsLndvcmtlci52MS5UYXNrTGVhc2VIABItCgdub193b3JrGAQgASgLMhouY2xpcG1pbGwud29ya2VyLnYxLk5vV29ya0gAEjkKDWhlYXJ0YmVhdF9hY2sYBSABKAsyIC5jbGlwbWlsbC53b3JrZXIudjEuSGVhcnRiZWF0QWNrSAASMQoGY2FuY2VsGAYgASgLMh8uY2xpcG1pbGwud29ya2VyLnYxLkNhbmNlbExlYXNlSAASOwoOY29tcGxldGlvbl9hY2sYByABKAsyIS5jbGlwbWlsbC53b3JrZXIudjEuQ29tcGxldGlvbkFja0gAEjIKBWVycm9yGAggASgLMiEuY2xpcG1pbGwud29ya2VyLnYxLlByb3RvY29sRXJyb3JIAEIGCgRib2R5KrcBCg1EZWNsaW5lUmVhc29uEh4KGkRFQ0xJTkVfUkVBU09OX1VOU1BFQ0lGSUVEEAASIwofREVDTElORV9SRUFTT05fVU5TVVBQT1JURURfS0lORBABEh8KG0RFQ0xJTkVfUkVBU09OX1ZFUlNJT05fU0tFVxACEiUKIURFQ0xJTkVfUkVBU09OX1JFU09VUkNFX0VYSEFVU1RFRBADEhkKFURFQ0xJTkVfUkVBU09OX1BPTElDWRAEKpgBCgtUYXNrT3V0Y29tZRIcChhUQVNLX09VVENPTUVfVU5TUEVDSUZJRUQQABIaChZUQVNLX09VVENPTUVfU1VDQ0VFREVEEAESGgoWVEFTS19PVVRDT01FX1JFVFJZQUJMRRACEhcKE1RBU0tfT1VUQ09NRV9GQUlMRUQQAxIaChZUQVNLX09VVENPTUVfQ0FOQ0VMTEVEEAQqpwEKDEZhaWx1cmVDbGFzcxIdChlGQUlMVVJFX0NMQVNTX1VOU1BFQ0lGSUVEEAASGwoXRkFJTFVSRV9DTEFTU19UUkFOU0lFTlQQARIfChtGQUlMVVJFX0NMQVNTX0RFVEVSTUlOSVNUSUMQAhIfChtGQUlMVVJFX0NMQVNTX0NPUlJVUFRfTU9ERUwQAxIZChVGQUlMVVJFX0NMQVNTX05FVFdPUksQBGIGcHJvdG8z", [file_clipmill_shm_v1_shm]);
 
 /**
  * Advertised once at startup. The signature field exists from day one
@@ -202,6 +202,20 @@ export type TaskLease = Message<"clipmill.worker.v1.TaskLease"> & {
    * @generated from field: repeated clipmill.worker.v1.ModelBinding models = 14;
    */
   models: ModelBinding[];
+
+  /**
+   * Pinned executables this task may run, resolved from the daemon's bill of
+   * materials.
+   *
+   * Here for the same reason as `models`: a stage that decodes video needs the
+   * build the daemon pinned rather than whatever the PATH happens to offer,
+   * and the path to it is machine-specific and must stay out of the artifact
+   * key. What identifies the tool — its BOM string — reaches the key through
+   * the stage payload instead.
+   *
+   * @generated from field: repeated clipmill.worker.v1.ToolBinding tools = 15;
+   */
+  tools: ToolBinding[];
 };
 
 /**
@@ -210,6 +224,49 @@ export type TaskLease = Message<"clipmill.worker.v1.TaskLease"> & {
  */
 export const TaskLeaseSchema: GenMessage<TaskLease> = /*@__PURE__*/
   messageDesc(file_clipmill_worker_v1_worker, 1);
+
+/**
+ * Where one pinned executable is, and which build it is.
+ *
+ * A worker never resolves a tool itself. Two FFmpeg builds decode the same
+ * file into different pixels, so a stage that found its own decoder would
+ * publish an observation under an address that says nothing about what
+ * produced it. The daemon fetched this binary against `bom.toml` and names it
+ * here; the worker checks it is still a real executable file before spawning
+ * it, and records `bom` in what it publishes.
+ *
+ * @generated from message clipmill.worker.v1.ToolBinding
+ */
+export type ToolBinding = Message<"clipmill.worker.v1.ToolBinding"> & {
+  /**
+   * Bill-of-materials name, e.g. "ffmpeg".
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Absolute path to the pinned executable.
+   *
+   * @generated from field: string path = 2;
+   */
+  path: string;
+
+  /**
+   * Build identity, e.g. "ffmpeg-8.1.2-btb-n8.1.2". This is what joins the
+   * artifact key, by way of the stage payload.
+   *
+   * @generated from field: string bom = 3;
+   */
+  bom: string;
+};
+
+/**
+ * Describes the message clipmill.worker.v1.ToolBinding.
+ * Use `create(ToolBindingSchema)` to create a new message.
+ */
+export const ToolBindingSchema: GenMessage<ToolBinding> = /*@__PURE__*/
+  messageDesc(file_clipmill_worker_v1_worker, 2);
 
 /**
  * Where one pinned model's files are, and what they must hash to.
@@ -263,7 +320,7 @@ export type ModelBinding = Message<"clipmill.worker.v1.ModelBinding"> & {
  * Use `create(ModelBindingSchema)` to create a new message.
  */
 export const ModelBindingSchema: GenMessage<ModelBinding> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 2);
+  messageDesc(file_clipmill_worker_v1_worker, 3);
 
 /**
  * @generated from message clipmill.worker.v1.ModelFile
@@ -294,7 +351,7 @@ export type ModelFile = Message<"clipmill.worker.v1.ModelFile"> & {
  * Use `create(ModelFileSchema)` to create a new message.
  */
 export const ModelFileSchema: GenMessage<ModelFile> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 3);
+  messageDesc(file_clipmill_worker_v1_worker, 4);
 
 /**
  * Structured progress: real work units with a bounded estimate. A total of
@@ -326,7 +383,7 @@ export type ProgressUnits = Message<"clipmill.worker.v1.ProgressUnits"> & {
  * Use `create(ProgressUnitsSchema)` to create a new message.
  */
 export const ProgressUnitsSchema: GenMessage<ProgressUnits> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 4);
+  messageDesc(file_clipmill_worker_v1_worker, 5);
 
 /**
  * @generated from message clipmill.worker.v1.Heartbeat
@@ -348,7 +405,7 @@ export type Heartbeat = Message<"clipmill.worker.v1.Heartbeat"> & {
  * Use `create(HeartbeatSchema)` to create a new message.
  */
 export const HeartbeatSchema: GenMessage<Heartbeat> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 5);
+  messageDesc(file_clipmill_worker_v1_worker, 6);
 
 /**
  * A worker may decline a task before touching media, with a reason the
@@ -378,7 +435,7 @@ export type Decline = Message<"clipmill.worker.v1.Decline"> & {
  * Use `create(DeclineSchema)` to create a new message.
  */
 export const DeclineSchema: GenMessage<Decline> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 6);
+  messageDesc(file_clipmill_worker_v1_worker, 7);
 
 /**
  * @generated from message clipmill.worker.v1.Complete
@@ -427,7 +484,7 @@ export type Complete = Message<"clipmill.worker.v1.Complete"> & {
  * Use `create(CompleteSchema)` to create a new message.
  */
 export const CompleteSchema: GenMessage<Complete> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 7);
+  messageDesc(file_clipmill_worker_v1_worker, 8);
 
 /**
  * @generated from message clipmill.worker.v1.StagedOutput
@@ -454,7 +511,7 @@ export type StagedOutput = Message<"clipmill.worker.v1.StagedOutput"> & {
  * Use `create(StagedOutputSchema)` to create a new message.
  */
 export const StagedOutputSchema: GenMessage<StagedOutput> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 8);
+  messageDesc(file_clipmill_worker_v1_worker, 9);
 
 /**
  * The daemon sends a fresh nonce for every connection. Registration
@@ -485,7 +542,7 @@ export type RegistrationChallenge = Message<"clipmill.worker.v1.RegistrationChal
  * Use `create(RegistrationChallengeSchema)` to create a new message.
  */
 export const RegistrationChallengeSchema: GenMessage<RegistrationChallenge> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 9);
+  messageDesc(file_clipmill_worker_v1_worker, 10);
 
 /**
  * @generated from message clipmill.worker.v1.RegisterWorker
@@ -502,7 +559,7 @@ export type RegisterWorker = Message<"clipmill.worker.v1.RegisterWorker"> & {
  * Use `create(RegisterWorkerSchema)` to create a new message.
  */
 export const RegisterWorkerSchema: GenMessage<RegisterWorker> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 10);
+  messageDesc(file_clipmill_worker_v1_worker, 11);
 
 /**
  * @generated from message clipmill.worker.v1.RegistrationAck
@@ -529,7 +586,7 @@ export type RegistrationAck = Message<"clipmill.worker.v1.RegistrationAck"> & {
  * Use `create(RegistrationAckSchema)` to create a new message.
  */
 export const RegistrationAckSchema: GenMessage<RegistrationAck> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 11);
+  messageDesc(file_clipmill_worker_v1_worker, 12);
 
 /**
  * @generated from message clipmill.worker.v1.WorkRequest
@@ -546,7 +603,7 @@ export type WorkRequest = Message<"clipmill.worker.v1.WorkRequest"> & {
  * Use `create(WorkRequestSchema)` to create a new message.
  */
 export const WorkRequestSchema: GenMessage<WorkRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 12);
+  messageDesc(file_clipmill_worker_v1_worker, 13);
 
 /**
  * @generated from message clipmill.worker.v1.NoWork
@@ -563,7 +620,7 @@ export type NoWork = Message<"clipmill.worker.v1.NoWork"> & {
  * Use `create(NoWorkSchema)` to create a new message.
  */
 export const NoWorkSchema: GenMessage<NoWork> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 13);
+  messageDesc(file_clipmill_worker_v1_worker, 14);
 
 /**
  * @generated from message clipmill.worker.v1.LeaseAcceptance
@@ -595,7 +652,7 @@ export type LeaseAcceptance = Message<"clipmill.worker.v1.LeaseAcceptance"> & {
  * Use `create(LeaseAcceptanceSchema)` to create a new message.
  */
 export const LeaseAcceptanceSchema: GenMessage<LeaseAcceptance> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 14);
+  messageDesc(file_clipmill_worker_v1_worker, 15);
 
 /**
  * @generated from message clipmill.worker.v1.HeartbeatAck
@@ -627,7 +684,7 @@ export type HeartbeatAck = Message<"clipmill.worker.v1.HeartbeatAck"> & {
  * Use `create(HeartbeatAckSchema)` to create a new message.
  */
 export const HeartbeatAckSchema: GenMessage<HeartbeatAck> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 15);
+  messageDesc(file_clipmill_worker_v1_worker, 16);
 
 /**
  * @generated from message clipmill.worker.v1.CancelLease
@@ -649,7 +706,7 @@ export type CancelLease = Message<"clipmill.worker.v1.CancelLease"> & {
  * Use `create(CancelLeaseSchema)` to create a new message.
  */
 export const CancelLeaseSchema: GenMessage<CancelLease> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 16);
+  messageDesc(file_clipmill_worker_v1_worker, 17);
 
 /**
  * @generated from message clipmill.worker.v1.CompletionAck
@@ -681,7 +738,7 @@ export type CompletionAck = Message<"clipmill.worker.v1.CompletionAck"> & {
  * Use `create(CompletionAckSchema)` to create a new message.
  */
 export const CompletionAckSchema: GenMessage<CompletionAck> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 17);
+  messageDesc(file_clipmill_worker_v1_worker, 18);
 
 /**
  * @generated from message clipmill.worker.v1.ProtocolError
@@ -703,7 +760,7 @@ export type ProtocolError = Message<"clipmill.worker.v1.ProtocolError"> & {
  * Use `create(ProtocolErrorSchema)` to create a new message.
  */
 export const ProtocolErrorSchema: GenMessage<ProtocolError> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 18);
+  messageDesc(file_clipmill_worker_v1_worker, 19);
 
 /**
  * @generated from message clipmill.worker.v1.WorkerRequest
@@ -756,7 +813,7 @@ export type WorkerRequest = Message<"clipmill.worker.v1.WorkerRequest"> & {
  * Use `create(WorkerRequestSchema)` to create a new message.
  */
 export const WorkerRequestSchema: GenMessage<WorkerRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 19);
+  messageDesc(file_clipmill_worker_v1_worker, 20);
 
 /**
  * @generated from message clipmill.worker.v1.WorkerResponse
@@ -821,7 +878,7 @@ export type WorkerResponse = Message<"clipmill.worker.v1.WorkerResponse"> & {
  * Use `create(WorkerResponseSchema)` to create a new message.
  */
 export const WorkerResponseSchema: GenMessage<WorkerResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_worker_v1_worker, 20);
+  messageDesc(file_clipmill_worker_v1_worker, 21);
 
 /**
  * @generated from enum clipmill.worker.v1.DeclineReason

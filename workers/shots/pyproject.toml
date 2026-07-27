@@ -1,0 +1,49 @@
+[project]
+name = "clipmill-worker-shots"
+version = "0.1.0"
+description = "Shot detection (PySceneDetect's content detector over the pinned proxy decode): where the camera changed"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+  "clipmill-worker-sdk",
+  "numpy>=2",
+  "scenedetect>=0.7,<0.8",
+]
+
+[project.scripts]
+clipmill-worker-shots = "clipmill_worker_shots:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv.sources]
+clipmill-worker-sdk = { path = "../sdk", editable = true }
+
+# OpenCV arrives through PySceneDetect, which asks for the desktop
+# `opencv-python` wheel. That wheel resolves libGL at import, so on Linux it
+# needs a display library this worker will never call — worth avoiding if it
+# were free, and it is not. `opencv-python-headless` behind a uv
+# `override-dependencies` marker installs correctly and then breaks the
+# supply-chain audit, because `pip-audit` reaches the package index through pip
+# and pip does not read uv's overrides: it re-derives the tree from
+# scenedetect's own metadata and looks for a distribution the lockfile
+# deliberately does not pin. Neither `--no-deps` nor `--require-hashes` avoids
+# that path in pip-audit 2.10.1, and auditing the installed environment instead
+# (`--path`) cannot keep `--strict`, because the local editable packages are
+# then skipped and `--strict` treats a skip as a failure.
+#
+# So the declared dependency is taken as declared. A dependency set the audit
+# can read is worth more than eleven megabytes and an `apt-get install libgl1`,
+# and this project already asks Linux users for GTK and WebKit to run the
+# shell — a display library is not a new category of requirement here.
+#
+# Nothing in this package imports cv2 directly. Only the detector does, and
+# only for colour conversion and channel splitting — never for video I/O, which
+# stays with the pinned FFmpeg the daemon hands us on the lease.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clipmill_worker_shots"]

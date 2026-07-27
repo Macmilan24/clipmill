@@ -202,6 +202,10 @@ impl Daemon {
                     return Err(error);
                 }
             };
+        // Read before the runner is handed to the scheduler. The one leased
+        // stage that decodes video is given this path on its lease rather than
+        // finding a decoder itself.
+        let decoder = media_runner.ffmpeg().to_path_buf();
         let scheduler = Scheduler::start(
             database.handle(),
             artifacts.handle(),
@@ -227,6 +231,7 @@ impl Daemon {
             Arc::clone(&models),
             config.paths.artifacts_dir.clone(),
             config.weights_dir.clone(),
+            decoder,
         ) {
             Ok(service) => service,
             Err(error) => {

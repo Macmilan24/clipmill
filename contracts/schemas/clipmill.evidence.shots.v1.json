@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.evidence.shots.v1.json",
+  "title": "EvidenceShots",
+  "description": "Where the camera changed, decided from the proxy's pixels (book ch. 13). A cut is a boundary the editor did not have to justify, which is why the boundary lattice is later allowed to start and end a clip on one. Every position is integer ticks at 1/90000, and absence is explicit: a recording nobody analyzed is not a recording with no cuts in it.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "proxy_artifact_id",
+    "producer",
+    "detection",
+    "coverage",
+    "cuts",
+    "shots",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.evidence.shots.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "proxy_artifact_id": {
+      "description": "The mezzanine proxy this pass decoded, verified before use. Not the original: the proxy is the one decode every analysis surface shares, so two stages that disagree about a frame are a bug rather than a licensing accident.",
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "detection": {
+      "description": "The decision parameters, recorded so a later pass knows what to change rather than guessing. They are part of the artifact key: a different threshold is a different observation, not a correction of this one. The decoder identity belongs here for the same reason — a different build can hand the detector different pixels.",
+      "type": "object",
+      "required": ["threshold", "min_shot_ticks", "analysis_height", "frame_rate", "decoder"],
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "description": "Mean inter-frame content distance at or above which a frame boundary counts as a cut. Higher detects fewer, and misses the soft ones first.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "min_shot_ticks": {
+          "description": "A cut closer than this to the previous one is suppressed, because two cuts inside a few frames are one cut plus a flash.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "analysis_height": {
+          "description": "Pixel height every frame was scaled to before comparison; width follows the display aspect. Downscaling is what makes the score about the shot rather than about sensor noise, and it is pinned because the score depends on it.",
+          "type": "integer",
+          "minimum": 16
+        },
+        "frame_rate": {
+          "description": "Rate the proxy was decoded at, frames per second as a rational. This is the resolution of every position below: a cut cannot be located more precisely than the frame that revealed it.",
+          "$ref": "#/$defs/timebase"
+        },
+        "decoder": {
+          "description": "Identity of the pinned decoder build, e.g. 'ffmpeg-8.1.2-btb-n8.1.2'. A name and version, never a path — a machine-specific directory in the key would give the same recording two content addresses on two machines.",
+          "type": "string",
+          "minLength": 1
+        },
+        "weights": {
+          "description": "How the content distance was composed from its hue, saturation, luminance, and edge components. Omitted where the detector's own defaults were used.",
+          "type": "object",
+          "required": ["hue", "saturation", "luma", "edges"],
+          "additionalProperties": false,
+          "properties": {
+            "hue": { "type": "number", "minimum": 0 },
+            "saturation": { "type": "number", "minimum": 0 },
+            "luma": { "type": "number", "minimum": 0 },
+            "edges": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "cuts": {
+      "description": "Shot boundaries in source time, ascending and distinct. Each names the first tick of the incoming shot, so a cut and the shot it starts share a position rather than differing by a frame nobody agrees on.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/cut" }
+    },
+    "shots": {
+      "description": "The spans between cuts, including the ones bounded by the start and end of coverage. Carried explicitly rather than left to be derived, because these are the intervals the boundary lattice and the layout stage consume, and a consumer should not have to reconstruct them correctly from cuts plus coverage.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/shot" }
+    },
+    "invalid_regions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timebase": {
+      "type": "object",
+      "required": ["num", "den"],
+      "additionalProperties": false,
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "cut": {
+      "type": "object",
+      "required": ["t_ticks", "score", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "t_ticks": {
+          "description": "First tick of the incoming shot.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "score": {
+          "description": "The detector's raw content distance at this boundary, before any mapping onto a confidence. Kept because it is the only number here that can be compared against a re-tuned threshold without decoding the video again.",
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "shot": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "confidence": {
+      "description": "A distribution, not a scalar: p10 is what the boundary is worth if the detector is having a bad time, and downstream stages that widen uncertainty need both numbers. A shot is only as certain as the weaker of the two cuts that bound it; an edge that is the start or end of coverage is a fact rather than a detection and claims nothing.",
+      "type": "object",
+      "required": ["p50", "p10"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 1 },
+        "p10": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "model_digest": { "$ref": "#/$defs/sha256" },
+        "calibration": {
+          "description": "Which calibration mapped raw content distances onto the confidences above.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "coverage": {
+      "description": "What was actually examined. A skipped pass, a single-shot result, and a recording nobody decoded are three different facts, and no downstream stage may read an empty cut list as 'the camera never changed'.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" },
+        "sampling_plan": { "type": "string", "minLength": 1 }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": ["no_video", "not_analyzed", "decode_failed"]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

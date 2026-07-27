@@ -7,12 +7,12 @@ use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
 };
 use clipmill_contracts::proto::ipc::v1::{
-    ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1, Error,
-    ErrorCode, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
-    GetJobResponse, GetProjectResponse, GetSourceResponse, HealthResponse, IngestSourcePayloadV1,
-    ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
-    ProbeSourcePayloadV1, RegisterSourceRequest, RenderClipPayloadV1, Request, Response,
-    SnapshotEditDocResponse, SubmitJobRequest, SubscribeTaskEventsRequest,
+    ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1,
+    DetectShotsPayloadV1, Error, ErrorCode, GetDeviceProfileRequest, GetDeviceProfileResponse,
+    GetEditDocResponse, GetJobResponse, GetProjectResponse, GetSourceResponse, HealthResponse,
+    IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
+    PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest, RenderClipPayloadV1, Request,
+    Response, SnapshotEditDocResponse, SubmitJobRequest, SubscribeTaskEventsRequest,
     SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
@@ -39,6 +39,7 @@ const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
 const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
 const TRANSCRIBE_SOURCE_KEY_VERSION: &str = "clipmill.transcribe-source.v1";
+const DETECT_SHOTS_KEY_VERSION: &str = "clipmill.detect-shots.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -131,14 +132,14 @@ impl Service {
         }
     }
 
-    /// The 16 kHz rendition ingest produced for a source, with the source's
+    /// One derivative ingest produced for a source, with the source's
     /// fingerprint.
     ///
     /// Resolved through the ingest manifest rather than by searching the
     /// store, because the manifest is the job's single rooted artifact and its
     /// children are what garbage collection keeps reachable. Anything found
     /// another way might be an object nobody is holding on to.
-    async fn ingested_speech_audio(&self, source_id: &str) -> Option<(String, String)> {
+    async fn ingested_derivative(&self, source_id: &str, kind: &str) -> Option<(String, String)> {
         let artifacts = self.artifacts.as_ref()?;
         let manifest_id = self
             .database
@@ -153,15 +154,15 @@ impl Service {
                 .await
                 .ok()?;
         let manifest = crate::media::read_descriptor(&lease, "ingest-manifest.json").ok()?;
-        let audio = manifest["children"]
+        let child = manifest["children"]
             .as_array()
             .into_iter()
             .flatten()
-            .find(|child| child["kind"] == "media.audio_16k.v1")
+            .find(|child| child["kind"] == kind)
             .and_then(|child| child["artifact_id"].as_str())
             .map(ToOwned::to_owned)?;
         let fingerprint = manifest["source_fingerprint"].as_str()?.to_owned();
-        Some((audio, fingerprint))
+        Some((child, fingerprint))
     }
 
     #[must_use]
@@ -623,8 +624,9 @@ impl Service {
                 // it to transcribe a source nobody ingested is a request with
                 // no audio behind it, and saying so is more useful than
                 // planning four tasks that will each fail to find their input.
-                let Some((audio_artifact_id, fingerprint)) =
-                    self.ingested_speech_audio(&source_id.to_string()).await
+                let Some((audio_artifact_id, fingerprint)) = self
+                    .ingested_derivative(&source_id.to_string(), "media.audio_16k.v1")
+                    .await
                 else {
                     return error_reply(
                         request_id,
@@ -651,6 +653,68 @@ impl Service {
                     &payload,
                     &self.models,
                     &bindings,
+                    now,
+                )
+            }
+            "detect-shots" => {
+                let Ok(payload) = DetectShotsPayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "shots job payload is not a valid DetectShotsPayloadV1",
+                    );
+                };
+                if payload.key_version != DETECT_SHOTS_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "shots job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                // Shot detection reads the proxy ingest already derived. A
+                // source with no proxy is either not ingested or has no video,
+                // and saying so is more useful than planning a task that will
+                // fail to find its input.
+                let Some((proxy_artifact_id, fingerprint)) = self
+                    .ingested_derivative(&source_id.to_string(), "media.proxy.v1")
+                    .await
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has no ingested proxy to detect shots in",
+                    );
+                };
+                JobPlan::detect_shots(
+                    &project_id,
+                    source_id.to_string(),
+                    crate::jobs::ShotsProxy {
+                        artifact_id: &proxy_artifact_id,
+                        source_fingerprint: &fingerprint,
+                    },
+                    &payload,
+                    crate::media::FFMPEG_BOM,
                     now,
                 )
             }

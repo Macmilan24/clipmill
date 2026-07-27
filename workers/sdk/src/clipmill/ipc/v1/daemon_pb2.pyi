@@ -336,6 +336,42 @@ class SpeechAlignmentV1(_message.Message):
     min_score: float
     def __init__(self, min_score: _Optional[float] = ...) -> None: ...
 
+class DetectShotsPayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "detection")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    DETECTION_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    detection: ShotDetectionV1
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., detection: _Optional[_Union[ShotDetectionV1, _Mapping]] = ...) -> None: ...
+
+class ShotDetectionV1(_message.Message):
+    __slots__ = ("threshold", "min_shot_ticks", "analysis_height")
+    THRESHOLD_FIELD_NUMBER: _ClassVar[int]
+    MIN_SHOT_TICKS_FIELD_NUMBER: _ClassVar[int]
+    ANALYSIS_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    threshold: float
+    min_shot_ticks: int
+    analysis_height: int
+    def __init__(self, threshold: _Optional[float] = ..., min_shot_ticks: _Optional[int] = ..., analysis_height: _Optional[int] = ...) -> None: ...
+
+class ShotsStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "source_fingerprint", "proxy_artifact_id", "detection", "decoder_bom")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    PROXY_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    DETECTION_FIELD_NUMBER: _ClassVar[int]
+    DECODER_BOM_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    source_fingerprint: str
+    proxy_artifact_id: str
+    detection: ShotDetectionV1
+    decoder_bom: str
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., proxy_artifact_id: _Optional[str] = ..., detection: _Optional[_Union[ShotDetectionV1, _Mapping]] = ..., decoder_bom: _Optional[str] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

@@ -1,0 +1,35 @@
+{
+  "coverage": {
+    "analyzed": false,
+    "end_ticks": 900900,
+    "sampling_plan": "content-detector-at-30000-1001-h180",
+    "start_ticks": 0
+  },
+  "cuts": [],
+  "detection": {
+    "analysis_height": 180,
+    "decoder": "ffmpeg-8.1.2-btb-n8.1.2",
+    "frame_rate": {
+      "den": 1001,
+      "num": 30000
+    },
+    "min_shot_ticks": 45045,
+    "threshold": 27.0
+  },
+  "invalid_regions": [
+    {
+      "detail": "the source carries no video stream",
+      "end_ticks": 900900,
+      "reason": "no_video",
+      "start_ticks": 0
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-worker-shots@0.1.0+pyscenedetect-content",
+    "stage": "detect-shots"
+  },
+  "proxy_artifact_id": "sha256:9c0f000000000000000000000000000000000000000000000000000000000031",
+  "schema_version": "clipmill.evidence.shots.v1",
+  "shots": [],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007"
+}

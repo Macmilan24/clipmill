@@ -187,6 +187,16 @@ impl MediaRunner {
         })
     }
 
+    /// The pinned decoder, for the one stage that does its own decoding.
+    ///
+    /// Handed to a worker on its lease rather than resolved there (R4, and the
+    /// same reasoning as pinned weights): the daemon fetched this binary
+    /// against the bill of materials, and a stage that looked for its own
+    /// would publish frames nobody can attribute.
+    pub(crate) fn ffmpeg(&self) -> &Path {
+        &self.ffmpeg
+    }
+
     pub(crate) async fn run_ffmpeg(
         &self,
         spec: FfmpegSpec,
