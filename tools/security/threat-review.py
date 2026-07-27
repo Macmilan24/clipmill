@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Require explicit PR threat review for sensitive boundary changes."""
+"""Require explicit PR threat review for sensitive boundary changes.
+
+The body arrives from `github.event.pull_request.body`, which GitHub captures
+when the workflow starts. A `pull_request` workflow fires on `synchronize`, not
+on `edited`, so adding the declarations to an existing PR does not re-run this
+check on its own — the next push does. Editing the body and waiting is the one
+way to watch this fail against text that is already correct.
+"""
 
 from __future__ import annotations
 
