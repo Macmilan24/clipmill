@@ -53,6 +53,22 @@ def ticks_to_samples(ticks: int, sample_rate: int) -> int:
     return ticks * sample_rate // TICKS_PER_SECOND
 
 
+def frames_to_ticks(frame_index: int, rate_num: int, rate_den: int) -> int:
+    """Floor: the tick a frame is presented at, under a rational frame rate.
+
+    Integer-only for the same reason as everything else here. At 30000/1001 the
+    per-frame interval is 3003 ticks exactly, so a video stage and an audio
+    stage describing the same instant land on the same number — which they do
+    not if either of them goes through 0.0333... seconds first.
+    """
+
+    if rate_num <= 0 or rate_den <= 0:
+        raise ValueError("frame rate must be positive")
+    if frame_index < 0:
+        raise ValueError("frame index must not be negative")
+    return frame_index * rate_den * TICKS_PER_SECOND // rate_num
+
+
 def seconds_to_ticks(seconds: float) -> int:
     """For model outputs that are only available as float seconds.
 
@@ -66,6 +82,7 @@ def seconds_to_ticks(seconds: float) -> int:
 
 __all__ = [
     "TICKS_PER_SECOND",
+    "frames_to_ticks",
     "samples_to_ticks",
     "samples_to_ticks_ceil",
     "seconds_to_ticks",

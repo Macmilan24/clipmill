@@ -1,0 +1,55 @@
+{
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 900900,
+    "sampling_plan": "content-detector-at-30000-1001-h180",
+    "start_ticks": 0
+  },
+  "cuts": [
+    {
+      "confidence": {
+        "p10": 0.287,
+        "p50": 0.787
+      },
+      "score": 42.5,
+      "t_seconds": 3.003
+    }
+  ],
+  "detection": {
+    "analysis_height": 180,
+    "decoder": "ffmpeg-8.1.2-btb-n8.1.2",
+    "frame_rate": {
+      "den": 1001,
+      "num": 30000
+    },
+    "min_shot_ticks": 45045,
+    "threshold": 27.0
+  },
+  "invalid_regions": [],
+  "producer": {
+    "calibration": "content-score-over-threshold.v1",
+    "implementation": "clipmill-worker-shots@0.1.0+pyscenedetect-content",
+    "stage": "detect-shots"
+  },
+  "proxy_artifact_id": "sha256:9c0f000000000000000000000000000000000000000000000000000000000031",
+  "schema_version": "clipmill.evidence.shots.v1",
+  "shots": [
+    {
+      "confidence": {
+        "p10": 0.287,
+        "p50": 0.787
+      },
+      "end_ticks": 270270,
+      "start_ticks": 0
+    },
+    {
+      "confidence": {
+        "p10": 0.287,
+        "p50": 0.787
+      },
+      "end_ticks": 900900,
+      "start_ticks": 270270
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007"
+}

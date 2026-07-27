@@ -11,8 +11,8 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, DeviceProfilePayloadV1, JobState, SpeechAlignmentV1, SpeechRecognitionV1,
-        SpeechStagePayloadV1, TranscribeSourcePayloadV1,
+        self, DetectShotsPayloadV1, DeviceProfilePayloadV1, JobState, ShotsStagePayloadV1,
+        SpeechAlignmentV1, SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -39,6 +39,16 @@ use crate::{
 /// Key version every speech stage payload carries, so a worker can refuse a
 /// payload the daemon never meant for it.
 pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
+
+/// Key version the shot-detection stage payload carries, for the same reason.
+pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
+
+/// The one implementation of shot detection. Unlike the speech stages there is
+/// nothing to select between: the stage runs no model, so there is no cost to
+/// measure and no accelerated candidate to prefer. Recorded on the task all the
+/// same, because `producer.implementation` is what makes two producers' output
+/// distinguishable if a second one ever appears.
+pub(crate) const SHOTS_IMPLEMENTATION: &str = "clipmill-worker-shots@0.1.0+pyscenedetect-content";
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) const LEASE_TTL: Duration = Duration::from_secs(15);
@@ -603,6 +613,71 @@ impl JobPlan {
         }
     }
 
+    /// Shot detection over the proxy ingest already derived (book ch. 13).
+    ///
+    /// One task, not a chain. There is nothing to fan out: the stage reads one
+    /// artifact, runs no model, and publishes one document.
+    ///
+    /// The decoder's build identity is written into the payload rather than
+    /// left to the worker, because the payload is hashed into the artifact key
+    /// and the decoder is a versioned input to the result. Re-pinning FFmpeg
+    /// therefore invalidates shot detections and nothing else — which is the
+    /// correct blast radius, since a different build can hand the detector
+    /// different pixels.
+    pub(crate) fn detect_shots(
+        project_id: &ProjectId,
+        source_id: String,
+        proxy: ShotsProxy<'_>,
+        request: &DetectShotsPayloadV1,
+        decoder_bom: &str,
+        now: u64,
+    ) -> Self {
+        let payload = ShotsStagePayloadV1 {
+            key_version: SHOTS_STAGE_KEY_VERSION.to_owned(),
+            stage: "detect-shots".to_owned(),
+            source_fingerprint: proxy.source_fingerprint.to_owned(),
+            proxy_artifact_id: proxy.artifact_id.to_owned(),
+            detection: request.detection,
+            decoder_bom: decoder_bom.to_owned(),
+        };
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "detect-shots".to_owned(),
+            source_id: Some(source_id),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: "detect-shots".to_owned(),
+                input_kinds: vec!["media.proxy.v1".to_owned()],
+                output_kind: "evidence.shots.v1".to_owned(),
+                payload: payload.encode_to_vec(),
+                dependencies: Vec::new(),
+                resources: ResourceDeclaration {
+                    // One decoder process beside the detector, which is why
+                    // this is not the single thread the speech stages declare.
+                    cpu_threads: 2,
+                    ram_bytes: 512 * 1024 * 1024,
+                    // Nothing to accelerate: the work is a decode and some
+                    // array arithmetic, so any machine will do.
+                    accelerator_class: String::new(),
+                    vram_bytes: 0,
+                    disk_bytes: 128 * 1024 * 1024,
+                    network_policy: "local-lock".to_owned(),
+                    thermal_class: "sustained".to_owned(),
+                    determinism_class: "deterministic".to_owned(),
+                    checkpoint_support: false,
+                    preemption_cost: 2,
+                },
+                implementation: SHOTS_IMPLEMENTATION.to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
+        }
+    }
+
     pub(crate) fn device_profile(
         hardware_fingerprint: String,
         measurement_generation: u64,
@@ -652,6 +727,13 @@ impl JobPlan {
 /// The rendition the speech chain reads, and the source behind it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SpeechAudio<'a> {
+    pub artifact_id: &'a str,
+    pub source_fingerprint: &'a str,
+}
+
+/// The proxy shot detection reads, and the source behind it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ShotsProxy<'a> {
     pub artifact_id: &'a str,
     pub source_fingerprint: &'a str,
 }
@@ -1894,5 +1976,166 @@ mod resource_tests {
         assert!(capacity.reserve(&resources));
         capacity.release(&resources);
         assert!(capacity.reserve(&resources));
+    }
+}
+
+#[cfg(test)]
+mod shots_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use clipmill_contracts::proto::ipc::v1::{
+        DetectShotsPayloadV1, ShotDetectionV1, ShotsStagePayloadV1,
+    };
+    use clipmill_core::ProjectId;
+    use prost::Message;
+
+    use super::{JobPlan, SHOTS_IMPLEMENTATION, SHOTS_STAGE_KEY_VERSION, ShotsProxy};
+
+    const PROXY: &str = "sha256:9c0f000000000000000000000000000000000000000000000000000000000031";
+    const FINGERPRINT: &str =
+        "sha256:31ab000000000000000000000000000000000000000000000000000000000007";
+    const BOM: &str = "ffmpeg-8.1.2-btb-n8.1.2";
+
+    fn plan(request: &DetectShotsPayloadV1) -> JobPlan {
+        JobPlan::detect_shots(
+            &ProjectId::new(),
+            "src_0123456789abcdefghijklmnop".to_owned(),
+            ShotsProxy {
+                artifact_id: PROXY,
+                source_fingerprint: FINGERPRINT,
+            },
+            request,
+            BOM,
+            1_700_000_000_000,
+        )
+    }
+
+    fn request() -> DetectShotsPayloadV1 {
+        DetectShotsPayloadV1 {
+            key_version: "clipmill.detect-shots.v1".to_owned(),
+            source_id: "src_0123456789abcdefghijklmnop".to_owned(),
+            detection: None,
+        }
+    }
+
+    fn stage_payload(plan: &JobPlan) -> ShotsStagePayloadV1 {
+        ShotsStagePayloadV1::decode(plan.tasks[0].payload.as_slice()).expect("a shots payload")
+    }
+
+    /// One task, and it declares the proxy it reads. A plan that asked for
+    /// nothing would be leased before ingest finished.
+    #[test]
+    fn the_plan_is_one_task_over_the_proxy() {
+        let plan = plan(&request());
+        assert_eq!(plan.kind, "detect-shots");
+        assert_eq!(plan.tasks.len(), 1);
+        let task = &plan.tasks[0];
+        assert_eq!(task.kind, "detect-shots");
+        assert_eq!(task.input_kinds, ["media.proxy.v1"]);
+        assert_eq!(task.output_kind, "evidence.shots.v1");
+        assert_eq!(task.implementation, SHOTS_IMPLEMENTATION);
+        assert!(task.is_final);
+        // Nothing to accelerate, so nothing is demanded of the machine that
+        // takes it. A class here would refuse workers that can do this fine.
+        assert!(task.resources.accelerator_class.is_empty());
+        assert_eq!(task.resources.vram_bytes, 0);
+    }
+
+    /// The payload is hashed into the artifact key, so what it contains is what
+    /// re-running is sensitive to. A path in here would give the same footage
+    /// two addresses on two machines.
+    #[test]
+    fn the_stage_payload_names_the_decoder_build_and_no_path() {
+        let payload = stage_payload(&plan(&request()));
+        assert_eq!(payload.key_version, SHOTS_STAGE_KEY_VERSION);
+        assert_eq!(payload.stage, "detect-shots");
+        assert_eq!(payload.proxy_artifact_id, PROXY);
+        assert_eq!(payload.source_fingerprint, FINGERPRINT);
+        assert_eq!(payload.decoder_bom, BOM);
+        let encoded = String::from_utf8_lossy(&plan(&request()).tasks[0].payload).into_owned();
+        assert!(
+            !encoded.contains('/'),
+            "the keyed payload carries a path: {encoded}"
+        );
+    }
+
+    /// A caller with no opinion leaves the knobs at zero and the worker
+    /// resolves the defaults. Writing the daemon's defaults into the payload
+    /// instead would make a later change to them invalidate every cached
+    /// detection, including the ones nobody re-tuned.
+    #[test]
+    fn an_unopinionated_request_keys_without_numbers() {
+        let payload = stage_payload(&plan(&request()));
+        assert!(
+            payload.detection.is_none(),
+            "the daemon's defaults reached the key, so changing one would \
+             invalidate every cached detection"
+        );
+        let mut deliberate = request();
+        deliberate.detection = Some(ShotDetectionV1::default());
+        // An explicit all-zero block is the same request said out loud, and
+        // must key the same way — otherwise a caller who filled the struct in
+        // gets a cache miss against a caller who left it out.
+        assert_eq!(
+            stage_payload(&plan(&deliberate))
+                .detection
+                .unwrap_or_default(),
+            ShotDetectionV1::default()
+        );
+    }
+
+    /// Re-tuning is a different observation, not a correction of this one.
+    #[test]
+    fn a_retuned_threshold_changes_the_keyed_payload() {
+        let mut tuned = request();
+        tuned.detection = Some(ShotDetectionV1 {
+            threshold: 31.5,
+            min_shot_ticks: 45_045,
+            analysis_height: 180,
+        });
+        assert_ne!(
+            plan(&request()).tasks[0].payload,
+            plan(&tuned).tasks[0].payload
+        );
+    }
+
+    /// Re-pinning the decoder invalidates shot detections, because a different
+    /// build can hand the detector different pixels. Nothing else moves.
+    #[test]
+    fn a_repinned_decoder_changes_the_keyed_payload() {
+        let request = request();
+        let here = plan(&request);
+        let elsewhere = JobPlan::detect_shots(
+            &ProjectId::new(),
+            "src_0123456789abcdefghijklmnop".to_owned(),
+            ShotsProxy {
+                artifact_id: PROXY,
+                source_fingerprint: FINGERPRINT,
+            },
+            &request,
+            "ffmpeg-9.0.0-btb-n9.0.0",
+            1_700_000_000_000,
+        );
+        assert_ne!(here.tasks[0].payload, elsewhere.tasks[0].payload);
+    }
+
+    /// Two plans for the same source at different times must key identically,
+    /// or a warm run is never a cache hit.
+    #[test]
+    fn the_same_request_keys_identically_whenever_it_is_planned() {
+        let request = request();
+        let early = plan(&request);
+        let late = JobPlan::detect_shots(
+            &ProjectId::new(),
+            "src_0123456789abcdefghijklmnop".to_owned(),
+            ShotsProxy {
+                artifact_id: PROXY,
+                source_fingerprint: FINGERPRINT,
+            },
+            &request,
+            BOM,
+            1_900_000_000_000,
+        );
+        assert_eq!(early.tasks[0].payload, late.tasks[0].payload);
     }
 }

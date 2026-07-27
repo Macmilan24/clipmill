@@ -334,6 +334,64 @@ pub struct SpeechAlignmentV1 {
     #[prost(double, tag = "1")]
     pub min_score: f64,
 }
+/// Versioned payload for shot detection (book ch. 13). The request names a
+/// source; the daemon resolves it to the proxy ingest already derived, because
+/// a perception worker's job is to read the one decode everything else shares,
+/// not to open the original file again.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DetectShotsPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// Zero leaves each parameter at the daemon's default, so a caller with no
+    /// opinion does not have to have one.
+    #[prost(message, optional, tag = "3")]
+    pub detection: ::core::option::Option<ShotDetectionV1>,
+}
+/// Where the camera is judged to have changed. These are the operator-facing
+/// knobs: raising the threshold reports fewer cuts and loses the soft ones
+/// first, and lengthening the minimum shot merges a flash back into the shot
+/// it interrupted.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ShotDetectionV1 {
+    #[prost(double, tag = "1")]
+    pub threshold: f64,
+    #[prost(uint64, tag = "2")]
+    pub min_shot_ticks: u64,
+    /// Pixel height every frame is scaled to before comparison. Part of the
+    /// decision, not an optimisation: the content distance between two frames
+    /// depends on how much of the sensor noise survived the downscale.
+    #[prost(uint32, tag = "3")]
+    pub analysis_height: u32,
+}
+/// What the shot detector is asked to do.
+///
+/// Narrower than the job payload above, and for the same reason the speech
+/// stages are: this is hashed into the stage's artifact key, so anything the
+/// stage does not read must not appear here.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShotsStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    /// The mezzanine proxy. A content address, so the key it produces is the same
+    /// on every machine.
+    #[prost(string, tag = "4")]
+    pub proxy_artifact_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub detection: ::core::option::Option<ShotDetectionV1>,
+    /// Build identity of the decoder the worker will be handed, e.g.
+    /// "ffmpeg-8.1.2-btb-n8.1.2". It belongs in the key because a different build
+    /// can hand the detector different pixels; the path to it does not, and
+    /// travels on the lease instead.
+    #[prost(string, tag = "6")]
+    pub decoder_bom: ::prost::alloc::string::String,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.

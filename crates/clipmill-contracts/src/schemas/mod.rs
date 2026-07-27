@@ -13,6 +13,10 @@ pub mod device_profile;
 pub mod edit_ir;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/evidence_shots.rs"]
+pub mod evidence_shots;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/media_audio.rs"]
 pub mod media_audio;
 

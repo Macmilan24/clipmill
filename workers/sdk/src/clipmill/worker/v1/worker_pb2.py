@@ -25,59 +25,61 @@ _sym_db = _symbol_database.Default()
 from clipmill.shm.v1 import shm_pb2 as clipmill_dot_shm_dot_v1_dot_shm__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1f\x63lipmill/worker/v1/worker.proto\x12\x12\x63lipmill.worker.v1\x1a\x19\x63lipmill/shm/v1/shm.proto\"\xdb\x02\n\x14\x43\x61pabilityDescriptor\x12\x1b\n\tworker_id\x18\x01 \x01(\tR\x08workerId\x12\x16\n\x06\x66\x61mily\x18\x02 \x01(\tR\x06\x66\x61mily\x12\"\n\x0c\x63\x61pabilities\x18\x03 \x03(\tR\x0c\x63\x61pabilities\x12)\n\x10protocol_version\x18\x04 \x01(\tR\x0fprotocolVersion\x12\x18\n\x07\x62\x61\x63kend\x18\x05 \x01(\tR\x07\x62\x61\x63kend\x12(\n\x10max_memory_bytes\x18\x06 \x01(\x04R\x0emaxMemoryBytes\x12\x1d\n\npublic_key\x18\x07 \x01(\x0cR\tpublicKey\x12\x1c\n\tsignature\x18\x08 \x01(\x0cR\tsignature\x12\x1f\n\x0b\x63pu_threads\x18\t \x01(\rR\ncpuThreads\x12\x1d\n\nvram_bytes\x18\n \x01(\x04R\tvramBytes\"\x93\x04\n\tTaskLease\x12\x17\n\x07task_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n\x08lease_id\x18\x02 \x01(\tR\x07leaseId\x12\x12\n\x04kind\x18\x03 \x01(\tR\x04kind\x12\x18\n\x07payload\x18\x04 \x01(\x0cR\x07payload\x12\x32\n\x15heartbeat_interval_ms\x18\x05 \x01(\x04R\x13heartbeatIntervalMs\x12 \n\x0clease_ttl_ms\x18\x06 \x01(\x04R\nleaseTtlMs\x12\x1d\n\nstaging_id\x18\x07 \x01(\tR\tstagingId\x12\x1f\n\x0bstaging_dir\x18\x08 \x01(\tR\nstagingDir\x12,\n\x12input_artifact_ids\x18\t \x03(\tR\x10inputArtifactIds\x12\x46\n\rshared_buffer\x18\n \x01(\x0b\x32!.clipmill.shm.v1.BufferDescriptorR\x0csharedBuffer\x12\x1f\n\x0boutput_kind\x18\x0b \x01(\tR\noutputKind\x12\x18\n\x07\x61ttempt\x18\x0c \x01(\rR\x07\x61ttempt\x12#\n\rartifact_root\x18\r \x01(\tR\x0c\x61rtifactRoot\x12\x38\n\x06models\x18\x0e \x03(\x0b\x32 .clipmill.worker.v1.ModelBindingR\x06models\"\xa3\x01\n\x0cModelBinding\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n\x04root\x18\x02 \x01(\tR\x04root\x12\x16\n\x06\x64igest\x18\x03 \x01(\tR\x06\x64igest\x12\x33\n\x05\x66iles\x18\x04 \x03(\x0b\x32\x1d.clipmill.worker.v1.ModelFileR\x05\x66iles\x12\x1e\n\ncapability\x18\x05 \x01(\tR\ncapability\"M\n\tModelFile\x12\x12\n\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n\x06sha256\x18\x02 \x01(\tR\x06sha256\x12\x14\n\x05\x62ytes\x18\x03 \x01(\x04R\x05\x62ytes\"M\n\rProgressUnits\x12\x12\n\x04unit\x18\x01 \x01(\tR\x04unit\x12\x12\n\x04\x64one\x18\x02 \x01(\x04R\x04\x64one\x12\x14\n\x05total\x18\x03 \x01(\x04R\x05total\"e\n\tHeartbeat\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12=\n\x08progress\x18\x02 \x01(\x0b\x32!.clipmill.worker.v1.ProgressUnitsR\x08progress\"u\n\x07\x44\x65\x63line\x12\x17\n\x07task_id\x18\x01 \x01(\tR\x06taskId\x12\x39\n\x06reason\x18\x02 \x01(\x0e\x32!.clipmill.worker.v1.DeclineReasonR\x06reason\x12\x16\n\x06\x64\x65tail\x18\x03 \x01(\tR\x06\x64\x65tail\"\xab\x02\n\x08\x43omplete\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x39\n\x07outcome\x18\x02 \x01(\x0e\x32\x1f.clipmill.worker.v1.TaskOutcomeR\x07outcome\x12!\n\x0c\x61rtifact_ids\x18\x03 \x03(\tR\x0b\x61rtifactIds\x12\x45\n\rfailure_class\x18\x04 \x01(\x0e\x32 .clipmill.worker.v1.FailureClassR\x0c\x66\x61ilureClass\x12\x16\n\x06\x64\x65tail\x18\x05 \x01(\tR\x06\x64\x65tail\x12G\n\x0estaged_outputs\x18\x06 \x03(\x0b\x32 .clipmill.worker.v1.StagedOutputR\rstagedOutputs\"h\n\x0cStagedOutput\x12#\n\rrelative_path\x18\x01 \x01(\tR\x0crelativePath\x12\x1b\n\tbyte_size\x18\x02 \x01(\x04R\x08\x62yteSize\x12\x16\n\x06sha256\x18\x03 \x01(\tR\x06sha256\"\x9b\x01\n\x15RegistrationChallenge\x12\x14\n\x05nonce\x18\x01 \x01(\x0cR\x05nonce\x12>\n\x1bsupported_protocol_versions\x18\x02 \x03(\tR\x19supportedProtocolVersions\x12,\n\x12issued_unix_millis\x18\x03 \x01(\x04R\x10issuedUnixMillis\"Z\n\x0eRegisterWorker\x12H\n\ndescriptor\x18\x01 \x01(\x0b\x32(.clipmill.worker.v1.CapabilityDescriptorR\ndescriptor\"d\n\x0fRegistrationAck\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\x08R\x08\x61\x63\x63\x65pted\x12\x1d\n\nsession_id\x18\x02 \x01(\tR\tsessionId\x12\x16\n\x06\x64\x65tail\x18\x03 \x01(\tR\x06\x64\x65tail\"-\n\x0bWorkRequest\x12\x1e\n\x0bmax_wait_ms\x18\x01 \x01(\x04R\tmaxWaitMs\".\n\x06NoWork\x12$\n\x0eretry_after_ms\x18\x01 \x01(\x04R\x0cretryAfterMs\"\x9b\x01\n\x0fLeaseAcceptance\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x02 \x01(\x08R\x08\x61\x63\x63\x65pted\x12\x39\n\x06reason\x18\x03 \x01(\x0e\x32!.clipmill.worker.v1.DeclineReasonR\x06reason\x12\x16\n\x06\x64\x65tail\x18\x04 \x01(\tR\x06\x64\x65tail\"\x93\x01\n\x0cHeartbeatAck\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x02 \x01(\x08R\x08\x61\x63\x63\x65pted\x12\x1c\n\tcancelled\x18\x03 \x01(\x08R\tcancelled\x12.\n\x13\x65xpires_unix_millis\x18\x04 \x01(\x04R\x11\x65xpiresUnixMillis\"@\n\x0b\x43\x61ncelLease\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x16\n\x06reason\x18\x02 \x01(\tR\x06reason\"\x81\x01\n\rCompletionAck\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x02 \x01(\x08R\x08\x61\x63\x63\x65pted\x12!\n\x0c\x61rtifact_ids\x18\x03 \x03(\tR\x0b\x61rtifactIds\x12\x16\n\x06\x64\x65tail\x18\x04 \x01(\tR\x06\x64\x65tail\";\n\rProtocolError\x12\x12\n\x04\x63ode\x18\x01 \x01(\tR\x04\x63ode\x12\x16\n\x06\x64\x65tail\x18\x02 \x01(\tR\x06\x64\x65tail\"\xa5\x03\n\rWorkerRequest\x12@\n\x08register\x18\x01 \x01(\x0b\x32\".clipmill.worker.v1.RegisterWorkerH\x00R\x08register\x12\x44\n\x0cwork_request\x18\x02 \x01(\x0b\x32\x1f.clipmill.worker.v1.WorkRequestH\x00R\x0bworkRequest\x12P\n\x10lease_acceptance\x18\x03 \x01(\x0b\x32#.clipmill.worker.v1.LeaseAcceptanceH\x00R\x0fleaseAcceptance\x12=\n\theartbeat\x18\x04 \x01(\x0b\x32\x1d.clipmill.worker.v1.HeartbeatH\x00R\theartbeat\x12:\n\x08\x63omplete\x18\x05 \x01(\x0b\x32\x1c.clipmill.worker.v1.CompleteH\x00R\x08\x63omplete\x12\x37\n\x07\x64\x65\x63line\x18\x06 \x01(\x0b\x32\x1b.clipmill.worker.v1.DeclineH\x00R\x07\x64\x65\x63lineB\x06\n\x04\x62ody\"\xb7\x04\n\x0eWorkerResponse\x12I\n\tchallenge\x18\x01 \x01(\x0b\x32).clipmill.worker.v1.RegistrationChallengeH\x00R\tchallenge\x12P\n\x10registration_ack\x18\x02 \x01(\x0b\x32#.clipmill.worker.v1.RegistrationAckH\x00R\x0fregistrationAck\x12>\n\ntask_lease\x18\x03 \x01(\x0b\x32\x1d.clipmill.worker.v1.TaskLeaseH\x00R\ttaskLease\x12\x35\n\x07no_work\x18\x04 \x01(\x0b\x32\x1a.clipmill.worker.v1.NoWorkH\x00R\x06noWork\x12G\n\rheartbeat_ack\x18\x05 \x01(\x0b\x32 .clipmill.worker.v1.HeartbeatAckH\x00R\x0cheartbeatAck\x12\x39\n\x06\x63\x61ncel\x18\x06 \x01(\x0b\x32\x1f.clipmill.worker.v1.CancelLeaseH\x00R\x06\x63\x61ncel\x12J\n\x0e\x63ompletion_ack\x18\x07 \x01(\x0b\x32!.clipmill.worker.v1.CompletionAckH\x00R\rcompletionAck\x12\x39\n\x05\x65rror\x18\x08 \x01(\x0b\x32!.clipmill.worker.v1.ProtocolErrorH\x00R\x05\x65rrorB\x06\n\x04\x62ody*\xb7\x01\n\rDeclineReason\x12\x1e\n\x1a\x44\x45\x43LINE_REASON_UNSPECIFIED\x10\x00\x12#\n\x1f\x44\x45\x43LINE_REASON_UNSUPPORTED_KIND\x10\x01\x12\x1f\n\x1b\x44\x45\x43LINE_REASON_VERSION_SKEW\x10\x02\x12%\n!DECLINE_REASON_RESOURCE_EXHAUSTED\x10\x03\x12\x19\n\x15\x44\x45\x43LINE_REASON_POLICY\x10\x04*\x98\x01\n\x0bTaskOutcome\x12\x1c\n\x18TASK_OUTCOME_UNSPECIFIED\x10\x00\x12\x1a\n\x16TASK_OUTCOME_SUCCEEDED\x10\x01\x12\x1a\n\x16TASK_OUTCOME_RETRYABLE\x10\x02\x12\x17\n\x13TASK_OUTCOME_FAILED\x10\x03\x12\x1a\n\x16TASK_OUTCOME_CANCELLED\x10\x04*\xa7\x01\n\x0c\x46\x61ilureClass\x12\x1d\n\x19\x46\x41ILURE_CLASS_UNSPECIFIED\x10\x00\x12\x1b\n\x17\x46\x41ILURE_CLASS_TRANSIENT\x10\x01\x12\x1f\n\x1b\x46\x41ILURE_CLASS_DETERMINISTIC\x10\x02\x12\x1f\n\x1b\x46\x41ILURE_CLASS_CORRUPT_MODEL\x10\x03\x12\x19\n\x15\x46\x41ILURE_CLASS_NETWORK\x10\x04\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1f\x63lipmill/worker/v1/worker.proto\x12\x12\x63lipmill.worker.v1\x1a\x19\x63lipmill/shm/v1/shm.proto\"\xdb\x02\n\x14\x43\x61pabilityDescriptor\x12\x1b\n\tworker_id\x18\x01 \x01(\tR\x08workerId\x12\x16\n\x06\x66\x61mily\x18\x02 \x01(\tR\x06\x66\x61mily\x12\"\n\x0c\x63\x61pabilities\x18\x03 \x03(\tR\x0c\x63\x61pabilities\x12)\n\x10protocol_version\x18\x04 \x01(\tR\x0fprotocolVersion\x12\x18\n\x07\x62\x61\x63kend\x18\x05 \x01(\tR\x07\x62\x61\x63kend\x12(\n\x10max_memory_bytes\x18\x06 \x01(\x04R\x0emaxMemoryBytes\x12\x1d\n\npublic_key\x18\x07 \x01(\x0cR\tpublicKey\x12\x1c\n\tsignature\x18\x08 \x01(\x0cR\tsignature\x12\x1f\n\x0b\x63pu_threads\x18\t \x01(\rR\ncpuThreads\x12\x1d\n\nvram_bytes\x18\n \x01(\x04R\tvramBytes\"\xca\x04\n\tTaskLease\x12\x17\n\x07task_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n\x08lease_id\x18\x02 \x01(\tR\x07leaseId\x12\x12\n\x04kind\x18\x03 \x01(\tR\x04kind\x12\x18\n\x07payload\x18\x04 \x01(\x0cR\x07payload\x12\x32\n\x15heartbeat_interval_ms\x18\x05 \x01(\x04R\x13heartbeatIntervalMs\x12 \n\x0clease_ttl_ms\x18\x06 \x01(\x04R\nleaseTtlMs\x12\x1d\n\nstaging_id\x18\x07 \x01(\tR\tstagingId\x12\x1f\n\x0bstaging_dir\x18\x08 \x01(\tR\nstagingDir\x12,\n\x12input_artifact_ids\x18\t \x03(\tR\x10inputArtifactIds\x12\x46\n\rshared_buffer\x18\n \x01(\x0b\x32!.clipmill.shm.v1.BufferDescriptorR\x0csharedBuffer\x12\x1f\n\x0boutput_kind\x18\x0b \x01(\tR\noutputKind\x12\x18\n\x07\x61ttempt\x18\x0c \x01(\rR\x07\x61ttempt\x12#\n\rartifact_root\x18\r \x01(\tR\x0c\x61rtifactRoot\x12\x38\n\x06models\x18\x0e \x03(\x0b\x32 .clipmill.worker.v1.ModelBindingR\x06models\x12\x35\n\x05tools\x18\x0f \x03(\x0b\x32\x1f.clipmill.worker.v1.ToolBindingR\x05tools\"G\n\x0bToolBinding\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n\x04path\x18\x02 \x01(\tR\x04path\x12\x10\n\x03\x62om\x18\x03 \x01(\tR\x03\x62om\"\xa3\x01\n\x0cModelBinding\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n\x04root\x18\x02 \x01(\tR\x04root\x12\x16\n\x06\x64igest\x18\x03 \x01(\tR\x06\x64igest\x12\x33\n\x05\x66iles\x18\x04 \x03(\x0b\x32\x1d.clipmill.worker.v1.ModelFileR\x05\x66iles\x12\x1e\n\ncapability\x18\x05 \x01(\tR\ncapability\"M\n\tModelFile\x12\x12\n\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n\x06sha256\x18\x02 \x01(\tR\x06sha256\x12\x14\n\x05\x62ytes\x18\x03 \x01(\x04R\x05\x62ytes\"M\n\rProgressUnits\x12\x12\n\x04unit\x18\x01 \x01(\tR\x04unit\x12\x12\n\x04\x64one\x18\x02 \x01(\x04R\x04\x64one\x12\x14\n\x05total\x18\x03 \x01(\x04R\x05total\"e\n\tHeartbeat\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12=\n\x08progress\x18\x02 \x01(\x0b\x32!.clipmill.worker.v1.ProgressUnitsR\x08progress\"u\n\x07\x44\x65\x63line\x12\x17\n\x07task_id\x18\x01 \x01(\tR\x06taskId\x12\x39\n\x06reason\x18\x02 \x01(\x0e\x32!.clipmill.worker.v1.DeclineReasonR\x06reason\x12\x16\n\x06\x64\x65tail\x18\x03 \x01(\tR\x06\x64\x65tail\"\xab\x02\n\x08\x43omplete\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x39\n\x07outcome\x18\x02 \x01(\x0e\x32\x1f.clipmill.worker.v1.TaskOutcomeR\x07outcome\x12!\n\x0c\x61rtifact_ids\x18\x03 \x03(\tR\x0b\x61rtifactIds\x12\x45\n\rfailure_class\x18\x04 \x01(\x0e\x32 .clipmill.worker.v1.FailureClassR\x0c\x66\x61ilureClass\x12\x16\n\x06\x64\x65tail\x18\x05 \x01(\tR\x06\x64\x65tail\x12G\n\x0estaged_outputs\x18\x06 \x03(\x0b\x32 .clipmill.worker.v1.StagedOutputR\rstagedOutputs\"h\n\x0cStagedOutput\x12#\n\rrelative_path\x18\x01 \x01(\tR\x0crelativePath\x12\x1b\n\tbyte_size\x18\x02 \x01(\x04R\x08\x62yteSize\x12\x16\n\x06sha256\x18\x03 \x01(\tR\x06sha256\"\x9b\x01\n\x15RegistrationChallenge\x12\x14\n\x05nonce\x18\x01 \x01(\x0cR\x05nonce\x12>\n\x1bsupported_protocol_versions\x18\x02 \x03(\tR\x19supportedProtocolVersions\x12,\n\x12issued_unix_millis\x18\x03 \x01(\x04R\x10issuedUnixMillis\"Z\n\x0eRegisterWorker\x12H\n\ndescriptor\x18\x01 \x01(\x0b\x32(.clipmill.worker.v1.CapabilityDescriptorR\ndescriptor\"d\n\x0fRegistrationAck\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\x08R\x08\x61\x63\x63\x65pted\x12\x1d\n\nsession_id\x18\x02 \x01(\tR\tsessionId\x12\x16\n\x06\x64\x65tail\x18\x03 \x01(\tR\x06\x64\x65tail\"-\n\x0bWorkRequest\x12\x1e\n\x0bmax_wait_ms\x18\x01 \x01(\x04R\tmaxWaitMs\".\n\x06NoWork\x12$\n\x0eretry_after_ms\x18\x01 \x01(\x04R\x0cretryAfterMs\"\x9b\x01\n\x0fLeaseAcceptance\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x02 \x01(\x08R\x08\x61\x63\x63\x65pted\x12\x39\n\x06reason\x18\x03 \x01(\x0e\x32!.clipmill.worker.v1.DeclineReasonR\x06reason\x12\x16\n\x06\x64\x65tail\x18\x04 \x01(\tR\x06\x64\x65tail\"\x93\x01\n\x0cHeartbeatAck\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x02 \x01(\x08R\x08\x61\x63\x63\x65pted\x12\x1c\n\tcancelled\x18\x03 \x01(\x08R\tcancelled\x12.\n\x13\x65xpires_unix_millis\x18\x04 \x01(\x04R\x11\x65xpiresUnixMillis\"@\n\x0b\x43\x61ncelLease\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x16\n\x06reason\x18\x02 \x01(\tR\x06reason\"\x81\x01\n\rCompletionAck\x12\x19\n\x08lease_id\x18\x01 \x01(\tR\x07leaseId\x12\x1a\n\x08\x61\x63\x63\x65pted\x18\x02 \x01(\x08R\x08\x61\x63\x63\x65pted\x12!\n\x0c\x61rtifact_ids\x18\x03 \x03(\tR\x0b\x61rtifactIds\x12\x16\n\x06\x64\x65tail\x18\x04 \x01(\tR\x06\x64\x65tail\";\n\rProtocolError\x12\x12\n\x04\x63ode\x18\x01 \x01(\tR\x04\x63ode\x12\x16\n\x06\x64\x65tail\x18\x02 \x01(\tR\x06\x64\x65tail\"\xa5\x03\n\rWorkerRequest\x12@\n\x08register\x18\x01 \x01(\x0b\x32\".clipmill.worker.v1.RegisterWorkerH\x00R\x08register\x12\x44\n\x0cwork_request\x18\x02 \x01(\x0b\x32\x1f.clipmill.worker.v1.WorkRequestH\x00R\x0bworkRequest\x12P\n\x10lease_acceptance\x18\x03 \x01(\x0b\x32#.clipmill.worker.v1.LeaseAcceptanceH\x00R\x0fleaseAcceptance\x12=\n\theartbeat\x18\x04 \x01(\x0b\x32\x1d.clipmill.worker.v1.HeartbeatH\x00R\theartbeat\x12:\n\x08\x63omplete\x18\x05 \x01(\x0b\x32\x1c.clipmill.worker.v1.CompleteH\x00R\x08\x63omplete\x12\x37\n\x07\x64\x65\x63line\x18\x06 \x01(\x0b\x32\x1b.clipmill.worker.v1.DeclineH\x00R\x07\x64\x65\x63lineB\x06\n\x04\x62ody\"\xb7\x04\n\x0eWorkerResponse\x12I\n\tchallenge\x18\x01 \x01(\x0b\x32).clipmill.worker.v1.RegistrationChallengeH\x00R\tchallenge\x12P\n\x10registration_ack\x18\x02 \x01(\x0b\x32#.clipmill.worker.v1.RegistrationAckH\x00R\x0fregistrationAck\x12>\n\ntask_lease\x18\x03 \x01(\x0b\x32\x1d.clipmill.worker.v1.TaskLeaseH\x00R\ttaskLease\x12\x35\n\x07no_work\x18\x04 \x01(\x0b\x32\x1a.clipmill.worker.v1.NoWorkH\x00R\x06noWork\x12G\n\rheartbeat_ack\x18\x05 \x01(\x0b\x32 .clipmill.worker.v1.HeartbeatAckH\x00R\x0cheartbeatAck\x12\x39\n\x06\x63\x61ncel\x18\x06 \x01(\x0b\x32\x1f.clipmill.worker.v1.CancelLeaseH\x00R\x06\x63\x61ncel\x12J\n\x0e\x63ompletion_ack\x18\x07 \x01(\x0b\x32!.clipmill.worker.v1.CompletionAckH\x00R\rcompletionAck\x12\x39\n\x05\x65rror\x18\x08 \x01(\x0b\x32!.clipmill.worker.v1.ProtocolErrorH\x00R\x05\x65rrorB\x06\n\x04\x62ody*\xb7\x01\n\rDeclineReason\x12\x1e\n\x1a\x44\x45\x43LINE_REASON_UNSPECIFIED\x10\x00\x12#\n\x1f\x44\x45\x43LINE_REASON_UNSUPPORTED_KIND\x10\x01\x12\x1f\n\x1b\x44\x45\x43LINE_REASON_VERSION_SKEW\x10\x02\x12%\n!DECLINE_REASON_RESOURCE_EXHAUSTED\x10\x03\x12\x19\n\x15\x44\x45\x43LINE_REASON_POLICY\x10\x04*\x98\x01\n\x0bTaskOutcome\x12\x1c\n\x18TASK_OUTCOME_UNSPECIFIED\x10\x00\x12\x1a\n\x16TASK_OUTCOME_SUCCEEDED\x10\x01\x12\x1a\n\x16TASK_OUTCOME_RETRYABLE\x10\x02\x12\x17\n\x13TASK_OUTCOME_FAILED\x10\x03\x12\x1a\n\x16TASK_OUTCOME_CANCELLED\x10\x04*\xa7\x01\n\x0c\x46\x61ilureClass\x12\x1d\n\x19\x46\x41ILURE_CLASS_UNSPECIFIED\x10\x00\x12\x1b\n\x17\x46\x41ILURE_CLASS_TRANSIENT\x10\x01\x12\x1f\n\x1b\x46\x41ILURE_CLASS_DETERMINISTIC\x10\x02\x12\x1f\n\x1b\x46\x41ILURE_CLASS_CORRUPT_MODEL\x10\x03\x12\x19\n\x15\x46\x41ILURE_CLASS_NETWORK\x10\x04\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'clipmill.worker.v1.worker_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_DECLINEREASON']._serialized_start=3929
-  _globals['_DECLINEREASON']._serialized_end=4112
-  _globals['_TASKOUTCOME']._serialized_start=4115
-  _globals['_TASKOUTCOME']._serialized_end=4267
-  _globals['_FAILURECLASS']._serialized_start=4270
-  _globals['_FAILURECLASS']._serialized_end=4437
+  _globals['_DECLINEREASON']._serialized_start=4057
+  _globals['_DECLINEREASON']._serialized_end=4240
+  _globals['_TASKOUTCOME']._serialized_start=4243
+  _globals['_TASKOUTCOME']._serialized_end=4395
+  _globals['_FAILURECLASS']._serialized_start=4398
+  _globals['_FAILURECLASS']._serialized_end=4565
   _globals['_CAPABILITYDESCRIPTOR']._serialized_start=83
   _globals['_CAPABILITYDESCRIPTOR']._serialized_end=430
   _globals['_TASKLEASE']._serialized_start=433
-  _globals['_TASKLEASE']._serialized_end=964
-  _globals['_MODELBINDING']._serialized_start=967
-  _globals['_MODELBINDING']._serialized_end=1130
-  _globals['_MODELFILE']._serialized_start=1132
-  _globals['_MODELFILE']._serialized_end=1209
-  _globals['_PROGRESSUNITS']._serialized_start=1211
-  _globals['_PROGRESSUNITS']._serialized_end=1288
-  _globals['_HEARTBEAT']._serialized_start=1290
-  _globals['_HEARTBEAT']._serialized_end=1391
-  _globals['_DECLINE']._serialized_start=1393
-  _globals['_DECLINE']._serialized_end=1510
-  _globals['_COMPLETE']._serialized_start=1513
-  _globals['_COMPLETE']._serialized_end=1812
-  _globals['_STAGEDOUTPUT']._serialized_start=1814
-  _globals['_STAGEDOUTPUT']._serialized_end=1918
-  _globals['_REGISTRATIONCHALLENGE']._serialized_start=1921
-  _globals['_REGISTRATIONCHALLENGE']._serialized_end=2076
-  _globals['_REGISTERWORKER']._serialized_start=2078
-  _globals['_REGISTERWORKER']._serialized_end=2168
-  _globals['_REGISTRATIONACK']._serialized_start=2170
-  _globals['_REGISTRATIONACK']._serialized_end=2270
-  _globals['_WORKREQUEST']._serialized_start=2272
-  _globals['_WORKREQUEST']._serialized_end=2317
-  _globals['_NOWORK']._serialized_start=2319
-  _globals['_NOWORK']._serialized_end=2365
-  _globals['_LEASEACCEPTANCE']._serialized_start=2368
-  _globals['_LEASEACCEPTANCE']._serialized_end=2523
-  _globals['_HEARTBEATACK']._serialized_start=2526
-  _globals['_HEARTBEATACK']._serialized_end=2673
-  _globals['_CANCELLEASE']._serialized_start=2675
-  _globals['_CANCELLEASE']._serialized_end=2739
-  _globals['_COMPLETIONACK']._serialized_start=2742
-  _globals['_COMPLETIONACK']._serialized_end=2871
-  _globals['_PROTOCOLERROR']._serialized_start=2873
-  _globals['_PROTOCOLERROR']._serialized_end=2932
-  _globals['_WORKERREQUEST']._serialized_start=2935
-  _globals['_WORKERREQUEST']._serialized_end=3356
-  _globals['_WORKERRESPONSE']._serialized_start=3359
-  _globals['_WORKERRESPONSE']._serialized_end=3926
+  _globals['_TASKLEASE']._serialized_end=1019
+  _globals['_TOOLBINDING']._serialized_start=1021
+  _globals['_TOOLBINDING']._serialized_end=1092
+  _globals['_MODELBINDING']._serialized_start=1095
+  _globals['_MODELBINDING']._serialized_end=1258
+  _globals['_MODELFILE']._serialized_start=1260
+  _globals['_MODELFILE']._serialized_end=1337
+  _globals['_PROGRESSUNITS']._serialized_start=1339
+  _globals['_PROGRESSUNITS']._serialized_end=1416
+  _globals['_HEARTBEAT']._serialized_start=1418
+  _globals['_HEARTBEAT']._serialized_end=1519
+  _globals['_DECLINE']._serialized_start=1521
+  _globals['_DECLINE']._serialized_end=1638
+  _globals['_COMPLETE']._serialized_start=1641
+  _globals['_COMPLETE']._serialized_end=1940
+  _globals['_STAGEDOUTPUT']._serialized_start=1942
+  _globals['_STAGEDOUTPUT']._serialized_end=2046
+  _globals['_REGISTRATIONCHALLENGE']._serialized_start=2049
+  _globals['_REGISTRATIONCHALLENGE']._serialized_end=2204
+  _globals['_REGISTERWORKER']._serialized_start=2206
+  _globals['_REGISTERWORKER']._serialized_end=2296
+  _globals['_REGISTRATIONACK']._serialized_start=2298
+  _globals['_REGISTRATIONACK']._serialized_end=2398
+  _globals['_WORKREQUEST']._serialized_start=2400
+  _globals['_WORKREQUEST']._serialized_end=2445
+  _globals['_NOWORK']._serialized_start=2447
+  _globals['_NOWORK']._serialized_end=2493
+  _globals['_LEASEACCEPTANCE']._serialized_start=2496
+  _globals['_LEASEACCEPTANCE']._serialized_end=2651
+  _globals['_HEARTBEATACK']._serialized_start=2654
+  _globals['_HEARTBEATACK']._serialized_end=2801
+  _globals['_CANCELLEASE']._serialized_start=2803
+  _globals['_CANCELLEASE']._serialized_end=2867
+  _globals['_COMPLETIONACK']._serialized_start=2870
+  _globals['_COMPLETIONACK']._serialized_end=2999
+  _globals['_PROTOCOLERROR']._serialized_start=3001
+  _globals['_PROTOCOLERROR']._serialized_end=3060
+  _globals['_WORKERREQUEST']._serialized_start=3063
+  _globals['_WORKERREQUEST']._serialized_end=3484
+  _globals['_WORKERRESPONSE']._serialized_start=3487
+  _globals['_WORKERRESPONSE']._serialized_end=4054
 # @@protoc_insertion_point(module_scope)

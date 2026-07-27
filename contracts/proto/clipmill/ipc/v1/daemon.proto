@@ -234,6 +234,52 @@ message SpeechAlignmentV1 {
   double min_score = 1;
 }
 
+// Versioned payload for shot detection (book ch. 13). The request names a
+// source; the daemon resolves it to the proxy ingest already derived, because
+// a perception worker's job is to read the one decode everything else shares,
+// not to open the original file again.
+message DetectShotsPayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // Zero leaves each parameter at the daemon's default, so a caller with no
+  // opinion does not have to have one.
+  ShotDetectionV1 detection = 3;
+}
+
+// Where the camera is judged to have changed. These are the operator-facing
+// knobs: raising the threshold reports fewer cuts and loses the soft ones
+// first, and lengthening the minimum shot merges a flash back into the shot
+// it interrupted.
+message ShotDetectionV1 {
+  double threshold = 1;
+  uint64 min_shot_ticks = 2;
+  // Pixel height every frame is scaled to before comparison. Part of the
+  // decision, not an optimisation: the content distance between two frames
+  // depends on how much of the sensor noise survived the downscale.
+  uint32 analysis_height = 3;
+}
+
+// What the shot detector is asked to do.
+//
+// Narrower than the job payload above, and for the same reason the speech
+// stages are: this is hashed into the stage's artifact key, so anything the
+// stage does not read must not appear here.
+message ShotsStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string source_fingerprint = 3;
+  // The mezzanine proxy. A content address, so the key it produces is the same
+  // on every machine.
+  string proxy_artifact_id = 4;
+  ShotDetectionV1 detection = 5;
+  // Build identity of the decoder the worker will be handed, e.g.
+  // "ffmpeg-8.1.2-btb-n8.1.2". It belongs in the key because a different build
+  // can hand the detector different pixels; the path to it does not, and
+  // travels on the lease instead.
+  string decoder_bom = 6;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.

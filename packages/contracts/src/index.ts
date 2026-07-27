@@ -18,6 +18,7 @@ export type { SpeechVad } from './gen/schemas/speech-vad.js';
 export type { SpeechAsr } from './gen/schemas/speech-asr.js';
 export type { SpeechAlignment } from './gen/schemas/speech-alignment.js';
 export type { SpeechTranscript } from './gen/schemas/speech-transcript.js';
+export type { EvidenceShots } from './gen/schemas/evidence-shots.js';
 
 // IPC control plane.
 export { PingRequestSchema, PingResponseSchema } from './gen/proto/clipmill/ipc/v1/ping_pb.js';
