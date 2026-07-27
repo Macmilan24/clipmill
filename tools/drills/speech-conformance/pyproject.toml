@@ -4,20 +4,24 @@ version = "0.1.0"
 description = "Runs the whole speech chain over a fixture whose word timing is known by construction"
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"
-# The one place all three speech workers are installed together. They ship as
+# The one place every speech worker is installed together. They ship as
 # separate environments on purpose — the accelerated primary is macOS-only and
-# the runtimes have different dependency tails — so the gate that exercises
-# them end to end needs an environment of its own rather than one of theirs.
+# the runtimes have different dependency tails — so the gates that exercise
+# them end to end need an environment of their own rather than one of theirs.
+# This is also where the benchmark runs, because ranking implementations means
+# loading them in one process on one machine.
 dependencies = [
   "clipmill-worker-vad",
   "clipmill-worker-asr-whispercpp",
   "clipmill-worker-align",
+  "clipmill-worker-speech-mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [tool.uv.sources]
 clipmill-worker-vad = { path = "../../../workers/vad", editable = true }
 clipmill-worker-asr-whispercpp = { path = "../../../workers/asr-whispercpp", editable = true }
 clipmill-worker-align = { path = "../../../workers/align", editable = true }
+clipmill-worker-speech-mlx = { path = "../../../workers/speech-mlx", editable = true }
 
 [build-system]
 requires = ["hatchling"]

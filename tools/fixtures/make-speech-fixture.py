@@ -67,7 +67,21 @@ def main() -> int:
         default="ffmpeg",
         help="path to the pinned ffmpeg (defaults to whatever is on PATH)",
     )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help=(
+            "how many times to lay down the two utterances. The benchmark wants "
+            "a minute of speech and the timing gate wants ten seconds of it; the "
+            "arithmetic that places the words is the same either way, so the "
+            "truth stays exact at any length."
+        ),
+    )
     options = parser.parse_args()
+    if options.repeat < 1:
+        print("make-speech-fixture: --repeat must be at least 1", file=sys.stderr)
+        return 2
 
     synthesizer = _synthesizer()
     if synthesizer is None:
@@ -87,16 +101,25 @@ def main() -> int:
     silence = b"\x00\x00"
     audio = bytearray(silence * _ms(LEAD_IN_MS))
     placed: list[Placed] = []
+    # Each distinct word is synthesized once and placed as often as asked. A
+    # repeat that re-synthesized would be slower and no truer: the truth is
+    # where the samples were laid down, not how many times a voice was asked
+    # for them.
+    rendered: dict[str, bytes] = {}
+    utterances = [words for _ in range(options.repeat) for words in UTTERANCES]
 
-    for index, utterance in enumerate(UTTERANCES):
+    for index, utterance in enumerate(utterances):
         if index > 0:
             audio.extend(silence * _ms(GAP_BETWEEN_MS))
         for position, word in enumerate(utterance):
             if position > 0:
                 audio.extend(silence * _ms(GAP_WITHIN_MS))
-            frames = _render_word(synthesizer, word, scratch, options.ffmpeg, len(placed))
+            if word not in rendered:
+                rendered[word] = _render_word(
+                    synthesizer, word, scratch, options.ffmpeg, len(rendered)
+                )
             start = len(audio) // 2
-            audio.extend(frames)
+            audio.extend(rendered[word])
             placed.append(Placed(word, index, start, len(audio) // 2))
     audio.extend(silence * _ms(LEAD_OUT_MS))
 
@@ -125,7 +148,7 @@ def main() -> int:
                     max(word.end_sample for word in placed if word.utterance == index)
                 ),
             }
-            for index, words in enumerate(UTTERANCES)
+            for index, words in enumerate(utterances)
         ],
         "words": [
             {
@@ -145,7 +168,7 @@ def main() -> int:
     print(
         f"make-speech-fixture: {wav_path} "
         f"({truth['duration_ticks'] / TICKS_PER_SECOND:.2f}s, "
-        f"{len(placed)} words in {len(UTTERANCES)} utterances, via {synthesizer[0]})"
+        f"{len(placed)} words in {len(utterances)} utterances, via {synthesizer[0]})"
     )
     return 0
 
