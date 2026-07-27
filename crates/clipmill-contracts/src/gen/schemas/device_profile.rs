@@ -768,6 +768,29 @@ impl<'de> ::serde::Deserialize<'de> for DeviceAttestationSignature {
 #[doc = "    },"]
 #[doc = "    \"schema_version\": {"]
 #[doc = "      \"const\": \"clipmill.device_profile.v1\""]
+#[doc = "    },"]
+#[doc = "    \"selection\": {"]
+#[doc = "      \"description\": \"Which implementation each model-running capability is bound to on this device, and the measurement that decided it (D19). Absent on profiles taken before any capability had candidates. A binding names one implementation; the candidate list beside it is the evidence, including the candidates that could not run here and why — a device that cannot say why it rejected an implementation cannot be asked to justify its choice.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"bindings\","]
+#[doc = "        \"candidates\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"bindings\": {"]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"$ref\": \"#/$defs/implementation_binding\""]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"candidates\": {"]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"$ref\": \"#/$defs/implementation_candidate\""]
+#[doc = "          }"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -785,6 +808,8 @@ pub struct DeviceProfile {
     pub phase0: ::std::option::Option<DeviceProfilePhase0>,
     pub platform: DeviceProfilePlatform,
     pub schema_version: ::serde_json::Value,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub selection: ::std::option::Option<DeviceProfileSelection>,
 }
 impl DeviceProfile {
     pub fn builder() -> builder::DeviceProfile {
@@ -1398,6 +1423,47 @@ impl ::std::convert::TryFrom<::std::string::String> for DeviceProfilePlatformOs 
         value.parse()
     }
 }
+#[doc = "Which implementation each model-running capability is bound to on this device, and the measurement that decided it (D19). Absent on profiles taken before any capability had candidates. A binding names one implementation; the candidate list beside it is the evidence, including the candidates that could not run here and why — a device that cannot say why it rejected an implementation cannot be asked to justify its choice."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Which implementation each model-running capability is bound to on this device, and the measurement that decided it (D19). Absent on profiles taken before any capability had candidates. A binding names one implementation; the candidate list beside it is the evidence, including the candidates that could not run here and why — a device that cannot say why it rejected an implementation cannot be asked to justify its choice.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"bindings\","]
+#[doc = "    \"candidates\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"bindings\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/implementation_binding\""]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"candidates\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/implementation_candidate\""]
+#[doc = "      }"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceProfileSelection {
+    pub bindings: ::std::vec::Vec<ImplementationBinding>,
+    pub candidates: ::std::vec::Vec<ImplementationCandidate>,
+}
+impl DeviceProfileSelection {
+    pub fn builder() -> builder::DeviceProfileSelection {
+        Default::default()
+    }
+}
 #[doc = "`HardwareRoundtrip`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1685,6 +1751,1519 @@ impl ::std::convert::TryFrom<::std::string::String> for HardwareRoundtripVariant
     }
 }
 impl<'de> ::serde::Deserialize<'de> for HardwareRoundtripVariant1UnavailableReason {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "One capability's chosen implementation, and how it was chosen."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"One capability's chosen implementation, and how it was chosen.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"backend\","]
+#[doc = "    \"capability\","]
+#[doc = "    \"implementation\","]
+#[doc = "    \"model\","]
+#[doc = "    \"selected_by\","]
+#[doc = "    \"stage\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"backend\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"capability\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"detail\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 512"]
+#[doc = "    },"]
+#[doc = "    \"implementation\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 128,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"model\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"selected_by\": {"]
+#[doc = "      \"description\": \"measured — a benchmark ranked two or more runnable candidates. sole_candidate — only one candidate could run here, so nothing was ranked. unmeasured_fallback — candidates exist but no valid benchmark covers this device, so the portable one was taken. The three are kept apart because a choice nobody measured must never read as one somebody did.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"measured\","]
+#[doc = "        \"sole_candidate\","]
+#[doc = "        \"unmeasured_fallback\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"stage\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ImplementationBinding {
+    pub backend: ImplementationBindingBackend,
+    pub capability: ImplementationBindingCapability,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub detail: ::std::option::Option<ImplementationBindingDetail>,
+    pub implementation: ImplementationBindingImplementation,
+    pub model: ImplementationBindingModel,
+    #[doc = "measured — a benchmark ranked two or more runnable candidates. sole_candidate — only one candidate could run here, so nothing was ranked. unmeasured_fallback — candidates exist but no valid benchmark covers this device, so the portable one was taken. The three are kept apart because a choice nobody measured must never read as one somebody did."]
+    pub selected_by: ImplementationBindingSelectedBy,
+    pub stage: ImplementationBindingStage,
+}
+impl ImplementationBinding {
+    pub fn builder() -> builder::ImplementationBinding {
+        Default::default()
+    }
+}
+#[doc = "`ImplementationBindingBackend`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationBindingBackend(::std::string::String);
+impl ::std::ops::Deref for ImplementationBindingBackend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationBindingBackend> for ::std::string::String {
+    fn from(value: ImplementationBindingBackend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationBindingBackend {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationBindingBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationBindingBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationBindingBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationBindingBackend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationBindingCapability`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationBindingCapability(::std::string::String);
+impl ::std::ops::Deref for ImplementationBindingCapability {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationBindingCapability> for ::std::string::String {
+    fn from(value: ImplementationBindingCapability) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationBindingCapability {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationBindingCapability {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationBindingCapability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationBindingCapability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationBindingCapability {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationBindingDetail`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 512"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationBindingDetail(::std::string::String);
+impl ::std::ops::Deref for ImplementationBindingDetail {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationBindingDetail> for ::std::string::String {
+    fn from(value: ImplementationBindingDetail) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationBindingDetail {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationBindingDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationBindingDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationBindingDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationBindingDetail {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationBindingImplementation`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 128,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationBindingImplementation(::std::string::String);
+impl ::std::ops::Deref for ImplementationBindingImplementation {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationBindingImplementation> for ::std::string::String {
+    fn from(value: ImplementationBindingImplementation) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationBindingImplementation {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 128usize {
+            return Err("longer than 128 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationBindingImplementation {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationBindingImplementation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationBindingImplementation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationBindingImplementation {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationBindingModel`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationBindingModel(::std::string::String);
+impl ::std::ops::Deref for ImplementationBindingModel {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationBindingModel> for ::std::string::String {
+    fn from(value: ImplementationBindingModel) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationBindingModel {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationBindingModel {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationBindingModel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationBindingModel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationBindingModel {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "measured — a benchmark ranked two or more runnable candidates. sole_candidate — only one candidate could run here, so nothing was ranked. unmeasured_fallback — candidates exist but no valid benchmark covers this device, so the portable one was taken. The three are kept apart because a choice nobody measured must never read as one somebody did."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"measured — a benchmark ranked two or more runnable candidates. sole_candidate — only one candidate could run here, so nothing was ranked. unmeasured_fallback — candidates exist but no valid benchmark covers this device, so the portable one was taken. The three are kept apart because a choice nobody measured must never read as one somebody did.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"measured\","]
+#[doc = "    \"sole_candidate\","]
+#[doc = "    \"unmeasured_fallback\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ImplementationBindingSelectedBy {
+    #[serde(rename = "measured")]
+    Measured,
+    #[serde(rename = "sole_candidate")]
+    SoleCandidate,
+    #[serde(rename = "unmeasured_fallback")]
+    UnmeasuredFallback,
+}
+impl ::std::fmt::Display for ImplementationBindingSelectedBy {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Measured => f.write_str("measured"),
+            Self::SoleCandidate => f.write_str("sole_candidate"),
+            Self::UnmeasuredFallback => f.write_str("unmeasured_fallback"),
+        }
+    }
+}
+impl ::std::str::FromStr for ImplementationBindingSelectedBy {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "measured" => Ok(Self::Measured),
+            "sole_candidate" => Ok(Self::SoleCandidate),
+            "unmeasured_fallback" => Ok(Self::UnmeasuredFallback),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationBindingSelectedBy {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationBindingSelectedBy {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationBindingSelectedBy {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`ImplementationBindingStage`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationBindingStage(::std::string::String);
+impl ::std::ops::Deref for ImplementationBindingStage {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationBindingStage> for ::std::string::String {
+    fn from(value: ImplementationBindingStage) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationBindingStage {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationBindingStage {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationBindingStage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationBindingStage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationBindingStage {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "One implementation that could serve a capability, measured over the benchmark fixture or refused with a reason."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"One implementation that could serve a capability, measured over the benchmark fixture or refused with a reason.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"not\": {"]
+#[doc = "        \"required\": ["]
+#[doc = "          \"unavailable_reason\""]
+#[doc = "        ]"]
+#[doc = "      },"]
+#[doc = "      \"required\": ["]
+#[doc = "        \"peak_resident_bytes\","]
+#[doc = "        \"real_time_factor\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"runnable\": {"]
+#[doc = "          \"const\": true"]
+#[doc = "        }"]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"not\": {"]
+#[doc = "        \"required\": ["]
+#[doc = "          \"real_time_factor\""]
+#[doc = "        ]"]
+#[doc = "      },"]
+#[doc = "      \"required\": ["]
+#[doc = "        \"unavailable_reason\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"runnable\": {"]
+#[doc = "          \"const\": false"]
+#[doc = "        }"]
+#[doc = "      }"]
+#[doc = "    }"]
+#[doc = "  ],"]
+#[doc = "  \"required\": ["]
+#[doc = "    \"backend\","]
+#[doc = "    \"capability\","]
+#[doc = "    \"implementation\","]
+#[doc = "    \"model\","]
+#[doc = "    \"model_digest\","]
+#[doc = "    \"runnable\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"backend\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"capability\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"implementation\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 128,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"model\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 64,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"model_digest\": {"]
+#[doc = "      \"description\": \"The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old.\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "    },"]
+#[doc = "    \"peak_resident_bytes\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"real_time_factor\": {"]
+#[doc = "      \"description\": \"Benchmark audio seconds divided by wall-clock seconds. Above 1 is faster than real time. A rate, not a timeline position.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"exclusiveMinimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"runnable\": {"]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
+#[doc = "    \"unavailable_reason\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 512,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum ImplementationCandidate {
+    Variant0 {
+        backend: ImplementationCandidateVariant0Backend,
+        capability: ImplementationCandidateVariant0Capability,
+        implementation: ImplementationCandidateVariant0Implementation,
+        model: ImplementationCandidateVariant0Model,
+        #[doc = "The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old."]
+        model_digest: ImplementationCandidateVariant0ModelDigest,
+        peak_resident_bytes: ::std::num::NonZeroU64,
+        #[doc = "Benchmark audio seconds divided by wall-clock seconds. Above 1 is faster than real time. A rate, not a timeline position."]
+        real_time_factor: f64,
+        runnable: bool,
+    },
+    Variant1 {
+        backend: ImplementationCandidateVariant1Backend,
+        capability: ImplementationCandidateVariant1Capability,
+        implementation: ImplementationCandidateVariant1Implementation,
+        model: ImplementationCandidateVariant1Model,
+        #[doc = "The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old."]
+        model_digest: ImplementationCandidateVariant1ModelDigest,
+        runnable: bool,
+        unavailable_reason: ImplementationCandidateVariant1UnavailableReason,
+    },
+}
+#[doc = "`ImplementationCandidateVariant0Backend`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant0Backend(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant0Backend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant0Backend> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant0Backend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant0Backend {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant0Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationCandidateVariant0Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant0Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant0Backend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant0Capability`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant0Capability(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant0Capability {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant0Capability> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant0Capability) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant0Capability {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant0Capability {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationCandidateVariant0Capability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant0Capability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant0Capability {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant0Implementation`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 128,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant0Implementation(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant0Implementation {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant0Implementation> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant0Implementation) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant0Implementation {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 128usize {
+            return Err("longer than 128 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant0Implementation {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ImplementationCandidateVariant0Implementation
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ImplementationCandidateVariant0Implementation
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant0Implementation {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant0Model`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant0Model(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant0Model {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant0Model> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant0Model) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant0Model {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant0Model {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationCandidateVariant0Model {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant0Model {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant0Model {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant0ModelDigest(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant0ModelDigest {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant0ModelDigest> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant0ModelDigest) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant0ModelDigest {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^sha256:[0-9a-f]{64}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^sha256:[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant0ModelDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ImplementationCandidateVariant0ModelDigest
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant0ModelDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant0ModelDigest {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant1Backend`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant1Backend(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant1Backend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant1Backend> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant1Backend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant1Backend {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant1Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationCandidateVariant1Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant1Backend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant1Backend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant1Capability`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant1Capability(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant1Capability {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant1Capability> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant1Capability) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant1Capability {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant1Capability {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationCandidateVariant1Capability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant1Capability {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant1Capability {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant1Implementation`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 128,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant1Implementation(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant1Implementation {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant1Implementation> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant1Implementation) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant1Implementation {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 128usize {
+            return Err("longer than 128 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant1Implementation {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ImplementationCandidateVariant1Implementation
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ImplementationCandidateVariant1Implementation
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant1Implementation {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant1Model`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 64,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant1Model(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant1Model {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant1Model> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant1Model) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant1Model {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant1Model {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ImplementationCandidateVariant1Model {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant1Model {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant1Model {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant1ModelDigest(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant1ModelDigest {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant1ModelDigest> for ::std::string::String {
+    fn from(value: ImplementationCandidateVariant1ModelDigest) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant1ModelDigest {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^sha256:[0-9a-f]{64}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^sha256:[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant1ModelDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ImplementationCandidateVariant1ModelDigest
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImplementationCandidateVariant1ModelDigest {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant1ModelDigest {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`ImplementationCandidateVariant1UnavailableReason`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 512,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ImplementationCandidateVariant1UnavailableReason(::std::string::String);
+impl ::std::ops::Deref for ImplementationCandidateVariant1UnavailableReason {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ImplementationCandidateVariant1UnavailableReason>
+    for ::std::string::String
+{
+    fn from(value: ImplementationCandidateVariant1UnavailableReason) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ImplementationCandidateVariant1UnavailableReason {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImplementationCandidateVariant1UnavailableReason {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ImplementationCandidateVariant1UnavailableReason
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ImplementationCandidateVariant1UnavailableReason
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ImplementationCandidateVariant1UnavailableReason {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2171,6 +3750,10 @@ pub mod builder {
         >,
         platform: ::std::result::Result<super::DeviceProfilePlatform, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
+        selection: ::std::result::Result<
+            ::std::option::Option<super::DeviceProfileSelection>,
+            ::std::string::String,
+        >,
     }
     impl ::std::default::Default for DeviceProfile {
         fn default() -> Self {
@@ -2182,6 +3765,7 @@ pub mod builder {
                 phase0: Ok(Default::default()),
                 platform: Err("no value supplied for platform".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
+                selection: Ok(Default::default()),
             }
         }
     }
@@ -2256,6 +3840,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for schema_version: {e}"));
             self
         }
+        pub fn selection<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::DeviceProfileSelection>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.selection = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for selection: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<DeviceProfile> for super::DeviceProfile {
         type Error = super::error::ConversionError;
@@ -2270,6 +3864,7 @@ pub mod builder {
                 phase0: value.phase0?,
                 platform: value.platform?,
                 schema_version: value.schema_version?,
+                selection: value.selection?,
             })
         }
     }
@@ -2283,6 +3878,7 @@ pub mod builder {
                 phase0: Ok(value.phase0),
                 platform: Ok(value.platform),
                 schema_version: Ok(value.schema_version),
+                selection: Ok(value.selection),
             }
         }
     }
@@ -2800,6 +4396,198 @@ pub mod builder {
                 arch: Ok(value.arch),
                 os: Ok(value.os),
                 os_version: Ok(value.os_version),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct DeviceProfileSelection {
+        bindings: ::std::result::Result<
+            ::std::vec::Vec<super::ImplementationBinding>,
+            ::std::string::String,
+        >,
+        candidates: ::std::result::Result<
+            ::std::vec::Vec<super::ImplementationCandidate>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for DeviceProfileSelection {
+        fn default() -> Self {
+            Self {
+                bindings: Err("no value supplied for bindings".to_string()),
+                candidates: Err("no value supplied for candidates".to_string()),
+            }
+        }
+    }
+    impl DeviceProfileSelection {
+        pub fn bindings<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::ImplementationBinding>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.bindings = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for bindings: {e}"));
+            self
+        }
+        pub fn candidates<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::ImplementationCandidate>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.candidates = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for candidates: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<DeviceProfileSelection> for super::DeviceProfileSelection {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: DeviceProfileSelection,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                bindings: value.bindings?,
+                candidates: value.candidates?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::DeviceProfileSelection> for DeviceProfileSelection {
+        fn from(value: super::DeviceProfileSelection) -> Self {
+            Self {
+                bindings: Ok(value.bindings),
+                candidates: Ok(value.candidates),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ImplementationBinding {
+        backend: ::std::result::Result<super::ImplementationBindingBackend, ::std::string::String>,
+        capability:
+            ::std::result::Result<super::ImplementationBindingCapability, ::std::string::String>,
+        detail: ::std::result::Result<
+            ::std::option::Option<super::ImplementationBindingDetail>,
+            ::std::string::String,
+        >,
+        implementation: ::std::result::Result<
+            super::ImplementationBindingImplementation,
+            ::std::string::String,
+        >,
+        model: ::std::result::Result<super::ImplementationBindingModel, ::std::string::String>,
+        selected_by:
+            ::std::result::Result<super::ImplementationBindingSelectedBy, ::std::string::String>,
+        stage: ::std::result::Result<super::ImplementationBindingStage, ::std::string::String>,
+    }
+    impl ::std::default::Default for ImplementationBinding {
+        fn default() -> Self {
+            Self {
+                backend: Err("no value supplied for backend".to_string()),
+                capability: Err("no value supplied for capability".to_string()),
+                detail: Ok(Default::default()),
+                implementation: Err("no value supplied for implementation".to_string()),
+                model: Err("no value supplied for model".to_string()),
+                selected_by: Err("no value supplied for selected_by".to_string()),
+                stage: Err("no value supplied for stage".to_string()),
+            }
+        }
+    }
+    impl ImplementationBinding {
+        pub fn backend<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::ImplementationBindingBackend>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.backend = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for backend: {e}"));
+            self
+        }
+        pub fn capability<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::ImplementationBindingCapability>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.capability = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for capability: {e}"));
+            self
+        }
+        pub fn detail<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::ImplementationBindingDetail>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.detail = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for detail: {e}"));
+            self
+        }
+        pub fn implementation<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::ImplementationBindingImplementation>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.implementation = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for implementation: {e}"));
+            self
+        }
+        pub fn model<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::ImplementationBindingModel>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.model = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for model: {e}"));
+            self
+        }
+        pub fn selected_by<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::ImplementationBindingSelectedBy>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.selected_by = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for selected_by: {e}"));
+            self
+        }
+        pub fn stage<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::ImplementationBindingStage>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.stage = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for stage: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<ImplementationBinding> for super::ImplementationBinding {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: ImplementationBinding,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                backend: value.backend?,
+                capability: value.capability?,
+                detail: value.detail?,
+                implementation: value.implementation?,
+                model: value.model?,
+                selected_by: value.selected_by?,
+                stage: value.stage?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::ImplementationBinding> for ImplementationBinding {
+        fn from(value: super::ImplementationBinding) -> Self {
+            Self {
+                backend: Ok(value.backend),
+                capability: Ok(value.capability),
+                detail: Ok(value.detail),
+                implementation: Ok(value.implementation),
+                model: Ok(value.model),
+                selected_by: Ok(value.selected_by),
+                stage: Ok(value.stage),
             }
         }
     }

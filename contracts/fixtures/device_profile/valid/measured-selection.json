@@ -1,0 +1,144 @@
+{
+  "accelerators": [
+    {
+      "kind": "cpu",
+      "name": "Reference CPU"
+    },
+    {
+      "kind": "metal",
+      "name": "Reference GPU"
+    }
+  ],
+  "cpu": {
+    "logical_cores": 10,
+    "model": "Reference CPU",
+    "physical_cores": 10
+  },
+  "measured": {
+    "decode": [],
+    "encode": [],
+    "ffmpeg_build": "1783011502_8.1.2"
+  },
+  "memory": {
+    "total_bytes": 34359738368,
+    "unified": true
+  },
+  "phase0": {
+    "attestation": {
+      "algorithm": "ed25519",
+      "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "available_memory_bytes": 17179869184,
+    "capability_results": [
+      {
+        "available": true,
+        "backend": "cpu",
+        "capability": "video-roundtrip"
+      }
+    ],
+    "hardware_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "hardware_roundtrip": {
+      "available": false,
+      "backend": "videotoolbox",
+      "unavailable_reason": "no supported accelerator"
+    },
+    "measurement_generation": 3,
+    "runtime_identities": [
+      {
+        "available": true,
+        "identity": "ffmpeg 8.1.2 build 1783011502_8.1.2",
+        "kind": "ffmpeg"
+      }
+    ],
+    "shared_memory": {
+      "bytes_per_second": 1000000000.5,
+      "sample_bytes": 4194304
+    }
+  },
+  "platform": {
+    "arch": "arm64",
+    "os": "macos",
+    "os_version": "reference"
+  },
+  "schema_version": "clipmill.device_profile.v1",
+  "selection": {
+    "bindings": [
+      {
+        "backend": "mlx",
+        "capability": "asr",
+        "detail": "fastest of 2 runnable candidates at 22.50x real time",
+        "implementation": "clipmill-worker-speech-mlx@0.1.0/asr",
+        "model": "qwen3-asr-mlx",
+        "selected_by": "measured",
+        "stage": "speech-asr"
+      },
+      {
+        "backend": "onnx-cpu",
+        "capability": "forced-align",
+        "implementation": "clipmill-worker-align@0.1.0",
+        "model": "wav2vec2-ctc-en",
+        "selected_by": "unmeasured_fallback",
+        "stage": "speech-align"
+      },
+      {
+        "backend": "onnx-cpu",
+        "capability": "vad",
+        "implementation": "clipmill-worker-vad@0.1.0",
+        "model": "silero-vad",
+        "selected_by": "sole_candidate",
+        "stage": "speech-vad"
+      }
+    ],
+    "candidates": [
+      {
+        "backend": "cpu",
+        "capability": "asr",
+        "implementation": "clipmill-worker-asr@0.1.0",
+        "model": "whisper-base",
+        "model_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "peak_resident_bytes": 704643072,
+        "real_time_factor": 3.4,
+        "runnable": true
+      },
+      {
+        "backend": "mlx",
+        "capability": "asr",
+        "implementation": "clipmill-worker-speech-mlx@0.1.0/asr",
+        "model": "qwen3-asr-mlx",
+        "model_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "peak_resident_bytes": 3435973836,
+        "real_time_factor": 22.5,
+        "runnable": true
+      },
+      {
+        "backend": "onnx-cpu",
+        "capability": "forced-align",
+        "implementation": "clipmill-worker-align@0.1.0",
+        "model": "wav2vec2-ctc-en",
+        "model_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "runnable": false,
+        "unavailable_reason": "no benchmark on this device covers this implementation"
+      },
+      {
+        "backend": "mlx",
+        "capability": "forced-align",
+        "implementation": "clipmill-worker-speech-mlx@0.1.0/align",
+        "model": "qwen3-aligner-mlx",
+        "model_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "runnable": false,
+        "unavailable_reason": "the benchmark measured a different revision of this model"
+      },
+      {
+        "backend": "onnx-cpu",
+        "capability": "vad",
+        "implementation": "clipmill-worker-vad@0.1.0",
+        "model": "silero-vad",
+        "model_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "peak_resident_bytes": 268435456,
+        "real_time_factor": 180.0,
+        "runnable": true
+      }
+    ]
+  }
+}

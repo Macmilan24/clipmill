@@ -1,0 +1,40 @@
+{
+  "accelerators": [],
+  "cpu": {
+    "logical_cores": 8,
+    "model": "Reference CPU"
+  },
+  "measured": {
+    "ffmpeg_build": "1783011670_8.1.2"
+  },
+  "memory": {
+    "total_bytes": 17179869184
+  },
+  "platform": {
+    "arch": "x86_64",
+    "os": "linux"
+  },
+  "schema_version": "clipmill.device_profile.v1",
+  "selection": {
+    "bindings": [
+      {
+        "backend": "mlx",
+        "capability": "asr",
+        "implementation": "clipmill-worker-speech-mlx@0.1.0/asr",
+        "model": "qwen3-asr-mlx",
+        "selected_by": "measured",
+        "stage": "speech-asr"
+      }
+    ],
+    "candidates": [
+      {
+        "backend": "mlx",
+        "capability": "asr",
+        "implementation": "clipmill-worker-speech-mlx@0.1.0/asr",
+        "model": "qwen3-asr-mlx",
+        "model_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "runnable": true
+      }
+    ]
+  }
+}

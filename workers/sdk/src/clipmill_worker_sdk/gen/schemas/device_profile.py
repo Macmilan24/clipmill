@@ -77,6 +77,79 @@ class Accelerator(BaseModel):
     vram_bytes: conint(ge=0) | None = None
 
 
+class SelectedBy(Enum):
+    measured = 'measured'
+    sole_candidate = 'sole_candidate'
+    unmeasured_fallback = 'unmeasured_fallback'
+
+
+class ImplementationBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capability: constr(min_length=1, max_length=64)
+    stage: constr(min_length=1, max_length=64)
+    implementation: constr(min_length=1, max_length=128)
+    model: constr(min_length=1, max_length=64)
+    backend: constr(min_length=1, max_length=64)
+    selected_by: SelectedBy = Field(
+        ...,
+        description='measured — a benchmark ranked two or more runnable candidates. sole_candidate — only one candidate could run here, so nothing was ranked. unmeasured_fallback — candidates exist but no valid benchmark covers this device, so the portable one was taken. The three are kept apart because a choice nobody measured must never read as one somebody did.',
+    )
+    detail: constr(max_length=512) | None = None
+
+
+class ImplementationCandidate1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capability: constr(min_length=1, max_length=64)
+    implementation: constr(min_length=1, max_length=128)
+    model: constr(min_length=1, max_length=64)
+    model_digest: constr(pattern=r'^sha256:[0-9a-f]{64}$') = Field(
+        ...,
+        description='The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old.',
+    )
+    backend: constr(min_length=1, max_length=64)
+    runnable: Literal[True]
+    real_time_factor: PositiveFloat = Field(
+        ...,
+        description='Benchmark audio seconds divided by wall-clock seconds. Above 1 is faster than real time. A rate, not a timeline position.',
+    )
+    peak_resident_bytes: conint(ge=1)
+    unavailable_reason: constr(min_length=1, max_length=512) | None = None
+
+
+class ImplementationCandidate2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capability: constr(min_length=1, max_length=64)
+    implementation: constr(min_length=1, max_length=128)
+    model: constr(min_length=1, max_length=64)
+    model_digest: constr(pattern=r'^sha256:[0-9a-f]{64}$') = Field(
+        ...,
+        description='The registry identity the measurement was taken against. A re-pinned model is a different model, so a measurement carrying the old digest is stale rather than merely old.',
+    )
+    backend: constr(min_length=1, max_length=64)
+    runnable: Literal[False]
+    real_time_factor: PositiveFloat | None = Field(
+        None,
+        description='Benchmark audio seconds divided by wall-clock seconds. Above 1 is faster than real time. A rate, not a timeline position.',
+    )
+    peak_resident_bytes: conint(ge=1) | None = None
+    unavailable_reason: constr(min_length=1, max_length=512)
+
+
+class ImplementationCandidate(
+    RootModel[ImplementationCandidate1 | ImplementationCandidate2]
+):
+    root: ImplementationCandidate1 | ImplementationCandidate2 = Field(
+        ...,
+        description='One implementation that could serve a capability, measured over the benchmark fixture or refused with a reason.',
+    )
+
+
 class CodecBenchListItem(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -179,6 +252,14 @@ class Phase0(BaseModel):
     attestation: DeviceAttestation
 
 
+class Selection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    bindings: list[ImplementationBinding]
+    candidates: list[ImplementationCandidate]
+
+
 class DeviceProfile(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -194,4 +275,8 @@ class DeviceProfile(BaseModel):
     phase0: Phase0 | None = Field(
         None,
         description='Measured Phase 0 scheduler and attestation extension. Legacy v1 profiles omit it; every new Phase 0 profile includes it.',
+    )
+    selection: Selection | None = Field(
+        None,
+        description='Which implementation each model-running capability is bound to on this device, and the measurement that decided it (D19). Absent on profiles taken before any capability had candidates. A binding names one implementation; the candidate list beside it is the evidence, including the candidates that could not run here and why — a device that cannot say why it rejected an implementation cannot be asked to justify its choice.',
     )
