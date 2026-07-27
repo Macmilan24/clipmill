@@ -372,6 +372,26 @@ class ShotsStagePayloadV1(_message.Message):
     decoder_bom: str
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., proxy_artifact_id: _Optional[str] = ..., detection: _Optional[_Union[ShotDetectionV1, _Mapping]] = ..., decoder_bom: _Optional[str] = ...) -> None: ...
 
+class IndexTranscriptPayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
+
+class IndexStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "transcript_artifact_id", "shots_artifact_id")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    TRANSCRIPT_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    SHOTS_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    transcript_artifact_id: str
+    shots_artifact_id: str
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., transcript_artifact_id: _Optional[str] = ..., shots_artifact_id: _Optional[str] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

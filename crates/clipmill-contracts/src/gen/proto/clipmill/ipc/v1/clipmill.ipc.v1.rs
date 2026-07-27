@@ -392,6 +392,41 @@ pub struct ShotsStagePayloadV1 {
     #[prost(string, tag = "6")]
     pub decoder_bom: ::prost::alloc::string::String,
 }
+/// Versioned payload for the evidence index (book ch. 14). The request names a
+/// source; the daemon resolves it to the transcript already published for it,
+/// and to the shot detection if there is one. Nothing tunable travels here yet:
+/// the segmentation parameters are the daemon's, and adding a knob to this
+/// message later is additive.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct IndexTranscriptPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+}
+/// What the evidence index is asked to read.
+///
+/// The artifacts arrive here rather than through task dependencies because both
+/// were published by earlier jobs: a task's inputs are the outputs of the tasks
+/// it depends on, and this job depends on nothing. Content addresses are safe
+/// in a payload the artifact key hashes — unlike a path, the same address means
+/// the same bytes on every machine.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct IndexStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    /// The transcript to index. Its own document carries the source fingerprint,
+    /// so naming one here as well would be a second copy that could disagree.
+    #[prost(string, tag = "3")]
+    pub transcript_artifact_id: ::prost::alloc::string::String,
+    /// Empty for a source with no video, which is a different key from one whose
+    /// cuts were simply never looked for.
+    #[prost(string, tag = "4")]
+    pub shots_artifact_id: ::prost::alloc::string::String,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.

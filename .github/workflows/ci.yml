@@ -66,7 +66,7 @@ jobs:
             done
             checked=$((checked + 1))
           done
-          if [ "$checked" -lt 18 ]; then
+          if [ "$checked" -lt 19 ]; then
             echo "::error::fixture loop found only $checked schema directories - the dir/schema naming pairing broke"
             exit 1
           fi
@@ -306,6 +306,33 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgl1 libglib2.0-0t64
       - run: ./tools/drills/shots-drill.sh 1
+
+  evidence-index:
+    name: evidence-index (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # No media and no weights: the index is derived from two published JSON
+      # documents, which is why this job is the cheap one and why it runs on
+      # both platforms rather than trusting one.
+      - run: ./tools/drills/evidence-drill.sh 1
 
   render-conformance:
     name: render-conformance (${{ matrix.os }})

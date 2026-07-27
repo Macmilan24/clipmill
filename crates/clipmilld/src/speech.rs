@@ -31,6 +31,8 @@ use crate::{
     media::{self, ProgressSlot},
 };
 
+use clipmill_evidence::confidence::distribution;
+
 use clipmill_contracts::schemas::{
     speech_alignment::SpeechAlignment, speech_asr::SpeechAsr, speech_transcript as transcript,
     speech_vad::SpeechVad,
@@ -487,32 +489,6 @@ fn producer(
     }
 }
 
-/// Nearest-rank `(p50, p10)`, matching the workers' definition exactly.
-///
-/// The rank is floored after adding a half rather than handed to `round`,
-/// because Rust rounds halves away from zero and Python rounds them to even.
-/// The workers and this function compute the same quantile over the same
-/// numbers, and a document whose confidence depended on which language
-/// happened to summarize it would be a document nobody could reproduce.
-fn distribution(values: &[f64]) -> (f64, f64) {
-    if values.is_empty() {
-        return (0.0, 0.0);
-    }
-    let mut ordered = values.to_vec();
-    ordered.sort_by(f64::total_cmp);
-    let pick = |fraction: f64| {
-        #[allow(
-            clippy::cast_precision_loss,
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "a rank inside a list whose length fits in usize"
-        )]
-        let rank = (fraction * (ordered.len() - 1) as f64 + 0.5).floor() as usize;
-        ordered[rank.min(ordered.len() - 1)]
-    };
-    (pick(0.5), pick(0.1))
-}
-
 /// The task kind this module executes.
 pub(crate) const KIND_TRANSCRIPT: &str = "speech-transcript";
 pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.0.0";
@@ -541,10 +517,14 @@ pub(crate) async fn execute_transcript_task(
             .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
         let id = artifact_id.to_string();
         match lease.kind() {
-            "speech.vad.v1" => activity = Some((id, read_document(&lease, "vad.json")?)),
-            "speech.asr.v1" => recognized = Some((id, read_document(&lease, "asr.json")?)),
+            "speech.vad.v1" => {
+                activity = Some((id, media::read_artifact_document(&lease, "vad.json")?));
+            }
+            "speech.asr.v1" => {
+                recognized = Some((id, media::read_artifact_document(&lease, "asr.json")?));
+            }
             "speech.alignment.v1" => {
-                alignment = Some((id, read_document(&lease, "alignment.json")?));
+                alignment = Some((id, media::read_artifact_document(&lease, "alignment.json")?));
             }
             other => {
                 return Err(TaskExecutionError::deterministic(format!(
@@ -628,22 +608,6 @@ pub(crate) async fn execute_transcript_task(
     }
     progress.set("stages", 4, 4);
     result
-}
-
-fn read_document<T: serde::de::DeserializeOwned>(
-    lease: &clipmill_artifacts::ArtifactLease,
-    file: &str,
-) -> Result<T, TaskExecutionError> {
-    let path = media::artifact_path(file)?;
-    let mut reader = lease
-        .open_verified(&path)
-        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    let mut bytes = Vec::new();
-    std::io::Read::read_to_end(&mut reader, &mut bytes)
-        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    serde_json::from_slice(&bytes).map_err(|error| {
-        TaskExecutionError::deterministic(format!("{file} is not the document it claims: {error}"))
-    })
 }
 
 #[cfg(test)]

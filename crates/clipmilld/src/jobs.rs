@@ -11,8 +11,9 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, DetectShotsPayloadV1, DeviceProfilePayloadV1, JobState, ShotsStagePayloadV1,
-        SpeechAlignmentV1, SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
+        self, DetectShotsPayloadV1, DeviceProfilePayloadV1, IndexStagePayloadV1,
+        IndexTranscriptPayloadV1, JobState, ShotsStagePayloadV1, SpeechAlignmentV1,
+        SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -30,6 +31,7 @@ use crate::{
     artifacts::ArtifactHandle,
     db::{DbHandle, StoreError},
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
+    evidence,
     media::{self, MediaRunner, ProgressSlot},
     render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
@@ -42,6 +44,9 @@ pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
 
 /// Key version the shot-detection stage payload carries, for the same reason.
 pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
+
+/// Key version the evidence-index stage payload carries.
+pub(crate) const INDEX_STAGE_KEY_VERSION: &str = "clipmill.index-stage.v1";
 
 /// The one implementation of shot detection. Unlike the speech stages there is
 /// nothing to select between: the stage runs no model, so there is no cost to
@@ -678,6 +683,64 @@ impl JobPlan {
         }
     }
 
+    /// The evidence index over a published transcript (book ch. 14).
+    ///
+    /// One builtin task, and it names its inputs in its payload rather than
+    /// through dependencies. A task's input artifacts are the outputs of the
+    /// tasks it depends on, and this job depends on nothing — both documents
+    /// were published by earlier jobs. Content addresses are safe to hash into
+    /// a key: unlike a path, the same address means the same bytes anywhere.
+    pub(crate) fn index_transcript(
+        project_id: &ProjectId,
+        source_id: String,
+        evidence_inputs: EvidenceInputs<'_>,
+        request: &IndexTranscriptPayloadV1,
+        now: u64,
+    ) -> Self {
+        let mut input_kinds = vec!["speech.transcript.v1".to_owned()];
+        if evidence_inputs.shots.is_some() {
+            input_kinds.push("evidence.shots.v1".to_owned());
+        }
+        let payload = IndexStagePayloadV1 {
+            key_version: INDEX_STAGE_KEY_VERSION.to_owned(),
+            stage: evidence::KIND_INDEX.to_owned(),
+            transcript_artifact_id: evidence_inputs.transcript.to_owned(),
+            shots_artifact_id: evidence_inputs.shots.unwrap_or_default().to_owned(),
+        };
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: evidence::KIND_INDEX.to_owned(),
+            source_id: Some(source_id),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: evidence::KIND_INDEX.to_owned(),
+                input_kinds,
+                output_kind: "index.transcript.v1".to_owned(),
+                payload: payload.encode_to_vec(),
+                dependencies: Vec::new(),
+                resources: ResourceDeclaration {
+                    cpu_threads: 1,
+                    ram_bytes: 256 * 1024 * 1024,
+                    accelerator_class: String::new(),
+                    vram_bytes: 0,
+                    disk_bytes: 64 * 1024 * 1024,
+                    network_policy: "local-lock".to_owned(),
+                    thermal_class: "light".to_owned(),
+                    determinism_class: "deterministic".to_owned(),
+                    checkpoint_support: false,
+                    preemption_cost: 1,
+                },
+                implementation: evidence::IMPLEMENTATION.to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
+        }
+    }
+
     pub(crate) fn device_profile(
         hardware_fingerprint: String,
         measurement_generation: u64,
@@ -736,6 +799,14 @@ pub(crate) struct SpeechAudio<'a> {
 pub(crate) struct ShotsProxy<'a> {
     pub artifact_id: &'a str,
     pub source_fingerprint: &'a str,
+}
+
+/// The published documents the evidence index reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EvidenceInputs<'a> {
+    pub transcript: &'a str,
+    /// Absent for a source with no video.
+    pub shots: Option<&'a str>,
 }
 
 /// What one leased speech stage needs, taken from the model it will load.
@@ -1409,6 +1480,9 @@ impl BuiltinExecutors {
             speech::KIND_TRANSCRIPT => {
                 speech::execute_transcript_task(&self.artifacts, task, progress).await
             }
+            evidence::KIND_INDEX => {
+                evidence::execute_index_task(&self.artifacts, task, progress).await
+            }
             kind if render::is_render_kind(kind) => {
                 render::execute_render_task(
                     &RenderContext {
@@ -1436,6 +1510,7 @@ fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
     kinds.extend(media::INGEST_TASK_KINDS.map(str::to_owned));
     kinds.push(render::KIND_RENDER_CLIP.to_owned());
     kinds.push(speech::KIND_TRANSCRIPT.to_owned());
+    kinds.push(evidence::KIND_INDEX.to_owned());
     if builtin_fixture_executor {
         kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
     }
@@ -2137,5 +2212,98 @@ mod shots_tests {
             1_900_000_000_000,
         );
         assert_eq!(early.tasks[0].payload, late.tasks[0].payload);
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use clipmill_contracts::proto::ipc::v1::{IndexStagePayloadV1, IndexTranscriptPayloadV1};
+    use clipmill_core::ProjectId;
+    use prost::Message;
+
+    use super::{EvidenceInputs, INDEX_STAGE_KEY_VERSION, JobPlan, evidence};
+
+    const TRANSCRIPT: &str =
+        "sha256:7a11000000000000000000000000000000000000000000000000000000000042";
+    const SHOTS: &str = "sha256:9c0f000000000000000000000000000000000000000000000000000000000031";
+
+    fn plan(shots: Option<&str>) -> JobPlan {
+        JobPlan::index_transcript(
+            &ProjectId::new(),
+            "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            EvidenceInputs {
+                transcript: TRANSCRIPT,
+                shots,
+            },
+            &IndexTranscriptPayloadV1 {
+                key_version: "clipmill.index-transcript.v1".to_owned(),
+                source_id: "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            },
+            7,
+        )
+    }
+
+    fn payload(plan: &JobPlan) -> IndexStagePayloadV1 {
+        IndexStagePayloadV1::decode(plan.tasks[0].payload.as_slice()).expect("a stage payload")
+    }
+
+    #[test]
+    fn the_index_is_one_builtin_task_that_names_what_it_reads() {
+        let plan = plan(None);
+        assert_eq!(plan.tasks.len(), 1);
+        let task = &plan.tasks[0];
+        assert_eq!(task.kind, evidence::KIND_INDEX);
+        assert_eq!(task.output_kind, "index.transcript.v1");
+        assert_eq!(task.implementation, evidence::IMPLEMENTATION);
+        assert!(task.is_final);
+        // Nothing to depend on: both documents were published by earlier jobs.
+        assert!(task.dependencies.is_empty());
+        let payload = payload(&plan);
+        assert_eq!(payload.key_version, INDEX_STAGE_KEY_VERSION);
+        assert_eq!(payload.stage, evidence::KIND_INDEX);
+        assert_eq!(payload.transcript_artifact_id, TRANSCRIPT);
+    }
+
+    /// A source with no video keys differently from one whose cuts were found,
+    /// because an index without shot edges is a different observation.
+    #[test]
+    fn shot_cuts_change_the_key_and_the_declared_inputs() {
+        let without = plan(None);
+        let with = plan(Some(SHOTS));
+        assert!(payload(&without).shots_artifact_id.is_empty());
+        assert_eq!(payload(&with).shots_artifact_id, SHOTS);
+        assert_ne!(without.tasks[0].payload, with.tasks[0].payload);
+        assert_eq!(without.tasks[0].input_kinds, ["speech.transcript.v1"]);
+        assert_eq!(
+            with.tasks[0].input_kinds,
+            ["speech.transcript.v1", "evidence.shots.v1"]
+        );
+    }
+
+    /// The index runs no model and needs no accelerator, so it must not declare
+    /// one — a task that asked for Metal here would sit unscheduled on a
+    /// machine that has none.
+    #[test]
+    fn the_index_asks_for_nothing_it_does_not_use() {
+        let plan = plan(None);
+        let resources = &plan.tasks[0].resources;
+        assert!(resources.accelerator_class.is_empty());
+        assert_eq!(resources.vram_bytes, 0);
+        assert_eq!(resources.network_policy, "local-lock");
+        assert_eq!(resources.determinism_class, "deterministic");
+    }
+
+    /// Paths are machine-specific and content addresses are not. The payload is
+    /// hashed into the key, so the difference decides whether the same
+    /// transcript indexes to one address everywhere or to a different one on
+    /// every machine.
+    #[test]
+    fn the_keyed_payload_carries_no_path() {
+        let encoded = plan(Some(SHOTS)).tasks[0].payload.clone();
+        let text = String::from_utf8_lossy(&encoded);
+        assert!(!text.contains('/'), "a path reached the artifact key");
+        assert!(!text.contains(std::env::temp_dir().to_string_lossy().as_ref()));
     }
 }

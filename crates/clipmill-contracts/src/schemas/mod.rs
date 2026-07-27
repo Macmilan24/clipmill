@@ -17,6 +17,10 @@ pub mod edit_ir;
 pub mod evidence_shots;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/index_transcript.rs"]
+pub mod index_transcript;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/media_audio.rs"]
 pub mod media_audio;
 

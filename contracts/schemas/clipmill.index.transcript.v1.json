@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.index.transcript.v1.json",
+  "title": "IndexTranscript",
+  "description": "Structure read out of a transcript, so that discovery proposes spans instead of guessing at them (book ch. 14). Two levels only. L1 is what the recording itself states — utterances where voice activity heard a pause, sentences where the recognizer punctuated, and the edges a clip may start or end on. L2 is topics, and it is an approximation stated as one: lexical cohesion over the words, not a model that understands them. There is no L3 here and no open-loop detection; claiming either would be claiming comprehension this stage does not have. Every unit names the words it came from, so any claim can be walked back to the observation behind it.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "inputs",
+    "producer",
+    "language",
+    "segmentation",
+    "coverage",
+    "utterances",
+    "sentences",
+    "edges",
+    "topics",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.index.transcript.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "inputs": {
+      "description": "What was read. The transcript is the authority for every word index below; shot cuts are optional because a source with no video has none, and their absence is a different document rather than a silently shorter edge list.",
+      "type": "object",
+      "required": ["transcript_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "transcript_artifact_id": { "$ref": "#/$defs/sha256" },
+        "shots_artifact_id": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "language": {
+      "description": "Echoed from the transcript, because L2 is only as good as the stopword list matches it. An index built over a language the list does not cover is still a valid document; it is a weaker one, and a consumer should be able to tell without opening the transcript.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 16
+    },
+    "segmentation": {
+      "description": "The decision parameters, recorded so a later pass knows what to change rather than guessing. Part of the artifact key: a different cutoff is a different reading of the same transcript, not a correction of this one.",
+      "type": "object",
+      "required": ["utterance_gap_ticks", "block_sentences", "boundary_cutoff", "stopwords"],
+      "additionalProperties": false,
+      "properties": {
+        "utterance_gap_ticks": {
+          "description": "A pause at least this long ends an utterance. Below it, the speaker is still talking.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "block_sentences": {
+          "description": "How many sentences on each side of a gap are compared when looking for a topic boundary. Larger reads more context and finds fewer, broader topics.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "boundary_cutoff": {
+          "description": "The boundary threshold sits this many standard deviations below the mean depth score. Depth is high at a boundary, so a larger value lowers the bar and admits more topics; zero keeps only the above-average valleys.",
+          "type": "number",
+          "minimum": 0
+        },
+        "stopwords": {
+          "description": "Identifier of the stopword list used, e.g. 'english-minimal.v1'. Named rather than embedded, because the list is what makes the cohesion score mean anything and a changed list is a changed observation.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "utterances": {
+      "description": "Runs of speech between the pauses voice activity found. The unit a viewer would call 'a thing someone said', and the one a clip boundary is safest against.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/utterance" }
+    },
+    "sentences": {
+      "description": "Ordered by time, and never spanning an utterance. Each says how its end was decided, because a boundary the recognizer punctuated and a boundary that is merely where the speaker stopped are not equally strong evidence, and the boundary optimizer should not treat them as though they were.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/sentence" }
+    },
+    "edges": {
+      "description": "Where a clip may start or end without severing anything. A silence is a span a boundary may land anywhere inside; a shot cut is an instant, and carries the same start and end. Both are in one list because the boundary lattice consumes them as one question.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    },
+    "topics": {
+      "description": "Contiguous runs of sentences that share vocabulary, covering every sentence exactly once. The honest name for these is 'lexical neighbourhoods': they are where the words changed, which is usually but not always where the subject changed.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/topic" }
+    },
+    "invalid_regions": {
+      "description": "Carried through from the transcript. An index built over interpolated word timing inherits that timing's uncertainty, and a consumer must not have to open the transcript to discover it.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "confidence": {
+      "type": "object",
+      "required": ["p50", "p10"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 1 },
+        "p10": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "utterance": {
+      "type": "object",
+      "required": [
+        "index",
+        "start_ticks",
+        "end_ticks",
+        "first_word_index",
+        "word_count",
+        "text",
+        "pause_before_ticks",
+        "pause_after_ticks",
+        "words_per_minute",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "first_word_index": {
+          "description": "Index into the transcript's word list. This is the provenance link: every claim here resolves to words somebody measured.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "word_count": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "pause_before_ticks": {
+          "description": "Silence between the previous utterance and this one; the leading silence for the first.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "pause_after_ticks": { "type": "integer", "minimum": 0 },
+        "words_per_minute": {
+          "description": "Speaking rate over this utterance. A rate, not a time quantity: it cannot express a position on a timeline, which is what the integer-tick rule protects.",
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "sentence": {
+      "type": "object",
+      "required": [
+        "index",
+        "utterance_index",
+        "start_ticks",
+        "end_ticks",
+        "first_word_index",
+        "word_count",
+        "text",
+        "terminator",
+        "words_per_minute",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "utterance_index": { "type": "integer", "minimum": 0 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "first_word_index": { "type": "integer", "minimum": 0 },
+        "word_count": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "terminator": {
+          "description": "How this sentence ended. 'punctuation' is the recognizer's own full stop, question mark, or exclamation. 'utterance_end' is a speaker who stopped without one, which is most spontaneous speech. 'coverage_end' is the recording running out mid-sentence, and is the weakest boundary of the three.",
+          "type": "string",
+          "enum": ["punctuation", "utterance_end", "coverage_end"]
+        },
+        "words_per_minute": { "type": "number", "minimum": 0 },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "kind": {
+          "type": "string",
+          "enum": ["silence", "shot_cut"]
+        }
+      }
+    },
+    "topic": {
+      "type": "object",
+      "required": [
+        "index",
+        "start_ticks",
+        "end_ticks",
+        "first_sentence_index",
+        "sentence_count",
+        "opening_depth",
+        "keywords"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "first_sentence_index": { "type": "integer", "minimum": 0 },
+        "sentence_count": { "type": "integer", "minimum": 1 },
+        "opening_depth": {
+          "description": "How deep the lexical valley was at the boundary that opened this topic, summing the drop from the nearest peak on each side. Zero for the first topic, which nothing opened. This is the number the cutoff was compared against, kept so a re-tune can be reasoned about without recomputing.",
+          "type": "number",
+          "minimum": 0
+        },
+        "keywords": {
+          "description": "The terms this run of sentences uses more than the rest of the recording does. Ordered by weight and then alphabetically, so the list is the same on every machine.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/keyword" }
+        }
+      }
+    },
+    "keyword": {
+      "type": "object",
+      "required": ["term", "count"],
+      "additionalProperties": false,
+      "properties": {
+        "term": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coverage": {
+      "description": "The transcript's own analyzed range, echoed rather than recomputed. Every unit above lies inside it, and an index over a transcript that analyzed nothing is an index with no units and `analyzed` false — not an empty document that reads like a recording with no structure in it.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "not_analyzed",
+            "no_audio",
+            "decode_failed",
+            "alignment_unavailable",
+            "timing_interpolated"
+          ]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

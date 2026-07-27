@@ -747,6 +747,28 @@ pub(crate) fn read_descriptor(
         .map_err(|_| TaskExecutionError::deterministic("input descriptor is not valid JSON"))
 }
 
+/// Read one verified file out of an input artifact into its contract type.
+///
+/// The read is verified, so what can still go wrong is the document being
+/// something other than what the artifact's kind claimed — a deterministic
+/// failure, because a retry reads the same bytes.
+pub(crate) fn read_artifact_document<T: serde::de::DeserializeOwned>(
+    lease: &ArtifactLease,
+    file: &str,
+) -> Result<T, TaskExecutionError> {
+    let path = artifact_path(file)?;
+    let mut reader = lease
+        .open_verified(&path)
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    let mut bytes = Vec::new();
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        TaskExecutionError::deterministic(format!("{file} is not the document it claims: {error}"))
+    })
+}
+
 #[allow(clippy::too_many_lines)]
 async fn execute_proxy(
     database: &DbHandle,
