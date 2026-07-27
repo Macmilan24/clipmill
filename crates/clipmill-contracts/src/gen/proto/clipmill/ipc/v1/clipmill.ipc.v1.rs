@@ -427,6 +427,56 @@ pub struct IndexStagePayloadV1 {
     #[prost(string, tag = "4")]
     pub shots_artifact_id: ::prost::alloc::string::String,
 }
+/// Versioned payload for discovery (book ch. 15). The request names a source;
+/// the daemon resolves it to the evidence index, the transcript behind it, and
+/// the loudness envelope if ingest derived one.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DiscoverCandidatesPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// Zero leaves the platform range at the daemon's default, so a caller with
+    /// no opinion about clip length does not have to have one.
+    #[prost(message, optional, tag = "3")]
+    pub duration: ::core::option::Option<ClipDurationV1>,
+}
+/// The clip length the search expands against. A range rather than fixed
+/// buckets: a clip's right length is a property of the moment, not of a preset.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ClipDurationV1 {
+    #[prost(uint64, tag = "1")]
+    pub min_ticks: u64,
+    #[prost(uint64, tag = "2")]
+    pub max_ticks: u64,
+}
+/// What the discovery stage is asked to search.
+///
+/// Like the evidence index beside it, the documents arrive as content addresses
+/// in the payload rather than through dependencies, because all three were
+/// published by earlier jobs.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DiscoverStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub index_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub transcript_artifact_id: ::prost::alloc::string::String,
+    /// Empty for a source with no audio, in which case prosody measures nothing
+    /// rather than contributing a default.
+    #[prost(string, tag = "5")]
+    pub loudness_artifact_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "6")]
+    pub duration: ::core::option::Option<ClipDurationV1>,
+    /// The fewest nominations each proposer keeps regardless of score. Part of
+    /// the key: a different floor is a different search.
+    #[prost(uint64, tag = "7")]
+    pub exploration_floor: u64,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.

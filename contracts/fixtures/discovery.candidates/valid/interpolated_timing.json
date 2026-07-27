@@ -1,0 +1,52 @@
+{
+  "candidates": [],
+  "clusters": [],
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 900000,
+    "start_ticks": 0
+  },
+  "duration_target": {
+    "max_ticks": 16200000,
+    "min_ticks": 1350000
+  },
+  "inputs": {
+    "index_artifact_id": "sha256:1de0000000000000000000000000000000000000000000000000000000000011",
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "producer": {
+    "implementation": "clipmill-discovery-mesh@1.0.0",
+    "stage": "discover-candidates"
+  },
+  "proposers": [
+    {
+      "candidates": 0,
+      "proposer": {
+        "name": "narrative-arc",
+        "rubric": "topic-span-open-close.v1",
+        "version": "1.0.0"
+      },
+      "seeds": 1
+    },
+    {
+      "candidates": 0,
+      "proposer": {
+        "name": "insight-quote",
+        "rubric": "tfidf-specificity-claim-prosody.v1",
+        "version": "1.0.0"
+      },
+      "seeds": 1
+    },
+    {
+      "candidates": 0,
+      "proposer": {
+        "name": "question-answer",
+        "rubric": "punctuation-and-wh-pattern.v1",
+        "version": "1.0.0"
+      },
+      "seeds": 0
+    }
+  ],
+  "schema_version": "clipmill.discovery.candidates.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007"
+}

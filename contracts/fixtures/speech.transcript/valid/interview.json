@@ -1,0 +1,1668 @@
+{
+  "confidence": {
+    "p10": 0.86,
+    "p50": 0.95
+  },
+  "coverage": {
+    "aligned_ticks": 5220000,
+    "analyzed": true,
+    "end_ticks": 6426000,
+    "sampling_plan": "speech-chain-v1",
+    "speech_ticks": 5220000,
+    "start_ticks": 0
+  },
+  "inputs": {
+    "alignment_artifact_id": "sha256:a11a000000000000000000000000000000000000000000000000000000000003",
+    "asr_artifact_id": "sha256:a52a000000000000000000000000000000000000000000000000000000000002",
+    "audio_artifact_id": "sha256:a0d1000000000000000000000000000000000000000000000000000000000016",
+    "vad_artifact_id": "sha256:5ead000000000000000000000000000000000000000000000000000000000001"
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "language_confidence": 0.99,
+  "producers": [
+    {
+      "implementation": "clipmill-worker-vad@0.1.0+silero-v5",
+      "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000aa",
+      "stage": "speech-vad"
+    },
+    {
+      "implementation": "clipmill-worker-asr@0.1.0+whisper.cpp-1.5.0/base",
+      "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000bb",
+      "stage": "speech-asr"
+    },
+    {
+      "implementation": "clipmill-worker-align@0.1.0+wav2vec2-ctc",
+      "model_digest": "sha256:d19e0000000000000000000000000000000000000000000000000000000000cc",
+      "stage": "speech-align"
+    },
+    {
+      "implementation": "clipmill-transcript-assembly@1.0.0",
+      "stage": "speech-transcript"
+    }
+  ],
+  "schema_version": "clipmill.speech.transcript.v1",
+  "segments": [
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 225000,
+      "first_word_index": 0,
+      "index": 0,
+      "start_ticks": 0,
+      "text": "What makes a renderer deterministic?",
+      "word_count": 5
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 621000,
+      "first_word_index": 5,
+      "index": 1,
+      "start_ticks": 261000,
+      "text": "The encoder settings are pinned to one profile.",
+      "word_count": 8
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1107000,
+      "first_word_index": 13,
+      "index": 2,
+      "start_ticks": 657000,
+      "text": "Every frame lands on the same tick on every machine.",
+      "word_count": 10
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1458000,
+      "first_word_index": 23,
+      "index": 3,
+      "start_ticks": 1143000,
+      "text": "Nobody can reproduce a build that drifts.",
+      "word_count": 7
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1899000,
+      "first_word_index": 30,
+      "index": 4,
+      "start_ticks": 1494000,
+      "text": "That is the whole reason the profile is frozen.",
+      "word_count": 9
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2529000,
+      "first_word_index": 39,
+      "index": 5,
+      "start_ticks": 2259000,
+      "text": "How does alignment measure word timing?",
+      "word_count": 6
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2970000,
+      "first_word_index": 45,
+      "index": 6,
+      "start_ticks": 2565000,
+      "text": "A CTC model scores each frame against the text.",
+      "word_count": 9
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3321000,
+      "first_word_index": 54,
+      "index": 7,
+      "start_ticks": 3006000,
+      "text": "The peaks become word boundaries in ticks.",
+      "word_count": 7
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3762000,
+      "first_word_index": 61,
+      "index": 8,
+      "start_ticks": 3357000,
+      "text": "Interpolated timing is labelled and never presented as measured.",
+      "word_count": 9
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4293000,
+      "first_word_index": 70,
+      "index": 9,
+      "start_ticks": 3798000,
+      "text": "Precision here is what stops a cut landing inside a word.",
+      "word_count": 11
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4968000,
+      "first_word_index": 81,
+      "index": 10,
+      "start_ticks": 4653000,
+      "text": "What breaks when the timebase is wrong?",
+      "word_count": 7
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5454000,
+      "first_word_index": 88,
+      "index": 11,
+      "start_ticks": 5004000,
+      "text": "A caption drifts a frame further out with every cut.",
+      "word_count": 10
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5895000,
+      "first_word_index": 98,
+      "index": 12,
+      "start_ticks": 5490000,
+      "text": "Viewers read it as sloppiness rather than as arithmetic.",
+      "word_count": 9
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6336000,
+      "first_word_index": 107,
+      "index": 13,
+      "start_ticks": 5931000,
+      "text": "Integer ticks against a stated timebase remove the question.",
+      "word_count": 9
+    }
+  ],
+  "silences": [
+    {
+      "end_ticks": 261000,
+      "start_ticks": 225000
+    },
+    {
+      "end_ticks": 657000,
+      "start_ticks": 621000
+    },
+    {
+      "end_ticks": 1143000,
+      "start_ticks": 1107000
+    },
+    {
+      "end_ticks": 1494000,
+      "start_ticks": 1458000
+    },
+    {
+      "end_ticks": 2259000,
+      "start_ticks": 1899000
+    },
+    {
+      "end_ticks": 2565000,
+      "start_ticks": 2529000
+    },
+    {
+      "end_ticks": 3006000,
+      "start_ticks": 2970000
+    },
+    {
+      "end_ticks": 3357000,
+      "start_ticks": 3321000
+    },
+    {
+      "end_ticks": 3798000,
+      "start_ticks": 3762000
+    },
+    {
+      "end_ticks": 4653000,
+      "start_ticks": 4293000
+    },
+    {
+      "end_ticks": 5004000,
+      "start_ticks": 4968000
+    },
+    {
+      "end_ticks": 5490000,
+      "start_ticks": 5454000
+    },
+    {
+      "end_ticks": 5931000,
+      "start_ticks": 5895000
+    },
+    {
+      "end_ticks": 6426000,
+      "start_ticks": 6336000
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "words": [
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 45000,
+      "index": 0,
+      "segment_index": 0,
+      "start_ticks": 0,
+      "text": "What",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 90000,
+      "index": 1,
+      "segment_index": 0,
+      "start_ticks": 45000,
+      "text": "makes",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 135000,
+      "index": 2,
+      "segment_index": 0,
+      "start_ticks": 90000,
+      "text": "a",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 180000,
+      "index": 3,
+      "segment_index": 0,
+      "start_ticks": 135000,
+      "text": "renderer",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 225000,
+      "index": 4,
+      "segment_index": 0,
+      "start_ticks": 180000,
+      "text": "deterministic",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 306000,
+      "index": 5,
+      "segment_index": 1,
+      "start_ticks": 261000,
+      "text": "The",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 351000,
+      "index": 6,
+      "segment_index": 1,
+      "start_ticks": 306000,
+      "text": "encoder",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 396000,
+      "index": 7,
+      "segment_index": 1,
+      "start_ticks": 351000,
+      "text": "settings",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 441000,
+      "index": 8,
+      "segment_index": 1,
+      "start_ticks": 396000,
+      "text": "are",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 486000,
+      "index": 9,
+      "segment_index": 1,
+      "start_ticks": 441000,
+      "text": "pinned",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 531000,
+      "index": 10,
+      "segment_index": 1,
+      "start_ticks": 486000,
+      "text": "to",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 576000,
+      "index": 11,
+      "segment_index": 1,
+      "start_ticks": 531000,
+      "text": "one",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 621000,
+      "index": 12,
+      "segment_index": 1,
+      "start_ticks": 576000,
+      "text": "profile",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 702000,
+      "index": 13,
+      "segment_index": 2,
+      "start_ticks": 657000,
+      "text": "Every",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 747000,
+      "index": 14,
+      "segment_index": 2,
+      "start_ticks": 702000,
+      "text": "frame",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 792000,
+      "index": 15,
+      "segment_index": 2,
+      "start_ticks": 747000,
+      "text": "lands",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 837000,
+      "index": 16,
+      "segment_index": 2,
+      "start_ticks": 792000,
+      "text": "on",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 882000,
+      "index": 17,
+      "segment_index": 2,
+      "start_ticks": 837000,
+      "text": "the",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 927000,
+      "index": 18,
+      "segment_index": 2,
+      "start_ticks": 882000,
+      "text": "same",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 972000,
+      "index": 19,
+      "segment_index": 2,
+      "start_ticks": 927000,
+      "text": "tick",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1017000,
+      "index": 20,
+      "segment_index": 2,
+      "start_ticks": 972000,
+      "text": "on",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1062000,
+      "index": 21,
+      "segment_index": 2,
+      "start_ticks": 1017000,
+      "text": "every",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1107000,
+      "index": 22,
+      "segment_index": 2,
+      "start_ticks": 1062000,
+      "text": "machine",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1188000,
+      "index": 23,
+      "segment_index": 3,
+      "start_ticks": 1143000,
+      "text": "Nobody",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1233000,
+      "index": 24,
+      "segment_index": 3,
+      "start_ticks": 1188000,
+      "text": "can",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1278000,
+      "index": 25,
+      "segment_index": 3,
+      "start_ticks": 1233000,
+      "text": "reproduce",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1323000,
+      "index": 26,
+      "segment_index": 3,
+      "start_ticks": 1278000,
+      "text": "a",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1368000,
+      "index": 27,
+      "segment_index": 3,
+      "start_ticks": 1323000,
+      "text": "build",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1413000,
+      "index": 28,
+      "segment_index": 3,
+      "start_ticks": 1368000,
+      "text": "that",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1458000,
+      "index": 29,
+      "segment_index": 3,
+      "start_ticks": 1413000,
+      "text": "drifts",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1539000,
+      "index": 30,
+      "segment_index": 4,
+      "start_ticks": 1494000,
+      "text": "That",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1584000,
+      "index": 31,
+      "segment_index": 4,
+      "start_ticks": 1539000,
+      "text": "is",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1629000,
+      "index": 32,
+      "segment_index": 4,
+      "start_ticks": 1584000,
+      "text": "the",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1674000,
+      "index": 33,
+      "segment_index": 4,
+      "start_ticks": 1629000,
+      "text": "whole",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1719000,
+      "index": 34,
+      "segment_index": 4,
+      "start_ticks": 1674000,
+      "text": "reason",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1764000,
+      "index": 35,
+      "segment_index": 4,
+      "start_ticks": 1719000,
+      "text": "the",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1809000,
+      "index": 36,
+      "segment_index": 4,
+      "start_ticks": 1764000,
+      "text": "profile",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1854000,
+      "index": 37,
+      "segment_index": 4,
+      "start_ticks": 1809000,
+      "text": "is",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 1899000,
+      "index": 38,
+      "segment_index": 4,
+      "start_ticks": 1854000,
+      "text": "frozen",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2304000,
+      "index": 39,
+      "segment_index": 5,
+      "start_ticks": 2259000,
+      "text": "How",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2349000,
+      "index": 40,
+      "segment_index": 5,
+      "start_ticks": 2304000,
+      "text": "does",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2394000,
+      "index": 41,
+      "segment_index": 5,
+      "start_ticks": 2349000,
+      "text": "alignment",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2439000,
+      "index": 42,
+      "segment_index": 5,
+      "start_ticks": 2394000,
+      "text": "measure",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2484000,
+      "index": 43,
+      "segment_index": 5,
+      "start_ticks": 2439000,
+      "text": "word",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2529000,
+      "index": 44,
+      "segment_index": 5,
+      "start_ticks": 2484000,
+      "text": "timing",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2610000,
+      "index": 45,
+      "segment_index": 6,
+      "start_ticks": 2565000,
+      "text": "A",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2655000,
+      "index": 46,
+      "segment_index": 6,
+      "start_ticks": 2610000,
+      "text": "CTC",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2700000,
+      "index": 47,
+      "segment_index": 6,
+      "start_ticks": 2655000,
+      "text": "model",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2745000,
+      "index": 48,
+      "segment_index": 6,
+      "start_ticks": 2700000,
+      "text": "scores",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2790000,
+      "index": 49,
+      "segment_index": 6,
+      "start_ticks": 2745000,
+      "text": "each",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2835000,
+      "index": 50,
+      "segment_index": 6,
+      "start_ticks": 2790000,
+      "text": "frame",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2880000,
+      "index": 51,
+      "segment_index": 6,
+      "start_ticks": 2835000,
+      "text": "against",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2925000,
+      "index": 52,
+      "segment_index": 6,
+      "start_ticks": 2880000,
+      "text": "the",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 2970000,
+      "index": 53,
+      "segment_index": 6,
+      "start_ticks": 2925000,
+      "text": "text",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3051000,
+      "index": 54,
+      "segment_index": 7,
+      "start_ticks": 3006000,
+      "text": "The",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3096000,
+      "index": 55,
+      "segment_index": 7,
+      "start_ticks": 3051000,
+      "text": "peaks",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3141000,
+      "index": 56,
+      "segment_index": 7,
+      "start_ticks": 3096000,
+      "text": "become",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3186000,
+      "index": 57,
+      "segment_index": 7,
+      "start_ticks": 3141000,
+      "text": "word",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3231000,
+      "index": 58,
+      "segment_index": 7,
+      "start_ticks": 3186000,
+      "text": "boundaries",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3276000,
+      "index": 59,
+      "segment_index": 7,
+      "start_ticks": 3231000,
+      "text": "in",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3321000,
+      "index": 60,
+      "segment_index": 7,
+      "start_ticks": 3276000,
+      "text": "ticks",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3402000,
+      "index": 61,
+      "segment_index": 8,
+      "start_ticks": 3357000,
+      "text": "Interpolated",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3447000,
+      "index": 62,
+      "segment_index": 8,
+      "start_ticks": 3402000,
+      "text": "timing",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3492000,
+      "index": 63,
+      "segment_index": 8,
+      "start_ticks": 3447000,
+      "text": "is",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3537000,
+      "index": 64,
+      "segment_index": 8,
+      "start_ticks": 3492000,
+      "text": "labelled",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3582000,
+      "index": 65,
+      "segment_index": 8,
+      "start_ticks": 3537000,
+      "text": "and",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3627000,
+      "index": 66,
+      "segment_index": 8,
+      "start_ticks": 3582000,
+      "text": "never",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3672000,
+      "index": 67,
+      "segment_index": 8,
+      "start_ticks": 3627000,
+      "text": "presented",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3717000,
+      "index": 68,
+      "segment_index": 8,
+      "start_ticks": 3672000,
+      "text": "as",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3762000,
+      "index": 69,
+      "segment_index": 8,
+      "start_ticks": 3717000,
+      "text": "measured",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3843000,
+      "index": 70,
+      "segment_index": 9,
+      "start_ticks": 3798000,
+      "text": "Precision",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3888000,
+      "index": 71,
+      "segment_index": 9,
+      "start_ticks": 3843000,
+      "text": "here",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3933000,
+      "index": 72,
+      "segment_index": 9,
+      "start_ticks": 3888000,
+      "text": "is",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 3978000,
+      "index": 73,
+      "segment_index": 9,
+      "start_ticks": 3933000,
+      "text": "what",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4023000,
+      "index": 74,
+      "segment_index": 9,
+      "start_ticks": 3978000,
+      "text": "stops",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4068000,
+      "index": 75,
+      "segment_index": 9,
+      "start_ticks": 4023000,
+      "text": "a",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4113000,
+      "index": 76,
+      "segment_index": 9,
+      "start_ticks": 4068000,
+      "text": "cut",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4158000,
+      "index": 77,
+      "segment_index": 9,
+      "start_ticks": 4113000,
+      "text": "landing",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4203000,
+      "index": 78,
+      "segment_index": 9,
+      "start_ticks": 4158000,
+      "text": "inside",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4248000,
+      "index": 79,
+      "segment_index": 9,
+      "start_ticks": 4203000,
+      "text": "a",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4293000,
+      "index": 80,
+      "segment_index": 9,
+      "start_ticks": 4248000,
+      "text": "word",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4698000,
+      "index": 81,
+      "segment_index": 10,
+      "start_ticks": 4653000,
+      "text": "What",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4743000,
+      "index": 82,
+      "segment_index": 10,
+      "start_ticks": 4698000,
+      "text": "breaks",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4788000,
+      "index": 83,
+      "segment_index": 10,
+      "start_ticks": 4743000,
+      "text": "when",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4833000,
+      "index": 84,
+      "segment_index": 10,
+      "start_ticks": 4788000,
+      "text": "the",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4878000,
+      "index": 85,
+      "segment_index": 10,
+      "start_ticks": 4833000,
+      "text": "timebase",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4923000,
+      "index": 86,
+      "segment_index": 10,
+      "start_ticks": 4878000,
+      "text": "is",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 4968000,
+      "index": 87,
+      "segment_index": 10,
+      "start_ticks": 4923000,
+      "text": "wrong",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5049000,
+      "index": 88,
+      "segment_index": 11,
+      "start_ticks": 5004000,
+      "text": "A",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5094000,
+      "index": 89,
+      "segment_index": 11,
+      "start_ticks": 5049000,
+      "text": "caption",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5139000,
+      "index": 90,
+      "segment_index": 11,
+      "start_ticks": 5094000,
+      "text": "drifts",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5184000,
+      "index": 91,
+      "segment_index": 11,
+      "start_ticks": 5139000,
+      "text": "a",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5229000,
+      "index": 92,
+      "segment_index": 11,
+      "start_ticks": 5184000,
+      "text": "frame",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5274000,
+      "index": 93,
+      "segment_index": 11,
+      "start_ticks": 5229000,
+      "text": "further",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5319000,
+      "index": 94,
+      "segment_index": 11,
+      "start_ticks": 5274000,
+      "text": "out",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5364000,
+      "index": 95,
+      "segment_index": 11,
+      "start_ticks": 5319000,
+      "text": "with",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5409000,
+      "index": 96,
+      "segment_index": 11,
+      "start_ticks": 5364000,
+      "text": "every",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5454000,
+      "index": 97,
+      "segment_index": 11,
+      "start_ticks": 5409000,
+      "text": "cut",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5535000,
+      "index": 98,
+      "segment_index": 12,
+      "start_ticks": 5490000,
+      "text": "Viewers",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5580000,
+      "index": 99,
+      "segment_index": 12,
+      "start_ticks": 5535000,
+      "text": "read",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5625000,
+      "index": 100,
+      "segment_index": 12,
+      "start_ticks": 5580000,
+      "text": "it",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5670000,
+      "index": 101,
+      "segment_index": 12,
+      "start_ticks": 5625000,
+      "text": "as",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5715000,
+      "index": 102,
+      "segment_index": 12,
+      "start_ticks": 5670000,
+      "text": "sloppiness",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5760000,
+      "index": 103,
+      "segment_index": 12,
+      "start_ticks": 5715000,
+      "text": "rather",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5805000,
+      "index": 104,
+      "segment_index": 12,
+      "start_ticks": 5760000,
+      "text": "than",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5850000,
+      "index": 105,
+      "segment_index": 12,
+      "start_ticks": 5805000,
+      "text": "as",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5895000,
+      "index": 106,
+      "segment_index": 12,
+      "start_ticks": 5850000,
+      "text": "arithmetic",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 5976000,
+      "index": 107,
+      "segment_index": 13,
+      "start_ticks": 5931000,
+      "text": "Integer",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6021000,
+      "index": 108,
+      "segment_index": 13,
+      "start_ticks": 5976000,
+      "text": "ticks",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6066000,
+      "index": 109,
+      "segment_index": 13,
+      "start_ticks": 6021000,
+      "text": "against",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6111000,
+      "index": 110,
+      "segment_index": 13,
+      "start_ticks": 6066000,
+      "text": "a",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6156000,
+      "index": 111,
+      "segment_index": 13,
+      "start_ticks": 6111000,
+      "text": "stated",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6201000,
+      "index": 112,
+      "segment_index": 13,
+      "start_ticks": 6156000,
+      "text": "timebase",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6246000,
+      "index": 113,
+      "segment_index": 13,
+      "start_ticks": 6201000,
+      "text": "remove",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6291000,
+      "index": 114,
+      "segment_index": 13,
+      "start_ticks": 6246000,
+      "text": "the",
+      "timing": "aligned"
+    },
+    {
+      "confidence": {
+        "p10": 0.86,
+        "p50": 0.95
+      },
+      "end_ticks": 6336000,
+      "index": 115,
+      "segment_index": 13,
+      "start_ticks": 6291000,
+      "text": "question",
+      "timing": "aligned"
+    }
+  ]
+}

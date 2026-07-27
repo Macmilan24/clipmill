@@ -229,6 +229,16 @@ const REGISTRY: &[Recipe] = &[
         capability: None,
         tools: &[],
     },
+    // The W18 proposer mesh (book ch. 15). Builtin and modelless: it reads
+    // three published documents and writes a fourth.
+    Recipe {
+        kind: "discover-candidates",
+        output_kind: "discovery.candidates.v1",
+        semantic_version: "clipmill.discovery.candidates.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        tools: &[],
+    },
     // The W16 shot detector (book ch. 13). Leased, but modelless: it is
     // arithmetic over decoded pixels, so there is no capability to bind and no
     // model digest to key against. What makes its output reproducible is the

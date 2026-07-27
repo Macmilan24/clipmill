@@ -8,13 +8,13 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::ipc::v1::{
     ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1,
-    DetectShotsPayloadV1, Error, ErrorCode, GetDeviceProfileRequest, GetDeviceProfileResponse,
-    GetEditDocResponse, GetJobResponse, GetProjectResponse, GetSourceResponse, HealthResponse,
-    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse,
-    ListSourcesResponse, PingResponse, ProbeSourcePayloadV1, RegisterSourceRequest,
-    RenderClipPayloadV1, Request, Response, SnapshotEditDocResponse, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
-    response,
+    DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
+    GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse, GetProjectResponse,
+    GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1, IngestSourcePayloadV1,
+    ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
+    ProbeSourcePayloadV1, RegisterSourceRequest, RenderClipPayloadV1, Request, Response,
+    SnapshotEditDocResponse, SubmitJobRequest, SubscribeTaskEventsRequest,
+    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
@@ -42,6 +42,7 @@ const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
 const TRANSCRIBE_SOURCE_KEY_VERSION: &str = "clipmill.transcribe-source.v1";
 const DETECT_SHOTS_KEY_VERSION: &str = "clipmill.detect-shots.v1";
 const INDEX_TRANSCRIPT_KEY_VERSION: &str = "clipmill.index-transcript.v1";
+const DISCOVER_CANDIDATES_KEY_VERSION: &str = "clipmill.discover-candidates.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -789,6 +790,93 @@ impl Service {
                     crate::jobs::EvidenceInputs {
                         transcript: &transcript,
                         shots: shots.as_deref(),
+                    },
+                    &payload,
+                    now,
+                )
+            }
+            "discover-candidates" => {
+                let Ok(payload) = DiscoverCandidatesPayloadV1::decode(submit.payload.as_slice())
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "discovery job payload is not a valid DiscoverCandidatesPayloadV1",
+                    );
+                };
+                if payload.key_version != DISCOVER_CANDIDATES_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "discovery job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                // Discovery searches structure, so it needs the index — and
+                // the transcript behind it, for the word boundaries that make
+                // a lattice point legal.
+                let Ok(Some(index)) = self
+                    .database
+                    .latest_source_job_artifact(
+                        source_id.to_string(),
+                        "index-transcript".to_owned(),
+                    )
+                    .await
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has no evidence index to search",
+                    );
+                };
+                let Ok(Some(transcript)) = self
+                    .database
+                    .latest_source_job_artifact(
+                        source_id.to_string(),
+                        "transcribe-source".to_owned(),
+                    )
+                    .await
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has no published transcript",
+                    );
+                };
+                // Prosody is optional evidence: without it the quote proposer
+                // weighs three proxies instead of four rather than assuming a
+                // delivery nobody measured.
+                let loudness = self
+                    .ingested_derivative(&source_id.to_string(), "media.loudness_envelope.v1")
+                    .await
+                    .map(|(artifact_id, _)| artifact_id);
+                JobPlan::discover_candidates(
+                    &project_id,
+                    source_id.to_string(),
+                    crate::jobs::DiscoveryInputs {
+                        index: &index,
+                        transcript: &transcript,
+                        loudness: loudness.as_deref(),
                     },
                     &payload,
                     now,

@@ -9,6 +9,10 @@ pub mod artifact_manifest;
 pub mod device_profile;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/discovery_candidates.rs"]
+pub mod discovery_candidates;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/edit_ir.rs"]
 pub mod edit_ir;
 

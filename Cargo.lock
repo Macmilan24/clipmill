@@ -472,6 +472,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-discovery"
+version = "0.0.1"
+dependencies = [
+ "clipmill-contracts",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-edit-ir"
 version = "0.0.1"
 dependencies = [
@@ -526,6 +537,7 @@ dependencies = [
  "clipmill-artifacts",
  "clipmill-contracts",
  "clipmill-core",
+ "clipmill-discovery",
  "clipmill-edit-ir",
  "clipmill-evidence",
  "clipmill-render",

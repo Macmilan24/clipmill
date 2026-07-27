@@ -49,7 +49,7 @@ gate-contracts:
     git diff --exit-code -- crates/clipmill-contracts/src/gen packages/contracts/src/gen workers/sdk/src/clipmill workers/sdk/src/clipmill_worker_sdk/gen
     python3 tools/schema-lint/check.py contracts/schemas/*.json
     cargo test -p clipmill-contracts
-    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py
+    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py
     pnpm --filter @clipmill/contracts test
 
 # W2 coverage: acknowledged project mutations survive forced termination.
@@ -128,6 +128,15 @@ gate-shots iterations="1":
 # the same bytes.
 gate-evidence iterations="1":
     ./tools/drills/evidence-drill.sh {{iterations}}
+
+# W18 coverage: the proposer mesh and the lattice under it. The three
+# proposers against recordings written by hand — a topic of one sentence, a
+# question nobody answered, a shot cut inside a word — then every committed
+# index searched against a reviewed golden, every lattice point paired with
+# something legal, every candidate explicable and grouped, and a second pass
+# producing the same bytes.
+gate-discovery iterations="1":
+    ./tools/drills/discovery-drill.sh {{iterations}}
 
 # W13 coverage — the first-slice milestone: the published Edit IR renders to a
 # 1080x1920 clip with burned karaoke captions, matching sidecars, normalised

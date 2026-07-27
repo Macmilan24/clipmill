@@ -66,7 +66,7 @@ jobs:
             done
             checked=$((checked + 1))
           done
-          if [ "$checked" -lt 19 ]; then
+          if [ "$checked" -lt 20 ]; then
             echo "::error::fixture loop found only $checked schema directories - the dir/schema naming pairing broke"
             exit 1
           fi
@@ -329,10 +329,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # No media and no weights: the index is derived from two published JSON
-      # documents, which is why this job is the cheap one and why it runs on
-      # both platforms rather than trusting one.
+      # No media and no weights: both stages derive one JSON document from
+      # others, which is why this is the cheap job and why it runs on both
+      # platforms rather than trusting one.
       - run: ./tools/drills/evidence-drill.sh 1
+      - run: ./tools/drills/discovery-drill.sh 1
 
   render-conformance:
     name: render-conformance (${{ matrix.os }})
