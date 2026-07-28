@@ -44,6 +44,7 @@ from clipmill_worker_sdk.gen.schemas.evidence_shots import (
     Shot,
     Timebase,
 )
+from clipmill_worker_sdk.inputs import MissingInputError, require_input
 from clipmill_worker_sdk.ticks import frames_to_ticks
 from clipmill_worker_sdk.tools import ToolUnavailableError, require_tool
 
@@ -53,9 +54,15 @@ from .decode import AnalysisSize, DecodeFailed, analysis_size, decode_frames
 from .proxy import PROXY_DESCRIPTOR, Proxy, read_proxy
 
 __version__ = "0.1.0"
-CAPABILITIES = ("shot-detection",)
+# The registered task kind, which is what the daemon routes by. A capability
+# named after the work rather than the stage reads better and matches nothing:
+# this worker would connect, be trusted, and never be offered a task.
+CAPABILITIES = ("detect-shots",)
 OUTPUT_FILE = "shots.json"
 KEY_VERSION = "clipmill.shots-stage.v1"
+# The rendition this stage decodes, named so the lease can be searched by what an
+# artifact is rather than by where it happened to land in a list.
+PROXY_KIND = "media.proxy.v1"
 STAGE = "detect-shots"
 DECODER = "ffmpeg"
 
@@ -78,8 +85,17 @@ def execute_shots(context: TaskContext) -> tuple[str, ...]:
             f"{decoder.bom}; the artifact address would name a decoder that did not run"
         )
 
+    # The proxy arrives on the lease rather than in the payload: a worker may
+    # open exactly what its lease named, and the payload is hashed into the
+    # artifact key — an address there would be present when this stage runs alone
+    # and absent when it runs inside an analysis, which is one detection with two
+    # addresses.
     try:
-        artifact = context.open_artifact(payload.proxy_artifact_id)
+        proxy_input = require_input(context, PROXY_KIND)
+    except MissingInputError as error:
+        raise DeterministicTaskError(str(error)) from error
+    try:
+        artifact = proxy_input.artifact
         proxy = read_proxy(artifact, context.artifact_file(artifact, PROXY_DESCRIPTOR))
         media = context.artifact_file(artifact, proxy.file)
     except ArtifactVerificationError as error:
@@ -119,7 +135,7 @@ def execute_shots(context: TaskContext) -> tuple[str, ...]:
     except content.DetectionRefused as error:
         raise DeterministicTaskError(str(error)) from error
 
-    document = _document(payload, proxy, size, parameters, cuts, seen)
+    document = _document(payload, proxy_input.artifact_id, proxy, size, parameters, cuts, seen)
     context.staging.write_bytes(OUTPUT_FILE, canonical_bytes(document))
     return (OUTPUT_FILE,)
 
@@ -135,8 +151,6 @@ def _payload(context: TaskContext) -> daemon_pb2.ShotsStagePayloadV1:
         raise DeterministicTaskError("task payload is not a shots stage payload") from error
     if payload.key_version != KEY_VERSION or payload.stage != STAGE:
         raise DeterministicTaskError("task payload does not describe shot detection")
-    if not payload.proxy_artifact_id:
-        raise DeterministicTaskError("task payload names no proxy")
     if not payload.decoder_bom:
         raise DeterministicTaskError("task payload names no decoder build")
     return payload
@@ -157,6 +171,7 @@ def _min_shot_frames(min_shot_ticks: int, proxy: Proxy) -> int:
 
 def _document(
     payload: daemon_pb2.ShotsStagePayloadV1,
+    proxy_artifact_id: str,
     proxy: Proxy,
     size: AnalysisSize,
     parameters: Parameters,
@@ -172,7 +187,7 @@ def _document(
     return EvidenceShots(
         schema_version="clipmill.evidence.shots.v1",
         source_fingerprint=payload.source_fingerprint or proxy.source_fingerprint,
-        proxy_artifact_id=payload.proxy_artifact_id,
+        proxy_artifact_id=proxy_artifact_id,
         producer=Producer(
             stage=STAGE,
             implementation=f"clipmill-worker-shots@{__version__}+{IMPLEMENTATION}",

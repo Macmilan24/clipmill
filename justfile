@@ -49,7 +49,7 @@ gate-contracts:
     git diff --exit-code -- crates/clipmill-contracts/src/gen packages/contracts/src/gen workers/sdk/src/clipmill workers/sdk/src/clipmill_worker_sdk/gen
     python3 tools/schema-lint/check.py contracts/schemas/*.json
     cargo test -p clipmill-contracts
-    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py
+    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py tests/test_ranking_contracts.py
     pnpm --filter @clipmill/contracts test
 
 # W2 coverage: acknowledged project mutations survive forced termination.
@@ -137,6 +137,19 @@ gate-evidence iterations="1":
 # producing the same bytes.
 gate-discovery iterations="1":
     ./tools/drills/discovery-drill.sh {{iterations}}
+
+# W19 coverage: what a clip is worth, where it is cut, which to show, and the
+# one job that produces all of it. The score card against cards written by hand
+# — an axis nobody measured must be distinguishable from one measured at zero —
+# then J verified against brute force over the whole lattice, a set that comes
+# back short rather than padded, and every committed cohort ranked against a
+# reviewed golden. Then the analyze DAG against a real daemon and a real worker:
+# the addresses the plan declared reach the lease, the fan-in names every stage
+# that ran and accounts for the ones it skipped, a warm re-submit resolves to
+# the same identities, and a killed daemon finishes inside the 30-second SLO.
+# Needs the pinned FFmpeg sidecars and `uv sync --project workers/shots`.
+gate-ranking iterations="1":
+    ./tools/drills/ranking-drill.sh {{iterations}}
 
 # W13 coverage — the first-slice milestone: the published Edit IR renders to a
 # 1080x1920 clip with burned karaoke captions, matching sidecars, normalised

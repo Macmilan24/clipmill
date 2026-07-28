@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.analysis.manifest.v1.json",
+  "title": "AnalysisManifest",
+  "description": "The fan-in artifact an analyze job roots: one document naming every observation produced from a source, from the probe through the ranked set. The job store roots only a job's single final artifact and garbage collection walks recipe inputs, so this manifest's recipe lists every stage — reachability of the whole analysis follows from this one root. It is also what a shell asks for when it wants to know what a project actually has: one read instead of nine.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "stages", "coverage"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.analysis.manifest.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "stages": {
+      "description": "Every stage that produced an artifact, in the order the DAG ran them. A stage that was skipped because the source lacked the input it needs is absent rather than present with a null: a recording with no video has no shot detection, and that is a different document from one whose shot detection failed.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/stage" }
+    },
+    "coverage": {
+      "description": "The span the analysis speaks for, which is the narrowest of what its stages examined. A consumer reading a candidate outside this range is reading a claim nobody made.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" }
+      }
+    },
+    "skipped": {
+      "description": "Stages the plan did not run, and why. Present so that 'this recording has no shot cuts' and 'nobody looked for shot cuts' remain distinguishable at the top level, without opening any of the artifacts below.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/skipped_stage" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "stage": {
+      "type": "object",
+      "required": ["kind", "artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "evidence.source_map.v1",
+            "media.ingest_manifest.v1",
+            "speech.vad.v1",
+            "speech.asr.v1",
+            "speech.alignment.v1",
+            "speech.transcript.v1",
+            "evidence.shots.v1",
+            "index.transcript.v1",
+            "discovery.candidates.v1",
+            "ranking.set.v1"
+          ]
+        },
+        "artifact_id": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "skipped_stage": {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "reason": {
+          "type": "string",
+          "enum": ["no_video", "no_audio"]
+        }
+      }
+    }
+  }
+}

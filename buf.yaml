@@ -7,3 +7,15 @@ lint:
 breaking:
   use:
     - FILE
+    # FILE's own FIELD_NO_DELETE forbids removing a field at all, which makes a
+    # retired field permanent: it stays in the message, nothing writes it, and a
+    # stage payload that reaches an artifact key carries a value nobody set. This
+    # replaces it with the reserved-aware rule rather than dropping the guard —
+    # a field may be removed only if its number *and* its name are reserved, so
+    # neither can ever be reused. That is the property that actually matters: an
+    # old encoded payload must never decode as a new meaning, and a JSON reader
+    # must never see the old name carrying something else.
+    - FIELD_NO_DELETE_UNLESS_NAME_RESERVED
+    - FIELD_NO_DELETE_UNLESS_NUMBER_RESERVED
+  except:
+    - FIELD_NO_DELETE

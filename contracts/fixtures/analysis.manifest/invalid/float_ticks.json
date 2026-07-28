@@ -1,0 +1,15 @@
+{
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 90000.5,
+    "start_ticks": 0
+  },
+  "schema_version": "clipmill.analysis.manifest.v1",
+  "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "stages": [
+    {
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "evidence.source_map.v1"
+    }
+  ]
+}

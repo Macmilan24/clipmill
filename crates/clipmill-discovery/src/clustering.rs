@@ -102,11 +102,11 @@ pub(crate) fn cluster(candidates: &[Grouped<'_>]) -> Vec<contract::Cluster> {
                 })
                 .map(|position| candidates[*position].id.to_owned())
                 .unwrap_or_default();
-            let similarity = if ids.len() == 1 {
+            let similarity = crate::published(if ids.len() == 1 {
                 1.0
             } else {
                 resolved.get(&root).copied().unwrap_or(SIMILAR)
-            };
+            });
             contract::Cluster {
                 id: crate::literal(crate::identity("cl_", &ids).as_str()),
                 representative: crate::literal(&representative),

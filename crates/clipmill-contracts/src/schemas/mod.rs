@@ -1,6 +1,10 @@
 //! Artifact contracts (from `contracts/schemas/`).
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/analysis_manifest.rs"]
+pub mod analysis_manifest;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/artifact_manifest.rs"]
 pub mod artifact_manifest;
 
@@ -55,6 +59,10 @@ pub mod media_proxy;
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/media_reference_index.rs"]
 pub mod media_reference_index;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/ranking_set.rs"]
+pub mod ranking_set;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/render_clip.rs"]

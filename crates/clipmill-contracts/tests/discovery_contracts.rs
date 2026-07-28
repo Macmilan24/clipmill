@@ -175,17 +175,15 @@ fn invalid_candidate_fixtures_are_rejected() {
     }
 }
 
-/// The stage payload names three content addresses and the search parameters.
-/// A path here would give the same recording two candidate sets on two
-/// machines.
+/// The stage payload carries the search parameters and no inputs: the three
+/// documents arrive on the lease, so a search run inside an analysis encodes the
+/// same bytes as the same search run on its own. A path here would give the same
+/// recording two candidate sets on two machines.
 #[test]
 fn the_discovery_stage_payload_carries_nothing_machine_specific() {
     let message = DiscoverStagePayloadV1 {
         key_version: "clipmill.discover-stage.v1".to_owned(),
         stage: "discover-candidates".to_owned(),
-        index_artifact_id: "sha256:".to_owned() + &"a".repeat(64),
-        transcript_artifact_id: "sha256:".to_owned() + &"b".repeat(64),
-        loudness_artifact_id: String::new(),
         duration: None,
         exploration_floor: 0,
     };
@@ -194,6 +192,11 @@ fn the_discovery_stage_payload_carries_nothing_machine_specific() {
     assert_eq!(decoded, message);
     let encoded = String::from_utf8_lossy(&message.encode_to_vec()).into_owned();
     assert!(!encoded.contains('/'), "the keyed payload carries a path");
+    assert!(
+        !encoded.contains("sha256:"),
+        "an address in the payload would be present on one route and absent on \
+         the other, which is one observation with two keys"
+    );
 
     // A different clip length is a different search, so it must change the key.
     let longer = DiscoverStagePayloadV1 {

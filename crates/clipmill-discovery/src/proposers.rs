@@ -358,7 +358,7 @@ const CLAIM_WORDS: &[&str] = &[
     "wrong",
 ];
 
-fn claim_language(text: &str) -> f64 {
+pub(crate) fn claim_language(text: &str) -> f64 {
     let hits = text
         .split_whitespace()
         .filter(|token| {

@@ -128,7 +128,7 @@
         }
       ],
       "layout_requirements": [],
-      "prelim_score": 0.6598076211353316,
+      "prelim_score": 0.659808,
       "proposer": {
         "name": "question-answer",
         "rubric": "punctuation-and-wh-pattern.v1",
@@ -287,7 +287,7 @@
         }
       ],
       "layout_requirements": [],
-      "prelim_score": 0.4193575542456608,
+      "prelim_score": 0.419358,
       "proposer": {
         "name": "insight-quote",
         "rubric": "tfidf-specificity-claim-prosody.v1",
@@ -375,7 +375,7 @@
         }
       ],
       "layout_requirements": [],
-      "prelim_score": 0.3963772952325421,
+      "prelim_score": 0.396377,
       "proposer": {
         "name": "narrative-arc",
         "rubric": "topic-span-open-close.v1",
@@ -450,7 +450,7 @@
         }
       ],
       "layout_requirements": [],
-      "prelim_score": 0.3713706605392046,
+      "prelim_score": 0.371371,
       "proposer": {
         "name": "insight-quote",
         "rubric": "tfidf-specificity-claim-prosody.v1",
@@ -521,7 +521,7 @@
         }
       ],
       "layout_requirements": [],
-      "prelim_score": 0.40914340566088103,
+      "prelim_score": 0.409143,
       "proposer": {
         "name": "insight-quote",
         "rubric": "tfidf-specificity-claim-prosody.v1",
@@ -671,7 +671,7 @@
         }
       ],
       "layout_requirements": [],
-      "prelim_score": 0.6598076211353316,
+      "prelim_score": 0.659808,
       "proposer": {
         "name": "question-answer",
         "rubric": "punctuation-and-wh-pattern.v1",
@@ -746,7 +746,7 @@
         }
       ],
       "layout_requirements": [],
-      "prelim_score": 0.3973145757322396,
+      "prelim_score": 0.397315,
       "proposer": {
         "name": "insight-quote",
         "rubric": "tfidf-specificity-claim-prosody.v1",
@@ -794,7 +794,7 @@
         "cand_ca46854369cdb2cd"
       ],
       "representative": "cand_ca46854369cdb2cd",
-      "similarity": 0.5314171122994653
+      "similarity": 0.531417
     },
     {
       "id": "cl_7d53a9f82203a445",

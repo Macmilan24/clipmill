@@ -305,22 +305,20 @@ class SpeechDetectionV1(_message.Message):
     def __init__(self, threshold: _Optional[float] = ..., min_speech_ticks: _Optional[int] = ..., min_silence_ticks: _Optional[int] = ..., speech_pad_ticks: _Optional[int] = ...) -> None: ...
 
 class SpeechStagePayloadV1(_message.Message):
-    __slots__ = ("key_version", "stage", "source_fingerprint", "audio_artifact_id", "detection", "recognition", "alignment")
+    __slots__ = ("key_version", "stage", "source_fingerprint", "detection", "recognition", "alignment")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
-    AUDIO_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     DETECTION_FIELD_NUMBER: _ClassVar[int]
     RECOGNITION_FIELD_NUMBER: _ClassVar[int]
     ALIGNMENT_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     stage: str
     source_fingerprint: str
-    audio_artifact_id: str
     detection: SpeechDetectionV1
     recognition: SpeechRecognitionV1
     alignment: SpeechAlignmentV1
-    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., audio_artifact_id: _Optional[str] = ..., detection: _Optional[_Union[SpeechDetectionV1, _Mapping]] = ..., recognition: _Optional[_Union[SpeechRecognitionV1, _Mapping]] = ..., alignment: _Optional[_Union[SpeechAlignmentV1, _Mapping]] = ...) -> None: ...
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., detection: _Optional[_Union[SpeechDetectionV1, _Mapping]] = ..., recognition: _Optional[_Union[SpeechRecognitionV1, _Mapping]] = ..., alignment: _Optional[_Union[SpeechAlignmentV1, _Mapping]] = ...) -> None: ...
 
 class SpeechRecognitionV1(_message.Message):
     __slots__ = ("language", "conditioned_on_previous")
@@ -357,20 +355,18 @@ class ShotDetectionV1(_message.Message):
     def __init__(self, threshold: _Optional[float] = ..., min_shot_ticks: _Optional[int] = ..., analysis_height: _Optional[int] = ...) -> None: ...
 
 class ShotsStagePayloadV1(_message.Message):
-    __slots__ = ("key_version", "stage", "source_fingerprint", "proxy_artifact_id", "detection", "decoder_bom")
+    __slots__ = ("key_version", "stage", "source_fingerprint", "detection", "decoder_bom")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
-    PROXY_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     DETECTION_FIELD_NUMBER: _ClassVar[int]
     DECODER_BOM_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     stage: str
     source_fingerprint: str
-    proxy_artifact_id: str
     detection: ShotDetectionV1
     decoder_bom: str
-    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., proxy_artifact_id: _Optional[str] = ..., detection: _Optional[_Union[ShotDetectionV1, _Mapping]] = ..., decoder_bom: _Optional[str] = ...) -> None: ...
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., detection: _Optional[_Union[ShotDetectionV1, _Mapping]] = ..., decoder_bom: _Optional[str] = ...) -> None: ...
 
 class IndexTranscriptPayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id")
@@ -381,16 +377,12 @@ class IndexTranscriptPayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
 
 class IndexStagePayloadV1(_message.Message):
-    __slots__ = ("key_version", "stage", "transcript_artifact_id", "shots_artifact_id")
+    __slots__ = ("key_version", "stage")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
-    TRANSCRIPT_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
-    SHOTS_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     stage: str
-    transcript_artifact_id: str
-    shots_artifact_id: str
-    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., transcript_artifact_id: _Optional[str] = ..., shots_artifact_id: _Optional[str] = ...) -> None: ...
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
 
 class DiscoverCandidatesPayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "duration")
@@ -411,22 +403,76 @@ class ClipDurationV1(_message.Message):
     def __init__(self, min_ticks: _Optional[int] = ..., max_ticks: _Optional[int] = ...) -> None: ...
 
 class DiscoverStagePayloadV1(_message.Message):
-    __slots__ = ("key_version", "stage", "index_artifact_id", "transcript_artifact_id", "loudness_artifact_id", "duration", "exploration_floor")
+    __slots__ = ("key_version", "stage", "duration", "exploration_floor")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
-    INDEX_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
-    TRANSCRIPT_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
-    LOUDNESS_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     DURATION_FIELD_NUMBER: _ClassVar[int]
     EXPLORATION_FLOOR_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     stage: str
-    index_artifact_id: str
-    transcript_artifact_id: str
-    loudness_artifact_id: str
     duration: ClipDurationV1
     exploration_floor: int
-    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., index_artifact_id: _Optional[str] = ..., transcript_artifact_id: _Optional[str] = ..., loudness_artifact_id: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., exploration_floor: _Optional[int] = ...) -> None: ...
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., exploration_floor: _Optional[int] = ...) -> None: ...
+
+class RankCandidatesPayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "count", "diversity_milli")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    count: int
+    diversity_milli: int
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+
+class RankStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "count", "diversity_milli")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    count: int
+    diversity_milli: int
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+
+class AnalyzeSourcePayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    DURATION_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    language: str
+    duration: ClipDurationV1
+    count: int
+    diversity_milli: int
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+
+class AnalysisStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "source_fingerprint", "skipped")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    SKIPPED_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    source_fingerprint: str
+    skipped: _containers.RepeatedCompositeFieldContainer[SkippedStageV1]
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., skipped: _Optional[_Iterable[_Union[SkippedStageV1, _Mapping]]] = ...) -> None: ...
+
+class SkippedStageV1(_message.Message):
+    __slots__ = ("kind", "reason")
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    kind: str
+    reason: str
+    def __init__(self, kind: _Optional[str] = ..., reason: _Optional[str] = ...) -> None: ...
 
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")

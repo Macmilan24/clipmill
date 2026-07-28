@@ -7,12 +7,11 @@
 //! `clipmill-evidence`, which does no I/O — this module is the part that reads
 //! the inputs, keys the result, and publishes it.
 //!
-//! The two documents it reads are named in the task payload rather than
-//! reached through dependencies, because both were published by earlier jobs
-//! and a task's inputs are the outputs of the tasks it depends on. Each is
-//! then checked against the artifact kind its own manifest declares, so a
-//! payload that named shot cuts where a transcript belongs is refused rather
-//! than parsed into nonsense.
+//! Its two documents arrive on the lease — declared by the plan when this runs
+//! standalone, delivered by a dependency inside the analyze DAG — and each is
+//! matched against the artifact kind its own manifest declares. A plan that
+//! named shot cuts where a transcript belongs is refused rather than parsed into
+//! nonsense.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::IndexStagePayloadV1;
@@ -26,6 +25,7 @@ use serde_json::{Map, json};
 
 use crate::{
     artifacts::ArtifactHandle,
+    inputs::{self, Wanted},
     jobs::{INDEX_STAGE_KEY_VERSION, LeasedTask, TaskExecutionError},
     media::{self, ProgressSlot},
 };
@@ -55,33 +55,19 @@ pub(crate) async fn execute_index_task(
             "task payload does not describe the evidence index",
         ));
     }
-    if payload.transcript_artifact_id.is_empty() {
-        return Err(TaskExecutionError::deterministic(
-            "the evidence index has no transcript to read",
-        ));
-    }
-
-    let transcript: SpeechTranscript = read_input(
+    let resolved = inputs::resolve(
         artifacts,
-        &payload.transcript_artifact_id,
-        "speech.transcript.v1",
-        "transcript.json",
+        task,
+        &[
+            Wanted::required("speech.transcript.v1"),
+            Wanted::optional("evidence.shots.v1"),
+        ],
     )
     .await?;
-    let shots: Option<EvidenceShots> = if payload.shots_artifact_id.is_empty() {
-        None
-    } else {
-        Some(
-            read_input(
-                artifacts,
-                &payload.shots_artifact_id,
-                "evidence.shots.v1",
-                "shots.json",
-            )
-            .await?,
-        )
-    };
-    let transcript_id = payload.transcript_artifact_id.clone();
+    let transcript: SpeechTranscript = resolved.read("speech.transcript.v1", "transcript.json")?;
+    let shots: Option<EvidenceShots> = resolved.read_optional("evidence.shots.v1", "shots.json")?;
+    let transcript_id = resolved.address("speech.transcript.v1")?;
+    let shots_id = resolved.optional_address("evidence.shots.v1");
     progress.set("stages", 1, 3);
 
     let parameters = Parameters::DEFAULT;
@@ -90,7 +76,7 @@ pub(crate) async fn execute_index_task(
         shots.as_ref(),
         Inputs {
             transcript: &transcript_id,
-            shots: Some(payload.shots_artifact_id.as_str()).filter(|id| !id.is_empty()),
+            shots: shots_id.as_deref(),
         },
         parameters,
         IMPLEMENTATION,
@@ -141,7 +127,7 @@ pub(crate) async fn execute_index_task(
         },
         // The addresses the stage actually read, so the key covers them even
         // though no dependency delivered them.
-        inputs: inputs_for(&payload)?,
+        inputs: resolved.addresses(),
         policy: NetworkPolicy::LocalLock,
         config,
         semantic_version: "clipmill.index.transcript.v1".to_owned(),
@@ -171,50 +157,6 @@ pub(crate) async fn execute_index_task(
     result
 }
 
-/// Open one named artifact and read one document out of it.
-///
-/// The kind is checked against what the artifact's own manifest declares. A
-/// payload that named shot cuts where a transcript belongs would otherwise be
-/// a parse error at best and a plausible-looking index at worst.
-async fn read_input<T: serde::de::DeserializeOwned>(
-    artifacts: &ArtifactHandle,
-    artifact_id: &str,
-    expected_kind: &str,
-    file: &str,
-) -> Result<T, TaskExecutionError> {
-    let parsed: ArtifactId = artifact_id
-        .parse()
-        .map_err(|_| TaskExecutionError::deterministic("input artifact id is not an address"))?;
-    let lease = artifacts
-        .open(parsed)
-        .await
-        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    if lease.kind() != expected_kind {
-        return Err(TaskExecutionError::deterministic(format!(
-            "the evidence index was pointed at a {}, not a {expected_kind}",
-            lease.kind()
-        )));
-    }
-    media::read_artifact_document(&lease, file)
-}
-
-/// The addresses this stage read, in a stable order, for the artifact key.
-fn inputs_for(payload: &IndexStagePayloadV1) -> Result<Vec<ArtifactId>, TaskExecutionError> {
-    let mut inputs = Vec::new();
-    for address in [
-        payload.transcript_artifact_id.as_str(),
-        payload.shots_artifact_id.as_str(),
-    ] {
-        if address.is_empty() {
-            continue;
-        }
-        inputs.push(address.parse::<ArtifactId>().map_err(|_| {
-            TaskExecutionError::deterministic("input artifact id is not an address")
-        })?);
-    }
-    Ok(inputs)
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
@@ -222,43 +164,13 @@ mod tests {
     use clipmill_contracts::proto::ipc::v1::IndexStagePayloadV1;
     use prost::Message;
 
-    use super::{INDEX_STAGE_KEY_VERSION, KIND_INDEX, inputs_for};
-
-    const TRANSCRIPT: &str =
-        "sha256:7a11000000000000000000000000000000000000000000000000000000000042";
-    const SHOTS: &str = "sha256:9c0f000000000000000000000000000000000000000000000000000000000031";
+    use super::{INDEX_STAGE_KEY_VERSION, KIND_INDEX};
 
     fn payload() -> IndexStagePayloadV1 {
         IndexStagePayloadV1 {
             key_version: INDEX_STAGE_KEY_VERSION.to_owned(),
             stage: KIND_INDEX.to_owned(),
-            transcript_artifact_id: TRANSCRIPT.to_owned(),
-            shots_artifact_id: String::new(),
         }
-    }
-
-    /// The key must cover both documents the stage read. A key that named only
-    /// the transcript would serve one recording's index for another's shots.
-    #[test]
-    fn the_key_covers_every_document_that_was_read() {
-        assert_eq!(inputs_for(&payload()).expect("addresses").len(), 1);
-        let with_shots = IndexStagePayloadV1 {
-            shots_artifact_id: SHOTS.to_owned(),
-            ..payload()
-        };
-        let inputs = inputs_for(&with_shots).expect("addresses");
-        assert_eq!(inputs.len(), 2);
-        assert_eq!(inputs[0].to_string(), TRANSCRIPT);
-        assert_eq!(inputs[1].to_string(), SHOTS);
-    }
-
-    #[test]
-    fn an_address_that_is_not_an_address_is_refused() {
-        let malformed = IndexStagePayloadV1 {
-            transcript_artifact_id: "/var/folders/transcript.json".to_owned(),
-            ..payload()
-        };
-        assert!(inputs_for(&malformed).is_err());
     }
 
     /// A payload from another stage decodes into this message shape without
@@ -274,5 +186,15 @@ mod tests {
         let decoded = IndexStagePayloadV1::decode(borrowed.encode_to_vec().as_slice())
             .expect("it decodes, which is the point");
         assert_ne!(decoded.stage, KIND_INDEX);
+    }
+
+    /// Nothing about what the stage reads is in here. Two indexes over different
+    /// transcripts are still different artifacts — the recipe covers the
+    /// addresses the lease delivered — but they encode the same payload, which is
+    /// exactly what lets one route's index be the other route's cache hit.
+    #[test]
+    fn the_payload_names_no_input() {
+        let encoded = String::from_utf8_lossy(&payload().encode_to_vec()).into_owned();
+        assert!(!encoded.contains("sha256:"));
     }
 }

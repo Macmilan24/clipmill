@@ -212,9 +212,16 @@ message SpeechStagePayloadV1 {
   // The registered task kind this payload belongs to.
   string stage = 2;
   string source_fingerprint = 3;
-  // The 16 kHz mono rendition. A content address, so the key it produces is
-  // the same on every machine.
-  string audio_artifact_id = 4;
+  // 4 was the 16 kHz rendition's content address. It is gone because the
+  // address arrives on the lease now — declared by the plan when this runs
+  // standalone, delivered by a dependency inside the analyze DAG. A worker may
+  // only open what its lease names, so an address that travelled only in the
+  // payload named an artifact the worker was not allowed to read. Keeping it
+  // here would also give one observation two keys: inside the DAG the field
+  // would have to be empty, because the rendition does not exist yet when the
+  // plan is written.
+  reserved 4;
+  reserved "audio_artifact_id";
   // Exactly one of the following is set, matching `stage`.
   SpeechDetectionV1 detection = 5;
   SpeechRecognitionV1 recognition = 6;
@@ -269,9 +276,11 @@ message ShotsStagePayloadV1 {
   // The registered task kind this payload belongs to.
   string stage = 2;
   string source_fingerprint = 3;
-  // The mezzanine proxy. A content address, so the key it produces is the same
-  // on every machine.
-  string proxy_artifact_id = 4;
+  // 4 was the mezzanine proxy's content address, removed for the same reason
+  // the speech stages' audio address was: the lease is what names an artifact a
+  // worker may open, so the plan declares it there instead.
+  reserved 4;
+  reserved "proxy_artifact_id";
   ShotDetectionV1 detection = 5;
   // Build identity of the decoder the worker will be handed, e.g.
   // "ffmpeg-8.1.2-btb-n8.1.2". It belongs in the key because a different build
@@ -301,12 +310,12 @@ message IndexStagePayloadV1 {
   string key_version = 1;
   // The registered task kind this payload belongs to.
   string stage = 2;
-  // The transcript to index. Its own document carries the source fingerprint,
-  // so naming one here as well would be a second copy that could disagree.
-  string transcript_artifact_id = 3;
-  // Empty for a source with no video, which is a different key from one whose
-  // cuts were simply never looked for.
-  string shots_artifact_id = 4;
+  // 3 and 4 were the transcript's and the shot detection's content addresses.
+  // Both arrive on the lease now, declared by the plan when this stage runs
+  // standalone and delivered by a dependency inside the analyze DAG, so this
+  // payload carries only what the stage was asked to do.
+  reserved 3, 4;
+  reserved "transcript_artifact_id", "shots_artifact_id";
 }
 
 // Versioned payload for discovery (book ch. 15). The request names a source;
@@ -336,15 +345,84 @@ message DiscoverStagePayloadV1 {
   string key_version = 1;
   // The registered task kind this payload belongs to.
   string stage = 2;
-  string index_artifact_id = 3;
-  string transcript_artifact_id = 4;
-  // Empty for a source with no audio, in which case prosody measures nothing
-  // rather than contributing a default.
-  string loudness_artifact_id = 5;
+  // 3, 4, and 5 were the index's, the transcript's, and the loudness
+  // envelope's content addresses. They arrive on the lease now, for the reason
+  // the evidence index above states.
+  reserved 3, 4, 5;
+  reserved "index_artifact_id", "transcript_artifact_id", "loudness_artifact_id";
   ClipDurationV1 duration = 6;
   // The fewest nominations each proposer keeps regardless of score. Part of
   // the key: a different floor is a different search.
   uint64 exploration_floor = 7;
+}
+
+// Versioned payload for ranking (book ch. 16). The request names a source; the
+// daemon resolves it to the candidate set, the index, and the transcript.
+message RankCandidatesPayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // Zero leaves the count and the diversity trade-off at the daemon's
+  // defaults.
+  uint64 count = 3;
+  // Thousandths, so the value that reaches an artifact key is an integer.
+  uint64 diversity_milli = 4;
+}
+
+// What the ranking stage is asked to score.
+//
+// The three documents are named as content addresses when this runs as a
+// standalone job, and left empty when it runs inside the analyze DAG, where
+// they arrive as the outputs of the tasks it depends on. The key is computed
+// from the addresses either way, so the two routes share a cache entry.
+message RankStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  // 3, 4, and 5 were the candidate set's, the index's, and the transcript's
+  // content addresses, which arrive on the lease now.
+  reserved 3, 4, 5;
+  reserved "candidates_artifact_id", "index_artifact_id", "transcript_artifact_id";
+  uint64 count = 6;
+  uint64 diversity_milli = 7;
+}
+
+// Versioned payload for the whole analysis (book ch. 15/16): probe, ingest,
+// the speech chain, shot detection, the evidence index, discovery, and
+// ranking, planned as one DAG whose single rooted artifact names every stage.
+// This is what a new project submits and what evaluation runs.
+message AnalyzeSourcePayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // BCP 47 primary subtag, or empty to let the recognizer decide.
+  string language = 3;
+  // Zero leaves each of these at the daemon's default, so a caller with no
+  // opinion does not have to have one.
+  ClipDurationV1 duration = 4;
+  uint64 count = 5;
+  uint64 diversity_milli = 6;
+}
+
+// What the fan-in at the end of an analysis is asked to write.
+//
+// It reads nothing tunable: the document is the list of artifacts its
+// dependencies published, and every stage that produced one is a dependency. It
+// does carry the stages the plan chose not to run, because that is the one fact
+// no artifact can state — a recording with no video has no shot cuts, and
+// "nobody looked" has to stay distinguishable from "there were none".
+message AnalysisStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string source_fingerprint = 3;
+  repeated SkippedStageV1 skipped = 4;
+}
+
+// A stage the plan left out, and the property of the source that left it out.
+message SkippedStageV1 {
+  // The artifact kind that was not produced, e.g. "evidence.shots.v1".
+  string kind = 1;
+  // "no_video" or "no_audio".
+  string reason = 2;
 }
 
 // Versioned payload for the daemon-owned device profiler. The stable

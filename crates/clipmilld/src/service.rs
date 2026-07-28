@@ -7,14 +7,15 @@ use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
 };
 use clipmill_contracts::proto::ipc::v1::{
-    ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1,
-    DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
-    GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse, GetProjectResponse,
-    GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1, IngestSourcePayloadV1,
-    ListJobsResponse, ListProjectsResponse, ListSourcesResponse, PingResponse,
-    ProbeSourcePayloadV1, RegisterSourceRequest, RenderClipPayloadV1, Request, Response,
-    SnapshotEditDocResponse, SubmitJobRequest, SubscribeTaskEventsRequest,
-    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
+    AnalyzeSourcePayloadV1, ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest,
+    DemoDagPayloadV1, DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode,
+    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
+    GetProjectResponse, GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1,
+    IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
+    PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1, RegisterSourceRequest,
+    RenderClipPayloadV1, Request, Response, SnapshotEditDocResponse, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
+    response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
@@ -25,7 +26,9 @@ use crate::db::{BeginDeviceProfile, DeviceProfileState};
 use crate::db::{DbHandle, ProjectRecord, StoreError};
 use crate::device::{DeviceProfiler, verify_profile};
 use crate::jobs::{EventFilter, TaskEventRecord};
-use crate::jobs::{EventHub, JobPlan, SchedulerHandle};
+use crate::jobs::{
+    EventHub, INGEST_SOURCE_KEY_VERSION, JobPlan, PROBE_SOURCE_KEY_VERSION, SchedulerHandle,
+};
 use crate::sources::{SourceInspector, SourceProbeError};
 use tokio::sync::broadcast;
 use tokio::time::{Instant, sleep};
@@ -36,13 +39,13 @@ const PROJECT_NAME_MAX_CHARS: usize = 200;
 /// limit, this keeps a hostile payload from reaching the parser at all.
 const MAX_EDIT_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
-const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
-const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
 const TRANSCRIBE_SOURCE_KEY_VERSION: &str = "clipmill.transcribe-source.v1";
 const DETECT_SHOTS_KEY_VERSION: &str = "clipmill.detect-shots.v1";
 const INDEX_TRANSCRIPT_KEY_VERSION: &str = "clipmill.index-transcript.v1";
 const DISCOVER_CANDIDATES_KEY_VERSION: &str = "clipmill.discover-candidates.v1";
+const RANK_CANDIDATES_KEY_VERSION: &str = "clipmill.rank-candidates.v1";
+const ANALYZE_SOURCE_KEY_VERSION: &str = "clipmill.analyze-source.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
@@ -881,6 +884,146 @@ impl Service {
                     &payload,
                     now,
                 )
+            }
+            "rank-candidates" => {
+                let Ok(payload) = RankCandidatesPayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "ranking job payload is not a valid RankCandidatesPayloadV1",
+                    );
+                };
+                if payload.key_version != RANK_CANDIDATES_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "ranking job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                let mut found = Vec::new();
+                for kind in [
+                    "discover-candidates",
+                    "index-transcript",
+                    "transcribe-source",
+                ] {
+                    let Ok(Some(artifact)) = self
+                        .database
+                        .latest_source_job_artifact(source_id.to_string(), kind.to_owned())
+                        .await
+                    else {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::Conflict,
+                            format!("this source has no published {kind} to rank from"),
+                        );
+                    };
+                    found.push(artifact);
+                }
+                JobPlan::rank_candidates(
+                    &project_id,
+                    source_id.to_string(),
+                    crate::jobs::RankingJobInputs {
+                        candidates: &found[0],
+                        index: &found[1],
+                        transcript: &found[2],
+                    },
+                    &payload,
+                    now,
+                )
+            }
+            "analyze-source" => {
+                let Ok(payload) = AnalyzeSourcePayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "analyze job payload is not a valid AnalyzeSourcePayloadV1",
+                    );
+                };
+                if payload.key_version != ANALYZE_SOURCE_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "analyze job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                // The plan's shape depends on which streams the file has, and
+                // that is a measurement rather than a guess. A source map with
+                // no streams in it is one nobody has probed: refusing here beats
+                // planning a fan-out that finds nothing to decode.
+                let (has_video, has_audio) = source_stream_kinds(&source.source_map_json);
+                if !has_video && !has_audio {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has not been probed, so nothing knows which streams it has",
+                    );
+                }
+                let bindings = self
+                    .scheduler
+                    .as_ref()
+                    .map(crate::jobs::SchedulerHandle::bindings)
+                    .unwrap_or_default();
+                match JobPlan::analyze_source(
+                    &project_id,
+                    crate::jobs::AnalyzeSource {
+                        source_id: &source_id.to_string(),
+                        source_fingerprint: &source.source_fingerprint,
+                        has_video,
+                        has_audio,
+                    },
+                    &payload,
+                    &self.models,
+                    &bindings,
+                    crate::media::FFMPEG_BOM,
+                    now,
+                ) {
+                    Ok(plan) => plan,
+                    Err(message) => {
+                        return error_reply(request_id, ErrorCode::InvalidArgument, message);
+                    }
+                }
             }
             "render-clip" => {
                 let Ok(payload) = RenderClipPayloadV1::decode(submit.payload.as_slice()) else {

@@ -30,7 +30,7 @@ from clipmill_worker_sdk import (
     WorkerConfiguration,
     WorkerIdentity,
 )
-from clipmill_worker_sdk.artifacts import ArtifactVerificationError
+from clipmill_worker_sdk.artifacts import ArtifactVerificationError, artifact_file
 from clipmill_worker_sdk.audio import AUDIO_DESCRIPTOR, AUDIO_PAYLOAD, read_pcm_audio
 from clipmill_worker_sdk.confidence import distribution
 from clipmill_worker_sdk.documents import canonical_bytes
@@ -44,6 +44,7 @@ from clipmill_worker_sdk.gen.schemas.speech_alignment import (
     Word,
 )
 from clipmill_worker_sdk.gen.schemas.speech_asr import AsrSegment, SpeechAsr
+from clipmill_worker_sdk.inputs import LeaseInputs, MissingInputError
 from clipmill_worker_sdk.ticks import samples_to_ticks, ticks_to_samples
 from clipmill_worker_sdk.weights import ModelVerificationError, require_model
 
@@ -62,6 +63,9 @@ CAPABILITIES = ("speech-align",)
 OUTPUT_FILE = "alignment.json"
 ASR_FILE = "asr.json"
 KEY_VERSION = "clipmill.speech-stage.v1"
+# The rendition every speech stage reads, named so the lease can be searched by
+# what an artifact is rather than by where it happened to land in a list.
+AUDIO_KIND = "media.audio_16k.v1"
 SAMPLE_RATE = 16_000
 DEFAULT_MIN_SCORE = 0.05
 
@@ -76,7 +80,10 @@ def execute_align(context: TaskContext) -> tuple[str, ...]:
     except ModelVerificationError as error:
         raise DeterministicTaskError(str(error)) from error
 
-    audio_artifact = context.open_artifact(payload.audio_artifact_id)
+    inputs = _inputs(context)
+    audio_input = inputs.require(AUDIO_KIND)
+    audio_artifact_id = audio_input.artifact_id
+    audio_artifact = audio_input.artifact
     audio = read_pcm_audio(
         audio_artifact,
         context.artifact_file(audio_artifact, AUDIO_PAYLOAD),
@@ -84,7 +91,7 @@ def execute_align(context: TaskContext) -> tuple[str, ...]:
         expect_sample_rate=SAMPLE_RATE,
         expect_channels=1,
     )
-    asr_id, recognized = _recognition(context)
+    asr_id, recognized = _recognition(inputs)
 
     acoustic = Wav2Vec2Ctc(model)
     if acoustic.sample_rate != audio.sample_rate:
@@ -119,7 +126,7 @@ def execute_align(context: TaskContext) -> tuple[str, ...]:
     document = SpeechAlignment(
         schema_version="clipmill.speech.alignment.v1",
         source_fingerprint=payload.source_fingerprint or audio.source_fingerprint,
-        audio_artifact_id=payload.audio_artifact_id,
+        audio_artifact_id=audio_artifact_id,
         asr_artifact_id=asr_id,
         producer=Producer(
             stage="speech-align",
@@ -283,18 +290,33 @@ def _payload(context: TaskContext) -> daemon_pb2.SpeechStagePayloadV1:
         raise DeterministicTaskError("task payload is not a speech stage payload") from error
     if payload.key_version != KEY_VERSION or payload.stage != "speech-align":
         raise DeterministicTaskError("task payload does not describe forced alignment")
-    if not payload.audio_artifact_id:
-        raise DeterministicTaskError("task payload names no audio rendition")
     return payload
 
 
-def _recognition(context: TaskContext) -> tuple[str, SpeechAsr]:
-    inputs = list(context.lease.input_artifact_ids)
-    if len(inputs) != 1:
-        raise DeterministicTaskError(f"alignment takes one recognition input, not {len(inputs)}")
-    artifact = context.open_artifact(inputs[0])
+def _inputs(context: TaskContext) -> LeaseInputs:
+    """What this lease delivered, indexed by kind.
+
+    Both the audio and the recognition arrive here rather than one of them in the
+    payload: a worker may open exactly what its lease named, and an address in the
+    payload would be present on one route and absent on the other, which is one
+    alignment with two addresses.
+    """
+
     try:
-        raw = context.artifact_file(artifact, ASR_FILE).read_text(encoding="utf-8")
+        return LeaseInputs(context)
+    except MissingInputError as error:
+        raise DeterministicTaskError(str(error)) from error
+
+
+def _recognition(inputs: LeaseInputs) -> tuple[str, SpeechAsr]:
+    """The text this pass places in time, found by kind rather than by position."""
+
+    try:
+        found = inputs.require("speech.asr.v1")
+    except MissingInputError as error:
+        raise DeterministicTaskError(str(error)) from error
+    try:
+        raw = artifact_file(found.artifact, ASR_FILE).read_text(encoding="utf-8")
     except ArtifactVerificationError as error:
         raise DeterministicTaskError(str(error)) from error
     recognized = SpeechAsr.model_validate_json(raw)
@@ -303,7 +325,7 @@ def _recognition(context: TaskContext) -> tuple[str, SpeechAsr]:
         # authoritative for this to fail, which is the arrangement this whole
         # stage exists to prevent.
         raise DeterministicTaskError("the recognition artifact does not defer timing to alignment")
-    return (inputs[0], recognized)
+    return (found.artifact_id, recognized)
 
 
 def main() -> int:
