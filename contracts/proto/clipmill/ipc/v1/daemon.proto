@@ -221,6 +221,7 @@ message SpeechStagePayloadV1 {
   // would have to be empty, because the rendition does not exist yet when the
   // plan is written.
   reserved 4;
+  reserved "audio_artifact_id";
   // Exactly one of the following is set, matching `stage`.
   SpeechDetectionV1 detection = 5;
   SpeechRecognitionV1 recognition = 6;
@@ -279,6 +280,7 @@ message ShotsStagePayloadV1 {
   // the speech stages' audio address was: the lease is what names an artifact a
   // worker may open, so the plan declares it there instead.
   reserved 4;
+  reserved "proxy_artifact_id";
   ShotDetectionV1 detection = 5;
   // Build identity of the decoder the worker will be handed, e.g.
   // "ffmpeg-8.1.2-btb-n8.1.2". It belongs in the key because a different build
@@ -313,6 +315,7 @@ message IndexStagePayloadV1 {
   // standalone and delivered by a dependency inside the analyze DAG, so this
   // payload carries only what the stage was asked to do.
   reserved 3, 4;
+  reserved "transcript_artifact_id", "shots_artifact_id";
 }
 
 // Versioned payload for discovery (book ch. 15). The request names a source;
@@ -346,6 +349,7 @@ message DiscoverStagePayloadV1 {
   // envelope's content addresses. They arrive on the lease now, for the reason
   // the evidence index above states.
   reserved 3, 4, 5;
+  reserved "index_artifact_id", "transcript_artifact_id", "loudness_artifact_id";
   ClipDurationV1 duration = 6;
   // The fewest nominations each proposer keeps regardless of score. Part of
   // the key: a different floor is a different search.
@@ -377,6 +381,7 @@ message RankStagePayloadV1 {
   // 3, 4, and 5 were the candidate set's, the index's, and the transcript's
   // content addresses, which arrive on the lease now.
   reserved 3, 4, 5;
+  reserved "candidates_artifact_id", "index_artifact_id", "transcript_artifact_id";
   uint64 count = 6;
   uint64 diversity_milli = 7;
 }
