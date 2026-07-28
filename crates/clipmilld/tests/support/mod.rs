@@ -7,11 +7,11 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CancelJobRequest, CreateEditDocRequest, CreateProjectRequest, DemoDagPayloadV1, GetJobRequest,
-    GetSourceRequest, IngestSourcePayloadV1, Job, ListJobsRequest, ListProjectsRequest,
-    ListSourcesRequest, PingRequest, ProbeSourcePayloadV1, Project, RegisterSourceRequest,
-    RegisterSourceResponse, RenderClipPayloadV1, Request, Response, SnapshotEditDocRequest, Source,
-    SubmitJobRequest, request, response,
+    AnalyzeSourcePayloadV1, CancelJobRequest, CreateEditDocRequest, CreateProjectRequest,
+    DemoDagPayloadV1, GetJobRequest, GetSourceRequest, IngestSourcePayloadV1, Job, ListJobsRequest,
+    ListProjectsRequest, ListSourcesRequest, PingRequest, ProbeSourcePayloadV1, Project,
+    RegisterSourceRequest, RegisterSourceResponse, RenderClipPayloadV1, Request, Response,
+    SnapshotEditDocRequest, Source, SubmitJobRequest, request, response,
 };
 use prost::Message;
 use tokio::{
@@ -290,6 +290,42 @@ pub async fn submit_ingest(
             .ok_or_else(|| "submit ingest response omitted job".to_owned()),
         Some(response::Body::Error(error)) => Err(error.message),
         _ => Err("unexpected submit ingest response".to_owned()),
+    }
+}
+
+pub async fn submit_analyze(
+    socket: &Path,
+    request_id: &str,
+    project_id: &str,
+    source_id: &str,
+) -> Result<Job, String> {
+    let payload = AnalyzeSourcePayloadV1 {
+        key_version: "clipmill.analyze-source.v1".to_owned(),
+        source_id: source_id.to_owned(),
+        language: "en".to_owned(),
+        duration: None,
+        count: 0,
+        diversity_milli: 0,
+    }
+    .encode_to_vec();
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::SubmitJob(SubmitJobRequest {
+                project_id: project_id.to_owned(),
+                kind: "analyze-source".to_owned(),
+                payload,
+            })),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::SubmitJob(submitted)) => submitted
+            .job
+            .ok_or_else(|| "submit analyze response omitted job".to_owned()),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected submit analyze response".to_owned()),
     }
 }
 

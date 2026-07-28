@@ -33,7 +33,7 @@ mod edit_store;
 pub(crate) use edit_store::{EditCommandRecord, EditDocRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -1455,8 +1455,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(source_store::CREATE_V4_TABLES)?;
         transaction.execute_batch(device_store::CREATE_V5_TABLES)?;
         transaction.execute_batch(edit_store::CREATE_V6_TABLES)?;
+        transaction.execute_batch(job_store::CREATE_V7_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 6;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 7;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1476,7 +1477,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 6 {
             transaction.execute_batch(edit_store::CREATE_V6_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 6;")?;
+        if version < 7 {
+            transaction.execute_batch(job_store::CREATE_V7_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 7;")?;
         transaction.commit()?;
     }
     Ok(())

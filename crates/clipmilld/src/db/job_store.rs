@@ -174,6 +174,28 @@ pub(super) const CREATE_V3_TABLES: &str = "
     ) STRICT, WITHOUT ROWID;
 ";
 
+/// Artifacts a task reads that no task in its own plan produced.
+///
+/// Separate from `task_dependencies` because the two say different things: a
+/// dependency is an ordering constraint whose output happens to be an input,
+/// while this is an input with no ordering to constrain — it was published
+/// before this job existed. Both end up in the lease's input list, declared
+/// first, because that list's order is part of the artifact key.
+pub(super) const CREATE_V7_TABLES: &str = "
+    CREATE TABLE task_input_artifacts (
+        task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        artifact_id TEXT NOT NULL
+            CHECK(
+                length(artifact_id) = 71
+                AND substr(artifact_id, 1, 7) = 'sha256:'
+                AND substr(artifact_id, 8) NOT GLOB '*[^0-9a-f]*'
+            ),
+        input_ordinal INTEGER NOT NULL CHECK(input_ordinal >= 0),
+        PRIMARY KEY(task_id, artifact_id),
+        UNIQUE(task_id, input_ordinal)
+    ) STRICT, WITHOUT ROWID;
+";
+
 #[derive(Debug)]
 pub(crate) struct MutationResult {
     pub bytes: Vec<u8>,
@@ -242,6 +264,10 @@ pub(super) fn submit_job(
     })
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one insert per table a plan touches, in dependency order"
+)]
 pub(super) fn insert_job_plan(
     transaction: &Transaction<'_>,
     plan: &JobPlan,
@@ -318,6 +344,13 @@ pub(super) fn insert_job_plan(
                 "INSERT INTO task_dependencies(task_id, depends_on_task_id, dependency_ordinal)
                  VALUES (?1, ?2, ?3)",
                 params![task.task_id, dependency, sqlite_usize(ordinal)?],
+            )?;
+        }
+        for (ordinal, artifact_id) in task.input_artifact_ids.iter().enumerate() {
+            transaction.execute(
+                "INSERT INTO task_input_artifacts(task_id, artifact_id, input_ordinal)
+                 VALUES (?1, ?2, ?3)",
+                params![task.task_id, artifact_id, sqlite_usize(ordinal)?],
             )?;
         }
     }
@@ -717,6 +750,20 @@ pub(super) fn lease_next_task_for_worker(
         FailureClass::Unspecified as i32,
         now,
     )?);
+    // What this task reads, in one list: the addresses its plan declared, then
+    // the outputs of the tasks it depends on. Order is fixed and part of the
+    // artifact key, which is what lets a stage reached by both routes — declared
+    // when it runs alone, delivered by a dependency inside a larger plan — key
+    // to one address instead of two.
+    let mut statement = transaction.prepare(
+        "SELECT artifact_id FROM task_input_artifacts
+         WHERE task_id = ?1
+         ORDER BY input_ordinal",
+    )?;
+    let declared_inputs = statement
+        .query_map([&selected.task_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(statement);
     let mut statement = transaction.prepare(
         "SELECT dependency.output_artifact_id
          FROM task_dependencies d
@@ -728,17 +775,24 @@ pub(super) fn lease_next_task_for_worker(
         .query_map([&selected.task_id], |row| row.get::<_, Option<String>>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     drop(statement);
-    let input_artifact_ids = encoded_inputs
+    let mut input_artifact_ids = declared_inputs
         .into_iter()
         .map(|value| {
+            value
+                .parse()
+                .map_err(|_| StoreError::InvalidData("declared input artifact id is invalid"))
+        })
+        .collect::<Result<Vec<ArtifactId>, StoreError>>()?;
+    for value in encoded_inputs {
+        input_artifact_ids.push(
             value
                 .ok_or(StoreError::InvalidData(
                     "succeeded dependency omitted artifact",
                 ))?
                 .parse()
-                .map_err(|_| StoreError::InvalidData("dependency artifact id is invalid"))
-        })
-        .collect::<Result<Vec<ArtifactId>, StoreError>>()?;
+                .map_err(|_| StoreError::InvalidData("dependency artifact id is invalid"))?,
+        );
+    }
     transaction.commit()?;
     Ok(LeaseSelection {
         task: Some(LeasedTask {
@@ -1589,6 +1643,29 @@ fn validate_plan(plan: &JobPlan) -> Result<(), StoreError> {
             || task.input_kinds.len() != task.dependencies.len()
         {
             return Err(StoreError::InvalidData("task artifact kinds are invalid"));
+        }
+        // A declared input has to be an address. A path would name different
+        // bytes on a different machine while producing the same artifact key,
+        // which is the one failure a content-addressed store cannot notice
+        // afterwards.
+        if task
+            .input_artifact_ids
+            .iter()
+            .any(|artifact_id| artifact_id.parse::<ArtifactId>().is_err())
+        {
+            return Err(StoreError::InvalidData(
+                "task declares an input that is not a content address",
+            ));
+        }
+        let distinct = task
+            .input_artifact_ids
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len();
+        if distinct != task.input_artifact_ids.len() {
+            return Err(StoreError::InvalidData(
+                "task declares the same input artifact twice",
+            ));
         }
         let resources = &task.resources;
         if resources.cpu_threads == 0

@@ -5,12 +5,11 @@
 //! it decides lives in `clipmill-discovery`, which does no I/O — this module
 //! reads the inputs, keys the result, and publishes it.
 //!
-//! Its three documents arrive one of two ways, both real. Submitted as a
-//! standalone job they are content addresses in the payload; run inside the
-//! analyze DAG they are the outputs of the tasks it depends on. Either way each
-//! is checked against the artifact kind its own manifest declares, so a payload
-//! pointing at a transcript where an index belongs is refused rather than
-//! searched, and the key covers the addresses whichever route found them.
+//! Its three documents arrive on the lease — declared by the plan when this runs
+//! standalone, delivered by a dependency inside the analyze DAG — and each is
+//! matched against the artifact kind its own manifest declares. A plan pointing
+//! at a transcript where an index belongs is refused rather than searched, and
+//! the key covers the addresses whichever route found them.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::DiscoverStagePayloadV1;
@@ -59,15 +58,9 @@ pub(crate) async fn execute_discover_task(
         artifacts,
         task,
         &[
-            Wanted::required("index.transcript.v1", payload.index_artifact_id.as_str()),
-            Wanted::required(
-                "speech.transcript.v1",
-                payload.transcript_artifact_id.as_str(),
-            ),
-            Wanted::optional(
-                "media.loudness_envelope.v1",
-                payload.loudness_artifact_id.as_str(),
-            ),
+            Wanted::required("index.transcript.v1"),
+            Wanted::required("speech.transcript.v1"),
+            Wanted::optional("media.loudness_envelope.v1"),
         ],
     )
     .await?;
@@ -201,17 +194,10 @@ mod tests {
     use super::{KIND_DISCOVER, parameters_of};
     use crate::jobs::DISCOVER_STAGE_KEY_VERSION;
 
-    const INDEX: &str = "sha256:1de0000000000000000000000000000000000000000000000000000000000011";
-    const TRANSCRIPT: &str =
-        "sha256:7a11000000000000000000000000000000000000000000000000000000000042";
-
     fn payload() -> DiscoverStagePayloadV1 {
         DiscoverStagePayloadV1 {
             key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
             stage: KIND_DISCOVER.to_owned(),
-            index_artifact_id: INDEX.to_owned(),
-            transcript_artifact_id: TRANSCRIPT.to_owned(),
-            loudness_artifact_id: String::new(),
             duration: None,
             exploration_floor: 0,
         }

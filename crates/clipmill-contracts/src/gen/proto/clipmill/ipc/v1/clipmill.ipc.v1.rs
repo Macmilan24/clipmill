@@ -306,10 +306,6 @@ pub struct SpeechStagePayloadV1 {
     pub stage: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub source_fingerprint: ::prost::alloc::string::String,
-    /// The 16 kHz mono rendition. A content address, so the key it produces is
-    /// the same on every machine.
-    #[prost(string, tag = "4")]
-    pub audio_artifact_id: ::prost::alloc::string::String,
     /// Exactly one of the following is set, matching `stage`.
     #[prost(message, optional, tag = "5")]
     pub detection: ::core::option::Option<SpeechDetectionV1>,
@@ -379,10 +375,6 @@ pub struct ShotsStagePayloadV1 {
     pub stage: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub source_fingerprint: ::prost::alloc::string::String,
-    /// The mezzanine proxy. A content address, so the key it produces is the same
-    /// on every machine.
-    #[prost(string, tag = "4")]
-    pub proxy_artifact_id: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "5")]
     pub detection: ::core::option::Option<ShotDetectionV1>,
     /// Build identity of the decoder the worker will be handed, e.g.
@@ -418,14 +410,6 @@ pub struct IndexStagePayloadV1 {
     /// The registered task kind this payload belongs to.
     #[prost(string, tag = "2")]
     pub stage: ::prost::alloc::string::String,
-    /// The transcript to index. Its own document carries the source fingerprint,
-    /// so naming one here as well would be a second copy that could disagree.
-    #[prost(string, tag = "3")]
-    pub transcript_artifact_id: ::prost::alloc::string::String,
-    /// Empty for a source with no video, which is a different key from one whose
-    /// cuts were simply never looked for.
-    #[prost(string, tag = "4")]
-    pub shots_artifact_id: ::prost::alloc::string::String,
 }
 /// Versioned payload for discovery (book ch. 15). The request names a source;
 /// the daemon resolves it to the evidence index, the transcript behind it, and
@@ -462,14 +446,6 @@ pub struct DiscoverStagePayloadV1 {
     /// The registered task kind this payload belongs to.
     #[prost(string, tag = "2")]
     pub stage: ::prost::alloc::string::String,
-    #[prost(string, tag = "3")]
-    pub index_artifact_id: ::prost::alloc::string::String,
-    #[prost(string, tag = "4")]
-    pub transcript_artifact_id: ::prost::alloc::string::String,
-    /// Empty for a source with no audio, in which case prosody measures nothing
-    /// rather than contributing a default.
-    #[prost(string, tag = "5")]
-    pub loudness_artifact_id: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "6")]
     pub duration: ::core::option::Option<ClipDurationV1>,
     /// The fewest nominations each proposer keeps regardless of score. Part of
@@ -506,12 +482,6 @@ pub struct RankStagePayloadV1 {
     /// The registered task kind this payload belongs to.
     #[prost(string, tag = "2")]
     pub stage: ::prost::alloc::string::String,
-    #[prost(string, tag = "3")]
-    pub candidates_artifact_id: ::prost::alloc::string::String,
-    #[prost(string, tag = "4")]
-    pub index_artifact_id: ::prost::alloc::string::String,
-    #[prost(string, tag = "5")]
-    pub transcript_artifact_id: ::prost::alloc::string::String,
     #[prost(uint64, tag = "6")]
     pub count: u64,
     #[prost(uint64, tag = "7")]
@@ -538,6 +508,35 @@ pub struct AnalyzeSourcePayloadV1 {
     pub count: u64,
     #[prost(uint64, tag = "6")]
     pub diversity_milli: u64,
+}
+/// What the fan-in at the end of an analysis is asked to write.
+///
+/// It reads nothing tunable: the document is the list of artifacts its
+/// dependencies published, and every stage that produced one is a dependency. It
+/// does carry the stages the plan chose not to run, because that is the one fact
+/// no artifact can state — a recording with no video has no shot cuts, and
+/// "nobody looked" has to stay distinguishable from "there were none".
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AnalysisStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "4")]
+    pub skipped: ::prost::alloc::vec::Vec<SkippedStageV1>,
+}
+/// A stage the plan left out, and the property of the source that left it out.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SkippedStageV1 {
+    /// The artifact kind that was not produced, e.g. "evidence.shots.v1".
+    #[prost(string, tag = "1")]
+    pub kind: ::prost::alloc::string::String,
+    /// "no_video" or "no_audio".
+    #[prost(string, tag = "2")]
+    pub reason: ::prost::alloc::string::String,
 }
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes

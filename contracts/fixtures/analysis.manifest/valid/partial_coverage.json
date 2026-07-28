@@ -1,0 +1,33 @@
+{
+  "coverage": {
+    "analyzed": false,
+    "end_ticks": 1710000,
+    "start_ticks": 90000
+  },
+  "schema_version": "clipmill.analysis.manifest.v1",
+  "skipped": [
+    {
+      "kind": "speech.vad.v1",
+      "reason": "no_audio"
+    }
+  ],
+  "source_fingerprint": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "stages": [
+    {
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "evidence.source_map.v1"
+    },
+    {
+      "artifact_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "kind": "media.ingest_manifest.v1"
+    },
+    {
+      "artifact_id": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "kind": "speech.transcript.v1"
+    },
+    {
+      "artifact_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "kind": "evidence.shots.v1"
+    }
+  ]
+}

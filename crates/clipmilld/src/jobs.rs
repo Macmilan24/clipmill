@@ -11,11 +11,12 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, ClipDurationV1, DetectShotsPayloadV1, DeviceProfilePayloadV1,
-        DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1, IndexStagePayloadV1,
-        IndexTranscriptPayloadV1, JobState, RankCandidatesPayloadV1, RankStagePayloadV1,
-        ShotsStagePayloadV1, SpeechAlignmentV1, SpeechRecognitionV1, SpeechStagePayloadV1,
-        TranscribeSourcePayloadV1,
+        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, ClipDurationV1, DetectShotsPayloadV1,
+        DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1,
+        IndexStagePayloadV1, IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState,
+        ProbeSourcePayloadV1, RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1,
+        SkippedStageV1, SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1,
+        SpeechStagePayloadV1, TranscribeSourcePayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -30,6 +31,7 @@ use tokio::{
 };
 
 use crate::{
+    analysis,
     artifacts::ArtifactHandle,
     db::{DbHandle, StoreError},
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
@@ -56,6 +58,17 @@ pub(crate) const DISCOVER_STAGE_KEY_VERSION: &str = "clipmill.discover-stage.v1"
 
 /// Key version the ranking stage payload carries.
 pub(crate) const RANK_STAGE_KEY_VERSION: &str = "clipmill.rank-stage.v1";
+
+/// Key version the analysis fan-in payload carries.
+pub(crate) const ANALYSIS_STAGE_KEY_VERSION: &str = "clipmill.analysis-stage.v1";
+
+/// Key versions of the two job requests the analyze DAG re-submits internally.
+/// They live here rather than beside the other job kinds' because the analyze
+/// plan writes these payloads itself: the probe and the ingest fan-out inside a
+/// DAG have to be byte-identical to the ones a standalone job would submit, or
+/// they would not share a cache entry with them.
+pub(crate) const PROBE_SOURCE_KEY_VERSION: &str = "clipmill.probe-source.v1";
+pub(crate) const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 
 /// The one implementation of shot detection. Unlike the speech stages there is
 /// nothing to select between: the stage runs no model, so there is no cost to
@@ -201,6 +214,28 @@ pub(crate) struct TaskSpec {
     pub output_kind: String,
     pub payload: Vec<u8>,
     pub dependencies: Vec<String>,
+    /// Artifacts this task reads that no task in this plan produced, named as
+    /// content addresses.
+    ///
+    /// A task's inputs are ordinarily the outputs of the tasks it depends on,
+    /// which is the whole of the story for a stage in the middle of a DAG. A
+    /// stage submitted on its own is the other case: what it reads was
+    /// published by an earlier job, so there is no dependency to carry it. The
+    /// plan says so here, and the daemon delivers both together.
+    ///
+    /// This exists rather than the address travelling in the stage payload for
+    /// two reasons. A worker may only open what its lease names, so an address
+    /// known only to the payload named an artifact the worker was forbidden to
+    /// read. And the payload is hashed into the artifact key: an address
+    /// present standalone and necessarily absent inside a DAG — where the
+    /// artifact does not exist yet when the plan is written — would give one
+    /// observation two addresses.
+    ///
+    /// Delivered before the dependency outputs, in this order, because input
+    /// order is part of the key. A stage reached by both routes therefore has
+    /// to declare them so the two agree, which
+    /// `the_two_routes_deliver_one_input_order` holds it to.
+    pub input_artifact_ids: Vec<String>,
     pub resources: ResourceDeclaration,
     pub implementation: String,
     pub max_attempts: u32,
@@ -240,6 +275,7 @@ impl JobPlan {
             output_kind: output_kind.to_owned(),
             payload: task_payload.clone(),
             dependencies,
+            input_artifact_ids: Vec::new(),
             resources: ResourceDeclaration::demo(),
             implementation: "builtin-demo@1.0.0".to_owned(),
             max_attempts: 3,
@@ -315,6 +351,7 @@ impl JobPlan {
                 output_kind: "evidence.source_map.v1".to_owned(),
                 payload,
                 dependencies: Vec::new(),
+                input_artifact_ids: Vec::new(),
                 resources: ResourceDeclaration {
                     cpu_threads: 1,
                     ram_bytes: 64 * 1024 * 1024,
@@ -348,10 +385,336 @@ impl JobPlan {
         has_audio: bool,
         now: u64,
     ) -> Result<Self, &'static str> {
-        if !has_video && !has_audio {
-            return Err("source carries neither video nor audio");
-        }
         let mut builder = IngestPlanBuilder::new(payload);
+        ingest_fan_out(&mut builder, has_video, has_audio)?;
+        let (payload, tasks, _, _) = builder.finish_with_manifest(true);
+        Ok(Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "ingest-source".to_owned(),
+            source_id: Some(source_id),
+            payload,
+            created_unix_millis: now,
+            tasks,
+        })
+    }
+}
+
+/// What an analysis needs to know about its source before it can be planned.
+///
+/// The stream inventory is here rather than measured inside because it is a
+/// measured fact: the fan-out's shape depends on it, and the probe that
+/// establishes it has to have run already.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AnalyzeSource<'a> {
+    pub source_id: &'a str,
+    pub source_fingerprint: &'a str,
+    pub has_video: bool,
+    pub has_audio: bool,
+}
+
+/// One shot-detection task, shared by the standalone job and the analyze DAG so
+/// the two key identically.
+fn shots_task(task_id: String, payload: &ShotsStagePayloadV1) -> TaskSpec {
+    TaskSpec {
+        task_id,
+        ordinal: 0,
+        kind: "detect-shots".to_owned(),
+        input_kinds: Vec::new(),
+        output_kind: "evidence.shots.v1".to_owned(),
+        payload: payload.encode_to_vec(),
+        dependencies: Vec::new(),
+        input_artifact_ids: Vec::new(),
+        resources: ResourceDeclaration {
+            // One decoder process beside the detector, which is why this is not
+            // the single thread the speech stages declare.
+            cpu_threads: 2,
+            ram_bytes: 512 * 1024 * 1024,
+            // Nothing to accelerate: the work is a decode and some array
+            // arithmetic, so any machine will do.
+            accelerator_class: String::new(),
+            vram_bytes: 0,
+            disk_bytes: 128 * 1024 * 1024,
+            network_policy: "local-lock".to_owned(),
+            thermal_class: "sustained".to_owned(),
+            determinism_class: "deterministic".to_owned(),
+            checkpoint_support: false,
+            preemption_cost: 2,
+        },
+        implementation: SHOTS_IMPLEMENTATION.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
+/// One model-free builtin stage inside a larger plan.
+///
+/// The three of them differ in what they read and how much they hold in memory
+/// at once, and in nothing else: no model, no accelerator, no network, and one
+/// thread. What varies is a field here; what does not is the same for all three.
+struct Builtin<'a> {
+    kind: &'a str,
+    output_kind: &'a str,
+    implementation: &'a str,
+    input_kinds: Vec<String>,
+    dependencies: Vec<String>,
+    payload: Vec<u8>,
+    ram_mib: u64,
+}
+
+fn builtin_task(task_id: String, builtin: Builtin<'_>) -> TaskSpec {
+    let Builtin {
+        kind,
+        output_kind,
+        implementation,
+        input_kinds,
+        dependencies,
+        payload,
+        ram_mib,
+    } = builtin;
+    TaskSpec {
+        task_id,
+        ordinal: 0,
+        kind: kind.to_owned(),
+        input_kinds,
+        output_kind: output_kind.to_owned(),
+        payload,
+        dependencies,
+        input_artifact_ids: Vec::new(),
+        resources: ResourceDeclaration {
+            cpu_threads: 1,
+            ram_bytes: ram_mib * 1024 * 1024,
+            accelerator_class: String::new(),
+            vram_bytes: 0,
+            disk_bytes: 128 * 1024 * 1024,
+            network_policy: "local-lock".to_owned(),
+            thermal_class: "light".to_owned(),
+            determinism_class: "deterministic".to_owned(),
+            checkpoint_support: false,
+            preemption_cost: 1,
+        },
+        implementation: implementation.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
+/// Where the speech chain finds the rendition it reads.
+///
+/// Two routes, both real, and the one thing that must hold across them is that
+/// each stage ends up with the same lease inputs in the same order — because
+/// that order is part of the artifact key, and a transcript derived by one route
+/// has to be the same artifact as one derived by the other.
+#[derive(Clone, Copy)]
+enum SpeechAudioRoute<'a> {
+    /// A rendition an earlier job published, declared by content address.
+    Published(&'a str),
+    /// A rendition a task in this same plan will produce.
+    Planned(&'a str),
+}
+
+/// Everything the speech chain needs that is not the device's answer.
+struct SpeechChain<'a> {
+    audio: SpeechAudioRoute<'a>,
+    source_fingerprint: &'a str,
+    language: &'a str,
+    detection: Option<SpeechDetectionV1>,
+    /// False when the chain is the middle of a longer plan.
+    transcript_is_final: bool,
+}
+
+/// The four speech tasks and the id of the one that publishes the transcript.
+struct PlannedChain {
+    tasks: Vec<TaskSpec>,
+    transcript_task_id: String,
+}
+
+/// The W15 chain (book ch. 13): voice activity, then recognition, then forced
+/// alignment, then the assembly that fuses them.
+///
+/// Strictly serial, and not for want of trying: each stage's input is the
+/// previous stage's output. What the split buys is not parallelism but blast
+/// radius — re-pinning the recognizer invalidates transcripts and leaves voice
+/// activity alone, and a failed alignment costs word timing without costing
+/// anyone the text.
+///
+/// Each stage carries only the parameters it reads, because the payload is
+/// hashed into the artifact key: a recognizer payload carrying the voice
+/// activity threshold would make re-tuning voice activity invalidate every
+/// cached transcript, including ones whose inputs never changed. For the same
+/// reason the audio's address is not in the payload at all — it would be
+/// present on one route and necessarily absent on the other.
+#[allow(
+    clippy::too_many_lines,
+    reason = "four task specifications, which is what the chain is"
+)]
+fn speech_chain(
+    chain: &SpeechChain<'_>,
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+) -> PlannedChain {
+    let stage_payload = |stage: &str, fill: &dyn Fn(&mut SpeechStagePayloadV1)| {
+        let mut payload = SpeechStagePayloadV1 {
+            key_version: SPEECH_STAGE_KEY_VERSION.to_owned(),
+            stage: stage.to_owned(),
+            source_fingerprint: chain.source_fingerprint.to_owned(),
+            ..SpeechStagePayloadV1::default()
+        };
+        fill(&mut payload);
+        payload.encode_to_vec()
+    };
+
+    let vad = TaskId::new().to_string();
+    let asr = TaskId::new().to_string();
+    let align = TaskId::new().to_string();
+    let transcript = TaskId::new().to_string();
+
+    // The audio, first in every leased stage's input list on both routes.
+    let (audio_declared, audio_dependency) = match chain.audio {
+        SpeechAudioRoute::Published(artifact_id) => (vec![artifact_id.to_owned()], Vec::new()),
+        SpeechAudioRoute::Planned(task_id) => (Vec::new(), vec![task_id.to_owned()]),
+    };
+    let audio_input_kinds = audio_dependency
+        .iter()
+        .map(|_| "media.audio_16k.v1".to_owned())
+        .collect::<Vec<_>>();
+
+    // The device's answer, frozen into the plan. Every leased stage below
+    // records the implementation this machine chose, which is what its artifact
+    // key is computed from and what the scheduler routes it by. Re-measuring the
+    // device later moves the next plan and nothing already published.
+    let leased = |task_id: String,
+                  ordinal: u32,
+                  kind: &str,
+                  previous: Option<(&str, &str)>,
+                  output_kind: &str,
+                  payload: Vec<u8>| {
+        let implementation = speech_implementation(kind, bindings);
+        let mut input_kinds = audio_input_kinds.clone();
+        let mut dependencies = audio_dependency.clone();
+        if let Some((previous_task, previous_kind)) = previous {
+            input_kinds.push(previous_kind.to_owned());
+            dependencies.push(previous_task.to_owned());
+        }
+        TaskSpec {
+            task_id,
+            ordinal,
+            kind: kind.to_owned(),
+            input_kinds,
+            output_kind: output_kind.to_owned(),
+            payload,
+            dependencies,
+            input_artifact_ids: audio_declared.clone(),
+            resources: speech_resources(implementation, models, 1),
+            implementation: implementation.name.to_owned(),
+            max_attempts: 3,
+            is_final: false,
+        }
+    };
+
+    let detection = chain.detection;
+    let language = chain.language.to_owned();
+    let tasks = vec![
+        leased(
+            vad.clone(),
+            0,
+            "speech-vad",
+            None,
+            "speech.vad.v1",
+            stage_payload("speech-vad", &|payload| {
+                payload.detection = detection;
+            }),
+        ),
+        leased(
+            asr.clone(),
+            1,
+            "speech-asr",
+            Some((vad.as_str(), "speech.vad.v1")),
+            "speech.asr.v1",
+            stage_payload("speech-asr", &|payload| {
+                payload.recognition = Some(SpeechRecognitionV1 {
+                    language: language.clone(),
+                    conditioned_on_previous: false,
+                });
+            }),
+        ),
+        leased(
+            align.clone(),
+            2,
+            "speech-align",
+            Some((asr.as_str(), "speech.asr.v1")),
+            "speech.alignment.v1",
+            stage_payload("speech-align", &|payload| {
+                payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
+            }),
+        ),
+        TaskSpec {
+            task_id: transcript.clone(),
+            ordinal: 3,
+            kind: speech::KIND_TRANSCRIPT.to_owned(),
+            // Named in dependency order, but assembly matches its inputs by the
+            // kind each artifact declares rather than by position. It reads no
+            // audio: the three documents already carry everything it fuses.
+            input_kinds: vec![
+                "speech.vad.v1".to_owned(),
+                "speech.asr.v1".to_owned(),
+                "speech.alignment.v1".to_owned(),
+            ],
+            output_kind: "speech.transcript.v1".to_owned(),
+            payload: stage_payload(speech::KIND_TRANSCRIPT, &|_| {}),
+            dependencies: vec![vad, asr, align],
+            input_artifact_ids: Vec::new(),
+            resources: ResourceDeclaration {
+                cpu_threads: 1,
+                ram_bytes: 128 * 1024 * 1024,
+                accelerator_class: String::new(),
+                vram_bytes: 0,
+                disk_bytes: 64 * 1024 * 1024,
+                network_policy: "local-lock".to_owned(),
+                thermal_class: "light".to_owned(),
+                determinism_class: "deterministic".to_owned(),
+                checkpoint_support: false,
+                preemption_cost: 1,
+            },
+            implementation: speech::IMPLEMENTATION.to_owned(),
+            max_attempts: 3,
+            is_final: chain.transcript_is_final,
+        },
+    ];
+    PlannedChain {
+        tasks,
+        transcript_task_id: transcript,
+    }
+}
+
+/// The ingest derivatives a later stage in the same plan reads.
+///
+/// Each is absent for the same reason the derivative is: a source with no video
+/// has no proxy, and a stage that needed one is skipped with that stated rather
+/// than planned against nothing.
+#[derive(Clone)]
+struct IngestHandles {
+    proxy: Option<DerivativeHandle>,
+    audio_16k: Option<DerivativeHandle>,
+    loudness: Option<DerivativeHandle>,
+}
+
+/// The W11 fan-out itself, shared by the ingest job and the analyze DAG.
+///
+/// Shared rather than reimplemented: every task this adds is keyed from its
+/// kind, its payload, and its inputs, so the two callers produce byte-identical
+/// keys and a source already ingested costs an analysis nothing. A second copy
+/// of this list would be a second set of keys the first day somebody edited one
+/// of them.
+fn ingest_fan_out(
+    builder: &mut IngestPlanBuilder,
+    has_video: bool,
+    has_audio: bool,
+) -> Result<IngestHandles, &'static str> {
+    if !has_video && !has_audio {
+        return Err("source carries neither video nor audio");
+    }
+    {
         let proxy = has_video.then(|| {
             builder.derivative(
                 media::KIND_PROXY,
@@ -386,15 +749,15 @@ impl JobPlan {
             ingest_resources(1, 128, 64),
             &[],
         );
-        if let Some(audio_48k) = &audio_48k {
+        let loudness = audio_48k.as_ref().map(|audio_48k| {
             builder.derivative(
                 media::KIND_LOUDNESS,
                 "media.loudness_envelope.v1",
                 "ffmpeg-8.1.2+clipmill-loudness-v1",
                 ingest_resources(1, 64, 32),
                 std::slice::from_ref(audio_48k),
-            );
-        }
+            )
+        });
         if let Some(audio_16k) = &audio_16k {
             builder.derivative(
                 media::KIND_AUDIO_PEAKS,
@@ -420,18 +783,15 @@ impl JobPlan {
                 std::slice::from_ref(proxy),
             );
         }
-        let (payload, tasks) = builder.finish_with_manifest();
-        Ok(Self {
-            job_id: JobId::new().to_string(),
-            project_id: project_id.to_string(),
-            kind: "ingest-source".to_owned(),
-            source_id: Some(source_id),
-            payload,
-            created_unix_millis: now,
-            tasks,
+        Ok(IngestHandles {
+            proxy,
+            audio_16k,
+            loudness,
         })
     }
+}
 
+impl JobPlan {
     /// The W13 render (book ch. 17). One task, because the encode is one
     /// FFmpeg graph and splitting it would mean a joiner that has to prove it
     /// preserved timestamps, colour, and audio continuity — a Phase 2 trade
@@ -456,6 +816,7 @@ impl JobPlan {
                 output_kind: "render.clip.v1".to_owned(),
                 payload,
                 dependencies: Vec::new(),
+                input_artifact_ids: Vec::new(),
                 resources: ResourceDeclaration {
                     cpu_threads: 2,
                     ram_bytes: 512 * 1024 * 1024,
@@ -488,10 +849,6 @@ impl JobPlan {
     /// hashed into the artifact key: a recognizer payload carrying the voice
     /// activity threshold would make re-tuning voice activity invalidate every
     /// cached transcript, including ones whose inputs never changed.
-    #[allow(
-        clippy::too_many_lines,
-        reason = "four task specifications, which is what the DAG is"
-    )]
     pub(crate) fn transcribe_source(
         project_id: &ProjectId,
         source_id: String,
@@ -501,120 +858,18 @@ impl JobPlan {
         bindings: &crate::selection::Bindings,
         now: u64,
     ) -> Self {
-        let stage_payload = |stage: &str, fill: &dyn Fn(&mut SpeechStagePayloadV1)| {
-            let mut payload = SpeechStagePayloadV1 {
-                key_version: SPEECH_STAGE_KEY_VERSION.to_owned(),
-                stage: stage.to_owned(),
-                source_fingerprint: audio.source_fingerprint.to_owned(),
-                audio_artifact_id: audio.artifact_id.to_owned(),
-                ..SpeechStagePayloadV1::default()
-            };
-            fill(&mut payload);
-            payload.encode_to_vec()
-        };
-
-        let vad = TaskId::new().to_string();
-        let asr = TaskId::new().to_string();
-        let align = TaskId::new().to_string();
-        let transcript = TaskId::new().to_string();
-
-        // The device's answer, frozen into the plan. Every leased stage below
-        // records the implementation this machine chose, which is what its
-        // artifact key is computed from and what the scheduler routes it by.
-        // Re-measuring the device later moves the next plan and nothing that
-        // has already been published.
-        let chosen = |kind: &str| speech_implementation(kind, bindings);
-        let leased = |task_id: String,
-                      ordinal: u32,
-                      kind: &str,
-                      input_kinds: Vec<String>,
-                      output_kind: &str,
-                      payload: Vec<u8>,
-                      dependencies: Vec<String>| {
-            let implementation = chosen(kind);
-            TaskSpec {
-                task_id,
-                ordinal,
-                kind: kind.to_owned(),
-                input_kinds,
-                output_kind: output_kind.to_owned(),
-                payload,
-                dependencies,
-                resources: speech_resources(implementation, models, 1),
-                implementation: implementation.name.to_owned(),
-                max_attempts: 3,
-                is_final: false,
-            }
-        };
-
-        let tasks = vec![
-            leased(
-                vad.clone(),
-                0,
-                "speech-vad",
-                Vec::new(),
-                "speech.vad.v1",
-                stage_payload("speech-vad", &|payload| {
-                    payload.detection.clone_from(&request.detection);
-                }),
-                Vec::new(),
-            ),
-            leased(
-                asr.clone(),
-                1,
-                "speech-asr",
-                vec!["speech.vad.v1".to_owned()],
-                "speech.asr.v1",
-                stage_payload("speech-asr", &|payload| {
-                    payload.recognition = Some(SpeechRecognitionV1 {
-                        language: request.language.clone(),
-                        conditioned_on_previous: false,
-                    });
-                }),
-                vec![vad.clone()],
-            ),
-            leased(
-                align.clone(),
-                2,
-                "speech-align",
-                vec!["speech.asr.v1".to_owned()],
-                "speech.alignment.v1",
-                stage_payload("speech-align", &|payload| {
-                    payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
-                }),
-                vec![asr.clone()],
-            ),
-            TaskSpec {
-                task_id: transcript,
-                ordinal: 3,
-                kind: speech::KIND_TRANSCRIPT.to_owned(),
-                // Named in dependency order, but assembly matches its inputs
-                // by the kind each artifact declares rather than by position.
-                input_kinds: vec![
-                    "speech.vad.v1".to_owned(),
-                    "speech.asr.v1".to_owned(),
-                    "speech.alignment.v1".to_owned(),
-                ],
-                output_kind: "speech.transcript.v1".to_owned(),
-                payload: stage_payload(speech::KIND_TRANSCRIPT, &|_| {}),
-                dependencies: vec![vad, asr, align],
-                resources: ResourceDeclaration {
-                    cpu_threads: 1,
-                    ram_bytes: 128 * 1024 * 1024,
-                    accelerator_class: String::new(),
-                    vram_bytes: 0,
-                    disk_bytes: 64 * 1024 * 1024,
-                    network_policy: "local-lock".to_owned(),
-                    thermal_class: "light".to_owned(),
-                    determinism_class: "deterministic".to_owned(),
-                    checkpoint_support: false,
-                    preemption_cost: 1,
-                },
-                implementation: speech::IMPLEMENTATION.to_owned(),
-                max_attempts: 3,
-                is_final: true,
+        let chain = speech_chain(
+            &SpeechChain {
+                audio: SpeechAudioRoute::Published(audio.artifact_id),
+                source_fingerprint: audio.source_fingerprint,
+                language: request.language.as_str(),
+                detection: request.detection,
+                transcript_is_final: true,
             },
-        ];
+            models,
+            bindings,
+        );
+        let tasks = chain.tasks;
 
         Self {
             job_id: JobId::new().to_string(),
@@ -646,14 +901,20 @@ impl JobPlan {
         decoder_bom: &str,
         now: u64,
     ) -> Self {
-        let payload = ShotsStagePayloadV1 {
-            key_version: SHOTS_STAGE_KEY_VERSION.to_owned(),
-            stage: "detect-shots".to_owned(),
-            source_fingerprint: proxy.source_fingerprint.to_owned(),
-            proxy_artifact_id: proxy.artifact_id.to_owned(),
-            detection: request.detection,
-            decoder_bom: decoder_bom.to_owned(),
-        };
+        let mut task = shots_task(
+            TaskId::new().to_string(),
+            &ShotsStagePayloadV1 {
+                key_version: SHOTS_STAGE_KEY_VERSION.to_owned(),
+                stage: "detect-shots".to_owned(),
+                source_fingerprint: proxy.source_fingerprint.to_owned(),
+                detection: request.detection,
+                decoder_bom: decoder_bom.to_owned(),
+            },
+        );
+        // The proxy was published by the ingest job, so no dependency in this
+        // plan carries it and the plan declares the address instead.
+        task.input_artifact_ids = vec![proxy.artifact_id.to_owned()];
+        task.is_final = true;
         Self {
             job_id: JobId::new().to_string(),
             project_id: project_id.to_string(),
@@ -661,34 +922,7 @@ impl JobPlan {
             source_id: Some(source_id),
             payload: request.encode_to_vec(),
             created_unix_millis: now,
-            tasks: vec![TaskSpec {
-                task_id: TaskId::new().to_string(),
-                ordinal: 0,
-                kind: "detect-shots".to_owned(),
-                input_kinds: vec!["media.proxy.v1".to_owned()],
-                output_kind: "evidence.shots.v1".to_owned(),
-                payload: payload.encode_to_vec(),
-                dependencies: Vec::new(),
-                resources: ResourceDeclaration {
-                    // One decoder process beside the detector, which is why
-                    // this is not the single thread the speech stages declare.
-                    cpu_threads: 2,
-                    ram_bytes: 512 * 1024 * 1024,
-                    // Nothing to accelerate: the work is a decode and some
-                    // array arithmetic, so any machine will do.
-                    accelerator_class: String::new(),
-                    vram_bytes: 0,
-                    disk_bytes: 128 * 1024 * 1024,
-                    network_policy: "local-lock".to_owned(),
-                    thermal_class: "sustained".to_owned(),
-                    determinism_class: "deterministic".to_owned(),
-                    checkpoint_support: false,
-                    preemption_cost: 2,
-                },
-                implementation: SHOTS_IMPLEMENTATION.to_owned(),
-                max_attempts: 3,
-                is_final: true,
-            }],
+            tasks: vec![task],
         }
     }
 
@@ -706,15 +940,13 @@ impl JobPlan {
         request: &IndexTranscriptPayloadV1,
         now: u64,
     ) -> Self {
-        let mut input_kinds = vec!["speech.transcript.v1".to_owned()];
-        if evidence_inputs.shots.is_some() {
-            input_kinds.push("evidence.shots.v1".to_owned());
+        let mut declared = vec![evidence_inputs.transcript.to_owned()];
+        if let Some(shots) = evidence_inputs.shots {
+            declared.push(shots.to_owned());
         }
         let payload = IndexStagePayloadV1 {
             key_version: INDEX_STAGE_KEY_VERSION.to_owned(),
             stage: evidence::KIND_INDEX.to_owned(),
-            transcript_artifact_id: evidence_inputs.transcript.to_owned(),
-            shots_artifact_id: evidence_inputs.shots.unwrap_or_default().to_owned(),
         };
         Self {
             job_id: JobId::new().to_string(),
@@ -727,10 +959,14 @@ impl JobPlan {
                 task_id: TaskId::new().to_string(),
                 ordinal: 0,
                 kind: evidence::KIND_INDEX.to_owned(),
-                input_kinds,
+                // Empty because nothing in this plan produces them: the list
+                // describes dependencies, and the addresses below are what the
+                // stage actually reads.
+                input_kinds: Vec::new(),
                 output_kind: "index.transcript.v1".to_owned(),
                 payload: payload.encode_to_vec(),
                 dependencies: Vec::new(),
+                input_artifact_ids: declared,
                 resources: ResourceDeclaration {
                     cpu_threads: 1,
                     ram_bytes: 256 * 1024 * 1024,
@@ -762,19 +998,16 @@ impl JobPlan {
         request: &DiscoverCandidatesPayloadV1,
         now: u64,
     ) -> Self {
-        let mut input_kinds = vec![
-            "index.transcript.v1".to_owned(),
-            "speech.transcript.v1".to_owned(),
+        let mut declared = vec![
+            discovery_inputs.index.to_owned(),
+            discovery_inputs.transcript.to_owned(),
         ];
-        if discovery_inputs.loudness.is_some() {
-            input_kinds.push("media.loudness_envelope.v1".to_owned());
+        if let Some(loudness) = discovery_inputs.loudness {
+            declared.push(loudness.to_owned());
         }
         let payload = DiscoverStagePayloadV1 {
             key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
             stage: discovery::KIND_DISCOVER.to_owned(),
-            index_artifact_id: discovery_inputs.index.to_owned(),
-            transcript_artifact_id: discovery_inputs.transcript.to_owned(),
-            loudness_artifact_id: discovery_inputs.loudness.unwrap_or_default().to_owned(),
             duration: request.duration.or(Some(ClipDurationV1 {
                 min_ticks: 0,
                 max_ticks: 0,
@@ -794,10 +1027,11 @@ impl JobPlan {
                 task_id: TaskId::new().to_string(),
                 ordinal: 0,
                 kind: discovery::KIND_DISCOVER.to_owned(),
-                input_kinds,
+                input_kinds: Vec::new(),
                 output_kind: "discovery.candidates.v1".to_owned(),
                 payload: payload.encode_to_vec(),
                 dependencies: Vec::new(),
+                input_artifact_ids: declared,
                 resources: ResourceDeclaration {
                     cpu_threads: 1,
                     ram_bytes: 512 * 1024 * 1024,
@@ -833,9 +1067,6 @@ impl JobPlan {
         let payload = RankStagePayloadV1 {
             key_version: RANK_STAGE_KEY_VERSION.to_owned(),
             stage: ranking::KIND_RANK.to_owned(),
-            candidates_artifact_id: ranking_inputs.candidates.to_owned(),
-            index_artifact_id: ranking_inputs.index.to_owned(),
-            transcript_artifact_id: ranking_inputs.transcript.to_owned(),
             count: request.count,
             diversity_milli: request.diversity_milli,
         };
@@ -850,20 +1081,338 @@ impl JobPlan {
                 task_id: TaskId::new().to_string(),
                 ordinal: 0,
                 kind: ranking::KIND_RANK.to_owned(),
-                input_kinds: vec![
-                    "discovery.candidates.v1".to_owned(),
-                    "index.transcript.v1".to_owned(),
-                    "speech.transcript.v1".to_owned(),
-                ],
+                input_kinds: Vec::new(),
                 output_kind: "ranking.set.v1".to_owned(),
                 payload: payload.encode_to_vec(),
                 dependencies: Vec::new(),
+                input_artifact_ids: vec![
+                    ranking_inputs.candidates.to_owned(),
+                    ranking_inputs.index.to_owned(),
+                    ranking_inputs.transcript.to_owned(),
+                ],
                 resources: rank_resources(),
                 implementation: ranking::IMPLEMENTATION.to_owned(),
                 max_attempts: 3,
                 is_final: true,
             }],
         }
+    }
+
+    /// The whole analysis as one job (book ch. 12–16).
+    ///
+    /// Probe, ingest, the speech chain, shot detection, the evidence index,
+    /// discovery, and ranking, planned together and rooted by a single fan-in
+    /// manifest. This is what a new project submits and what evaluation runs.
+    ///
+    /// Every task here is keyed exactly as the standalone job that runs the same
+    /// stage — the ingest fan-out and the speech chain are the same code, and the
+    /// three model-free builtins take their inputs from dependencies instead of
+    /// from their payload without that reaching the key. So an analysis over a
+    /// source somebody already ingested and transcribed derives nothing twice,
+    /// and re-running it is a walk through the cache.
+    ///
+    /// What it will not do is plan around a source nobody has probed. The ingest
+    /// fan-out is shaped by which streams the file has, and that is a measured
+    /// fact rather than a guess: a plan that assumed audio would fan out four
+    /// tasks that each fail to find it. The probe still runs here — as this job's
+    /// first task, so the observation is part of the analysis and reachable from
+    /// its root — but it has to have run at least once before.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "ten stages, their skip reasons, and one fan-in: the DAG is the function"
+    )]
+    pub(crate) fn analyze_source(
+        project_id: &ProjectId,
+        source: AnalyzeSource<'_>,
+        request: &AnalyzeSourcePayloadV1,
+        models: &crate::models::ModelRegistry,
+        bindings: &crate::selection::Bindings,
+        decoder_bom: &str,
+        now: u64,
+    ) -> Result<Self, &'static str> {
+        let mut tasks = Vec::new();
+        // Every stage that publishes something, named by the artifact kind it
+        // publishes, so the fan-in can depend on all of them and say what each
+        // one was.
+        let mut stages: Vec<(String, String)> = Vec::new();
+        let mut skipped: Vec<SkippedStageV1> = Vec::new();
+        let mut skip = |kind: &str, reason: &str| {
+            skipped.push(SkippedStageV1 {
+                kind: kind.to_owned(),
+                reason: reason.to_owned(),
+            });
+        };
+
+        // The probe, re-derived or served from cache. It depends on nothing and
+        // nothing depends on it: the fan-out below was shaped from the answer it
+        // already gave, and hanging ingest off it would put the source map in
+        // every derivative's key and cost them the cache they share with a
+        // standalone ingest.
+        let probe = TaskId::new().to_string();
+        tasks.push(TaskSpec {
+            task_id: probe.clone(),
+            ordinal: 0,
+            kind: "probe-source".to_owned(),
+            input_kinds: Vec::new(),
+            output_kind: "evidence.source_map.v1".to_owned(),
+            payload: ProbeSourcePayloadV1 {
+                key_version: PROBE_SOURCE_KEY_VERSION.to_owned(),
+                source_id: source.source_id.to_owned(),
+            }
+            .encode_to_vec(),
+            dependencies: Vec::new(),
+            input_artifact_ids: Vec::new(),
+            resources: ResourceDeclaration {
+                cpu_threads: 1,
+                ram_bytes: 64 * 1024 * 1024,
+                accelerator_class: String::new(),
+                vram_bytes: 0,
+                disk_bytes: 32 * 1024 * 1024,
+                network_policy: "local-lock".to_owned(),
+                thermal_class: "light".to_owned(),
+                determinism_class: "deterministic".to_owned(),
+                checkpoint_support: false,
+                preemption_cost: 1,
+            },
+            implementation: "ffprobe-8.1.2+clipmill-map-v1".to_owned(),
+            max_attempts: 3,
+            is_final: false,
+        });
+        stages.push(("evidence.source_map.v1".to_owned(), probe.clone()));
+
+        // The ingest fan-out, shared verbatim with the ingest job.
+        let mut ingest = IngestPlanBuilder::new(
+            IngestSourcePayloadV1 {
+                key_version: INGEST_SOURCE_KEY_VERSION.to_owned(),
+                source_id: source.source_id.to_owned(),
+            }
+            .encode_to_vec(),
+        );
+        let handles = ingest_fan_out(&mut ingest, source.has_video, source.has_audio)?;
+        let (_, ingest_tasks, _, ingest_manifest) = ingest.finish_with_manifest(false);
+        tasks.extend(ingest_tasks);
+        stages.push((
+            "media.ingest_manifest.v1".to_owned(),
+            ingest_manifest.task_id.clone(),
+        ));
+
+        // The speech chain, reading the rendition this plan is about to derive.
+        let transcript = match &handles.audio_16k {
+            None => {
+                for kind in [
+                    "speech.vad.v1",
+                    "speech.asr.v1",
+                    "speech.alignment.v1",
+                    "speech.transcript.v1",
+                ] {
+                    skip(kind, "no_audio");
+                }
+                None
+            }
+            Some(audio) => {
+                let chain = speech_chain(
+                    &SpeechChain {
+                        audio: SpeechAudioRoute::Planned(audio.task_id.as_str()),
+                        source_fingerprint: source.source_fingerprint,
+                        language: request.language.as_str(),
+                        detection: None,
+                        transcript_is_final: false,
+                    },
+                    models,
+                    bindings,
+                );
+                for task in &chain.tasks {
+                    stages.push((task.output_kind.clone(), task.task_id.clone()));
+                }
+                tasks.extend(chain.tasks);
+                Some(chain.transcript_task_id)
+            }
+        };
+
+        // Shot detection over the proxy this plan is about to derive.
+        let shots = match &handles.proxy {
+            None => {
+                skip("evidence.shots.v1", "no_video");
+                None
+            }
+            Some(proxy) => {
+                let shots = TaskId::new().to_string();
+                let mut spec = shots_task(
+                    shots.clone(),
+                    &ShotsStagePayloadV1 {
+                        key_version: SHOTS_STAGE_KEY_VERSION.to_owned(),
+                        stage: "detect-shots".to_owned(),
+                        source_fingerprint: source.source_fingerprint.to_owned(),
+                        // The daemon's thresholds. An analysis is the "find me
+                        // clips" request, and it does not carry detector knobs:
+                        // somebody re-tuning shot detection is running the
+                        // standalone stage and looking at the result.
+                        detection: None,
+                        decoder_bom: decoder_bom.to_owned(),
+                    },
+                );
+                spec.input_kinds = vec!["media.proxy.v1".to_owned()];
+                spec.dependencies = vec![proxy.task_id.clone()];
+                tasks.push(spec);
+                stages.push(("evidence.shots.v1".to_owned(), shots.clone()));
+                Some(shots)
+            }
+        };
+
+        // Everything downstream of the transcript. Without one there is nothing
+        // to index, nothing to search, and nothing to rank — which the manifest
+        // states rather than the plan pretending it ran them and found nothing.
+        let ranked = match &transcript {
+            None => {
+                for kind in [
+                    "index.transcript.v1",
+                    "discovery.candidates.v1",
+                    "ranking.set.v1",
+                ] {
+                    skip(kind, "no_audio");
+                }
+                None
+            }
+            Some(transcript) => {
+                let index = TaskId::new().to_string();
+                let mut index_dependencies = vec![transcript.clone()];
+                let mut index_kinds = vec!["speech.transcript.v1".to_owned()];
+                if let Some(shots) = &shots {
+                    index_dependencies.push(shots.clone());
+                    index_kinds.push("evidence.shots.v1".to_owned());
+                }
+                tasks.push(builtin_task(
+                    index.clone(),
+                    Builtin {
+                        kind: evidence::KIND_INDEX,
+                        output_kind: "index.transcript.v1",
+                        implementation: evidence::IMPLEMENTATION,
+                        input_kinds: index_kinds,
+                        dependencies: index_dependencies,
+                        payload: IndexStagePayloadV1 {
+                            key_version: INDEX_STAGE_KEY_VERSION.to_owned(),
+                            stage: evidence::KIND_INDEX.to_owned(),
+                        }
+                        .encode_to_vec(),
+                        ram_mib: 256,
+                    },
+                ));
+                stages.push(("index.transcript.v1".to_owned(), index.clone()));
+
+                let discover = TaskId::new().to_string();
+                let mut discover_dependencies = vec![index.clone(), transcript.clone()];
+                let mut discover_kinds = vec![
+                    "index.transcript.v1".to_owned(),
+                    "speech.transcript.v1".to_owned(),
+                ];
+                if let Some(loudness) = &handles.loudness {
+                    discover_dependencies.push(loudness.task_id.clone());
+                    discover_kinds.push("media.loudness_envelope.v1".to_owned());
+                }
+                tasks.push(builtin_task(
+                    discover.clone(),
+                    Builtin {
+                        kind: discovery::KIND_DISCOVER,
+                        output_kind: "discovery.candidates.v1",
+                        implementation: discovery::IMPLEMENTATION,
+                        input_kinds: discover_kinds,
+                        dependencies: discover_dependencies,
+                        payload: DiscoverStagePayloadV1 {
+                            key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
+                            stage: discovery::KIND_DISCOVER.to_owned(),
+                            duration: request.duration.or(Some(ClipDurationV1 {
+                                min_ticks: 0,
+                                max_ticks: 0,
+                            })),
+                            exploration_floor: 0,
+                        }
+                        .encode_to_vec(),
+                        ram_mib: 512,
+                    },
+                ));
+                stages.push(("discovery.candidates.v1".to_owned(), discover.clone()));
+
+                let rank = TaskId::new().to_string();
+                tasks.push(builtin_task(
+                    rank.clone(),
+                    Builtin {
+                        kind: ranking::KIND_RANK,
+                        output_kind: "ranking.set.v1",
+                        implementation: ranking::IMPLEMENTATION,
+                        input_kinds: vec![
+                            "discovery.candidates.v1".to_owned(),
+                            "index.transcript.v1".to_owned(),
+                            "speech.transcript.v1".to_owned(),
+                        ],
+                        dependencies: vec![discover, index, transcript.clone()],
+                        payload: RankStagePayloadV1 {
+                            key_version: RANK_STAGE_KEY_VERSION.to_owned(),
+                            stage: ranking::KIND_RANK.to_owned(),
+                            count: request.count,
+                            diversity_milli: request.diversity_milli,
+                        }
+                        .encode_to_vec(),
+                        ram_mib: 512,
+                    },
+                ));
+                stages.push(("ranking.set.v1".to_owned(), rank.clone()));
+                Some(rank)
+            }
+        };
+        // Named so the compiler holds the intent: the ranked set is the point of
+        // the job, and it is a dependency of the fan-in like everything else.
+        let _ = &ranked;
+
+        // The fan-in. Every stage above is a dependency, which is what makes the
+        // whole analysis reachable from one root: the job store roots a job's
+        // single final artifact, and garbage collection walks recipe inputs.
+        tasks.push(TaskSpec {
+            task_id: TaskId::new().to_string(),
+            ordinal: 0,
+            kind: analysis::KIND_MANIFEST.to_owned(),
+            input_kinds: stages.iter().map(|(kind, _)| kind.clone()).collect(),
+            output_kind: "analysis.manifest.v1".to_owned(),
+            payload: AnalysisStagePayloadV1 {
+                key_version: ANALYSIS_STAGE_KEY_VERSION.to_owned(),
+                stage: analysis::KIND_MANIFEST.to_owned(),
+                source_fingerprint: source.source_fingerprint.to_owned(),
+                skipped,
+            }
+            .encode_to_vec(),
+            dependencies: stages.into_iter().map(|(_, task_id)| task_id).collect(),
+            input_artifact_ids: Vec::new(),
+            resources: ResourceDeclaration {
+                cpu_threads: 1,
+                ram_bytes: 64 * 1024 * 1024,
+                accelerator_class: String::new(),
+                vram_bytes: 0,
+                disk_bytes: 16 * 1024 * 1024,
+                network_policy: "local-lock".to_owned(),
+                thermal_class: "light".to_owned(),
+                determinism_class: "deterministic".to_owned(),
+                checkpoint_support: false,
+                preemption_cost: 1,
+            },
+            implementation: analysis::IMPLEMENTATION.to_owned(),
+            max_attempts: 3,
+            is_final: true,
+        });
+
+        // Ordinals last, because three builders contributed tasks and each
+        // numbered from zero. They have to be unique within a job; what they
+        // order is the scheduler's tie-break among tasks already runnable.
+        for (ordinal, task) in tasks.iter_mut().enumerate() {
+            task.ordinal = u32::try_from(ordinal).unwrap_or(u32::MAX);
+        }
+        Ok(Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "analyze-source".to_owned(),
+            source_id: Some(source.source_id.to_owned()),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks,
+        })
     }
 
     pub(crate) fn device_profile(
@@ -892,6 +1441,7 @@ impl JobPlan {
                 output_kind: "evidence.device_profile.v1".to_owned(),
                 payload,
                 dependencies: Vec::new(),
+                input_artifact_ids: Vec::new(),
                 resources: ResourceDeclaration {
                     cpu_threads: 1,
                     ram_bytes: 64 * 1024 * 1024,
@@ -1096,6 +1646,9 @@ impl IngestPlanBuilder {
                 .iter()
                 .map(|dependency| dependency.task_id.clone())
                 .collect(),
+            // Every ingest derivative reads the source file by path, or a
+            // sibling this plan produced. Neither is a content address.
+            input_artifact_ids: Vec::new(),
             resources,
             implementation: implementation.to_owned(),
             max_attempts: 3,
@@ -1105,7 +1658,23 @@ impl IngestPlanBuilder {
         handle
     }
 
-    fn finish_with_manifest(mut self) -> (Vec<u8>, Vec<TaskSpec>) {
+    /// Close the fan-out with the manifest that names its children.
+    ///
+    /// `is_final` is false when this fan-out is the front of a longer plan: the
+    /// job store roots exactly one artifact per job, and inside the analyze DAG
+    /// that artifact is the analysis, not the ingest. Nothing else about the
+    /// manifest changes, and nothing about the derivatives does — which is what
+    /// lets a source ingested on its own and a source ingested as part of an
+    /// analysis share every artifact rather than deriving the same proxy twice.
+    fn finish_with_manifest(
+        mut self,
+        is_final: bool,
+    ) -> (
+        Vec<u8>,
+        Vec<TaskSpec>,
+        Vec<DerivativeHandle>,
+        DerivativeHandle,
+    ) {
         let manifest = TaskSpec {
             task_id: TaskId::new().to_string(),
             ordinal: u32::try_from(self.tasks.len()).unwrap_or(u32::MAX),
@@ -1122,6 +1691,7 @@ impl IngestPlanBuilder {
                 .iter()
                 .map(|child| child.task_id.clone())
                 .collect(),
+            input_artifact_ids: Vec::new(),
             resources: ResourceDeclaration {
                 cpu_threads: 1,
                 ram_bytes: 32 * 1024 * 1024,
@@ -1136,10 +1706,14 @@ impl IngestPlanBuilder {
             },
             implementation: "clipmill-ingest-manifest@1.0.0".to_owned(),
             max_attempts: 3,
-            is_final: true,
+            is_final,
+        };
+        let handle = DerivativeHandle {
+            task_id: manifest.task_id.clone(),
+            output_kind: manifest.output_kind.clone(),
         };
         self.tasks.push(manifest);
-        (self.payload, self.tasks)
+        (self.payload, self.tasks, self.children, handle)
     }
 }
 
@@ -1646,6 +2220,9 @@ impl BuiltinExecutors {
                 discovery::execute_discover_task(&self.artifacts, task, progress).await
             }
             ranking::KIND_RANK => ranking::execute_rank_task(&self.artifacts, task, progress).await,
+            analysis::KIND_MANIFEST => {
+                analysis::execute_manifest_task(&self.artifacts, task, progress).await
+            }
             kind if render::is_render_kind(kind) => {
                 render::execute_render_task(
                     &RenderContext {
@@ -1676,6 +2253,7 @@ fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
     kinds.push(evidence::KIND_INDEX.to_owned());
     kinds.push(discovery::KIND_DISCOVER.to_owned());
     kinds.push(ranking::KIND_RANK.to_owned());
+    kinds.push(analysis::KIND_MANIFEST.to_owned());
     if builtin_fixture_executor {
         kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
     }
@@ -2271,7 +2849,12 @@ mod shots_tests {
         assert_eq!(plan.tasks.len(), 1);
         let task = &plan.tasks[0];
         assert_eq!(task.kind, "detect-shots");
-        assert_eq!(task.input_kinds, ["media.proxy.v1"]);
+        assert_eq!(task.input_artifact_ids, [PROXY]);
+        // Empty because nothing in this plan produces the proxy. It was one
+        // entry with no dependency behind it, which the plan validator rejects —
+        // so this job could not be submitted at all until the proxy moved to the
+        // declared list.
+        assert!(task.input_kinds.is_empty());
         assert_eq!(task.output_kind, "evidence.shots.v1");
         assert_eq!(task.implementation, SHOTS_IMPLEMENTATION);
         assert!(task.is_final);
@@ -2289,7 +2872,6 @@ mod shots_tests {
         let payload = stage_payload(&plan(&request()));
         assert_eq!(payload.key_version, SHOTS_STAGE_KEY_VERSION);
         assert_eq!(payload.stage, "detect-shots");
-        assert_eq!(payload.proxy_artifact_id, PROXY);
         assert_eq!(payload.source_fingerprint, FINGERPRINT);
         assert_eq!(payload.decoder_bom, BOM);
         let encoded = String::from_utf8_lossy(&plan(&request()).tasks[0].payload).into_owned();
@@ -2428,22 +3010,25 @@ mod index_tests {
         let payload = payload(&plan);
         assert_eq!(payload.key_version, INDEX_STAGE_KEY_VERSION);
         assert_eq!(payload.stage, evidence::KIND_INDEX);
-        assert_eq!(payload.transcript_artifact_id, TRANSCRIPT);
+        assert_eq!(task.input_artifact_ids, [TRANSCRIPT]);
+        // The list describes dependencies, and there are none: an entry here
+        // with nothing behind it would fail the plan validator.
+        assert!(task.input_kinds.is_empty());
     }
 
-    /// A source with no video keys differently from one whose cuts were found,
-    /// because an index without shot edges is a different observation.
+    /// A source with no video reads one document; a source whose cuts were found
+    /// reads two, and the second reaches the key through the declared inputs
+    /// rather than through the payload — which is what lets an index built inside
+    /// an analysis be the same artifact as one built on its own.
     #[test]
-    fn shot_cuts_change_the_key_and_the_declared_inputs() {
+    fn shot_cuts_change_the_declared_inputs_and_not_the_payload() {
         let without = plan(None);
         let with = plan(Some(SHOTS));
-        assert!(payload(&without).shots_artifact_id.is_empty());
-        assert_eq!(payload(&with).shots_artifact_id, SHOTS);
-        assert_ne!(without.tasks[0].payload, with.tasks[0].payload);
-        assert_eq!(without.tasks[0].input_kinds, ["speech.transcript.v1"]);
+        assert_eq!(without.tasks[0].input_artifact_ids, [TRANSCRIPT]);
+        assert_eq!(with.tasks[0].input_artifact_ids, [TRANSCRIPT, SHOTS]);
         assert_eq!(
-            with.tasks[0].input_kinds,
-            ["speech.transcript.v1", "evidence.shots.v1"]
+            without.tasks[0].payload, with.tasks[0].payload,
+            "the payload says which stage this is, and that has not changed"
         );
     }
 
@@ -2525,31 +3110,24 @@ mod discovery_tests {
         assert!(task.dependencies.is_empty());
         let payload = payload(&plan);
         assert_eq!(payload.key_version, DISCOVER_STAGE_KEY_VERSION);
-        assert_eq!(payload.index_artifact_id, INDEX);
-        assert_eq!(payload.transcript_artifact_id, TRANSCRIPT);
+        assert_eq!(task.input_artifact_ids, [INDEX, TRANSCRIPT]);
+        assert!(task.input_kinds.is_empty());
     }
 
-    /// A source with no audio keys differently from one whose loudness was
-    /// measured, because a search that weighed prosody is a different search.
+    /// A source with no audio reads two documents; one whose loudness was
+    /// measured reads three, and the third reaches the key through the declared
+    /// inputs. The two searches are still different observations, because the
+    /// recipe covers what was read.
     #[test]
-    fn prosody_changes_the_key_and_the_declared_inputs() {
+    fn prosody_changes_the_declared_inputs_and_not_the_payload() {
         let silent = plan(None, None);
         let heard = plan(Some(LOUDNESS), None);
-        assert!(payload(&silent).loudness_artifact_id.is_empty());
-        assert_eq!(payload(&heard).loudness_artifact_id, LOUDNESS);
-        assert_ne!(silent.tasks[0].payload, heard.tasks[0].payload);
+        assert_eq!(silent.tasks[0].input_artifact_ids, [INDEX, TRANSCRIPT]);
         assert_eq!(
-            silent.tasks[0].input_kinds,
-            ["index.transcript.v1", "speech.transcript.v1"]
+            heard.tasks[0].input_artifact_ids,
+            [INDEX, TRANSCRIPT, LOUDNESS]
         );
-        assert_eq!(
-            heard.tasks[0].input_kinds,
-            [
-                "index.transcript.v1",
-                "speech.transcript.v1",
-                "media.loudness_envelope.v1"
-            ]
-        );
+        assert_eq!(silent.tasks[0].payload, heard.tasks[0].payload);
     }
 
     /// Asking for a different clip length is a different search, so it must
@@ -2583,5 +3161,288 @@ mod discovery_tests {
         let encoded = plan(Some(LOUDNESS), None).tasks[0].payload.clone();
         let text = String::from_utf8_lossy(&encoded);
         assert!(!text.contains('/'), "a path reached the artifact key");
+    }
+}
+
+#[cfg(test)]
+mod analyze_tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+
+    use std::collections::BTreeSet;
+    use std::path::Path;
+
+    use clipmill_contracts::proto::ipc::v1::AnalyzeSourcePayloadV1;
+    use clipmill_core::ProjectId;
+
+    use super::{
+        AnalyzeSource, JobPlan, SpeechAudio, TaskSpec, TranscribeSourcePayloadV1, analysis,
+    };
+
+    const SOURCE: &str = "src_01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    const FINGERPRINT: &str =
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    const AUDIO: &str = "sha256:a0d1000000000000000000000000000000000000000000000000000000000001";
+    const BOM: &str = "ffmpeg-8.1.2-btb-n8.1.2";
+
+    fn models() -> crate::models::ModelRegistry {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+        crate::models::ModelRegistry::load(&path).expect("the published registry loads")
+    }
+
+    fn request() -> AnalyzeSourcePayloadV1 {
+        AnalyzeSourcePayloadV1 {
+            key_version: "clipmill.analyze-source.v1".to_owned(),
+            source_id: SOURCE.to_owned(),
+            language: "en".to_owned(),
+            duration: None,
+            count: 0,
+            diversity_milli: 0,
+        }
+    }
+
+    fn plan(has_video: bool, has_audio: bool) -> JobPlan {
+        JobPlan::analyze_source(
+            &ProjectId::new(),
+            AnalyzeSource {
+                source_id: SOURCE,
+                source_fingerprint: FINGERPRINT,
+                has_video,
+                has_audio,
+            },
+            &request(),
+            &models(),
+            &crate::selection::Bindings::portable(),
+            BOM,
+            7,
+        )
+        .expect("a source with streams plans")
+    }
+
+    fn task<'a>(plan: &'a JobPlan, kind: &str) -> &'a TaskSpec {
+        plan.tasks
+            .iter()
+            .find(|task| task.kind == kind)
+            .unwrap_or_else(|| panic!("no {kind} task"))
+    }
+
+    /// Every stage from the probe to the ranked set, in one job with one root.
+    #[test]
+    fn the_dag_runs_every_stage_and_roots_exactly_one_artifact() {
+        let plan = plan(true, true);
+        assert_eq!(plan.kind, "analyze-source");
+        let kinds = plan
+            .tasks
+            .iter()
+            .map(|task| task.kind.as_str())
+            .collect::<BTreeSet<_>>();
+        for expected in [
+            "probe-source",
+            "ingest-proxy",
+            "ingest-audio-16k",
+            "ingest-manifest",
+            "speech-vad",
+            "speech-asr",
+            "speech-align",
+            "speech-transcript",
+            "detect-shots",
+            "index-transcript",
+            "discover-candidates",
+            "rank-candidates",
+            analysis::KIND_MANIFEST,
+        ] {
+            assert!(kinds.contains(expected), "the DAG has no {expected}");
+        }
+        let finals = plan
+            .tasks
+            .iter()
+            .filter(|task| task.is_final)
+            .collect::<Vec<_>>();
+        assert_eq!(finals.len(), 1, "a job roots exactly one artifact");
+        assert_eq!(finals[0].kind, analysis::KIND_MANIFEST);
+    }
+
+    /// The fan-in depends on every stage, because that is what makes the whole
+    /// analysis reachable from the one artifact the job roots.
+    #[test]
+    fn the_fan_in_depends_on_every_stage_that_published_something() {
+        let plan = plan(true, true);
+        let manifest = task(&plan, analysis::KIND_MANIFEST);
+        assert_eq!(manifest.dependencies.len(), 10);
+        assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
+        // Nothing declared: every input is a task in this plan.
+        assert!(manifest.input_artifact_ids.is_empty());
+        for kind in [
+            "evidence.source_map.v1",
+            "media.ingest_manifest.v1",
+            "speech.vad.v1",
+            "speech.asr.v1",
+            "speech.alignment.v1",
+            "speech.transcript.v1",
+            "evidence.shots.v1",
+            "index.transcript.v1",
+            "discovery.candidates.v1",
+            "ranking.set.v1",
+        ] {
+            assert!(
+                manifest.input_kinds.iter().any(|named| named == kind),
+                "the fan-in does not name {kind}"
+            );
+        }
+    }
+
+    /// The property the whole declared-input mechanism exists for: a leased stage
+    /// reached by both routes must be handed the same inputs in the same order,
+    /// because that order is part of its artifact key. If this drifts, one
+    /// transcript gets two content addresses and the cache silently doubles.
+    #[test]
+    fn the_two_routes_deliver_one_input_order() {
+        let standalone = JobPlan::transcribe_source(
+            &ProjectId::new(),
+            SOURCE.to_owned(),
+            SpeechAudio {
+                artifact_id: AUDIO,
+                source_fingerprint: FINGERPRINT,
+            },
+            &TranscribeSourcePayloadV1 {
+                key_version: "clipmill.transcribe-source.v1".to_owned(),
+                source_id: SOURCE.to_owned(),
+                language: "en".to_owned(),
+                detection: None,
+            },
+            &models(),
+            &crate::selection::Bindings::portable(),
+            7,
+        );
+        let in_dag = plan(true, true);
+        let audio_task = task(&in_dag, "ingest-audio-16k").task_id.clone();
+
+        for stage in ["speech-vad", "speech-asr", "speech-align"] {
+            let alone = task(&standalone, stage);
+            let inside = task(&in_dag, stage);
+            // The payload is hashed into the key, so it has to be byte-identical:
+            // an address present on one route and absent on the other would be
+            // two keys for one observation.
+            assert_eq!(
+                alone.payload, inside.payload,
+                "{stage} encodes different payloads on the two routes"
+            );
+            // What the lease will deliver: declared first, then dependency
+            // outputs in order. The audio has to land first on both.
+            let alone_order = [alone.input_artifact_ids.len(), alone.dependencies.len()];
+            let inside_order = [inside.input_artifact_ids.len(), inside.dependencies.len()];
+            assert_eq!(
+                alone_order.iter().sum::<usize>(),
+                inside_order.iter().sum::<usize>(),
+                "{stage} reads a different number of inputs on the two routes"
+            );
+            assert_eq!(
+                alone.input_artifact_ids,
+                [AUDIO],
+                "{stage} standalone must declare the audio it reads"
+            );
+            assert_eq!(
+                inside.dependencies.first(),
+                Some(&audio_task),
+                "{stage} inside the DAG must take the audio as its first dependency"
+            );
+            assert!(
+                inside.input_artifact_ids.is_empty(),
+                "{stage} inside the DAG declares nothing: the plan produces it"
+            );
+        }
+    }
+
+    /// A source with no video has no shot cuts, and the difference between that
+    /// and nobody looking is what the skip list carries.
+    #[test]
+    fn a_source_with_no_video_skips_shot_detection_and_says_so() {
+        let plan = plan(false, true);
+        assert!(plan.tasks.iter().all(|task| task.kind != "detect-shots"));
+        let skipped = skipped_of(&plan);
+        assert_eq!(
+            skipped,
+            vec![("evidence.shots.v1".to_owned(), "no_video".to_owned())]
+        );
+        // Everything the transcript feeds still runs.
+        for kind in ["index-transcript", "discover-candidates", "rank-candidates"] {
+            assert!(plan.tasks.iter().any(|task| task.kind == kind));
+        }
+    }
+
+    /// A source with no audio has no transcript, so the four speech stages and
+    /// the three that read a transcript are all absent — each with the reason.
+    #[test]
+    fn a_source_with_no_audio_skips_everything_that_needs_speech() {
+        let plan = plan(true, false);
+        let skipped = skipped_of(&plan);
+        assert_eq!(
+            skipped
+                .iter()
+                .map(|(kind, _)| kind.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                "speech.vad.v1",
+                "speech.asr.v1",
+                "speech.alignment.v1",
+                "speech.transcript.v1",
+                "index.transcript.v1",
+                "discovery.candidates.v1",
+                "ranking.set.v1",
+            ])
+        );
+        assert!(skipped.iter().all(|(_, reason)| reason == "no_audio"));
+        assert!(plan.tasks.iter().any(|task| task.kind == "detect-shots"));
+    }
+
+    fn skipped_of(plan: &JobPlan) -> Vec<(String, String)> {
+        use prost::Message;
+        let manifest = plan
+            .tasks
+            .iter()
+            .find(|task| task.kind == analysis::KIND_MANIFEST)
+            .expect("a fan-in");
+        let payload =
+            super::AnalysisStagePayloadV1::decode(manifest.payload.as_slice()).expect("a payload");
+        payload
+            .skipped
+            .iter()
+            .map(|stage| (stage.kind.clone(), stage.reason.clone()))
+            .collect()
+    }
+
+    /// A source with neither is not an analysis anyone can plan, and saying so
+    /// beats fanning out tasks that each fail to find their input.
+    #[test]
+    fn a_source_with_no_streams_is_refused() {
+        let refused = JobPlan::analyze_source(
+            &ProjectId::new(),
+            AnalyzeSource {
+                source_id: SOURCE,
+                source_fingerprint: FINGERPRINT,
+                has_video: false,
+                has_audio: false,
+            },
+            &request(),
+            &models(),
+            &crate::selection::Bindings::portable(),
+            BOM,
+            7,
+        );
+        assert!(refused.is_err());
+    }
+
+    /// Ordinals come from three builders that each number from zero, so the last
+    /// pass has to make them unique — the store rejects a plan where they are not.
+    #[test]
+    fn ordinals_are_unique_across_every_builder_that_contributed() {
+        for (has_video, has_audio) in [(true, true), (true, false), (false, true)] {
+            let plan = plan(has_video, has_audio);
+            let ordinals = plan
+                .tasks
+                .iter()
+                .map(|task| task.ordinal)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(ordinals.len(), plan.tasks.len());
+        }
     }
 }

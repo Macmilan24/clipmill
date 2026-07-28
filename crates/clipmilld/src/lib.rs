@@ -1,5 +1,6 @@
 //! Durable local daemon for ClipMill.
 
+mod analysis;
 mod artifacts;
 mod config;
 #[cfg(unix)]

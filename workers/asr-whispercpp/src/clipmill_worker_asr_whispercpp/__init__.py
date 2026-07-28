@@ -29,7 +29,7 @@ from clipmill_worker_sdk import (
     WorkerConfiguration,
     WorkerIdentity,
 )
-from clipmill_worker_sdk.artifacts import ArtifactVerificationError
+from clipmill_worker_sdk.artifacts import ArtifactVerificationError, artifact_file
 from clipmill_worker_sdk.audio import AUDIO_DESCRIPTOR, AUDIO_PAYLOAD, PcmAudio, read_pcm_audio
 from clipmill_worker_sdk.batching import DecodeWindow, decode_windows
 from clipmill_worker_sdk.confidence import distribution
@@ -45,6 +45,7 @@ from clipmill_worker_sdk.gen.schemas.speech_asr import (
     Token,
 )
 from clipmill_worker_sdk.gen.schemas.speech_vad import SpeechVad
+from clipmill_worker_sdk.inputs import LeaseInputs, MissingInputError
 from clipmill_worker_sdk.ticks import samples_to_ticks, samples_to_ticks_ceil, ticks_to_samples
 from clipmill_worker_sdk.weights import ModelVerificationError, VerifiedModel, require_model
 
@@ -55,6 +56,9 @@ CAPABILITIES = ("speech-asr",)
 OUTPUT_FILE = "asr.json"
 VAD_FILE = "vad.json"
 KEY_VERSION = "clipmill.speech-stage.v1"
+# The rendition every speech stage reads, named so the lease can be searched by
+# what an artifact is rather than by where it happened to land in a list.
+AUDIO_KIND = "media.audio_16k.v1"
 SAMPLE_RATE = 16_000
 
 LOGGER = logging.getLogger(__name__)
@@ -68,7 +72,8 @@ def execute_asr(context: TaskContext) -> tuple[str, ...]:
     except ModelVerificationError as error:
         raise DeterministicTaskError(str(error)) from error
 
-    audio_artifact = context.open_artifact(payload.audio_artifact_id)
+    inputs = _inputs(context)
+    audio_artifact = inputs.require(AUDIO_KIND).artifact
     audio = read_pcm_audio(
         audio_artifact,
         context.artifact_file(audio_artifact, AUDIO_PAYLOAD),
@@ -76,7 +81,7 @@ def execute_asr(context: TaskContext) -> tuple[str, ...]:
         expect_sample_rate=SAMPLE_RATE,
         expect_channels=1,
     )
-    vad_id, activity = _voice_activity(context)
+    vad_id, activity = _voice_activity(inputs)
 
     windows = decode_windows(
         [
@@ -128,6 +133,7 @@ def execute_asr(context: TaskContext) -> tuple[str, ...]:
 
     document = _document(
         payload=payload,
+        audio_artifact_id=inputs.require(AUDIO_KIND).artifact_id,
         audio=audio,
         vad_artifact_id=vad_id,
         model=model,
@@ -168,34 +174,45 @@ def _payload(context: TaskContext) -> daemon_pb2.SpeechStagePayloadV1:
         raise DeterministicTaskError("task payload is not a speech stage payload") from error
     if payload.key_version != KEY_VERSION or payload.stage != "speech-asr":
         raise DeterministicTaskError("task payload does not describe recognition")
-    if not payload.audio_artifact_id:
-        raise DeterministicTaskError("task payload names no audio rendition")
     return payload
 
 
-def _voice_activity(context: TaskContext) -> tuple[str, SpeechVad]:
-    """The speech boundaries this decode is confined to, verified.
+def _inputs(context: TaskContext) -> LeaseInputs:
+    """What this lease delivered, indexed by kind.
 
-    Exactly one input, and it must be voice activity. Guessing which of
-    several inputs was meant is how a stage ends up reading last week's
-    artifact and publishing it under this week's key.
+    The audio and the voice activity both arrive here rather than one of them in
+    the payload: a worker may open exactly what its lease named, and the payload
+    is hashed into the artifact key, so an address in it would be present on one
+    route and absent on the other — one recognition with two addresses.
     """
 
-    inputs = list(context.lease.input_artifact_ids)
-    if len(inputs) != 1:
-        raise DeterministicTaskError(
-            f"recognition takes one voice-activity input, not {len(inputs)}"
-        )
-    artifact = context.open_artifact(inputs[0])
     try:
-        raw = context.artifact_file(artifact, VAD_FILE).read_text(encoding="utf-8")
+        return LeaseInputs(context)
+    except MissingInputError as error:
+        raise DeterministicTaskError(str(error)) from error
+
+
+def _voice_activity(inputs: LeaseInputs) -> tuple[str, SpeechVad]:
+    """The speech boundaries this decode is confined to, verified.
+
+    Found by kind, not by position. Guessing which of several inputs was meant is
+    how a stage ends up reading last week's artifact and publishing it under this
+    week's key — and inside an analysis this lease carries the audio too.
+    """
+
+    try:
+        found = inputs.require("speech.vad.v1")
+    except MissingInputError as error:
+        raise DeterministicTaskError(str(error)) from error
+    try:
+        raw = artifact_file(found.artifact, VAD_FILE).read_text(encoding="utf-8")
     except ArtifactVerificationError as error:
         raise DeterministicTaskError(str(error)) from error
     activity = SpeechVad.model_validate_json(raw)
     if not activity.coverage.analyzed:
         # A pass that never ran is not a recording with no speech in it.
         raise DeterministicTaskError("voice activity was never analyzed for this audio")
-    return (inputs[0], activity)
+    return (found.artifact_id, activity)
 
 
 def _language(
@@ -225,6 +242,7 @@ def _language(
 def _document(
     *,
     payload: daemon_pb2.SpeechStagePayloadV1,
+    audio_artifact_id: str,
     audio: PcmAudio,
     vad_artifact_id: str,
     model: VerifiedModel,
@@ -237,7 +255,7 @@ def _document(
     return SpeechAsr(
         schema_version="clipmill.speech.asr.v1",
         source_fingerprint=payload.source_fingerprint or audio.source_fingerprint,
-        audio_artifact_id=payload.audio_artifact_id,
+        audio_artifact_id=audio_artifact_id,
         vad_artifact_id=vad_artifact_id,
         producer=Producer(
             stage="speech-asr",

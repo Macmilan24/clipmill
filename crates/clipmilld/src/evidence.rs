@@ -7,12 +7,11 @@
 //! `clipmill-evidence`, which does no I/O — this module is the part that reads
 //! the inputs, keys the result, and publishes it.
 //!
-//! Its two documents arrive one of two ways, both real. Submitted as a
-//! standalone job they are content addresses in the payload; run inside the
-//! analyze DAG they are the outputs of the tasks it depends on. Either way each
-//! is checked against the artifact kind its own manifest declares, so a payload
-//! that named shot cuts where a transcript belongs is refused rather than
-//! parsed into nonsense.
+//! Its two documents arrive on the lease — declared by the plan when this runs
+//! standalone, delivered by a dependency inside the analyze DAG — and each is
+//! matched against the artifact kind its own manifest declares. A plan that
+//! named shot cuts where a transcript belongs is refused rather than parsed into
+//! nonsense.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::IndexStagePayloadV1;
@@ -60,11 +59,8 @@ pub(crate) async fn execute_index_task(
         artifacts,
         task,
         &[
-            Wanted::required(
-                "speech.transcript.v1",
-                payload.transcript_artifact_id.as_str(),
-            ),
-            Wanted::optional("evidence.shots.v1", payload.shots_artifact_id.as_str()),
+            Wanted::required("speech.transcript.v1"),
+            Wanted::optional("evidence.shots.v1"),
         ],
     )
     .await?;
@@ -170,15 +166,10 @@ mod tests {
 
     use super::{INDEX_STAGE_KEY_VERSION, KIND_INDEX};
 
-    const TRANSCRIPT: &str =
-        "sha256:7a11000000000000000000000000000000000000000000000000000000000042";
-
     fn payload() -> IndexStagePayloadV1 {
         IndexStagePayloadV1 {
             key_version: INDEX_STAGE_KEY_VERSION.to_owned(),
             stage: KIND_INDEX.to_owned(),
-            transcript_artifact_id: TRANSCRIPT.to_owned(),
-            shots_artifact_id: String::new(),
         }
     }
 
@@ -197,13 +188,13 @@ mod tests {
         assert_ne!(decoded.stage, KIND_INDEX);
     }
 
-    /// A source with no video keys differently from one whose cuts were found.
+    /// Nothing about what the stage reads is in here. Two indexes over different
+    /// transcripts are still different artifacts — the recipe covers the
+    /// addresses the lease delivered — but they encode the same payload, which is
+    /// exactly what lets one route's index be the other route's cache hit.
     #[test]
-    fn naming_shot_cuts_changes_the_keyed_payload() {
-        let with_shots = IndexStagePayloadV1 {
-            shots_artifact_id: "sha256:".to_owned() + &"9".repeat(64),
-            ..payload()
-        };
-        assert_ne!(payload().encode_to_vec(), with_shots.encode_to_vec());
+    fn the_payload_names_no_input() {
+        let encoded = String::from_utf8_lossy(&payload().encode_to_vec()).into_owned();
+        assert!(!encoded.contains("sha256:"));
     }
 }

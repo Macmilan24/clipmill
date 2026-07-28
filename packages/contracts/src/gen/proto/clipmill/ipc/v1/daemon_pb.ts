@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file clipmill/ipc/v1/daemon.proto.
  */
 export const file_clipmill_ipc_v1_daemon: GenFile = /*@__PURE__*/
-  fileDesc("ChxjbGlwbWlsbC9pcGMvdjEvZGFlbW9uLnByb3RvEg9jbGlwbWlsbC5pcGMudjEiuAkKB1JlcXVlc3QSEgoKcmVxdWVzdF9pZBgBIAEoCRIsCgRwaW5nGAogASgLMhwuY2xpcG1pbGwuaXBjLnYxLlBpbmdSZXF1ZXN0SAASMAoGaGVhbHRoGAsgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkhlYWx0aFJlcXVlc3RIABI/Cg5jcmVhdGVfcHJvamVjdBgMIAEoCzIlLmNsaXBtaWxsLmlwYy52MS5DcmVhdGVQcm9qZWN0UmVxdWVzdEgAEjkKC2dldF9wcm9qZWN0GA0gASgLMiIuY2xpcG1pbGwuaXBjLnYxLkdldFByb2plY3RSZXF1ZXN0SAASPQoNbGlzdF9wcm9qZWN0cxgOIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5MaXN0UHJvamVjdHNSZXF1ZXN0SAASPwoOZGVsZXRlX3Byb2plY3QYDyABKAsyJS5jbGlwbWlsbC5pcGMudjEuRGVsZXRlUHJvamVjdFJlcXVlc3RIABI3CgpzdWJtaXRfam9iGBAgASgLMiEuY2xpcG1pbGwuaXBjLnYxLlN1Ym1pdEpvYlJlcXVlc3RIABJMChVzdWJzY3JpYmVfdGFza19ldmVudHMYESABKAsyKy5jbGlwbWlsbC5pcGMudjEuU3Vic2NyaWJlVGFza0V2ZW50c1JlcXVlc3RIABJGChJnZXRfZGV2aWNlX3Byb2ZpbGUYEiABKAsyKC5jbGlwbWlsbC5pcGMudjEuR2V0RGV2aWNlUHJvZmlsZVJlcXVlc3RIABIxCgdnZXRfam9iGBMgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkdldEpvYlJlcXVlc3RIABI1CglsaXN0X2pvYnMYFCABKAsyIC5jbGlwbWlsbC5pcGMudjEuTGlzdEpvYnNSZXF1ZXN0SAASNwoKY2FuY2VsX2pvYhgVIAEoCzIhLmNsaXBtaWxsLmlwYy52MS5DYW5jZWxKb2JSZXF1ZXN0SAASQQoPcmVnaXN0ZXJfc291cmNlGBYgASgLMiYuY2xpcG1pbGwuaXBjLnYxLlJlZ2lzdGVyU291cmNlUmVxdWVzdEgAEjcKCmdldF9zb3VyY2UYFyABKAsyIS5jbGlwbWlsbC5pcGMudjEuR2V0U291cmNlUmVxdWVzdEgAEjsKDGxpc3Rfc291cmNlcxgYIAEoCzIjLmNsaXBtaWxsLmlwYy52MS5MaXN0U291cmNlc1JlcXVlc3RIABJACg9jcmVhdGVfZWRpdF9kb2MYGSABKAsyJS5jbGlwbWlsbC5pcGMudjEuQ3JlYXRlRWRpdERvY1JlcXVlc3RIABJGChJhcHBseV9lZGl0X2NvbW1hbmQYGiABKAsyKC5jbGlwbWlsbC5pcGMudjEuQXBwbHlFZGl0Q29tbWFuZFJlcXVlc3RIABI6CgxnZXRfZWRpdF9kb2MYGyABKAsyIi5jbGlwbWlsbC5pcGMudjEuR2V0RWRpdERvY1JlcXVlc3RIABJEChFzbmFwc2hvdF9lZGl0X2RvYxgcIAEoCzInLmNsaXBtaWxsLmlwYy52MS5TbmFwc2hvdEVkaXREb2NSZXF1ZXN0SABCBgoEYm9keSKnCgoIUmVzcG9uc2USEgoKcmVxdWVzdF9pZBgBIAEoCRInCgVlcnJvchgJIAEoCzIWLmNsaXBtaWxsLmlwYy52MS5FcnJvckgAEi0KBHBpbmcYCiABKAsyHS5jbGlwbWlsbC5pcGMudjEuUGluZ1Jlc3BvbnNlSAASMQoGaGVhbHRoGAsgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkhlYWx0aFJlc3BvbnNlSAASQAoOY3JlYXRlX3Byb2plY3QYDCABKAsyJi5jbGlwbWlsbC5pcGMudjEuQ3JlYXRlUHJvamVjdFJlc3BvbnNlSAASOgoLZ2V0X3Byb2plY3QYDSABKAsyIy5jbGlwbWlsbC5pcGMudjEuR2V0UHJvamVjdFJlc3BvbnNlSAASPgoNbGlzdF9wcm9qZWN0cxgOIAEoCzIlLmNsaXBtaWxsLmlwYy52MS5MaXN0UHJvamVjdHNSZXNwb25zZUgAEkAKDmRlbGV0ZV9wcm9qZWN0GA8gASgLMiYuY2xpcG1pbGwuaXBjLnYxLkRlbGV0ZVByb2plY3RSZXNwb25zZUgAEjgKCnN1Ym1pdF9qb2IYECABKAsyIi5jbGlwbWlsbC5pcGMudjEuU3VibWl0Sm9iUmVzcG9uc2VIABIwCgp0YXNrX2V2ZW50GBEgASgLMhouY2xpcG1pbGwuaXBjLnYxLlRhc2tFdmVudEgAEkcKEmdldF9kZXZpY2VfcHJvZmlsZRgSIAEoCzIpLmNsaXBtaWxsLmlwYy52MS5HZXREZXZpY2VQcm9maWxlUmVzcG9uc2VIABIyCgdnZXRfam9iGBMgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkdldEpvYlJlc3BvbnNlSAASNgoJbGlzdF9qb2JzGBQgASgLMiEuY2xpcG1pbGwuaXBjLnYxLkxpc3RKb2JzUmVzcG9uc2VIABI4CgpjYW5jZWxfam9iGBUgASgLMiIuY2xpcG1pbGwuaXBjLnYxLkNhbmNlbEpvYlJlc3BvbnNlSAASTQoVc3Vic2NyaWJlX3Rhc2tfZXZlbnRzGBYgASgLMiwuY2xpcG1pbGwuaXBjLnYxLlN1YnNjcmliZVRhc2tFdmVudHNSZXNwb25zZUgAEkIKD3JlZ2lzdGVyX3NvdXJjZRgXIAEoCzInLmNsaXBtaWxsLmlwYy52MS5SZWdpc3RlclNvdXJjZVJlc3BvbnNlSAASOAoKZ2V0X3NvdXJjZRgYIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5HZXRTb3VyY2VSZXNwb25zZUgAEjwKDGxpc3Rfc291cmNlcxgZIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5MaXN0U291cmNlc1Jlc3BvbnNlSAASQQoPY3JlYXRlX2VkaXRfZG9jGBogASgLMiYuY2xpcG1pbGwuaXBjLnYxLkNyZWF0ZUVkaXREb2NSZXNwb25zZUgAEkcKEmFwcGx5X2VkaXRfY29tbWFuZBgbIAEoCzIpLmNsaXBtaWxsLmlwYy52MS5BcHBseUVkaXRDb21tYW5kUmVzcG9uc2VIABI7CgxnZXRfZWRpdF9kb2MYHCABKAsyIy5jbGlwbWlsbC5pcGMudjEuR2V0RWRpdERvY1Jlc3BvbnNlSAASRQoRc25hcHNob3RfZWRpdF9kb2MYHSABKAsyKC5jbGlwbWlsbC5pcGMudjEuU25hcHNob3RFZGl0RG9jUmVzcG9uc2VIAEIGCgRib2R5IkIKBUVycm9yEigKBGNvZGUYASABKA4yGi5jbGlwbWlsbC5pcGMudjEuRXJyb3JDb2RlEg8KB21lc3NhZ2UYAiABKAkiDwoNSGVhbHRoUmVxdWVzdCJZCg5IZWFsdGhSZXNwb25zZRIWCg5kYWVtb25fdmVyc2lvbhgBIAEoCRIbChNzdGFydGVkX3VuaXhfbWlsbGlzGAIgASgEEhIKCmxvY2FsX2xvY2sYAyABKAgiSAoHUHJvamVjdBISCgpwcm9qZWN0X2lkGAEgASgJEgwKBG5hbWUYAiABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgDIAEoBCIkChRDcmVhdGVQcm9qZWN0UmVxdWVzdBIMCgRuYW1lGAEgASgJIkIKFUNyZWF0ZVByb2plY3RSZXNwb25zZRIpCgdwcm9qZWN0GAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLlByb2plY3QiJwoRR2V0UHJvamVjdFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI/ChJHZXRQcm9qZWN0UmVzcG9uc2USKQoHcHJvamVjdBgBIAEoCzIYLmNsaXBtaWxsLmlwYy52MS5Qcm9qZWN0IhUKE0xpc3RQcm9qZWN0c1JlcXVlc3QiQgoUTGlzdFByb2plY3RzUmVzcG9uc2USKgoIcHJvamVjdHMYASADKAsyGC5jbGlwbWlsbC5pcGMudjEuUHJvamVjdCIqChREZWxldGVQcm9qZWN0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJIhcKFURlbGV0ZVByb2plY3RSZXNwb25zZSJFChBTdWJtaXRKb2JSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDAoEa2luZBgCIAEoCRIPCgdwYXlsb2FkGAMgASgMIjUKEERlbW9EYWdQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDAoEc2VlZBgCIAEoDCI+ChRQcm9iZVNvdXJjZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkiPwoVSW5nZXN0U291cmNlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCSKbAQoTUmVuZGVyQ2xpcFBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIOCgZkb2NfaWQYAiABKAkSFgoOaXJfYXJ0aWZhY3RfaWQYAyABKAkSGgoSc291cmNlX2F0dGVzdGF0aW9uGAQgASgJEhQKDGdhdGVzX3Bhc3NlZBgFIAMoCRIVCg1haV9hc3Npc3RhbmNlGAYgAygJIowBChlUcmFuc2NyaWJlU291cmNlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCRIQCghsYW5ndWFnZRgDIAEoCRI1CglkZXRlY3Rpb24YBCABKAsyIi5jbGlwbWlsbC5pcGMudjEuU3BlZWNoRGV0ZWN0aW9uVjEidQoRU3BlZWNoRGV0ZWN0aW9uVjESEQoJdGhyZXNob2xkGAEgASgBEhgKEG1pbl9zcGVlY2hfdGlja3MYAiABKAQSGQoRbWluX3NpbGVuY2VfdGlja3MYAyABKAQSGAoQc3BlZWNoX3BhZF90aWNrcxgEIAEoBCKaAgoUU3BlZWNoU3RhZ2VQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDQoFc3RhZ2UYAiABKAkSGgoSc291cmNlX2ZpbmdlcnByaW50GAMgASgJEhkKEWF1ZGlvX2FydGlmYWN0X2lkGAQgASgJEjUKCWRldGVjdGlvbhgFIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5TcGVlY2hEZXRlY3Rpb25WMRI5CgtyZWNvZ25pdGlvbhgGIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5TcGVlY2hSZWNvZ25pdGlvblYxEjUKCWFsaWdubWVudBgHIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5TcGVlY2hBbGlnbm1lbnRWMSJIChNTcGVlY2hSZWNvZ25pdGlvblYxEhAKCGxhbmd1YWdlGAEgASgJEh8KF2NvbmRpdGlvbmVkX29uX3ByZXZpb3VzGAIgASgIIiYKEVNwZWVjaEFsaWdubWVudFYxEhEKCW1pbl9zY29yZRgBIAEoASJzChREZXRlY3RTaG90c1BheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkSMwoJZGV0ZWN0aW9uGAMgASgLMiAuY2xpcG1pbGwuaXBjLnYxLlNob3REZXRlY3Rpb25WMSJVCg9TaG90RGV0ZWN0aW9uVjESEQoJdGhyZXNob2xkGAEgASgBEhYKDm1pbl9zaG90X3RpY2tzGAIgASgEEhcKD2FuYWx5c2lzX2hlaWdodBgDIAEoDSK6AQoTU2hvdHNTdGFnZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRINCgVzdGFnZRgCIAEoCRIaChJzb3VyY2VfZmluZ2VycHJpbnQYAyABKAkSGQoRcHJveHlfYXJ0aWZhY3RfaWQYBCABKAkSMwoJZGV0ZWN0aW9uGAUgASgLMiAuY2xpcG1pbGwuaXBjLnYxLlNob3REZXRlY3Rpb25WMRITCgtkZWNvZGVyX2JvbRgGIAEoCSJCChhJbmRleFRyYW5zY3JpcHRQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSEQoJc291cmNlX2lkGAIgASgJInQKE0luZGV4U3RhZ2VQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDQoFc3RhZ2UYAiABKAkSHgoWdHJhbnNjcmlwdF9hcnRpZmFjdF9pZBgDIAEoCRIZChFzaG90c19hcnRpZmFjdF9pZBgEIAEoCSJ4ChtEaXNjb3ZlckNhbmRpZGF0ZXNQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSEQoJc291cmNlX2lkGAIgASgJEjEKCGR1cmF0aW9uGAMgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkNsaXBEdXJhdGlvblYxIjYKDkNsaXBEdXJhdGlvblYxEhEKCW1pbl90aWNrcxgBIAEoBBIRCgltYXhfdGlja3MYAiABKAQi4wEKFkRpc2NvdmVyU3RhZ2VQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDQoFc3RhZ2UYAiABKAkSGQoRaW5kZXhfYXJ0aWZhY3RfaWQYAyABKAkSHgoWdHJhbnNjcmlwdF9hcnRpZmFjdF9pZBgEIAEoCRIcChRsb3VkbmVzc19hcnRpZmFjdF9pZBgFIAEoCRIxCghkdXJhdGlvbhgGIAEoCzIfLmNsaXBtaWxsLmlwYy52MS5DbGlwRHVyYXRpb25WMRIZChFleHBsb3JhdGlvbl9mbG9vchgHIAEoBCJpChdSYW5rQ2FuZGlkYXRlc1BheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkSDQoFY291bnQYAyABKAQSFwoPZGl2ZXJzaXR5X21pbGxpGAQgASgEIrsBChJSYW5rU3RhZ2VQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDQoFc3RhZ2UYAiABKAkSHgoWY2FuZGlkYXRlc19hcnRpZmFjdF9pZBgDIAEoCRIZChFpbmRleF9hcnRpZmFjdF9pZBgEIAEoCRIeChZ0cmFuc2NyaXB0X2FydGlmYWN0X2lkGAUgASgJEg0KBWNvdW50GAYgASgEEhcKD2RpdmVyc2l0eV9taWxsaRgHIAEoBCKtAQoWQW5hbHl6ZVNvdXJjZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkSEAoIbGFuZ3VhZ2UYAyABKAkSMQoIZHVyYXRpb24YBCABKAsyHy5jbGlwbWlsbC5pcGMudjEuQ2xpcER1cmF0aW9uVjESDQoFY291bnQYBSABKAQSFwoPZGl2ZXJzaXR5X21pbGxpGAYgASgEImsKFkRldmljZVByb2ZpbGVQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSHAoUaGFyZHdhcmVfZmluZ2VycHJpbnQYAiABKAkSHgoWbWVhc3VyZW1lbnRfZ2VuZXJhdGlvbhgDIAEoBCJGChFTdWJtaXRKb2JSZXNwb25zZRIOCgZqb2JfaWQYASABKAkSIQoDam9iGAIgASgLMhQuY2xpcG1pbGwuaXBjLnYxLkpvYiJYChpTdWJzY3JpYmVUYXNrRXZlbnRzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEg4KBmpvYl9pZBgCIAEoCRIWCg5hZnRlcl9ldmVudF9pZBgDIAEoBCI3ChtTdWJzY3JpYmVUYXNrRXZlbnRzUmVzcG9uc2USGAoQY3VycmVudF9ldmVudF9pZBgBIAEoBCKVAgoJVGFza0V2ZW50Eg4KBmpvYl9pZBgBIAEoCRIPCgd0YXNrX2lkGAIgASgJEikKBXN0YXRlGAMgASgOMhouY2xpcG1pbGwuaXBjLnYxLlRhc2tTdGF0ZRIzCghwcm9ncmVzcxgEIAEoCzIhLmNsaXBtaWxsLndvcmtlci52MS5Qcm9ncmVzc1VuaXRzEhMKC3dhaXRfcmVhc29uGAUgASgJEhYKDmF0X3VuaXhfbWlsbGlzGAYgASgEEhAKCGV2ZW50X2lkGAcgASgEEg8KB2F0dGVtcHQYCCABKA0SNwoNZmFpbHVyZV9jbGFzcxgJIAEoDjIgLmNsaXBtaWxsLndvcmtlci52MS5GYWlsdXJlQ2xhc3MirwIKA0pvYhIOCgZqb2JfaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIMCgRraW5kGAMgASgJEigKBXN0YXRlGAQgASgOMhkuY2xpcG1pbGwuaXBjLnYxLkpvYlN0YXRlEhsKE2NyZWF0ZWRfdW5peF9taWxsaXMYBSABKAQSGwoTdXBkYXRlZF91bml4X21pbGxpcxgGIAEoBBIkCgV0YXNrcxgHIAMoCzIVLmNsaXBtaWxsLmlwYy52MS5UYXNrEhsKE291dHB1dF9hcnRpZmFjdF9pZHMYCCADKAkSNwoNZmFpbHVyZV9jbGFzcxgJIAEoDjIgLmNsaXBtaWxsLndvcmtlci52MS5GYWlsdXJlQ2xhc3MSFgoOZmFpbHVyZV9kZXRhaWwYCiABKAki3QEKBFRhc2sSDwoHdGFza19pZBgBIAEoCRIMCgRraW5kGAIgASgJEikKBXN0YXRlGAMgASgOMhouY2xpcG1pbGwuaXBjLnYxLlRhc2tTdGF0ZRIPCgdhdHRlbXB0GAQgASgNEhQKDG1heF9hdHRlbXB0cxgFIAEoDRIzCghwcm9ncmVzcxgGIAEoCzIhLmNsaXBtaWxsLndvcmtlci52MS5Qcm9ncmVzc1VuaXRzEhMKC3dhaXRfcmVhc29uGAcgASgJEhoKEm91dHB1dF9hcnRpZmFjdF9pZBgIIAEoCSIfCg1HZXRKb2JSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSIzCg5HZXRKb2JSZXNwb25zZRIhCgNqb2IYASABKAsyFC5jbGlwbWlsbC5pcGMudjEuSm9iIiUKD0xpc3RKb2JzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJIjYKEExpc3RKb2JzUmVzcG9uc2USIgoEam9icxgBIAMoCzIULmNsaXBtaWxsLmlwYy52MS5Kb2IiIgoQQ2FuY2VsSm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiNgoRQ2FuY2VsSm9iUmVzcG9uc2USIQoDam9iGAEgASgLMhQuY2xpcG1pbGwuaXBjLnYxLkpvYiLJAQoGU291cmNlEhEKCXNvdXJjZV9pZBgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhUKDWFic29sdXRlX3BhdGgYAyABKAkSEQoJYnl0ZV9zaXplGAQgASgEEhUKDXNhbXBsZV9zaGEyNTYYBSABKAkSGgoSc291cmNlX2ZpbmdlcnByaW50GAYgASgJEh4KFnNvdXJjZV9tYXBfYXJ0aWZhY3RfaWQYByABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgIIAEoBCJCChVSZWdpc3RlclNvdXJjZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIVCg1hYnNvbHV0ZV9wYXRoGAIgASgJImAKFlJlZ2lzdGVyU291cmNlUmVzcG9uc2USJwoGc291cmNlGAEgASgLMhcuY2xpcG1pbGwuaXBjLnYxLlNvdXJjZRIdChVvYnNlcnZhdGlvbl9jYWNoZV9oaXQYAiABKAgiJQoQR2V0U291cmNlUmVxdWVzdBIRCglzb3VyY2VfaWQYASABKAkiPAoRR2V0U291cmNlUmVzcG9uc2USJwoGc291cmNlGAEgASgLMhcuY2xpcG1pbGwuaXBjLnYxLlNvdXJjZSIoChJMaXN0U291cmNlc1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI/ChNMaXN0U291cmNlc1Jlc3BvbnNlEigKB3NvdXJjZXMYASADKAsyFy5jbGlwbWlsbC5pcGMudjEuU291cmNlIiwKF0dldERldmljZVByb2ZpbGVSZXF1ZXN0EhEKCXJlbWVhc3VyZRgBIAEoCCJFChhHZXREZXZpY2VQcm9maWxlUmVzcG9uc2USEwoLYXJ0aWZhY3RfaWQYASABKAkSFAoMcHJvZmlsZV9qc29uGAIgASgJIpABCgdFZGl0RG9jEg4KBmRvY19pZBgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhAKCHJldmlzaW9uGAMgASgEEhUKDWRvY3VtZW50X2pzb24YBCABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgFIAEoBBIbChN1cGRhdGVkX3VuaXhfbWlsbGlzGAYgASgEIkEKFENyZWF0ZUVkaXREb2NSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFQoNZG9jdW1lbnRfanNvbhgCIAEoCSI+ChVDcmVhdGVFZGl0RG9jUmVzcG9uc2USJQoDZG9jGAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLkVkaXREb2MiWgoXQXBwbHlFZGl0Q29tbWFuZFJlcXVlc3QSDgoGZG9jX2lkGAEgASgJEhkKEWV4cGVjdGVkX3JldmlzaW9uGAIgASgEEhQKDGNvbW1hbmRfanNvbhgDIAEoCSJfChhBcHBseUVkaXRDb21tYW5kUmVzcG9uc2USJQoDZG9jGAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLkVkaXREb2MSHAoUaW52ZXJzZV9jb21tYW5kX2pzb24YAiABKAkiIwoRR2V0RWRpdERvY1JlcXVlc3QSDgoGZG9jX2lkGAEgASgJIjsKEkdldEVkaXREb2NSZXNwb25zZRIlCgNkb2MYASABKAsyGC5jbGlwbWlsbC5pcGMudjEuRWRpdERvYyIoChZTbmFwc2hvdEVkaXREb2NSZXF1ZXN0Eg4KBmRvY19pZBgBIAEoCSJAChdTbmFwc2hvdEVkaXREb2NSZXNwb25zZRITCgthcnRpZmFjdF9pZBgBIAEoCRIQCghyZXZpc2lvbhgCIAEoBCrOAQoJRXJyb3JDb2RlEhoKFkVSUk9SX0NPREVfVU5TUEVDSUZJRUQQABIfChtFUlJPUl9DT0RFX0lOVkFMSURfQVJHVU1FTlQQARIYChRFUlJPUl9DT0RFX05PVF9GT1VORBACEhcKE0VSUk9SX0NPREVfQ09ORkxJQ1QQAxIaChZFUlJPUl9DT0RFX1VOQVZBSUxBQkxFEAQSHAoYRVJST1JfQ09ERV9QT0xJQ1lfREVOSUVEEAUSFwoTRVJST1JfQ09ERV9JTlRFUk5BTBAGKtUBCglUYXNrU3RhdGUSGgoWVEFTS19TVEFURV9VTlNQRUNJRklFRBAAEhYKElRBU0tfU1RBVEVfUExBTk5FRBABEhcKE1RBU0tfU1RBVEVfQURNSVRURUQQAhIWChJUQVNLX1NUQVRFX1JVTk5JTkcQAxIYChRUQVNLX1NUQVRFX1NVQ0NFRURFRBAEEhgKFFRBU0tfU1RBVEVfUkVUUllBQkxFEAUSFQoRVEFTS19TVEFURV9GQUlMRUQQBhIYChRUQVNLX1NUQVRFX0NBTkNFTExFRBAHKrsBCghKb2JTdGF0ZRIZChVKT0JfU1RBVEVfVU5TUEVDSUZJRUQQABIVChFKT0JfU1RBVEVfUExBTk5FRBABEhUKEUpPQl9TVEFURV9SVU5OSU5HEAISFwoTSk9CX1NUQVRFX1NVQ0NFRURFRBADEhQKEEpPQl9TVEFURV9GQUlMRUQQBBIeChpKT0JfU1RBVEVfQ0FOQ0VMX1JFUVVFU1RFRBAFEhcKE0pPQl9TVEFURV9DQU5DRUxMRUQQBmIGcHJvdG8z", [file_clipmill_ipc_v1_ping, file_clipmill_worker_v1_worker]);
+  fileDesc("ChxjbGlwbWlsbC9pcGMvdjEvZGFlbW9uLnByb3RvEg9jbGlwbWlsbC5pcGMudjEiuAkKB1JlcXVlc3QSEgoKcmVxdWVzdF9pZBgBIAEoCRIsCgRwaW5nGAogASgLMhwuY2xpcG1pbGwuaXBjLnYxLlBpbmdSZXF1ZXN0SAASMAoGaGVhbHRoGAsgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkhlYWx0aFJlcXVlc3RIABI/Cg5jcmVhdGVfcHJvamVjdBgMIAEoCzIlLmNsaXBtaWxsLmlwYy52MS5DcmVhdGVQcm9qZWN0UmVxdWVzdEgAEjkKC2dldF9wcm9qZWN0GA0gASgLMiIuY2xpcG1pbGwuaXBjLnYxLkdldFByb2plY3RSZXF1ZXN0SAASPQoNbGlzdF9wcm9qZWN0cxgOIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5MaXN0UHJvamVjdHNSZXF1ZXN0SAASPwoOZGVsZXRlX3Byb2plY3QYDyABKAsyJS5jbGlwbWlsbC5pcGMudjEuRGVsZXRlUHJvamVjdFJlcXVlc3RIABI3CgpzdWJtaXRfam9iGBAgASgLMiEuY2xpcG1pbGwuaXBjLnYxLlN1Ym1pdEpvYlJlcXVlc3RIABJMChVzdWJzY3JpYmVfdGFza19ldmVudHMYESABKAsyKy5jbGlwbWlsbC5pcGMudjEuU3Vic2NyaWJlVGFza0V2ZW50c1JlcXVlc3RIABJGChJnZXRfZGV2aWNlX3Byb2ZpbGUYEiABKAsyKC5jbGlwbWlsbC5pcGMudjEuR2V0RGV2aWNlUHJvZmlsZVJlcXVlc3RIABIxCgdnZXRfam9iGBMgASgLMh4uY2xpcG1pbGwuaXBjLnYxLkdldEpvYlJlcXVlc3RIABI1CglsaXN0X2pvYnMYFCABKAsyIC5jbGlwbWlsbC5pcGMudjEuTGlzdEpvYnNSZXF1ZXN0SAASNwoKY2FuY2VsX2pvYhgVIAEoCzIhLmNsaXBtaWxsLmlwYy52MS5DYW5jZWxKb2JSZXF1ZXN0SAASQQoPcmVnaXN0ZXJfc291cmNlGBYgASgLMiYuY2xpcG1pbGwuaXBjLnYxLlJlZ2lzdGVyU291cmNlUmVxdWVzdEgAEjcKCmdldF9zb3VyY2UYFyABKAsyIS5jbGlwbWlsbC5pcGMudjEuR2V0U291cmNlUmVxdWVzdEgAEjsKDGxpc3Rfc291cmNlcxgYIAEoCzIjLmNsaXBtaWxsLmlwYy52MS5MaXN0U291cmNlc1JlcXVlc3RIABJACg9jcmVhdGVfZWRpdF9kb2MYGSABKAsyJS5jbGlwbWlsbC5pcGMudjEuQ3JlYXRlRWRpdERvY1JlcXVlc3RIABJGChJhcHBseV9lZGl0X2NvbW1hbmQYGiABKAsyKC5jbGlwbWlsbC5pcGMudjEuQXBwbHlFZGl0Q29tbWFuZFJlcXVlc3RIABI6CgxnZXRfZWRpdF9kb2MYGyABKAsyIi5jbGlwbWlsbC5pcGMudjEuR2V0RWRpdERvY1JlcXVlc3RIABJEChFzbmFwc2hvdF9lZGl0X2RvYxgcIAEoCzInLmNsaXBtaWxsLmlwYy52MS5TbmFwc2hvdEVkaXREb2NSZXF1ZXN0SABCBgoEYm9keSKnCgoIUmVzcG9uc2USEgoKcmVxdWVzdF9pZBgBIAEoCRInCgVlcnJvchgJIAEoCzIWLmNsaXBtaWxsLmlwYy52MS5FcnJvckgAEi0KBHBpbmcYCiABKAsyHS5jbGlwbWlsbC5pcGMudjEuUGluZ1Jlc3BvbnNlSAASMQoGaGVhbHRoGAsgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkhlYWx0aFJlc3BvbnNlSAASQAoOY3JlYXRlX3Byb2plY3QYDCABKAsyJi5jbGlwbWlsbC5pcGMudjEuQ3JlYXRlUHJvamVjdFJlc3BvbnNlSAASOgoLZ2V0X3Byb2plY3QYDSABKAsyIy5jbGlwbWlsbC5pcGMudjEuR2V0UHJvamVjdFJlc3BvbnNlSAASPgoNbGlzdF9wcm9qZWN0cxgOIAEoCzIlLmNsaXBtaWxsLmlwYy52MS5MaXN0UHJvamVjdHNSZXNwb25zZUgAEkAKDmRlbGV0ZV9wcm9qZWN0GA8gASgLMiYuY2xpcG1pbGwuaXBjLnYxLkRlbGV0ZVByb2plY3RSZXNwb25zZUgAEjgKCnN1Ym1pdF9qb2IYECABKAsyIi5jbGlwbWlsbC5pcGMudjEuU3VibWl0Sm9iUmVzcG9uc2VIABIwCgp0YXNrX2V2ZW50GBEgASgLMhouY2xpcG1pbGwuaXBjLnYxLlRhc2tFdmVudEgAEkcKEmdldF9kZXZpY2VfcHJvZmlsZRgSIAEoCzIpLmNsaXBtaWxsLmlwYy52MS5HZXREZXZpY2VQcm9maWxlUmVzcG9uc2VIABIyCgdnZXRfam9iGBMgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkdldEpvYlJlc3BvbnNlSAASNgoJbGlzdF9qb2JzGBQgASgLMiEuY2xpcG1pbGwuaXBjLnYxLkxpc3RKb2JzUmVzcG9uc2VIABI4CgpjYW5jZWxfam9iGBUgASgLMiIuY2xpcG1pbGwuaXBjLnYxLkNhbmNlbEpvYlJlc3BvbnNlSAASTQoVc3Vic2NyaWJlX3Rhc2tfZXZlbnRzGBYgASgLMiwuY2xpcG1pbGwuaXBjLnYxLlN1YnNjcmliZVRhc2tFdmVudHNSZXNwb25zZUgAEkIKD3JlZ2lzdGVyX3NvdXJjZRgXIAEoCzInLmNsaXBtaWxsLmlwYy52MS5SZWdpc3RlclNvdXJjZVJlc3BvbnNlSAASOAoKZ2V0X3NvdXJjZRgYIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5HZXRTb3VyY2VSZXNwb25zZUgAEjwKDGxpc3Rfc291cmNlcxgZIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5MaXN0U291cmNlc1Jlc3BvbnNlSAASQQoPY3JlYXRlX2VkaXRfZG9jGBogASgLMiYuY2xpcG1pbGwuaXBjLnYxLkNyZWF0ZUVkaXREb2NSZXNwb25zZUgAEkcKEmFwcGx5X2VkaXRfY29tbWFuZBgbIAEoCzIpLmNsaXBtaWxsLmlwYy52MS5BcHBseUVkaXRDb21tYW5kUmVzcG9uc2VIABI7CgxnZXRfZWRpdF9kb2MYHCABKAsyIy5jbGlwbWlsbC5pcGMudjEuR2V0RWRpdERvY1Jlc3BvbnNlSAASRQoRc25hcHNob3RfZWRpdF9kb2MYHSABKAsyKC5jbGlwbWlsbC5pcGMudjEuU25hcHNob3RFZGl0RG9jUmVzcG9uc2VIAEIGCgRib2R5IkIKBUVycm9yEigKBGNvZGUYASABKA4yGi5jbGlwbWlsbC5pcGMudjEuRXJyb3JDb2RlEg8KB21lc3NhZ2UYAiABKAkiDwoNSGVhbHRoUmVxdWVzdCJZCg5IZWFsdGhSZXNwb25zZRIWCg5kYWVtb25fdmVyc2lvbhgBIAEoCRIbChNzdGFydGVkX3VuaXhfbWlsbGlzGAIgASgEEhIKCmxvY2FsX2xvY2sYAyABKAgiSAoHUHJvamVjdBISCgpwcm9qZWN0X2lkGAEgASgJEgwKBG5hbWUYAiABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgDIAEoBCIkChRDcmVhdGVQcm9qZWN0UmVxdWVzdBIMCgRuYW1lGAEgASgJIkIKFUNyZWF0ZVByb2plY3RSZXNwb25zZRIpCgdwcm9qZWN0GAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLlByb2plY3QiJwoRR2V0UHJvamVjdFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI/ChJHZXRQcm9qZWN0UmVzcG9uc2USKQoHcHJvamVjdBgBIAEoCzIYLmNsaXBtaWxsLmlwYy52MS5Qcm9qZWN0IhUKE0xpc3RQcm9qZWN0c1JlcXVlc3QiQgoUTGlzdFByb2plY3RzUmVzcG9uc2USKgoIcHJvamVjdHMYASADKAsyGC5jbGlwbWlsbC5pcGMudjEuUHJvamVjdCIqChREZWxldGVQcm9qZWN0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJIhcKFURlbGV0ZVByb2plY3RSZXNwb25zZSJFChBTdWJtaXRKb2JSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDAoEa2luZBgCIAEoCRIPCgdwYXlsb2FkGAMgASgMIjUKEERlbW9EYWdQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDAoEc2VlZBgCIAEoDCI+ChRQcm9iZVNvdXJjZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkiPwoVSW5nZXN0U291cmNlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCSKbAQoTUmVuZGVyQ2xpcFBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIOCgZkb2NfaWQYAiABKAkSFgoOaXJfYXJ0aWZhY3RfaWQYAyABKAkSGgoSc291cmNlX2F0dGVzdGF0aW9uGAQgASgJEhQKDGdhdGVzX3Bhc3NlZBgFIAMoCRIVCg1haV9hc3Npc3RhbmNlGAYgAygJIowBChlUcmFuc2NyaWJlU291cmNlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCRIQCghsYW5ndWFnZRgDIAEoCRI1CglkZXRlY3Rpb24YBCABKAsyIi5jbGlwbWlsbC5pcGMudjEuU3BlZWNoRGV0ZWN0aW9uVjEidQoRU3BlZWNoRGV0ZWN0aW9uVjESEQoJdGhyZXNob2xkGAEgASgBEhgKEG1pbl9zcGVlY2hfdGlja3MYAiABKAQSGQoRbWluX3NpbGVuY2VfdGlja3MYAyABKAQSGAoQc3BlZWNoX3BhZF90aWNrcxgEIAEoBCKFAgoUU3BlZWNoU3RhZ2VQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDQoFc3RhZ2UYAiABKAkSGgoSc291cmNlX2ZpbmdlcnByaW50GAMgASgJEjUKCWRldGVjdGlvbhgFIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5TcGVlY2hEZXRlY3Rpb25WMRI5CgtyZWNvZ25pdGlvbhgGIAEoCzIkLmNsaXBtaWxsLmlwYy52MS5TcGVlY2hSZWNvZ25pdGlvblYxEjUKCWFsaWdubWVudBgHIAEoCzIiLmNsaXBtaWxsLmlwYy52MS5TcGVlY2hBbGlnbm1lbnRWMUoECAQQBSJIChNTcGVlY2hSZWNvZ25pdGlvblYxEhAKCGxhbmd1YWdlGAEgASgJEh8KF2NvbmRpdGlvbmVkX29uX3ByZXZpb3VzGAIgASgIIiYKEVNwZWVjaEFsaWdubWVudFYxEhEKCW1pbl9zY29yZRgBIAEoASJzChREZXRlY3RTaG90c1BheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkSMwoJZGV0ZWN0aW9uGAMgASgLMiAuY2xpcG1pbGwuaXBjLnYxLlNob3REZXRlY3Rpb25WMSJVCg9TaG90RGV0ZWN0aW9uVjESEQoJdGhyZXNob2xkGAEgASgBEhYKDm1pbl9zaG90X3RpY2tzGAIgASgEEhcKD2FuYWx5c2lzX2hlaWdodBgDIAEoDSKlAQoTU2hvdHNTdGFnZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRINCgVzdGFnZRgCIAEoCRIaChJzb3VyY2VfZmluZ2VycHJpbnQYAyABKAkSMwoJZGV0ZWN0aW9uGAUgASgLMiAuY2xpcG1pbGwuaXBjLnYxLlNob3REZXRlY3Rpb25WMRITCgtkZWNvZGVyX2JvbRgGIAEoCUoECAQQBSJCChhJbmRleFRyYW5zY3JpcHRQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSEQoJc291cmNlX2lkGAIgASgJIkUKE0luZGV4U3RhZ2VQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSDQoFc3RhZ2UYAiABKAlKBAgDEARKBAgEEAUieAobRGlzY292ZXJDYW5kaWRhdGVzUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCRIxCghkdXJhdGlvbhgDIAEoCzIfLmNsaXBtaWxsLmlwYy52MS5DbGlwRHVyYXRpb25WMSI2Cg5DbGlwRHVyYXRpb25WMRIRCgltaW5fdGlja3MYASABKAQSEQoJbWF4X3RpY2tzGAIgASgEIpwBChZEaXNjb3ZlclN0YWdlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEg0KBXN0YWdlGAIgASgJEjEKCGR1cmF0aW9uGAYgASgLMh8uY2xpcG1pbGwuaXBjLnYxLkNsaXBEdXJhdGlvblYxEhkKEWV4cGxvcmF0aW9uX2Zsb29yGAcgASgESgQIAxAESgQIBBAFSgQIBRAGImkKF1JhbmtDYW5kaWRhdGVzUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEhEKCXNvdXJjZV9pZBgCIAEoCRINCgVjb3VudBgDIAEoBBIXCg9kaXZlcnNpdHlfbWlsbGkYBCABKAQicgoSUmFua1N0YWdlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEg0KBXN0YWdlGAIgASgJEg0KBWNvdW50GAYgASgEEhcKD2RpdmVyc2l0eV9taWxsaRgHIAEoBEoECAMQBEoECAQQBUoECAUQBiKtAQoWQW5hbHl6ZVNvdXJjZVBheWxvYWRWMRITCgtrZXlfdmVyc2lvbhgBIAEoCRIRCglzb3VyY2VfaWQYAiABKAkSEAoIbGFuZ3VhZ2UYAyABKAkSMQoIZHVyYXRpb24YBCABKAsyHy5jbGlwbWlsbC5pcGMudjEuQ2xpcER1cmF0aW9uVjESDQoFY291bnQYBSABKAQSFwoPZGl2ZXJzaXR5X21pbGxpGAYgASgEIooBChZBbmFseXNpc1N0YWdlUGF5bG9hZFYxEhMKC2tleV92ZXJzaW9uGAEgASgJEg0KBXN0YWdlGAIgASgJEhoKEnNvdXJjZV9maW5nZXJwcmludBgDIAEoCRIwCgdza2lwcGVkGAQgAygLMh8uY2xpcG1pbGwuaXBjLnYxLlNraXBwZWRTdGFnZVYxIi4KDlNraXBwZWRTdGFnZVYxEgwKBGtpbmQYASABKAkSDgoGcmVhc29uGAIgASgJImsKFkRldmljZVByb2ZpbGVQYXlsb2FkVjESEwoLa2V5X3ZlcnNpb24YASABKAkSHAoUaGFyZHdhcmVfZmluZ2VycHJpbnQYAiABKAkSHgoWbWVhc3VyZW1lbnRfZ2VuZXJhdGlvbhgDIAEoBCJGChFTdWJtaXRKb2JSZXNwb25zZRIOCgZqb2JfaWQYASABKAkSIQoDam9iGAIgASgLMhQuY2xpcG1pbGwuaXBjLnYxLkpvYiJYChpTdWJzY3JpYmVUYXNrRXZlbnRzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEg4KBmpvYl9pZBgCIAEoCRIWCg5hZnRlcl9ldmVudF9pZBgDIAEoBCI3ChtTdWJzY3JpYmVUYXNrRXZlbnRzUmVzcG9uc2USGAoQY3VycmVudF9ldmVudF9pZBgBIAEoBCKVAgoJVGFza0V2ZW50Eg4KBmpvYl9pZBgBIAEoCRIPCgd0YXNrX2lkGAIgASgJEikKBXN0YXRlGAMgASgOMhouY2xpcG1pbGwuaXBjLnYxLlRhc2tTdGF0ZRIzCghwcm9ncmVzcxgEIAEoCzIhLmNsaXBtaWxsLndvcmtlci52MS5Qcm9ncmVzc1VuaXRzEhMKC3dhaXRfcmVhc29uGAUgASgJEhYKDmF0X3VuaXhfbWlsbGlzGAYgASgEEhAKCGV2ZW50X2lkGAcgASgEEg8KB2F0dGVtcHQYCCABKA0SNwoNZmFpbHVyZV9jbGFzcxgJIAEoDjIgLmNsaXBtaWxsLndvcmtlci52MS5GYWlsdXJlQ2xhc3MirwIKA0pvYhIOCgZqb2JfaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIMCgRraW5kGAMgASgJEigKBXN0YXRlGAQgASgOMhkuY2xpcG1pbGwuaXBjLnYxLkpvYlN0YXRlEhsKE2NyZWF0ZWRfdW5peF9taWxsaXMYBSABKAQSGwoTdXBkYXRlZF91bml4X21pbGxpcxgGIAEoBBIkCgV0YXNrcxgHIAMoCzIVLmNsaXBtaWxsLmlwYy52MS5UYXNrEhsKE291dHB1dF9hcnRpZmFjdF9pZHMYCCADKAkSNwoNZmFpbHVyZV9jbGFzcxgJIAEoDjIgLmNsaXBtaWxsLndvcmtlci52MS5GYWlsdXJlQ2xhc3MSFgoOZmFpbHVyZV9kZXRhaWwYCiABKAki3QEKBFRhc2sSDwoHdGFza19pZBgBIAEoCRIMCgRraW5kGAIgASgJEikKBXN0YXRlGAMgASgOMhouY2xpcG1pbGwuaXBjLnYxLlRhc2tTdGF0ZRIPCgdhdHRlbXB0GAQgASgNEhQKDG1heF9hdHRlbXB0cxgFIAEoDRIzCghwcm9ncmVzcxgGIAEoCzIhLmNsaXBtaWxsLndvcmtlci52MS5Qcm9ncmVzc1VuaXRzEhMKC3dhaXRfcmVhc29uGAcgASgJEhoKEm91dHB1dF9hcnRpZmFjdF9pZBgIIAEoCSIfCg1HZXRKb2JSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSIzCg5HZXRKb2JSZXNwb25zZRIhCgNqb2IYASABKAsyFC5jbGlwbWlsbC5pcGMudjEuSm9iIiUKD0xpc3RKb2JzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJIjYKEExpc3RKb2JzUmVzcG9uc2USIgoEam9icxgBIAMoCzIULmNsaXBtaWxsLmlwYy52MS5Kb2IiIgoQQ2FuY2VsSm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiNgoRQ2FuY2VsSm9iUmVzcG9uc2USIQoDam9iGAEgASgLMhQuY2xpcG1pbGwuaXBjLnYxLkpvYiLJAQoGU291cmNlEhEKCXNvdXJjZV9pZBgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhUKDWFic29sdXRlX3BhdGgYAyABKAkSEQoJYnl0ZV9zaXplGAQgASgEEhUKDXNhbXBsZV9zaGEyNTYYBSABKAkSGgoSc291cmNlX2ZpbmdlcnByaW50GAYgASgJEh4KFnNvdXJjZV9tYXBfYXJ0aWZhY3RfaWQYByABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgIIAEoBCJCChVSZWdpc3RlclNvdXJjZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIVCg1hYnNvbHV0ZV9wYXRoGAIgASgJImAKFlJlZ2lzdGVyU291cmNlUmVzcG9uc2USJwoGc291cmNlGAEgASgLMhcuY2xpcG1pbGwuaXBjLnYxLlNvdXJjZRIdChVvYnNlcnZhdGlvbl9jYWNoZV9oaXQYAiABKAgiJQoQR2V0U291cmNlUmVxdWVzdBIRCglzb3VyY2VfaWQYASABKAkiPAoRR2V0U291cmNlUmVzcG9uc2USJwoGc291cmNlGAEgASgLMhcuY2xpcG1pbGwuaXBjLnYxLlNvdXJjZSIoChJMaXN0U291cmNlc1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCSI/ChNMaXN0U291cmNlc1Jlc3BvbnNlEigKB3NvdXJjZXMYASADKAsyFy5jbGlwbWlsbC5pcGMudjEuU291cmNlIiwKF0dldERldmljZVByb2ZpbGVSZXF1ZXN0EhEKCXJlbWVhc3VyZRgBIAEoCCJFChhHZXREZXZpY2VQcm9maWxlUmVzcG9uc2USEwoLYXJ0aWZhY3RfaWQYASABKAkSFAoMcHJvZmlsZV9qc29uGAIgASgJIpABCgdFZGl0RG9jEg4KBmRvY19pZBgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhAKCHJldmlzaW9uGAMgASgEEhUKDWRvY3VtZW50X2pzb24YBCABKAkSGwoTY3JlYXRlZF91bml4X21pbGxpcxgFIAEoBBIbChN1cGRhdGVkX3VuaXhfbWlsbGlzGAYgASgEIkEKFENyZWF0ZUVkaXREb2NSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFQoNZG9jdW1lbnRfanNvbhgCIAEoCSI+ChVDcmVhdGVFZGl0RG9jUmVzcG9uc2USJQoDZG9jGAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLkVkaXREb2MiWgoXQXBwbHlFZGl0Q29tbWFuZFJlcXVlc3QSDgoGZG9jX2lkGAEgASgJEhkKEWV4cGVjdGVkX3JldmlzaW9uGAIgASgEEhQKDGNvbW1hbmRfanNvbhgDIAEoCSJfChhBcHBseUVkaXRDb21tYW5kUmVzcG9uc2USJQoDZG9jGAEgASgLMhguY2xpcG1pbGwuaXBjLnYxLkVkaXREb2MSHAoUaW52ZXJzZV9jb21tYW5kX2pzb24YAiABKAkiIwoRR2V0RWRpdERvY1JlcXVlc3QSDgoGZG9jX2lkGAEgASgJIjsKEkdldEVkaXREb2NSZXNwb25zZRIlCgNkb2MYASABKAsyGC5jbGlwbWlsbC5pcGMudjEuRWRpdERvYyIoChZTbmFwc2hvdEVkaXREb2NSZXF1ZXN0Eg4KBmRvY19pZBgBIAEoCSJAChdTbmFwc2hvdEVkaXREb2NSZXNwb25zZRITCgthcnRpZmFjdF9pZBgBIAEoCRIQCghyZXZpc2lvbhgCIAEoBCrOAQoJRXJyb3JDb2RlEhoKFkVSUk9SX0NPREVfVU5TUEVDSUZJRUQQABIfChtFUlJPUl9DT0RFX0lOVkFMSURfQVJHVU1FTlQQARIYChRFUlJPUl9DT0RFX05PVF9GT1VORBACEhcKE0VSUk9SX0NPREVfQ09ORkxJQ1QQAxIaChZFUlJPUl9DT0RFX1VOQVZBSUxBQkxFEAQSHAoYRVJST1JfQ09ERV9QT0xJQ1lfREVOSUVEEAUSFwoTRVJST1JfQ09ERV9JTlRFUk5BTBAGKtUBCglUYXNrU3RhdGUSGgoWVEFTS19TVEFURV9VTlNQRUNJRklFRBAAEhYKElRBU0tfU1RBVEVfUExBTk5FRBABEhcKE1RBU0tfU1RBVEVfQURNSVRURUQQAhIWChJUQVNLX1NUQVRFX1JVTk5JTkcQAxIYChRUQVNLX1NUQVRFX1NVQ0NFRURFRBAEEhgKFFRBU0tfU1RBVEVfUkVUUllBQkxFEAUSFQoRVEFTS19TVEFURV9GQUlMRUQQBhIYChRUQVNLX1NUQVRFX0NBTkNFTExFRBAHKrsBCghKb2JTdGF0ZRIZChVKT0JfU1RBVEVfVU5TUEVDSUZJRUQQABIVChFKT0JfU1RBVEVfUExBTk5FRBABEhUKEUpPQl9TVEFURV9SVU5OSU5HEAISFwoTSk9CX1NUQVRFX1NVQ0NFRURFRBADEhQKEEpPQl9TVEFURV9GQUlMRUQQBBIeChpKT0JfU1RBVEVfQ0FOQ0VMX1JFUVVFU1RFRBAFEhcKE0pPQl9TVEFURV9DQU5DRUxMRUQQBmIGcHJvdG8z", [file_clipmill_ipc_v1_ping, file_clipmill_worker_v1_worker]);
 
 /**
  * One request frame. request_id is client-chosen and echoed back.
@@ -800,14 +800,6 @@ export type SpeechStagePayloadV1 = Message<"clipmill.ipc.v1.SpeechStagePayloadV1
   sourceFingerprint: string;
 
   /**
-   * The 16 kHz mono rendition. A content address, so the key it produces is
-   * the same on every machine.
-   *
-   * @generated from field: string audio_artifact_id = 4;
-   */
-  audioArtifactId: string;
-
-  /**
    * Exactly one of the following is set, matching `stage`.
    *
    * @generated from field: clipmill.ipc.v1.SpeechDetectionV1 detection = 5;
@@ -976,14 +968,6 @@ export type ShotsStagePayloadV1 = Message<"clipmill.ipc.v1.ShotsStagePayloadV1">
   sourceFingerprint: string;
 
   /**
-   * The mezzanine proxy. A content address, so the key it produces is the same
-   * on every machine.
-   *
-   * @generated from field: string proxy_artifact_id = 4;
-   */
-  proxyArtifactId: string;
-
-  /**
    * @generated from field: clipmill.ipc.v1.ShotDetectionV1 detection = 5;
    */
   detection?: ShotDetectionV1 | undefined;
@@ -1057,22 +1041,6 @@ export type IndexStagePayloadV1 = Message<"clipmill.ipc.v1.IndexStagePayloadV1">
    * @generated from field: string stage = 2;
    */
   stage: string;
-
-  /**
-   * The transcript to index. Its own document carries the source fingerprint,
-   * so naming one here as well would be a second copy that could disagree.
-   *
-   * @generated from field: string transcript_artifact_id = 3;
-   */
-  transcriptArtifactId: string;
-
-  /**
-   * Empty for a source with no video, which is a different key from one whose
-   * cuts were simply never looked for.
-   *
-   * @generated from field: string shots_artifact_id = 4;
-   */
-  shotsArtifactId: string;
 };
 
 /**
@@ -1164,24 +1132,6 @@ export type DiscoverStagePayloadV1 = Message<"clipmill.ipc.v1.DiscoverStagePaylo
   stage: string;
 
   /**
-   * @generated from field: string index_artifact_id = 3;
-   */
-  indexArtifactId: string;
-
-  /**
-   * @generated from field: string transcript_artifact_id = 4;
-   */
-  transcriptArtifactId: string;
-
-  /**
-   * Empty for a source with no audio, in which case prosody measures nothing
-   * rather than contributing a default.
-   *
-   * @generated from field: string loudness_artifact_id = 5;
-   */
-  loudnessArtifactId: string;
-
-  /**
    * @generated from field: clipmill.ipc.v1.ClipDurationV1 duration = 6;
    */
   duration?: ClipDurationV1 | undefined;
@@ -1266,21 +1216,6 @@ export type RankStagePayloadV1 = Message<"clipmill.ipc.v1.RankStagePayloadV1"> &
   stage: string;
 
   /**
-   * @generated from field: string candidates_artifact_id = 3;
-   */
-  candidatesArtifactId: string;
-
-  /**
-   * @generated from field: string index_artifact_id = 4;
-   */
-  indexArtifactId: string;
-
-  /**
-   * @generated from field: string transcript_artifact_id = 5;
-   */
-  transcriptArtifactId: string;
-
-  /**
    * @generated from field: uint64 count = 6;
    */
   count: bigint;
@@ -1351,6 +1286,76 @@ export const AnalyzeSourcePayloadV1Schema: GenMessage<AnalyzeSourcePayloadV1> = 
   messageDesc(file_clipmill_ipc_v1_daemon, 34);
 
 /**
+ * What the fan-in at the end of an analysis is asked to write.
+ *
+ * It reads nothing tunable: the document is the list of artifacts its
+ * dependencies published, and every stage that produced one is a dependency. It
+ * does carry the stages the plan chose not to run, because that is the one fact
+ * no artifact can state — a recording with no video has no shot cuts, and
+ * "nobody looked" has to stay distinguishable from "there were none".
+ *
+ * @generated from message clipmill.ipc.v1.AnalysisStagePayloadV1
+ */
+export type AnalysisStagePayloadV1 = Message<"clipmill.ipc.v1.AnalysisStagePayloadV1"> & {
+  /**
+   * @generated from field: string key_version = 1;
+   */
+  keyVersion: string;
+
+  /**
+   * The registered task kind this payload belongs to.
+   *
+   * @generated from field: string stage = 2;
+   */
+  stage: string;
+
+  /**
+   * @generated from field: string source_fingerprint = 3;
+   */
+  sourceFingerprint: string;
+
+  /**
+   * @generated from field: repeated clipmill.ipc.v1.SkippedStageV1 skipped = 4;
+   */
+  skipped: SkippedStageV1[];
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.AnalysisStagePayloadV1.
+ * Use `create(AnalysisStagePayloadV1Schema)` to create a new message.
+ */
+export const AnalysisStagePayloadV1Schema: GenMessage<AnalysisStagePayloadV1> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 35);
+
+/**
+ * A stage the plan left out, and the property of the source that left it out.
+ *
+ * @generated from message clipmill.ipc.v1.SkippedStageV1
+ */
+export type SkippedStageV1 = Message<"clipmill.ipc.v1.SkippedStageV1"> & {
+  /**
+   * The artifact kind that was not produced, e.g. "evidence.shots.v1".
+   *
+   * @generated from field: string kind = 1;
+   */
+  kind: string;
+
+  /**
+   * "no_video" or "no_audio".
+   *
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message clipmill.ipc.v1.SkippedStageV1.
+ * Use `create(SkippedStageV1Schema)` to create a new message.
+ */
+export const SkippedStageV1Schema: GenMessage<SkippedStageV1> = /*@__PURE__*/
+  messageDesc(file_clipmill_ipc_v1_daemon, 36);
+
+/**
  * Versioned payload for the daemon-owned device profiler. The stable
  * hardware/runtime fingerprint selects the cache lineage; generation makes
  * an explicit remeasurement a distinct artifact recipe.
@@ -1379,7 +1384,7 @@ export type DeviceProfilePayloadV1 = Message<"clipmill.ipc.v1.DeviceProfilePaylo
  * Use `create(DeviceProfilePayloadV1Schema)` to create a new message.
  */
 export const DeviceProfilePayloadV1Schema: GenMessage<DeviceProfilePayloadV1> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 35);
+  messageDesc(file_clipmill_ipc_v1_daemon, 37);
 
 /**
  * @generated from message clipmill.ipc.v1.SubmitJobResponse
@@ -1401,7 +1406,7 @@ export type SubmitJobResponse = Message<"clipmill.ipc.v1.SubmitJobResponse"> & {
  * Use `create(SubmitJobResponseSchema)` to create a new message.
  */
 export const SubmitJobResponseSchema: GenMessage<SubmitJobResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 36);
+  messageDesc(file_clipmill_ipc_v1_daemon, 38);
 
 /**
  * @generated from message clipmill.ipc.v1.SubscribeTaskEventsRequest
@@ -1434,7 +1439,7 @@ export type SubscribeTaskEventsRequest = Message<"clipmill.ipc.v1.SubscribeTaskE
  * Use `create(SubscribeTaskEventsRequestSchema)` to create a new message.
  */
 export const SubscribeTaskEventsRequestSchema: GenMessage<SubscribeTaskEventsRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 37);
+  messageDesc(file_clipmill_ipc_v1_daemon, 39);
 
 /**
  * @generated from message clipmill.ipc.v1.SubscribeTaskEventsResponse
@@ -1453,7 +1458,7 @@ export type SubscribeTaskEventsResponse = Message<"clipmill.ipc.v1.SubscribeTask
  * Use `create(SubscribeTaskEventsResponseSchema)` to create a new message.
  */
 export const SubscribeTaskEventsResponseSchema: GenMessage<SubscribeTaskEventsResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 38);
+  messageDesc(file_clipmill_ipc_v1_daemon, 40);
 
 /**
  * Pushed for every task state transition and heartbeat-driven progress.
@@ -1516,7 +1521,7 @@ export type TaskEvent = Message<"clipmill.ipc.v1.TaskEvent"> & {
  * Use `create(TaskEventSchema)` to create a new message.
  */
 export const TaskEventSchema: GenMessage<TaskEvent> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 39);
+  messageDesc(file_clipmill_ipc_v1_daemon, 41);
 
 /**
  * @generated from message clipmill.ipc.v1.Job
@@ -1578,7 +1583,7 @@ export type Job = Message<"clipmill.ipc.v1.Job"> & {
  * Use `create(JobSchema)` to create a new message.
  */
 export const JobSchema: GenMessage<Job> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 40);
+  messageDesc(file_clipmill_ipc_v1_daemon, 42);
 
 /**
  * @generated from message clipmill.ipc.v1.Task
@@ -1630,7 +1635,7 @@ export type Task = Message<"clipmill.ipc.v1.Task"> & {
  * Use `create(TaskSchema)` to create a new message.
  */
 export const TaskSchema: GenMessage<Task> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 41);
+  messageDesc(file_clipmill_ipc_v1_daemon, 43);
 
 /**
  * @generated from message clipmill.ipc.v1.GetJobRequest
@@ -1647,7 +1652,7 @@ export type GetJobRequest = Message<"clipmill.ipc.v1.GetJobRequest"> & {
  * Use `create(GetJobRequestSchema)` to create a new message.
  */
 export const GetJobRequestSchema: GenMessage<GetJobRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 42);
+  messageDesc(file_clipmill_ipc_v1_daemon, 44);
 
 /**
  * @generated from message clipmill.ipc.v1.GetJobResponse
@@ -1664,7 +1669,7 @@ export type GetJobResponse = Message<"clipmill.ipc.v1.GetJobResponse"> & {
  * Use `create(GetJobResponseSchema)` to create a new message.
  */
 export const GetJobResponseSchema: GenMessage<GetJobResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 43);
+  messageDesc(file_clipmill_ipc_v1_daemon, 45);
 
 /**
  * @generated from message clipmill.ipc.v1.ListJobsRequest
@@ -1681,7 +1686,7 @@ export type ListJobsRequest = Message<"clipmill.ipc.v1.ListJobsRequest"> & {
  * Use `create(ListJobsRequestSchema)` to create a new message.
  */
 export const ListJobsRequestSchema: GenMessage<ListJobsRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 44);
+  messageDesc(file_clipmill_ipc_v1_daemon, 46);
 
 /**
  * @generated from message clipmill.ipc.v1.ListJobsResponse
@@ -1698,7 +1703,7 @@ export type ListJobsResponse = Message<"clipmill.ipc.v1.ListJobsResponse"> & {
  * Use `create(ListJobsResponseSchema)` to create a new message.
  */
 export const ListJobsResponseSchema: GenMessage<ListJobsResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 45);
+  messageDesc(file_clipmill_ipc_v1_daemon, 47);
 
 /**
  * @generated from message clipmill.ipc.v1.CancelJobRequest
@@ -1715,7 +1720,7 @@ export type CancelJobRequest = Message<"clipmill.ipc.v1.CancelJobRequest"> & {
  * Use `create(CancelJobRequestSchema)` to create a new message.
  */
 export const CancelJobRequestSchema: GenMessage<CancelJobRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 46);
+  messageDesc(file_clipmill_ipc_v1_daemon, 48);
 
 /**
  * @generated from message clipmill.ipc.v1.CancelJobResponse
@@ -1732,7 +1737,7 @@ export type CancelJobResponse = Message<"clipmill.ipc.v1.CancelJobResponse"> & {
  * Use `create(CancelJobResponseSchema)` to create a new message.
  */
 export const CancelJobResponseSchema: GenMessage<CancelJobResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 47);
+  messageDesc(file_clipmill_ipc_v1_daemon, 49);
 
 /**
  * @generated from message clipmill.ipc.v1.Source
@@ -1787,7 +1792,7 @@ export type Source = Message<"clipmill.ipc.v1.Source"> & {
  * Use `create(SourceSchema)` to create a new message.
  */
 export const SourceSchema: GenMessage<Source> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 48);
+  messageDesc(file_clipmill_ipc_v1_daemon, 50);
 
 /**
  * @generated from message clipmill.ipc.v1.RegisterSourceRequest
@@ -1809,7 +1814,7 @@ export type RegisterSourceRequest = Message<"clipmill.ipc.v1.RegisterSourceReque
  * Use `create(RegisterSourceRequestSchema)` to create a new message.
  */
 export const RegisterSourceRequestSchema: GenMessage<RegisterSourceRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 49);
+  messageDesc(file_clipmill_ipc_v1_daemon, 51);
 
 /**
  * @generated from message clipmill.ipc.v1.RegisterSourceResponse
@@ -1833,7 +1838,7 @@ export type RegisterSourceResponse = Message<"clipmill.ipc.v1.RegisterSourceResp
  * Use `create(RegisterSourceResponseSchema)` to create a new message.
  */
 export const RegisterSourceResponseSchema: GenMessage<RegisterSourceResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 50);
+  messageDesc(file_clipmill_ipc_v1_daemon, 52);
 
 /**
  * @generated from message clipmill.ipc.v1.GetSourceRequest
@@ -1850,7 +1855,7 @@ export type GetSourceRequest = Message<"clipmill.ipc.v1.GetSourceRequest"> & {
  * Use `create(GetSourceRequestSchema)` to create a new message.
  */
 export const GetSourceRequestSchema: GenMessage<GetSourceRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 51);
+  messageDesc(file_clipmill_ipc_v1_daemon, 53);
 
 /**
  * @generated from message clipmill.ipc.v1.GetSourceResponse
@@ -1867,7 +1872,7 @@ export type GetSourceResponse = Message<"clipmill.ipc.v1.GetSourceResponse"> & {
  * Use `create(GetSourceResponseSchema)` to create a new message.
  */
 export const GetSourceResponseSchema: GenMessage<GetSourceResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 52);
+  messageDesc(file_clipmill_ipc_v1_daemon, 54);
 
 /**
  * @generated from message clipmill.ipc.v1.ListSourcesRequest
@@ -1884,7 +1889,7 @@ export type ListSourcesRequest = Message<"clipmill.ipc.v1.ListSourcesRequest"> &
  * Use `create(ListSourcesRequestSchema)` to create a new message.
  */
 export const ListSourcesRequestSchema: GenMessage<ListSourcesRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 53);
+  messageDesc(file_clipmill_ipc_v1_daemon, 55);
 
 /**
  * @generated from message clipmill.ipc.v1.ListSourcesResponse
@@ -1901,7 +1906,7 @@ export type ListSourcesResponse = Message<"clipmill.ipc.v1.ListSourcesResponse">
  * Use `create(ListSourcesResponseSchema)` to create a new message.
  */
 export const ListSourcesResponseSchema: GenMessage<ListSourcesResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 54);
+  messageDesc(file_clipmill_ipc_v1_daemon, 56);
 
 /**
  * @generated from message clipmill.ipc.v1.GetDeviceProfileRequest
@@ -1920,7 +1925,7 @@ export type GetDeviceProfileRequest = Message<"clipmill.ipc.v1.GetDeviceProfileR
  * Use `create(GetDeviceProfileRequestSchema)` to create a new message.
  */
 export const GetDeviceProfileRequestSchema: GenMessage<GetDeviceProfileRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 55);
+  messageDesc(file_clipmill_ipc_v1_daemon, 57);
 
 /**
  * @generated from message clipmill.ipc.v1.GetDeviceProfileResponse
@@ -1947,7 +1952,7 @@ export type GetDeviceProfileResponse = Message<"clipmill.ipc.v1.GetDeviceProfile
  * Use `create(GetDeviceProfileResponseSchema)` to create a new message.
  */
 export const GetDeviceProfileResponseSchema: GenMessage<GetDeviceProfileResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 56);
+  messageDesc(file_clipmill_ipc_v1_daemon, 58);
 
 /**
  * @generated from message clipmill.ipc.v1.EditDoc
@@ -1993,7 +1998,7 @@ export type EditDoc = Message<"clipmill.ipc.v1.EditDoc"> & {
  * Use `create(EditDocSchema)` to create a new message.
  */
 export const EditDocSchema: GenMessage<EditDoc> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 57);
+  messageDesc(file_clipmill_ipc_v1_daemon, 59);
 
 /**
  * @generated from message clipmill.ipc.v1.CreateEditDocRequest
@@ -2017,7 +2022,7 @@ export type CreateEditDocRequest = Message<"clipmill.ipc.v1.CreateEditDocRequest
  * Use `create(CreateEditDocRequestSchema)` to create a new message.
  */
 export const CreateEditDocRequestSchema: GenMessage<CreateEditDocRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 58);
+  messageDesc(file_clipmill_ipc_v1_daemon, 60);
 
 /**
  * @generated from message clipmill.ipc.v1.CreateEditDocResponse
@@ -2034,7 +2039,7 @@ export type CreateEditDocResponse = Message<"clipmill.ipc.v1.CreateEditDocRespon
  * Use `create(CreateEditDocResponseSchema)` to create a new message.
  */
 export const CreateEditDocResponseSchema: GenMessage<CreateEditDocResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 59);
+  messageDesc(file_clipmill_ipc_v1_daemon, 61);
 
 /**
  * @generated from message clipmill.ipc.v1.ApplyEditCommandRequest
@@ -2064,7 +2069,7 @@ export type ApplyEditCommandRequest = Message<"clipmill.ipc.v1.ApplyEditCommandR
  * Use `create(ApplyEditCommandRequestSchema)` to create a new message.
  */
 export const ApplyEditCommandRequestSchema: GenMessage<ApplyEditCommandRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 60);
+  messageDesc(file_clipmill_ipc_v1_daemon, 62);
 
 /**
  * @generated from message clipmill.ipc.v1.ApplyEditCommandResponse
@@ -2089,7 +2094,7 @@ export type ApplyEditCommandResponse = Message<"clipmill.ipc.v1.ApplyEditCommand
  * Use `create(ApplyEditCommandResponseSchema)` to create a new message.
  */
 export const ApplyEditCommandResponseSchema: GenMessage<ApplyEditCommandResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 61);
+  messageDesc(file_clipmill_ipc_v1_daemon, 63);
 
 /**
  * @generated from message clipmill.ipc.v1.GetEditDocRequest
@@ -2106,7 +2111,7 @@ export type GetEditDocRequest = Message<"clipmill.ipc.v1.GetEditDocRequest"> & {
  * Use `create(GetEditDocRequestSchema)` to create a new message.
  */
 export const GetEditDocRequestSchema: GenMessage<GetEditDocRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 62);
+  messageDesc(file_clipmill_ipc_v1_daemon, 64);
 
 /**
  * @generated from message clipmill.ipc.v1.GetEditDocResponse
@@ -2123,7 +2128,7 @@ export type GetEditDocResponse = Message<"clipmill.ipc.v1.GetEditDocResponse"> &
  * Use `create(GetEditDocResponseSchema)` to create a new message.
  */
 export const GetEditDocResponseSchema: GenMessage<GetEditDocResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 63);
+  messageDesc(file_clipmill_ipc_v1_daemon, 65);
 
 /**
  * @generated from message clipmill.ipc.v1.SnapshotEditDocRequest
@@ -2140,7 +2145,7 @@ export type SnapshotEditDocRequest = Message<"clipmill.ipc.v1.SnapshotEditDocReq
  * Use `create(SnapshotEditDocRequestSchema)` to create a new message.
  */
 export const SnapshotEditDocRequestSchema: GenMessage<SnapshotEditDocRequest> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 64);
+  messageDesc(file_clipmill_ipc_v1_daemon, 66);
 
 /**
  * @generated from message clipmill.ipc.v1.SnapshotEditDocResponse
@@ -2166,7 +2171,7 @@ export type SnapshotEditDocResponse = Message<"clipmill.ipc.v1.SnapshotEditDocRe
  * Use `create(SnapshotEditDocResponseSchema)` to create a new message.
  */
 export const SnapshotEditDocResponseSchema: GenMessage<SnapshotEditDocResponse> = /*@__PURE__*/
-  messageDesc(file_clipmill_ipc_v1_daemon, 65);
+  messageDesc(file_clipmill_ipc_v1_daemon, 67);
 
 /**
  * @generated from enum clipmill.ipc.v1.ErrorCode

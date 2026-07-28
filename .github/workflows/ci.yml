@@ -66,7 +66,7 @@ jobs:
             done
             checked=$((checked + 1))
           done
-          if [ "$checked" -lt 21 ]; then
+          if [ "$checked" -lt 22 ]; then
             echo "::error::fixture loop found only $checked schema directories - the dir/schema naming pairing broke"
             exit 1
           fi
@@ -310,7 +310,7 @@ jobs:
   evidence-index:
     name: evidence-index (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -329,9 +329,30 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # No media and no weights: both stages derive one JSON document from
-      # others, which is why this is the cheap job and why it runs on both
-      # platforms rather than trusting one.
+      # The index, the search, and the score card each derive one JSON document
+      # from others, so they need no media and no weights. The analyze gate at
+      # the end of this job does: it runs the whole pipeline against a real
+      # daemon and a real worker, which means a decoder and the shot detector's
+      # environment. Still no weights — the recording it analyses is silent, and
+      # the speech half is covered by speech-conformance.
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
+      - name: Fetch and verify pinned FFmpeg sidecars
+        run: ./tools/fetch-ffmpeg.sh
+      # See workers/shots/pyproject.toml: the detector's OpenCV wheel resolves
+      # libGL on import, and GitHub's Linux image does not carry it.
+      - name: Install the OpenCV import dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libglib2.0-0t64
+      - name: Build the shots worker the analyze DAG leases
+        run: uv sync --frozen --project workers/shots
       - run: ./tools/drills/evidence-drill.sh 1
       - run: ./tools/drills/discovery-drill.sh 1
       - run: ./tools/drills/ranking-drill.sh 1

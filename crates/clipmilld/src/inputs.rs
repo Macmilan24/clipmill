@@ -1,22 +1,23 @@
 //! Finding the documents a derivation stage was told to read.
 //!
-//! The three model-free stages that read published artifacts — the evidence
-//! index, discovery, and ranking — all face one problem twice. Submitted as a
-//! standalone job, their inputs were published by *earlier jobs* and arrive as
-//! content addresses in the task payload, because a task's input artifacts are
-//! the outputs of the tasks it depends on and a standalone job depends on
-//! nothing. Run inside the analyze DAG, those same documents *are* the outputs
-//! of tasks in the same plan, and arrive that way instead.
+//! The four model-free stages that read published artifacts — the evidence
+//! index, discovery, ranking, and the analysis fan-in — reach their inputs by
+//! two routes that arrive at one place. Submitted as a standalone job, what they
+//! read was published by *earlier jobs*, so the plan declares its addresses.
+//! Run inside the analyze DAG, those same documents are the outputs of tasks in
+//! the same plan, so a dependency carries them. Either way the daemon delivers
+//! one list on the lease, and this module reads it.
 //!
-//! Both routes are real and neither is a fallback. What matters is that they
-//! agree: the artifact key is computed from the addresses whichever way they
-//! were found, so the same documents processed through different routes hit
-//! the same cache entry rather than producing two copies of one answer.
+//! That the two routes converge before this point is the property that matters.
+//! A stage that resolved a payload address on one route and a dependency on the
+//! other would compute two keys for one piece of work — and the artifact key
+//! covers the input list, so those two keys would be two addresses for one
+//! observation. Nothing in a content-addressed store can notice that afterwards.
 //!
-//! Whichever route an input came by, it is checked against the artifact kind
-//! its own manifest declares. A payload naming a transcript where an index
-//! belongs, or a dependency list reordered upstream, is refused rather than
-//! parsed into something plausible.
+//! Inputs are matched to what a stage asked for by the artifact kind each one's
+//! own manifest declares, never by position. A plan that declared a transcript
+//! where an index belongs, or a dependency list reordered upstream, is refused
+//! rather than parsed into something plausible.
 //!
 //! Everything here needs a live artifact store, so it is exercised end to end
 //! by `gate-evidence`, `gate-discovery`, and `gate-ranking` against a real
@@ -34,32 +35,27 @@ use crate::{
     media,
 };
 
-/// One document a stage needs.
+/// One document a stage needs, named by the artifact kind it must be.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Wanted<'a> {
-    /// The artifact kind, which is what the lookup matches on.
+pub(crate) struct Wanted {
     pub kind: &'static str,
-    /// The address the payload named, or empty to take it from a dependency.
-    pub address: &'a str,
     /// A missing optional input is an absence the stage reports rather than a
     /// failure — a source with no video has no shot cuts, and that is a
     /// different document from one whose shot detection was never run.
     pub required: bool,
 }
 
-impl<'a> Wanted<'a> {
-    pub(crate) fn required(kind: &'static str, address: &'a str) -> Self {
+impl Wanted {
+    pub(crate) fn required(kind: &'static str) -> Self {
         Self {
             kind,
-            address,
             required: true,
         }
     }
 
-    pub(crate) fn optional(kind: &'static str, address: &'a str) -> Self {
+    pub(crate) fn optional(kind: &'static str) -> Self {
         Self {
             kind,
-            address,
             required: false,
         }
     }
@@ -77,11 +73,11 @@ pub(crate) struct Resolved {
 pub(crate) async fn resolve(
     artifacts: &ArtifactHandle,
     task: &LeasedTask,
-    wanted: &[Wanted<'_>],
+    wanted: &[Wanted],
 ) -> Result<Resolved, TaskExecutionError> {
-    // The dependency outputs, indexed by the kind each one declares. Opened
-    // once: a stage with three inputs would otherwise open the same artifact
-    // three times to ask what it is.
+    // Everything the lease delivered, indexed by the kind each one declares.
+    // Opened once: a stage with three inputs would otherwise open the same
+    // artifact three times to ask what it is.
     let mut by_kind: BTreeMap<String, (ArtifactId, ArtifactLease)> = BTreeMap::new();
     for artifact_id in &task.input_artifact_ids {
         let lease = artifacts
@@ -105,34 +101,27 @@ pub(crate) async fn resolve(
     let mut order = Vec::new();
     for entry in wanted {
         order.push(entry.kind);
-        if entry.address.is_empty() {
-            // The DAG route: whichever dependency published this kind.
-            if let Some(pair) = by_kind.remove(entry.kind) {
+        match by_kind.remove(entry.kind) {
+            Some(pair) => {
                 found.insert(entry.kind, pair);
-            } else if entry.required {
+            }
+            None if entry.required => {
                 return Err(TaskExecutionError::deterministic(format!(
                     "this task has no {} to read",
                     entry.kind
                 )));
             }
-            continue;
+            None => {}
         }
-        // The standalone route: the address the payload named.
-        let artifact_id: ArtifactId = entry.address.parse().map_err(|_| {
-            TaskExecutionError::deterministic("input artifact id is not an address")
-        })?;
-        let lease = artifacts
-            .open(artifact_id)
-            .await
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-        if lease.kind() != entry.kind {
-            return Err(TaskExecutionError::deterministic(format!(
-                "this task was pointed at a {}, not a {}",
-                lease.kind(),
-                entry.kind
-            )));
-        }
-        found.insert(entry.kind, (artifact_id, lease));
+    }
+    // An input nobody asked for is a plan that believes this stage reads
+    // something it does not. Refused rather than ignored: the artifact key
+    // covers only what was read, so a stage silently handed a fourth document
+    // would key as though it had three.
+    if let Some((kind, _)) = by_kind.into_iter().next() {
+        return Err(TaskExecutionError::deterministic(format!(
+            "this task was given a {kind} it does not read"
+        )));
     }
     Ok(Resolved { order, found })
 }

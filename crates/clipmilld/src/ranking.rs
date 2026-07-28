@@ -5,11 +5,8 @@
 //! Everything it decides lives in `clipmill-discovery::ranking`, which does no
 //! I/O — this module reads the inputs, keys the result, and publishes it.
 //!
-//! Its inputs arrive one of two ways, and both are real. Submitted as a
-//! standalone job, the documents are named as content addresses in the payload,
-//! because they were published by earlier jobs and a task's inputs are the
-//! outputs of the tasks it depends on. Run inside the analyze DAG, they *are*
-//! the outputs of tasks it depends on and arrive that way instead. The artifact
+//! Its three documents arrive on the lease — declared by the plan when this runs
+//! standalone, delivered by a dependency inside the analyze DAG. The artifact
 //! key is computed from the addresses either way, so the same three documents
 //! ranked twice through different routes hit the same cache entry.
 
@@ -59,15 +56,9 @@ pub(crate) async fn execute_rank_task(
         artifacts,
         task,
         &[
-            Wanted::required(
-                "discovery.candidates.v1",
-                payload.candidates_artifact_id.as_str(),
-            ),
-            Wanted::required("index.transcript.v1", payload.index_artifact_id.as_str()),
-            Wanted::required(
-                "speech.transcript.v1",
-                payload.transcript_artifact_id.as_str(),
-            ),
+            Wanted::required("discovery.candidates.v1"),
+            Wanted::required("index.transcript.v1"),
+            Wanted::required("speech.transcript.v1"),
         ],
     )
     .await?;

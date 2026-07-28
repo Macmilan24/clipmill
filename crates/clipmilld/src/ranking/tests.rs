@@ -7,15 +7,10 @@ use prost::Message;
 use super::{KIND_RANK, request_of};
 use crate::jobs::RANK_STAGE_KEY_VERSION;
 
-const CANDIDATES: &str = "sha256:ca4d000000000000000000000000000000000000000000000000000000000077";
-
 fn payload() -> RankStagePayloadV1 {
     RankStagePayloadV1 {
         key_version: RANK_STAGE_KEY_VERSION.to_owned(),
         stage: KIND_RANK.to_owned(),
-        candidates_artifact_id: CANDIDATES.to_owned(),
-        index_artifact_id: "sha256:".to_owned() + &"1".repeat(64),
-        transcript_artifact_id: "sha256:".to_owned() + &"2".repeat(64),
         count: 0,
         diversity_milli: 0,
     }

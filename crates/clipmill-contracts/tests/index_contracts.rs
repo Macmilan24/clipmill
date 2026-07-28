@@ -141,30 +141,26 @@ fn invalid_index_fixtures_are_rejected() {
     }
 }
 
-/// The stage payload names two content addresses and nothing else. A path in
-/// here would give the same transcript two indexes on two machines; a second
-/// copy of the source fingerprint would be a fact that could disagree with the
-/// document it came from.
+/// The stage payload says which stage this is and nothing more. The documents it
+/// reads arrive on the lease, so an index built inside an analysis and one built
+/// on its own encode the same bytes here — which is what lets them be the same
+/// artifact instead of two copies of one answer.
 #[test]
-fn the_index_stage_payload_carries_addresses_and_nothing_machine_specific() {
+fn the_index_stage_payload_names_the_stage_and_no_inputs() {
     let message = IndexStagePayloadV1 {
         key_version: "clipmill.index-stage.v1".to_owned(),
         stage: "index-transcript".to_owned(),
-        transcript_artifact_id: "sha256:".to_owned() + &"a".repeat(64),
-        shots_artifact_id: String::new(),
     };
     let decoded =
         IndexStagePayloadV1::decode(message.encode_to_vec().as_slice()).expect("round-trip");
     assert_eq!(decoded, message);
     let encoded = String::from_utf8_lossy(&message.encode_to_vec()).into_owned();
     assert!(!encoded.contains('/'), "the keyed payload carries a path");
-
-    // A source with no video keys differently from one whose cuts were found.
-    let with_shots = IndexStagePayloadV1 {
-        shots_artifact_id: "sha256:".to_owned() + &"b".repeat(64),
-        ..message.clone()
-    };
-    assert_ne!(message.encode_to_vec(), with_shots.encode_to_vec());
+    assert!(
+        !encoded.contains("sha256:"),
+        "an address in the payload would be present on one route and absent on \
+         the other, which is one observation with two keys"
+    );
 }
 
 #[test]

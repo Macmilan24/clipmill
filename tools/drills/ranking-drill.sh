@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# W19 ranking gate: what a clip is worth, where it is cut, and which to show.
+# W19 ranking gate: what a clip is worth, where it is cut, which to show, and the
+# one job that produces all of it.
 #
 #   The score card, against cards written by hand. An axis nobody measured must
 #   be distinguishable from one measured at zero — the whole reason the score is
@@ -14,6 +15,17 @@
 #
 #   The published contract, over the fixtures every language reads, and the
 #   goldens that say which clips this system would actually show.
+#
+#   The analyze DAG, against a real daemon and a real worker. Probe, ingest, shot
+#   detection, and the fan-in that roots them: the plan is accepted, the addresses
+#   the plan declared reach a worker's lease, the manifest names every stage that
+#   ran and accounts for the ones it skipped, a warm re-submit resolves to the
+#   same identities, and a killed daemon finishes inside the 30-second SLO.
+#
+#   What that last part does not cover: the speech half. A recording with audio
+#   needs the three pinned speech models and a worker fleet no drill starts, which
+#   is W26's harness. The chain itself is covered end to end by `gate-speech`, and
+#   the stages that read a transcript are covered by the goldens above.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -56,16 +68,19 @@ for filter in scorecard:: boundary:: ranking::; do
   ran
 done
 
-echo "==> registration and keying"
-for filter in recipes:: ranking::; do
+echo "==> registration, keying, and the shape of the DAG"
+for filter in recipes:: ranking:: analyze_tests::; do
   cargo test -p clipmilld --lib "$filter" -- --nocapture | tee "$log"
   ran
 done
 
 echo "==> the published contract, in three languages"
-cargo test -p clipmill-contracts --test ranking_contracts | tee "$log"
-ran
-(cd workers/sdk && uv run pytest -q tests/test_ranking_contracts.py)
+for suite in ranking_contracts analysis_contracts; do
+  cargo test -p clipmill-contracts --test "$suite" | tee "$log"
+  ran
+done
+(cd workers/sdk && uv run pytest -q \
+  tests/test_ranking_contracts.py tests/test_analysis_contracts.py tests/test_inputs.py)
 pnpm --filter @clipmill/contracts test
 
 echo "==> ranking over every published cohort ($ITERATIONS iterations)"
@@ -86,4 +101,25 @@ if [ "$(fingerprint contracts/fixtures/ranking.set)" != "$goldens_before" ]; the
   exit 1
 fi
 
-echo "ranking-drill: OK ($ITERATIONS iterations; card, boundaries, selection, goldens)"
+# The end-to-end half needs a decoder and a worker environment. Verified rather
+# than fetched: acquisition happens outside the Local Lock, so a machine without
+# them is one this drill cannot speak for.
+for tool in .cache/bin/ffmpeg .cache/bin/ffprobe; do
+  if [ ! -x "$tool" ]; then
+    echo "ranking-drill: $tool is missing; run ./tools/fetch-ffmpeg.sh" >&2
+    exit 2
+  fi
+done
+if [ ! -x workers/shots/.venv/bin/clipmill-worker-shots ]; then
+  echo "ranking-drill: the shots worker is not built; run 'uv sync --project workers/shots'" >&2
+  exit 2
+fi
+
+echo "==> the analyze DAG, over a real daemon ($ITERATIONS iterations)"
+for iteration in $(seq 1 "$ITERATIONS"); do
+  echo "ranking-drill: iteration $iteration/$ITERATIONS"
+  cargo test -p clipmilld --test analyze_dag -- --ignored --nocapture --test-threads=1 | tee "$log"
+  ran
+done
+
+echo "ranking-drill: OK ($ITERATIONS iterations; card, boundaries, selection, goldens, analyze DAG)"

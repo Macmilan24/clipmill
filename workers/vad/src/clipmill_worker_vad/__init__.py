@@ -41,6 +41,7 @@ from clipmill_worker_sdk.gen.schemas.speech_vad import (
     SpeechSegment,
     SpeechVad,
 )
+from clipmill_worker_sdk.inputs import MissingInputError, require_input
 from clipmill_worker_sdk.ticks import samples_to_ticks, samples_to_ticks_ceil, ticks_to_samples
 from clipmill_worker_sdk.weights import ModelVerificationError, VerifiedModel, require_model
 
@@ -57,6 +58,10 @@ SAMPLE_RATE = 16_000
 # conversational speech: a third of a second of quiet ends an utterance, a
 # tenth of a second of noise does not start one, and a segment is padded by
 # 30 ms so a decoder is never handed a word already in progress.
+# The rendition every speech stage reads, named so the lease can be searched by
+# what an artifact is rather than by where it happened to land in a list.
+AUDIO_KIND = "media.audio_16k.v1"
+
 DEFAULT_THRESHOLD = 0.5
 DEFAULT_MIN_SPEECH_TICKS = 9_000
 DEFAULT_MIN_SILENCE_TICKS = 27_000
@@ -76,7 +81,8 @@ def execute_vad(context: TaskContext) -> tuple[str, ...]:
         # under an address claiming the pinned model produced it.
         raise DeterministicTaskError(str(error)) from error
 
-    artifact = context.open_artifact(payload.audio_artifact_id)
+    audio_input = _audio_input(context)
+    artifact = audio_input.artifact
     audio = read_pcm_audio(
         artifact,
         context.artifact_file(artifact, AUDIO_PAYLOAD),
@@ -96,7 +102,7 @@ def execute_vad(context: TaskContext) -> tuple[str, ...]:
     scores = detector.probabilities(samples, on_window=progress)
     spans = segment(scores, parameters, audio.sample_count)
 
-    document = _document(payload, audio, model, parameters, spans)
+    document = _document(payload, audio_input.artifact_id, audio, model, parameters, spans)
     context.staging.write_bytes(OUTPUT_FILE, canonical_bytes(document))
     return (OUTPUT_FILE,)
 
@@ -112,9 +118,22 @@ def _payload(context: TaskContext) -> daemon_pb2.SpeechStagePayloadV1:
         raise DeterministicTaskError("task payload is not a speech stage payload") from error
     if payload.key_version != KEY_VERSION or payload.stage != "speech-vad":
         raise DeterministicTaskError("task payload does not describe voice activity detection")
-    if not payload.audio_artifact_id:
-        raise DeterministicTaskError("task payload names no audio rendition")
     return payload
+
+
+def _audio_input(context: TaskContext):
+    """The rendition this lease delivered.
+
+    On the lease rather than in the payload: a worker may open exactly what its
+    lease named, and the payload is hashed into the artifact key — an address
+    there would be present when this stage runs alone and absent when it runs
+    inside an analysis, which is one observation with two addresses.
+    """
+
+    try:
+        return require_input(context, AUDIO_KIND)
+    except MissingInputError as error:
+        raise DeterministicTaskError(str(error)) from error
 
 
 def _parameters(
@@ -142,6 +161,7 @@ def _parameters(
 
 def _document(
     payload: daemon_pb2.SpeechStagePayloadV1,
+    audio_artifact_id: str,
     audio: PcmAudio,
     model: VerifiedModel,
     parameters: SegmentationParameters,
@@ -166,7 +186,7 @@ def _document(
     return SpeechVad(
         schema_version="clipmill.speech.vad.v1",
         source_fingerprint=payload.source_fingerprint or audio.source_fingerprint,
-        audio_artifact_id=payload.audio_artifact_id,
+        audio_artifact_id=audio_artifact_id,
         producer=Producer(
             stage="speech-vad",
             implementation=f"clipmill-worker-vad@{__version__}+{IMPLEMENTATION}",

@@ -1,0 +1,51 @@
+{
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 6390000,
+    "start_ticks": 0
+  },
+  "schema_version": "clipmill.analysis.manifest.v1",
+  "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "stages": [
+    {
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "evidence.source_map.v1"
+    },
+    {
+      "artifact_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "kind": "media.ingest_manifest.v1"
+    },
+    {
+      "artifact_id": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "kind": "speech.vad.v1"
+    },
+    {
+      "artifact_id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "kind": "speech.asr.v1"
+    },
+    {
+      "artifact_id": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "kind": "speech.alignment.v1"
+    },
+    {
+      "artifact_id": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "kind": "speech.transcript.v1"
+    },
+    {
+      "artifact_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "kind": "evidence.shots.v1"
+    },
+    {
+      "artifact_id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "kind": "index.transcript.v1"
+    },
+    {
+      "artifact_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "kind": "discovery.candidates.v1"
+    },
+    {
+      "artifact_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "kind": "ranking.set.v1"
+    }
+  ]
+}

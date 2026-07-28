@@ -149,16 +149,15 @@ fn invalid_ranking_fixtures_are_rejected() {
     }
 }
 
-/// The stage payload leaves its three addresses empty inside the analyze DAG,
-/// where they arrive as dependency outputs instead. Both shapes must encode.
+/// The stage payload carries what ranking was *asked for* and nothing about what
+/// it reads. That is the property that makes the two routes one: a ranked set
+/// produced inside an analysis and the same one produced by a standalone job
+/// encode identical bytes here, so they key to one address instead of two.
 #[test]
-fn the_ranking_stage_payload_carries_both_routes() {
+fn the_ranking_stage_payload_asks_without_naming_inputs() {
     let standalone = RankStagePayloadV1 {
         key_version: "clipmill.rank-stage.v1".to_owned(),
         stage: "rank-candidates".to_owned(),
-        candidates_artifact_id: "sha256:".to_owned() + &"a".repeat(64),
-        index_artifact_id: "sha256:".to_owned() + &"b".repeat(64),
-        transcript_artifact_id: "sha256:".to_owned() + &"c".repeat(64),
         count: 0,
         diversity_milli: 0,
     };
@@ -166,15 +165,10 @@ fn the_ranking_stage_payload_carries_both_routes() {
         RankStagePayloadV1::decode(standalone.encode_to_vec().as_slice()).expect("round-trip"),
         standalone
     );
-    let in_dag = RankStagePayloadV1 {
-        candidates_artifact_id: String::new(),
-        index_artifact_id: String::new(),
-        transcript_artifact_id: String::new(),
-        ..standalone.clone()
-    };
-    assert_eq!(
-        RankStagePayloadV1::decode(in_dag.encode_to_vec().as_slice()).expect("round-trip"),
-        in_dag
+    let encoded = String::from_utf8_lossy(&standalone.encode_to_vec()).into_owned();
+    assert!(
+        !encoded.contains("sha256:") && !encoded.contains('/'),
+        "an address or a path in the payload would key one observation twice"
     );
     // Asking for a different set is a different answer, so both knobs move the
     // bytes the artifact key is computed from.
