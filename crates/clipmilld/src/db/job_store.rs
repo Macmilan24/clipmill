@@ -174,6 +174,16 @@ pub(super) const CREATE_V3_TABLES: &str = "
     ) STRICT, WITHOUT ROWID;
 ";
 
+/// One index, for the question a shell asks on every artifact read.
+///
+/// "Was this address produced by a task in one of this project's jobs?" is what
+/// scopes the renderer to its own project. Without the index it is a scan of
+/// every task ever planned, on a path a screen hits repeatedly while rendering.
+pub(super) const CREATE_V8_TABLES: &str = "
+    CREATE INDEX tasks_by_output_artifact
+        ON tasks(output_artifact_id) WHERE output_artifact_id IS NOT NULL;
+";
+
 /// Artifacts a task reads that no task in its own plan produced.
 ///
 /// Separate from `task_dependencies` because the two say different things: a
@@ -203,6 +213,31 @@ pub(crate) struct MutationResult {
 }
 
 #[allow(clippy::too_many_lines)]
+/// Whether this address was published by a task in one of the project's jobs.
+///
+/// The one control that scopes a shell to its own project, and it is cheap on
+/// purpose: every artifact a shell legitimately shows is some task's output, so
+/// this is an indexed lookup rather than a walk of the artifact graph. Walking
+/// would mean re-hashing every payload along the path — what garbage collection
+/// does once, not what a screen can afford per read.
+pub(super) fn artifact_is_project_output(
+    connection: &Connection,
+    project_id: &str,
+    artifact_id: &str,
+) -> Result<bool, StoreError> {
+    let found: Option<i64> = connection
+        .query_row(
+            "SELECT 1 FROM tasks t
+             JOIN jobs j ON j.job_id = t.job_id
+             WHERE t.output_artifact_id = ?1 AND j.project_id = ?2
+             LIMIT 1",
+            params![artifact_id, project_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(found.is_some())
+}
+
 pub(super) fn submit_job(
     connection: &mut Connection,
     request_id: &str,

@@ -491,6 +491,21 @@ impl ArtifactLease {
             .collect())
     }
 
+    /// The size the manifest declares for one payload file.
+    ///
+    /// The manifest rather than the filesystem, because the manifest is what the
+    /// digest covers: a file whose length disagrees with its record is a corrupt
+    /// artifact, and reporting the on-disk number would hide that instead of
+    /// letting the next verified read refuse it.
+    pub fn declared_bytes(&self, path: &ArtifactPath) -> Option<u64> {
+        self.manifest
+            .file_records()
+            .ok()?
+            .into_iter()
+            .find(|file| file.path == *path)
+            .map(|file| file.bytes)
+    }
+
     /// Verify one payload file and return its on-disk path for sidecar
     /// processes that must read by filename. Committed payloads are immutable
     /// (mode 0400) so the verified bytes are the bytes the sidecar reads; the
