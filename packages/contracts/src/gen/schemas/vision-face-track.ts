@@ -104,7 +104,7 @@ export interface Track {
   boxes: [Box, ...Box[]];
 }
 /**
- * One face in one frame, normalized against the display frame: x and y are the top-left corner, w and h the extent, all in [0,1]. A box may touch an edge and may not leave it — the detector saw pixels that exist.
+ * One face in one frame, normalized against the display frame: x and y are the top-left corner, w and h the extent, each a share of the frame between zero and one. A box may touch an edge and may not leave it — the detector saw pixels that exist.
  */
 export interface Box {
   t_ticks: number;
