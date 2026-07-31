@@ -20,6 +20,10 @@ import sys
 CATEGORIES = {
     "Hostile input and parsers": (
         "contracts/**",
+        # The media protocol parses a Range header the WebView controls and a
+        # path it composes, which is the most attacker-adjacent parsing in the
+        # repository — the renderer is the part reached first.
+        "apps/desktop/src-tauri/src/media.rs",
         "crates/clipmilld/src/sources.rs",
         "crates/clipmilld/src/probe.rs",
         "crates/clipmilld/src/media.rs",
@@ -29,6 +33,10 @@ CATEGORIES = {
     ),
     "IPC and worker authentication": (
         "contracts/proto/**",
+        # The shell's half of the control socket: framing, the envelope, and
+        # every command the renderer can reach the daemon through.
+        "apps/desktop/src-tauri/src/daemon.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
         "crates/clipmilld/src/ipc.rs",
         "crates/clipmilld/src/service.rs",
         "crates/clipmilld/src/worker.rs",
@@ -42,6 +50,11 @@ CATEGORIES = {
     ),
     "Subprocess and sandbox": (
         "crates/clipmilld/src/probe.rs",
+        # The shell spawns the daemon and opens native dialogs, and its
+        # capability file is what decides whether a page can reach a plugin.
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/capabilities/**",
+        "apps/desktop/src-tauri/tauri.conf.json",
         "crates/clipmilld/src/device.rs",
         "crates/clipmilld/src/media.rs",
         "crates/clipmilld/src/render.rs",
