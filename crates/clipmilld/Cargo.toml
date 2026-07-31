@@ -15,6 +15,7 @@ clipmill-core.workspace = true
 clipmill-discovery.workspace = true
 clipmill-edit-ir.workspace = true
 clipmill-evidence.workspace = true
+clipmill-reframe.workspace = true
 clipmill-render.workspace = true
 directories.workspace = true
 ed25519-dalek.workspace = true
@@ -44,6 +45,7 @@ memfd.workspace = true
 
 [dev-dependencies]
 clipmill-edit-ir.workspace = true
+clipmill-reframe.workspace = true
 clipmill-render.workspace = true
 tempfile = "3.23"
 

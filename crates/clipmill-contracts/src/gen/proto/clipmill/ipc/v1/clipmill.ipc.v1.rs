@@ -13,19 +13,19 @@ pub struct PingResponse {
     pub daemon_version: ::prost::alloc::string::String,
 }
 /// One request frame. request_id is client-chosen and echoed back.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Request {
     #[prost(string, tag = "1")]
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
 /// Nested message and enum types in `Request`.
 pub mod request {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Body {
         #[prost(message, tag = "10")]
         Ping(super::PingRequest),
@@ -69,11 +69,10 @@ pub mod request {
         ReadArtifact(super::ReadArtifactRequest),
         #[prost(message, tag = "30")]
         ResolveMedia(super::ResolveMediaRequest),
-        /// 32 belongs to SolveCropPathRequest and is left free until the handler
-        /// that answers it lands. A field in this oneof is the daemon saying it
-        /// accepts a request, and it should not say so before it can.
         #[prost(message, tag = "31")]
         GetStorageStats(super::GetStorageStatsRequest),
+        #[prost(message, tag = "32")]
+        SolveCropPath(super::SolveCropPathRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -84,7 +83,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -138,9 +137,10 @@ pub mod response {
         ReadArtifact(super::ReadArtifactResponse),
         #[prost(message, tag = "31")]
         ResolveMedia(super::ResolveMediaResponse),
-        /// 33 belongs to SolveCropPathResponse; see the request oneof above.
         #[prost(message, tag = "32")]
         GetStorageStats(super::GetStorageStatsResponse),
+        #[prost(message, tag = "33")]
+        SolveCropPath(super::SolveCropPathResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -920,6 +920,18 @@ pub struct FaceDetectionV1 {
     pub max_gap_frames: u32,
     #[prost(uint32, tag = "6")]
     pub min_track_frames: u32,
+}
+/// Submit a face pass over a source whose frames have already been sampled.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DetectFacesPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// Zero leaves each parameter at the daemon's default, so a caller with no
+    /// opinion does not have to have one.
+    #[prost(message, optional, tag = "3")]
+    pub detection: ::core::option::Option<FaceDetectionV1>,
 }
 /// What the face detector is asked to do.
 ///

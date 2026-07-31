@@ -35,9 +35,7 @@ message Request {
     ReadArtifactRequest read_artifact = 29;
     ResolveMediaRequest resolve_media = 30;
     GetStorageStatsRequest get_storage_stats = 31;
-    // 32 belongs to SolveCropPathRequest and is left free until the handler
-    // that answers it lands. A field in this oneof is the daemon saying it
-    // accepts a request, and it should not say so before it can.
+    SolveCropPathRequest solve_crop_path = 32;
   }
 }
 
@@ -70,7 +68,7 @@ message Response {
     ReadArtifactResponse read_artifact = 30;
     ResolveMediaResponse resolve_media = 31;
     GetStorageStatsResponse get_storage_stats = 32;
-    // 33 belongs to SolveCropPathResponse; see the request oneof above.
+    SolveCropPathResponse solve_crop_path = 33;
   }
 }
 
@@ -731,6 +729,15 @@ message FaceDetectionV1 {
   // worth publishing.
   uint32 max_gap_frames = 5;
   uint32 min_track_frames = 6;
+}
+
+// Submit a face pass over a source whose frames have already been sampled.
+message DetectFacesPayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // Zero leaves each parameter at the daemon's default, so a caller with no
+  // opinion does not have to have one.
+  FaceDetectionV1 detection = 3;
 }
 
 // What the face detector is asked to do.

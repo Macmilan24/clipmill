@@ -8,17 +8,19 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest,
-    DemoDagPayloadV1, DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode,
-    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
-    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
-    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse,
-    ListSourcesResponse, MediaFileV1, PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
-    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, SnapshotEditDocResponse,
-    StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
-    TranscribeSourcePayloadV1, request, response,
+    CropKeyframeV1, CropWeightsV1, DemoDagPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
+    DiscoverCandidatesPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
+    GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse, GetProjectResponse,
+    GetSourceResponse, GetStorageStatsResponse, HealthResponse, IndexTranscriptPayloadV1,
+    IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
+    MediaFileV1, PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest,
+    ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest,
+    ResolveMediaResponse, Response, SnapshotEditDocResponse, SolveCropPathRequest,
+    SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest,
+    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
+use clipmill_reframe::{FocusGate, Weights};
 use prost::Message;
 use sha2::{Digest, Sha256};
 
@@ -43,6 +45,7 @@ const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
 const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
 const TRANSCRIBE_SOURCE_KEY_VERSION: &str = "clipmill.transcribe-source.v1";
 const DETECT_SHOTS_KEY_VERSION: &str = "clipmill.detect-shots.v1";
+const DETECT_FACES_KEY_VERSION: &str = "clipmill.detect-faces.v1";
 const INDEX_TRANSCRIPT_KEY_VERSION: &str = "clipmill.index-transcript.v1";
 const DISCOVER_CANDIDATES_KEY_VERSION: &str = "clipmill.discover-candidates.v1";
 const RANK_CANDIDATES_KEY_VERSION: &str = "clipmill.rank-candidates.v1";
@@ -362,6 +365,7 @@ impl Service {
             request::Body::ReadArtifact(read) => self.read_artifact(request_id, &read).await,
             request::Body::ResolveMedia(resolve) => self.resolve_media(request_id, &resolve).await,
             request::Body::GetStorageStats(_) => self.get_storage_stats(request_id).await,
+            request::Body::SolveCropPath(solve) => self.solve_crop_path(request_id, &solve).await,
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -731,6 +735,67 @@ impl Service {
                     },
                     &payload,
                     crate::media::FFMPEG_BOM,
+                    now,
+                )
+            }
+            "detect-faces" => {
+                let Ok(payload) = DetectFacesPayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "faces job payload is not a valid DetectFacesPayloadV1",
+                    );
+                };
+                if payload.key_version != DETECT_FACES_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "faces job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                // Faces are detected on the frames ingest already sampled, not
+                // on a decode of this stage's own. A source with no frames is
+                // either not ingested or has no video, and saying so beats
+                // planning a task that will fail to find its input.
+                let Some((frames_artifact_id, fingerprint)) = self
+                    .ingested_derivative(&source_id.to_string(), "media.frames.v1")
+                    .await
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has no sampled frames to detect faces in",
+                    );
+                };
+                JobPlan::detect_faces(
+                    &project_id,
+                    source_id.to_string(),
+                    crate::jobs::FacesFrames {
+                        artifact_id: &frames_artifact_id,
+                        source_fingerprint: &fingerprint,
+                    },
+                    &payload,
                     now,
                 )
             }
@@ -1269,6 +1334,103 @@ impl Service {
                 chunk,
             }),
         )
+    }
+
+    /// Solve a crop path over one span of one face-track artifact.
+    ///
+    /// Not a job, and nothing here is written. The answer is wanted while
+    /// somebody is looking at a clip, it is arithmetic over evidence that
+    /// already exists, and what comes back is a proposal the caller may keep or
+    /// discard — which is what makes re-solving after a nudge free and what
+    /// stops a re-run mutating an edit somebody accepted.
+    ///
+    /// The same refusal ladder every artifact read runs: the address parses,
+    /// this project produced it, the kind is the one asked for, and the store
+    /// re-verifies the object before a byte is parsed.
+    async fn solve_crop_path(&self, request_id: String, solve: &SolveCropPathRequest) -> Reply {
+        let Ok(project_id) = solve.project_id.parse::<ProjectId>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "solve names no project",
+            );
+        };
+        let Ok(artifact_id) = solve
+            .face_track_artifact_id
+            .parse::<clipmill_core::ArtifactId>()
+        else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "solve names no face track address",
+            );
+        };
+        let Some(artifacts) = self.artifacts.as_ref() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "this daemon serves no artifact store",
+            );
+        };
+        // Not found rather than denied: a project that learned "that exists,
+        // but not for you" would learn something about another project.
+        match self
+            .database
+            .artifact_is_project_output(project_id.to_string(), artifact_id.to_string())
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                return error_reply(
+                    request_id,
+                    ErrorCode::NotFound,
+                    "this project published no such artifact",
+                );
+            }
+            Err(error) => return store_error_reply(request_id, &error),
+        }
+        let Ok(lease) = artifacts.open(artifact_id).await else {
+            return error_reply(
+                request_id,
+                ErrorCode::NotFound,
+                "the artifact is not in this store",
+            );
+        };
+        if lease.kind() != "vision.face_track.v1" {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                format!("{} is not a face track", lease.kind()),
+            );
+        }
+        let document: clipmill_contracts::schemas::vision_face_track::VisionFaceTrack =
+            match crate::media::read_artifact_document(&lease, "faces.json") {
+                Ok(value) => value,
+                Err(error) => {
+                    tracing::warn!(?error, "a published face track failed verification");
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Internal,
+                        "the face track does not match its manifest",
+                    );
+                }
+            };
+
+        match clipmill_reframe::solve(
+            &document,
+            solve.start_ticks,
+            solve.end_ticks,
+            solve.aspect_width,
+            solve.aspect_height,
+            crop_weights(solve.weights.as_ref()),
+            FocusGate::default(),
+        ) {
+            Ok(solved) => response_reply(
+                request_id,
+                response::Body::SolveCropPath(crop_response(&solved)),
+            ),
+            Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
+        }
     }
 
     /// What this installation is using on disk, by category.
@@ -2111,6 +2273,56 @@ impl Service {
 
 /// Read which stream kinds the registered source map observed, so the ingest
 /// plan only schedules derivatives the source can actually produce.
+/// A weight a caller left at zero means "use the default", which is what the
+/// contract says and what a caller with no opinion should be able to send. A
+/// negative one falls back the same way, because a negative damping term makes
+/// the objective unbounded rather than merely unusual.
+fn positive_or(asked: f64, default: f64) -> f64 {
+    if asked.is_finite() && asked > 0.0 {
+        asked
+    } else {
+        default
+    }
+}
+
+fn crop_weights(asked: Option<&CropWeightsV1>) -> Weights {
+    let default = Weights::default();
+    let Some(asked) = asked else { return default };
+    Weights {
+        subject: positive_or(asked.subject, default.subject),
+        velocity: positive_or(asked.velocity, default.velocity),
+        acceleration: positive_or(asked.acceleration, default.acceleration),
+        zoom: positive_or(asked.zoom, default.zoom),
+        max_speed_per_second: positive_or(asked.max_speed_per_second, default.max_speed_per_second),
+    }
+}
+
+fn crop_response(solved: &clipmill_reframe::CropPath) -> SolveCropPathResponse {
+    SolveCropPathResponse {
+        keyframes: solved
+            .keyframes
+            .iter()
+            .map(|frame| CropKeyframeV1 {
+                t_ticks: frame.t_ticks,
+                center_x: frame.center_x,
+                center_y: frame.center_y,
+                scale: frame.scale,
+            })
+            .collect(),
+        fit: solved.fit,
+        // Always present with `fit`, because "why is this not tracking" is the
+        // first thing anybody asks.
+        fit_reason: solved
+            .fit_reason
+            .map(clipmill_reframe::FitReason::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        track_id: u32::try_from(solved.track_id.unwrap_or(0)).unwrap_or(0),
+        has_track: solved.track_id.is_some(),
+        containment: solved.containment,
+    }
+}
+
 fn source_stream_kinds(source_map_json: &[u8]) -> (bool, bool) {
     let Ok(map) = serde_json::from_slice::<serde_json::Value>(source_map_json) else {
         return (false, false);
@@ -2132,6 +2344,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ReadArtifact(_)) => "read_artifact",
         Some(request::Body::ResolveMedia(_)) => "resolve_media",
         Some(request::Body::GetStorageStats(_)) => "get_storage_stats",
+        Some(request::Body::SolveCropPath(_)) => "solve_crop_path",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",

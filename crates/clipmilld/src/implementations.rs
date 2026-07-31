@@ -100,6 +100,19 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
     },
+    // The face detector. One candidate and no accelerated sibling: YuNet is a
+    // 230 kB CPU graph whose whole appeal is having no runtime tail, and an
+    // accelerated variant would be a second implementation to keep honest for
+    // no measurable gain.
+    Implementation {
+        name: "clipmill-worker-faces@0.1.0",
+        capability: "detect-faces",
+        stage: "detect-faces",
+        model: "yunet-face",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: true,
+    },
 ];
 
 /// Every implementation registered for a stage.
@@ -260,12 +273,17 @@ mod tests {
     fn the_capability_list_is_every_capability_exactly_once_in_a_stable_order() {
         assert_eq!(
             candidates_for_capability_names(),
-            ["asr", "forced-align", "vad"].into_iter().collect(),
+            ["asr", "detect-faces", "forced-align", "vad"]
+                .into_iter()
+                .collect(),
         );
         assert!(
-            candidates_for_capability_names()
-                .into_iter()
-                .eq(["asr", "forced-align", "vad"]),
+            candidates_for_capability_names().into_iter().eq([
+                "asr",
+                "detect-faces",
+                "forced-align",
+                "vad"
+            ]),
             "a signed profile's binding order must not follow this file's line order"
         );
     }

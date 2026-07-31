@@ -551,6 +551,7 @@ dependencies = [
  "clipmill-discovery",
  "clipmill-edit-ir",
  "clipmill-evidence",
+ "clipmill-reframe",
  "clipmill-render",
  "directories",
  "ed25519-dalek",
