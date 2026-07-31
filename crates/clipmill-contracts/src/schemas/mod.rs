@@ -87,3 +87,7 @@ pub mod speech_vad;
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/source_map.rs"]
 pub mod source_map;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/vision_face_track.rs"]
+pub mod vision_face_track;

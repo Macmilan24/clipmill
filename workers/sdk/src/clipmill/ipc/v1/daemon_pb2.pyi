@@ -766,6 +766,94 @@ class StorageCategoryV1(_message.Message):
     items: int
     def __init__(self, key: _Optional[str] = ..., bytes: _Optional[int] = ..., items: _Optional[int] = ...) -> None: ...
 
+class FaceDetectionV1(_message.Message):
+    __slots__ = ("score_threshold", "nms_iou", "match_iou", "recover_iou", "max_gap_frames", "min_track_frames")
+    SCORE_THRESHOLD_FIELD_NUMBER: _ClassVar[int]
+    NMS_IOU_FIELD_NUMBER: _ClassVar[int]
+    MATCH_IOU_FIELD_NUMBER: _ClassVar[int]
+    RECOVER_IOU_FIELD_NUMBER: _ClassVar[int]
+    MAX_GAP_FRAMES_FIELD_NUMBER: _ClassVar[int]
+    MIN_TRACK_FRAMES_FIELD_NUMBER: _ClassVar[int]
+    score_threshold: float
+    nms_iou: float
+    match_iou: float
+    recover_iou: float
+    max_gap_frames: int
+    min_track_frames: int
+    def __init__(self, score_threshold: _Optional[float] = ..., nms_iou: _Optional[float] = ..., match_iou: _Optional[float] = ..., recover_iou: _Optional[float] = ..., max_gap_frames: _Optional[int] = ..., min_track_frames: _Optional[int] = ...) -> None: ...
+
+class FacesStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "source_fingerprint", "detection")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    DETECTION_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    source_fingerprint: str
+    detection: FaceDetectionV1
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., detection: _Optional[_Union[FaceDetectionV1, _Mapping]] = ...) -> None: ...
+
+class SolveCropPathRequest(_message.Message):
+    __slots__ = ("project_id", "face_track_artifact_id", "start_ticks", "end_ticks", "aspect_width", "aspect_height", "weights")
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    FACE_TRACK_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    ASPECT_WIDTH_FIELD_NUMBER: _ClassVar[int]
+    ASPECT_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    WEIGHTS_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    face_track_artifact_id: str
+    start_ticks: int
+    end_ticks: int
+    aspect_width: int
+    aspect_height: int
+    weights: CropWeightsV1
+    def __init__(self, project_id: _Optional[str] = ..., face_track_artifact_id: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., aspect_width: _Optional[int] = ..., aspect_height: _Optional[int] = ..., weights: _Optional[_Union[CropWeightsV1, _Mapping]] = ...) -> None: ...
+
+class CropWeightsV1(_message.Message):
+    __slots__ = ("subject", "velocity", "acceleration", "zoom", "max_speed_per_second")
+    SUBJECT_FIELD_NUMBER: _ClassVar[int]
+    VELOCITY_FIELD_NUMBER: _ClassVar[int]
+    ACCELERATION_FIELD_NUMBER: _ClassVar[int]
+    ZOOM_FIELD_NUMBER: _ClassVar[int]
+    MAX_SPEED_PER_SECOND_FIELD_NUMBER: _ClassVar[int]
+    subject: float
+    velocity: float
+    acceleration: float
+    zoom: float
+    max_speed_per_second: float
+    def __init__(self, subject: _Optional[float] = ..., velocity: _Optional[float] = ..., acceleration: _Optional[float] = ..., zoom: _Optional[float] = ..., max_speed_per_second: _Optional[float] = ...) -> None: ...
+
+class SolveCropPathResponse(_message.Message):
+    __slots__ = ("keyframes", "fit", "fit_reason", "track_id", "has_track", "containment")
+    KEYFRAMES_FIELD_NUMBER: _ClassVar[int]
+    FIT_FIELD_NUMBER: _ClassVar[int]
+    FIT_REASON_FIELD_NUMBER: _ClassVar[int]
+    TRACK_ID_FIELD_NUMBER: _ClassVar[int]
+    HAS_TRACK_FIELD_NUMBER: _ClassVar[int]
+    CONTAINMENT_FIELD_NUMBER: _ClassVar[int]
+    keyframes: _containers.RepeatedCompositeFieldContainer[CropKeyframeV1]
+    fit: bool
+    fit_reason: str
+    track_id: int
+    has_track: bool
+    containment: float
+    def __init__(self, keyframes: _Optional[_Iterable[_Union[CropKeyframeV1, _Mapping]]] = ..., fit: _Optional[bool] = ..., fit_reason: _Optional[str] = ..., track_id: _Optional[int] = ..., has_track: _Optional[bool] = ..., containment: _Optional[float] = ...) -> None: ...
+
+class CropKeyframeV1(_message.Message):
+    __slots__ = ("t_ticks", "center_x", "center_y", "scale")
+    T_TICKS_FIELD_NUMBER: _ClassVar[int]
+    CENTER_X_FIELD_NUMBER: _ClassVar[int]
+    CENTER_Y_FIELD_NUMBER: _ClassVar[int]
+    SCALE_FIELD_NUMBER: _ClassVar[int]
+    t_ticks: int
+    center_x: float
+    center_y: float
+    scale: float
+    def __init__(self, t_ticks: _Optional[int] = ..., center_x: _Optional[float] = ..., center_y: _Optional[float] = ..., scale: _Optional[float] = ...) -> None: ...
+
 class GetDeviceProfileRequest(_message.Message):
     __slots__ = ("remeasure",)
     REMEASURE_FIELD_NUMBER: _ClassVar[int]

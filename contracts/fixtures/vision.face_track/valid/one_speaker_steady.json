@@ -1,0 +1,73 @@
+{
+  "schema_version": "clipmill.vision.face_track.v1",
+  "source_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "frames_artifact_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "producer": {
+    "stage": "detect-faces",
+    "implementation": "clipmill-worker-faces@0.1.0+yunet-2023mar",
+    "model_digest": "sha256:8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+  },
+  "detection": {
+    "score_threshold": 0.6,
+    "nms_iou": 0.3,
+    "input_width": 320,
+    "input_height": 320,
+    "match_iou": 0.5,
+    "recover_iou": 0.3,
+    "max_gap_frames": 6,
+    "min_track_frames": 4,
+    "frame_rate": {
+      "num": 4,
+      "den": 1
+    }
+  },
+  "coverage": {
+    "start_ticks": 0,
+    "end_ticks": 900000,
+    "analyzed": true,
+    "frames_examined": 40
+  },
+  "tracks": [
+    {
+      "track_id": 0,
+      "first_ticks": 0,
+      "last_ticks": 675000,
+      "frames_present": 4,
+      "mean_score": 0.93,
+      "boxes": [
+        {
+          "t_ticks": 0,
+          "x": 0.4,
+          "y": 0.22,
+          "w": 0.18,
+          "h": 0.3,
+          "score": 0.95
+        },
+        {
+          "t_ticks": 225000,
+          "x": 0.41,
+          "y": 0.22,
+          "w": 0.18,
+          "h": 0.3,
+          "score": 0.94
+        },
+        {
+          "t_ticks": 450000,
+          "x": 0.42,
+          "y": 0.23,
+          "w": 0.18,
+          "h": 0.3,
+          "score": 0.92
+        },
+        {
+          "t_ticks": 675000,
+          "x": 0.43,
+          "y": 0.23,
+          "w": 0.18,
+          "h": 0.3,
+          "score": 0.91
+        }
+      ]
+    }
+  ]
+}

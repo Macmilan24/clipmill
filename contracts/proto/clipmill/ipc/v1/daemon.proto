@@ -35,6 +35,9 @@ message Request {
     ReadArtifactRequest read_artifact = 29;
     ResolveMediaRequest resolve_media = 30;
     GetStorageStatsRequest get_storage_stats = 31;
+    // 32 belongs to SolveCropPathRequest and is left free until the handler
+    // that answers it lands. A field in this oneof is the daemon saying it
+    // accepts a request, and it should not say so before it can.
   }
 }
 
@@ -67,6 +70,7 @@ message Response {
     ReadArtifactResponse read_artifact = 30;
     ResolveMediaResponse resolve_media = 31;
     GetStorageStatsResponse get_storage_stats = 32;
+    // 33 belongs to SolveCropPathResponse; see the request oneof above.
   }
 }
 
@@ -706,6 +710,112 @@ message StorageCategoryV1 {
   // How many things were counted — published objects for artifacts, files for
   // the rest.
   uint64 items = 3;
+}
+
+// ---- Faces and reframing (book ch. 18) ----
+
+// The knobs a face pass is judged on. Raising the score threshold finds fewer
+// faces and loses the turned-away ones first; the two association overlaps are
+// the difference between a track that survives a head turn and one that ends
+// and restarts under a new id, which is what would make the camera cut to
+// itself.
+message FaceDetectionV1 {
+  double score_threshold = 1;
+  double nms_iou = 2;
+  // Overlap at which a confident detection continues a track, and the lower
+  // one at which a weak detection may recover a track it would not be allowed
+  // to start.
+  double match_iou = 3;
+  double recover_iou = 4;
+  // Frames a track may go unmatched before it closes, and the shortest track
+  // worth publishing.
+  uint32 max_gap_frames = 5;
+  uint32 min_track_frames = 6;
+}
+
+// What the face detector is asked to do.
+//
+// Narrower than a job payload, and for the reason every stage payload is: this
+// is hashed into the stage's artifact key, so anything the stage does not read
+// must not appear here. The frames it reads arrive on the lease.
+message FacesStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string source_fingerprint = 3;
+  FaceDetectionV1 detection = 4;
+}
+
+// Solve a virtual camera path for one span, against one face-track artifact.
+//
+// Not a job: the answer is wanted while somebody is looking at a clip, it is
+// microseconds of arithmetic over evidence that already exists, and it produces
+// a *proposal* rather than an artifact. Nothing it returns is written anywhere —
+// the caller decides whether the proposal becomes part of an edit, which is why
+// re-solving after a nudge costs nothing and changes nothing.
+message SolveCropPathRequest {
+  string project_id = 1;
+  // The face tracks to follow. The project must have published it, checked the
+  // same way every other artifact read is.
+  string face_track_artifact_id = 2;
+  // The span to solve over, in ticks. A clip, normally.
+  uint64 start_ticks = 3;
+  uint64 end_ticks = 4;
+  // Output aspect as a ratio, e.g. 9:16. The crop is the largest rectangle of
+  // this shape that fits inside the source frame.
+  uint32 aspect_width = 5;
+  uint32 aspect_height = 6;
+  // Zero leaves each weight at the daemon's default, which is what a caller
+  // with no opinion should send.
+  CropWeightsV1 weights = 7;
+}
+
+// The objective's terms, per ch. 18. Every one of them exists to prevent
+// chasing — the failure users punish hardest is not a static miscrop but a
+// camera lurching at every detection flicker — and the acceleration weight does
+// the heaviest lifting.
+message CropWeightsV1 {
+  // Keeping the subject inside the crop.
+  double subject = 1;
+  // Velocity and acceleration damping, which is what makes the move read as a
+  // human operator rather than a tracker.
+  double velocity = 2;
+  double acceleration = 3;
+  // Zoom damping, so the frame does not breathe.
+  double zoom = 4;
+  // Largest camera speed the solver may plan, in frame-widths per second.
+  // Normalized so behaviour does not change with resolution.
+  double max_speed_per_second = 5;
+}
+
+message SolveCropPathResponse {
+  // Sparse keyframes: the path is linear between them, and a still camera is
+  // two. Empty when the solver declined, in which case `fit` says so.
+  repeated CropKeyframeV1 keyframes = 1;
+  // True when no track was worth following and the answer is the fitted frame
+  // rather than a solved path. A reason is always present with it, because
+  // "why is this not tracking" is the first thing anyone asks.
+  bool fit = 2;
+  string fit_reason = 3;
+  // The track the camera followed, when it followed one.
+  uint32 track_id = 4;
+  bool has_track = 5;
+  // What the solve is worth: the share of frames in which the followed face
+  // stayed inside the crop. Reported rather than asserted — a path can be
+  // optimal and still fail to contain a subject that left.
+  double containment = 6;
+}
+
+// One point on the virtual camera path. Centre and scale, both normalized
+// against the source frame, so the same path drives any resolution.
+message CropKeyframeV1 {
+  uint64 t_ticks = 1;
+  // Centre of the crop, in [0,1] of the source frame.
+  double center_x = 2;
+  double center_y = 3;
+  // Height of the crop as a share of the source height; width follows the
+  // requested aspect.
+  double scale = 4;
 }
 
 message GetDeviceProfileRequest {

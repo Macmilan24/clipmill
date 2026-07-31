@@ -69,6 +69,9 @@ pub mod request {
         ReadArtifact(super::ReadArtifactRequest),
         #[prost(message, tag = "30")]
         ResolveMedia(super::ResolveMediaRequest),
+        /// 32 belongs to SolveCropPathRequest and is left free until the handler
+        /// that answers it lands. A field in this oneof is the daemon saying it
+        /// accepts a request, and it should not say so before it can.
         #[prost(message, tag = "31")]
         GetStorageStats(super::GetStorageStatsRequest),
     }
@@ -135,6 +138,7 @@ pub mod response {
         ReadArtifact(super::ReadArtifactResponse),
         #[prost(message, tag = "31")]
         ResolveMedia(super::ResolveMediaResponse),
+        /// 33 belongs to SolveCropPathResponse; see the request oneof above.
         #[prost(message, tag = "32")]
         GetStorageStats(super::GetStorageStatsResponse),
     }
@@ -889,6 +893,144 @@ pub struct StorageCategoryV1 {
     /// the rest.
     #[prost(uint64, tag = "3")]
     pub items: u64,
+}
+// ---- Faces and reframing (book ch. 18) ----
+
+/// The knobs a face pass is judged on. Raising the score threshold finds fewer
+/// faces and loses the turned-away ones first; the two association overlaps are
+/// the difference between a track that survives a head turn and one that ends
+/// and restarts under a new id, which is what would make the camera cut to
+/// itself.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct FaceDetectionV1 {
+    #[prost(double, tag = "1")]
+    pub score_threshold: f64,
+    #[prost(double, tag = "2")]
+    pub nms_iou: f64,
+    /// Overlap at which a confident detection continues a track, and the lower
+    /// one at which a weak detection may recover a track it would not be allowed
+    /// to start.
+    #[prost(double, tag = "3")]
+    pub match_iou: f64,
+    #[prost(double, tag = "4")]
+    pub recover_iou: f64,
+    /// Frames a track may go unmatched before it closes, and the shortest track
+    /// worth publishing.
+    #[prost(uint32, tag = "5")]
+    pub max_gap_frames: u32,
+    #[prost(uint32, tag = "6")]
+    pub min_track_frames: u32,
+}
+/// What the face detector is asked to do.
+///
+/// Narrower than a job payload, and for the reason every stage payload is: this
+/// is hashed into the stage's artifact key, so anything the stage does not read
+/// must not appear here. The frames it reads arrive on the lease.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FacesStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub detection: ::core::option::Option<FaceDetectionV1>,
+}
+/// Solve a virtual camera path for one span, against one face-track artifact.
+///
+/// Not a job: the answer is wanted while somebody is looking at a clip, it is
+/// microseconds of arithmetic over evidence that already exists, and it produces
+/// a *proposal* rather than an artifact. Nothing it returns is written anywhere —
+/// the caller decides whether the proposal becomes part of an edit, which is why
+/// re-solving after a nudge costs nothing and changes nothing.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SolveCropPathRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    /// The face tracks to follow. The project must have published it, checked the
+    /// same way every other artifact read is.
+    #[prost(string, tag = "2")]
+    pub face_track_artifact_id: ::prost::alloc::string::String,
+    /// The span to solve over, in ticks. A clip, normally.
+    #[prost(uint64, tag = "3")]
+    pub start_ticks: u64,
+    #[prost(uint64, tag = "4")]
+    pub end_ticks: u64,
+    /// Output aspect as a ratio, e.g. 9:16. The crop is the largest rectangle of
+    /// this shape that fits inside the source frame.
+    #[prost(uint32, tag = "5")]
+    pub aspect_width: u32,
+    #[prost(uint32, tag = "6")]
+    pub aspect_height: u32,
+    /// Zero leaves each weight at the daemon's default, which is what a caller
+    /// with no opinion should send.
+    #[prost(message, optional, tag = "7")]
+    pub weights: ::core::option::Option<CropWeightsV1>,
+}
+/// The objective's terms, per ch. 18. Every one of them exists to prevent
+/// chasing — the failure users punish hardest is not a static miscrop but a
+/// camera lurching at every detection flicker — and the acceleration weight does
+/// the heaviest lifting.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct CropWeightsV1 {
+    /// Keeping the subject inside the crop.
+    #[prost(double, tag = "1")]
+    pub subject: f64,
+    /// Velocity and acceleration damping, which is what makes the move read as a
+    /// human operator rather than a tracker.
+    #[prost(double, tag = "2")]
+    pub velocity: f64,
+    #[prost(double, tag = "3")]
+    pub acceleration: f64,
+    /// Zoom damping, so the frame does not breathe.
+    #[prost(double, tag = "4")]
+    pub zoom: f64,
+    /// Largest camera speed the solver may plan, in frame-widths per second.
+    /// Normalized so behaviour does not change with resolution.
+    #[prost(double, tag = "5")]
+    pub max_speed_per_second: f64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SolveCropPathResponse {
+    /// Sparse keyframes: the path is linear between them, and a still camera is
+    /// two. Empty when the solver declined, in which case `fit` says so.
+    #[prost(message, repeated, tag = "1")]
+    pub keyframes: ::prost::alloc::vec::Vec<CropKeyframeV1>,
+    /// True when no track was worth following and the answer is the fitted frame
+    /// rather than a solved path. A reason is always present with it, because
+    /// "why is this not tracking" is the first thing anyone asks.
+    #[prost(bool, tag = "2")]
+    pub fit: bool,
+    #[prost(string, tag = "3")]
+    pub fit_reason: ::prost::alloc::string::String,
+    /// The track the camera followed, when it followed one.
+    #[prost(uint32, tag = "4")]
+    pub track_id: u32,
+    #[prost(bool, tag = "5")]
+    pub has_track: bool,
+    /// What the solve is worth: the share of frames in which the followed face
+    /// stayed inside the crop. Reported rather than asserted — a path can be
+    /// optimal and still fail to contain a subject that left.
+    #[prost(double, tag = "6")]
+    pub containment: f64,
+}
+/// One point on the virtual camera path. Centre and scale, both normalized
+/// against the source frame, so the same path drives any resolution.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct CropKeyframeV1 {
+    #[prost(uint64, tag = "1")]
+    pub t_ticks: u64,
+    /// Centre of the crop, in \[0,1\] of the source frame.
+    #[prost(double, tag = "2")]
+    pub center_x: f64,
+    #[prost(double, tag = "3")]
+    pub center_y: f64,
+    /// Height of the crop as a share of the source height; width follows the
+    /// requested aspect.
+    #[prost(double, tag = "4")]
+    pub scale: f64,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetDeviceProfileRequest {
