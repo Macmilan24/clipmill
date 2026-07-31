@@ -111,6 +111,28 @@ impl ArtifactStore {
         self.catalog.len()
     }
 
+    /// What the published objects occupy.
+    ///
+    /// Summed from the manifests the catalog already holds, not by walking the
+    /// object tree. The manifests declare every file's size, they are in memory
+    /// already, and a `du` over a store with tens of thousands of objects is not
+    /// something a screen should be made to wait on.
+    ///
+    /// It reports what was published. Staging and quarantine are excluded on
+    /// purpose: those are work in progress and wreckage, and neither is an
+    /// honest answer to "what do my artifacts occupy".
+    #[must_use]
+    pub fn usage(&self) -> StoreUsage {
+        StoreUsage {
+            objects: self.catalog.len() as u64,
+            bytes: self
+                .catalog
+                .values()
+                .map(|entry| entry.manifest.declared_total_bytes())
+                .sum(),
+        }
+    }
+
     pub fn lookup(&self, recipe: &ArtifactRecipe) -> Result<CacheLookup, ArtifactError> {
         let artifact_id = recipe.artifact_id()?;
         if self.active.contains_key(&artifact_id) {
@@ -491,6 +513,21 @@ impl ArtifactLease {
             .collect())
     }
 
+    /// The size the manifest declares for one payload file.
+    ///
+    /// The manifest rather than the filesystem, because the manifest is what the
+    /// digest covers: a file whose length disagrees with its record is a corrupt
+    /// artifact, and reporting the on-disk number would hide that instead of
+    /// letting the next verified read refuse it.
+    pub fn declared_bytes(&self, path: &ArtifactPath) -> Option<u64> {
+        self.manifest
+            .file_records()
+            .ok()?
+            .into_iter()
+            .find(|file| file.path == *path)
+            .map(|file| file.bytes)
+    }
+
     /// Verify one payload file and return its on-disk path for sidecar
     /// processes that must read by filename. Committed payloads are immutable
     /// (mode 0400) so the verified bytes are the bytes the sidecar reads; the
@@ -548,6 +585,13 @@ pub struct RecoveryReport {
     pub objects_quarantined: usize,
     pub committed_loaded: usize,
     pub legacy_loaded: usize,
+}
+
+/// What the published objects occupy, as the manifests declare it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreUsage {
+    pub objects: u64,
+    pub bytes: u64,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

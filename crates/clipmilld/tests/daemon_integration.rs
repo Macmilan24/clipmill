@@ -17,8 +17,8 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::ipc::v1::{
     CancelJobRequest, CreateProjectRequest, DeleteProjectRequest, ErrorCode, GetProjectRequest,
-    HealthRequest, JobState, ListProjectsRequest, PingRequest, Request, SubscribeTaskEventsRequest,
-    TaskState, request, response,
+    HealthRequest, Job, JobState, ListProjectsRequest, PingRequest, Request,
+    SubscribeTaskEventsRequest, TaskState, request, response,
 };
 use clipmill_core::{ProjectId, Sha256Digest};
 use clipmilld::{Config, Daemon, DaemonError, verify_device_profile};
@@ -33,9 +33,24 @@ use tokio::{
 
 use support::{
     create, get_job, list_jobs, read_response, send, send_on_stream, send_without_reading_response,
-    signal_terminate, spawn_daemon, spawn_daemon_with_step_delay, submit_demo, wait_for_exit,
-    wait_until_ready, workspace_tempdir,
+    signal_terminate, spawn_daemon, spawn_daemon_with_step_delay, storage_stats, submit_demo,
+    wait_for_exit, wait_until_ready, workspace_tempdir,
 };
+
+/// Every task says what it publishes, and says it as a contract kind.
+///
+/// A shell looking for one particular observation — the filmstrip, the
+/// transcript — finds it by that name rather than by knowing what the daemon
+/// calls the work that produces it.
+fn assert_every_task_names_what_it_publishes(job: &Job) {
+    for task in &job.tasks {
+        assert!(
+            task.output_kind.contains(".v1"),
+            "{} published no kind",
+            task.kind
+        );
+    }
+}
 
 fn artifact_recipe() -> ArtifactRecipe {
     ArtifactRecipe::try_from_spec(RecipeSpec {
@@ -482,6 +497,73 @@ async fn invalid_and_unavailable_requests_return_stable_errors() {
     stop(shutdown, task).await;
 }
 
+/// The three categories, in order, and a figure that moves when work publishes.
+///
+/// The order matters because a caller keys off it as a list; the movement
+/// matters because a storage report that never changes is indistinguishable from
+/// one that is measuring nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn storage_is_reported_by_category_and_grows_with_what_is_published() {
+    let temp = workspace_tempdir();
+    let (socket, shutdown, task) = running(config(&temp)).await;
+
+    let before = storage_stats(&socket, "storage-before")
+        .await
+        .expect("storage stats");
+    assert_eq!(
+        before
+            .categories
+            .iter()
+            .map(|category| category.key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["artifacts", "models", "state"]
+    );
+    // A daemon that has finished starting has written its database, so a state
+    // figure of zero would mean the walk found nothing rather than that nothing
+    // is there.
+    assert!(before.categories[2].bytes > 0, "state measured as empty");
+    assert!(before.available_known, "free space went unread");
+
+    let project = create(&socket, "storage-project", "Storage")
+        .await
+        .expect("project");
+    let submitted = submit_demo(
+        &socket,
+        "storage-submit",
+        &project.project_id,
+        b"storage input",
+    )
+    .await
+    .expect("submit demo");
+    for attempt in 0..250 {
+        let job = get_job(
+            &socket,
+            &format!("storage-poll-{attempt}"),
+            &submitted.job_id,
+        )
+        .await
+        .expect("poll job");
+        if job.state == JobState::Succeeded as i32 {
+            break;
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
+
+    let after = storage_stats(&socket, "storage-after")
+        .await
+        .expect("storage stats");
+    assert!(
+        after.categories[0].items > before.categories[0].items,
+        "publishing artifacts did not change the object count"
+    );
+    assert!(
+        after.categories[0].bytes > before.categories[0].bytes,
+        "publishing artifacts did not change the byte count"
+    );
+
+    stop(shutdown, task).await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn durable_demo_job_completes_replays_events_and_survives_restart() {
     let temp = workspace_tempdir();
@@ -527,6 +609,7 @@ async fn durable_demo_job_completes_replays_events_and_survives_restart() {
             .iter()
             .all(|task| task.state == TaskState::Succeeded as i32)
     );
+    assert_every_task_names_what_it_publishes(&completed);
     assert_eq!(completed.output_artifact_ids.len(), 1);
     assert_eq!(
         list_jobs(&socket, "list-jobs", &project.project_id)

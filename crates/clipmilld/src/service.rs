@@ -1,5 +1,5 @@
 use std::{
-    io::Read,
+    io::{Read, Seek, SeekFrom},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -10,12 +10,13 @@ use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest,
     DemoDagPayloadV1, DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode,
     GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
-    GetProjectResponse, GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1,
-    IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1, RegisterSourceRequest,
-    RenderClipPayloadV1, Request, Response, SnapshotEditDocResponse, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
-    response,
+    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse,
+    ListSourcesResponse, MediaFileV1, PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
+    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SnapshotEditDocResponse,
+    StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
@@ -59,6 +60,9 @@ pub(crate) struct Service {
     /// Read when planning a stage that runs a model, so the plan's resource
     /// declaration comes from what the registry pinned rather than a guess.
     models: std::sync::Arc<crate::models::ModelRegistry>,
+    /// The three directories a storage report covers. Absent in the tests that
+    /// build a service without a workspace, where there is nothing to measure.
+    storage: Option<crate::storage::StorageDirs>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -112,6 +116,7 @@ impl Service {
             artifacts: None,
             device_profiler: None,
             models: std::sync::Arc::default(),
+            storage: None,
         }
     }
 
@@ -125,6 +130,7 @@ impl Service {
         artifacts: ArtifactHandle,
         device_profiler: DeviceProfiler,
         models: std::sync::Arc<crate::models::ModelRegistry>,
+        storage: crate::storage::StorageDirs,
     ) -> Self {
         Self {
             database,
@@ -135,6 +141,7 @@ impl Service {
             artifacts: Some(artifacts),
             device_profiler: Some(device_profiler),
             models,
+            storage: Some(storage),
         }
     }
 
@@ -352,6 +359,9 @@ impl Service {
             request::Body::SnapshotEditDoc(snapshot) => {
                 self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
             }
+            request::Body::ReadArtifact(read) => self.read_artifact(request_id, &read).await,
+            request::Body::ResolveMedia(resolve) => self.resolve_media(request_id, &resolve).await,
+            request::Body::GetStorageStats(_) => self.get_storage_stats(request_id).await,
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -1115,6 +1125,325 @@ impl Service {
         }
     }
 
+    /// Serve one published document to a shell.
+    ///
+    /// Four refusals before a byte is read, in this order because each one makes
+    /// the next cheaper to trust:
+    ///
+    ///   the address parses, so no path or fragment reaches the store;
+    ///   the project produced it, so a renderer cannot read another project's
+    ///   observations with an address it guessed or kept;
+    ///   the kind is on the list, so weights and media are unreachable here
+    ///   whatever the caller asks;
+    ///   the artifact verifies against its own manifest, which `open_verified`
+    ///   does by re-hashing — a corrupt object is refused rather than rendered.
+    ///
+    /// Only then is the requested window copied out. The window is clamped
+    /// rather than rejected: a caller reading to the end of a document should not
+    /// have to know its length first, and the response states the total so the
+    /// next call knows where to stop.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "four refusals then a bounded read; each one names what it rejects"
+    )]
+    async fn read_artifact(&self, request_id: String, read: &ReadArtifactRequest) -> Reply {
+        let Ok(project_id) = read.project_id.parse::<ProjectId>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "read names no project",
+            );
+        };
+        let Ok(artifact_id) = read.artifact_id.parse::<clipmill_core::ArtifactId>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "read names no artifact address",
+            );
+        };
+        let Some(artifacts) = self.artifacts.as_ref() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "this daemon serves no artifact store",
+            );
+        };
+        // Not found rather than denied, and deliberately: a project that learned
+        // "that exists, but not for you" would learn something about another
+        // project from an address it was not given.
+        match self
+            .database
+            .artifact_is_project_output(project_id.to_string(), artifact_id.to_string())
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                return error_reply(
+                    request_id,
+                    ErrorCode::NotFound,
+                    "this project published no such artifact",
+                );
+            }
+            Err(error) => return store_error_reply(request_id, &error),
+        }
+        let Ok(lease) = artifacts.open(artifact_id).await else {
+            return error_reply(
+                request_id,
+                ErrorCode::NotFound,
+                "the artifact is not in this store",
+            );
+        };
+        let kind = lease.kind().to_owned();
+        let Some(file_name) = crate::shell::document_for(&kind) else {
+            return error_reply(
+                request_id,
+                ErrorCode::PolicyDenied,
+                format!("{kind} is not a kind a shell may read"),
+            );
+        };
+        let Ok(path) = file_name.parse::<ArtifactPath>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the allowlist names an invalid artifact path",
+            );
+        };
+        // Re-verified here, every read. The store is the daemon's own, and that
+        // is exactly why: a corrupt object it hands out under a content address
+        // is the one failure the address cannot reveal.
+        let mut file = match lease.open_verified(&path) {
+            Ok(file) => file,
+            Err(error) => {
+                tracing::warn!(%kind, %error, "a published document failed verification");
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    "the document does not match its manifest",
+                );
+            }
+        };
+        let Ok(total_bytes) = file.metadata().map(|data| data.len()) else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the document has no readable size",
+            );
+        };
+        if read.offset > total_bytes {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "read starts past the end of the document",
+            );
+        }
+        let wanted = if read.length == 0 {
+            crate::shell::MAX_CHUNK_BYTES
+        } else {
+            read.length.min(crate::shell::MAX_CHUNK_BYTES)
+        };
+        let remaining = total_bytes - read.offset;
+        let take = wanted.min(remaining);
+        if file.seek(SeekFrom::Start(read.offset)).is_err() {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the document cannot be positioned",
+            );
+        }
+        let mut chunk = vec![0_u8; usize::try_from(take).unwrap_or(0)];
+        if file.read_exact(&mut chunk).is_err() {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the document ended before the requested window",
+            );
+        }
+        response_reply(
+            request_id,
+            response::Body::ReadArtifact(ReadArtifactResponse {
+                artifact_id: artifact_id.to_string(),
+                kind,
+                path: file_name.to_owned(),
+                offset: read.offset,
+                total_bytes,
+                chunk,
+            }),
+        )
+    }
+
+    /// What this installation is using on disk, by category.
+    ///
+    /// The store answers for artifacts from manifests it already holds. The
+    /// other two are directory walks, so the whole measurement goes to a
+    /// blocking thread — small trees today, but a screen asking how much disk it
+    /// is using must never be the thing that stalls the event loop.
+    async fn get_storage_stats(&self, request_id: String) -> Reply {
+        let (Some(artifacts), Some(dirs)) = (self.artifacts.as_ref(), self.storage.clone()) else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "this daemon measures no storage",
+            );
+        };
+        let Ok(usage) = artifacts.usage().await else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "the artifact store is not answering",
+            );
+        };
+        let Ok(report) = tokio::task::spawn_blocking(move || dirs.measure(usage)).await else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the storage measurement did not finish",
+            );
+        };
+        let category = |key: &str, measured: crate::storage::Category| StorageCategoryV1 {
+            key: key.to_owned(),
+            bytes: measured.bytes,
+            items: measured.items,
+        };
+        response_reply(
+            request_id,
+            response::Body::GetStorageStats(GetStorageStatsResponse {
+                categories: vec![
+                    category(crate::storage::ARTIFACTS, report.artifacts),
+                    category(crate::storage::MODELS, report.models),
+                    category(crate::storage::STATE, report.state),
+                ],
+                available_bytes: report.available_bytes.unwrap_or(0),
+                available_known: report.available_bytes.is_some(),
+            }),
+        )
+    }
+
+    /// Authorize a media artifact and say what it holds.
+    ///
+    /// The same two policy checks `ReadArtifact` makes — the project produced it,
+    /// the kind is on a list — and then a third the document door does not need:
+    /// the file names come from the artifact's own descriptor, so the protocol
+    /// can refuse a name the descriptor never mentioned without opening anything.
+    ///
+    /// No path in the response. The caller derives the object directory from the
+    /// content address the same way the store does, so nothing here can be turned
+    /// into a pointer outside it.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the refusal ladder, then one check per file the descriptor named"
+    )]
+    async fn resolve_media(&self, request_id: String, resolve: &ResolveMediaRequest) -> Reply {
+        let Ok(project_id) = resolve.project_id.parse::<ProjectId>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "resolve names no project",
+            );
+        };
+        let Ok(artifact_id) = resolve.artifact_id.parse::<clipmill_core::ArtifactId>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "resolve names no artifact address",
+            );
+        };
+        let Some(artifacts) = self.artifacts.as_ref() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "this daemon serves no artifact store",
+            );
+        };
+        match self
+            .database
+            .artifact_is_project_output(project_id.to_string(), artifact_id.to_string())
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                return error_reply(
+                    request_id,
+                    ErrorCode::NotFound,
+                    "this project published no such artifact",
+                );
+            }
+            Err(error) => return store_error_reply(request_id, &error),
+        }
+        let Ok(lease) = artifacts.open(artifact_id).await else {
+            return error_reply(
+                request_id,
+                ErrorCode::NotFound,
+                "the artifact is not in this store",
+            );
+        };
+        let kind = lease.kind().to_owned();
+        let Some((descriptor_file, layout)) = crate::shell::media_descriptor_for(&kind) else {
+            return error_reply(
+                request_id,
+                ErrorCode::PolicyDenied,
+                format!("{kind} is not a kind a shell may stream"),
+            );
+        };
+        let Ok(descriptor) =
+            crate::media::read_artifact_document::<serde_json::Value>(&lease, descriptor_file)
+        else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the media descriptor does not match its manifest",
+            );
+        };
+        let named = crate::shell::media_files(&descriptor, layout);
+        if named.is_empty() {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the media descriptor names no files",
+            );
+        }
+        // Every named file is checked against the manifest that published it, so
+        // the response cannot promise bytes that are not there — and its declared
+        // size is the manifest's, not the descriptor's, because the manifest is
+        // what the digest covers.
+        let mut files = Vec::with_capacity(named.len());
+        for name in named {
+            let Some(media_type) = crate::shell::media_type_for(&name) else {
+                return error_reply(
+                    request_id,
+                    ErrorCode::PolicyDenied,
+                    format!("{name} is not a file type a shell may stream"),
+                );
+            };
+            let Ok(path) = name.parse::<ArtifactPath>() else {
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    "the descriptor names an invalid artifact path",
+                );
+            };
+            let Some(bytes) = lease.declared_bytes(&path) else {
+                return error_reply(
+                    request_id,
+                    ErrorCode::Internal,
+                    format!("{name} is named by the descriptor and not by the manifest"),
+                );
+            };
+            files.push(MediaFileV1 {
+                path: name,
+                bytes,
+                media_type: media_type.to_owned(),
+            });
+        }
+        response_reply(
+            request_id,
+            response::Body::ResolveMedia(ResolveMediaResponse {
+                artifact_id: artifact_id.to_string(),
+                kind,
+                files,
+            }),
+        )
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn get_device_profile(
         &self,
@@ -1800,6 +2129,9 @@ fn source_stream_kinds(source_map_json: &[u8]) -> (bool, bool) {
 
 pub(crate) fn request_kind(request: &Request) -> &'static str {
     match request.body.as_ref() {
+        Some(request::Body::ReadArtifact(_)) => "read_artifact",
+        Some(request::Body::ResolveMedia(_)) => "resolve_media",
+        Some(request::Body::GetStorageStats(_)) => "get_storage_stats",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",

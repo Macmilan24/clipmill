@@ -8,10 +8,11 @@ use std::{
 
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, CancelJobRequest, CreateEditDocRequest, CreateProjectRequest,
-    DemoDagPayloadV1, GetJobRequest, GetSourceRequest, IngestSourcePayloadV1, Job, ListJobsRequest,
-    ListProjectsRequest, ListSourcesRequest, PingRequest, ProbeSourcePayloadV1, Project,
-    RegisterSourceRequest, RegisterSourceResponse, RenderClipPayloadV1, Request, Response,
-    SnapshotEditDocRequest, Source, SubmitJobRequest, request, response,
+    DemoDagPayloadV1, GetJobRequest, GetSourceRequest, GetStorageStatsRequest,
+    GetStorageStatsResponse, IngestSourcePayloadV1, Job, ListJobsRequest, ListProjectsRequest,
+    ListSourcesRequest, PingRequest, ProbeSourcePayloadV1, Project, RegisterSourceRequest,
+    RegisterSourceResponse, RenderClipPayloadV1, Request, Response, SnapshotEditDocRequest, Source,
+    SubmitJobRequest, request, response,
 };
 use prost::Message;
 use tokio::{
@@ -346,6 +347,25 @@ pub async fn get_job(socket: &Path, request_id: &str, job_id: &str) -> Result<Jo
             .ok_or_else(|| "get job response omitted job".to_owned()),
         Some(response::Body::Error(error)) => Err(error.message),
         _ => Err("unexpected get job response".to_owned()),
+    }
+}
+
+pub async fn storage_stats(
+    socket: &Path,
+    request_id: &str,
+) -> Result<GetStorageStatsResponse, String> {
+    let response = send(
+        socket,
+        Request {
+            request_id: request_id.to_owned(),
+            body: Some(request::Body::GetStorageStats(GetStorageStatsRequest {})),
+        },
+    )
+    .await?;
+    match response.body {
+        Some(response::Body::GetStorageStats(stats)) => Ok(stats),
+        Some(response::Body::Error(error)) => Err(error.message),
+        _ => Err("unexpected storage stats response".to_owned()),
     }
 }
 

@@ -23,10 +23,12 @@ mod recipes;
 mod render;
 mod selection;
 mod service;
+mod shell;
 #[cfg(unix)]
 mod shm;
 mod sources;
 mod speech;
+mod storage;
 #[cfg(unix)]
 mod worker;
 

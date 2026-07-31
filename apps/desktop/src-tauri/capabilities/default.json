@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Window, event and lifecycle access only. The renderer reaches the daemon exclusively through this crate's own commands (daemon_state, reconnect_daemon, device_profile). The filesystem, shell and HTTP plugins are deliberately absent from Cargo.toml, so there is no capability that could grant them and no code path to re-enable them at runtime.",
+  "description": "Window, event and lifecycle access only. The renderer reaches the daemon through this crate's own commands, and reaches media through the clipmill-media:// scheme this crate serves \u2014 a scheme that answers only files the daemon authorized, named by an artifact's own descriptor, for a project that published it. No plugin permission is granted here. The dialog plugin is registered so this crate's own choose_source_file command can open a native file picker; because no dialog: or fs: permission appears below, a page cannot invoke either, and the only path to a file dialog is a command that returns one user-chosen path. tauri-plugin-fs is in the dependency tree solely as the dialog plugin's own dependency, and the shell and HTTP plugins remain absent from Cargo.toml entirely.",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

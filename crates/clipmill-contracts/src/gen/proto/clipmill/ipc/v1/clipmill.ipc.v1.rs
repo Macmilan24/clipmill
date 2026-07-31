@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -65,6 +65,12 @@ pub mod request {
         GetEditDoc(super::GetEditDocRequest),
         #[prost(message, tag = "28")]
         SnapshotEditDoc(super::SnapshotEditDocRequest),
+        #[prost(message, tag = "29")]
+        ReadArtifact(super::ReadArtifactRequest),
+        #[prost(message, tag = "30")]
+        ResolveMedia(super::ResolveMediaRequest),
+        #[prost(message, tag = "31")]
+        GetStorageStats(super::GetStorageStatsRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -75,7 +81,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -125,6 +131,12 @@ pub mod response {
         GetEditDoc(super::GetEditDocResponse),
         #[prost(message, tag = "29")]
         SnapshotEditDoc(super::SnapshotEditDocResponse),
+        #[prost(message, tag = "30")]
+        ReadArtifact(super::ReadArtifactResponse),
+        #[prost(message, tag = "31")]
+        ResolveMedia(super::ResolveMediaResponse),
+        #[prost(message, tag = "32")]
+        GetStorageStats(super::GetStorageStatsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -640,6 +652,15 @@ pub struct Task {
     pub wait_reason: ::prost::alloc::string::String,
     #[prost(string, tag = "8")]
     pub output_artifact_id: ::prost::alloc::string::String,
+    /// The artifact kind this task publishes, e.g. "media.filmstrip.v1".
+    ///
+    /// Declared when the job was planned, so it is known before the task has run
+    /// and stays known if it fails. `kind` above names the work; this names the
+    /// observation, which is what a reader is actually looking for — a shell
+    /// wanting the filmstrip should ask for the task that produces one rather than
+    /// learn that the daemon calls that work "ingest-filmstrip".
+    #[prost(string, tag = "9")]
+    pub output_kind: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetJobRequest {
@@ -708,6 +729,16 @@ pub struct RegisterSourceResponse {
     /// True when an unchanged observation avoided another FFprobe invocation.
     #[prost(bool, tag = "2")]
     pub observation_cache_hit: bool,
+    /// The probe, inline (clipmill.source_map.v1 JSON).
+    ///
+    /// Registering is what probes a file, and the artifact that carries the result
+    /// is published later by the analysis DAG's first task. So between choosing a
+    /// file and starting a run there is nothing to read by address, and a shell
+    /// that wanted to show a duration before asking anyone to commit had no way to
+    /// learn one. The daemon already holds this; sending it is cheaper than making
+    /// the shell start a job to find out how long the video is.
+    #[prost(string, tag = "3")]
+    pub source_map_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetSourceRequest {
@@ -731,6 +762,134 @@ pub struct ListSourcesResponse {
 }
 // ---- Device profile (measured, cached; ch. 11) ----
 
+/// Read one published observation document, for a shell that renders it.
+///
+/// The artifact is named by content address and the *kind decides which file* is
+/// served: every kind on the allowlist carries exactly one document, so there is
+/// no path here for a caller to point somewhere else inside the object. What may
+/// be read is a short list of JSON observations — never model weights, never
+/// media, never a file the daemon did not publish. Media travels over the
+/// `clipmill-media://` protocol instead, which is a different surface with a
+/// different allowlist.
+///
+/// The project scopes it. Every artifact a shell legitimately shows was produced
+/// by a task in one of that project's jobs, so requiring it costs one indexed
+/// lookup and means a renderer holding one project's id cannot read another's.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReadArtifactRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub artifact_id: ::prost::alloc::string::String,
+    /// Byte offset into the document. Documents larger than one chunk are read in
+    /// several calls; `total_bytes` in the response says when to stop.
+    #[prost(uint64, tag = "3")]
+    pub offset: u64,
+    /// Zero asks for as much as one chunk allows, which is what a caller reading a
+    /// whole document wants.
+    #[prost(uint64, tag = "4")]
+    pub length: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReadArtifactResponse {
+    #[prost(string, tag = "1")]
+    pub artifact_id: ::prost::alloc::string::String,
+    /// The artifact kind, echoed so a caller can refuse a document it did not ask
+    /// for rather than parsing it and finding out.
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    /// The file served, e.g. "ranking.json". Derived from the kind, not requested.
+    #[prost(string, tag = "3")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "4")]
+    pub offset: u64,
+    /// Size of the whole document, so a caller knows whether it has all of it.
+    #[prost(uint64, tag = "5")]
+    pub total_bytes: u64,
+    #[prost(bytes = "vec", tag = "6")]
+    pub chunk: ::prost::alloc::vec::Vec<u8>,
+}
+/// Authorize a media artifact for the `clipmill-media://` protocol, and say what
+/// it contains.
+///
+/// Media never travels over this socket — a proxy is hundreds of megabytes and a
+/// player seeks through it, so serving it in frames would be absurd. What travels
+/// here is the *permission* and the inventory: the daemon checks that the project
+/// produced the artifact and that its kind is one a shell may stream, then names
+/// the files it may serve and how large each is. The shell process opens those
+/// bytes itself, through the same verified store API the daemon uses.
+///
+/// No path leaves the daemon. The shell derives the object directory from the
+/// content address, exactly as the store does, so a response cannot be turned
+/// into a pointer at something outside it.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResolveMediaRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub artifact_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResolveMediaResponse {
+    #[prost(string, tag = "1")]
+    pub artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    /// Every file this artifact may serve, and nothing else. A request for a name
+    /// absent from this list is refused by the protocol without touching disk.
+    #[prost(message, repeated, tag = "3")]
+    pub files: ::prost::alloc::vec::Vec<MediaFileV1>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MediaFileV1 {
+    /// Path inside the artifact, e.g. "proxy.mp4".
+    #[prost(string, tag = "1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub bytes: u64,
+    /// What to answer with, e.g. "video/mp4". Stated by the daemon rather than
+    /// guessed from the extension by the process doing the serving.
+    #[prost(string, tag = "3")]
+    pub media_type: ::prost::alloc::string::String,
+}
+/// What this installation is using on disk, by category.
+///
+/// Categories rather than one number, because the three answers a user acts on
+/// are different actions: artifacts are re-derivable and can be collected, model
+/// weights are expensive to re-download and should not be, and state is small and
+/// must not be touched. A single total would tell nobody what to do about it.
+///
+/// No paths leave the daemon here. Where these directories live is a separate
+/// question from how large they are, and only one of them is a screen's business
+/// today.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetStorageStatsRequest {}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetStorageStatsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub categories: ::prost::alloc::vec::Vec<StorageCategoryV1>,
+    /// Free space on the volume holding the data directory, as the filesystem
+    /// reports it to this process. Zero when it could not be determined, which a
+    /// caller must distinguish from a genuinely full disk.
+    #[prost(uint64, tag = "2")]
+    pub available_bytes: u64,
+    /// False when the figure above could not be read at all.
+    #[prost(bool, tag = "3")]
+    pub available_known: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StorageCategoryV1 {
+    /// Stable identifier: "artifacts", "models", or "state". A caller chooses its
+    /// own wording; this is what it keys off.
+    #[prost(string, tag = "1")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub bytes: u64,
+    /// How many things were counted — published objects for artifacts, files for
+    /// the rest.
+    #[prost(uint64, tag = "3")]
+    pub items: u64,
+}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetDeviceProfileRequest {
     /// Force a fresh measurement instead of the cached artifact.

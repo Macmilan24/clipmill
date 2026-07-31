@@ -33,7 +33,7 @@ mod edit_store;
 pub(crate) use edit_store::{EditCommandRecord, EditDocRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -142,6 +142,18 @@ impl DbActor {
                                 }
                                 Command::ListArtifactRoots { reply } => {
                                     let _result = reply.send(list_artifact_roots(&connection));
+                                }
+                                Command::ArtifactIsProjectOutput {
+                                    project_id,
+                                    artifact_id,
+                                    reply,
+                                } => {
+                                    let _result =
+                                        reply.send(job_store::artifact_is_project_output(
+                                            &connection,
+                                            &project_id,
+                                            &artifact_id,
+                                        ));
                                 }
                                 Command::SubmitJob {
                                     request_id,
@@ -600,6 +612,24 @@ impl DbHandle {
             .send(Command::AttachArtifactRoot {
                 project_id: project_id.to_string(),
                 artifact_id: artifact_id.to_string(),
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Whether the project may be shown this artifact.
+    pub(crate) async fn artifact_is_project_output(
+        &self,
+        project_id: String,
+        artifact_id: String,
+    ) -> Result<bool, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ArtifactIsProjectOutput {
+                project_id,
+                artifact_id,
                 reply,
             })
             .await
@@ -1173,6 +1203,11 @@ enum Command {
         artifact_id: String,
         reply: oneshot::Sender<Result<(), StoreError>>,
     },
+    ArtifactIsProjectOutput {
+        project_id: String,
+        artifact_id: String,
+        reply: oneshot::Sender<Result<bool, StoreError>>,
+    },
     ListArtifactRoots {
         reply: oneshot::Sender<Result<Vec<ArtifactId>, StoreError>>,
     },
@@ -1456,8 +1491,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(device_store::CREATE_V5_TABLES)?;
         transaction.execute_batch(edit_store::CREATE_V6_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V7_TABLES)?;
+        transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 7;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 8;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1480,7 +1516,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 7 {
             transaction.execute_batch(job_store::CREATE_V7_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 7;")?;
+        if version < 8 {
+            transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 8;")?;
         transaction.commit()?;
     }
     Ok(())

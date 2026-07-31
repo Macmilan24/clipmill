@@ -121,6 +121,61 @@ worse than no badge: it would assert a guarantee nobody checked. Note that the
 daemon currently answers `true` unconditionally — correct for Phase 0, which has
 no egress path at all, but it should become a real policy read when one exists.
 
+## What a renderer may read (W22)
+
+Two doors, two lists, and neither is "everything in the store".
+
+`ReadArtifact` serves **documents** over the control socket: eleven kinds, each
+carrying exactly one file that the kind — not the request — names, so a caller
+cannot point somewhere else inside the object. Anything larger than a chunk
+arrives in several replies and the response states the total, so a truncated
+document is an error rather than one with the end missing.
+
+`clipmill-media://` serves **media**: four kinds, and only the files each
+artifact's own descriptor named. It answers HTTP byte ranges, because a player
+seeks. The daemon authorizes and inventories; the shell process opens the file
+and serves the span. **No path crosses between them** — the object directory is
+derived from the content address exactly as the store derives it.
+
+Both doors run the same ladder: the address parses, this project produced the
+artifact, the kind is on the list, and the store re-verifies the object against
+its manifest. A project that does not own an artifact is told **not found**
+rather than denied, so it learns nothing about another project's store.
+
+Absent from both by decision: model weights, and the three speech intermediates
+(voice activity, recognition, alignment) — the assembly that fuses them is what a
+reader wants, and an allowlist that names everything is not one.
+
+A task reports the artifact kind it publishes, which is how a screen finds the
+filmstrip it wants without knowing that the daemon calls that work
+`ingest-filmstrip`. See R24.
+
+## What the screens show, and what they leave out
+
+Library, New Project and Analysis Progress are built to the design except where
+the design specifies a figure nothing produces. Those were left out rather than
+filled in — see R25 for the full list and the reasoning. In brief: no project
+score, no speaker counts, no category chips, no completion percentage, no
+per-stage durations, no sampled GPU load, and a search field that says it covers
+titles because that is what it covers.
+
+Two sentences in the design are false here and are not repeated. Closing the
+application does not leave the run going — the daemon is the shell's child and
+dies with it — but jobs are durable and artifacts are addressed by content, so
+reopening resumes rather than restarts, and the copy says that. The live log
+begins when the screen opens, because the host holds one subscription for the
+whole application and replays from its own cursor.
+
+## The file dialog
+
+Opening a file picker is the host's, not the page's. The dialog plugin is
+registered so this crate's own `choose_source_file` command can open one, and the
+capability grants no `dialog:` or `fs:` permission — so the WebView cannot invoke
+either, and the only route to a path is a command that returns exactly one the
+user chose in a native window. `tauri-plugin-fs` appears in the dependency tree
+solely as the dialog plugin's own dependency; the shell and HTTP plugins remain
+absent from `Cargo.toml`.
+
 ## Linux dependency posture
 
 Tauri's Linux WebView is WebKitGTK, which still targets GTK3 while gtk-rs has
@@ -140,7 +195,16 @@ GTK4.
   the real socket, confirms the second read is a cache hit on the identical
   artifact, then SIGKILLs the daemon and confirms the shell reports the loss
   instead of serving a stale answer.
+- `just gate-shell-pipeline` — the whole data plane the screens sit on, out of
+  process: the pinned encoder writes a real file, the daemon registers and probes
+  it, an analysis is submitted and watched as it moves, a published document is
+  read back through the document door, and a filmstrip tile is streamed through
+  the same protocol handler the WebView addresses — including a byte range, which
+  is what a seeking player sends. Then the refusals: an unlisted kind over both
+  doors, another project's id, and a file the descriptor never named. It does not
+  wait the analysis out, because the stages after ingest need worker processes
+  this drill does not start.
 
-`gate-shell` needs the pinned `ffprobe` and a built `clipmilld`, so the test is
-`#[ignore]`d out of `cargo test --workspace` and runs in the `shell-link` CI job
-on macOS and Linux.
+Both need the pinned FFmpeg sidecars and a built `clipmilld`, so their tests are
+`#[ignore]`d out of `cargo test --workspace` and run in the `shell-link` CI job on
+macOS and Linux.

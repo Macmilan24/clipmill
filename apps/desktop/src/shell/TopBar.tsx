@@ -1,15 +1,15 @@
 import { Moon, Sun } from 'lucide-react';
-import type { JSX } from 'react';
+import { Fragment, type JSX } from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
 import type { Theme } from '@clipmill/tokens';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
+  BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -20,7 +20,8 @@ import type { ConnectionState } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 
 interface TopBarProps {
-  readonly breadcrumb: string;
+  /** Outermost first. One part for a section, two for a screen inside one. */
+  readonly trail: readonly string[];
   readonly theme: Theme;
   readonly onToggleTheme: () => void;
   readonly state: ConnectionState;
@@ -42,14 +43,13 @@ function statusLabel(state: ConnectionState): { text: string; tone: string } {
  * The design's top-right cluster shows live GPU load and temperature. Phase 0
  * measures memory but samples nothing continuously, so this renders the memory
  * it genuinely knows and leaves the rest out rather than animating a fiction.
+ *
+ * The design's account avatar is gone for the same reason. There are no
+ * accounts — ClipMill runs on one machine for one person — so an initial in a
+ * circle was a badge for something that does not exist, and a letter nobody
+ * chose is worse than the space it occupied.
  */
-export function TopBar({
-  breadcrumb,
-  theme,
-  onToggleTheme,
-  state,
-  profile,
-}: TopBarProps): JSX.Element {
+export function TopBar({ trail, theme, onToggleTheme, state, profile }: TopBarProps): JSX.Element {
   const status = statusLabel(state);
   const total = profile?.memory.total_bytes;
   const available = profile?.phase0?.available_memory_bytes;
@@ -61,11 +61,16 @@ export function TopBar({
     <header className="glass flex h-13 flex-none items-center justify-between rounded-none border-x-0 border-t-0 px-6 shadow-none">
       <Breadcrumb>
         <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbPage className="text-body text-[var(--cm-text-secondary)]">
-              {breadcrumb}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
+          {trail.map((part, index) => (
+            <Fragment key={part}>
+              {index === 0 ? null : <BreadcrumbSeparator />}
+              <BreadcrumbItem>
+                <BreadcrumbPage className="text-body text-[var(--cm-text-secondary)]">
+                  {part}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </Fragment>
+          ))}
         </BreadcrumbList>
       </Breadcrumb>
 
@@ -99,12 +104,6 @@ export function TopBar({
           </TooltipTrigger>
           <TooltipContent>Switch to {nextTheme} theme</TooltipContent>
         </Tooltip>
-
-        <Avatar className="size-7 border border-[var(--cm-glass-border)]">
-          <AvatarFallback className="glass-elevated text-meta font-(--cm-weight-heading)">
-            S
-          </AvatarFallback>
-        </Avatar>
       </div>
     </header>
   );

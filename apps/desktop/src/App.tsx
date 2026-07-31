@@ -13,11 +13,10 @@ import {
   reconnectDaemon,
   subscribeDaemonState,
 } from './daemon/client.js';
-import { ModelsDevice } from './screens/ModelsDevice.js';
-import { PhasePlaceholder } from './screens/PhasePlaceholder.js';
+import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
-import { DEFAULT_SECTION_ID, findSection } from './shell/navigation.js';
+import { DEFAULT_ROUTE, type Route, placementOf, sectionRoute } from './shell/route.js';
 
 /**
  * Identity of the *current* daemon process, not merely of being connected.
@@ -46,7 +45,7 @@ export function App(): JSX.Element {
     ),
   );
 
-  const [sectionId, setSectionId] = useState(DEFAULT_SECTION_ID);
+  const [route, setRoute] = useState<Route>(DEFAULT_ROUTE);
   const [state, setState] = useState<ConnectionState>({ status: 'connecting' });
   const [profile, setProfile] = useState<DeviceProfile | null>(null);
   const [artifactId, setArtifactId] = useState<string | null>(null);
@@ -111,7 +110,17 @@ export function App(): JSX.Element {
     void reconnectDaemon().then(setState);
   }, []);
 
-  const section = findSection(sectionId);
+  const navigate = useCallback((sectionId: string) => {
+    setRoute(sectionRoute(sectionId));
+  }, []);
+
+  // The run a screen opened, and the section it was opened from — which is the
+  // row the sidebar keeps lit while it is on screen.
+  const openAnalysis = useCallback((projectId: string, jobId: string, from: string) => {
+    setRoute({ kind: 'analysis', projectId, jobId, from });
+  }, []);
+
+  const { section, trail } = placementOf(route);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -122,31 +131,51 @@ export function App(): JSX.Element {
         style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
         className="relative z-1 h-full min-h-0"
       >
-        <AppSidebar activeId={sectionId} onSelect={setSectionId} state={state} />
+        <AppSidebar activeId={section.id} onSelect={navigate} state={state} />
         <SidebarInset className="min-w-0 bg-transparent">
           <TopBar
-            breadcrumb={section.breadcrumb}
+            trail={trail}
             theme={theme}
             onToggleTheme={toggleTheme}
             state={state}
             profile={profile}
           />
           <main className="min-h-0 flex-1 overflow-y-auto p-6">
-            {section.availability.kind === 'live' ? (
-              <ModelsDevice
-                state={state}
-                profile={profile}
-                artifactId={artifactId}
-                error={error}
-                busy={busy}
-                onRescan={() => {
+            {renderScreen({
+              route,
+              library: {
+                state,
+                onNavigate: navigate,
+                onOpenAnalysis: (projectId, jobId) => {
+                  openAnalysis(projectId, jobId, 'library');
+                },
+                onReconnect: handleReconnect,
+              },
+              newProject: {
+                state,
+                onStarted: (projectId, jobId) => {
+                  openAnalysis(projectId, jobId, 'new-project');
+                },
+              },
+              analysis: {
+                profile,
+                onBack: () => {
+                  navigate(route.kind === 'analysis' ? route.from : 'library');
+                },
+                onNavigate: navigate,
+              },
+              models: {
+                state,
+                profile,
+                artifactId,
+                error,
+                busy,
+                onRescan: () => {
                   void loadProfile(true);
-                }}
-                onReconnect={handleReconnect}
-              />
-            ) : (
-              <PhasePlaceholder section={section} />
-            )}
+                },
+                onReconnect: handleReconnect,
+              },
+            })}
           </main>
         </SidebarInset>
       </SidebarProvider>

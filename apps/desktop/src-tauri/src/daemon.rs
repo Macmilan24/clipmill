@@ -12,8 +12,12 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    GetDeviceProfileRequest, GetDeviceProfileResponse, HealthRequest, HealthResponse, Request,
-    Response, request, response,
+    AnalyzeSourcePayloadV1, CreateProjectRequest, DemoDagPayloadV1, GetDeviceProfileRequest,
+    GetDeviceProfileResponse, GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse,
+    HealthRequest, HealthResponse, Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    Project, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    RegisterSourceResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response, Source,
+    SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
 use serde::Serialize;
@@ -174,6 +178,291 @@ impl DaemonClient {
         let body = request::Body::GetDeviceProfile(GetDeviceProfileRequest { remeasure });
         match self.call(body).await? {
             response::Body::GetDeviceProfile(profile) => Ok(profile),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// One window of a published document. The daemon decides which file the
+    /// artifact's kind carries and whether this project may see it.
+    pub async fn read_artifact(
+        &self,
+        project_id: &str,
+        artifact_id: &str,
+        offset: u64,
+        length: u64,
+    ) -> Result<ReadArtifactResponse, DaemonLinkError> {
+        let body = request::Body::ReadArtifact(ReadArtifactRequest {
+            project_id: project_id.to_owned(),
+            artifact_id: artifact_id.to_owned(),
+            offset,
+            length,
+        });
+        match self.call(body).await? {
+            response::Body::ReadArtifact(read) => Ok(read),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<Project>, DaemonLinkError> {
+        match self
+            .call(request::Body::ListProjects(ListProjectsRequest {}))
+            .await?
+        {
+            response::Body::ListProjects(listed) => Ok(listed.projects),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn list_sources(&self, project_id: &str) -> Result<Vec<Source>, DaemonLinkError> {
+        let body = request::Body::ListSources(ListSourcesRequest {
+            project_id: project_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::ListSources(listed) => Ok(listed.sources),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn list_jobs(&self, project_id: &str) -> Result<Vec<Job>, DaemonLinkError> {
+        let body = request::Body::ListJobs(ListJobsRequest {
+            project_id: project_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::ListJobs(listed) => Ok(listed.jobs),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Register a local file as a source, which probes it.
+    ///
+    /// The daemon reads the container here, so the reply is what a screen shows
+    /// before anyone commits to a run: this is the only way to learn a file's
+    /// duration and streams, because probing is the daemon's job and it records
+    /// what it found as an artifact.
+    pub async fn register_source(
+        &self,
+        project_id: &str,
+        absolute_path: &str,
+    ) -> Result<RegisterSourceResponse, DaemonLinkError> {
+        let body = request::Body::RegisterSource(RegisterSourceRequest {
+            project_id: project_id.to_owned(),
+            absolute_path: absolute_path.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::RegisterSource(registered) => Ok(registered),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Submit the analysis DAG for a registered source.
+    pub async fn submit_analyze(
+        &self,
+        project_id: &str,
+        payload: AnalyzeSourcePayloadV1,
+    ) -> Result<Job, DaemonLinkError> {
+        let body = request::Body::SubmitJob(SubmitJobRequest {
+            project_id: project_id.to_owned(),
+            kind: "analyze-source".to_owned(),
+            payload: payload.encode_to_vec(),
+        });
+        match self.call(body).await? {
+            response::Body::SubmitJob(submitted) => submitted.job.ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn storage_stats(&self) -> Result<GetStorageStatsResponse, DaemonLinkError> {
+        match self
+            .call(request::Body::GetStorageStats(GetStorageStatsRequest {}))
+            .await?
+        {
+            response::Body::GetStorageStats(stats) => Ok(stats),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn get_job(&self, job_id: &str) -> Result<Job, DaemonLinkError> {
+        let body = request::Body::GetJob(GetJobRequest {
+            job_id: job_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::GetJob(fetched) => fetched.job.ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// A whole document, gathered from however many chunks it takes.
+    ///
+    /// The daemon caps what one reply carries, so anything larger arrives in
+    /// pieces and this reassembles them. It stops when it has the total the
+    /// daemon stated — not when a short read happens to look final — so a
+    /// truncated document is an error rather than a document with the end
+    /// missing, which a parser would report as malformed JSON somewhere
+    /// unhelpful.
+    pub async fn read_document(
+        &self,
+        project_id: &str,
+        artifact_id: &str,
+    ) -> Result<(String, String), DaemonLinkError> {
+        let mut bytes = Vec::new();
+        let mut kind = String::new();
+        loop {
+            let offset = bytes.len() as u64;
+            let chunk = self
+                .read_artifact(project_id, artifact_id, offset, 0)
+                .await?;
+            if kind.is_empty() {
+                kind.clone_from(&chunk.kind);
+            } else if kind != chunk.kind {
+                // The artifact changed underneath a multi-chunk read, which a
+                // content-addressed store should make impossible.
+                return Err(DaemonLinkError::Unexpected);
+            }
+            let total = chunk.total_bytes;
+            if chunk.chunk.is_empty() && (bytes.len() as u64) < total {
+                return Err(DaemonLinkError::Closed);
+            }
+            bytes.extend_from_slice(&chunk.chunk);
+            if bytes.len() as u64 >= total {
+                break;
+            }
+        }
+        let text = String::from_utf8(bytes).map_err(|_| DaemonLinkError::Unexpected)?;
+        Ok((kind, text))
+    }
+
+    /// Create a project and return its id.
+    pub async fn create_project(&self, name: &str) -> Result<String, DaemonLinkError> {
+        let body = request::Body::CreateProject(CreateProjectRequest {
+            name: name.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::CreateProject(created) => created
+                .project
+                .map(|project| project.project_id)
+                .ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Submit the reference DAG. Four tasks with real transitions and no media,
+    /// which is what makes it the right thing to prove the event stream with.
+    pub async fn submit_demo(
+        &self,
+        project_id: &str,
+        seed: &[u8],
+    ) -> Result<String, DaemonLinkError> {
+        let payload = DemoDagPayloadV1 {
+            key_version: "clipmill.demo-dag.v1".to_owned(),
+            seed: seed.to_vec(),
+        };
+        let body = request::Body::SubmitJob(SubmitJobRequest {
+            project_id: project_id.to_owned(),
+            kind: "demo-dag".to_owned(),
+            payload: payload.encode_to_vec(),
+        });
+        match self.call(body).await? {
+            response::Body::SubmitJob(submitted) => submitted
+                .job
+                .map(|job| job.job_id)
+                .ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Follow task events until the connection ends, calling `on_event` for each.
+    ///
+    /// Unlike every other call here this one holds its connection open: the
+    /// daemon answers once with the cursor it is starting from, then pushes
+    /// frames as tasks move. Returning means the link dropped, which is the
+    /// caller's cue to resubscribe rather than an error to surface.
+    ///
+    /// `after_event_id` is what makes a reconnect honest. The daemon replays
+    /// durable events strictly after that cursor, so a shell that was away comes
+    /// back with the transitions it missed instead of a stage frozen wherever it
+    /// was when the socket died.
+    pub async fn stream_task_events<F>(
+        &self,
+        after_event_id: u64,
+        mut on_event: F,
+    ) -> Result<(), DaemonLinkError>
+    where
+        F: FnMut(TaskEvent),
+    {
+        let request_id = format!(
+            "shell-events-{}",
+            REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        let envelope = Request {
+            request_id: request_id.clone(),
+            body: Some(request::Body::SubscribeTaskEvents(
+                SubscribeTaskEventsRequest {
+                    // Every project and every job: one subscription serves the
+                    // whole window, and the renderer routes by job id.
+                    project_id: String::new(),
+                    job_id: String::new(),
+                    after_event_id,
+                },
+            )),
+        };
+        let mut stream = UnixStream::connect(&self.socket)
+            .await
+            .map_err(DaemonLinkError::Unavailable)?;
+        write_frame(&mut stream, &envelope.encode_to_vec()).await?;
+
+        // Only the handshake is given a deadline. After it, silence is the
+        // normal state of a pipeline nobody is running.
+        let opening = timeout(CALL_TIMEOUT, read_frame(&mut stream))
+            .await
+            .map_err(|_| DaemonLinkError::TimedOut)??;
+        let opening = Response::decode(opening.as_slice())?;
+        if opening.request_id != request_id {
+            return Err(DaemonLinkError::Mismatched);
+        }
+        match opening.body {
+            Some(response::Body::SubscribeTaskEvents(_)) => {}
+            Some(response::Body::Error(error)) => {
+                return Err(DaemonLinkError::Remote(error.message));
+            }
+            _ => return Err(DaemonLinkError::Unexpected),
+        }
+
+        loop {
+            let frame = match read_frame(&mut stream).await {
+                Ok(frame) => frame,
+                // A closed socket is how this call ends, not a failure to report.
+                Err(DaemonLinkError::Closed) => return Ok(()),
+                Err(error) => return Err(error),
+            };
+            let response = Response::decode(frame.as_slice())?;
+            if response.request_id != request_id {
+                return Err(DaemonLinkError::Mismatched);
+            }
+            match response.body {
+                Some(response::Body::TaskEvent(event)) => on_event(event),
+                Some(response::Body::Error(error)) => {
+                    return Err(DaemonLinkError::Remote(error.message));
+                }
+                // A body this shell does not know is skipped rather than fatal:
+                // a newer daemon may push something a newer renderer wants.
+                Some(_) | None => {}
+            }
+        }
+    }
+
+    /// Permission to stream a media artifact, and the inventory of what it
+    /// holds. The bytes never come back through here.
+    pub async fn resolve_media(
+        &self,
+        project_id: &str,
+        artifact_id: &str,
+    ) -> Result<ResolveMediaResponse, DaemonLinkError> {
+        let body = request::Body::ResolveMedia(ResolveMediaRequest {
+            project_id: project_id.to_owned(),
+            artifact_id: artifact_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::ResolveMedia(resolved) => Ok(resolved),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }
