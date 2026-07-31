@@ -128,10 +128,21 @@ describe('navigation', () => {
     ]);
   });
 
-  it('marks exactly one section live in Phase 0', () => {
+  // Which sections are live is the one thing on this list that changes as the
+  // shell is built, so the test names them rather than counting them: a section
+  // going live should be a deliberate edit here, not a number going up.
+  it('marks a section live only when a screen answers for it', () => {
     const live = NAV_SECTIONS.filter((section) => section.availability.kind === 'live');
-    expect(live).toHaveLength(1);
-    expect(live[0]?.id).toBe('models');
+    expect(live.map((section) => section.id)).toEqual(['library', 'models']);
+  });
+
+  it('gives every section that is not live the phase that will build it', () => {
+    for (const section of NAV_SECTIONS) {
+      if (section.availability.kind === 'planned') {
+        expect(section.availability.phase).toBeGreaterThan(0);
+        expect(section.availability.summary.length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('falls back to a real section for an unknown id', () => {

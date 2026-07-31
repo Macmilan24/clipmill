@@ -9,11 +9,15 @@ import { cn } from '@/lib/utils';
  * particular is reserved exclusively for anything that would send data
  * off-device, and must never be used decoratively.
  */
-export type StatusTone = 'success' | 'warning' | 'danger' | 'outbound' | 'neutral';
+export type StatusTone = 'success' | 'warning' | 'danger' | 'outbound' | 'progress' | 'neutral';
 
 const TONES: Record<StatusTone, string> = {
   success:
     'text-[var(--color-success)] border-[color-mix(in_srgb,var(--color-success)_40%,transparent)]',
+  // Indigo is reserved for the primary action, selection, focus, and progress.
+  // This is the progress one; nothing decorative may use it.
+  progress:
+    'text-[var(--color-primary)] border-[color-mix(in_srgb,var(--color-primary)_40%,transparent)]',
   warning:
     'text-[var(--color-warning)] border-[color-mix(in_srgb,var(--color-warning)_40%,transparent)]',
   danger:

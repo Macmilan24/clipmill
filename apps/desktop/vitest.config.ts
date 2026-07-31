@@ -14,5 +14,7 @@ export default defineConfig({
     // everything keeps one config rather than two projects.
     environment: 'jsdom',
     globals: false,
+    // With globals off, Testing Library's automatic unmount never registers.
+    setupFiles: ['./tests/setup.ts'],
   },
 });

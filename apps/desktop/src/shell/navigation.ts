@@ -38,11 +38,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Library',
     breadcrumb: 'Library',
     icon: Library,
-    availability: {
-      kind: 'planned',
-      phase: 1,
-      summary: 'Projects appear here once the import and analysis pipeline can produce them.',
-    },
+    availability: { kind: 'live' },
   },
   {
     id: 'new-project',

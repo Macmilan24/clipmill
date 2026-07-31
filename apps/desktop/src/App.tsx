@@ -133,6 +133,11 @@ export function App(): JSX.Element {
           <main className="min-h-0 flex-1 overflow-y-auto p-6">
             {renderScreen({
               section,
+              library: {
+                state,
+                onNavigate: setSectionId,
+                onReconnect: handleReconnect,
+              },
               models: {
                 state,
                 profile,

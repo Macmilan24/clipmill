@@ -15,6 +15,7 @@
 import type { JSX } from 'react';
 
 import type { NavSection } from '../shell/navigation.js';
+import { Library } from './Library.js';
 import { ModelsDevice } from './ModelsDevice.js';
 import { PhasePlaceholder } from './PhasePlaceholder.js';
 
@@ -28,11 +29,13 @@ import { PhasePlaceholder } from './PhasePlaceholder.js';
 export interface ScreenContext {
   readonly section: NavSection;
   readonly models: Parameters<typeof ModelsDevice>[0];
+  readonly library: Parameters<typeof Library>[0];
 }
 
 type Screen = (context: ScreenContext) => JSX.Element;
 
 const SCREENS: Readonly<Record<string, Screen>> = {
+  library: ({ library }) => <Library {...library} />,
   models: ({ models }) => <ModelsDevice {...models} />,
 };
 
