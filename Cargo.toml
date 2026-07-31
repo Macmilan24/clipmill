@@ -31,6 +31,7 @@ clipmill-core = { path = "crates/clipmill-core", version = "0.0.1" }
 clipmill-discovery = { path = "crates/clipmill-discovery", version = "0.0.1" }
 clipmill-edit-ir = { path = "crates/clipmill-edit-ir", version = "0.0.1" }
 clipmill-evidence = { path = "crates/clipmill-evidence", version = "0.0.1" }
+clipmill-reframe = { path = "crates/clipmill-reframe", version = "0.0.1" }
 clipmill-render = { path = "crates/clipmill-render", version = "0.0.1" }
 clipmill-contracts = { path = "crates/clipmill-contracts", version = "0.0.1" }
 clipmilld = { path = "crates/clipmilld", version = "0.0.1" }
