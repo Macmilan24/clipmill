@@ -105,6 +105,8 @@ export function sourceMap(overrides: Partial<SourceMap> = {}): SourceMap {
 
 export interface FakeWorld {
   readonly projects: readonly Project[];
+  /** The path the fake file dialog returns, or null for "closed". */
+  readonly chosenPath?: string | null;
   readonly jobs: Readonly<Record<string, readonly Job[]>>;
   readonly sources: Readonly<Record<string, readonly Source[]>>;
   readonly documents: Readonly<Record<string, Document>>;
@@ -163,5 +165,14 @@ export function fakeApi(world: FakeWorld): ShellApi {
       world.storage === null
         ? Promise.reject(new Error('this daemon measures no storage'))
         : Promise.resolve(world.storage),
+    createProject: (name) => Promise.resolve(`prj_${name}`),
+    chooseSourceFile: () => Promise.resolve(world.chosenPath ?? null),
+    registerSource: (projectId, absolutePath) =>
+      Promise.resolve({
+        source: source(projectId, { absolutePath }),
+        observationCacheHit: false,
+      }),
+    submitAnalyze: (projectId) =>
+      Promise.resolve(job(projectId, JobState.PLANNED, [])),
   };
 }

@@ -17,7 +17,8 @@
 //! the two ends.
 
 use clipmill_contracts::proto::ipc::v1::{
-    GetStorageStatsResponse, Job, Project, ResolveMediaResponse, Source, Task,
+    AnalyzeSourcePayloadV1, ClipDurationV1, GetStorageStatsResponse, Job, Project,
+    RegisterSourceResponse, ResolveMediaResponse, Source, Task,
 };
 use serde::Serialize;
 
@@ -168,6 +169,70 @@ impl From<Job> for JobView {
         }
     }
 }
+
+/// A source the daemon has just registered, and whether it had to probe it.
+#[derive(Debug, Serialize)]
+pub struct RegisteredSourceView {
+    pub source: SourceView,
+    /// True when an unchanged observation avoided another FFprobe run. Worth
+    /// surfacing: it is why picking the same file twice is instant.
+    #[serde(rename = "observationCacheHit")]
+    pub observation_cache_hit: bool,
+}
+
+impl TryFrom<RegisterSourceResponse> for RegisteredSourceView {
+    type Error = &'static str;
+
+    fn try_from(registered: RegisterSourceResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: registered
+                .source
+                .ok_or("the daemon registered no source")?
+                .into(),
+            observation_cache_hit: registered.observation_cache_hit,
+        })
+    }
+}
+
+/// What a screen asks for when it starts an analysis.
+///
+/// Ticks are the contract's unit and the renderer speaks them, so nothing here
+/// converts seconds: a screen that offered "15 to 60 seconds" already turned
+/// that into the timebase the daemon keys against, and doing it twice is how the
+/// two ends come to disagree.
+#[derive(Debug, serde::Deserialize)]
+pub struct AnalyzeRequest {
+    #[serde(rename = "sourceId")]
+    pub source_id: String,
+    /// BCP 47 primary subtag, or empty to let the recognizer decide.
+    pub language: String,
+    #[serde(rename = "minTicks")]
+    pub min_ticks: u64,
+    #[serde(rename = "maxTicks")]
+    pub max_ticks: u64,
+    /// Zero leaves the daemon's default, so a caller with no opinion needs none.
+    pub count: u64,
+}
+
+impl AnalyzeRequest {
+    pub fn into_payload(self) -> AnalyzeSourcePayloadV1 {
+        AnalyzeSourcePayloadV1 {
+            key_version: ANALYZE_SOURCE_KEY_VERSION.to_owned(),
+            source_id: self.source_id,
+            language: self.language,
+            duration: Some(ClipDurationV1 {
+                min_ticks: self.min_ticks,
+                max_ticks: self.max_ticks,
+            }),
+            count: self.count,
+            diversity_milli: 0,
+        }
+    }
+}
+
+/// The payload version the daemon accepts for an analysis. Stated here because
+/// the shell composes the payload; a mismatch is refused at submit.
+const ANALYZE_SOURCE_KEY_VERSION: &str = "clipmill.analyze-source.v1";
 
 /// Permission to stream a media artifact, and what it holds.
 ///

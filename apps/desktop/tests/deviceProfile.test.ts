@@ -133,7 +133,7 @@ describe('navigation', () => {
   // going live should be a deliberate edit here, not a number going up.
   it('marks a section live only when a screen answers for it', () => {
     const live = NAV_SECTIONS.filter((section) => section.availability.kind === 'live');
-    expect(live.map((section) => section.id)).toEqual(['library', 'models']);
+    expect(live.map((section) => section.id)).toEqual(['library', 'new-project', 'models']);
   });
 
   it('gives every section that is not live the phase that will build it', () => {

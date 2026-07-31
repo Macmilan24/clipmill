@@ -11,12 +11,16 @@
  * two interfaces that drift apart would mean two fakes to keep honest.
  */
 import {
+  type AnalyzeRequest,
   type Document,
   type Job,
   type MediaArtifact,
   type Project,
+  type RegisteredSource,
   type Source,
   type StorageStats,
+  chooseSourceFile,
+  createProject,
   fetchJob,
   fetchStorageStats,
   listJobs,
@@ -24,7 +28,9 @@ import {
   listSources,
   mediaUrl,
   readDocument,
+  registerSource,
   resolveMedia,
+  submitAnalyze,
 } from './client.js';
 
 export interface ShellApi {
@@ -37,6 +43,10 @@ export interface ShellApi {
   /** Not a call: the URL the media protocol answers. */
   mediaUrl(projectId: string, artifactId: string, file: string): string;
   fetchStorageStats(): Promise<StorageStats>;
+  createProject(name: string): Promise<string>;
+  chooseSourceFile(): Promise<string | null>;
+  registerSource(projectId: string, absolutePath: string): Promise<RegisteredSource>;
+  submitAnalyze(projectId: string, request: AnalyzeRequest): Promise<Job>;
 }
 
 export const daemonApi: ShellApi = {
@@ -48,4 +58,8 @@ export const daemonApi: ShellApi = {
   resolveMedia,
   mediaUrl,
   fetchStorageStats,
+  createProject,
+  chooseSourceFile,
+  registerSource,
+  submitAnalyze,
 };

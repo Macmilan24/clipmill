@@ -274,6 +274,71 @@ export async function fetchJob(jobId: string): Promise<Job> {
   return invoke<Job>('get_job', { jobId });
 }
 
+/** A source the daemon registered, and whether it had to probe it again. */
+export interface RegisteredSource {
+  readonly source: Source;
+  readonly observationCacheHit: boolean;
+}
+
+/**
+ * What starting an analysis asks for.
+ *
+ * Durations are ticks, which is the contract's unit. The screen that offers
+ * "15 to 60 seconds" converts once, here, rather than leaving two ends to
+ * convert separately and eventually differently.
+ */
+export interface AnalyzeRequest {
+  readonly sourceId: string;
+  /** BCP 47 primary subtag, or empty to let the recognizer decide. */
+  readonly language: string;
+  readonly minTicks: number;
+  readonly maxTicks: number;
+  /** Zero leaves the daemon's default. */
+  readonly count: number;
+}
+
+/**
+ * Ask the host to open a native file dialog.
+ *
+ * Nothing about this happens in the page. The WebView has no filesystem
+ * capability and no permission to reach the dialog plugin; it can only ask the
+ * host, and what comes back is one path a person chose in an operating-system
+ * window. `null` means they closed it.
+ */
+export async function chooseSourceFile(): Promise<string | null> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<string | null>('choose_source_file');
+}
+
+/**
+ * Register a local file as a project's source.
+ *
+ * This is also what probes it: the daemon reads the container and publishes a
+ * source map, which is the only way to learn a file's duration and streams.
+ */
+export async function registerSource(
+  projectId: string,
+  absolutePath: string,
+): Promise<RegisteredSource> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<RegisteredSource>('register_source', { projectId, absolutePath });
+}
+
+/** Start the analysis. The reply is the job, so a screen can watch it. */
+export async function submitAnalyze(projectId: string, request: AnalyzeRequest): Promise<Job> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<Job>('submit_analyze', { projectId, request });
+}
+
 export async function resolveMedia(
   projectId: string,
   artifactId: string,

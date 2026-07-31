@@ -45,12 +45,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'New Project',
     breadcrumb: 'New Project',
     icon: SquarePlus,
-    availability: {
-      kind: 'planned',
-      phase: 1,
-      summary:
-        'Importing a long-form source and compiling creative direction into scoring parameters.',
-    },
+    availability: { kind: 'live' },
   },
   {
     id: 'results',

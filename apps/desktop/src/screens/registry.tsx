@@ -23,6 +23,7 @@ import { placementOf } from '../shell/route.js';
 import { AnalysisProgress } from './AnalysisProgress.js';
 import { Library } from './Library.js';
 import { ModelsDevice } from './ModelsDevice.js';
+import { NewProject } from './NewProject.js';
 import { PhasePlaceholder } from './PhasePlaceholder.js';
 
 /**
@@ -36,6 +37,7 @@ export interface ScreenContext {
   readonly route: Route;
   readonly models: Parameters<typeof ModelsDevice>[0];
   readonly library: Parameters<typeof Library>[0];
+  readonly newProject: Parameters<typeof NewProject>[0];
   /** The run-specific arguments come from the route, so these are the rest. */
   readonly analysis: Omit<Parameters<typeof AnalysisProgress>[0], 'projectId' | 'jobId'>;
 }
@@ -44,6 +46,7 @@ type Screen = (context: ScreenContext) => JSX.Element;
 
 const SCREENS: Readonly<Record<string, Screen>> = {
   library: ({ library }) => <Library {...library} />,
+  'new-project': ({ newProject }) => <NewProject {...newProject} />,
   models: ({ models }) => <ModelsDevice {...models} />,
 };
 

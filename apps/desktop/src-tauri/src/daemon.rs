@@ -12,11 +12,13 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectRequest, DemoDagPayloadV1, GetDeviceProfileRequest, GetDeviceProfileResponse,
+    AnalyzeSourcePayloadV1, CreateProjectRequest, DemoDagPayloadV1, GetDeviceProfileRequest,
+    GetDeviceProfileResponse,
     GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse,
     Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest, Project, ReadArtifactRequest,
-    ReadArtifactResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response, Source,
-    SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
+    ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, Source, SubmitJobRequest,
+    SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
 use serde::Serialize;
@@ -228,6 +230,44 @@ impl DaemonClient {
         });
         match self.call(body).await? {
             response::Body::ListJobs(listed) => Ok(listed.jobs),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Register a local file as a source, which probes it.
+    ///
+    /// The daemon reads the container here, so the reply is what a screen shows
+    /// before anyone commits to a run: this is the only way to learn a file's
+    /// duration and streams, because probing is the daemon's job and it records
+    /// what it found as an artifact.
+    pub async fn register_source(
+        &self,
+        project_id: &str,
+        absolute_path: &str,
+    ) -> Result<RegisterSourceResponse, DaemonLinkError> {
+        let body = request::Body::RegisterSource(RegisterSourceRequest {
+            project_id: project_id.to_owned(),
+            absolute_path: absolute_path.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::RegisterSource(registered) => Ok(registered),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Submit the analysis DAG for a registered source.
+    pub async fn submit_analyze(
+        &self,
+        project_id: &str,
+        payload: AnalyzeSourcePayloadV1,
+    ) -> Result<Job, DaemonLinkError> {
+        let body = request::Body::SubmitJob(SubmitJobRequest {
+            project_id: project_id.to_owned(),
+            kind: "analyze-source".to_owned(),
+            payload: payload.encode_to_vec(),
+        });
+        match self.call(body).await? {
+            response::Body::SubmitJob(submitted) => submitted.job.ok_or(DaemonLinkError::Empty),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }

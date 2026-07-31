@@ -31,6 +31,11 @@ const library = {
   onReconnect: () => undefined,
 };
 
+const newProject = {
+  state: { status: 'connecting' } as const,
+  onStarted: () => undefined,
+};
+
 const analysis = {
   profile: null,
   onBack: () => undefined,
@@ -39,7 +44,7 @@ const analysis = {
 
 describe('the screen registry', () => {
   it('renders the real screen for a live section', () => {
-    render(renderScreen({ route: sectionRoute('models'), models, library, analysis }));
+    render(renderScreen({ route: sectionRoute('models'), models, library, newProject, analysis }));
     // The Models screen asks the daemon for hardware; the placeholder never
     // mentions a phase.
     expect(screen.queryByText(/Phase \d/)).toBeNull();
@@ -49,7 +54,7 @@ describe('the screen registry', () => {
     const planned = NAV_SECTIONS.filter((section) => section.availability.kind === 'planned');
     expect(planned.length).toBeGreaterThan(0);
     for (const section of planned) {
-      const { unmount } = render(renderScreen({ route: sectionRoute(section.id), models, library, analysis }));
+      const { unmount } = render(renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }));
       expect(screen.getByText(/Phase \d/)).toBeTruthy();
       unmount();
     }
@@ -57,7 +62,7 @@ describe('the screen registry', () => {
 
   it('never leaves a section with nothing on screen', () => {
     for (const section of NAV_SECTIONS) {
-      const { container, unmount } = render(renderScreen({ route: sectionRoute(section.id), models, library, analysis }));
+      const { container, unmount } = render(renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }));
       expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0);
       unmount();
     }

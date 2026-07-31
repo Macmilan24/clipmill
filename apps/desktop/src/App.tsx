@@ -151,6 +151,12 @@ export function App(): JSX.Element {
                 },
                 onReconnect: handleReconnect,
               },
+              newProject: {
+                state,
+                onStarted: (projectId, jobId) => {
+                  openAnalysis(projectId, jobId, 'new-project');
+                },
+              },
               analysis: {
                 profile,
                 onBack: () => {

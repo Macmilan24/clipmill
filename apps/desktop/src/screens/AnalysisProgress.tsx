@@ -409,8 +409,11 @@ export function AnalysisProgress({
           >
             {status.kind === 'analyzed' ? 'View results' : 'View results when ready'}
           </Button>
+          {/* kill_on_drop: the daemon is this shell's child, so closing the app
+              stops the run. Jobs are durable and artifacts are content-addressed,
+              so reopening resumes from where it stopped rather than restarting. */}
           <p className={cn('-mt-2 text-center text-technical', MUTED)}>
-            Safe to close · the run continues on this machine
+            Closing ClipMill pauses the run; it resumes when you reopen.
           </p>
         </div>
       </div>

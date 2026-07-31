@@ -14,6 +14,7 @@ use std::{sync::Arc, time::Duration};
 
 use serde::Serialize;
 use tauri::{Emitter, State};
+use tauri_plugin_dialog::DialogExt;
 
 pub use daemon::{ConnectionState, DaemonClient, DaemonLinkError, DaemonSupervisor};
 pub use media::SCHEME as MEDIA_SCHEME;
@@ -175,6 +176,64 @@ async fn get_job(
         .map_err(|error| error.to_string())
 }
 
+/// Containers the analysis pipeline can open, offered as the dialog's filter.
+const SOURCE_EXTENSIONS: [&str; 6] = ["mp4", "mov", "mkv", "webm", "m4v", "avi"];
+
+/// Ask the operating system for a file.
+///
+/// The dialog runs here, not in the WebView. The plugin is registered for this
+/// command's sake alone and the renderer is granted no permission to reach it,
+/// so a page cannot open a file dialog — it can only ask this host to, and what
+/// comes back is a path the user chose in a native window.
+#[tauri::command]
+async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let (reply, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose a video to analyze")
+        .add_filter("Video", &SOURCE_EXTENSIONS)
+        .pick_file(move |path| {
+            let _sent = reply.send(path);
+        });
+    let path = chosen.await.map_err(|_| "the file dialog closed".to_owned())?;
+    // A path the shell cannot express as text is one the daemon could not be
+    // told about either, so it is refused here rather than half-way through a
+    // registration.
+    Ok(path.map(|value| value.to_string()))
+}
+
+/// Register a local file as this project's source, which probes it.
+#[tauri::command]
+async fn register_source(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    absolute_path: String,
+) -> Result<views::RegisteredSourceView, String> {
+    supervisor
+        .client()
+        .register_source(&project_id, &absolute_path)
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|registered| {
+            views::RegisteredSourceView::try_from(registered).map_err(ToOwned::to_owned)
+        })
+}
+
+/// Submit the analysis DAG. The reply is the job, so a screen can watch it.
+#[tauri::command]
+async fn submit_analyze(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    request: views::AnalyzeRequest,
+) -> Result<views::JobView, String> {
+    supervisor
+        .client()
+        .submit_analyze(&project_id, request.into_payload())
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// What a media artifact holds, so a screen can name a file when it asks the
 /// media protocol for one. The bytes arrive over that protocol, never here.
 #[tauri::command]
@@ -242,6 +301,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     tauri::Builder::default()
+        // Registered for `choose_source_file` alone. The renderer is granted no
+        // permission to reach the plugin, so a page cannot open a dialog — it
+        // can only ask this host to open one.
+        .plugin(tauri_plugin_dialog::init())
         .manage(supervisor)
         .register_asynchronous_uri_scheme_protocol(
             media::SCHEME,
@@ -263,7 +326,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             get_job,
             read_document,
             resolve_media,
-            storage_stats
+            storage_stats,
+            choose_source_file,
+            register_source,
+            submit_analyze
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
