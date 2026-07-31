@@ -7,6 +7,7 @@
 //! so and brings it back.
 
 mod daemon;
+mod media;
 
 use std::{sync::Arc, time::Duration};
 
@@ -14,6 +15,7 @@ use serde::Serialize;
 use tauri::{Emitter, State};
 
 pub use daemon::{ConnectionState, DaemonClient, DaemonLinkError, DaemonSupervisor};
+pub use media::SCHEME as MEDIA_SCHEME;
 
 /// Event name the renderer subscribes to for connection transitions.
 const STATE_EVENT: &str = "daemon://state";
@@ -73,9 +75,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let supervisor = Arc::new(DaemonSupervisor::new(DaemonClient::new(socket)));
     let background = Arc::clone(&supervisor);
+    // The media door. It holds the store root so it can derive an object
+    // directory from a content address; it receives no path from the daemon.
+    let media = Arc::new(media::MediaProtocol::new(
+        Arc::clone(&supervisor),
+        config.paths.artifacts_dir.clone(),
+    ));
 
     tauri::Builder::default()
         .manage(supervisor)
+        .register_asynchronous_uri_scheme_protocol(
+            media::SCHEME,
+            move |_app, request, responder| {
+                let media = Arc::clone(&media);
+                tauri::async_runtime::spawn(async move {
+                    responder.respond(media.serve(request).await);
+                });
+            },
+        )
         .invoke_handler(tauri::generate_handler![
             daemon_state,
             reconnect_daemon,

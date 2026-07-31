@@ -12,7 +12,8 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    GetDeviceProfileRequest, GetDeviceProfileResponse, HealthRequest, HealthResponse, Request,
+    GetDeviceProfileRequest, GetDeviceProfileResponse, HealthRequest, HealthResponse,
+    ReadArtifactRequest, ReadArtifactResponse, Request, ResolveMediaRequest, ResolveMediaResponse,
     Response, request, response,
 };
 use prost::Message;
@@ -174,6 +175,44 @@ impl DaemonClient {
         let body = request::Body::GetDeviceProfile(GetDeviceProfileRequest { remeasure });
         match self.call(body).await? {
             response::Body::GetDeviceProfile(profile) => Ok(profile),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// One window of a published document. The daemon decides which file the
+    /// artifact's kind carries and whether this project may see it.
+    pub async fn read_artifact(
+        &self,
+        project_id: &str,
+        artifact_id: &str,
+        offset: u64,
+        length: u64,
+    ) -> Result<ReadArtifactResponse, DaemonLinkError> {
+        let body = request::Body::ReadArtifact(ReadArtifactRequest {
+            project_id: project_id.to_owned(),
+            artifact_id: artifact_id.to_owned(),
+            offset,
+            length,
+        });
+        match self.call(body).await? {
+            response::Body::ReadArtifact(read) => Ok(read),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Permission to stream a media artifact, and the inventory of what it
+    /// holds. The bytes never come back through here.
+    pub async fn resolve_media(
+        &self,
+        project_id: &str,
+        artifact_id: &str,
+    ) -> Result<ResolveMediaResponse, DaemonLinkError> {
+        let body = request::Body::ResolveMedia(ResolveMediaRequest {
+            project_id: project_id.to_owned(),
+            artifact_id: artifact_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::ResolveMedia(resolved) => Ok(resolved),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }

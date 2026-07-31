@@ -1,7 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Window, event and lifecycle access only. The renderer reaches the daemon exclusively through this crate's own commands (daemon_state, reconnect_daemon, device_profile). The filesystem, shell and HTTP plugins are deliberately absent from Cargo.toml, so there is no capability that could grant them and no code path to re-enable them at runtime.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Window, event and lifecycle access only. The renderer reaches the daemon through this crate's own commands, and reaches media through the clipmill-media:// scheme this crate serves \u2014 a scheme that answers only files the daemon authorized, named by an artifact's own descriptor, for a project that published it. The filesystem, shell and HTTP plugins are deliberately absent from Cargo.toml, so there is no capability that could grant them and no code path to re-enable them at runtime.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ]
 }
