@@ -1721,6 +1721,10 @@ impl IngestPlanBuilder {
 pub(crate) struct TaskRecord {
     pub task_id: String,
     pub kind: String,
+    /// What this task publishes. Declared at planning time, so a reader can find
+    /// the task that produces a transcript without knowing what the daemon calls
+    /// the work that produces one.
+    pub output_kind: String,
     pub state: i32,
     pub attempt: u32,
     pub max_attempts: u32,
@@ -1741,6 +1745,7 @@ impl From<TaskRecord> for v1::Task {
         Self {
             task_id: value.task_id,
             kind: value.kind,
+            output_kind: value.output_kind,
             state: value.state,
             attempt: value.attempt,
             max_attempts: value.max_attempts,

@@ -77,6 +77,11 @@ pub struct TaskView {
     #[serde(rename = "taskId")]
     pub task_id: String,
     pub kind: String,
+    /// What this task publishes, e.g. `media.filmstrip.v1`. A screen looks for
+    /// the observation it wants by kind rather than by the daemon's name for the
+    /// work that produces it.
+    #[serde(rename = "outputKind")]
+    pub output_kind: String,
     pub state: i32,
     pub attempt: u32,
     #[serde(rename = "maxAttempts")]
@@ -105,6 +110,7 @@ impl From<Task> for TaskView {
         Self {
             task_id: task.task_id,
             kind: task.kind,
+            output_kind: task.output_kind,
             state: task.state,
             attempt: task.attempt,
             max_attempts: task.max_attempts,

@@ -563,7 +563,7 @@ class Job(_message.Message):
     def __init__(self, job_id: _Optional[str] = ..., project_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[JobState, str]] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., tasks: _Optional[_Iterable[_Union[Task, _Mapping]]] = ..., output_artifact_ids: _Optional[_Iterable[str]] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ..., failure_detail: _Optional[str] = ...) -> None: ...
 
 class Task(_message.Message):
-    __slots__ = ("task_id", "kind", "state", "attempt", "max_attempts", "progress", "wait_reason", "output_artifact_id")
+    __slots__ = ("task_id", "kind", "state", "attempt", "max_attempts", "progress", "wait_reason", "output_artifact_id", "output_kind")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
@@ -572,6 +572,7 @@ class Task(_message.Message):
     PROGRESS_FIELD_NUMBER: _ClassVar[int]
     WAIT_REASON_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    OUTPUT_KIND_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     kind: str
     state: TaskState
@@ -580,7 +581,8 @@ class Task(_message.Message):
     progress: _worker_pb2.ProgressUnits
     wait_reason: str
     output_artifact_id: str
-    def __init__(self, task_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[TaskState, str]] = ..., attempt: _Optional[int] = ..., max_attempts: _Optional[int] = ..., progress: _Optional[_Union[_worker_pb2.ProgressUnits, _Mapping]] = ..., wait_reason: _Optional[str] = ..., output_artifact_id: _Optional[str] = ...) -> None: ...
+    output_kind: str
+    def __init__(self, task_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[TaskState, str]] = ..., attempt: _Optional[int] = ..., max_attempts: _Optional[int] = ..., progress: _Optional[_Union[_worker_pb2.ProgressUnits, _Mapping]] = ..., wait_reason: _Optional[str] = ..., output_artifact_id: _Optional[str] = ..., output_kind: _Optional[str] = ...) -> None: ...
 
 class GetJobRequest(_message.Message):
     __slots__ = ("job_id",)

@@ -1788,7 +1788,7 @@ fn complete_job_record(
     header: JobHeader,
 ) -> Result<JobRecord, StoreError> {
     let mut statement = connection.prepare(
-        "SELECT task_id, kind, state, attempt, max_attempts, progress_unit,
+        "SELECT task_id, kind, output_kind, state, attempt, max_attempts, progress_unit,
                 progress_done, progress_total, wait_reason,
                 COALESCE(output_artifact_id, '')
          FROM tasks WHERE job_id = ?1 ORDER BY ordinal",
@@ -1854,14 +1854,15 @@ fn task_from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
     Ok(TaskRecord {
         task_id: row.get(0)?,
         kind: row.get(1)?,
-        state: row.get(2)?,
-        attempt: sql_u32(row, 3)?,
-        max_attempts: sql_u32(row, 4)?,
-        progress_unit: row.get(5)?,
-        progress_done: sql_u64(row, 6)?,
-        progress_total: sql_u64(row, 7)?,
-        wait_reason: row.get(8)?,
-        output_artifact_id: row.get(9)?,
+        output_kind: row.get(2)?,
+        state: row.get(3)?,
+        attempt: sql_u32(row, 4)?,
+        max_attempts: sql_u32(row, 5)?,
+        progress_unit: row.get(6)?,
+        progress_done: sql_u64(row, 7)?,
+        progress_total: sql_u64(row, 8)?,
+        wait_reason: row.get(9)?,
+        output_artifact_id: row.get(10)?,
     })
 }
 

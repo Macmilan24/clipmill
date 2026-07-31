@@ -505,6 +505,14 @@ message Task {
   clipmill.worker.v1.ProgressUnits progress = 6;
   string wait_reason = 7;
   string output_artifact_id = 8;
+  // The artifact kind this task publishes, e.g. "media.filmstrip.v1".
+  //
+  // Declared when the job was planned, so it is known before the task has run
+  // and stays known if it fails. `kind` above names the work; this names the
+  // observation, which is what a reader is actually looking for — a shell
+  // wanting the filmstrip should ask for the task that produces one rather than
+  // learn that the daemon calls that work "ingest-filmstrip".
+  string output_kind = 9;
 }
 
 enum JobState {

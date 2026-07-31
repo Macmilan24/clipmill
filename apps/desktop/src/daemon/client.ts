@@ -66,7 +66,16 @@ export interface Progress {
 
 export interface Task {
   readonly taskId: string;
+  /** What the daemon calls the work, e.g. `ingest-filmstrip`. */
   readonly kind: string;
+  /**
+   * What the work publishes, e.g. `media.filmstrip.v1`.
+   *
+   * This is the one a screen wants. Kinds are contract names a renderer already
+   * knows — they are what the read allowlist is written in — whereas the work's
+   * own name is the daemon's business.
+   */
+  readonly outputKind: string;
   readonly state: TaskState;
   readonly attempt: number;
   readonly maxAttempts: number;

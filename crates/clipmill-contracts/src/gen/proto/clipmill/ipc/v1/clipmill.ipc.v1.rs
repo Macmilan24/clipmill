@@ -648,6 +648,15 @@ pub struct Task {
     pub wait_reason: ::prost::alloc::string::String,
     #[prost(string, tag = "8")]
     pub output_artifact_id: ::prost::alloc::string::String,
+    /// The artifact kind this task publishes, e.g. "media.filmstrip.v1".
+    ///
+    /// Declared when the job was planned, so it is known before the task has run
+    /// and stays known if it fails. `kind` above names the work; this names the
+    /// observation, which is what a reader is actually looking for — a shell
+    /// wanting the filmstrip should ask for the task that produces one rather than
+    /// learn that the daemon calls that work "ingest-filmstrip".
+    #[prost(string, tag = "9")]
+    pub output_kind: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetJobRequest {

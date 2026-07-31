@@ -527,6 +527,21 @@ async fn durable_demo_job_completes_replays_events_and_survives_restart() {
             .iter()
             .all(|task| task.state == TaskState::Succeeded as i32)
     );
+    // Every task says what it publishes, and says it as a contract kind. A shell
+    // looking for one particular observation finds it here rather than by
+    // knowing what the daemon calls the work that produces it.
+    assert!(
+        completed
+            .tasks
+            .iter()
+            .all(|task| task.output_kind.contains(".v1")),
+        "a task reported no output kind: {:?}",
+        completed
+            .tasks
+            .iter()
+            .map(|task| (&task.kind, &task.output_kind))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(completed.output_artifact_ids.len(), 1);
     assert_eq!(
         list_jobs(&socket, "list-jobs", &project.project_id)
