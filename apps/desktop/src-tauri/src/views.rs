@@ -16,7 +16,7 @@
 //! generated schema type, so the JSON Schema stays the only contract between
 //! the two ends.
 
-use clipmill_contracts::proto::ipc::v1::{Job, Project, Source, Task};
+use clipmill_contracts::proto::ipc::v1::{GetStorageStatsResponse, Job, Project, Source, Task};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -163,6 +163,43 @@ impl From<Job> for JobView {
             output_artifact_ids: job.output_artifact_ids,
             failure_class: job.failure_class,
             failure_detail: job.failure_detail,
+        }
+    }
+}
+
+/// What this installation is using on disk, by category.
+#[derive(Debug, Serialize)]
+pub struct StorageStatsView {
+    pub categories: Vec<StorageCategoryView>,
+    /// Absent when the filesystem would not say, which is a different answer
+    /// from zero. The wire carries the two apart for exactly this reason, and
+    /// collapsing them here would tell a screen the disk is full.
+    #[serde(rename = "availableBytes", skip_serializing_if = "Option::is_none")]
+    pub available_bytes: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StorageCategoryView {
+    /// `artifacts`, `models`, or `state`. The wording on screen is the
+    /// renderer's; this is what it keys off.
+    pub key: String,
+    pub bytes: u64,
+    pub items: u64,
+}
+
+impl From<GetStorageStatsResponse> for StorageStatsView {
+    fn from(stats: GetStorageStatsResponse) -> Self {
+        Self {
+            available_bytes: stats.available_known.then_some(stats.available_bytes),
+            categories: stats
+                .categories
+                .into_iter()
+                .map(|category| StorageCategoryView {
+                    key: category.key,
+                    bytes: category.bytes,
+                    items: category.items,
+                })
+                .collect(),
         }
     }
 }

@@ -111,6 +111,29 @@ export interface TaskEvent {
   readonly progress?: Progress;
 }
 
+/**
+ * What this installation is using on disk.
+ *
+ * Three categories rather than one total, because the three are different
+ * decisions: artifacts can be collected, weights should not be re-downloaded,
+ * and state must be left alone.
+ */
+export interface StorageStats {
+  readonly categories: readonly StorageCategory[];
+  /**
+   * Absent when the filesystem would not say — which is not the same as zero.
+   * A screen must not render "0 B free" for a question that went unanswered.
+   */
+  readonly availableBytes?: number;
+}
+
+export interface StorageCategory {
+  /** `artifacts`, `models`, or `state`. */
+  readonly key: string;
+  readonly bytes: number;
+  readonly items: number;
+}
+
 /** One published document, still as text. */
 export interface Document {
   readonly artifactId: string;
@@ -227,6 +250,14 @@ export async function fetchJob(jobId: string): Promise<Job> {
   }
   const { invoke } = await core();
   return invoke<Job>('get_job', { jobId });
+}
+
+export async function fetchStorageStats(): Promise<StorageStats> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<StorageStats>('storage_stats');
 }
 
 /**

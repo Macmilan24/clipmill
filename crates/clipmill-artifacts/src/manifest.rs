@@ -132,6 +132,15 @@ impl StoredManifest {
         &self.producer.stage
     }
 
+    /// What the payload declares it occupies.
+    ///
+    /// The manifest file itself is not counted — it is not one of the files it
+    /// describes. That undercounts a large store by a few hundred bytes an
+    /// object, which is the right trade for a figure that costs no disk access.
+    pub(crate) fn declared_total_bytes(&self) -> u64 {
+        self.files.iter().map(|file| file.bytes).sum()
+    }
+
     pub(crate) fn recipe(&self) -> Result<Option<ArtifactRecipe>, ManifestError> {
         let Some(recipe) = &self.recipe else {
             return Ok(None);

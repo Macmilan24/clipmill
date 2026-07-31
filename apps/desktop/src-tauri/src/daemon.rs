@@ -13,10 +13,10 @@ use std::{
 
 use clipmill_contracts::proto::ipc::v1::{
     CreateProjectRequest, DemoDagPayloadV1, GetDeviceProfileRequest, GetDeviceProfileResponse,
-    GetJobRequest, HealthRequest, HealthResponse, Job, ListJobsRequest, ListProjectsRequest,
-    ListSourcesRequest, Project, ReadArtifactRequest, ReadArtifactResponse, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, Source, SubmitJobRequest,
-    SubscribeTaskEventsRequest, TaskEvent, request, response,
+    GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse,
+    Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest, Project, ReadArtifactRequest,
+    ReadArtifactResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response, Source,
+    SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
 use serde::Serialize;
@@ -228,6 +228,16 @@ impl DaemonClient {
         });
         match self.call(body).await? {
             response::Body::ListJobs(listed) => Ok(listed.jobs),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn storage_stats(&self) -> Result<GetStorageStatsResponse, DaemonLinkError> {
+        match self
+            .call(request::Body::GetStorageStats(GetStorageStatsRequest {}))
+            .await?
+        {
+            response::Body::GetStorageStats(stats) => Ok(stats),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }

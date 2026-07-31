@@ -28,6 +28,7 @@ mod shell;
 mod shm;
 mod sources;
 mod speech;
+mod storage;
 #[cfg(unix)]
 mod worker;
 

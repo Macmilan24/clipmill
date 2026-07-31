@@ -260,6 +260,11 @@ impl Daemon {
             artifacts.handle(),
             device_profiler,
             Arc::clone(&models),
+            crate::storage::StorageDirs {
+                data: config.paths.data_dir.clone(),
+                state: config.paths.state_dir.clone(),
+                weights: config.weights_dir.clone(),
+            },
         );
 
         Ok(Self {

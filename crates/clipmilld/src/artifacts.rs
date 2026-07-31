@@ -7,7 +7,7 @@ use std::{
 
 use clipmill_artifacts::{
     ArtifactError, ArtifactLease, ArtifactPath, ArtifactRecipe, ArtifactStore, GcReport,
-    PrepareOutcome, RecoveryReport,
+    PrepareOutcome, RecoveryReport, StoreUsage,
 };
 use clipmill_core::{ArtifactId, ProjectId, StagingId};
 use thiserror::Error;
@@ -211,6 +211,9 @@ impl ArtifactActor {
                             } => {
                                 let _reply = reply.send(store.collect_garbage(roots, now, grace));
                             }
+                            Command::Usage { reply } => {
+                                let _reply = reply.send(store.usage());
+                            }
                             Command::Shutdown { reply } => {
                                 let _reply = reply.send(());
                                 break;
@@ -356,6 +359,16 @@ impl ArtifactHandle {
             .map_err(|_| ArtifactServiceError::Stopped)?
             .map_err(Into::into)
     }
+
+    /// What the published objects occupy, read from the manifests in memory.
+    pub(crate) async fn usage(&self) -> Result<StoreUsage, ArtifactServiceError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Usage { reply })
+            .await
+            .map_err(|_| ArtifactServiceError::Stopped)?;
+        received.await.map_err(|_| ArtifactServiceError::Stopped)
+    }
 }
 
 /// In-process daemon interface used by the scheduler and lifecycle tests.
@@ -472,6 +485,9 @@ enum Command {
         now: SystemTime,
         grace: Duration,
         reply: oneshot::Sender<Result<GcReport, ArtifactError>>,
+    },
+    Usage {
+        reply: oneshot::Sender<StoreUsage>,
     },
     Shutdown {
         reply: oneshot::Sender<()>,

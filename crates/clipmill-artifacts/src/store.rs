@@ -111,6 +111,28 @@ impl ArtifactStore {
         self.catalog.len()
     }
 
+    /// What the published objects occupy.
+    ///
+    /// Summed from the manifests the catalog already holds, not by walking the
+    /// object tree. The manifests declare every file's size, they are in memory
+    /// already, and a `du` over a store with tens of thousands of objects is not
+    /// something a screen should be made to wait on.
+    ///
+    /// It reports what was published. Staging and quarantine are excluded on
+    /// purpose: those are work in progress and wreckage, and neither is an
+    /// honest answer to "what do my artifacts occupy".
+    #[must_use]
+    pub fn usage(&self) -> StoreUsage {
+        StoreUsage {
+            objects: self.catalog.len() as u64,
+            bytes: self
+                .catalog
+                .values()
+                .map(|entry| entry.manifest.declared_total_bytes())
+                .sum(),
+        }
+    }
+
     pub fn lookup(&self, recipe: &ArtifactRecipe) -> Result<CacheLookup, ArtifactError> {
         let artifact_id = recipe.artifact_id()?;
         if self.active.contains_key(&artifact_id) {
@@ -563,6 +585,13 @@ pub struct RecoveryReport {
     pub objects_quarantined: usize,
     pub committed_loaded: usize,
     pub legacy_loaded: usize,
+}
+
+/// What the published objects occupy, as the manifests declare it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreUsage {
+    pub objects: u64,
+    pub bytes: u64,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

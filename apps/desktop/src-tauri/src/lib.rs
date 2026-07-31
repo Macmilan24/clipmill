@@ -175,6 +175,19 @@ async fn get_job(
         .map_err(|error| error.to_string())
 }
 
+/// How much disk this installation is using, by category.
+#[tauri::command]
+async fn storage_stats(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<views::StorageStatsView, String> {
+    supervisor
+        .client()
+        .storage_stats()
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// One published document, whole. The daemon decides whether this project may
 /// read it and which file the artifact's kind carries; this reassembles however
 /// many chunks it took.
@@ -232,7 +245,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_sources,
             list_jobs,
             get_job,
-            read_document
+            read_document,
+            storage_stats
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

@@ -10,13 +10,13 @@ use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest,
     DemoDagPayloadV1, DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode,
     GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
-    GetProjectResponse, GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1,
-    IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    MediaFileV1, PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest,
-    ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest,
-    ResolveMediaResponse, Response, SnapshotEditDocResponse, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
-    response,
+    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse,
+    ListSourcesResponse, MediaFileV1, PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
+    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SnapshotEditDocResponse,
+    StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use prost::Message;
@@ -60,6 +60,9 @@ pub(crate) struct Service {
     /// Read when planning a stage that runs a model, so the plan's resource
     /// declaration comes from what the registry pinned rather than a guess.
     models: std::sync::Arc<crate::models::ModelRegistry>,
+    /// The three directories a storage report covers. Absent in the tests that
+    /// build a service without a workspace, where there is nothing to measure.
+    storage: Option<crate::storage::StorageDirs>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -113,6 +116,7 @@ impl Service {
             artifacts: None,
             device_profiler: None,
             models: std::sync::Arc::default(),
+            storage: None,
         }
     }
 
@@ -126,6 +130,7 @@ impl Service {
         artifacts: ArtifactHandle,
         device_profiler: DeviceProfiler,
         models: std::sync::Arc<crate::models::ModelRegistry>,
+        storage: crate::storage::StorageDirs,
     ) -> Self {
         Self {
             database,
@@ -136,6 +141,7 @@ impl Service {
             artifacts: Some(artifacts),
             device_profiler: Some(device_profiler),
             models,
+            storage: Some(storage),
         }
     }
 
@@ -355,6 +361,7 @@ impl Service {
             }
             request::Body::ReadArtifact(read) => self.read_artifact(request_id, &read).await,
             request::Body::ResolveMedia(resolve) => self.resolve_media(request_id, &resolve).await,
+            request::Body::GetStorageStats(_) => self.get_storage_stats(request_id).await,
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -1264,6 +1271,53 @@ impl Service {
         )
     }
 
+    /// What this installation is using on disk, by category.
+    ///
+    /// The store answers for artifacts from manifests it already holds. The
+    /// other two are directory walks, so the whole measurement goes to a
+    /// blocking thread — small trees today, but a screen asking how much disk it
+    /// is using must never be the thing that stalls the event loop.
+    async fn get_storage_stats(&self, request_id: String) -> Reply {
+        let (Some(artifacts), Some(dirs)) = (self.artifacts.as_ref(), self.storage.clone()) else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "this daemon measures no storage",
+            );
+        };
+        let Ok(usage) = artifacts.usage().await else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "the artifact store is not answering",
+            );
+        };
+        let Ok(report) = tokio::task::spawn_blocking(move || dirs.measure(usage)).await else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the storage measurement did not finish",
+            );
+        };
+        let category = |key: &str, measured: crate::storage::Category| StorageCategoryV1 {
+            key: key.to_owned(),
+            bytes: measured.bytes,
+            items: measured.items,
+        };
+        response_reply(
+            request_id,
+            response::Body::GetStorageStats(GetStorageStatsResponse {
+                categories: vec![
+                    category(crate::storage::ARTIFACTS, report.artifacts),
+                    category(crate::storage::MODELS, report.models),
+                    category(crate::storage::STATE, report.state),
+                ],
+                available_bytes: report.available_bytes.unwrap_or(0),
+                available_known: report.available_bytes.is_some(),
+            }),
+        )
+    }
+
     /// Authorize a media artifact and say what it holds.
     ///
     /// The same two policy checks `ReadArtifact` makes — the project produced it,
@@ -2077,6 +2131,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
     match request.body.as_ref() {
         Some(request::Body::ReadArtifact(_)) => "read_artifact",
         Some(request::Body::ResolveMedia(_)) => "resolve_media",
+        Some(request::Body::GetStorageStats(_)) => "get_storage_stats",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",

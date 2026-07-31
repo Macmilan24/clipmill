@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -69,6 +69,8 @@ pub mod request {
         ReadArtifact(super::ReadArtifactRequest),
         #[prost(message, tag = "30")]
         ResolveMedia(super::ResolveMediaRequest),
+        #[prost(message, tag = "31")]
+        GetStorageStats(super::GetStorageStatsRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -79,7 +81,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -133,6 +135,8 @@ pub mod response {
         ReadArtifact(super::ReadArtifactResponse),
         #[prost(message, tag = "31")]
         ResolveMedia(super::ResolveMediaResponse),
+        #[prost(message, tag = "32")]
+        GetStorageStats(super::GetStorageStatsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -837,6 +841,44 @@ pub struct MediaFileV1 {
     /// guessed from the extension by the process doing the serving.
     #[prost(string, tag = "3")]
     pub media_type: ::prost::alloc::string::String,
+}
+/// What this installation is using on disk, by category.
+///
+/// Categories rather than one number, because the three answers a user acts on
+/// are different actions: artifacts are re-derivable and can be collected, model
+/// weights are expensive to re-download and should not be, and state is small and
+/// must not be touched. A single total would tell nobody what to do about it.
+///
+/// No paths leave the daemon here. Where these directories live is a separate
+/// question from how large they are, and only one of them is a screen's business
+/// today.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetStorageStatsRequest {}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetStorageStatsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub categories: ::prost::alloc::vec::Vec<StorageCategoryV1>,
+    /// Free space on the volume holding the data directory, as the filesystem
+    /// reports it to this process. Zero when it could not be determined, which a
+    /// caller must distinguish from a genuinely full disk.
+    #[prost(uint64, tag = "2")]
+    pub available_bytes: u64,
+    /// False when the figure above could not be read at all.
+    #[prost(bool, tag = "3")]
+    pub available_known: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StorageCategoryV1 {
+    /// Stable identifier: "artifacts", "models", or "state". A caller chooses its
+    /// own wording; this is what it keys off.
+    #[prost(string, tag = "1")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub bytes: u64,
+    /// How many things were counted — published objects for artifacts, files for
+    /// the rest.
+    #[prost(uint64, tag = "3")]
+    pub items: u64,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetDeviceProfileRequest {

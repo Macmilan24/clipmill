@@ -13,5 +13,5 @@ pub use path::{ArtifactPath, ArtifactPathError};
 pub use recipe::{ArtifactRecipe, NetworkPolicy, Producer, RecipeError, RecipeSpec, Timebase};
 pub use store::{
     ArtifactError, ArtifactLease, ArtifactStore, CacheLookup, CacheMissReason, GcReport,
-    PrepareOutcome, RecoveryReport, StagingArea, StorePaths,
+    PrepareOutcome, RecoveryReport, StagingArea, StorePaths, StoreUsage,
 };

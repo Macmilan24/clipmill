@@ -34,6 +34,7 @@ message Request {
     SnapshotEditDocRequest snapshot_edit_doc = 28;
     ReadArtifactRequest read_artifact = 29;
     ResolveMediaRequest resolve_media = 30;
+    GetStorageStatsRequest get_storage_stats = 31;
   }
 }
 
@@ -65,6 +66,7 @@ message Response {
     SnapshotEditDocResponse snapshot_edit_doc = 29;
     ReadArtifactResponse read_artifact = 30;
     ResolveMediaResponse resolve_media = 31;
+    GetStorageStatsResponse get_storage_stats = 32;
   }
 }
 
@@ -663,6 +665,38 @@ message MediaFileV1 {
   // What to answer with, e.g. "video/mp4". Stated by the daemon rather than
   // guessed from the extension by the process doing the serving.
   string media_type = 3;
+}
+
+// What this installation is using on disk, by category.
+//
+// Categories rather than one number, because the three answers a user acts on
+// are different actions: artifacts are re-derivable and can be collected, model
+// weights are expensive to re-download and should not be, and state is small and
+// must not be touched. A single total would tell nobody what to do about it.
+//
+// No paths leave the daemon here. Where these directories live is a separate
+// question from how large they are, and only one of them is a screen's business
+// today.
+message GetStorageStatsRequest {}
+
+message GetStorageStatsResponse {
+  repeated StorageCategoryV1 categories = 1;
+  // Free space on the volume holding the data directory, as the filesystem
+  // reports it to this process. Zero when it could not be determined, which a
+  // caller must distinguish from a genuinely full disk.
+  uint64 available_bytes = 2;
+  // False when the figure above could not be read at all.
+  bool available_known = 3;
+}
+
+message StorageCategoryV1 {
+  // Stable identifier: "artifacts", "models", or "state". A caller chooses its
+  // own wording; this is what it keys off.
+  string key = 1;
+  uint64 bytes = 2;
+  // How many things were counted — published objects for artifacts, files for
+  // the rest.
+  uint64 items = 3;
 }
 
 message GetDeviceProfileRequest {
