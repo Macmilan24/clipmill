@@ -211,6 +211,11 @@ gate-shell:
 gate-shell-pipeline iterations="1":
     ./tools/drills/shell-drill.sh {{iterations}}
 
+# W20 coverage: the crop solver's goldens and projections, the gate that refuses
+# to follow a face nobody can follow, and the detector's determinism.
+gate-reframe iterations="1":
+    ./tools/drills/reframe-drill.sh {{iterations}}
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock
