@@ -167,3 +167,105 @@ async fn shell_reads_measured_hardware_and_notices_a_killed_daemon() {
         "the shell kept reporting a healthy daemon after it was killed"
     );
 }
+
+/// The stream the Analysis Progress screen binds to.
+///
+/// Three things it has to do, and only a live daemon can show any of them: push
+/// events as tasks move, hand out a cursor that means something, and replay from
+/// that cursor so a shell that was away does not show a finished stage as still
+/// running. The demo DAG stands in for the analyze DAG here — it is four tasks
+/// with real transitions, and it needs no media or models.
+#[tokio::test]
+#[ignore = "requires `cargo build --workspace` and `./tools/fetch-ffmpeg.sh`"]
+async fn task_events_stream_live_and_replay_from_a_cursor() {
+    use std::sync::{Arc, Mutex};
+
+    let directory = PathBuf::from(format!("/tmp/cm-events-{}", std::process::id()));
+    fs::create_dir_all(&directory).expect("test directory");
+    let socket = directory.join("d.sock");
+
+    let daemon = DaemonUnderTest::start(&socket, &directory);
+    let client = DaemonClient::new(socket.clone());
+    assert!(
+        wait_for_health(&client, Duration::from_secs(30)).await,
+        "daemon never opened its socket"
+    );
+
+    // Subscribe before submitting, which is the order the shell uses: a screen
+    // that subscribed after starting a job would miss its first transitions.
+    let live = Arc::new(Mutex::new(Vec::<(u64, String)>::new()));
+    let collected = Arc::clone(&live);
+    let streaming = DaemonClient::new(socket.clone());
+    let follower = tokio::spawn(async move {
+        let _result = streaming
+            .stream_task_events(0, move |event| {
+                collected
+                    .lock()
+                    .expect("event list")
+                    .push((event.event_id, event.task_id));
+            })
+            .await;
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let project = client
+        .create_project("events")
+        .await
+        .expect("create a project");
+    client
+        .submit_demo(&project, b"task-event-stream")
+        .await
+        .expect("submit the demo DAG");
+
+    // Four tasks, each passing through several states, so waiting for a handful
+    // of events is waiting for the pipeline to actually move.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while live.lock().expect("event list").len() < 4 && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let seen = live.lock().expect("event list").clone();
+    assert!(
+        seen.len() >= 4,
+        "expected the demo DAG's transitions, saw {}",
+        seen.len()
+    );
+    // The cursor is global and monotonic: a shell that keeps the highest one it
+    // saw can ask for everything after it and get exactly that.
+    let mut ordered = seen.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+    let sorted = {
+        let mut copy = ordered.clone();
+        copy.sort_unstable();
+        copy
+    };
+    assert_eq!(ordered, sorted, "event ids arrived out of order");
+    ordered.dedup();
+    assert_eq!(ordered.len(), seen.len(), "an event id repeated");
+
+    // Replay: a second subscription from a mid-stream cursor sees the rest and
+    // nothing before it. This is what a reconnecting shell does.
+    let midpoint = seen[seen.len() / 2].0;
+    let replayed = Arc::new(Mutex::new(Vec::<u64>::new()));
+    let collected = Arc::clone(&replayed);
+    let replaying = DaemonClient::new(socket.clone());
+    let replay = tokio::spawn(async move {
+        let _result = replaying
+            .stream_task_events(midpoint, move |event| {
+                collected.lock().expect("replay list").push(event.event_id);
+            })
+            .await;
+    });
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while replayed.lock().expect("replay list").is_empty() && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let after = replayed.lock().expect("replay list").clone();
+    assert!(!after.is_empty(), "replay from a cursor returned nothing");
+    assert!(
+        after.iter().all(|id| *id > midpoint),
+        "replay returned events at or before the cursor: {after:?}"
+    );
+
+    follower.abort();
+    replay.abort();
+    drop(daemon);
+}

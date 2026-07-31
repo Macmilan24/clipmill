@@ -19,7 +19,47 @@ pub use media::SCHEME as MEDIA_SCHEME;
 
 /// Event name the renderer subscribes to for connection transitions.
 const STATE_EVENT: &str = "daemon://state";
+/// Event name carrying one task transition from the daemon's durable log.
+const TASK_EVENT: &str = "daemon://task-events";
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
+/// How long to wait before resubscribing after the event stream drops. Short,
+/// because the gap is exactly the window in which a running stage looks stalled.
+const RESUBSCRIBE_DELAY: Duration = Duration::from_millis(500);
+
+/// One task transition, shaped for the renderer.
+///
+/// Passed through rather than interpreted. Progress keeps its unit and its
+/// two counts because that is what the daemon measured — a stage reporting
+/// "412 of 900 audio windows" is saying something a percentage would throw
+/// away, and the pipeline's stages do not share a unit to average over.
+#[derive(Debug, Serialize)]
+struct TaskEventView {
+    #[serde(rename = "eventId")]
+    event_id: u64,
+    #[serde(rename = "jobId")]
+    job_id: String,
+    #[serde(rename = "taskId")]
+    task_id: String,
+    state: i32,
+    attempt: u32,
+    #[serde(rename = "waitReason")]
+    wait_reason: String,
+    #[serde(rename = "failureClass")]
+    failure_class: i32,
+    #[serde(rename = "atUnixMillis")]
+    at_unix_millis: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    progress: Option<ProgressView>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProgressView {
+    unit: String,
+    done: u64,
+    /// Zero means the stage knows how far it has come and not how far there is
+    /// to go. A bar drawn from that would be inventing the denominator.
+    total: u64,
+}
 
 /// The device profile as the daemon returned it. The document is passed through
 /// as canonical JSON rather than reshaped here: the renderer parses it with the
@@ -100,6 +140,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
+            let events = Arc::clone(&background);
+            let events_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
                     // reconcile() reports only edges, so a steady connection
@@ -110,6 +152,45 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         tracing::warn!(%error, "cannot publish daemon state");
                     }
                     tokio::time::sleep(POLL_INTERVAL).await;
+                }
+            });
+            // The task-event stream, kept alive across daemon restarts. The
+            // cursor is what makes a reconnect honest: the daemon replays what
+            // happened while the socket was down, so a stage that finished
+            // during the gap arrives finished rather than staying where the
+            // renderer last saw it.
+            tauri::async_runtime::spawn(async move {
+                let mut cursor = 0_u64;
+                loop {
+                    let handle = events_handle.clone();
+                    let result = events
+                        .client()
+                        .stream_task_events(cursor, |event| {
+                            cursor = cursor.max(event.event_id);
+                            let view = TaskEventView {
+                                event_id: event.event_id,
+                                job_id: event.job_id,
+                                task_id: event.task_id,
+                                state: event.state,
+                                attempt: event.attempt,
+                                wait_reason: event.wait_reason,
+                                failure_class: event.failure_class,
+                                at_unix_millis: event.at_unix_millis,
+                                progress: event.progress.map(|progress| ProgressView {
+                                    unit: progress.unit,
+                                    done: progress.done,
+                                    total: progress.total,
+                                }),
+                            };
+                            if let Err(error) = handle.emit(TASK_EVENT, &view) {
+                                tracing::warn!(%error, "cannot publish a task event");
+                            }
+                        })
+                        .await;
+                    if let Err(error) = result {
+                        tracing::debug!(%error, cursor, "task event stream ended");
+                    }
+                    tokio::time::sleep(RESUBSCRIBE_DELAY).await;
                 }
             });
             Ok(())
