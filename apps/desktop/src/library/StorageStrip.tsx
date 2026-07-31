@@ -29,7 +29,9 @@ export function StorageStrip({
     stats === null
       ? 'Storage not measured'
       : stats.categories
-          .map((category) => `${LABELS[category.key] ?? category.key} ${formatBytes(category.bytes)}`)
+          .map(
+            (category) => `${LABELS[category.key] ?? category.key} ${formatBytes(category.bytes)}`,
+          )
           .join(' · ');
 
   return (

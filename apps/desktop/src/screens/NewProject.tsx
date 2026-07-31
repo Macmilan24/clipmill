@@ -288,10 +288,7 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
                 <div className="mt-2 flex items-center gap-2">
                   {(['minSeconds', 'maxSeconds'] as const).map((field) => (
                     <span key={field} className="flex-1">
-                      <Label
-                        htmlFor={field}
-                        className={cn('mb-1 block text-meta', SECONDARY)}
-                      >
+                      <Label htmlFor={field} className={cn('mb-1 block text-meta', SECONDARY)}>
                         {field === 'minSeconds' ? 'Shortest' : 'Longest'}
                       </Label>
                       <Input
@@ -399,9 +396,7 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
               <div className="grid gap-2">
                 <SummaryRow
                   label="Source"
-                  value={
-                    chosen === null ? EM_DASH : `${formatBytes(chosen.source.byteSize)} local`
-                  }
+                  value={chosen === null ? EM_DASH : `${formatBytes(chosen.source.byteSize)} local`}
                 />
                 <SummaryRow label="Clip length" value={describeRange(settings)} />
                 <SummaryRow label="Network" value="0 bytes" />

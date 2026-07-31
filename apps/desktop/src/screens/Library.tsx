@@ -21,13 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
 import type { ConnectionState } from '../daemon/client.js';
@@ -214,7 +208,11 @@ export function Library({
 
       {projects.length === 0 ? null : (
         <div className="mb-4 flex items-center justify-between gap-4">
-          <div role="group" aria-label="Filter by status" className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Filter by status"
+            className="flex flex-wrap items-center gap-2"
+          >
             {filters.map((entry) => (
               <Button
                 key={entry.filter}

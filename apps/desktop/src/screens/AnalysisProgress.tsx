@@ -259,10 +259,7 @@ function LiveLog({
           ) : (
             <ul className="grid gap-1">
               {events.map((event) => (
-                <li
-                  key={event.eventId}
-                  className={cn('mono flex gap-2 text-technical', SECONDARY)}
-                >
+                <li key={event.eventId} className={cn('mono flex gap-2 text-technical', SECONDARY)}>
                   <span className={MUTED}>{clock(event.atUnixMillis)}</span>
                   <span className="truncate">{stateWord(event)}</span>
                 </li>

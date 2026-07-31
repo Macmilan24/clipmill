@@ -575,6 +575,15 @@ message RegisterSourceResponse {
   Source source = 1;
   // True when an unchanged observation avoided another FFprobe invocation.
   bool observation_cache_hit = 2;
+  // The probe, inline (clipmill.source_map.v1 JSON).
+  //
+  // Registering is what probes a file, and the artifact that carries the result
+  // is published later by the analysis DAG's first task. So between choosing a
+  // file and starting a run there is nothing to read by address, and a shell
+  // that wanted to show a duration before asking anyone to commit had no way to
+  // learn one. The daemon already holds this; sending it is cheaper than making
+  // the shell start a job to find out how long the video is.
+  string source_map_json = 3;
 }
 
 message GetSourceRequest {

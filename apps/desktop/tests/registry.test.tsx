@@ -54,7 +54,9 @@ describe('the screen registry', () => {
     const planned = NAV_SECTIONS.filter((section) => section.availability.kind === 'planned');
     expect(planned.length).toBeGreaterThan(0);
     for (const section of planned) {
-      const { unmount } = render(renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }));
+      const { unmount } = render(
+        renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }),
+      );
       expect(screen.getByText(/Phase \d/)).toBeTruthy();
       unmount();
     }
@@ -62,7 +64,9 @@ describe('the screen registry', () => {
 
   it('never leaves a section with nothing on screen', () => {
     for (const section of NAV_SECTIONS) {
-      const { container, unmount } = render(renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }));
+      const { container, unmount } = render(
+        renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }),
+      );
       expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0);
       unmount();
     }

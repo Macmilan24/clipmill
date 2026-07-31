@@ -82,7 +82,9 @@ describe('reading a project status', () => {
   });
 
   it('says a job is running even when no task has been leased yet', () => {
-    const status = readStatus(job('p', JobState.RUNNING, [task('speech.vad.v1', TaskState.PLANNED)]));
+    const status = readStatus(
+      job('p', JobState.RUNNING, [task('speech.vad.v1', TaskState.PLANNED)]),
+    );
     expect(status.kind).toBe('analyzing');
     expect(describeActivity(status)).toBe('Working');
   });
@@ -122,9 +124,7 @@ describe('finding the analysis a project is represented by', () => {
       task('media.proxy.v1', TaskState.SUCCEEDED),
       task('media.filmstrip.v1', TaskState.SUCCEEDED),
     ]);
-    expect(publishedArtifact(finished, 'media.filmstrip.v1')).toBe(
-      'sha256:art-media.filmstrip.v1',
-    );
+    expect(publishedArtifact(finished, 'media.filmstrip.v1')).toBe('sha256:art-media.filmstrip.v1');
     expect(publishedArtifact(finished, 'ranking.set.v1')).toBeNull();
   });
 

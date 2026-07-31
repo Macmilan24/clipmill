@@ -45,13 +45,7 @@ function statusLabel(state: ConnectionState): { text: string; tone: string } {
  * measures memory but samples nothing continuously, so this renders the memory
  * it genuinely knows and leaves the rest out rather than animating a fiction.
  */
-export function TopBar({
-  trail,
-  theme,
-  onToggleTheme,
-  state,
-  profile,
-}: TopBarProps): JSX.Element {
+export function TopBar({ trail, theme, onToggleTheme, state, profile }: TopBarProps): JSX.Element {
   const status = statusLabel(state);
   const total = profile?.memory.total_bytes;
   const available = profile?.phase0?.available_memory_bytes;

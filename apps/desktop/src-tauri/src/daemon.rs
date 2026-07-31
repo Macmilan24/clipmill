@@ -13,12 +13,11 @@ use std::{
 
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, CreateProjectRequest, DemoDagPayloadV1, GetDeviceProfileRequest,
-    GetDeviceProfileResponse,
-    GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse,
-    Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest, Project, ReadArtifactRequest,
-    ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, Source, SubmitJobRequest,
-    SubscribeTaskEventsRequest, TaskEvent, request, response,
+    GetDeviceProfileResponse, GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse,
+    HealthRequest, HealthResponse, Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    Project, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    RegisterSourceResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response, Source,
+    SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
 use serde::Serialize;

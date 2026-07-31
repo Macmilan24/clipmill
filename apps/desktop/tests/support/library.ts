@@ -41,11 +41,7 @@ export function source(projectId: string, overrides: Partial<Source> = {}): Sour
   };
 }
 
-export function task(
-  outputKind: string,
-  state: TaskState,
-  overrides: Partial<Task> = {},
-): Task {
+export function task(outputKind: string, state: TaskState, overrides: Partial<Task> = {}): Task {
   return {
     taskId: `task-${outputKind}`,
     kind: outputKind.replace(/\.v1$/, ''),
@@ -171,8 +167,8 @@ export function fakeApi(world: FakeWorld): ShellApi {
       Promise.resolve({
         source: source(projectId, { absolutePath }),
         observationCacheHit: false,
+        sourceMapJson: JSON.stringify(sourceMap()),
       }),
-    submitAnalyze: (projectId) =>
-      Promise.resolve(job(projectId, JobState.PLANNED, [])),
+    submitAnalyze: (projectId) => Promise.resolve(job(projectId, JobState.PLANNED, [])),
   };
 }

@@ -178,6 +178,11 @@ pub struct RegisteredSourceView {
     /// surfacing: it is why picking the same file twice is instant.
     #[serde(rename = "observationCacheHit")]
     pub observation_cache_hit: bool,
+    /// The probe, inline, because the artifact carrying it is not published
+    /// until the analysis runs — and a screen has to show a duration before
+    /// anyone commits to running one.
+    #[serde(rename = "sourceMapJson")]
+    pub source_map_json: String,
 }
 
 impl TryFrom<RegisterSourceResponse> for RegisteredSourceView {
@@ -185,11 +190,12 @@ impl TryFrom<RegisterSourceResponse> for RegisteredSourceView {
 
     fn try_from(registered: RegisterSourceResponse) -> Result<Self, Self::Error> {
         Ok(Self {
+            observation_cache_hit: registered.observation_cache_hit,
+            source_map_json: registered.source_map_json,
             source: registered
                 .source
                 .ok_or("the daemon registered no source")?
                 .into(),
-            observation_cache_hit: registered.observation_cache_hit,
         })
     }
 }

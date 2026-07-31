@@ -206,6 +206,11 @@ gate-shell:
     cargo build -p clipmilld
     cargo test -p clipmill-shell -- --ignored --nocapture
 
+# W22 coverage: the whole data plane the screens sit on, out of process —
+# import, probe, transitions, documents, ranged media, and the refusals.
+gate-shell-pipeline iterations="1":
+    ./tools/drills/shell-drill.sh {{iterations}}
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock

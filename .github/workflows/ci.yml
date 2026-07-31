@@ -441,10 +441,7 @@ jobs:
           key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
       - name: Fetch and verify pinned FFmpeg sidecars
         run: ./tools/fetch-ffmpeg.sh
-      - name: Build the daemon the shell talks to
-        run: cargo build -p clipmilld
-      - name: Shell reads real measured hardware, then survives losing the daemon
-        run: cargo test -p clipmill-shell -- --ignored --nocapture
+      - run: ./tools/drills/shell-drill.sh 1
 
   worker-recovery:
     name: worker-recovery (${{ matrix.os }})

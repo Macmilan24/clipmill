@@ -17,7 +17,7 @@ use tauri::{Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 pub use daemon::{ConnectionState, DaemonClient, DaemonLinkError, DaemonSupervisor};
-pub use media::SCHEME as MEDIA_SCHEME;
+pub use media::{MediaProtocol, SCHEME as MEDIA_SCHEME};
 pub use views::{DocumentView, JobView, ProjectView, SourceView, TaskView};
 
 /// Event name the renderer subscribes to for connection transitions.
@@ -195,7 +195,9 @@ async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, Str
         .pick_file(move |path| {
             let _sent = reply.send(path);
         });
-    let path = chosen.await.map_err(|_| "the file dialog closed".to_owned())?;
+    let path = chosen
+        .await
+        .map_err(|_| "the file dialog closed".to_owned())?;
     // A path the shell cannot express as text is one the daemon could not be
     // told about either, so it is refused here rather than half-way through a
     // registration.

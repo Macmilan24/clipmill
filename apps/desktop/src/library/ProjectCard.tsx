@@ -85,36 +85,34 @@ export function ProjectCard({
       // the glass scale moves the resting and hovered states together.
       className="glass block rounded-[var(--cm-radius-card)] p-3 text-left transition-[transform,background-color,box-shadow] hover:-translate-y-0.5 hover:bg-[var(--cm-glass-elevated)] hover:shadow-[0_18px_48px_rgba(0,0,0,0.28)] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
-        <div className="relative">
-          <Thumbnail src={entry.thumbnail} duration={formatDuration(entry.sourceMap)} />
-          <StatusBadge tone={status.tone} className="glass absolute top-2 right-2">
-            {status.label}
-          </StatusBadge>
+      <div className="relative">
+        <Thumbnail src={entry.thumbnail} duration={formatDuration(entry.sourceMap)} />
+        <StatusBadge tone={status.tone} className="glass absolute top-2 right-2">
+          {status.label}
+        </StatusBadge>
+      </div>
+
+      <div className="px-1 pt-3">
+        <h2 className="truncate text-card-title font-(--cm-weight-heading)">
+          {entry.project.name}
+        </h2>
+        <p
+          className={cn(
+            'mono mt-1 truncate text-meta',
+            activity === null ? 'text-[var(--cm-text-secondary)]' : 'text-[var(--color-primary)]',
+          )}
+        >
+          {activity ?? `${spec} · ${size}`}
+        </p>
+
+        <div className="mt-3 flex items-center justify-between border-t border-[var(--cm-glass-border)] pt-2.5">
+          <span className="mono text-technical text-[var(--cm-text-muted)]">
+            Created {formatRelative(entry.project.createdUnixMillis)}
+          </span>
+          {activity === null ? null : (
+            <span className="mono text-technical text-[var(--cm-text-muted)]">{spec}</span>
+          )}
         </div>
-
-        <div className="px-1 pt-3">
-          <h2 className="truncate text-card-title font-(--cm-weight-heading)">
-            {entry.project.name}
-          </h2>
-          <p
-            className={cn(
-              'mono mt-1 truncate text-meta',
-              activity === null
-                ? 'text-[var(--cm-text-secondary)]'
-                : 'text-[var(--color-primary)]',
-            )}
-          >
-            {activity ?? `${spec} · ${size}`}
-          </p>
-
-          <div className="mt-3 flex items-center justify-between border-t border-[var(--cm-glass-border)] pt-2.5">
-            <span className="mono text-technical text-[var(--cm-text-muted)]">
-              Created {formatRelative(entry.project.createdUnixMillis)}
-            </span>
-            {activity === null ? null : (
-              <span className="mono text-technical text-[var(--cm-text-muted)]">{spec}</span>
-            )}
-          </div>
       </div>
     </button>
   );

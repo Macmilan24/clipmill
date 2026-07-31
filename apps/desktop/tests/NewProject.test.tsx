@@ -152,9 +152,7 @@ describe('the New Project screen', () => {
     const shortest = await screen.findByLabelText('Shortest');
     fireEvent.change(shortest, { target: { value: '200' } });
     await waitFor(() => {
-      expect(
-        screen.getByText('The shortest clip must be shorter than the longest'),
-      ).toBeTruthy();
+      expect(screen.getByText('The shortest clip must be shorter than the longest')).toBeTruthy();
     });
   });
 

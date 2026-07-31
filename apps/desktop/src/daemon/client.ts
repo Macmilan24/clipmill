@@ -278,6 +278,15 @@ export async function fetchJob(jobId: string): Promise<Job> {
 export interface RegisteredSource {
   readonly source: Source;
   readonly observationCacheHit: boolean;
+  /**
+   * The probe, inline.
+   *
+   * Registering is what probes a file; the artifact carrying the result is not
+   * published until the analysis runs. So there is nothing to read by address
+   * between choosing a file and starting a run, and this is how a screen shows
+   * a duration before asking anyone to commit to one.
+   */
+  readonly sourceMapJson: string;
 }
 
 /**
@@ -339,10 +348,7 @@ export async function submitAnalyze(projectId: string, request: AnalyzeRequest):
   return invoke<Job>('submit_analyze', { projectId, request });
 }
 
-export async function resolveMedia(
-  projectId: string,
-  artifactId: string,
-): Promise<MediaArtifact> {
+export async function resolveMedia(projectId: string, artifactId: string): Promise<MediaArtifact> {
   if (!isTauri()) {
     throw new Error(NOT_IN_SHELL.reason);
   }

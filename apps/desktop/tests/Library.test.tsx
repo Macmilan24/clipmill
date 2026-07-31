@@ -180,7 +180,9 @@ describe('the Library screen', () => {
 
   it('reports measured storage and free space, both from the daemon', async () => {
     show();
-    expect(await screen.findByText('Artifacts 18.7 GB · Models 22.9 GB · State 41 MB')).toBeTruthy();
+    expect(
+      await screen.findByText('Artifacts 18.7 GB · Models 22.9 GB · State 41 MB'),
+    ).toBeTruthy();
     expect(screen.getByText('312 GB free')).toBeTruthy();
   });
 

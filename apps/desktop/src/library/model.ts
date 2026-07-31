@@ -120,7 +120,10 @@ export function publishedArtifact(job: Job | null, outputKind: string): string |
 }
 
 /** How far a job has got, as completed stages over the stages it declared. */
-export function completedStages(job: Job | null): { readonly done: number; readonly total: number } {
+export function completedStages(job: Job | null): {
+  readonly done: number;
+  readonly total: number;
+} {
   if (job === null) {
     return { done: 0, total: 0 };
   }
@@ -295,7 +298,9 @@ export function sortProjects(
       sorted.sort((left, right) => lastActivity(right) - lastActivity(left));
       break;
     default:
-      sorted.sort((left, right) => right.project.createdUnixMillis - left.project.createdUnixMillis);
+      sorted.sort(
+        (left, right) => right.project.createdUnixMillis - left.project.createdUnixMillis,
+      );
   }
   return sorted;
 }

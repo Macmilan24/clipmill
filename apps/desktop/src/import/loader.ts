@@ -10,13 +10,35 @@
  * therefore created the moment a file is chosen, and reused if the choice
  * changes, so abandoning the screen leaves at most one empty project rather than
  * one per attempt. The Library lists it honestly as not analyzed.
+ *
+ * The probe arrives inline with the registration rather than being read by
+ * address, because the artifact that carries it is published by the analysis
+ * DAG's first task — which has not run yet, and cannot be made to run just so a
+ * screen can print a duration.
  */
 import type { SourceMap } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { Job, Source } from '../daemon/client.js';
-import { LibraryLoader } from '../library/loader.js';
 import { type ImportSettings, languageSubtag, projectNameFor, secondsToTicks } from './model.js';
+
+/**
+ * The probe as the daemon canonicalized it.
+ *
+ * A document that will not parse becomes an absent one rather than an exception:
+ * the file is still importable, and the screen already knows how to show a
+ * duration it does not have.
+ */
+function parseProbe(json: string): SourceMap | null {
+  if (json === '') {
+    return null;
+  }
+  try {
+    return JSON.parse(json) as SourceMap;
+  } catch {
+    return null;
+  }
+}
 
 export interface ChosenSource {
   readonly projectId: string;
@@ -28,11 +50,7 @@ export interface ChosenSource {
 }
 
 export class ImportLoader {
-  private readonly library: LibraryLoader;
-
-  constructor(private readonly api: ShellApi = daemonApi) {
-    this.library = new LibraryLoader(api);
-  }
+  constructor(private readonly api: ShellApi = daemonApi) {}
 
   /** The native dialog. `null` when it was closed without choosing. */
   choose(): Promise<string | null> {
@@ -49,11 +67,10 @@ export class ImportLoader {
     const projectId =
       existingProjectId ?? (await this.api.createProject(projectNameFor(absolutePath)));
     const registered = await this.api.registerSource(projectId, absolutePath);
-    const sourceMap = await this.library.readSourceMap(projectId, registered.source);
     return {
       projectId,
       source: registered.source,
-      sourceMap,
+      sourceMap: parseProbe(registered.sourceMapJson),
       cached: registered.observationCacheHit,
     };
   }

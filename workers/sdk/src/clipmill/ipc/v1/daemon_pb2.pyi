@@ -653,12 +653,14 @@ class RegisterSourceRequest(_message.Message):
     def __init__(self, project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ...) -> None: ...
 
 class RegisterSourceResponse(_message.Message):
-    __slots__ = ("source", "observation_cache_hit")
+    __slots__ = ("source", "observation_cache_hit", "source_map_json")
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     OBSERVATION_CACHE_HIT_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_MAP_JSON_FIELD_NUMBER: _ClassVar[int]
     source: Source
     observation_cache_hit: bool
-    def __init__(self, source: _Optional[_Union[Source, _Mapping]] = ..., observation_cache_hit: _Optional[bool] = ...) -> None: ...
+    source_map_json: str
+    def __init__(self, source: _Optional[_Union[Source, _Mapping]] = ..., observation_cache_hit: _Optional[bool] = ..., source_map_json: _Optional[str] = ...) -> None: ...
 
 class GetSourceRequest(_message.Message):
     __slots__ = ("source_id",)

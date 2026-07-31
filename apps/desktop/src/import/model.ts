@@ -44,7 +44,13 @@ export const PRESETS: readonly Preset[] = [
     minSeconds: 60,
     maxSeconds: 180,
   },
-  { id: 'custom', label: 'Custom', detail: 'Set the bounds yourself', minSeconds: 15, maxSeconds: 90 },
+  {
+    id: 'custom',
+    label: 'Custom',
+    detail: 'Set the bounds yourself',
+    minSeconds: 15,
+    maxSeconds: 90,
+  },
 ];
 
 export const CUSTOM_PRESET_ID = 'custom';

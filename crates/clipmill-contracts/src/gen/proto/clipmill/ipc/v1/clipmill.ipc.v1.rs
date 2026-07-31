@@ -729,6 +729,16 @@ pub struct RegisterSourceResponse {
     /// True when an unchanged observation avoided another FFprobe invocation.
     #[prost(bool, tag = "2")]
     pub observation_cache_hit: bool,
+    /// The probe, inline (clipmill.source_map.v1 JSON).
+    ///
+    /// Registering is what probes a file, and the artifact that carries the result
+    /// is published later by the analysis DAG's first task. So between choosing a
+    /// file and starting a run there is nothing to read by address, and a shell
+    /// that wanted to show a duration before asking anyone to commit had no way to
+    /// learn one. The daemon already holds this; sending it is cheaper than making
+    /// the shell start a job to find out how long the video is.
+    #[prost(string, tag = "3")]
+    pub source_map_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetSourceRequest {

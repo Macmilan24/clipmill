@@ -1,4 +1,14 @@
 use clipmill_contracts::proto::ipc::v1::{RegisterSourceResponse, Response, Source, response};
+
+/// The probe as text, or nothing if it is somehow not UTF-8.
+///
+/// Canonical JSON always is, so the empty case is a corrupt row rather than an
+/// encoding this store should be lenient about — and an empty string reads as
+/// "no probe" on the other side, which is the honest reading of a row nobody can
+/// parse.
+fn probe_json(source: &SourceRecord) -> String {
+    String::from_utf8(source.source_map_json.clone()).unwrap_or_default()
+}
 use clipmill_core::{ProjectId, SourceId};
 use prost::Message;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
@@ -177,6 +187,7 @@ pub(super) fn register_source(
         let response = Response {
             request_id: request_id.to_owned(),
             body: Some(response::Body::RegisterSource(RegisterSourceResponse {
+                source_map_json: probe_json(&existing),
                 source: Some(existing.into()),
                 observation_cache_hit: true,
             })),
@@ -224,6 +235,7 @@ pub(super) fn register_source(
     let response = Response {
         request_id: request_id.to_owned(),
         body: Some(response::Body::RegisterSource(RegisterSourceResponse {
+            source_map_json: probe_json(&source),
             source: Some(source.into()),
             observation_cache_hit: false,
         })),
@@ -255,6 +267,7 @@ pub(super) fn remember_observation_hit(
     let response = Response {
         request_id: request_id.to_owned(),
         body: Some(response::Body::RegisterSource(RegisterSourceResponse {
+            source_map_json: probe_json(source),
             source: Some(source.clone().into()),
             observation_cache_hit: true,
         })),
