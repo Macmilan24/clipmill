@@ -16,7 +16,9 @@
 //! generated schema type, so the JSON Schema stays the only contract between
 //! the two ends.
 
-use clipmill_contracts::proto::ipc::v1::{GetStorageStatsResponse, Job, Project, Source, Task};
+use clipmill_contracts::proto::ipc::v1::{
+    GetStorageStatsResponse, Job, Project, ResolveMediaResponse, Source, Task,
+};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -163,6 +165,49 @@ impl From<Job> for JobView {
             output_artifact_ids: job.output_artifact_ids,
             failure_class: job.failure_class,
             failure_detail: job.failure_detail,
+        }
+    }
+}
+
+/// Permission to stream a media artifact, and what it holds.
+///
+/// The inventory is the point. A filmstrip names its tiles, a render names its
+/// outputs, and a screen cannot build a URL for a file it does not know the name
+/// of — guessing at `strip_00001.jpg` would be a renderer reimplementing a
+/// producer's naming convention. No bytes and no paths cross here: the URL a
+/// screen builds from this goes to the media protocol, which opens the object
+/// itself.
+#[derive(Debug, Serialize)]
+pub struct MediaArtifactView {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: String,
+    pub kind: String,
+    pub files: Vec<MediaFileView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MediaFileView {
+    /// Name inside the artifact, e.g. `proxy.mp4`. Not a filesystem path.
+    pub path: String,
+    pub bytes: u64,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+}
+
+impl From<ResolveMediaResponse> for MediaArtifactView {
+    fn from(resolved: ResolveMediaResponse) -> Self {
+        Self {
+            artifact_id: resolved.artifact_id,
+            kind: resolved.kind,
+            files: resolved
+                .files
+                .into_iter()
+                .map(|file| MediaFileView {
+                    path: file.path,
+                    bytes: file.bytes,
+                    media_type: file.media_type,
+                })
+                .collect(),
         }
     }
 }

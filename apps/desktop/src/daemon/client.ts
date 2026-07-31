@@ -112,6 +112,28 @@ export interface TaskEvent {
 }
 
 /**
+ * What a media artifact holds.
+ *
+ * A screen needs the names before it can build a URL: a filmstrip's tiles are
+ * named by whatever produced them, and guessing at the pattern would be the
+ * renderer reimplementing a producer's convention. Nothing is fetched here — the
+ * bytes arrive over `clipmill-media://`, and the daemon has already decided
+ * whether this project may see them.
+ */
+export interface MediaArtifact {
+  readonly artifactId: string;
+  readonly kind: string;
+  readonly files: readonly MediaFile[];
+}
+
+export interface MediaFile {
+  /** Name inside the artifact, e.g. `proxy.mp4`. Never a filesystem path. */
+  readonly path: string;
+  readonly bytes: number;
+  readonly mediaType: string;
+}
+
+/**
  * What this installation is using on disk.
  *
  * Three categories rather than one total, because the three are different
@@ -250,6 +272,17 @@ export async function fetchJob(jobId: string): Promise<Job> {
   }
   const { invoke } = await core();
   return invoke<Job>('get_job', { jobId });
+}
+
+export async function resolveMedia(
+  projectId: string,
+  artifactId: string,
+): Promise<MediaArtifact> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<MediaArtifact>('resolve_media', { projectId, artifactId });
 }
 
 export async function fetchStorageStats(): Promise<StorageStats> {

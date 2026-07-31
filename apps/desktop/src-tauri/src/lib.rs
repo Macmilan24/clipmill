@@ -175,6 +175,22 @@ async fn get_job(
         .map_err(|error| error.to_string())
 }
 
+/// What a media artifact holds, so a screen can name a file when it asks the
+/// media protocol for one. The bytes arrive over that protocol, never here.
+#[tauri::command]
+async fn resolve_media(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    artifact_id: String,
+) -> Result<views::MediaArtifactView, String> {
+    supervisor
+        .client()
+        .resolve_media(&project_id, &artifact_id)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// How much disk this installation is using, by category.
 #[tauri::command]
 async fn storage_stats(
@@ -246,6 +262,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_jobs,
             get_job,
             read_document,
+            resolve_media,
             storage_stats
         ])
         .setup(move |app| {
