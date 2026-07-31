@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.vision.face_track.v1.json",
+  "title": "VisionFaceTrack",
+  "description": "Where faces were, and which of them are the same face over time. This is the only evidence the reframe solver has about who deserves the frame, so it records what was detected rather than who matters: a track carries its own scores and its own span, and the decision about which track the camera follows is made later, by something that can be argued with. Positions are normalized against the display frame so the same observation drives a crop at any resolution, which is the same reason camera speed is expressed in frame-widths per second.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "frames_artifact_id",
+    "producer",
+    "detection",
+    "coverage",
+    "tracks"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "clipmill.vision.face_track.v1" },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "frames_artifact_id": {
+      "description": "The sampled frames this pass read, verified before use. Faces are detected on the frames every visual surface shares rather than on a decode of this stage's own, so two stages that disagree about what was on screen is a bug rather than a sampling difference.",
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "detection": {
+      "description": "The decision parameters, recorded so a later pass knows what to change rather than guessing. They are part of the artifact key: a different threshold is a different observation, not a correction of this one.",
+      "type": "object",
+      "required": [
+        "score_threshold",
+        "nms_iou",
+        "input_width",
+        "input_height",
+        "match_iou",
+        "recover_iou",
+        "max_gap_frames",
+        "min_track_frames",
+        "frame_rate"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "score_threshold": {
+          "description": "Detections below this are dropped before association. Lower finds more faces and more of them are not faces.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "nms_iou": {
+          "description": "Overlap at which two detections of the same frame are treated as one face.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "input_width": {
+          "description": "Width every frame was resized to for the detector. Pinned because the model's anchors are defined against it, and because a different resize produces different boxes for the same pixels.",
+          "type": "integer",
+          "minimum": 32
+        },
+        "input_height": { "type": "integer", "minimum": 32 },
+        "match_iou": {
+          "description": "Overlap at which a detection continues an existing track. The first of two passes: confident detections claim their track before anything else is allowed to.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "recover_iou": {
+          "description": "The second pass, over detections too weak to start a track of their own. A face that dips below the threshold for a few frames — turned away, half-lit — keeps its identity instead of ending and starting again under a new id, which is what would make the camera cut to itself.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "max_gap_frames": {
+          "description": "How many consecutive frames a track may go unmatched before it is closed. Longer bridges a turn of the head; too long welds two people into one track.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "min_track_frames": {
+          "description": "Tracks shorter than this are discarded rather than published. A face that appeared for two frames is a detector artefact as often as it is a person, and a camera that followed one would be chasing.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "frame_rate": {
+          "description": "Rate the frames were sampled at, as a rational. This is the resolution of every position below: a face cannot be located in time more precisely than the frame that showed it.",
+          "$ref": "#/$defs/timebase"
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "tracks": {
+      "description": "One entry per face followed, in the order they first appeared. Ordered by appearance rather than by any notion of importance, because importance is the next stage's decision and an ordering that implied it here would be that decision made by whoever had least reason to make it.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/track" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timebase": {
+      "type": "object",
+      "required": ["num", "den"],
+      "additionalProperties": false,
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "box": {
+      "description": "One face in one frame, normalized against the display frame: x and y are the top-left corner, w and h the extent, each a share of the frame between zero and one. A box may touch an edge and may not leave it — the detector saw pixels that exist.",
+      "type": "object",
+      "required": ["t_ticks", "x", "y", "w", "h", "score"],
+      "additionalProperties": false,
+      "properties": {
+        "t_ticks": { "type": "integer", "minimum": 0 },
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "w": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "h": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "score": {
+          "description": "The detector's own confidence in this box, kept raw so a re-tuned threshold can be applied without decoding anything again.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "interpolated": {
+          "description": "True when the box was carried across a frame the detector missed rather than measured in it. Present so a solver can weigh a bridged frame differently from a seen one, and so nobody reads a gap-filled track as continuous evidence.",
+          "type": "boolean"
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "required": [
+        "track_id",
+        "first_ticks",
+        "last_ticks",
+        "frames_present",
+        "mean_score",
+        "boxes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "track_id": {
+          "description": "Stable within this artifact and meaningless outside it. Two runs over the same frames assign the same ids because association is deterministic, but an id says nothing about which person it is.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "first_ticks": { "type": "integer", "minimum": 0 },
+        "last_ticks": { "type": "integer", "minimum": 0 },
+        "frames_present": {
+          "description": "Frames in which this face was actually detected, excluding any that were bridged. Published beside the span rather than folded into one confidence, so a stage that gates on continuity can see the two facts apart: a track present in 9 of 10 frames and one present in 3 of 10 can share a span and should not share a decision.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "mean_score": {
+          "description": "Mean detector score over the frames it was seen in. Bridged boxes do not contribute — averaging in a number nobody measured is how a weak track comes to look strong.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "boxes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/box" }
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "model_digest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "coverage": {
+      "description": "What was actually examined. A pass that ran and found nobody, a recording with no video, and frames nobody read are three different facts, and no downstream stage may read an empty track list as 'there was no one on screen'.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" },
+        "frames_examined": {
+          "description": "How many sampled frames the detector actually ran on.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -11,12 +11,12 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, ClipDurationV1, DetectShotsPayloadV1,
-        DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1,
-        IndexStagePayloadV1, IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState,
-        ProbeSourcePayloadV1, RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1,
-        SkippedStageV1, SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1,
-        SpeechStagePayloadV1, TranscribeSourcePayloadV1,
+        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, ClipDurationV1, DetectFacesPayloadV1,
+        DetectShotsPayloadV1, DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1,
+        DiscoverStagePayloadV1, FacesStagePayloadV1, IndexStagePayloadV1, IndexTranscriptPayloadV1,
+        IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
+        RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1, SpeechAlignmentV1,
+        SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -76,6 +76,10 @@ pub(crate) const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 /// same, because `producer.implementation` is what makes two producers' output
 /// distinguishable if a second one ever appears.
 pub(crate) const SHOTS_IMPLEMENTATION: &str = "clipmill-worker-shots@0.1.0+pyscenedetect-content";
+/// The face detector's identity, which reaches the artifact key beside the
+/// model digest the capability binds.
+pub(crate) const FACES_IMPLEMENTATION: &str = "clipmill-worker-faces@0.1.0+yunet-2023mar";
+pub(crate) const FACES_STAGE_KEY_VERSION: &str = "clipmill.faces-stage.v1";
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) const LEASE_TTL: Duration = Duration::from_secs(15);
@@ -442,6 +446,46 @@ fn shots_task(task_id: String, payload: &ShotsStagePayloadV1) -> TaskSpec {
             preemption_cost: 2,
         },
         implementation: SHOTS_IMPLEMENTATION.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
+/// One face-detection task, over the frames ingest already sampled.
+///
+/// The frames arrive as a declared input rather than through a dependency: they
+/// were published by an earlier ingest, so nothing in this plan produces them,
+/// and an address is safe to hash into a key in a way a path is not.
+fn faces_task(task_id: String, payload: &FacesStagePayloadV1) -> TaskSpec {
+    TaskSpec {
+        task_id,
+        ordinal: 0,
+        kind: "detect-faces".to_owned(),
+        input_kinds: Vec::new(),
+        output_kind: "vision.face_track.v1".to_owned(),
+        payload: payload.encode_to_vec(),
+        dependencies: Vec::new(),
+        input_artifact_ids: Vec::new(),
+        resources: ResourceDeclaration {
+            // One decoder process beside the session, for the same reason shot
+            // detection declares two.
+            cpu_threads: 2,
+            // The weights are 230 kB; the allowance is the runtime's arena and
+            // one bounded batch of raw frames.
+            ram_bytes: 768 * 1024 * 1024,
+            // Nothing to accelerate: the pinned model is an ONNX CPU graph, and
+            // admitting it against a GPU class would mean waiting for hardware
+            // it would not use.
+            accelerator_class: String::new(),
+            vram_bytes: 0,
+            disk_bytes: 256 * 1024 * 1024,
+            network_policy: "local-lock".to_owned(),
+            thermal_class: "sustained".to_owned(),
+            determinism_class: "deterministic".to_owned(),
+            checkpoint_support: false,
+            preemption_cost: 2,
+        },
+        implementation: FACES_IMPLEMENTATION.to_owned(),
         max_attempts: 3,
         is_final: false,
     }
@@ -919,6 +963,42 @@ impl JobPlan {
             job_id: JobId::new().to_string(),
             project_id: project_id.to_string(),
             kind: "detect-shots".to_owned(),
+            source_id: Some(source_id),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks: vec![task],
+        }
+    }
+
+    /// Face detection over the frames ingest already sampled (book ch. 18).
+    ///
+    /// One task, like shot detection and for the same reasons: the stage reads
+    /// one artifact and publishes one document. What is different is that it
+    /// carries a model, so the capability binds pinned weights onto the lease
+    /// and the digest reaches the key — a re-pinned detector invalidates face
+    /// tracks and nothing else.
+    pub(crate) fn detect_faces(
+        project_id: &ProjectId,
+        source_id: String,
+        frames: FacesFrames<'_>,
+        request: &DetectFacesPayloadV1,
+        now: u64,
+    ) -> Self {
+        let mut task = faces_task(
+            TaskId::new().to_string(),
+            &FacesStagePayloadV1 {
+                key_version: FACES_STAGE_KEY_VERSION.to_owned(),
+                stage: "detect-faces".to_owned(),
+                source_fingerprint: frames.source_fingerprint.to_owned(),
+                detection: request.detection,
+            },
+        );
+        task.input_artifact_ids = vec![frames.artifact_id.to_owned()];
+        task.is_final = true;
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "detect-faces".to_owned(),
             source_id: Some(source_id),
             payload: request.encode_to_vec(),
             created_unix_millis: now,
@@ -1472,6 +1552,13 @@ pub(crate) struct SpeechAudio<'a> {
 /// The proxy shot detection reads, and the source behind it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShotsProxy<'a> {
+    pub artifact_id: &'a str,
+    pub source_fingerprint: &'a str,
+}
+
+/// The sampled frames a face pass reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FacesFrames<'a> {
     pub artifact_id: &'a str,
     pub source_fingerprint: &'a str,
 }

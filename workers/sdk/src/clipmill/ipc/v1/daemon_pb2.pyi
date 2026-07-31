@@ -63,7 +63,7 @@ JOB_STATE_CANCEL_REQUESTED: JobState
 JOB_STATE_CANCELLED: JobState
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -87,6 +87,7 @@ class Request(_message.Message):
     READ_ARTIFACT_FIELD_NUMBER: _ClassVar[int]
     RESOLVE_MEDIA_FIELD_NUMBER: _ClassVar[int]
     GET_STORAGE_STATS_FIELD_NUMBER: _ClassVar[int]
+    SOLVE_CROP_PATH_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -110,10 +111,11 @@ class Request(_message.Message):
     read_artifact: ReadArtifactRequest
     resolve_media: ResolveMediaRequest
     get_storage_stats: GetStorageStatsRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ...) -> None: ...
+    solve_crop_path: SolveCropPathRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -139,6 +141,7 @@ class Response(_message.Message):
     READ_ARTIFACT_FIELD_NUMBER: _ClassVar[int]
     RESOLVE_MEDIA_FIELD_NUMBER: _ClassVar[int]
     GET_STORAGE_STATS_FIELD_NUMBER: _ClassVar[int]
+    SOLVE_CROP_PATH_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -164,7 +167,8 @@ class Response(_message.Message):
     read_artifact: ReadArtifactResponse
     resolve_media: ResolveMediaResponse
     get_storage_stats: GetStorageStatsResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ...) -> None: ...
+    solve_crop_path: SolveCropPathResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -765,6 +769,104 @@ class StorageCategoryV1(_message.Message):
     bytes: int
     items: int
     def __init__(self, key: _Optional[str] = ..., bytes: _Optional[int] = ..., items: _Optional[int] = ...) -> None: ...
+
+class FaceDetectionV1(_message.Message):
+    __slots__ = ("score_threshold", "nms_iou", "match_iou", "recover_iou", "max_gap_frames", "min_track_frames")
+    SCORE_THRESHOLD_FIELD_NUMBER: _ClassVar[int]
+    NMS_IOU_FIELD_NUMBER: _ClassVar[int]
+    MATCH_IOU_FIELD_NUMBER: _ClassVar[int]
+    RECOVER_IOU_FIELD_NUMBER: _ClassVar[int]
+    MAX_GAP_FRAMES_FIELD_NUMBER: _ClassVar[int]
+    MIN_TRACK_FRAMES_FIELD_NUMBER: _ClassVar[int]
+    score_threshold: float
+    nms_iou: float
+    match_iou: float
+    recover_iou: float
+    max_gap_frames: int
+    min_track_frames: int
+    def __init__(self, score_threshold: _Optional[float] = ..., nms_iou: _Optional[float] = ..., match_iou: _Optional[float] = ..., recover_iou: _Optional[float] = ..., max_gap_frames: _Optional[int] = ..., min_track_frames: _Optional[int] = ...) -> None: ...
+
+class DetectFacesPayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "detection")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    DETECTION_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    detection: FaceDetectionV1
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., detection: _Optional[_Union[FaceDetectionV1, _Mapping]] = ...) -> None: ...
+
+class FacesStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "source_fingerprint", "detection")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    DETECTION_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    source_fingerprint: str
+    detection: FaceDetectionV1
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., detection: _Optional[_Union[FaceDetectionV1, _Mapping]] = ...) -> None: ...
+
+class SolveCropPathRequest(_message.Message):
+    __slots__ = ("project_id", "face_track_artifact_id", "start_ticks", "end_ticks", "aspect_width", "aspect_height", "weights")
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    FACE_TRACK_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    ASPECT_WIDTH_FIELD_NUMBER: _ClassVar[int]
+    ASPECT_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    WEIGHTS_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    face_track_artifact_id: str
+    start_ticks: int
+    end_ticks: int
+    aspect_width: int
+    aspect_height: int
+    weights: CropWeightsV1
+    def __init__(self, project_id: _Optional[str] = ..., face_track_artifact_id: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., aspect_width: _Optional[int] = ..., aspect_height: _Optional[int] = ..., weights: _Optional[_Union[CropWeightsV1, _Mapping]] = ...) -> None: ...
+
+class CropWeightsV1(_message.Message):
+    __slots__ = ("subject", "velocity", "acceleration", "zoom", "max_speed_per_second")
+    SUBJECT_FIELD_NUMBER: _ClassVar[int]
+    VELOCITY_FIELD_NUMBER: _ClassVar[int]
+    ACCELERATION_FIELD_NUMBER: _ClassVar[int]
+    ZOOM_FIELD_NUMBER: _ClassVar[int]
+    MAX_SPEED_PER_SECOND_FIELD_NUMBER: _ClassVar[int]
+    subject: float
+    velocity: float
+    acceleration: float
+    zoom: float
+    max_speed_per_second: float
+    def __init__(self, subject: _Optional[float] = ..., velocity: _Optional[float] = ..., acceleration: _Optional[float] = ..., zoom: _Optional[float] = ..., max_speed_per_second: _Optional[float] = ...) -> None: ...
+
+class SolveCropPathResponse(_message.Message):
+    __slots__ = ("keyframes", "fit", "fit_reason", "track_id", "has_track", "containment")
+    KEYFRAMES_FIELD_NUMBER: _ClassVar[int]
+    FIT_FIELD_NUMBER: _ClassVar[int]
+    FIT_REASON_FIELD_NUMBER: _ClassVar[int]
+    TRACK_ID_FIELD_NUMBER: _ClassVar[int]
+    HAS_TRACK_FIELD_NUMBER: _ClassVar[int]
+    CONTAINMENT_FIELD_NUMBER: _ClassVar[int]
+    keyframes: _containers.RepeatedCompositeFieldContainer[CropKeyframeV1]
+    fit: bool
+    fit_reason: str
+    track_id: int
+    has_track: bool
+    containment: float
+    def __init__(self, keyframes: _Optional[_Iterable[_Union[CropKeyframeV1, _Mapping]]] = ..., fit: _Optional[bool] = ..., fit_reason: _Optional[str] = ..., track_id: _Optional[int] = ..., has_track: _Optional[bool] = ..., containment: _Optional[float] = ...) -> None: ...
+
+class CropKeyframeV1(_message.Message):
+    __slots__ = ("t_ticks", "center_x", "center_y", "scale")
+    T_TICKS_FIELD_NUMBER: _ClassVar[int]
+    CENTER_X_FIELD_NUMBER: _ClassVar[int]
+    CENTER_Y_FIELD_NUMBER: _ClassVar[int]
+    SCALE_FIELD_NUMBER: _ClassVar[int]
+    t_ticks: int
+    center_x: float
+    center_y: float
+    scale: float
+    def __init__(self, t_ticks: _Optional[int] = ..., center_x: _Optional[float] = ..., center_y: _Optional[float] = ..., scale: _Optional[float] = ...) -> None: ...
 
 class GetDeviceProfileRequest(_message.Message):
     __slots__ = ("remeasure",)

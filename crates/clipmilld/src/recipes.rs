@@ -270,6 +270,19 @@ const REGISTRY: &[Recipe] = &[
         capability: None,
         tools: &["ffmpeg"],
     },
+    // The W20 face detector (book ch. 18). Leased, and the first vision stage
+    // with a model: the capability binds the pinned weights onto the lease, so
+    // the model digest reaches the artifact key and a re-pinned detector
+    // invalidates face tracks and nothing else. The decoder is a tool for the
+    // same reason it is one for shot detection — it hands the model its pixels.
+    Recipe {
+        kind: "detect-faces",
+        output_kind: "vision.face_track.v1",
+        semantic_version: "clipmill.vision.face_track.v1",
+        executor: Executor::Worker,
+        capability: Some("detect-faces"),
+        tools: &["ffmpeg"],
+    },
     // The reference worker family. It carries no model, which is precisely
     // why it is the right shape to prove the leased path with.
     Recipe {
@@ -555,7 +568,7 @@ mod tests {
         }
         // Stated as a list rather than a count: a stage acquiring the right to
         // spawn a pinned binary should show up in a diff of this test.
-        assert_eq!(declaring, ["detect-shots"]);
+        assert_eq!(declaring, ["detect-shots", "detect-faces"]);
     }
 
     /// Shot detection is leased but modelless. It is the case that would break

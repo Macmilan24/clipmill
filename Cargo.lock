@@ -504,6 +504,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-reframe"
+version = "0.0.1"
+dependencies = [
+ "clipmill-contracts",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-render"
 version = "0.0.1"
 dependencies = [
@@ -542,6 +551,7 @@ dependencies = [
  "clipmill-discovery",
  "clipmill-edit-ir",
  "clipmill-evidence",
+ "clipmill-reframe",
  "clipmill-render",
  "directories",
  "ed25519-dalek",

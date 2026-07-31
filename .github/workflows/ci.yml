@@ -66,7 +66,7 @@ jobs:
             done
             checked=$((checked + 1))
           done
-          if [ "$checked" -lt 22 ]; then
+          if [ "$checked" -lt 23 ]; then
             echo "::error::fixture loop found only $checked schema directories - the dir/schema naming pairing broke"
             exit 1
           fi
@@ -134,7 +134,7 @@ jobs:
           sudo apt-get install -y libgl1 libglib2.0-0t64
       - name: pytest (all projects)
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces eval/harness; do
             echo "==> $project"
             (cd "$project" && uv sync --quiet && uv run pytest)
           done
@@ -443,6 +443,41 @@ jobs:
         run: ./tools/fetch-ffmpeg.sh
       - run: ./tools/drills/shell-drill.sh 1
 
+  reframe:
+    name: reframe (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
+      - name: Fetch and verify pinned FFmpeg sidecars
+        run: ./tools/fetch-ffmpeg.sh
+      - name: Restore the pinned face weights
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/models
+          key: models-${{ runner.os }}-${{ hashFiles('models/registry/**') }}
+      - name: Fetch and verify the pinned face weights
+        run: ./tools/fetch-models.sh yunet-face
+      - run: uv sync --frozen --project workers/faces
+      - run: ./tools/drills/reframe-drill.sh 1
+
   worker-recovery:
     name: worker-recovery (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -561,7 +596,7 @@ jobs:
           enable-cache: true
       - name: Sync every frozen Python environment
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Audit every Python lockfile
@@ -600,7 +635,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate

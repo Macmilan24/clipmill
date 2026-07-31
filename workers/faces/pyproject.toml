@@ -1,0 +1,35 @@
+[project]
+name = "clipmill-worker-faces"
+version = "0.1.0"
+description = "Face detection and tracking (YuNet on onnxruntime over the sampled frames): who was on screen, and for how long"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+  "clipmill-worker-sdk",
+  "numpy>=2",
+  "onnxruntime>=1.20",
+]
+
+[project.scripts]
+clipmill-worker-faces = "clipmill_worker_faces:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv.sources]
+clipmill-worker-sdk = { path = "../sdk", editable = true }
+
+# No OpenCV. YuNet can be driven through cv2.FaceDetectorYN, which would bring
+# the anchor decoding and the NMS with it — and the desktop `opencv-python`
+# wheel, which resolves libGL at import and drags a display library onto a
+# machine this worker will never draw on. The registry pins this model's runtime
+# as onnxruntime, which is already how the VAD and alignment workers load their
+# weights, so the decoding is written out here instead. It is fifty lines of
+# arithmetic and it is unit-tested against tensors built by hand.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clipmill_worker_faces"]
