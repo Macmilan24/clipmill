@@ -8,6 +8,7 @@
 
 mod daemon;
 mod media;
+mod views;
 
 use std::{sync::Arc, time::Duration};
 
@@ -16,6 +17,7 @@ use tauri::{Emitter, State};
 
 pub use daemon::{ConnectionState, DaemonClient, DaemonLinkError, DaemonSupervisor};
 pub use media::SCHEME as MEDIA_SCHEME;
+pub use views::{DocumentView, JobView, ProjectView, SourceView, TaskView};
 
 /// Event name the renderer subscribes to for connection transitions.
 const STATE_EVENT: &str = "daemon://state";
@@ -106,6 +108,94 @@ async fn device_profile(
     })
 }
 
+/// Every command below is the same shape: ask the daemon, turn the answer into
+/// something the renderer can read, and let a failure be a string the screen can
+/// show. None of them decide anything — the daemon owns every policy, and this
+/// process owns no state a restart could lose.
+#[tauri::command]
+async fn list_projects(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<Vec<views::ProjectView>, String> {
+    supervisor
+        .client()
+        .list_projects()
+        .await
+        .map(|projects| projects.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn create_project(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    name: String,
+) -> Result<String, String> {
+    supervisor
+        .client()
+        .create_project(&name)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn list_sources(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+) -> Result<Vec<views::SourceView>, String> {
+    supervisor
+        .client()
+        .list_sources(&project_id)
+        .await
+        .map(|sources| sources.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn list_jobs(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+) -> Result<Vec<views::JobView>, String> {
+    supervisor
+        .client()
+        .list_jobs(&project_id)
+        .await
+        .map(|jobs| jobs.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn get_job(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    job_id: String,
+) -> Result<views::JobView, String> {
+    supervisor
+        .client()
+        .get_job(&job_id)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// One published document, whole. The daemon decides whether this project may
+/// read it and which file the artifact's kind carries; this reassembles however
+/// many chunks it took.
+#[tauri::command]
+async fn read_document(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    artifact_id: String,
+) -> Result<views::DocumentView, String> {
+    let (kind, json) = supervisor
+        .client()
+        .read_document(&project_id, &artifact_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::DocumentView {
+        artifact_id,
+        kind,
+        json,
+    })
+}
+
 /// Boot the shell. The socket path is resolved through the daemon's own
 /// configuration so the two can never disagree about where to meet.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -136,7 +226,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .invoke_handler(tauri::generate_handler![
             daemon_state,
             reconnect_daemon,
-            device_profile
+            device_profile,
+            list_projects,
+            create_project,
+            list_sources,
+            list_jobs,
+            get_job,
+            read_document
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

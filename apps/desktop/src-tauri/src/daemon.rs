@@ -13,8 +13,9 @@ use std::{
 
 use clipmill_contracts::proto::ipc::v1::{
     CreateProjectRequest, DemoDagPayloadV1, GetDeviceProfileRequest, GetDeviceProfileResponse,
-    HealthRequest, HealthResponse, ReadArtifactRequest, ReadArtifactResponse, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, SubmitJobRequest,
+    GetJobRequest, HealthRequest, HealthResponse, Job, ListJobsRequest, ListProjectsRequest,
+    ListSourcesRequest, Project, ReadArtifactRequest, ReadArtifactResponse, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, Source, SubmitJobRequest,
     SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
@@ -199,6 +200,86 @@ impl DaemonClient {
             response::Body::ReadArtifact(read) => Ok(read),
             _ => Err(DaemonLinkError::Unexpected),
         }
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<Project>, DaemonLinkError> {
+        match self
+            .call(request::Body::ListProjects(ListProjectsRequest {}))
+            .await?
+        {
+            response::Body::ListProjects(listed) => Ok(listed.projects),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn list_sources(&self, project_id: &str) -> Result<Vec<Source>, DaemonLinkError> {
+        let body = request::Body::ListSources(ListSourcesRequest {
+            project_id: project_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::ListSources(listed) => Ok(listed.sources),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn list_jobs(&self, project_id: &str) -> Result<Vec<Job>, DaemonLinkError> {
+        let body = request::Body::ListJobs(ListJobsRequest {
+            project_id: project_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::ListJobs(listed) => Ok(listed.jobs),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn get_job(&self, job_id: &str) -> Result<Job, DaemonLinkError> {
+        let body = request::Body::GetJob(GetJobRequest {
+            job_id: job_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::GetJob(fetched) => fetched.job.ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// A whole document, gathered from however many chunks it takes.
+    ///
+    /// The daemon caps what one reply carries, so anything larger arrives in
+    /// pieces and this reassembles them. It stops when it has the total the
+    /// daemon stated — not when a short read happens to look final — so a
+    /// truncated document is an error rather than a document with the end
+    /// missing, which a parser would report as malformed JSON somewhere
+    /// unhelpful.
+    pub async fn read_document(
+        &self,
+        project_id: &str,
+        artifact_id: &str,
+    ) -> Result<(String, String), DaemonLinkError> {
+        let mut bytes = Vec::new();
+        let mut kind = String::new();
+        loop {
+            let offset = bytes.len() as u64;
+            let chunk = self
+                .read_artifact(project_id, artifact_id, offset, 0)
+                .await?;
+            if kind.is_empty() {
+                kind.clone_from(&chunk.kind);
+            } else if kind != chunk.kind {
+                // The artifact changed underneath a multi-chunk read, which a
+                // content-addressed store should make impossible.
+                return Err(DaemonLinkError::Unexpected);
+            }
+            let total = chunk.total_bytes;
+            if chunk.chunk.is_empty() && (bytes.len() as u64) < total {
+                return Err(DaemonLinkError::Closed);
+            }
+            bytes.extend_from_slice(&chunk.chunk);
+            if bytes.len() as u64 >= total {
+                break;
+            }
+        }
+        let text = String::from_utf8(bytes).map_err(|_| DaemonLinkError::Unexpected)?;
+        Ok((kind, text))
     }
 
     /// Create a project and return its id.

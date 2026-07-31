@@ -13,8 +13,7 @@ import {
   reconnectDaemon,
   subscribeDaemonState,
 } from './daemon/client.js';
-import { ModelsDevice } from './screens/ModelsDevice.js';
-import { PhasePlaceholder } from './screens/PhasePlaceholder.js';
+import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
 import { DEFAULT_SECTION_ID, findSection } from './shell/navigation.js';
@@ -132,21 +131,20 @@ export function App(): JSX.Element {
             profile={profile}
           />
           <main className="min-h-0 flex-1 overflow-y-auto p-6">
-            {section.availability.kind === 'live' ? (
-              <ModelsDevice
-                state={state}
-                profile={profile}
-                artifactId={artifactId}
-                error={error}
-                busy={busy}
-                onRescan={() => {
+            {renderScreen({
+              section,
+              models: {
+                state,
+                profile,
+                artifactId,
+                error,
+                busy,
+                onRescan: () => {
                   void loadProfile(true);
-                }}
-                onReconnect={handleReconnect}
-              />
-            ) : (
-              <PhasePlaceholder section={section} />
-            )}
+                },
+                onReconnect: handleReconnect,
+              },
+            })}
           </main>
         </SidebarInset>
       </SidebarProvider>
