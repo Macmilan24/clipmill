@@ -44,6 +44,28 @@ def _write_jpeg(path: Path, width: int, height: int) -> None:
     )
 
 
+def _write_solid_jpeg(path: Path, colour: str) -> None:
+    if not FFMPEG.is_file():
+        pytest.skip(f"pinned encoder absent at {FFMPEG}; run ./tools/fetch-ffmpeg.sh")
+    subprocess.run(
+        [
+            str(FFMPEG),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c={colour}:size=640x360:rate=1:duration=1",
+            "-frames:v",
+            "1",
+            str(path),
+        ],
+        check=True,
+    )
+
+
 def test_the_header_parse_agrees_with_what_the_encoder_wrote(tmp_path: Path) -> None:
     path = tmp_path / "frame.jpg"
     _write_jpeg(path, 640, 360)
@@ -111,6 +133,25 @@ def test_frames_decode_through_the_pinned_decoder(tmp_path: Path) -> None:
     # The pad is black and sits below the image, which is what "anchored at the
     # top-left" has to mean for the mapping above to be a division.
     assert decoded[0][400:, :, :].max() == 0
+
+
+def test_the_pixels_come_out_blue_first(tmp_path: Path) -> None:
+    """Pinned, because it is invisible when it is wrong.
+
+    YuNet learned faces through OpenCV, whose images are blue-first. Handing it
+    the other order still finds most faces, which is exactly what makes the
+    mistake survive: what it costs is score on the marginal detections, and the
+    marginal ones are what the gate downstream is deciding about.
+    """
+
+    path = tmp_path / "blue.jpg"
+    _write_solid_jpeg(path, "blue")
+
+    frame = decode_frames(FFMPEG, [path], letterbox_for(640, 360, 640))[0]
+    blue, green, red = (int(frame[100, 100, channel]) for channel in range(3))
+
+    assert blue > 200, f"the first channel is not blue: {(blue, green, red)}"
+    assert green < 60 and red < 60
 
 
 def test_no_frames_decode_to_no_pixels() -> None:

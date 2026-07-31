@@ -95,6 +95,15 @@ including that the anchor grid is read row-major — read the other way it
 produces boxes mirrored about the diagonal, which is plausible, wrong, and
 invisible to everything downstream.
 
+Writing it out means owning what a wrapper would have handled, and one of those
+things bit: the frames go to the model **blue first**. These weights were
+trained through OpenCV, whose images are BGR, and handing them the other order
+is not a crash — most faces are still found. What it costs is score on the
+marginal detections, and on a test photograph of two footballers it was the
+difference between two faces and three. The marginal detections are precisely
+what the gate above is deciding about, so that is pinned by a test rather than
+left to a comment.
+
 Association is ByteTrack's two passes. The second one is the whole idea: a face
 that turns away or gets half-lit drops below the score needed to _start_ a track
 but not below what continues one, and downstream a track's length is what

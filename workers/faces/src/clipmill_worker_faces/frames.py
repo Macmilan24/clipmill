@@ -16,6 +16,13 @@ YuNet is trained on faces with faces' proportions, and a 16:9 frame squeezed
 into a square is a room full of tall thin people. The padding is anchored at the
 top-left rather than centred so that mapping a box back is a division and not a
 division plus an offset that has to agree with a filter's rounding.
+
+The pixels come out **blue first**, which is not a preference. YuNet was trained
+through OpenCV, whose images are BGR, so that is the channel order the weights
+learned faces in. Handing it the other order is not a crash and not obviously
+wrong — most faces are still found — but it costs score on the marginal ones,
+and the marginal ones are exactly what the focus gate downstream is deciding
+about.
 """
 
 from __future__ import annotations
@@ -33,6 +40,9 @@ FRAMES_DESCRIPTOR = "index.json"
 #: reasonable one; writing it down means a future default cannot silently change
 #: what this stage observed.
 SCALER = "bicubic"
+#: Blue first, because that is the order YuNet was trained in. See the module
+#: docstring: this is a property of the weights, not a taste in formats.
+PIXEL_FORMAT = "bgr24"
 DECODE_TIMEOUT_SECONDS = 120.0
 
 
@@ -160,7 +170,7 @@ def decode_frames(
     paths: list[Path],
     box: Letterbox,
 ) -> list[np.ndarray]:
-    """Every frame, letterboxed to the model's input, in one decoder process.
+    """Every frame, letterboxed and blue-first, in one decoder process.
 
     One process rather than one per frame: a ten-minute recording is two and a
     half thousand JPEGs, and two and a half thousand process spawns is most of
@@ -187,7 +197,7 @@ def decode_frames(
         "-vf",
         filters,
         "-pix_fmt",
-        "rgb24",
+        PIXEL_FORMAT,
         "-f",
         "rawvideo",
         "-",

@@ -148,10 +148,15 @@ class YuNet:
         self._outputs = [output.name for output in self.session.get_outputs()]
 
     def detect(self, frame: np.ndarray, score_threshold: float, nms_iou: float) -> list[Detection]:
-        """Faces in one letterboxed RGB frame, suppressed and above a score."""
+        """Faces in one letterboxed BGR frame, suppressed and above a score.
+
+        Blue first, because these weights were trained through OpenCV and that
+        is the order they learned faces in. `frames.decode_frames` asks the
+        decoder for exactly this, and the reason is written down there.
+        """
 
         if frame.shape != (INPUT_SIZE, INPUT_SIZE, 3):
-            raise ValueError(f"expected a {INPUT_SIZE}x{INPUT_SIZE} RGB frame, got {frame.shape}")
+            raise ValueError(f"expected a {INPUT_SIZE}x{INPUT_SIZE} BGR frame, got {frame.shape}")
         # NCHW float, which is what the graph declares. No mean subtraction and
         # no scaling: YuNet is trained on raw 0-255 values.
         tensor = np.transpose(frame, (2, 0, 1))[np.newaxis, ...].astype(np.float32)
