@@ -4,7 +4,6 @@ import { Fragment, type JSX } from 'react';
 import type { DeviceProfile } from '@clipmill/contracts';
 import type { Theme } from '@clipmill/tokens';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -44,6 +43,11 @@ function statusLabel(state: ConnectionState): { text: string; tone: string } {
  * The design's top-right cluster shows live GPU load and temperature. Phase 0
  * measures memory but samples nothing continuously, so this renders the memory
  * it genuinely knows and leaves the rest out rather than animating a fiction.
+ *
+ * The design's account avatar is gone for the same reason. There are no
+ * accounts — ClipMill runs on one machine for one person — so an initial in a
+ * circle was a badge for something that does not exist, and a letter nobody
+ * chose is worse than the space it occupied.
  */
 export function TopBar({ trail, theme, onToggleTheme, state, profile }: TopBarProps): JSX.Element {
   const status = statusLabel(state);
@@ -100,12 +104,6 @@ export function TopBar({ trail, theme, onToggleTheme, state, profile }: TopBarPr
           </TooltipTrigger>
           <TooltipContent>Switch to {nextTheme} theme</TooltipContent>
         </Tooltip>
-
-        <Avatar className="size-7 border border-[var(--cm-glass-border)]">
-          <AvatarFallback className="glass-elevated text-meta font-(--cm-weight-heading)">
-            S
-          </AvatarFallback>
-        </Avatar>
       </div>
     </header>
   );

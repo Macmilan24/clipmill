@@ -53,6 +53,16 @@ export interface LibraryProps {
 
 type View = 'grid' | 'list';
 
+/**
+ * Three columns at the design's width, and fewer rather than narrower below it.
+ *
+ * The window's minimum is 1180px, which leaves about 900px of content — three
+ * cards there would be 289px each and the thumbnail would stop reading as a
+ * frame. `auto-fill` against a floor keeps the card legible and drops a column
+ * instead, which is the trade the design would make if it had been drawn twice.
+ */
+const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4';
+
 function ViewToggle({
   view,
   onChange,
@@ -96,7 +106,7 @@ function ViewToggle({
 /** The grid the design specifies, and a cheap stand-in while it is loading. */
 function LoadingGrid(): JSX.Element {
   return (
-    <div className="grid grid-cols-3 gap-4" aria-busy="true" aria-label="Loading projects">
+    <div className={CARD_GRID} aria-busy="true" aria-label="Loading projects">
       {[0, 1, 2].map((index) => (
         <Skeleton key={index} className="h-[276px] rounded-2xl" />
       ))}
@@ -306,7 +316,7 @@ export function Library({
           </EmptyHeader>
         </Empty>
       ) : view === 'grid' ? (
-        <div className="grid grid-cols-3 gap-4">
+        <div className={CARD_GRID}>
           {shown.map((entry) => (
             <ProjectCard key={entry.project.projectId} entry={entry} onOpen={open} />
           ))}
