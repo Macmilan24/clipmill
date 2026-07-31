@@ -138,3 +138,49 @@ export function shortDigest(digest: string | undefined): string {
   const bare = digest.startsWith('sha256:') ? digest.slice('sha256:'.length) : digest;
   return bare.length <= 16 ? bare : `${bare.slice(0, 12)}…${bare.slice(-4)}`;
 }
+
+/**
+ * Memory in use, as a figure and as a ratio.
+ *
+ * Used rather than available, because "22 of 24 GB in use" is the sentence a
+ * person acts on. A profile that measured no availability yields no ratio at
+ * all — a meter drawn from a missing number would be a meter drawn from zero.
+ */
+export function memoryUse(profile: DeviceProfile): {
+  readonly label: string;
+  readonly ratio: number | undefined;
+} {
+  const total = profile.memory.total_bytes;
+  const available = profile.phase0?.available_memory_bytes;
+  if (available === undefined || total <= 0) {
+    return { label: formatBytes(total), ratio: undefined };
+  }
+  const used = Math.max(0, total - available);
+  return { label: formatBytes(used), ratio: used / total };
+}
+
+/** One decode benchmark, shaped for a bar. */
+export interface DecodeBar {
+  readonly label: string;
+  readonly fps: number;
+  readonly hardware: boolean;
+}
+
+/**
+ * The decode benchmarks, largest first.
+ *
+ * Sorted because the reader's question is which paths are fast, and a bar chart
+ * whose order carries no meaning makes them do the sorting by eye. The label
+ * carries the codec, the height, and whether the hardware path was used — all
+ * three are what distinguishes one measurement from another.
+ */
+export function decodeBars(profile: DeviceProfile): readonly DecodeBar[] {
+  return (profile.measured.decode ?? [])
+    .filter((bench) => Number.isFinite(bench.fps_measured))
+    .map((bench) => ({
+      label: `${bench.codec} ${bench.height}p${bench.hardware === true ? ' · hw' : ''}`,
+      fps: bench.fps_measured,
+      hardware: bench.hardware === true,
+    }))
+    .toSorted((left, right) => right.fps - left.fps);
+}

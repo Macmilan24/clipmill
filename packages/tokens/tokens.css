@@ -60,6 +60,10 @@
   --cm-text-secondary: #9298A3;
   --cm-text-muted: #69717D;
   --cm-text-disabled: #4E5560;
+  --cm-success-ink: #3FB27F;
+  --cm-warning-ink: #D9A13B;
+  --cm-danger-ink: #E5484D;
+  --cm-outbound-ink: #D9756B;
 
   color-scheme: dark;
 }
@@ -79,6 +83,10 @@
   --cm-text-secondary: #606875;
   --cm-text-muted: #858E9A;
   --cm-text-disabled: #A5ABB4;
+  --cm-success-ink: #2E825D;
+  --cm-warning-ink: #946D28;
+  --cm-danger-ink: #CE4145;
+  --cm-outbound-ink: #AB5C55;
 
   color-scheme: light;
 }
