@@ -132,6 +132,10 @@ export function completedStages(job: Job | null): { readonly done: number; reado
 
 export const EM_DASH = '—';
 
+function pad(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
 /**
  * `11 of 18 candidates`, or `240 frames` when the stage has no total.
  *
@@ -187,8 +191,19 @@ export function describeActivity(status: ProjectStatus): string | null {
   }
 }
 
-function pad(value: number): string {
-  return value.toString().padStart(2, '0');
+/**
+ * Seconds as `1:42:07`, dropping the hours when there are none.
+ *
+ * Shared by every clock this shell writes — a source duration, a run's elapsed
+ * time — so the two can never drift into different shapes.
+ */
+export function formatClock(totalSeconds: number): string {
+  const total = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  return hours > 0
+    ? `${hours}:${pad(minutes)}:${pad(total % 60)}`
+    : `${minutes}:${pad(total % 60)}`;
 }
 
 /** `1:42:07`, or `4:31` for anything under an hour. */
@@ -196,11 +211,7 @@ export function formatTimecode(ticks: number | undefined): string {
   if (ticks === undefined || !Number.isFinite(ticks) || ticks < 0) {
     return EM_DASH;
   }
-  const total = Math.floor(ticks / TICKS_PER_SECOND);
-  const seconds = total % 60;
-  const minutes = Math.floor(total / 60) % 60;
-  const hours = Math.floor(total / 3600);
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+  return formatClock(ticks / TICKS_PER_SECOND);
 }
 
 const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'narrow' });

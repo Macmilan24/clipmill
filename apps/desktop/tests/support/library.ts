@@ -5,7 +5,7 @@
  * into one view of a project, so the interesting failures are in the reading —
  * a job in a state nobody expected, an artifact that will not open, a probe that
  * reports no video. Those are cheap to stage here and expensive to stage against
- * a real daemon, which is the point of `LibraryApi` being an interface.
+ * a real daemon, which is the point of `ShellApi` being an interface.
  */
 import type { SourceMap } from '@clipmill/contracts';
 import { JobState, TaskState } from '@clipmill/contracts';
@@ -20,7 +20,7 @@ import type {
   StorageStats,
   Task,
 } from '../../src/daemon/client.js';
-import type { LibraryApi } from '../../src/library/loader.js';
+import type { ShellApi } from '../../src/daemon/api.js';
 
 export const NOW = Date.UTC(2026, 6, 31, 12, 0, 0);
 
@@ -132,10 +132,18 @@ export function filmstrip(artifactId: string, tiles: number): MediaArtifact {
   };
 }
 
-export function fakeApi(world: FakeWorld): LibraryApi {
+export function fakeApi(world: FakeWorld): ShellApi {
   return {
     listProjects: () => Promise.resolve(world.projects),
     listJobs: (projectId) => Promise.resolve(world.jobs[projectId] ?? []),
+    fetchJob: (jobId) => {
+      const found = Object.values(world.jobs)
+        .flat()
+        .find((candidate) => candidate.jobId === jobId);
+      return found === undefined
+        ? Promise.reject(new Error('no such job'))
+        : Promise.resolve(found);
+    },
     listSources: (projectId) => Promise.resolve(world.sources[projectId] ?? []),
     readDocument: (_projectId, artifactId) => {
       const document = world.documents[artifactId];

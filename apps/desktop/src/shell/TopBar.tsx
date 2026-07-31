@@ -1,5 +1,5 @@
 import { Moon, Sun } from 'lucide-react';
-import type { JSX } from 'react';
+import { Fragment, type JSX } from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
 import type { Theme } from '@clipmill/tokens';
@@ -10,6 +10,7 @@ import {
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
+  BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -20,7 +21,8 @@ import type { ConnectionState } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 
 interface TopBarProps {
-  readonly breadcrumb: string;
+  /** Outermost first. One part for a section, two for a screen inside one. */
+  readonly trail: readonly string[];
   readonly theme: Theme;
   readonly onToggleTheme: () => void;
   readonly state: ConnectionState;
@@ -44,7 +46,7 @@ function statusLabel(state: ConnectionState): { text: string; tone: string } {
  * it genuinely knows and leaves the rest out rather than animating a fiction.
  */
 export function TopBar({
-  breadcrumb,
+  trail,
   theme,
   onToggleTheme,
   state,
@@ -61,11 +63,16 @@ export function TopBar({
     <header className="glass flex h-13 flex-none items-center justify-between rounded-none border-x-0 border-t-0 px-6 shadow-none">
       <Breadcrumb>
         <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbPage className="text-body text-[var(--cm-text-secondary)]">
-              {breadcrumb}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
+          {trail.map((part, index) => (
+            <Fragment key={part}>
+              {index === 0 ? null : <BreadcrumbSeparator />}
+              <BreadcrumbItem>
+                <BreadcrumbPage className="text-body text-[var(--cm-text-secondary)]">
+                  {part}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </Fragment>
+          ))}
         </BreadcrumbList>
       </Breadcrumb>
 

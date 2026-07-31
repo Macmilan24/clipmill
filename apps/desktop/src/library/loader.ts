@@ -4,54 +4,20 @@
  * Four questions per project — its jobs, its sources, the probe document, and
  * the filmstrip's inventory — and no screen should be writing that sequence
  * inline. Putting it here also gives it a shape a test can drive: everything
- * reaches the daemon through `LibraryApi`, so the whole gathering can be
- * exercised without a window, a socket, or a running daemon.
+ * reaches the daemon through `ShellApi`, so the whole gathering can be exercised
+ * without a window, a socket, or a running daemon.
  *
  * Nothing here interprets. It fetches and assembles; what any of it *means* is
  * `model.ts`, which is pure.
  */
 import type { SourceMap } from '@clipmill/contracts';
 
-import {
-  type Document,
-  type Job,
-  type MediaArtifact,
-  type Project,
-  type Source,
-  type StorageStats,
-  fetchStorageStats,
-  listJobs,
-  listProjects,
-  listSources,
-  mediaUrl,
-  readDocument,
-  resolveMedia,
-} from '../daemon/client.js';
+import { type ShellApi, daemonApi } from '../daemon/api.js';
+import type { Job, Project, Source, StorageStats } from '../daemon/client.js';
 import { type LibraryProject, newestAnalysis, publishedArtifact, readStatus } from './model.js';
 
-const FILMSTRIP_KIND = 'media.filmstrip.v1';
-const SOURCE_MAP_KIND = 'evidence.source_map.v1';
-
-/** Every way the Library reaches the daemon, named so a test can stand in. */
-export interface LibraryApi {
-  listProjects(): Promise<readonly Project[]>;
-  listJobs(projectId: string): Promise<readonly Job[]>;
-  listSources(projectId: string): Promise<readonly Source[]>;
-  readDocument(projectId: string, artifactId: string): Promise<Document>;
-  resolveMedia(projectId: string, artifactId: string): Promise<MediaArtifact>;
-  mediaUrl(projectId: string, artifactId: string, file: string): string;
-  fetchStorageStats(): Promise<StorageStats>;
-}
-
-export const daemonApi: LibraryApi = {
-  listProjects,
-  listJobs,
-  listSources,
-  readDocument,
-  resolveMedia,
-  mediaUrl,
-  fetchStorageStats,
-};
+export const FILMSTRIP_KIND = 'media.filmstrip.v1';
+export const SOURCE_MAP_KIND = 'evidence.source_map.v1';
 
 export interface LibrarySnapshot {
   readonly projects: readonly LibraryProject[];
@@ -60,7 +26,7 @@ export interface LibrarySnapshot {
 }
 
 export class LibraryLoader {
-  constructor(private readonly api: LibraryApi = daemonApi) {}
+  constructor(private readonly api: ShellApi = daemonApi) {}
 
   /**
    * Every project, gathered concurrently.
@@ -101,7 +67,7 @@ export class LibraryLoader {
    * and parsing whatever arrived as a source map would turn a daemon-side
    * mix-up into a screen full of wrong numbers instead of an absent one.
    */
-  private async readSourceMap(projectId: string, source: Source | null): Promise<SourceMap | null> {
+  async readSourceMap(projectId: string, source: Source | null): Promise<SourceMap | null> {
     if (source === null || source.sourceMapArtifactId === '') {
       return null;
     }
@@ -120,7 +86,7 @@ export class LibraryLoader {
    * so often black, a slate, or a fade-in — a thumbnail grid of black squares is
    * technically correct and completely useless.
    */
-  private async readThumbnail(projectId: string, job: Job | null): Promise<string | null> {
+  async readThumbnail(projectId: string, job: Job | null): Promise<string | null> {
     const artifactId = publishedArtifact(job, FILMSTRIP_KIND);
     if (artifactId === null) {
       return null;

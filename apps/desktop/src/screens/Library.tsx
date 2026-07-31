@@ -50,6 +50,8 @@ import { useLibrary } from '../library/useLibrary.js';
 export interface LibraryProps {
   readonly state: ConnectionState;
   readonly onNavigate: (sectionId: string) => void;
+  /** Opens one run. Only ever called for a project that has one. */
+  readonly onOpenAnalysis: (projectId: string, jobId: string) => void;
   readonly onReconnect: () => void;
   /** Injected by tests, which drive the whole screen through a fake daemon. */
   readonly loader?: LibraryLoader;
@@ -108,7 +110,13 @@ function LoadingGrid(): JSX.Element {
   );
 }
 
-export function Library({ state, onNavigate, onReconnect, loader }: LibraryProps): JSX.Element {
+export function Library({
+  state,
+  onNavigate,
+  onOpenAnalysis,
+  onReconnect,
+  loader,
+}: LibraryProps): JSX.Element {
   const { loading, projects, storage, error, reload } = useLibrary(state, loader);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -125,10 +133,25 @@ export function Library({ state, onNavigate, onReconnect, loader }: LibraryProps
     [projects, filter, query, sort],
   );
 
-  // A project opens at its results. That screen is not built yet, so this lands
-  // on the section that will hold it and says which phase builds it — which is
-  // the truth, and better than a card that swallows a click.
-  const open = (_entry: LibraryProject): void => {
+  /**
+   * Where a card goes.
+   *
+   * A run that is still working, or one that failed, opens at its own progress
+   * screen — that is where the answer to "what is it doing" and "why did it
+   * stop" lives. A finished one opens at its results, which is the screen Phase
+   * 1 builds; until then that lands on the placeholder naming the phase, which
+   * is the truth rather than a card that swallows the click.
+   */
+  const open = (entry: LibraryProject): void => {
+    const watchable =
+      entry.job !== null &&
+      (entry.status.kind === 'analyzing' ||
+        entry.status.kind === 'queued' ||
+        entry.status.kind === 'failed');
+    if (watchable && entry.job !== null) {
+      onOpenAnalysis(entry.project.projectId, entry.job.jobId);
+      return;
+    }
     onNavigate('results');
   };
 

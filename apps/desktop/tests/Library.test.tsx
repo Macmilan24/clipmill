@@ -78,16 +78,18 @@ function world(): FakeWorld {
 
 function show(overrides: Partial<Parameters<typeof Library>[0]> = {}, scene = world()) {
   const onNavigate = vi.fn();
+  const onOpenAnalysis = vi.fn();
   render(
     <Library
       state={CONNECTED}
       onNavigate={onNavigate}
+      onOpenAnalysis={onOpenAnalysis}
       onReconnect={vi.fn()}
       loader={new LibraryLoader(fakeApi(scene))}
       {...overrides}
     />,
   );
-  return { onNavigate };
+  return { onNavigate, onOpenAnalysis };
 }
 
 describe('the Library screen', () => {
@@ -196,10 +198,18 @@ describe('the Library screen', () => {
     expect(onNavigate).toHaveBeenCalledWith('new-project');
   });
 
-  it('opens a project at its results', async () => {
+  it('opens a finished project at its results', async () => {
     const { onNavigate } = show();
 
     fireEvent.click(await screen.findByText('Episode 41 — pricing mistakes'));
     expect(onNavigate).toHaveBeenCalledWith('results');
+  });
+
+  /** A run still working is a question about the run, not about its output. */
+  it('opens a running project at the run itself', async () => {
+    const { onOpenAnalysis } = show();
+
+    fireEvent.click(await screen.findByText('CUDA kernels, part 3'));
+    expect(onOpenAnalysis).toHaveBeenCalledWith('p2', 'job-p2');
   });
 });
