@@ -249,6 +249,17 @@ const REGISTRY: &[Recipe] = &[
         capability: None,
         tools: &[],
     },
+    // The W21 caption engine (book ch. 19). Builtin and modelless: it reads a
+    // transcript, and the index and shot cuts when they exist, and writes one
+    // document holding both rendering intents.
+    Recipe {
+        kind: "derive-captions",
+        output_kind: "captions.cues.v1",
+        semantic_version: "clipmill.captions.cues.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        tools: &[],
+    },
     Recipe {
         kind: "analysis-manifest",
         output_kind: "analysis.manifest.v1",

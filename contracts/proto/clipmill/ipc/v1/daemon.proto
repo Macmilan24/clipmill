@@ -394,6 +394,33 @@ message RankStagePayloadV1 {
   uint64 diversity_milli = 7;
 }
 
+// Versioned payload for caption derivation (book ch. 19). The request names a
+// source; the daemon resolves it to the transcript it must have, and to the
+// evidence index and the shot cuts if they exist.
+message DeriveCaptionsPayloadV1 {
+  string key_version = 1;
+  string source_id = 2;
+  // The window to caption. Both zero is the transcript's whole coverage, which
+  // is what a caller with no clip in mind wants. A cue may not cross either
+  // edge, for the same reason it may not cross a cut.
+  uint64 span_start_ticks = 3;
+  uint64 span_end_ticks = 4;
+}
+
+// What the caption stage is asked to segment.
+//
+// The documents it reads arrive on the lease, so what travels here is only what
+// the daemon decided: which window, and under whose key. Both numbers reach the
+// artifact key, because captioning a different window is a different answer
+// rather than a slice of this one.
+message CaptionsStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  uint64 span_start_ticks = 3;
+  uint64 span_end_ticks = 4;
+}
+
 // Versioned payload for the whole analysis (book ch. 15/16): probe, ingest,
 // the speech chain, shot detection, the evidence index, discovery, and
 // ranking, planned as one DAG whose single rooted artifact names every stage.

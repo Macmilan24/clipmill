@@ -503,6 +503,41 @@ pub struct RankStagePayloadV1 {
     #[prost(uint64, tag = "7")]
     pub diversity_milli: u64,
 }
+/// Versioned payload for caption derivation (book ch. 19). The request names a
+/// source; the daemon resolves it to the transcript it must have, and to the
+/// evidence index and the shot cuts if they exist.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeriveCaptionsPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// The window to caption. Both zero is the transcript's whole coverage, which
+    /// is what a caller with no clip in mind wants. A cue may not cross either
+    /// edge, for the same reason it may not cross a cut.
+    #[prost(uint64, tag = "3")]
+    pub span_start_ticks: u64,
+    #[prost(uint64, tag = "4")]
+    pub span_end_ticks: u64,
+}
+/// What the caption stage is asked to segment.
+///
+/// The documents it reads arrive on the lease, so what travels here is only what
+/// the daemon decided: which window, and under whose key. Both numbers reach the
+/// artifact key, because captioning a different window is a different answer
+/// rather than a slice of this one.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CaptionsStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub span_start_ticks: u64,
+    #[prost(uint64, tag = "4")]
+    pub span_end_ticks: u64,
+}
 /// Versioned payload for the whole analysis (book ch. 15/16): probe, ingest,
 /// the speech chain, shot detection, the evidence index, discovery, and
 /// ranking, planned as one DAG whose single rooted artifact names every stage.

@@ -11,12 +11,13 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, ClipDurationV1, DetectFacesPayloadV1,
-        DetectShotsPayloadV1, DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1,
-        DiscoverStagePayloadV1, FacesStagePayloadV1, IndexStagePayloadV1, IndexTranscriptPayloadV1,
-        IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
-        RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1, SpeechAlignmentV1,
-        SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
+        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, CaptionsStagePayloadV1,
+        ClipDurationV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
+        DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1,
+        FacesStagePayloadV1, IndexStagePayloadV1, IndexTranscriptPayloadV1, IngestSourcePayloadV1,
+        JobState, ProbeSourcePayloadV1, RankCandidatesPayloadV1, RankStagePayloadV1,
+        ShotsStagePayloadV1, SkippedStageV1, SpeechAlignmentV1, SpeechDetectionV1,
+        SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -33,6 +34,7 @@ use tokio::{
 use crate::{
     analysis,
     artifacts::ArtifactHandle,
+    captions,
     db::{DbHandle, StoreError},
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
     discovery, evidence,
@@ -58,6 +60,7 @@ pub(crate) const DISCOVER_STAGE_KEY_VERSION: &str = "clipmill.discover-stage.v1"
 
 /// Key version the ranking stage payload carries.
 pub(crate) const RANK_STAGE_KEY_VERSION: &str = "clipmill.rank-stage.v1";
+pub(crate) const CAPTIONS_STAGE_KEY_VERSION: &str = "clipmill.captions-stage.v1";
 
 /// Key version the analysis fan-in payload carries.
 pub(crate) const ANALYSIS_STAGE_KEY_VERSION: &str = "clipmill.analysis-stage.v1";
@@ -1131,6 +1134,53 @@ impl JobPlan {
         }
     }
 
+    /// Captions for a window of a source (book ch. 19).
+    ///
+    /// One builtin task. The transcript is required and the other two are not:
+    /// a recording with no evidence index still has words, and a recording with
+    /// no shot detection still has silences to break in. Which of them were
+    /// there reaches the artifact key through the input addresses, so a caption
+    /// set derived with cuts and one derived without cannot collide.
+    pub(crate) fn derive_captions(
+        project_id: &ProjectId,
+        source_id: String,
+        caption_inputs: CaptionsJobInputs<'_>,
+        request: &DeriveCaptionsPayloadV1,
+        now: u64,
+    ) -> Self {
+        let payload = CaptionsStagePayloadV1 {
+            key_version: CAPTIONS_STAGE_KEY_VERSION.to_owned(),
+            stage: captions::KIND_CAPTIONS.to_owned(),
+            span_start_ticks: request.span_start_ticks,
+            span_end_ticks: request.span_end_ticks,
+        };
+        let mut input_artifact_ids = vec![caption_inputs.transcript.to_owned()];
+        input_artifact_ids.extend(caption_inputs.index.map(str::to_owned));
+        input_artifact_ids.extend(caption_inputs.shots.map(str::to_owned));
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: captions::KIND_CAPTIONS.to_owned(),
+            source_id: Some(source_id),
+            payload: request.encode_to_vec(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: captions::KIND_CAPTIONS.to_owned(),
+                input_kinds: Vec::new(),
+                output_kind: "captions.cues.v1".to_owned(),
+                payload: payload.encode_to_vec(),
+                dependencies: Vec::new(),
+                input_artifact_ids,
+                resources: captions_resources(),
+                implementation: captions::IMPLEMENTATION.to_owned(),
+                max_attempts: 3,
+                is_final: true,
+            }],
+        }
+    }
+
     /// The ranking baseline over a searched cohort (book ch. 16).
     ///
     /// One builtin task naming its three documents in its payload, for the
@@ -1594,6 +1644,34 @@ fn rank_resources() -> ResourceDeclaration {
         checkpoint_support: false,
         preemption_cost: 1,
     }
+}
+
+/// What caption derivation costs. One pass of a banded dynamic program over
+/// the words of a clip, twice — arithmetic, on one thread, over documents
+/// already in memory.
+fn captions_resources() -> ResourceDeclaration {
+    ResourceDeclaration {
+        cpu_threads: 1,
+        ram_bytes: 256 * 1024 * 1024,
+        accelerator_class: String::new(),
+        vram_bytes: 0,
+        disk_bytes: 64 * 1024 * 1024,
+        network_policy: "local-lock".to_owned(),
+        thermal_class: "light".to_owned(),
+        determinism_class: "deterministic".to_owned(),
+        checkpoint_support: false,
+        preemption_cost: 1,
+    }
+}
+
+/// The published documents caption derivation reads. Only the first is
+/// required; the other two make the segmentation better informed rather than
+/// possible.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CaptionsJobInputs<'a> {
+    pub transcript: &'a str,
+    pub index: Option<&'a str>,
+    pub shots: Option<&'a str>,
 }
 
 /// The published documents discovery reads.
@@ -2312,6 +2390,9 @@ impl BuiltinExecutors {
                 discovery::execute_discover_task(&self.artifacts, task, progress).await
             }
             ranking::KIND_RANK => ranking::execute_rank_task(&self.artifacts, task, progress).await,
+            captions::KIND_CAPTIONS => {
+                captions::execute_captions_task(&self.artifacts, task, progress).await
+            }
             analysis::KIND_MANIFEST => {
                 analysis::execute_manifest_task(&self.artifacts, task, progress).await
             }
@@ -2345,6 +2426,7 @@ fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
     kinds.push(evidence::KIND_INDEX.to_owned());
     kinds.push(discovery::KIND_DISCOVER.to_owned());
     kinds.push(ranking::KIND_RANK.to_owned());
+    kinds.push(captions::KIND_CAPTIONS.to_owned());
     kinds.push(analysis::KIND_MANIFEST.to_owned());
     if builtin_fixture_executor {
         kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));

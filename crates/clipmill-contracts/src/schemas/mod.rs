@@ -9,6 +9,10 @@ pub mod analysis_manifest;
 pub mod artifact_manifest;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/captions_cues.rs"]
+pub mod captions_cues;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/device_profile.rs"]
 pub mod device_profile;
 

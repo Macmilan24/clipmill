@@ -189,9 +189,12 @@ fn region_alignment(region: CaptionRegion) -> u32 {
 fn style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
     format!(
         "Style: {name},{font},{size},{spoken},{unspoken},{outline},{shadow},{bold},0,0,0,\
-         100,100,0,0,1,{outline_width},{shadow_depth},{alignment},{margin_h},{margin_h},\
+         100,100,0,0,{border},{outline_width},{shadow_depth},{alignment},{margin_h},{margin_h},\
          {margin_v},1",
         name = region_style_name(region),
+        // 1 draws an outline and a drop shadow; 3 fills an opaque plate behind
+        // the line, using the outline colour as the plate.
+        border = if style.boxed { 3 } else { 1 },
         font = style.font_family,
         size = style.font_size,
         // With `\k`, text is drawn in the secondary colour until it is sung
@@ -278,7 +281,7 @@ mod tests {
 
     fn track() -> CaptionTrack {
         CaptionTrack {
-            style_ref: "clipmill.captions.karaoke.v1".to_owned(),
+            style_ref: crate::profile::DEFAULT_STYLE_REF.to_owned(),
             cues: vec![CaptionCue {
                 cue_id: "cue_1".to_owned(),
                 start_ticks: 30 * FRAME_TICKS,

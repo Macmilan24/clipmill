@@ -216,6 +216,12 @@ gate-shell-pipeline iterations="1":
 gate-reframe iterations="1":
     ./tools/drills/reframe-drill.sh {{iterations}}
 
+# W21 coverage: the exact cue segmentation and its goldens, zero reading-speed
+# violations in the intent every sidecar is written from, no cue over a cut,
+# and the round trip through the render's own writers.
+gate-captions iterations="1":
+    ./tools/drills/captions-drill.sh {{iterations}}
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock

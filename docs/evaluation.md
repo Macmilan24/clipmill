@@ -30,6 +30,33 @@ failures. It never records corpus directories or source paths. CI runs the gate
 on macOS and Linux, and the Linux Local Lock job repeats it inside a namespace
 where the egress canary proves networking is unavailable.
 
+## Known gap: the reframe benchmark is not scheduled yet
+
+Recorded here rather than discovered later. The book asks for reframe to be
+measured on annotated media — `22-evaluation.tex:65` names subject coverage,
+identity switches, protected-region loss, camera jerk and fallback correctness —
+and `18-reframing.tex:95` is more specific still: the acceleration weight `w_a`
+is to be tuned per layout state on that benchmark, "not by eye".
+
+Two things follow from that, and neither is satisfied today.
+
+The acceleration weight this build ships is hand-set. `gate-reframe` proves the
+solver is the arithmetic it claims to be — bounded jerk, containment, a speed
+never exceeded, the same evidence twice — on synthetic trajectories, which is
+what W20's gate asks for and all it asks for. Synthetic trajectories cannot say
+whether a real camera move feels like an operator or like a classifier, so the
+weight is defensible but unmeasured.
+
+And the harness W26 describes verifies candidates and ranking. It does not carry
+the reframe row. Adding it needs annotated media, which is exactly why it
+belongs in W26 and not in the unit suite: the corpus policy keeps media out of
+Git, so anything measured against real faces runs behind the same private-corpus
+attestation as `gate-recall`.
+
+This is not a defect in what shipped. It is an obligation the book states, that
+W20 was not scoped to meet, and that W26's current scope would not pick up on
+its own.
+
 ## Private Seed-40 exit
 
 The private Seed-40 baseline is deliberately not a repository media artifact.
