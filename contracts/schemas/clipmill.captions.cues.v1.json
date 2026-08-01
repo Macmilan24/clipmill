@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.captions.cues.v1.json",
+  "title": "CaptionCues",
+  "description": "Captions derived from aligned words, as their own track rather than a string baked into a filter (book ch. 19). One document, two rendering intents. The accessibility intent is the conservative profile every sidecar must meet; the burn-in intent may run hot, a few words at a time, because that is what a viewer scrolling with the sound off is reading. They are two groupings of the same tokens and never two sets of words: divergence between what a viewer reads and what a deaf viewer reads is the failure this shape exists to make impossible. Line breaks are decided here and stored here, because a break re-decided at render time is a break that can differ between the preview and the file.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "inputs",
+    "producer",
+    "language",
+    "direction",
+    "segmentation",
+    "coverage",
+    "tokens",
+    "intents",
+    "corrections",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.captions.cues.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "inputs": {
+      "description": "What was read. The transcript is the authority for every word index below. The index supplies the sentence terminators a break is worth making at and the topic keywords emphasis is allowed to come from; shot cuts supply the moments a cue may not span. Both are optional, and their absence is a weaker document rather than a silently different one — which is why the segmentation block below records whether each was present.",
+      "type": "object",
+      "required": ["transcript_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "transcript_artifact_id": { "$ref": "#/$defs/sha256" },
+        "index_artifact_id": { "$ref": "#/$defs/sha256" },
+        "shots_artifact_id": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "language": {
+      "description": "Echoed from the transcript. Cue rules are language-parameterized and the segmenter never applies English constants to a script they do not describe, so a consumer must be able to see which language's numbers produced these cues without opening the transcript.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 16
+    },
+    "direction": {
+      "description": "Script direction, carried per document so a translated track is a sibling rather than a schema change.",
+      "enum": ["ltr", "rtl"]
+    },
+    "segmentation": {
+      "description": "Every decision parameter the segmenter was given. Part of the artifact key: different numbers are a different reading of the same words, not a correction of this one.",
+      "type": "object",
+      "required": [
+        "span_start_ticks",
+        "span_end_ticks",
+        "weights",
+        "filler_lexicon",
+        "emphasis_source",
+        "had_index",
+        "had_shots"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "span_start_ticks": {
+          "description": "The window segmented. A cue may not span the edge of it, for the same reason it may not span a cut: the edge is where the picture changes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "span_end_ticks": { "type": "integer", "minimum": 1 },
+        "weights": {
+          "description": "What the exact dynamic program was minimizing. Named individually because re-tuning any one of them invalidates exactly the cues it shaped.",
+          "type": "object",
+          "required": ["reading_rate", "line_balance", "orphan", "break_quality", "short_cue"],
+          "additionalProperties": false,
+          "properties": {
+            "reading_rate": { "type": "number", "minimum": 0 },
+            "line_balance": { "type": "number", "minimum": 0 },
+            "orphan": { "type": "number", "minimum": 0 },
+            "break_quality": { "type": "number", "minimum": 0 },
+            "short_cue": { "type": "number", "minimum": 0 }
+          }
+        },
+        "filler_lexicon": {
+          "description": "Which filler list tagged the tokens. Versioned rather than inlined: the list changes with the language and with what creators actually say, and a cue set should name the one it was read with.",
+          "type": "string",
+          "minLength": 1
+        },
+        "emphasis_source": {
+          "description": "Where emphasis was allowed to come from. `none` when no index was read, and there is no third option in this build — emphasis is selected from evidence or it is not selected. Decoration is not a source.",
+          "enum": ["none", "index_keywords"]
+        },
+        "had_index": { "type": "boolean" },
+        "had_shots": { "type": "boolean" }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "tokens": {
+      "description": "Every word in the span, in time order, exactly once. Both intents group these and neither owns them, so a correction applied here is read by the burn-in and the sidecar alike.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/token" }
+    },
+    "intents": {
+      "description": "Two groupings of the tokens above. Both are first-class: the accessibility intent is not a degraded burn-in and the burn-in is not an unvalidated accessibility track.",
+      "type": "object",
+      "required": ["accessibility", "burn_in"],
+      "additionalProperties": false,
+      "properties": {
+        "accessibility": { "$ref": "#/$defs/intent" },
+        "burn_in": { "$ref": "#/$defs/intent" }
+      }
+    },
+    "corrections": {
+      "description": "User edits, as an overlay keyed to the token they replace rather than as a rewrite of the token itself. This is what lets a better model re-transcribe a recording and propose updates without erasing a word somebody already fixed: the raw ASR stays underneath, and the overlay is applied on top of whatever it says next time.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/correction" }
+    },
+    "invalid_regions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "profile": {
+      "description": "The numbers a grouping was held to. The accessibility intent carries the conservative public standard; the burn-in intent carries whatever the kinetic style asked for. Stored per intent rather than per document because the whole point of two intents is that they are held to different numbers.",
+      "type": "object",
+      "required": [
+        "max_line_characters",
+        "max_lines",
+        "reading_rate_cps",
+        "min_duration_ticks",
+        "max_duration_ticks",
+        "min_gap_ticks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "max_line_characters": {
+          "description": "Characters per line, counted in Unicode scalar values of the rendered text. 42 for English, per the published timed-text standard; different for CJK, which is why it is a number here and not a constant in the segmenter.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_lines": { "type": "integer", "minimum": 1 },
+        "reading_rate_cps": {
+          "description": "The ceiling a cue's characters-per-second may not exceed. A cue over it is legible only to a reader who already knows what it says.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "min_duration_ticks": {
+          "description": "The floor a cue is held on screen for, independent of how briefly its words were spoken. A cue that flashes is a cue nobody read.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_duration_ticks": { "type": "integer", "minimum": 1 },
+        "min_gap_ticks": {
+          "description": "The blank between consecutive cues. Without it two cues read as one that changed under the reader.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "token": {
+      "description": "One word, and everything decided about it. The normalized form is kept beside the text rather than instead of it, because matching against a lexicon and rendering to a screen want different strings and collapsing them loses the user's capitalization.",
+      "type": "object",
+      "required": [
+        "index",
+        "word_index",
+        "text",
+        "normalized",
+        "start_ticks",
+        "end_ticks",
+        "confidence",
+        "filler",
+        "emphasis"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "word_index": {
+          "description": "The word this came from in the transcript, so any caption can be walked back to the observation behind it.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": { "type": "string", "minLength": 1 },
+        "normalized": {
+          "description": "Lowercased and stripped of surrounding punctuation, for lexicon and keyword matching only. Never rendered.",
+          "type": "string"
+        },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "speaker": {
+          "description": "Present only when the transcript named one. Absent is not the same as unknown-and-recorded.",
+          "type": "string",
+          "minLength": 1
+        },
+        "filler": {
+          "description": "Tagged from the lexicon. A filler is still rendered — captions are a record of what was said, not an improvement on it — but it may never carry emphasis.",
+          "type": "boolean"
+        },
+        "emphasis": {
+          "description": "Selected from evidence: a term the topic index found salient. Never from length, never from position, never from a model asked to be interesting.",
+          "type": "boolean"
+        }
+      }
+    },
+    "line": {
+      "description": "A run of tokens on one rendered line. Stored as a range into the token array rather than as text, so the words on a line cannot drift from the words in the cue.",
+      "type": "object",
+      "required": ["first_token", "token_count", "characters"],
+      "additionalProperties": false,
+      "properties": {
+        "first_token": { "type": "integer", "minimum": 0 },
+        "token_count": { "type": "integer", "minimum": 1 },
+        "characters": {
+          "description": "The rendered width this line was measured at, recorded so a validator does not have to re-join the words to check the ceiling.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cue": {
+      "type": "object",
+      "required": [
+        "cue_id",
+        "start_ticks",
+        "end_ticks",
+        "first_token",
+        "token_count",
+        "region",
+        "lines",
+        "characters",
+        "reading_rate_cps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cue_id": { "type": "string", "minLength": 1 },
+        "start_ticks": {
+          "description": "When the cue appears, which is not always when its first word was spoken: a cue may be held longer than its speech to meet the reading rate, up to where the next one needs the screen.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": { "type": "integer", "minimum": 1 },
+        "first_token": { "type": "integer", "minimum": 0 },
+        "token_count": { "type": "integer", "minimum": 1 },
+        "region": {
+          "description": "Where the cue sits. One stable anchor in this phase: a caption that hops lanes every cue reads as broken even when every hop was locally right, so per-scene avoidance is deliberately not attempted until there is something measured to avoid.",
+          "enum": ["lower_safe", "upper_safe", "center"]
+        },
+        "lines": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/line" }
+        },
+        "characters": { "type": "integer", "minimum": 1 },
+        "reading_rate_cps": {
+          "description": "Characters divided by the seconds this cue is on screen, recorded rather than recomputed so the validator and the segmenter cannot disagree about what was measured.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "intent": {
+      "type": "object",
+      "required": ["profile", "cues"],
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "cues": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cue" }
+        }
+      }
+    },
+    "correction": {
+      "type": "object",
+      "required": ["token_index", "text", "origin"],
+      "additionalProperties": false,
+      "properties": {
+        "token_index": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1 },
+        "origin": {
+          "description": "Who proposed it. A user correction outranks a re-transcription for the same token, which is the whole reason this is an overlay and not an edit.",
+          "enum": ["user", "retranscription"]
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "description": "Why this stretch has no cues. `unreadable_at_any_grouping` is the honest one: words so dense that no legal grouping meets the reading rate, reported rather than shipped as a cue nobody can read.",
+          "enum": ["no_words", "unreadable_at_any_grouping", "not_analyzed"]
+        },
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

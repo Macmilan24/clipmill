@@ -1,0 +1,67 @@
+{
+  "schema_version": "clipmill.captions.cues.v1",
+  "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "inputs": {
+    "transcript_artifact_id": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "producer": {
+    "stage": "captions.derive",
+    "implementation": "clipmill-captions@1.0.0"
+  },
+  "language": "en",
+  "direction": "ltr",
+  "segmentation": {
+    "span_start_ticks": 0,
+    "span_end_ticks": 180000,
+    "weights": {
+      "reading_rate": 6.0,
+      "line_balance": 1.0,
+      "orphan": 2.0,
+      "break_quality": 3.0,
+      "short_cue": 4.0
+    },
+    "filler_lexicon": "clipmill.filler.en.v1",
+    "emphasis_source": "none",
+    "had_index": false,
+    "had_shots": false
+  },
+  "coverage": {
+    "start_ticks": 0,
+    "end_ticks": 180000,
+    "analyzed": true
+  },
+  "tokens": [],
+  "intents": {
+    "accessibility": {
+      "profile": {
+        "max_line_characters": 42,
+        "max_lines": 2,
+        "reading_rate_cps": 20.0,
+        "min_duration_ticks": 75000,
+        "max_duration_ticks": 630000,
+        "min_gap_ticks": 7500
+      },
+      "cues": []
+    },
+    "burn_in": {
+      "profile": {
+        "max_line_characters": 18,
+        "max_lines": 1,
+        "reading_rate_cps": 40.0,
+        "min_duration_ticks": 30000,
+        "max_duration_ticks": 270000,
+        "min_gap_ticks": 0
+      },
+      "cues": []
+    }
+  },
+  "corrections": [],
+  "invalid_regions": [
+    {
+      "start_ticks": 0,
+      "end_ticks": 180000,
+      "reason": "no_words",
+      "detail": "nobody spoke"
+    }
+  ]
+}
