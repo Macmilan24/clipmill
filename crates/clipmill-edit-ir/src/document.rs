@@ -175,12 +175,83 @@ pub struct CaptionTrack {
     /// Named style preset; the style itself lives in the caption presets, not
     /// in every document.
     pub style_ref: String,
+    /// What a **reader** gets. Every sidecar is written from this list and only
+    /// this list, because a sidecar is what a viewer who cannot hear is left
+    /// with — so it carries the conservative grouping, always.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cues: Vec<CaptionCue>,
+    /// What a **watcher** gets, when the two should differ. The kinetic
+    /// grouping is burned into the picture; absent, the reading cues are burned
+    /// in instead, which is the behaviour every document had before this field
+    /// existed.
+    ///
+    /// Two lists rather than one because the caption engine produces two
+    /// groupings of one token array and this is where they would otherwise
+    /// collapse back into one. A burn-in that inherited the reading grouping is
+    /// merely conservative; a sidecar that inherited the kinetic one is the
+    /// divergence the caption engine exists to prevent — so the asymmetry is
+    /// deliberate and the sidecar side is the one that is never negotiable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub burn_in: Vec<CaptionCue>,
+}
+
+impl CaptionTrack {
+    /// The cues that are burned into the picture: the kinetic grouping when the
+    /// document carries one, and the reading cues when it does not.
+    pub fn burned(&self) -> &[CaptionCue] {
+        if self.burn_in.is_empty() {
+            &self.cues
+        } else {
+            &self.burn_in
+        }
+    }
 }
 
 /// One automation point on the program-time gain curve. Gain is a measurement
 /// in decibels and is legitimately real-valued; its *position* is ticks.
+/// Everything one list of cues has to satisfy on its own.
+///
+/// Run per list rather than over both at once: the two groupings cover the same
+/// span, so cue ids repeat across them and their windows interleave. Checking
+/// them together would report every kinetic cue as a duplicate of a reading one.
+fn validate_cues(cues: &[CaptionCue]) -> Result<(), DocumentError> {
+    let mut seen_cues = Vec::with_capacity(cues.len());
+    let mut previous_end: Option<i64> = None;
+    for cue in cues {
+        if cue.cue_id.is_empty() {
+            return Err(DocumentError::EmptyIdentifier);
+        }
+        if seen_cues.contains(&cue.cue_id.as_str()) {
+            return Err(DocumentError::DuplicateCue(cue.cue_id.clone()));
+        }
+        seen_cues.push(cue.cue_id.as_str());
+        if cue.start_ticks < 0 || cue.end_ticks <= cue.start_ticks {
+            return Err(DocumentError::EmptyCue(cue.cue_id.clone()));
+        }
+        if previous_end.is_some_and(|end| end > cue.start_ticks) {
+            return Err(DocumentError::OverlappingCues(cue.cue_id.clone()));
+        }
+        previous_end = Some(cue.end_ticks);
+        if cue.lines.is_empty() || cue.lines.iter().any(|line| line.words.is_empty()) {
+            return Err(DocumentError::EmptyCaptionLine);
+        }
+        let mut word_cursor: Option<i64> = None;
+        for word in cue.words() {
+            if word.text.is_empty() || word.end_ticks <= word.start_ticks {
+                return Err(DocumentError::EmptyCaptionWord(cue.cue_id.clone()));
+            }
+            if word.start_ticks < cue.start_ticks || word.end_ticks > cue.end_ticks {
+                return Err(DocumentError::WordOutsideCue(cue.cue_id.clone()));
+            }
+            if word_cursor.is_some_and(|cursor| cursor > word.start_ticks) {
+                return Err(DocumentError::UnorderedCaptionWords(cue.cue_id.clone()));
+            }
+            word_cursor = Some(word.end_ticks);
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GainPoint {
@@ -521,43 +592,8 @@ impl EditDocument {
             }
         }
 
-        let mut seen_cues = Vec::with_capacity(self.captions.cues.len());
-        let mut previous_end: Option<i64> = None;
-        for cue in &self.captions.cues {
-            if cue.cue_id.is_empty() {
-                return Err(DocumentError::EmptyIdentifier);
-            }
-            if seen_cues.contains(&cue.cue_id.as_str()) {
-                return Err(DocumentError::DuplicateCue(cue.cue_id.clone()));
-            }
-            seen_cues.push(cue.cue_id.as_str());
-            if cue.start_ticks < 0 || cue.end_ticks <= cue.start_ticks {
-                return Err(DocumentError::EmptyCue(cue.cue_id.clone()));
-            }
-            if previous_end.is_some_and(|end| end > cue.start_ticks) {
-                return Err(DocumentError::OverlappingCues(cue.cue_id.clone()));
-            }
-            previous_end = Some(cue.end_ticks);
-            if cue.lines.is_empty() || cue.lines.iter().any(|line| line.words.is_empty()) {
-                return Err(DocumentError::EmptyCaptionLine);
-            }
-            let mut word_cursor: Option<i64> = None;
-            for word in cue.words() {
-                if word.text.is_empty() {
-                    return Err(DocumentError::EmptyCaptionWord(cue.cue_id.clone()));
-                }
-                if word.end_ticks <= word.start_ticks {
-                    return Err(DocumentError::EmptyCaptionWord(cue.cue_id.clone()));
-                }
-                if word.start_ticks < cue.start_ticks || word.end_ticks > cue.end_ticks {
-                    return Err(DocumentError::WordOutsideCue(cue.cue_id.clone()));
-                }
-                if word_cursor.is_some_and(|cursor| cursor > word.start_ticks) {
-                    return Err(DocumentError::UnorderedCaptionWords(cue.cue_id.clone()));
-                }
-                word_cursor = Some(word.end_ticks);
-            }
-        }
+        validate_cues(&self.captions.cues)?;
+        validate_cues(&self.captions.burn_in)?;
 
         let mut previous_gain: Option<i64> = None;
         for point in &self.audio.gain_curve {

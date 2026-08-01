@@ -9,6 +9,15 @@
 //! renderer is configured never to re-wrap: `WrapStyle: 2` tells libass that
 //! only explicit breaks exist. And every timestamp is derived from a frame
 //! index, never from a float second, so a cue's first frame is decided once.
+//!
+//! Which cues each writer reads is the third rule, and it is not symmetric. The
+//! burned-in track takes the document's kinetic grouping when it has one, and
+//! the reading cues when it does not. **The sidecars take the reading cues,
+//! always.** A burn-in that fell back to the reading grouping is merely
+//! conservative; a sidecar that picked up the kinetic one would be the exact
+//! divergence between what a viewer reads and what a deaf viewer reads that the
+//! caption engine exists to prevent, so the sidecar side has no fallback to get
+//! wrong.
 
 use clipmill_edit_ir::{CaptionAnimation, CaptionCue, CaptionRegion, CaptionTrack};
 
@@ -36,9 +45,11 @@ pub fn unrenderable_character(text: &str) -> Option<char> {
         .find(|character| matches!(character, '{' | '}' | '\\') || character.is_control())
 }
 
+/// The frames the burned-in cues occupy, which is what the render gate compares
+/// against decoded output — so it follows the burn-in list, not the reading one.
 pub(crate) fn cue_windows(track: &CaptionTrack, rate: FrameRate) -> Vec<CueWindow> {
     track
-        .cues
+        .burned()
         .iter()
         .map(|cue| CueWindow {
             cue_id: cue.cue_id.clone(),
@@ -101,7 +112,7 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
             .to_owned(),
     );
-    for cue in &track.cues {
+    for cue in track.burned() {
         let start_centis = rate.frame_centis(rate.frame_ceil(cue.start_ticks));
         let end_centis = rate.frame_centis(rate.frame_ceil(cue.end_ticks));
         lines.push(format!(
@@ -297,6 +308,7 @@ mod tests {
                     },
                 ],
             }],
+            burn_in: Vec::new(),
         }
     }
 
@@ -348,6 +360,75 @@ mod tests {
         assert!(srt.contains("the whole\npoint"));
         let vtt = write_vtt(&track(), RATE);
         assert!(vtt.contains("the whole\npoint"));
+    }
+
+    /// The same words, grouped kinetically: three one-word cues.
+    fn kinetic() -> Vec<CaptionCue> {
+        [("the", 30, 40), ("whole", 40, 55), ("point", 60, 75)]
+            .into_iter()
+            .enumerate()
+            .map(|(index, (text, from, to))| CaptionCue {
+                cue_id: format!("hot_{}", index + 1),
+                start_ticks: from * FRAME_TICKS,
+                end_ticks: to * FRAME_TICKS,
+                region: CaptionRegion::LowerSafe,
+                anim: CaptionAnimation::Karaoke,
+                lines: vec![CaptionLine {
+                    words: vec![word(text, from, to)],
+                }],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_burn_in_takes_the_kinetic_grouping_and_the_sidecars_never_do() {
+        // The asymmetry the second track exists for. A burn-in that fell back
+        // to the reading cues is merely conservative; a sidecar that picked up
+        // the kinetic ones is the divergence between what a viewer reads and
+        // what a deaf viewer reads.
+        let mut both = track();
+        both.burn_in = kinetic();
+
+        let ass = write_ass(&both, &RenderProfile::default());
+        let srt = write_srt(&both, RATE);
+        let vtt = write_vtt(&both, RATE);
+
+        assert_eq!(
+            ass.lines()
+                .filter(|line| line.starts_with("Dialogue:"))
+                .count(),
+            3,
+            "the picture gets the kinetic cues"
+        );
+        assert!(
+            srt.contains("the whole\npoint"),
+            "the reader gets the reading cues"
+        );
+        assert!(vtt.contains("the whole\npoint"));
+        assert!(!srt.contains("hot_"), "no sidecar may carry a kinetic cue");
+    }
+
+    #[test]
+    fn without_a_kinetic_grouping_the_reading_cues_are_what_gets_burned_in() {
+        // Every document written before the second track existed behaves this
+        // way, and must keep behaving this way.
+        let ass = write_ass(&track(), &RenderProfile::default());
+        assert_eq!(
+            ass.lines()
+                .filter(|line| line.starts_with("Dialogue:"))
+                .count(),
+            1
+        );
+        assert_eq!(cue_windows(&track(), RATE).len(), 1);
+    }
+
+    #[test]
+    fn the_gate_measures_the_frames_that_are_actually_burned_in() {
+        let mut both = track();
+        both.burn_in = kinetic();
+        let windows = cue_windows(&both, RATE);
+        assert_eq!(windows.len(), 3, "the render gate follows the picture");
+        assert_eq!(windows[0].text, "the");
     }
 
     #[test]

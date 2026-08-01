@@ -112,6 +112,7 @@ fn sample_document() -> EditDocument {
                     ],
                 ),
             ],
+            burn_in: Vec::new(),
         },
         audio: AudioTrack {
             target_lufs: -14.0,

@@ -24,16 +24,18 @@
 //! rationale — a fitted clip with a stated reason is honest; a confident crop of
 //! the wrong person is not.
 //!
-//! ## One caption track, and which grouping it carries
+//! ## Both caption groupings reach the document
 //!
-//! The caption engine publishes two groupings and the Edit IR has one track, so
-//! the director has to choose. It carries the **accessibility** grouping,
-//! always. The sidecars are written from whatever this track holds, and a
-//! sidecar that inherited the kinetic grouping would be the exact divergence
-//! W21 exists to prevent. The cost is that the burned-in track is conservative
-//! rather than kinetic in this phase, which is a quality limit and not a
-//! correctness one — carrying both would need a second track in the IR, and
-//! that is a contract change this workstream was not asked to make.
+//! The caption engine produces two groupings of one token array, and the
+//! director writes both: the reading cues that every sidecar is written from,
+//! and the kinetic cues that are burned into the picture. Writing only one
+//! would have made the other a grouping that is computed, stored, and then
+//! discarded at the render boundary — and everything a viewer ever sees comes
+//! through this document.
+//!
+//! The two lists index the same span and carry the same words. That is checked
+//! rather than assumed, because it is the one property the caption engine's
+//! whole shape exists to guarantee and the one a bug here would quietly undo.
 
 pub mod lattice;
 
@@ -192,8 +194,9 @@ pub fn direct(evidence: Evidence<'_>, request: &Request) -> Result<EditDocument,
 
     let captions = caption_track(evidence, boundary, request)?;
     decisions.push(format!(
-        "{} caption cues, from the grouping every sidecar is written from.",
-        captions.cues.len()
+        "{} cues to read and {} to watch, grouped from the same words.",
+        captions.cues.len(),
+        captions.burned().len(),
     ));
 
     let mut document = EditDocument {
@@ -384,17 +387,30 @@ fn caption_track(
             return Ok(clipmill_edit_ir::CaptionTrack {
                 style_ref: request.style_ref.clone(),
                 cues: Vec::new(),
+                burn_in: Vec::new(),
             });
         }
         Err(error) => return Err(DirectError::Captions(error.to_string())),
     };
-    project(
+    let reading = project(
         &cues,
         Intent::Accessibility,
         &request.style_ref,
         boundary.start_ticks,
     )
-    .map_err(|_| DirectError::UnknownStyle(request.style_ref.clone()))
+    .map_err(|_| DirectError::UnknownStyle(request.style_ref.clone()))?;
+    let kinetic = project(
+        &cues,
+        Intent::BurnIn,
+        &request.style_ref,
+        boundary.start_ticks,
+    )
+    .map_err(|_| DirectError::UnknownStyle(request.style_ref.clone()))?;
+    Ok(clipmill_edit_ir::CaptionTrack {
+        style_ref: reading.style_ref,
+        cues: reading.cues,
+        burn_in: kinetic.cues,
+    })
 }
 
 fn cut_sentence(cut: Cut, boundary: Boundary) -> String {

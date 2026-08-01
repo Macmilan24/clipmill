@@ -640,7 +640,15 @@ impl CropRect {
 #[doc = "        \"style_ref\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"burn_in\": {"]
+#[doc = "          \"description\": \"What a watcher gets, when the two should differ. The kinetic grouping is burned into the picture; absent, the reading cues are burned in instead. Two lists rather than one because the caption engine produces two groupings of one token array, and this is where they would otherwise collapse back into one — a burn-in that inherited the reading grouping is merely conservative, while a sidecar that inherited the kinetic one is the divergence that engine exists to prevent. The asymmetry is deliberate.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"$ref\": \"#/$defs/captionCue\""]
+#[doc = "          }"]
+#[doc = "        },"]
 #[doc = "        \"cues\": {"]
+#[doc = "          \"description\": \"What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always.\","]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
 #[doc = "            \"$ref\": \"#/$defs/captionCue\""]
@@ -862,7 +870,15 @@ impl EditIrAudioGainCurveItem {
 #[doc = "    \"style_ref\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"burn_in\": {"]
+#[doc = "      \"description\": \"What a watcher gets, when the two should differ. The kinetic grouping is burned into the picture; absent, the reading cues are burned in instead. Two lists rather than one because the caption engine produces two groupings of one token array, and this is where they would otherwise collapse back into one — a burn-in that inherited the reading grouping is merely conservative, while a sidecar that inherited the kinetic one is the divergence that engine exists to prevent. The asymmetry is deliberate.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/captionCue\""]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"cues\": {"]
+#[doc = "      \"description\": \"What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always.\","]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
 #[doc = "        \"$ref\": \"#/$defs/captionCue\""]
@@ -880,6 +896,10 @@ impl EditIrAudioGainCurveItem {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct EditIrCaptions {
+    #[doc = "What a watcher gets, when the two should differ. The kinetic grouping is burned into the picture; absent, the reading cues are burned in instead. Two lists rather than one because the caption engine produces two groupings of one token array, and this is where they would otherwise collapse back into one — a burn-in that inherited the reading grouping is merely conservative, while a sidecar that inherited the kinetic one is the divergence that engine exists to prevent. The asymmetry is deliberate."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub burn_in: ::std::vec::Vec<CaptionCue>,
+    #[doc = "What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub cues: ::std::vec::Vec<CaptionCue>,
     #[doc = "Named caption preset; the style itself lives with the presets, not in every document."]
@@ -2003,18 +2023,30 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct EditIrCaptions {
+        burn_in: ::std::result::Result<::std::vec::Vec<super::CaptionCue>, ::std::string::String>,
         cues: ::std::result::Result<::std::vec::Vec<super::CaptionCue>, ::std::string::String>,
         style_ref: ::std::result::Result<::std::string::String, ::std::string::String>,
     }
     impl ::std::default::Default for EditIrCaptions {
         fn default() -> Self {
             Self {
+                burn_in: Ok(Default::default()),
                 cues: Ok(Default::default()),
                 style_ref: Err("no value supplied for style_ref".to_string()),
             }
         }
     }
     impl EditIrCaptions {
+        pub fn burn_in<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::CaptionCue>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.burn_in = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for burn_in: {e}"));
+            self
+        }
         pub fn cues<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::vec::Vec<super::CaptionCue>>,
@@ -2042,6 +2074,7 @@ pub mod builder {
             value: EditIrCaptions,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                burn_in: value.burn_in?,
                 cues: value.cues?,
                 style_ref: value.style_ref?,
             })
@@ -2050,6 +2083,7 @@ pub mod builder {
     impl ::std::convert::From<super::EditIrCaptions> for EditIrCaptions {
         fn from(value: super::EditIrCaptions) -> Self {
             Self {
+                burn_in: Ok(value.burn_in),
                 cues: Ok(value.cues),
                 style_ref: Ok(value.style_ref),
             }

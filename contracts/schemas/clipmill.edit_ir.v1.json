@@ -4,17 +4,32 @@
   "title": "EditIr",
   "description": "The edit document (book ch. 17): a versioned, multi-track, non-destructive timeline that the preview, the render compiler, and later the NLE exporter all read. No subsystem may render, preview, or export from any other representation. All time is integer ticks at 1/90000 (D06); a segment's program position is the sum of the durations before it and is never stored, so a trim cannot leave a stale offset behind.",
   "type": "object",
-  "required": ["version", "timebase", "video", "captions", "audio"],
+  "required": [
+    "version",
+    "timebase",
+    "video",
+    "captions",
+    "audio"
+  ],
   "additionalProperties": false,
   "properties": {
-    "version": { "const": "ir/1" },
+    "version": {
+      "const": "ir/1"
+    },
     "timebase": {
       "type": "object",
-      "required": ["num", "den"],
+      "required": [
+        "num",
+        "den"
+      ],
       "additionalProperties": false,
       "properties": {
-        "num": { "const": 1 },
-        "den": { "const": 90000 }
+        "num": {
+          "const": 1
+        },
+        "den": {
+          "const": 90000
+        }
       }
     },
     "video": {
@@ -23,13 +38,17 @@
       "properties": {
         "segments": {
           "type": "array",
-          "items": { "$ref": "#/$defs/videoSegment" }
+          "items": {
+            "$ref": "#/$defs/videoSegment"
+          }
         }
       }
     },
     "captions": {
       "type": "object",
-      "required": ["style_ref"],
+      "required": [
+        "style_ref"
+      ],
       "additionalProperties": false,
       "properties": {
         "style_ref": {
@@ -38,29 +57,52 @@
         },
         "cues": {
           "type": "array",
-          "items": { "$ref": "#/$defs/captionCue" }
+          "items": {
+            "$ref": "#/$defs/captionCue"
+          },
+          "description": "What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with \u2014 so it carries the conservative grouping, always."
+        },
+        "burn_in": {
+          "description": "What a watcher gets, when the two should differ. The kinetic grouping is burned into the picture; absent, the reading cues are burned in instead. Two lists rather than one because the caption engine produces two groupings of one token array, and this is where they would otherwise collapse back into one \u2014 a burn-in that inherited the reading grouping is merely conservative, while a sidecar that inherited the kinetic one is the divergence that engine exists to prevent. The asymmetry is deliberate.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/captionCue"
+          }
         }
       }
     },
     "audio": {
       "type": "object",
-      "required": ["target_lufs", "true_peak_dbtp"],
+      "required": [
+        "target_lufs",
+        "true_peak_dbtp"
+      ],
       "additionalProperties": false,
       "properties": {
         "target_lufs": {
           "description": "Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.",
           "type": "number"
         },
-        "true_peak_dbtp": { "type": "number" },
+        "true_peak_dbtp": {
+          "type": "number"
+        },
         "gain_curve": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["t_ticks", "gain_db"],
+            "required": [
+              "t_ticks",
+              "gain_db"
+            ],
             "additionalProperties": false,
             "properties": {
-              "t_ticks": { "type": "integer", "minimum": 0 },
-              "gain_db": { "type": "number" }
+              "t_ticks": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "gain_db": {
+                "type": "number"
+              }
             }
           }
         }
@@ -71,11 +113,18 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["hash", "license"],
+        "required": [
+          "hash",
+          "license"
+        ],
         "additionalProperties": false,
         "properties": {
-          "hash": { "$ref": "#/$defs/sha256" },
-          "license": { "type": "string" }
+          "hash": {
+            "$ref": "#/$defs/sha256"
+          },
+          "license": {
+            "type": "string"
+          }
         }
       }
     },
@@ -84,10 +133,14 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "candidate_id": { "type": "string" },
+        "candidate_id": {
+          "type": "string"
+        },
         "decisions": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     }
@@ -100,40 +153,89 @@
     "cropRect": {
       "description": "Integer pixel rectangle in the source frame's coordinate space.",
       "type": "object",
-      "required": ["x", "y", "width", "height"],
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
       "additionalProperties": false,
       "properties": {
-        "x": { "type": "integer", "minimum": 0 },
-        "y": { "type": "integer", "minimum": 0 },
-        "width": { "type": "integer", "minimum": 1 },
-        "height": { "type": "integer", "minimum": 1 }
+        "x": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "videoSegment": {
       "type": "object",
-      "required": ["segment_id", "source_fingerprint", "in_ticks", "out_ticks", "layout"],
+      "required": [
+        "segment_id",
+        "source_fingerprint",
+        "in_ticks",
+        "out_ticks",
+        "layout"
+      ],
       "additionalProperties": false,
       "properties": {
-        "segment_id": { "type": "string", "minLength": 1 },
-        "source_fingerprint": { "$ref": "#/$defs/sha256" },
-        "in_ticks": { "type": "integer", "minimum": 0 },
-        "out_ticks": { "type": "integer", "minimum": 1 },
+        "segment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_fingerprint": {
+          "$ref": "#/$defs/sha256"
+        },
+        "in_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "out_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
         "layout": {
           "type": "object",
-          "required": ["state"],
+          "required": [
+            "state"
+          ],
           "additionalProperties": false,
           "properties": {
-            "state": { "enum": ["speaker_fill", "fit"] },
+            "state": {
+              "enum": [
+                "speaker_fill",
+                "fit"
+              ]
+            },
             "crop_path": {
               "description": "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.",
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["t_ticks", "rect"],
+                "required": [
+                  "t_ticks",
+                  "rect"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "t_ticks": { "type": "integer", "minimum": 0 },
-                  "rect": { "$ref": "#/$defs/cropRect" }
+                  "t_ticks": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "rect": {
+                    "$ref": "#/$defs/cropRect"
+                  }
                 }
               }
             }
@@ -143,21 +245,50 @@
     },
     "captionCue": {
       "type": "object",
-      "required": ["cue_id", "start_ticks", "end_ticks", "region", "anim", "lines"],
+      "required": [
+        "cue_id",
+        "start_ticks",
+        "end_ticks",
+        "region",
+        "anim",
+        "lines"
+      ],
       "additionalProperties": false,
       "properties": {
-        "cue_id": { "type": "string", "minLength": 1 },
-        "start_ticks": { "type": "integer", "minimum": 0 },
-        "end_ticks": { "type": "integer", "minimum": 1 },
-        "region": { "enum": ["lower_safe", "upper_safe", "center"] },
-        "anim": { "enum": ["none", "karaoke"] },
+        "cue_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "region": {
+          "enum": [
+            "lower_safe",
+            "upper_safe",
+            "center"
+          ]
+        },
+        "anim": {
+          "enum": [
+            "none",
+            "karaoke"
+          ]
+        },
         "lines": {
-          "description": "Line breaks are decided once and stored here — the parity keystone. Preview and render must never re-wrap text independently.",
+          "description": "Line breaks are decided once and stored here \u2014 the parity keystone. Preview and render must never re-wrap text independently.",
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["words"],
+            "required": [
+              "words"
+            ],
             "additionalProperties": false,
             "properties": {
               "words": {
@@ -165,12 +296,25 @@
                 "minItems": 1,
                 "items": {
                   "type": "object",
-                  "required": ["text", "start_ticks", "end_ticks"],
+                  "required": [
+                    "text",
+                    "start_ticks",
+                    "end_ticks"
+                  ],
                   "additionalProperties": false,
                   "properties": {
-                    "text": { "type": "string", "minLength": 1 },
-                    "start_ticks": { "type": "integer", "minimum": 0 },
-                    "end_ticks": { "type": "integer", "minimum": 1 }
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "start_ticks": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "end_ticks": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
                   }
                 }
               }
