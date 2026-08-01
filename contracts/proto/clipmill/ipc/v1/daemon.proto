@@ -36,6 +36,9 @@ message Request {
     ResolveMediaRequest resolve_media = 30;
     GetStorageStatsRequest get_storage_stats = 31;
     SolveCropPathRequest solve_crop_path = 32;
+    DirectClipRequest direct_clip = 33;
+    SetClipDecisionRequest set_clip_decision = 34;
+    ListClipDecisionsRequest list_clip_decisions = 35;
   }
 }
 
@@ -69,6 +72,9 @@ message Response {
     ResolveMediaResponse resolve_media = 31;
     GetStorageStatsResponse get_storage_stats = 32;
     SolveCropPathResponse solve_crop_path = 33;
+    DirectClipResponse direct_clip = 34;
+    SetClipDecisionResponse set_clip_decision = 35;
+    ListClipDecisionsResponse list_clip_decisions = 36;
   }
 }
 
@@ -924,4 +930,86 @@ message SnapshotEditDocResponse {
   string artifact_id = 1;
   // Revision the snapshot froze.
   uint64 revision = 2;
+}
+
+// What somebody decided about a candidate. Kept in the durable store rather
+// than in the interface, because rejecting a clip is work nobody remembers
+// doing and therefore work nobody can redo.
+enum ClipDecisionV1 {
+  CLIP_DECISION_V1_UNSPECIFIED = 0;
+  // Not this one. A decision rather than a deletion, so a re-run does not put
+  // it back in front of somebody who already said no.
+  CLIP_DECISION_V1_REJECTED = 1;
+  // Maybe later.
+  CLIP_DECISION_V1_KEPT = 2;
+  // Send it to the editor.
+  CLIP_DECISION_V1_APPROVED = 3;
+}
+
+message SetClipDecisionRequest {
+  string project_id = 1;
+  string source_id = 2;
+  string candidate_id = 3;
+  ClipDecisionV1 decision = 4;
+}
+
+message SetClipDecisionResponse {
+  ClipDecisionV1 decision = 1;
+  uint64 decided_unix_millis = 2;
+}
+
+message ListClipDecisionsRequest {
+  string project_id = 1;
+  string source_id = 2;
+}
+
+message ClipDecisionRecordV1 {
+  string candidate_id = 1;
+  ClipDecisionV1 decision = 2;
+  uint64 decided_unix_millis = 3;
+}
+
+message ListClipDecisionsResponse {
+  repeated ClipDecisionRecordV1 decisions = 1;
+}
+
+// Which cut the director should build from.
+enum ClipCutV1 {
+  CLIP_CUT_V1_UNSPECIFIED = 0;
+  // What the boundary optimizer chose.
+  CLIP_CUT_V1_CHOSEN = 1;
+  // Its runner-up, which the Inspector offers one click away.
+  CLIP_CUT_V1_ALTERNATIVE = 2;
+  // A pair the user put there. Snapped to the candidate's lattice by the
+  // daemon before anything is built from it, because a boundary arriving over
+  // this socket has been through a process the director does not control.
+  CLIP_CUT_V1_EXACT = 3;
+}
+
+// Turn an approved candidate into an edit document (book ch. 17).
+//
+// This creates the document as well as assembling it, so the reply is the same
+// EditDoc CreateEditDoc returns and the caller has one round trip rather than
+// two with a window in between where a half-approved clip exists.
+message DirectClipRequest {
+  string project_id = 1;
+  string source_id = 2;
+  string candidate_id = 3;
+  ClipCutV1 cut = 4;
+  // Empty takes the caption engine's default preset.
+  string style_ref = 5;
+  // Read only when cut is EXACT.
+  uint64 start_ticks = 6;
+  uint64 end_ticks = 7;
+}
+
+message DirectClipResponse {
+  EditDoc doc = 1;
+  // Where the cut actually landed, which is not where it was asked for when
+  // the request named a boundary the lattice had to move.
+  uint64 start_ticks = 2;
+  uint64 end_ticks = 3;
+  // Why the director did what it did, carried out so the interface can say so
+  // without re-deriving it from the document.
+  repeated string decisions = 4;
 }

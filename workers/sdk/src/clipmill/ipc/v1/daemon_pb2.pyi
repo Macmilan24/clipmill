@@ -39,6 +39,20 @@ class JobState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     JOB_STATE_FAILED: _ClassVar[JobState]
     JOB_STATE_CANCEL_REQUESTED: _ClassVar[JobState]
     JOB_STATE_CANCELLED: _ClassVar[JobState]
+
+class ClipDecisionV1(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    CLIP_DECISION_V1_UNSPECIFIED: _ClassVar[ClipDecisionV1]
+    CLIP_DECISION_V1_REJECTED: _ClassVar[ClipDecisionV1]
+    CLIP_DECISION_V1_KEPT: _ClassVar[ClipDecisionV1]
+    CLIP_DECISION_V1_APPROVED: _ClassVar[ClipDecisionV1]
+
+class ClipCutV1(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    CLIP_CUT_V1_UNSPECIFIED: _ClassVar[ClipCutV1]
+    CLIP_CUT_V1_CHOSEN: _ClassVar[ClipCutV1]
+    CLIP_CUT_V1_ALTERNATIVE: _ClassVar[ClipCutV1]
+    CLIP_CUT_V1_EXACT: _ClassVar[ClipCutV1]
 ERROR_CODE_UNSPECIFIED: ErrorCode
 ERROR_CODE_INVALID_ARGUMENT: ErrorCode
 ERROR_CODE_NOT_FOUND: ErrorCode
@@ -61,9 +75,17 @@ JOB_STATE_SUCCEEDED: JobState
 JOB_STATE_FAILED: JobState
 JOB_STATE_CANCEL_REQUESTED: JobState
 JOB_STATE_CANCELLED: JobState
+CLIP_DECISION_V1_UNSPECIFIED: ClipDecisionV1
+CLIP_DECISION_V1_REJECTED: ClipDecisionV1
+CLIP_DECISION_V1_KEPT: ClipDecisionV1
+CLIP_DECISION_V1_APPROVED: ClipDecisionV1
+CLIP_CUT_V1_UNSPECIFIED: ClipCutV1
+CLIP_CUT_V1_CHOSEN: ClipCutV1
+CLIP_CUT_V1_ALTERNATIVE: ClipCutV1
+CLIP_CUT_V1_EXACT: ClipCutV1
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -88,6 +110,9 @@ class Request(_message.Message):
     RESOLVE_MEDIA_FIELD_NUMBER: _ClassVar[int]
     GET_STORAGE_STATS_FIELD_NUMBER: _ClassVar[int]
     SOLVE_CROP_PATH_FIELD_NUMBER: _ClassVar[int]
+    DIRECT_CLIP_FIELD_NUMBER: _ClassVar[int]
+    SET_CLIP_DECISION_FIELD_NUMBER: _ClassVar[int]
+    LIST_CLIP_DECISIONS_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -112,10 +137,13 @@ class Request(_message.Message):
     resolve_media: ResolveMediaRequest
     get_storage_stats: GetStorageStatsRequest
     solve_crop_path: SolveCropPathRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ...) -> None: ...
+    direct_clip: DirectClipRequest
+    set_clip_decision: SetClipDecisionRequest
+    list_clip_decisions: ListClipDecisionsRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -142,6 +170,9 @@ class Response(_message.Message):
     RESOLVE_MEDIA_FIELD_NUMBER: _ClassVar[int]
     GET_STORAGE_STATS_FIELD_NUMBER: _ClassVar[int]
     SOLVE_CROP_PATH_FIELD_NUMBER: _ClassVar[int]
+    DIRECT_CLIP_FIELD_NUMBER: _ClassVar[int]
+    SET_CLIP_DECISION_FIELD_NUMBER: _ClassVar[int]
+    LIST_CLIP_DECISIONS_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -168,7 +199,10 @@ class Response(_message.Message):
     resolve_media: ResolveMediaResponse
     get_storage_stats: GetStorageStatsResponse
     solve_crop_path: SolveCropPathResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ...) -> None: ...
+    direct_clip: DirectClipResponse
+    set_clip_decision: SetClipDecisionResponse
+    list_clip_decisions: ListClipDecisionsResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -979,3 +1013,77 @@ class SnapshotEditDocResponse(_message.Message):
     artifact_id: str
     revision: int
     def __init__(self, artifact_id: _Optional[str] = ..., revision: _Optional[int] = ...) -> None: ...
+
+class SetClipDecisionRequest(_message.Message):
+    __slots__ = ("project_id", "source_id", "candidate_id", "decision")
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
+    DECISION_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    source_id: str
+    candidate_id: str
+    decision: ClipDecisionV1
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., decision: _Optional[_Union[ClipDecisionV1, str]] = ...) -> None: ...
+
+class SetClipDecisionResponse(_message.Message):
+    __slots__ = ("decision", "decided_unix_millis")
+    DECISION_FIELD_NUMBER: _ClassVar[int]
+    DECIDED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    decision: ClipDecisionV1
+    decided_unix_millis: int
+    def __init__(self, decision: _Optional[_Union[ClipDecisionV1, str]] = ..., decided_unix_millis: _Optional[int] = ...) -> None: ...
+
+class ListClipDecisionsRequest(_message.Message):
+    __slots__ = ("project_id", "source_id")
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    source_id: str
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
+
+class ClipDecisionRecordV1(_message.Message):
+    __slots__ = ("candidate_id", "decision", "decided_unix_millis")
+    CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
+    DECISION_FIELD_NUMBER: _ClassVar[int]
+    DECIDED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    candidate_id: str
+    decision: ClipDecisionV1
+    decided_unix_millis: int
+    def __init__(self, candidate_id: _Optional[str] = ..., decision: _Optional[_Union[ClipDecisionV1, str]] = ..., decided_unix_millis: _Optional[int] = ...) -> None: ...
+
+class ListClipDecisionsResponse(_message.Message):
+    __slots__ = ("decisions",)
+    DECISIONS_FIELD_NUMBER: _ClassVar[int]
+    decisions: _containers.RepeatedCompositeFieldContainer[ClipDecisionRecordV1]
+    def __init__(self, decisions: _Optional[_Iterable[_Union[ClipDecisionRecordV1, _Mapping]]] = ...) -> None: ...
+
+class DirectClipRequest(_message.Message):
+    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks")
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
+    CUT_FIELD_NUMBER: _ClassVar[int]
+    STYLE_REF_FIELD_NUMBER: _ClassVar[int]
+    START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    source_id: str
+    candidate_id: str
+    cut: ClipCutV1
+    style_ref: str
+    start_ticks: int
+    end_ticks: int
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ...) -> None: ...
+
+class DirectClipResponse(_message.Message):
+    __slots__ = ("doc", "start_ticks", "end_ticks", "decisions")
+    DOC_FIELD_NUMBER: _ClassVar[int]
+    START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    DECISIONS_FIELD_NUMBER: _ClassVar[int]
+    doc: EditDoc
+    start_ticks: int
+    end_ticks: int
+    decisions: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, doc: _Optional[_Union[EditDoc, _Mapping]] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., decisions: _Optional[_Iterable[str]] = ...) -> None: ...

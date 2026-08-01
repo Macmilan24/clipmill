@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -73,6 +73,12 @@ pub mod request {
         GetStorageStats(super::GetStorageStatsRequest),
         #[prost(message, tag = "32")]
         SolveCropPath(super::SolveCropPathRequest),
+        #[prost(message, tag = "33")]
+        DirectClip(super::DirectClipRequest),
+        #[prost(message, tag = "34")]
+        SetClipDecision(super::SetClipDecisionRequest),
+        #[prost(message, tag = "35")]
+        ListClipDecisions(super::ListClipDecisionsRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -83,7 +89,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -141,6 +147,12 @@ pub mod response {
         GetStorageStats(super::GetStorageStatsResponse),
         #[prost(message, tag = "33")]
         SolveCropPath(super::SolveCropPathResponse),
+        #[prost(message, tag = "34")]
+        DirectClip(super::DirectClipResponse),
+        #[prost(message, tag = "35")]
+        SetClipDecision(super::SetClipDecisionResponse),
+        #[prost(message, tag = "36")]
+        ListClipDecisions(super::ListClipDecisionsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1175,6 +1187,84 @@ pub struct SnapshotEditDocResponse {
     #[prost(uint64, tag = "2")]
     pub revision: u64,
 }
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetClipDecisionRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub candidate_id: ::prost::alloc::string::String,
+    #[prost(enumeration = "ClipDecisionV1", tag = "4")]
+    pub decision: i32,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetClipDecisionResponse {
+    #[prost(enumeration = "ClipDecisionV1", tag = "1")]
+    pub decision: i32,
+    #[prost(uint64, tag = "2")]
+    pub decided_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListClipDecisionsRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ClipDecisionRecordV1 {
+    #[prost(string, tag = "1")]
+    pub candidate_id: ::prost::alloc::string::String,
+    #[prost(enumeration = "ClipDecisionV1", tag = "2")]
+    pub decision: i32,
+    #[prost(uint64, tag = "3")]
+    pub decided_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListClipDecisionsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub decisions: ::prost::alloc::vec::Vec<ClipDecisionRecordV1>,
+}
+/// Turn an approved candidate into an edit document (book ch. 17).
+///
+/// This creates the document as well as assembling it, so the reply is the same
+/// EditDoc CreateEditDoc returns and the caller has one round trip rather than
+/// two with a window in between where a half-approved clip exists.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DirectClipRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub candidate_id: ::prost::alloc::string::String,
+    #[prost(enumeration = "ClipCutV1", tag = "4")]
+    pub cut: i32,
+    /// Empty takes the caption engine's default preset.
+    #[prost(string, tag = "5")]
+    pub style_ref: ::prost::alloc::string::String,
+    /// Read only when cut is EXACT.
+    #[prost(uint64, tag = "6")]
+    pub start_ticks: u64,
+    #[prost(uint64, tag = "7")]
+    pub end_ticks: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DirectClipResponse {
+    #[prost(message, optional, tag = "1")]
+    pub doc: ::core::option::Option<EditDoc>,
+    /// Where the cut actually landed, which is not where it was asked for when
+    /// the request named a boundary the lattice had to move.
+    #[prost(uint64, tag = "2")]
+    pub start_ticks: u64,
+    #[prost(uint64, tag = "3")]
+    pub end_ticks: u64,
+    /// Why the director did what it did, carried out so the interface can say so
+    /// without re-deriving it from the document.
+    #[prost(string, repeated, tag = "4")]
+    pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ErrorCode {
@@ -1297,6 +1387,83 @@ impl JobState {
             "JOB_STATE_FAILED" => Some(Self::Failed),
             "JOB_STATE_CANCEL_REQUESTED" => Some(Self::CancelRequested),
             "JOB_STATE_CANCELLED" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+/// What somebody decided about a candidate. Kept in the durable store rather
+/// than in the interface, because rejecting a clip is work nobody remembers
+/// doing and therefore work nobody can redo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ClipDecisionV1 {
+    Unspecified = 0,
+    /// Not this one. A decision rather than a deletion, so a re-run does not put
+    /// it back in front of somebody who already said no.
+    Rejected = 1,
+    /// Maybe later.
+    Kept = 2,
+    /// Send it to the editor.
+    Approved = 3,
+}
+impl ClipDecisionV1 {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CLIP_DECISION_V1_UNSPECIFIED",
+            Self::Rejected => "CLIP_DECISION_V1_REJECTED",
+            Self::Kept => "CLIP_DECISION_V1_KEPT",
+            Self::Approved => "CLIP_DECISION_V1_APPROVED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CLIP_DECISION_V1_UNSPECIFIED" => Some(Self::Unspecified),
+            "CLIP_DECISION_V1_REJECTED" => Some(Self::Rejected),
+            "CLIP_DECISION_V1_KEPT" => Some(Self::Kept),
+            "CLIP_DECISION_V1_APPROVED" => Some(Self::Approved),
+            _ => None,
+        }
+    }
+}
+/// Which cut the director should build from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ClipCutV1 {
+    Unspecified = 0,
+    /// What the boundary optimizer chose.
+    Chosen = 1,
+    /// Its runner-up, which the Inspector offers one click away.
+    Alternative = 2,
+    /// A pair the user put there. Snapped to the candidate's lattice by the
+    /// daemon before anything is built from it, because a boundary arriving over
+    /// this socket has been through a process the director does not control.
+    Exact = 3,
+}
+impl ClipCutV1 {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CLIP_CUT_V1_UNSPECIFIED",
+            Self::Chosen => "CLIP_CUT_V1_CHOSEN",
+            Self::Alternative => "CLIP_CUT_V1_ALTERNATIVE",
+            Self::Exact => "CLIP_CUT_V1_EXACT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CLIP_CUT_V1_UNSPECIFIED" => Some(Self::Unspecified),
+            "CLIP_CUT_V1_CHOSEN" => Some(Self::Chosen),
+            "CLIP_CUT_V1_ALTERNATIVE" => Some(Self::Alternative),
+            "CLIP_CUT_V1_EXACT" => Some(Self::Exact),
             _ => None,
         }
     }

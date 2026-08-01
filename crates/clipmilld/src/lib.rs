@@ -13,6 +13,7 @@ mod error;
 mod evidence;
 mod implementations;
 mod inputs;
+mod inspector;
 #[cfg(unix)]
 mod ipc;
 mod jobs;

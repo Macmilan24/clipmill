@@ -573,6 +573,7 @@ dependencies = [
  "clipmill-captions",
  "clipmill-contracts",
  "clipmill-core",
+ "clipmill-director",
  "clipmill-discovery",
  "clipmill-edit-ir",
  "clipmill-evidence",

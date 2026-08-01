@@ -31,9 +31,11 @@ mod device_store;
 pub(crate) use device_store::{BeginDeviceProfile, DeviceProfileRecord, DeviceProfileState};
 mod edit_store;
 pub(crate) use edit_store::{EditCommandRecord, EditDocRecord};
+mod decision_store;
+pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -175,6 +177,36 @@ impl DbActor {
                                 Command::ListJobs { project_id, reply } => {
                                     let _result =
                                         reply.send(job_store::list_jobs(&connection, &project_id));
+                                }
+                                Command::SetClipDecision {
+                                    project_id,
+                                    source_id,
+                                    candidate_id,
+                                    decision,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(
+                                        decision_store::set(
+                                            &connection,
+                                            &project_id,
+                                            &source_id,
+                                            &candidate_id,
+                                            decision,
+                                            now_unix_millis,
+                                        )
+                                        .map_err(StoreError::from),
+                                    );
+                                }
+                                Command::ListClipDecisions {
+                                    project_id,
+                                    source_id,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(
+                                        decision_store::list(&connection, &project_id, &source_id)
+                                            .map_err(StoreError::from),
+                                    );
                                 }
                                 Command::CancelJob {
                                     request_id,
@@ -678,6 +710,48 @@ impl DbHandle {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListJobs { project_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Record what somebody decided about a clip. Durable before it is
+    /// acknowledged, which is the whole reason it is not renderer state.
+    pub(crate) async fn set_clip_decision(
+        &self,
+        project_id: String,
+        source_id: String,
+        candidate_id: String,
+        decision: Decision,
+        now_unix_millis: u64,
+    ) -> Result<(), StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::SetClipDecision {
+                project_id,
+                source_id,
+                candidate_id,
+                decision,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn list_clip_decisions(
+        &self,
+        project_id: String,
+        source_id: String,
+    ) -> Result<Vec<DecisionRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ListClipDecisions {
+                project_id,
+                source_id,
+                reply,
+            })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1225,6 +1299,19 @@ enum Command {
         project_id: String,
         reply: oneshot::Sender<Result<Vec<JobRecord>, StoreError>>,
     },
+    SetClipDecision {
+        project_id: String,
+        source_id: String,
+        candidate_id: String,
+        decision: Decision,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<(), StoreError>>,
+    },
+    ListClipDecisions {
+        project_id: String,
+        source_id: String,
+        reply: oneshot::Sender<Result<Vec<DecisionRecord>, StoreError>>,
+    },
     CancelJob {
         request_id: String,
         request_hash: [u8; 32],
@@ -1493,7 +1580,7 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(job_store::CREATE_V7_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 8;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 9;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1519,7 +1606,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 8 {
             transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 8;")?;
+        if version < 9 {
+            transaction.execute_batch(decision_store::CREATE_V9_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 9;")?;
         transaction.commit()?;
     }
     Ok(())
