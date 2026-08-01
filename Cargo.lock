@@ -525,6 +525,8 @@ dependencies = [
 name = "clipmill-render"
 version = "0.0.1"
 dependencies = [
+ "clipmill-captions",
+ "clipmill-contracts",
  "clipmill-edit-ir",
  "serde",
  "serde_json",
@@ -555,6 +557,7 @@ version = "0.0.1"
 dependencies = [
  "clap",
  "clipmill-artifacts",
+ "clipmill-captions",
  "clipmill-contracts",
  "clipmill-core",
  "clipmill-discovery",

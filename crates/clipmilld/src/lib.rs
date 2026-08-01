@@ -2,6 +2,7 @@
 
 mod analysis;
 mod artifacts;
+mod captions;
 mod config;
 #[cfg(unix)]
 mod daemon;

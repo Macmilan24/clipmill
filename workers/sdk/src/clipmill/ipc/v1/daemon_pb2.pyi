@@ -454,6 +454,30 @@ class RankStagePayloadV1(_message.Message):
     diversity_milli: int
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
 
+class DeriveCaptionsPayloadV1(_message.Message):
+    __slots__ = ("key_version", "source_id", "span_start_ticks", "span_end_ticks")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    SPAN_START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    SPAN_END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    source_id: str
+    span_start_ticks: int
+    span_end_ticks: int
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., span_start_ticks: _Optional[int] = ..., span_end_ticks: _Optional[int] = ...) -> None: ...
+
+class CaptionsStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "span_start_ticks", "span_end_ticks")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    SPAN_START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    SPAN_END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    span_start_ticks: int
+    span_end_ticks: int
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., span_start_ticks: _Optional[int] = ..., span_end_ticks: _Optional[int] = ...) -> None: ...
+
 class AnalyzeSourcePayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

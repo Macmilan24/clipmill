@@ -8,8 +8,8 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest,
-    CropKeyframeV1, CropWeightsV1, DemoDagPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
-    DiscoverCandidatesPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
+    CropKeyframeV1, CropWeightsV1, DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1,
+    DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
     GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse, GetProjectResponse,
     GetSourceResponse, GetStorageStatsResponse, HealthResponse, IndexTranscriptPayloadV1,
     IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
@@ -49,6 +49,7 @@ const DETECT_FACES_KEY_VERSION: &str = "clipmill.detect-faces.v1";
 const INDEX_TRANSCRIPT_KEY_VERSION: &str = "clipmill.index-transcript.v1";
 const DISCOVER_CANDIDATES_KEY_VERSION: &str = "clipmill.discover-candidates.v1";
 const RANK_CANDIDATES_KEY_VERSION: &str = "clipmill.rank-candidates.v1";
+const DERIVE_CAPTIONS_KEY_VERSION: &str = "clipmill.derive-captions.v1";
 const ANALYZE_SOURCE_KEY_VERSION: &str = "clipmill.analyze-source.v1";
 
 #[derive(Clone, Debug)]
@@ -1022,6 +1023,86 @@ impl Service {
                         candidates: &found[0],
                         index: &found[1],
                         transcript: &found[2],
+                    },
+                    &payload,
+                    now,
+                )
+            }
+            "derive-captions" => {
+                let Ok(payload) = DeriveCaptionsPayloadV1::decode(submit.payload.as_slice()) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "captions job payload is not a valid DeriveCaptionsPayloadV1",
+                    );
+                };
+                if payload.key_version != DERIVE_CAPTIONS_KEY_VERSION {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "captions job payload key_version is unsupported",
+                    );
+                }
+                let source_id = match payload.source_id.parse::<SourceId>() {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_reply(
+                            request_id,
+                            ErrorCode::InvalidArgument,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let source = match self.database.get_source(source_id.to_string()).await {
+                    Ok(source) => source,
+                    Err(error) => return store_error_reply(request_id, &error),
+                };
+                if source.project_id != project_id.as_str() {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "source does not belong to the requested project",
+                    );
+                }
+                // Words are the one thing captions cannot be derived without.
+                let Ok(Some(transcript)) = self
+                    .database
+                    .latest_source_job_artifact(
+                        source_id.to_string(),
+                        "transcribe-source".to_owned(),
+                    )
+                    .await
+                else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::Conflict,
+                        "this source has no transcript to derive captions from",
+                    );
+                };
+                // The other two make the segmentation better informed rather
+                // than possible, and their absence is recorded in the document.
+                let index = self
+                    .database
+                    .latest_source_job_artifact(
+                        source_id.to_string(),
+                        "index-transcript".to_owned(),
+                    )
+                    .await
+                    .ok()
+                    .flatten();
+                let shots = self
+                    .database
+                    .latest_source_job_artifact(source_id.to_string(), "detect-shots".to_owned())
+                    .await
+                    .ok()
+                    .flatten();
+                JobPlan::derive_captions(
+                    &project_id,
+                    source_id.to_string(),
+                    crate::jobs::CaptionsJobInputs {
+                        transcript: &transcript,
+                        index: index.as_deref(),
+                        shots: shots.as_deref(),
                     },
                     &payload,
                     now,
