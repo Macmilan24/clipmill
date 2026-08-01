@@ -481,6 +481,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-director"
+version = "0.0.1"
+dependencies = [
+ "clipmill-captions",
+ "clipmill-contracts",
+ "clipmill-edit-ir",
+ "clipmill-reframe",
+ "clipmill-render",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-discovery"
 version = "0.0.1"
 dependencies = [

@@ -29,6 +29,7 @@ must_use_candidate = "allow"
 clipmill-artifacts = { path = "crates/clipmill-artifacts", version = "0.0.1" }
 clipmill-captions = { path = "crates/clipmill-captions", version = "0.0.1" }
 clipmill-core = { path = "crates/clipmill-core", version = "0.0.1" }
+clipmill-director = { path = "crates/clipmill-director", version = "0.0.1" }
 clipmill-discovery = { path = "crates/clipmill-discovery", version = "0.0.1" }
 clipmill-edit-ir = { path = "crates/clipmill-edit-ir", version = "0.0.1" }
 clipmill-evidence = { path = "crates/clipmill-evidence", version = "0.0.1" }
