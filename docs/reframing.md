@@ -126,3 +126,41 @@ recording disagree while sharing one address.
 
 It needs the pinned FFmpeg and the pinned YuNet weights, so it runs in the
 `reframe` CI job on macOS and Linux rather than in the plain `rust` job.
+
+## What evaluation still owes this
+
+Recorded here because the gap is invisible from both ends: the gate is green and
+the plan reads finished, and neither of them is where the missing part would
+show up.
+
+Ch. 18 is explicit that the acceleration weight is "tuned per layout state on
+the annotated reframe benchmark, **not by eye**"
+(`18-reframing.tex:95`). It is currently hand-set — 40 against a subject weight
+of 1 and a velocity weight of 4 — and has never been shown annotated media. The
+number is a considered guess that produces good-looking paths on the synthetic
+trajectories it was written against, which is not the same claim.
+
+Ch. 22 names five metrics for this layer: subject coverage, identity switches,
+protected-region loss, camera jerk and fallback correctness
+(`22-evaluation.tex:65`). Only camera jerk is measurable from synthetic
+trajectories, which is what this gate has. Three of the rest need annotated
+video, and protected-region loss needs a detector no phase has built yet.
+
+The workstream that builds the annotated corpus and the harness spells out the
+recall and ranking side — moment sets, boundary error, duplicate rate — and does
+not carry these five. So this is scope for whoever closes evaluation to pick up,
+not a thing already scheduled under a different name.
+
+**What the current gate does not prove.** It ran green over a detector being fed
+its channel order backwards, because nothing in it looks at a photograph of a
+face: synthetic trajectories bypass the detector, hand-built tensors bypass the
+model, and a determinism test compares wrong output against wrong output and
+finds them equal. That was caught by hand and is now pinned, but the class of
+mistake it belongs to — the model quietly doing worse than it should — is
+exactly what an annotated benchmark exists to catch and what this gate
+structurally cannot.
+
+A real-face assertion is deliberately **not** added to the unit suite to close
+this. The corpus policy keeps evaluation media out of Git and behind a signed
+attestation, and one committed photograph would be a worse version of the thing
+that policy already describes.

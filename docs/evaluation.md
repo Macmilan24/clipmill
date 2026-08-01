@@ -70,6 +70,20 @@ writes exactly four public files under `eval/seed40/`:
 private corpus. It fails if a signature, count, cache identity, outcome,
 license total, canonical byte, or path-leak invariant changes.
 
+## Known gap: the reframe layer has no annotated benchmark
+
+Ch. 22 gives reframe five metrics — subject coverage, identity switches,
+protected-region loss, camera jerk and fallback correctness — and ch. 18 states
+that the crop solver's acceleration weight is tuned on that benchmark rather
+than by eye. Neither is scheduled: the corpus and harness work is scoped around
+moment recall, boundary error and duplicate rate, and the reframe row is not
+carried by it.
+
+The consequence is that the weight is a hand-set number and the reframe gate is
+made entirely of synthetic trajectories. Written up in
+[reframing.md](reframing.md), including what that gate has already been shown
+not to catch.
+
 ## Recorded Phase 0 baseline
 
 The completed baseline contains 40 private technical derivatives of Blender
