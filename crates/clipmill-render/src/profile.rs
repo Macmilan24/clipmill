@@ -11,9 +11,11 @@ use crate::timing::FrameRate;
 
 /// The identifier the daemon records in the render recipe.
 pub const PROFILE_ID: &str = "clipmill.render.vertical_1080x1920.v1";
-/// The caption style Phase 1 renders with. W21 adds the preset family; the
-/// document names a style and an unknown name is refused, never defaulted.
-pub const DEFAULT_STYLE_REF: &str = "clipmill.captions.karaoke.v1";
+/// The caption style a project gets without choosing. It is the caption
+/// engine's own default rather than a second opinion held here: a document
+/// names a style, an unknown name is refused rather than defaulted, and a
+/// default that were not itself a preset would be a name nothing could resolve.
+pub const DEFAULT_STYLE_REF: &str = clipmill_captions::DEFAULT_STYLE_REF;
 /// Font family name that must match the pinned font file's internal name.
 pub const FONT_FAMILY: &str = "Inter";
 /// Where the executor stages the pinned font, relative to the working
@@ -65,29 +67,43 @@ pub struct CaptionStyle {
     pub outline_width: u32,
     pub shadow_depth: u32,
     pub bold: bool,
+    /// Whether the words sit on an opaque plate rather than under an outline.
+    /// The only one of the three presets that stays legible over a bright,
+    /// busy, moving background, and the reason libass is told a border style
+    /// rather than always the same one.
+    pub boxed: bool,
     pub margin_horizontal: u32,
     /// Distance from the frame edge the anchored region keeps clear.
     pub margin_vertical: u32,
 }
 
 impl CaptionStyle {
-    /// The Phase 1 style: heavy outline, no box, high contrast, and a spoken
+    /// The default look: heavy outline, no plate, high contrast, and a spoken
     /// colour distinct enough to read as motion on a phone screen.
-    pub fn karaoke_v1() -> Self {
-        Self {
-            style_ref: DEFAULT_STYLE_REF.to_owned(),
-            font_family: FONT_FAMILY.to_owned(),
-            font_size: 84,
-            spoken: Colour::opaque(0xFF, 0xD8, 0x2E),
-            unspoken: Colour::opaque(0xFF, 0xFF, 0xFF),
-            outline: Colour::opaque(0x00, 0x00, 0x00),
-            shadow: Colour::opaque(0x00, 0x00, 0x00),
-            outline_width: 5,
-            shadow_depth: 2,
-            bold: true,
-            margin_horizontal: 90,
-            margin_vertical: 260,
-        }
+    ///
+    /// Built from the caption engine's preset rather than restated here, so
+    /// there is exactly one place the numbers live.
+    pub fn default_preset() -> Self {
+        clipmill_captions::preset(DEFAULT_STYLE_REF).map_or_else(
+            // Unreachable while the default is a member of its own family, and
+            // a test holds that. A style is still better than no captions.
+            || Self {
+                style_ref: DEFAULT_STYLE_REF.to_owned(),
+                font_family: FONT_FAMILY.to_owned(),
+                font_size: 84,
+                spoken: Colour::opaque(0xFF, 0xD6, 0x5C),
+                unspoken: Colour::opaque(0xFF, 0xFF, 0xFF),
+                outline: Colour::opaque(0x00, 0x00, 0x00),
+                shadow: Colour::opaque(0x00, 0x00, 0x00),
+                outline_width: 5,
+                shadow_depth: 2,
+                bold: true,
+                boxed: false,
+                margin_horizontal: 90,
+                margin_vertical: 260,
+            },
+            Self::from_preset,
+        )
     }
 }
 
@@ -166,7 +182,7 @@ impl Default for RenderProfile {
             audio_sample_rate: 48_000,
             audio_channels: 2,
             loudness: LoudnessTarget::default(),
-            caption_style: CaptionStyle::karaoke_v1(),
+            caption_style: CaptionStyle::default_preset(),
             fit_background_sigma: 40,
         }
     }

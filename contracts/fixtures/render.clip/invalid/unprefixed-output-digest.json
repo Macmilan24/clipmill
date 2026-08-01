@@ -115,7 +115,7 @@
         "red": 255,
         "transparency": 0
       },
-      "style_ref": "clipmill.captions.karaoke.v1",
+      "style_ref": "clipmill.captions.clean.v1",
       "unspoken": {
         "blue": 255,
         "green": 255,

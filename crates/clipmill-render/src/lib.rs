@@ -21,6 +21,7 @@
 //!   A second implementation of either would be a parity bug with a head
 //!   start.
 
+pub mod captions;
 mod graph;
 mod manifest;
 mod plan;

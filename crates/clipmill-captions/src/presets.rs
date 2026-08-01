@@ -76,10 +76,11 @@ pub struct Preset {
     pub font_family: &'static str,
     pub font_size: u32,
     pub bold: bool,
-    /// The colour of a word once it has been spoken — and the only colour, in
-    /// a preset with no sweep.
+    /// The colour a word takes *once it has been spoken*. With a sweep this is
+    /// the highlight the reader watches accumulate; with none it is the only
+    /// colour the cue has.
     pub spoken: Colour,
-    /// The colour of a word not yet reached by the sweep.
+    /// The colour a word carries before the sweep reaches it.
     pub unspoken: Colour,
     pub outline: Colour,
     pub shadow: Colour,
@@ -126,8 +127,8 @@ const CLEAN_PRESET: Preset = Preset {
     font_family: "Inter",
     font_size: 84,
     bold: true,
-    spoken: WHITE,
-    unspoken: HIGHLIGHT,
+    spoken: HIGHLIGHT,
+    unspoken: WHITE,
     outline: BLACK,
     shadow: BLACK,
     outline_width: 5,
@@ -164,8 +165,8 @@ const BOXED_PRESET: Preset = Preset {
     font_family: "Inter",
     font_size: 76,
     bold: true,
-    spoken: WHITE,
-    unspoken: HIGHLIGHT,
+    spoken: HIGHLIGHT,
+    unspoken: WHITE,
     outline: PLATE,
     shadow: PLATE,
     outline_width: 4,
@@ -184,9 +185,10 @@ pub const PRESETS: &[Preset] = &[
         style_ref: CLEAN_STILL,
         label: "Clean (reduced motion)",
         animation: Animation::None,
-        // With no sweep there is no second colour to sweep to, and leaving the
-        // highlight in place would mean the still variant rendered words in a
-        // colour the animated one only ever showed in passing.
+        // With no sweep every word is drawn in the spoken colour for the whole
+        // cue, so a still variant that kept the highlight would render an
+        // entire caption in the colour the sweep only ever passed through.
+        spoken: WHITE,
         unspoken: WHITE,
         reduced_motion_of: Some(CLEAN),
         ..CLEAN_PRESET
@@ -204,6 +206,7 @@ pub const PRESETS: &[Preset] = &[
         style_ref: BOXED_STILL,
         label: "Boxed (reduced motion)",
         animation: Animation::None,
+        spoken: WHITE,
         unspoken: WHITE,
         reduced_motion_of: Some(BOXED),
         ..BOXED_PRESET
@@ -250,19 +253,26 @@ mod tests {
             let still = reduced_motion(named).expect("its still twin");
             assert_eq!(animated.font_family, still.font_family);
             assert_eq!(animated.font_size, still.font_size);
-            assert_eq!(animated.spoken, still.spoken);
+            assert_eq!(animated.font_size, still.font_size);
             assert_eq!(animated.border, still.border);
+            assert_eq!(animated.margin_vertical, still.margin_vertical);
         }
     }
 
     #[test]
     fn a_still_variant_never_renders_a_colour_the_animation_only_passed_through() {
         for named in [CLEAN, BOXED] {
+            let animated = preset(named).expect("the preset");
             let still = reduced_motion(named).expect("its still twin");
+            assert_ne!(
+                animated.spoken, animated.unspoken,
+                "a sweep needs two colours to sweep between"
+            );
             assert_eq!(
                 still.spoken, still.unspoken,
                 "a still cue has no unsung state"
             );
+            assert_eq!(still.spoken, super::WHITE, "and it reads in the plain one");
         }
     }
 

@@ -251,7 +251,7 @@
         "start_ticks": 468468
       }
     ],
-    "style_ref": "clipmill.captions.karaoke.v1"
+    "style_ref": "clipmill.captions.clean.v1"
   },
   "rationale": {
     "candidate_id": "cand_first_slice",
