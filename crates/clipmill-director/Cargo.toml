@@ -16,6 +16,7 @@ clipmill-render.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+clipmill-captions.workspace = true
 serde_json.workspace = true
 
 [lints]

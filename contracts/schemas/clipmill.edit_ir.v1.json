@@ -4,13 +4,7 @@
   "title": "EditIr",
   "description": "The edit document (book ch. 17): a versioned, multi-track, non-destructive timeline that the preview, the render compiler, and later the NLE exporter all read. No subsystem may render, preview, or export from any other representation. All time is integer ticks at 1/90000 (D06); a segment's program position is the sum of the durations before it and is never stored, so a trim cannot leave a stale offset behind.",
   "type": "object",
-  "required": [
-    "version",
-    "timebase",
-    "video",
-    "captions",
-    "audio"
-  ],
+  "required": ["version", "timebase", "video", "captions", "audio"],
   "additionalProperties": false,
   "properties": {
     "version": {
@@ -18,10 +12,7 @@
     },
     "timebase": {
       "type": "object",
-      "required": [
-        "num",
-        "den"
-      ],
+      "required": ["num", "den"],
       "additionalProperties": false,
       "properties": {
         "num": {
@@ -46,9 +37,7 @@
     },
     "captions": {
       "type": "object",
-      "required": [
-        "style_ref"
-      ],
+      "required": ["style_ref"],
       "additionalProperties": false,
       "properties": {
         "style_ref": {
@@ -73,10 +62,7 @@
     },
     "audio": {
       "type": "object",
-      "required": [
-        "target_lufs",
-        "true_peak_dbtp"
-      ],
+      "required": ["target_lufs", "true_peak_dbtp"],
       "additionalProperties": false,
       "properties": {
         "target_lufs": {
@@ -90,10 +76,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": [
-              "t_ticks",
-              "gain_db"
-            ],
+            "required": ["t_ticks", "gain_db"],
             "additionalProperties": false,
             "properties": {
               "t_ticks": {
@@ -113,10 +96,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "hash",
-          "license"
-        ],
+        "required": ["hash", "license"],
         "additionalProperties": false,
         "properties": {
           "hash": {
@@ -153,12 +133,7 @@
     "cropRect": {
       "description": "Integer pixel rectangle in the source frame's coordinate space.",
       "type": "object",
-      "required": [
-        "x",
-        "y",
-        "width",
-        "height"
-      ],
+      "required": ["x", "y", "width", "height"],
       "additionalProperties": false,
       "properties": {
         "x": {
@@ -181,13 +156,7 @@
     },
     "videoSegment": {
       "type": "object",
-      "required": [
-        "segment_id",
-        "source_fingerprint",
-        "in_ticks",
-        "out_ticks",
-        "layout"
-      ],
+      "required": ["segment_id", "source_fingerprint", "in_ticks", "out_ticks", "layout"],
       "additionalProperties": false,
       "properties": {
         "segment_id": {
@@ -207,26 +176,18 @@
         },
         "layout": {
           "type": "object",
-          "required": [
-            "state"
-          ],
+          "required": ["state"],
           "additionalProperties": false,
           "properties": {
             "state": {
-              "enum": [
-                "speaker_fill",
-                "fit"
-              ]
+              "enum": ["speaker_fill", "fit"]
             },
             "crop_path": {
               "description": "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.",
               "type": "array",
               "items": {
                 "type": "object",
-                "required": [
-                  "t_ticks",
-                  "rect"
-                ],
+                "required": ["t_ticks", "rect"],
                 "additionalProperties": false,
                 "properties": {
                   "t_ticks": {
@@ -245,14 +206,7 @@
     },
     "captionCue": {
       "type": "object",
-      "required": [
-        "cue_id",
-        "start_ticks",
-        "end_ticks",
-        "region",
-        "anim",
-        "lines"
-      ],
+      "required": ["cue_id", "start_ticks", "end_ticks", "region", "anim", "lines"],
       "additionalProperties": false,
       "properties": {
         "cue_id": {
@@ -268,17 +222,10 @@
           "minimum": 1
         },
         "region": {
-          "enum": [
-            "lower_safe",
-            "upper_safe",
-            "center"
-          ]
+          "enum": ["lower_safe", "upper_safe", "center"]
         },
         "anim": {
-          "enum": [
-            "none",
-            "karaoke"
-          ]
+          "enum": ["none", "karaoke"]
         },
         "lines": {
           "description": "Line breaks are decided once and stored here \u2014 the parity keystone. Preview and render must never re-wrap text independently.",
@@ -286,9 +233,7 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": [
-              "words"
-            ],
+            "required": ["words"],
             "additionalProperties": false,
             "properties": {
               "words": {
@@ -296,11 +241,7 @@
                 "minItems": 1,
                 "items": {
                   "type": "object",
-                  "required": [
-                    "text",
-                    "start_ticks",
-                    "end_ticks"
-                  ],
+                  "required": ["text", "start_ticks", "end_ticks"],
                   "additionalProperties": false,
                   "properties": {
                     "text": {

@@ -222,6 +222,12 @@ gate-reframe iterations="1":
 gate-captions iterations="1":
     ./tools/drills/captions-drill.sh {{iterations}}
 
+# W23 coverage: the director's goldens, the boundary swap, the lattice snapping
+# a dragged handle lands on, decisions that survive a kill, and the joins the
+# board renders from.
+gate-inspector iterations="1":
+    ./tools/drills/inspector-drill.sh {{iterations}}
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock

@@ -1579,6 +1579,7 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(edit_store::CREATE_V6_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V7_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
+        transaction.execute_batch(decision_store::CREATE_V9_TABLES)?;
         transaction
             .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 9;")?;
         transaction.commit()?;
@@ -1903,10 +1904,10 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        CREATE_V1_TABLES, CREATE_V2_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION,
-        StoreError, attach_artifact_root, create_project, delete_project, device_store, edit_store,
-        enforce_integrity_check, enforce_sqlite_version, get_project, job_store,
-        list_artifact_roots, list_projects, open_database, source_store,
+        CREATE_V1_TABLES, CREATE_V2_TABLES, Decision, ProjectRecord, SCHEMA_VERSION,
+        SQLITE_MIN_VERSION, StoreError, attach_artifact_root, create_project, decision_store,
+        delete_project, device_store, edit_store, enforce_integrity_check, enforce_sqlite_version,
+        get_project, job_store, list_artifact_roots, list_projects, open_database, source_store,
     };
     use crate::{
         DaemonError,
@@ -2536,6 +2537,75 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("backup version");
         assert_eq!(backup_version, 2);
+    }
+
+    /// The claim the Inspector's gate rests on: a decision outlives the process
+    /// that took it.
+    ///
+    /// Written against a database that is opened, written, closed, and opened
+    /// again rather than against a live handle, because "survives a kill" is a
+    /// statement about what reached the disk and nothing held in memory can
+    /// answer it.
+    #[test]
+    fn a_clip_decision_survives_the_daemon_that_recorded_it() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("decisions.db");
+        let backups = temp.path().join("backups");
+
+        let connection = open_database(&path, &backups).expect("open");
+        connection
+            .execute(
+                // OR IGNORE because opening a store seeds a project of its
+                // own; this test cares about the decision rows, not about
+                // being the first writer.
+                "INSERT OR IGNORE INTO projects(project_id, name, created_unix_millis)\n\
+                 VALUES ('prj_00000000000000000000000000', 'test', 0)",
+                [],
+            )
+            .expect("a project to hang the decision from");
+        decision_store::set(
+            &connection,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_a",
+            Decision::Rejected,
+            10,
+        )
+        .expect("record a rejection");
+        decision_store::set(
+            &connection,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_b",
+            Decision::Approved,
+            20,
+        )
+        .expect("record an approval");
+        // Changing your mind replaces the answer rather than appending to it.
+        decision_store::set(
+            &connection,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_a",
+            Decision::Kept,
+            30,
+        )
+        .expect("change of mind");
+        drop(connection);
+
+        let reopened = open_database(&path, &backups).expect("reopen");
+        let found = decision_store::list(&reopened, "prj_00000000000000000000000000", "src_1")
+            .expect("read back");
+
+        assert_eq!(found.len(), 2, "one row per candidate: {found:?}");
+        let changed = found
+            .iter()
+            .find(|record| record.candidate_id == "cand_a")
+            .expect("the candidate whose decision changed");
+        assert_eq!(changed.decision, Decision::Kept);
+        assert_eq!(changed.decided_unix_millis, 30);
+        // Newest first, which is the order a board wants.
+        assert_eq!(found[0].candidate_id, "cand_a");
     }
 
     #[test]
