@@ -12,6 +12,11 @@
  */
 import {
   type AnalyzeRequest,
+  type ClipDecision,
+  type ClipDecisionRecord,
+  type CropPath,
+  type DirectClipInput,
+  type DirectedClip,
   type Document,
   type Job,
   type MediaArtifact,
@@ -27,8 +32,12 @@ import {
   listProjects,
   listSources,
   mediaUrl,
+  directClip,
+  listClipDecisions,
+  solveCropPath,
   readDocument,
   registerSource,
+  setClipDecision,
   resolveMedia,
   submitAnalyze,
 } from './client.js';
@@ -47,6 +56,20 @@ export interface ShellApi {
   chooseSourceFile(): Promise<string | null>;
   registerSource(projectId: string, absolutePath: string): Promise<RegisteredSource>;
   submitAnalyze(projectId: string, request: AnalyzeRequest): Promise<Job>;
+  directClip(request: DirectClipInput): Promise<DirectedClip>;
+  solveCropPath(
+    projectId: string,
+    faceTrackArtifactId: string,
+    startTicks: number,
+    endTicks: number,
+  ): Promise<CropPath>;
+  setClipDecision(
+    projectId: string,
+    sourceId: string,
+    candidateId: string,
+    decision: ClipDecision,
+  ): Promise<ClipDecisionRecord>;
+  listClipDecisions(projectId: string, sourceId: string): Promise<readonly ClipDecisionRecord[]>;
 }
 
 export const daemonApi: ShellApi = {
@@ -62,4 +85,8 @@ export const daemonApi: ShellApi = {
   chooseSourceFile,
   registerSource,
   submitAnalyze,
+  directClip,
+  solveCropPath,
+  setClipDecision,
+  listClipDecisions,
 };

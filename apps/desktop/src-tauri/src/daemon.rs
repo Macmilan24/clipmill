@@ -12,12 +12,14 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    AnalyzeSourcePayloadV1, CreateProjectRequest, DemoDagPayloadV1, GetDeviceProfileRequest,
-    GetDeviceProfileResponse, GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse,
-    HealthRequest, HealthResponse, Job, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    AnalyzeSourcePayloadV1, ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1,
+    DirectClipRequest, DirectClipResponse, GetDeviceProfileRequest, GetDeviceProfileResponse,
+    GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse,
+    Job, ListClipDecisionsRequest, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
     Project, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
-    RegisterSourceResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response, Source,
-    SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
+    RegisterSourceResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
+    SetClipDecisionRequest, SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse,
+    Source, SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
 use serde::Serialize;
@@ -132,6 +134,56 @@ impl DaemonClient {
 
     pub fn socket(&self) -> &Path {
         &self.socket
+    }
+
+    /// A crop path proposal for a span. Writes nothing: it is arithmetic over
+    /// evidence that already exists, which is why the Inspector may ask for one
+    /// every time somebody moves a boundary.
+    pub async fn solve_crop_path(
+        &self,
+        request: SolveCropPathRequest,
+    ) -> Result<SolveCropPathResponse, DaemonLinkError> {
+        match self.call(request::Body::SolveCropPath(request)).await? {
+            response::Body::SolveCropPath(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Turn an approved candidate into an edit document.
+    pub async fn direct_clip(
+        &self,
+        request: DirectClipRequest,
+    ) -> Result<DirectClipResponse, DaemonLinkError> {
+        match self.call(request::Body::DirectClip(request)).await? {
+            response::Body::DirectClip(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Record what somebody decided about a clip.
+    pub async fn set_clip_decision(
+        &self,
+        request: SetClipDecisionRequest,
+    ) -> Result<SetClipDecisionResponse, DaemonLinkError> {
+        match self.call(request::Body::SetClipDecision(request)).await? {
+            response::Body::SetClipDecision(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn list_clip_decisions(
+        &self,
+        project_id: &str,
+        source_id: &str,
+    ) -> Result<Vec<ClipDecisionRecordV1>, DaemonLinkError> {
+        let request = ListClipDecisionsRequest {
+            project_id: project_id.to_owned(),
+            source_id: source_id.to_owned(),
+        };
+        match self.call(request::Body::ListClipDecisions(request)).await? {
+            response::Body::ListClipDecisions(reply) => Ok(reply.decisions),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
     }
 
     async fn call(&self, body: request::Body) -> Result<response::Body, DaemonLinkError> {

@@ -20,7 +20,7 @@ use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ClipDurationV1, GetStorageStatsResponse, Job, Project,
     RegisterSourceResponse, ResolveMediaResponse, Source, Task,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct ProjectView {
@@ -332,4 +332,156 @@ pub struct DocumentView {
     /// with the generated schema type, which keeps the JSON Schema the only
     /// contract between the two ends.
     pub json: String,
+}
+
+/// What the renderer asks for when a clip is approved.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectClipInput {
+    pub project_id: String,
+    pub source_id: String,
+    pub candidate_id: String,
+    /// `chosen`, `alternative`, or `exact`. Anything else is read as `chosen`,
+    /// because a request that named a cut nobody defined has not asked for a
+    /// different one.
+    pub cut: String,
+    #[serde(default)]
+    pub style_ref: String,
+    /// Read only for `exact`, and snapped to the lattice by the daemon.
+    #[serde(default)]
+    pub start_ticks: u64,
+    #[serde(default)]
+    pub end_ticks: u64,
+}
+
+impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipRequest {
+    fn from(input: DirectClipInput) -> Self {
+        Self {
+            project_id: input.project_id,
+            source_id: input.source_id,
+            candidate_id: input.candidate_id,
+            cut: match input.cut.as_str() {
+                "alternative" => 2,
+                "exact" => 3,
+                _ => 1,
+            },
+            style_ref: input.style_ref,
+            start_ticks: input.start_ticks,
+            end_ticks: input.end_ticks,
+        }
+    }
+}
+
+/// The document a directed clip produced, and where its cut landed.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectedClipView {
+    pub doc_id: String,
+    pub revision: u64,
+    pub document_json: String,
+    /// Where the cut actually landed, which is not always where it was asked
+    /// for: a hand-set boundary is moved onto the lattice first.
+    pub start_ticks: u64,
+    pub end_ticks: u64,
+    /// Why the director did what it did, in sentences.
+    pub decisions: Vec<String>,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::DirectClipResponse> for DirectedClipView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::DirectClipResponse) -> Self {
+        let doc = reply.doc.unwrap_or_default();
+        Self {
+            doc_id: doc.doc_id,
+            revision: doc.revision,
+            document_json: doc.document_json,
+            start_ticks: reply.start_ticks,
+            end_ticks: reply.end_ticks,
+            decisions: reply.decisions,
+        }
+    }
+}
+
+/// One decision, as the interface names it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipDecisionView {
+    pub candidate_id: String,
+    pub decision: String,
+    pub decided_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::ClipDecisionRecordV1> for ClipDecisionView {
+    fn from(record: clipmill_contracts::proto::ipc::v1::ClipDecisionRecordV1) -> Self {
+        Self {
+            candidate_id: record.candidate_id,
+            decision: decision_word(record.decision),
+            decided_unix_millis: record.decided_unix_millis,
+        }
+    }
+}
+
+/// The wire code for a decision word. Zero is "unspecified", which the daemon
+/// refuses — a word this shell does not recognize is not silently turned into
+/// one of the three real answers.
+pub fn decision_code(word: &str) -> i32 {
+    match word {
+        "rejected" => 1,
+        "kept" => 2,
+        "approved" => 3,
+        _ => 0,
+    }
+}
+
+/// The word for a wire code, for a renderer that should never see an integer.
+pub fn decision_word(code: i32) -> String {
+    match code {
+        1 => "rejected",
+        2 => "kept",
+        3 => "approved",
+        _ => "unspecified",
+    }
+    .to_owned()
+}
+
+/// One point of a proposed crop path, normalized against the source frame.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CropKeyframeView {
+    pub t_ticks: u64,
+    pub center_x: f64,
+    pub center_y: f64,
+    pub scale: f64,
+}
+
+/// A crop path proposal, and what it is worth.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CropPathView {
+    pub keyframes: Vec<CropKeyframeView>,
+    /// True when nobody earned the frame and this is the fitted rectangle. The
+    /// reason travels with it, because "why is this not tracking" is the first
+    /// thing anyone asks.
+    pub fit: bool,
+    pub fit_reason: String,
+    pub containment: f64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::SolveCropPathResponse> for CropPathView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::SolveCropPathResponse) -> Self {
+        Self {
+            keyframes: reply
+                .keyframes
+                .into_iter()
+                .map(|keyframe| CropKeyframeView {
+                    t_ticks: keyframe.t_ticks,
+                    center_x: keyframe.center_x,
+                    center_y: keyframe.center_y,
+                    scale: keyframe.scale,
+                })
+                .collect(),
+            fit: reply.fit,
+            fit_reason: reply.fit_reason,
+            containment: reply.containment,
+        }
+    }
 }

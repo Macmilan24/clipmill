@@ -11,6 +11,8 @@ import type { SourceMap } from '@clipmill/contracts';
 import { JobState, TaskState } from '@clipmill/contracts';
 
 import type {
+  ClipDecision,
+  DirectClipInput,
   Document,
   Job,
   MediaArtifact,
@@ -108,10 +110,23 @@ export interface FakeWorld {
   readonly documents: Readonly<Record<string, Document>>;
   readonly media: Readonly<Record<string, MediaArtifact>>;
   readonly storage: StorageStats | null;
+  /** What the Inspector asked the director for, in order. */
+  readonly directed: DirectClipInput[];
+  /** What was decided about each candidate. */
+  readonly decisions: Map<string, ClipDecision>;
 }
 
 export function emptyWorld(): FakeWorld {
-  return { projects: [], jobs: {}, sources: {}, documents: {}, media: {}, storage: null };
+  return {
+    projects: [],
+    jobs: {},
+    sources: {},
+    documents: {},
+    media: {},
+    storage: null,
+    directed: [],
+    decisions: new Map(),
+  };
 }
 
 export function sourceMapDocument(artifactId: string, map = sourceMap()): Document {
@@ -170,5 +185,38 @@ export function fakeApi(world: FakeWorld): ShellApi {
         sourceMapJson: JSON.stringify(sourceMap()),
       }),
     submitAnalyze: (projectId) => Promise.resolve(job(projectId, JobState.PLANNED, [])),
+    // The director and the decisions are the daemon's, and a fake that
+    // invented answers for them would let a screen test pass while the real
+    // call was refused. These record what was asked and nothing else.
+    directClip: (request) => {
+      world.directed.push(request);
+      return Promise.resolve({
+        docId: 'edt_00000000000000000000000000',
+        revision: 0,
+        documentJson: '{}',
+        startTicks: request.startTicks ?? 0,
+        endTicks: request.endTicks ?? 0,
+        decisions: [],
+      });
+    },
+    solveCropPath: () =>
+      Promise.resolve({
+        keyframes: [],
+        fit: true,
+        fitReason: 'nothing looked for faces',
+        containment: 0,
+      }),
+    setClipDecision: (_projectId, _sourceId, candidateId, decision) => {
+      world.decisions.set(candidateId, decision);
+      return Promise.resolve({ candidateId, decision, decidedUnixMillis: 0 });
+    },
+    listClipDecisions: () =>
+      Promise.resolve(
+        [...world.decisions].map(([candidateId, decision]) => ({
+          candidateId,
+          decision,
+          decidedUnixMillis: 0,
+        })),
+      ),
   };
 }
