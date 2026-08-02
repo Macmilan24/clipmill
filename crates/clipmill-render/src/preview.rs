@@ -9,9 +9,9 @@
 //!
 //! So this module does no timing math of its own. The crop at a frame comes
 //! from [`crate::crop_rect_at`], the frame a cue begins on comes from the same
-//! `frame_ceil` the ASS writer uses, and the karaoke sweep comes from
-//! [`crate::subtitles::sweep`] — the function the burned-in track is written
-//! from. What is left here is sampling: walking the frames and asking.
+//! `frame_ceil` the ASS writer uses, and the karaoke sweep comes from the same
+//! `subtitles::sweep` the burned-in track is written from. What is left here is
+//! sampling: walking the frames and asking.
 //!
 //! The renderer draws with libass and the player draws with the DOM, so pixels
 //! will differ — antialiasing, hinting, subpixel positioning. That is expected

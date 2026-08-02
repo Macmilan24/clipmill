@@ -228,6 +228,12 @@ gate-captions iterations="1":
 gate-inspector iterations="1":
     ./tools/drills/inspector-drill.sh {{iterations}}
 
+# W24 coverage: the preview plan against the renderer that produces the file —
+# per-frame crops, cue windows, the words visible in them, and the karaoke
+# holds read back out of the ASS the encoder would be handed.
+gate-editor iterations="1":
+    ./tools/drills/editor-drill.sh {{iterations}}
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock
