@@ -49,6 +49,11 @@ const results = {
   api: fakeApi(emptyWorld()),
 };
 
+const editor = {
+  onOpenResults: () => undefined,
+  api: fakeApi(emptyWorld()),
+};
+
 describe('the screen registry', () => {
   it('renders the real screen for a live section', () => {
     render(
@@ -59,6 +64,7 @@ describe('the screen registry', () => {
         newProject,
         analysis,
         results,
+        editor,
       }),
     );
     // The Models screen asks the daemon for hardware; the placeholder never
@@ -78,6 +84,7 @@ describe('the screen registry', () => {
           newProject,
           analysis,
           results,
+          editor,
         }),
       );
       expect(screen.getByText(/Phase \d/)).toBeTruthy();
@@ -95,6 +102,7 @@ describe('the screen registry', () => {
           newProject,
           analysis,
           results,
+          editor,
         }),
       );
       expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0);

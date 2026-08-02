@@ -530,3 +530,71 @@ export async function solveCropPath(
     endTicks,
   });
 }
+
+/** One word of a caption, with how long it holds the highlight. */
+export interface PreviewWord {
+  readonly text: string;
+  readonly holdCentis: number;
+}
+
+export interface PreviewCue {
+  readonly cueId: string;
+  readonly firstFrame: number;
+  readonly endFrame: number;
+  readonly region: string;
+  readonly karaoke: boolean;
+  readonly leadInCentis: number;
+  /** Already broken. The player must not re-wrap. */
+  readonly lines: readonly (readonly PreviewWord[])[];
+}
+
+export interface PreviewGain {
+  readonly frame: number;
+  readonly gainDb: number;
+}
+
+/**
+ * What the player draws, computed by the code that renders.
+ *
+ * Nothing here is derived on this side. A crop is an integer rectangle for a
+ * frame, a cue window is already in frames, lines are already broken and holds
+ * are already in centiseconds — because a preview that worked any of that out
+ * for itself would be a second implementation of the render's arithmetic.
+ */
+export interface PreviewPlan {
+  readonly revision: number;
+  readonly rateNum: number;
+  readonly rateDen: number;
+  readonly frameCount: number;
+  /** `[x, y, width, height]` per frame, or null where the layout is fit. */
+  readonly crops: readonly (readonly [number, number, number, number] | null)[];
+  readonly cues: readonly PreviewCue[];
+  readonly gain: readonly PreviewGain[];
+  readonly width: number;
+  readonly height: number;
+}
+
+export async function previewPlan(projectId: string, docId: string): Promise<PreviewPlan> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<PreviewPlan>('preview_plan', { projectId, docId });
+}
+
+/** One edit document, as a list shows it. */
+export interface EditDocSummary {
+  readonly docId: string;
+  readonly projectId: string;
+  readonly revision: number;
+  readonly createdUnixMillis: number;
+  readonly updatedUnixMillis: number;
+}
+
+export async function listEditDocs(projectId: string): Promise<readonly EditDocSummary[]> {
+  if (!isTauri()) {
+    return [];
+  }
+  const { invoke } = await core();
+  return invoke<EditDocSummary[]>('list_edit_docs', { projectId });
+}

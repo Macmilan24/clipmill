@@ -226,6 +226,38 @@ pub(super) fn apply_edit_command(
     Ok(response)
 }
 
+/// Every document in a project, oldest first.
+///
+/// Ordered by creation so "the newest" is the last one, which is what an editor
+/// opening after approving a clip is asking for. The index this reads was
+/// created with the table for exactly this query.
+pub(super) fn list_edit_docs(
+    connection: &Connection,
+    project_id: &str,
+) -> Result<Vec<EditDocRecord>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT doc_id, project_id, revision, document, created_unix_millis, updated_unix_millis
+           FROM edit_docs
+          WHERE project_id = ?1
+          ORDER BY created_unix_millis ASC, doc_id ASC",
+    )?;
+    let rows = statement.query_map([project_id], |row| {
+        Ok(EditDocRecord {
+            doc_id: row.get(0)?,
+            project_id: row.get(1)?,
+            revision: row.get::<_, i64>(2)?.try_into().unwrap_or(0),
+            document_json: row.get(3)?,
+            created_unix_millis: row.get::<_, i64>(4)?.try_into().unwrap_or(0),
+            updated_unix_millis: row.get::<_, i64>(5)?.try_into().unwrap_or(0),
+        })
+    })?;
+    let mut found = Vec::new();
+    for row in rows {
+        found.push(row?);
+    }
+    Ok(found)
+}
+
 pub(super) fn get_edit_doc(
     connection: &Connection,
     doc_id: &str,

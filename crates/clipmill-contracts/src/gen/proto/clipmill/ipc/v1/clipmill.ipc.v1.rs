@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -81,6 +81,8 @@ pub mod request {
         ListClipDecisions(super::ListClipDecisionsRequest),
         #[prost(message, tag = "36")]
         GetPreviewPlan(super::GetPreviewPlanRequest),
+        #[prost(message, tag = "37")]
+        ListEditDocs(super::ListEditDocsRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -91,7 +93,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -157,6 +159,8 @@ pub mod response {
         ListClipDecisions(super::ListClipDecisionsResponse),
         #[prost(message, tag = "37")]
         GetPreviewPlan(super::GetPreviewPlanResponse),
+        #[prost(message, tag = "38")]
+        ListEditDocs(super::ListEditDocsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1363,6 +1367,21 @@ pub struct GetPreviewPlanResponse {
     pub width: i64,
     #[prost(int64, tag = "9")]
     pub height: i64,
+}
+/// The edit documents a project holds, oldest first.
+///
+/// The editor opens the newest, which is the one approving a clip just created.
+/// Listing exists so that opening the editor in a later session finds the work
+/// rather than an empty screen.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListEditDocsRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListEditDocsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub docs: ::prost::alloc::vec::Vec<EditDoc>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

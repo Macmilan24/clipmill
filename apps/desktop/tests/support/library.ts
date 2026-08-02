@@ -16,6 +16,8 @@ import type {
   Document,
   Job,
   MediaArtifact,
+  EditDocSummary,
+  PreviewPlan,
   Progress,
   Project,
   Source,
@@ -114,6 +116,9 @@ export interface FakeWorld {
   readonly directed: DirectClipInput[];
   /** What was decided about each candidate. */
   readonly decisions: Map<string, ClipDecision>;
+  /** The plan the player would apply, when the world has a document. */
+  readonly plan?: PreviewPlan;
+  readonly editDocs?: readonly EditDocSummary[];
 }
 
 export function emptyWorld(): FakeWorld {
@@ -206,6 +211,11 @@ export function fakeApi(world: FakeWorld): ShellApi {
         fitReason: 'nothing looked for faces',
         containment: 0,
       }),
+    listEditDocs: () => Promise.resolve(world.editDocs ?? []),
+    previewPlan: () =>
+      world.plan
+        ? Promise.resolve(world.plan)
+        : Promise.reject(new Error('this project has no such document')),
     setClipDecision: (_projectId, _sourceId, candidateId, decision) => {
       world.decisions.set(candidateId, decision);
       return Promise.resolve({ candidateId, decision, decidedUnixMillis: 0 });

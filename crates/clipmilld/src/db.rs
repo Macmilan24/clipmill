@@ -198,6 +198,10 @@ impl DbActor {
                                         .map_err(StoreError::from),
                                     );
                                 }
+                                Command::ListEditDocs { project_id, reply } => {
+                                    let _result = reply
+                                        .send(edit_store::list_edit_docs(&connection, &project_id));
+                                }
                                 Command::ListClipDecisions {
                                     project_id,
                                     source_id,
@@ -757,6 +761,18 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    pub(crate) async fn list_edit_docs(
+        &self,
+        project_id: String,
+    ) -> Result<Vec<EditDocRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ListEditDocs { project_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn cancel_job(
         &self,
         request_id: String,
@@ -1311,6 +1327,10 @@ enum Command {
         project_id: String,
         source_id: String,
         reply: oneshot::Sender<Result<Vec<DecisionRecord>, StoreError>>,
+    },
+    ListEditDocs {
+        project_id: String,
+        reply: oneshot::Sender<Result<Vec<EditDocRecord>, StoreError>>,
     },
     CancelJob {
         request_id: String,

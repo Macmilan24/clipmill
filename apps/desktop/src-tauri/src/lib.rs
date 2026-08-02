@@ -286,6 +286,35 @@ async fn read_document(
     })
 }
 
+/// Every edit document a project holds, oldest first.
+#[tauri::command]
+async fn list_edit_docs(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+) -> Result<Vec<views::EditDocView>, String> {
+    supervisor
+        .client()
+        .list_edit_docs(&project_id)
+        .await
+        .map(|docs| docs.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+/// What the player must draw for a document.
+#[tauri::command]
+async fn preview_plan(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    doc_id: String,
+) -> Result<views::PreviewPlanView, String> {
+    supervisor
+        .client()
+        .preview_plan(&project_id, &doc_id)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// The crop path for a span, as a proposal. Nothing is written, so the
 /// Inspector may ask again every time a boundary moves.
 #[tauri::command]
@@ -417,6 +446,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             choose_source_file,
             register_source,
             submit_analyze,
+            list_edit_docs,
+            preview_plan,
             solve_crop_path,
             direct_clip,
             set_clip_decision,

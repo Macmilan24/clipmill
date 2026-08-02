@@ -59,11 +59,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Editor',
     breadcrumb: 'Editor',
     icon: SlidersHorizontal,
-    availability: {
-      kind: 'planned',
-      phase: 1,
-      summary: 'Timeline, vertical reframing, captions, and the render path.',
-    },
+    availability: { kind: 'live' },
   },
   {
     id: 'discovery',

@@ -40,6 +40,7 @@ message Request {
     SetClipDecisionRequest set_clip_decision = 34;
     ListClipDecisionsRequest list_clip_decisions = 35;
     GetPreviewPlanRequest get_preview_plan = 36;
+    ListEditDocsRequest list_edit_docs = 37;
   }
 }
 
@@ -77,6 +78,7 @@ message Response {
     SetClipDecisionResponse set_clip_decision = 35;
     ListClipDecisionsResponse list_clip_decisions = 36;
     GetPreviewPlanResponse get_preview_plan = 37;
+    ListEditDocsResponse list_edit_docs = 38;
   }
 }
 
@@ -1081,4 +1083,17 @@ message GetPreviewPlanResponse {
   // The output frame the crops are fitted into.
   int64 width = 8;
   int64 height = 9;
+}
+
+// The edit documents a project holds, oldest first.
+//
+// The editor opens the newest, which is the one approving a clip just created.
+// Listing exists so that opening the editor in a later session finds the work
+// rather than an empty screen.
+message ListEditDocsRequest {
+  string project_id = 1;
+}
+
+message ListEditDocsResponse {
+  repeated EditDoc docs = 1;
 }

@@ -485,3 +485,125 @@ impl From<clipmill_contracts::proto::ipc::v1::SolveCropPathResponse> for CropPat
         }
     }
 }
+
+/// The plan the player applies. Everything that could be computed already was,
+/// by the code that renders — so nothing here is a number the renderer works
+/// out for itself.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewPlanView {
+    pub revision: u64,
+    pub rate_num: u32,
+    pub rate_den: u32,
+    pub frame_count: i64,
+    /// One entry per frame; null where the layout is fit and the whole picture
+    /// is shown, which is a different statement from a crop covering it.
+    pub crops: Vec<Option<[i64; 4]>>,
+    pub cues: Vec<PreviewCueView>,
+    pub gain: Vec<PreviewGainView>,
+    pub width: i64,
+    pub height: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCueView {
+    pub cue_id: String,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    pub region: String,
+    pub karaoke: bool,
+    pub lead_in_centis: i64,
+    pub lines: Vec<Vec<PreviewWordView>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewWordView {
+    pub text: String,
+    pub hold_centis: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewGainView {
+    pub frame: i64,
+    pub gain_db: f64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for PreviewPlanView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse) -> Self {
+        Self {
+            revision: reply.revision,
+            rate_num: reply.rate_num,
+            rate_den: reply.rate_den,
+            frame_count: reply.frame_count,
+            crops: reply
+                .crops
+                .into_iter()
+                .map(|crop| {
+                    crop.present
+                        .then_some([crop.x, crop.y, crop.width, crop.height])
+                })
+                .collect(),
+            cues: reply
+                .cues
+                .into_iter()
+                .map(|cue| PreviewCueView {
+                    cue_id: cue.cue_id,
+                    first_frame: cue.first_frame,
+                    end_frame: cue.end_frame,
+                    region: cue.region,
+                    karaoke: cue.karaoke,
+                    lead_in_centis: cue.lead_in_centis,
+                    lines: cue
+                        .lines
+                        .into_iter()
+                        .map(|line| {
+                            line.words
+                                .into_iter()
+                                .map(|word| PreviewWordView {
+                                    text: word.text,
+                                    hold_centis: word.hold_centis,
+                                })
+                                .collect()
+                        })
+                        .collect(),
+                })
+                .collect(),
+            gain: reply
+                .gain
+                .into_iter()
+                .map(|point| PreviewGainView {
+                    frame: point.frame,
+                    gain_db: point.gain_db,
+                })
+                .collect(),
+            width: reply.width,
+            height: reply.height,
+        }
+    }
+}
+
+/// One edit document, as a list shows it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditDocView {
+    pub doc_id: String,
+    pub project_id: String,
+    pub revision: u64,
+    pub created_unix_millis: u64,
+    pub updated_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
+    fn from(doc: clipmill_contracts::proto::ipc::v1::EditDoc) -> Self {
+        Self {
+            doc_id: doc.doc_id,
+            project_id: doc.project_id,
+            revision: doc.revision,
+            created_unix_millis: doc.created_unix_millis,
+            updated_unix_millis: doc.updated_unix_millis,
+        }
+    }
+}
