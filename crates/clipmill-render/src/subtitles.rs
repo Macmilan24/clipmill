@@ -127,12 +127,56 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
     lines.join("\n")
 }
 
-/// A cue's text with karaoke timing, when the cue asks for it.
+/// Where a cue's highlight is at every moment it is on screen.
 ///
-/// `\k` durations are centiseconds measured from the dialogue's own start, and
-/// each word holds the highlight until the next word begins — so the sweep
-/// advances exactly when speech does, and the durations sum to the cue's
-/// length with no accumulated drift.
+/// The sweep is computed **once, here**, and both the burned-in track and the
+/// preview plan read it. That is the whole reason it is a function rather than
+/// a loop inside the ASS writer: a preview that computed its own karaoke timing
+/// would be a second implementation of the same arithmetic, and two
+/// implementations of the same arithmetic are two answers waiting to differ on
+/// a frame nobody checked.
+///
+/// Durations are centiseconds from the dialogue's own start, and each word
+/// holds the highlight until the next word begins — so the sweep advances
+/// exactly when speech does and the holds sum to the cue's length with no
+/// accumulated drift.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sweep {
+    /// Before the first word is sung. Zero when speech starts with the cue.
+    pub lead_in_centis: i64,
+    /// How long each word holds the highlight, in cue order across all lines.
+    pub holds_centis: Vec<i64>,
+}
+
+pub(crate) fn sweep(
+    cue: &CaptionCue,
+    rate: FrameRate,
+    start_centis: i64,
+    end_centis: i64,
+) -> Sweep {
+    // Boundaries in dialogue-relative centiseconds: the cue start, then each
+    // word's start, then the cue end.
+    let mut boundaries = vec![0_i64];
+    for word in cue.words() {
+        let centis = rate.frame_centis(rate.frame_ceil(word.start_ticks));
+        boundaries.push((centis - start_centis).max(0));
+    }
+    boundaries.push((end_centis - start_centis).max(0));
+
+    let holds = (0..cue.words().count())
+        .map(|index| {
+            let start = boundaries.get(index + 1).copied().unwrap_or(0);
+            let end = boundaries.get(index + 2).copied().unwrap_or(start);
+            (end - start).max(0)
+        })
+        .collect();
+    Sweep {
+        lead_in_centis: boundaries.get(1).copied().unwrap_or(0),
+        holds_centis: holds,
+    }
+}
+
+/// A cue's text with karaoke timing, when the cue asks for it.
 fn dialogue_text(cue: &CaptionCue, rate: FrameRate, start_centis: i64, end_centis: i64) -> String {
     let karaoke = matches!(cue.anim, CaptionAnimation::Karaoke);
     if !karaoke {
@@ -149,19 +193,10 @@ fn dialogue_text(cue: &CaptionCue, rate: FrameRate, start_centis: i64, end_centi
             .collect::<Vec<_>>()
             .join("\\N");
     }
-    // Boundaries in dialogue-relative centiseconds: the cue start, then each
-    // word's start, then the cue end.
-    let mut boundaries = vec![0_i64];
-    for word in cue.words() {
-        let centis = rate.frame_centis(rate.frame_ceil(word.start_ticks));
-        boundaries.push((centis - start_centis).max(0));
-    }
-    boundaries.push((end_centis - start_centis).max(0));
-
+    let swept = sweep(cue, rate, start_centis, end_centis);
     let mut pieces = Vec::new();
-    let lead_in = boundaries.get(1).copied().unwrap_or(0);
-    if lead_in > 0 {
-        pieces.push(format!("{{\\k{lead_in}}}"));
+    if swept.lead_in_centis > 0 {
+        pieces.push(format!("{{\\k{}}}", swept.lead_in_centis));
     }
     let mut index = 0_usize;
     for (line_index, line) in cue.lines.iter().enumerate() {
@@ -172,9 +207,8 @@ fn dialogue_text(cue: &CaptionCue, rate: FrameRate, start_centis: i64, end_centi
             if word_index > 0 {
                 pieces.push(" ".to_owned());
             }
-            let start = boundaries.get(index + 1).copied().unwrap_or(0);
-            let end = boundaries.get(index + 2).copied().unwrap_or(start);
-            pieces.push(format!("{{\\k{}}}{}", (end - start).max(0), word.text));
+            let hold = swept.holds_centis.get(index).copied().unwrap_or(0);
+            pieces.push(format!("{{\\k{hold}}}{}", word.text));
             index += 1;
         }
     }

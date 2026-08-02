@@ -25,6 +25,7 @@ pub mod captions;
 mod graph;
 mod manifest;
 mod plan;
+pub mod preview;
 mod profile;
 mod subtitles;
 mod timing;
@@ -39,9 +40,13 @@ pub use plan::{
     ASS_FILE, CLIP_FILE, LoudnessMeasurement, MANIFEST_FILE, RenderError, RenderPlan, SRT_FILE,
     SegmentReport, SourceInput, VTT_FILE, compile,
 };
+pub use preview::{
+    PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewPlan, PreviewWord, preview_plan,
+    text_at,
+};
 pub use profile::{
     CaptionStyle, Colour, DEFAULT_STYLE_REF, FONT_FAMILY, FONTS_DIR, FrameRateSpec, LoudnessTarget,
     PROFILE_ID, RenderProfile,
 };
-pub use subtitles::{CueWindow, unrenderable_character};
+pub use subtitles::{CueWindow, Sweep, unrenderable_character};
 pub use timing::{FrameRate, centis_to_ass, millis_to_srt, millis_to_vtt, ticks_to_seconds};
