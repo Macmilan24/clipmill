@@ -607,3 +607,25 @@ impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
         }
     }
 }
+
+/// What applying a command produced: the new revision, and the way back.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppliedCommandView {
+    pub doc_id: String,
+    pub revision: u64,
+    /// The command that undoes this one. Held by the renderer as its undo
+    /// stack, because the daemon deliberately keeps none.
+    pub inverse_command_json: String,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::ApplyEditCommandResponse> for AppliedCommandView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::ApplyEditCommandResponse) -> Self {
+        let doc = reply.doc.unwrap_or_default();
+        Self {
+            doc_id: doc.doc_id,
+            revision: doc.revision,
+            inverse_command_json: reply.inverse_command_json,
+        }
+    }
+}

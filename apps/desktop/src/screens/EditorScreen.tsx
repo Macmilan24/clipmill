@@ -1,15 +1,15 @@
 /**
- * The editor's container: find the document, fetch its plan, hand it over.
+ * The editor's container: hold the document, hand the player its plan.
  *
- * The document is the newest one the project has, because approving a clip is
- * what creates one and the editor opens what you just approved. There is no
- * document picker in Phase 1's design, and inventing one here would be a
- * navigation surface nobody drew.
+ * The state lives in `useEditor` so the screen stays a view. What this adds is
+ * the one thing the hook cannot know: re-solving needs a face track, and that
+ * comes off the analyze job rather than out of the edit document.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { PreviewPlan } from '../daemon/client.js';
+import { batch, setCropKeyframe, setLayout } from '../editor/commands.js';
+import { useEditor } from '../editor/useEditor.js';
 import { Editor } from './Editor.js';
 
 export interface EditorScreenProps {
@@ -17,15 +17,14 @@ export interface EditorScreenProps {
   readonly api?: ShellApi;
 }
 
-const PROXY_FILE = 'proxy.mp4';
-const PROXY_KIND = 'media.proxy.v1';
+const FACES_KIND = 'vision.face_track.v1';
 
 export function EditorScreen({ onOpenResults, api = daemonApi }: EditorScreenProps) {
-  const [plan, setPlan] = useState<PreviewPlan | null>(null);
-  const [docId, setDocId] = useState<string | null>(null);
-  const [proxyUrl, setProxyUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [problem, setProblem] = useState<string | null>(null);
+  const editor = useEditor(api);
+  const [faceTrack, setFaceTrack] = useState<{ projectId: string; artifactId: string } | null>(
+    null,
+  );
+  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -34,41 +33,17 @@ export function EditorScreen({ onOpenResults, api = daemonApi }: EditorScreenPro
         const projects = await api.listProjects();
         const project = projects.at(-1);
         if (!project) {
-          if (live) {
-            setLoading(false);
-          }
           return;
         }
-        const docs = await api.listEditDocs(project.projectId);
-        const newest = docs.at(-1);
-        if (!newest) {
-          if (live) {
-            setLoading(false);
-          }
-          return;
-        }
-        const [fetched, jobs] = await Promise.all([
-          api.previewPlan(project.projectId, newest.docId),
-          api.listJobs(project.projectId).catch(() => []),
-        ]);
-        // The proxy the plan is previewed against comes off the analyze job
-        // that published it, the same way the Inspector finds it.
-        const proxy = jobs
+        const jobs = await api.listJobs(project.projectId);
+        const found = jobs
           .flatMap((job) => job.tasks)
-          .find((task) => task.outputKind === PROXY_KIND && task.outputArtifactId !== '');
-        if (live) {
-          setDocId(newest.docId);
-          setPlan(fetched);
-          setProxyUrl(
-            proxy ? api.mediaUrl(project.projectId, proxy.outputArtifactId, PROXY_FILE) : null,
-          );
-          setLoading(false);
+          .find((task) => task.outputKind === FACES_KIND && task.outputArtifactId !== '');
+        if (live && found) {
+          setFaceTrack({ projectId: project.projectId, artifactId: found.outputArtifactId });
         }
-      } catch (error) {
-        if (live) {
-          setProblem((error as Error).message);
-          setLoading(false);
-        }
+      } catch {
+        // Nothing to re-solve from is a disabled button, not an error banner.
       }
     })();
     return () => {
@@ -76,14 +51,75 @@ export function EditorScreen({ onOpenResults, api = daemonApi }: EditorScreenPro
     };
   }, [api]);
 
+  /**
+   * Ask the solver again and write what it says as one undoable step.
+   *
+   * The solve itself writes nothing — it is a proposal — so turning it into
+   * keyframes is the editor's decision and is recorded as such.
+   */
+  const onResolve = useCallback(async () => {
+    const plan = editor.plan;
+    if (!faceTrack || !plan) {
+      return;
+    }
+    setResolving(true);
+    try {
+      const solved = await api.solveCropPath(
+        faceTrack.projectId,
+        faceTrack.artifactId,
+        0,
+        Math.round((plan.frameCount * plan.rateDen * 90_000) / plan.rateNum),
+      );
+      if (solved.fit || solved.keyframes.length === 0) {
+        await editor.apply(setLayout('fit'));
+        return;
+      }
+      await editor.apply(
+        batch([
+          setLayout('speaker_fill'),
+          ...solved.keyframes.map((keyframe) =>
+            setCropKeyframe(Number(keyframe.tTicks), {
+              // The solver answers in shares of the frame; the document holds
+              // pixels, and the output's own dimensions are what they are of.
+              x: Math.round(
+                (keyframe.centerX - (keyframe.scale * plan.width) / plan.height / 2) * plan.height,
+              ),
+              y: Math.round((keyframe.centerY - keyframe.scale / 2) * plan.height),
+              width: Math.round((keyframe.scale * plan.height * plan.width) / plan.height),
+              height: Math.round(keyframe.scale * plan.height),
+            }),
+          ),
+        ]),
+      );
+    } finally {
+      setResolving(false);
+    }
+  }, [api, editor, faceTrack]);
+
   return (
     <Editor
-      plan={plan}
-      proxyUrl={proxyUrl}
-      docId={docId}
-      loading={loading}
-      problem={problem}
+      plan={editor.plan}
+      proxyUrl={editor.proxyUrl}
+      docId={editor.docId}
+      loading={editor.loading}
+      problem={editor.problem}
+      busy={editor.busy}
+      canUndo={editor.canUndo}
+      canRedo={editor.canRedo}
+      resolving={resolving}
       onOpenResults={onOpenResults}
+      onApply={(command) => {
+        void editor.apply(command);
+      }}
+      onUndo={() => {
+        void editor.undo();
+      }}
+      onRedo={() => {
+        void editor.redo();
+      }}
+      onResolve={() => {
+        void onResolve();
+      }}
     />
   );
 }

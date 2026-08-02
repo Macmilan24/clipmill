@@ -44,6 +44,7 @@ cargo test -p clipmill-render --test subtitles_round_trip
 echo "==> the RPC the player fetches its plan from"
 cargo test -p clipmilld --lib service::
 
+echo "==> every edit is a command the daemon can replay and undo"
 echo "==> the player applies the plan and computes nothing"
 pnpm --filter @clipmill/desktop test
 
