@@ -12,15 +12,16 @@ use clipmill_contracts::proto::ipc::v1::{
     DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
     DirectClipRequest, DirectClipResponse, DiscoverCandidatesPayloadV1, Error, ErrorCode,
     GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
-    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
-    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
-    ListClipDecisionsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    MediaFileV1, PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest,
-    ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest,
-    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
-    SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse, StorageCategoryV1,
-    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
-    TranscribeSourcePayloadV1, request, response,
+    GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse, GetSourceResponse,
+    GetStorageStatsResponse, HealthResponse, IndexTranscriptPayloadV1, IngestSourcePayloadV1,
+    ListClipDecisionsRequest, ListClipDecisionsResponse, ListEditDocsResponse, ListJobsResponse,
+    ListProjectsResponse, ListSourcesResponse, MediaFileV1, PingResponse, PreviewCropV1,
+    PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewWordV1, ProbeSourcePayloadV1,
+    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
+    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
+    SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest,
+    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -286,6 +287,10 @@ impl Service {
         })
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one arm per request kind; splitting it would hide the surface"
+    )]
     pub(crate) async fn handle(&self, request: Request) -> Reply {
         let request_id = request.request_id.clone();
         if let Err(message) = validate_request_id(&request_id) {
@@ -378,6 +383,10 @@ impl Service {
             }
             request::Body::ListClipDecisions(list) => {
                 self.list_clip_decisions(request_id, &list).await
+            }
+            request::Body::GetPreviewPlan(plan) => self.get_preview_plan(request_id, &plan).await,
+            request::Body::ListEditDocs(list) => {
+                self.list_edit_docs(request_id, &list.project_id).await
             }
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
@@ -2204,6 +2213,70 @@ impl Service {
         }
     }
 
+    /// What the editor's player must draw.
+    ///
+    /// Interpreted here rather than in the renderer process, by the same code
+    /// the renderer uses. The document is read from the store at whatever
+    /// revision it is at, and that revision travels back with the plan so a
+    /// caller holding a stale document can tell it is looking at a stale
+    /// picture rather than discovering it on a frame.
+    async fn get_preview_plan(&self, request_id: String, request: &GetPreviewPlanRequest) -> Reply {
+        let Ok(project_id) = request.project_id.parse::<ProjectId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        };
+        let Ok(doc_id) = request.doc_id.parse::<EditDocId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no document named");
+        };
+        let record = match self.database.get_edit_doc(doc_id.to_string()).await {
+            Ok(record) => record,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        // Not found rather than denied: a project that learned "that exists,
+        // but not for you" would learn something about another project.
+        if record.project_id != project_id.as_str() {
+            return error_reply(
+                request_id,
+                ErrorCode::NotFound,
+                "this project has no such document",
+            );
+        }
+        let Ok(document) =
+            serde_json::from_str::<clipmill_edit_ir::EditDocument>(&record.document_json)
+        else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the stored document did not parse",
+            );
+        };
+        match clipmill_render::preview_plan(&document, &clipmill_render::RenderProfile::default()) {
+            Ok(plan) => response_reply(
+                request_id,
+                response::Body::GetPreviewPlan(preview_response(record.revision, &plan)),
+            ),
+            Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
+        }
+    }
+
+    /// Every document a project holds, oldest first.
+    ///
+    /// The editor opens the newest. Listing exists so opening it in a later
+    /// session finds the work rather than an empty screen.
+    async fn list_edit_docs(&self, request_id: String, project_id: &str) -> Reply {
+        let Ok(project_id) = project_id.parse::<ProjectId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        };
+        match self.database.list_edit_docs(project_id.to_string()).await {
+            Ok(records) => response_reply(
+                request_id,
+                response::Body::ListEditDocs(ListEditDocsResponse {
+                    docs: records.into_iter().map(Into::into).collect(),
+                }),
+            ),
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
     async fn get_edit_doc(&self, request_id: String, value: &str) -> Reply {
         let doc_id = match value.parse::<EditDocId>() {
             Ok(value) => value,
@@ -2658,6 +2731,8 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::DirectClip(_)) => "direct_clip",
         Some(request::Body::SetClipDecision(_)) => "set_clip_decision",
         Some(request::Body::ListClipDecisions(_)) => "list_clip_decisions",
+        Some(request::Body::GetPreviewPlan(_)) => "get_preview_plan",
+        Some(request::Body::ListEditDocs(_)) => "list_edit_docs",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",
@@ -2774,6 +2849,79 @@ fn unix_millis() -> Result<u64, &'static str> {
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "system clock is before the Unix epoch")?;
     u64::try_from(duration.as_millis()).map_err(|_| "system clock exceeds timestamp range")
+}
+
+/// The plan as the wire carries it.
+///
+/// A flat list of rectangles, one per frame, rather than the keyframes they
+/// were interpolated from. Sending keyframes would make the player
+/// interpolate, and interpolating is exactly where the two sides would have to
+/// agree about rounding — which is the agreement that cannot be assumed.
+fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPreviewPlanResponse {
+    GetPreviewPlanResponse {
+        revision,
+        rate_num: u32::try_from(plan.rate.num).unwrap_or(30_000),
+        rate_den: u32::try_from(plan.rate.den).unwrap_or(1_001),
+        frame_count: plan.frame_count,
+        crops: plan
+            .crops
+            .iter()
+            .map(|crop| match crop {
+                Some(rect) => PreviewCropV1 {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    present: true,
+                },
+                None => PreviewCropV1 {
+                    present: false,
+                    ..PreviewCropV1::default()
+                },
+            })
+            .collect(),
+        cues: plan
+            .cues
+            .iter()
+            .map(|cue| PreviewCueV1 {
+                cue_id: cue.cue_id.clone(),
+                first_frame: cue.first_frame,
+                end_frame: cue.end_frame,
+                region: match cue.region {
+                    clipmill_edit_ir::CaptionRegion::LowerSafe => "lower_safe",
+                    clipmill_edit_ir::CaptionRegion::UpperSafe => "upper_safe",
+                    clipmill_edit_ir::CaptionRegion::Center => "center",
+                }
+                .to_owned(),
+                karaoke: cue.karaoke,
+                lead_in_centis: cue.lead_in_centis,
+                lines: cue
+                    .lines
+                    .iter()
+                    .map(|line| PreviewLineV1 {
+                        words: line
+                            .words
+                            .iter()
+                            .map(|word| PreviewWordV1 {
+                                text: word.text.clone(),
+                                hold_centis: word.hold_centis,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        gain: plan
+            .gain
+            .iter()
+            .map(|point| PreviewGainV1 {
+                frame: point.frame,
+                gain_db: point.gain_db,
+            })
+            .collect(),
+        width: plan.width,
+        height: plan.height,
+    }
 }
 
 /// Build the document for a directed clip.

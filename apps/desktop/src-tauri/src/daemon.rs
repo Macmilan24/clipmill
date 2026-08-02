@@ -13,10 +13,11 @@ use std::{
 
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1,
-    DirectClipRequest, DirectClipResponse, GetDeviceProfileRequest, GetDeviceProfileResponse,
-    GetJobRequest, GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse,
-    Job, ListClipDecisionsRequest, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
-    Project, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    DirectClipRequest, DirectClipResponse, EditDoc, GetDeviceProfileRequest,
+    GetDeviceProfileResponse, GetJobRequest, GetPreviewPlanRequest, GetPreviewPlanResponse,
+    GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse, Job,
+    ListClipDecisionsRequest, ListEditDocsRequest, ListJobsRequest, ListProjectsRequest,
+    ListSourcesRequest, Project, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
     RegisterSourceResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
     SetClipDecisionRequest, SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse,
     Source, SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
@@ -134,6 +135,33 @@ impl DaemonClient {
 
     pub fn socket(&self) -> &Path {
         &self.socket
+    }
+
+    /// Every edit document a project holds, oldest first.
+    pub async fn list_edit_docs(&self, project_id: &str) -> Result<Vec<EditDoc>, DaemonLinkError> {
+        let request = ListEditDocsRequest {
+            project_id: project_id.to_owned(),
+        };
+        match self.call(request::Body::ListEditDocs(request)).await? {
+            response::Body::ListEditDocs(reply) => Ok(reply.docs),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// What the player must draw for a document.
+    pub async fn preview_plan(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+    ) -> Result<GetPreviewPlanResponse, DaemonLinkError> {
+        let request = GetPreviewPlanRequest {
+            project_id: project_id.to_owned(),
+            doc_id: doc_id.to_owned(),
+        };
+        match self.call(request::Body::GetPreviewPlan(request)).await? {
+            response::Body::GetPreviewPlan(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
     }
 
     /// A crop path proposal for a span. Writes nothing: it is arithmetic over

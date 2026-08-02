@@ -137,6 +137,7 @@ describe('navigation', () => {
       'library',
       'new-project',
       'results',
+      'editor',
       'models',
     ]);
   });

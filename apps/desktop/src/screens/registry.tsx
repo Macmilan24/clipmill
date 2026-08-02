@@ -25,6 +25,7 @@ import { Library } from './Library.js';
 import { ModelsDevice } from './ModelsDevice.js';
 import { NewProject } from './NewProject.js';
 import { PhasePlaceholder } from './PhasePlaceholder.js';
+import { EditorScreen } from './EditorScreen.js';
 import { ResultsScreen } from './ResultsScreen.js';
 
 /**
@@ -43,6 +44,7 @@ export interface ScreenContext {
   readonly analysis: Omit<Parameters<typeof AnalysisProgress>[0], 'projectId' | 'jobId'>;
   /** The Inspector's own arguments come from the route, so these are the rest. */
   readonly results: Omit<Parameters<typeof ResultsScreen>[0], 'candidateId'>;
+  readonly editor: Parameters<typeof EditorScreen>[0];
 }
 
 type Screen = (context: ScreenContext) => JSX.Element;
@@ -52,6 +54,7 @@ const SCREENS: Readonly<Record<string, Screen>> = {
   'new-project': ({ newProject }) => <NewProject {...newProject} />,
   models: ({ models }) => <ModelsDevice {...models} />,
   results: ({ results }) => <ResultsScreen {...results} candidateId={null} />,
+  editor: ({ editor }) => <EditorScreen {...editor} />,
 };
 
 /**

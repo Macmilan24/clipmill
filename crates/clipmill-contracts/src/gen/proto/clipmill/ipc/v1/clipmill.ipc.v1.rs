@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -79,6 +79,10 @@ pub mod request {
         SetClipDecision(super::SetClipDecisionRequest),
         #[prost(message, tag = "35")]
         ListClipDecisions(super::ListClipDecisionsRequest),
+        #[prost(message, tag = "36")]
+        GetPreviewPlan(super::GetPreviewPlanRequest),
+        #[prost(message, tag = "37")]
+        ListEditDocs(super::ListEditDocsRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -89,7 +93,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -153,6 +157,10 @@ pub mod response {
         SetClipDecision(super::SetClipDecisionResponse),
         #[prost(message, tag = "36")]
         ListClipDecisions(super::ListClipDecisionsResponse),
+        #[prost(message, tag = "37")]
+        GetPreviewPlan(super::GetPreviewPlanResponse),
+        #[prost(message, tag = "38")]
+        ListEditDocs(super::ListEditDocsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1264,6 +1272,116 @@ pub struct DirectClipResponse {
     /// without re-deriving it from the document.
     #[prost(string, repeated, tag = "4")]
     pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// What the editor's player must draw (book ch. 17).
+///
+/// The player applies this plan and computes nothing: there is one interpreter,
+/// and it is the one that renders. A preview that worked out its own crop
+/// rectangles or its own karaoke timing would be a second implementation of the
+/// same arithmetic, and two implementations are two answers waiting to differ on
+/// a frame nobody checked.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetPreviewPlanRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub doc_id: ::prost::alloc::string::String,
+}
+/// A crop rectangle in source pixels, exactly as the encoder will apply it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCropV1 {
+    #[prost(int64, tag = "1")]
+    pub x: i64,
+    #[prost(int64, tag = "2")]
+    pub y: i64,
+    #[prost(int64, tag = "3")]
+    pub width: i64,
+    #[prost(int64, tag = "4")]
+    pub height: i64,
+    /// False where the layout is fit and the whole picture is shown, which is a
+    /// different statement from a crop that happens to cover everything.
+    #[prost(bool, tag = "5")]
+    pub present: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewWordV1 {
+    #[prost(string, tag = "1")]
+    pub text: ::prost::alloc::string::String,
+    /// Centiseconds this word holds the highlight, from the sweep the burned-in
+    /// track is written with.
+    #[prost(int64, tag = "2")]
+    pub hold_centis: i64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PreviewLineV1 {
+    #[prost(message, repeated, tag = "1")]
+    pub words: ::prost::alloc::vec::Vec<PreviewWordV1>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PreviewCueV1 {
+    #[prost(string, tag = "1")]
+    pub cue_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "3")]
+    pub end_frame: i64,
+    #[prost(string, tag = "4")]
+    pub region: ::prost::alloc::string::String,
+    #[prost(bool, tag = "5")]
+    pub karaoke: bool,
+    #[prost(int64, tag = "6")]
+    pub lead_in_centis: i64,
+    /// Already broken. The player must not re-wrap, for the same reason libass is
+    /// told not to.
+    #[prost(message, repeated, tag = "7")]
+    pub lines: ::prost::alloc::vec::Vec<PreviewLineV1>,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PreviewGainV1 {
+    #[prost(int64, tag = "1")]
+    pub frame: i64,
+    #[prost(double, tag = "2")]
+    pub gain_db: f64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPreviewPlanResponse {
+    /// The revision this plan describes. A caller holding a document at a
+    /// different revision is looking at a stale picture and can tell.
+    #[prost(uint64, tag = "1")]
+    pub revision: u64,
+    #[prost(uint32, tag = "2")]
+    pub rate_num: u32,
+    #[prost(uint32, tag = "3")]
+    pub rate_den: u32,
+    #[prost(int64, tag = "4")]
+    pub frame_count: i64,
+    /// One per frame of the program, in order.
+    #[prost(message, repeated, tag = "5")]
+    pub crops: ::prost::alloc::vec::Vec<PreviewCropV1>,
+    #[prost(message, repeated, tag = "6")]
+    pub cues: ::prost::alloc::vec::Vec<PreviewCueV1>,
+    #[prost(message, repeated, tag = "7")]
+    pub gain: ::prost::alloc::vec::Vec<PreviewGainV1>,
+    /// The output frame the crops are fitted into.
+    #[prost(int64, tag = "8")]
+    pub width: i64,
+    #[prost(int64, tag = "9")]
+    pub height: i64,
+}
+/// The edit documents a project holds, oldest first.
+///
+/// The editor opens the newest, which is the one approving a clip just created.
+/// Listing exists so that opening the editor in a later session finds the work
+/// rather than an empty screen.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListEditDocsRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListEditDocsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub docs: ::prost::alloc::vec::Vec<EditDoc>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

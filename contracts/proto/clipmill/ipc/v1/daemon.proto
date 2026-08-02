@@ -39,6 +39,8 @@ message Request {
     DirectClipRequest direct_clip = 33;
     SetClipDecisionRequest set_clip_decision = 34;
     ListClipDecisionsRequest list_clip_decisions = 35;
+    GetPreviewPlanRequest get_preview_plan = 36;
+    ListEditDocsRequest list_edit_docs = 37;
   }
 }
 
@@ -75,6 +77,8 @@ message Response {
     DirectClipResponse direct_clip = 34;
     SetClipDecisionResponse set_clip_decision = 35;
     ListClipDecisionsResponse list_clip_decisions = 36;
+    GetPreviewPlanResponse get_preview_plan = 37;
+    ListEditDocsResponse list_edit_docs = 38;
   }
 }
 
@@ -1012,4 +1016,84 @@ message DirectClipResponse {
   // Why the director did what it did, carried out so the interface can say so
   // without re-deriving it from the document.
   repeated string decisions = 4;
+}
+
+// What the editor's player must draw (book ch. 17).
+//
+// The player applies this plan and computes nothing: there is one interpreter,
+// and it is the one that renders. A preview that worked out its own crop
+// rectangles or its own karaoke timing would be a second implementation of the
+// same arithmetic, and two implementations are two answers waiting to differ on
+// a frame nobody checked.
+message GetPreviewPlanRequest {
+  string project_id = 1;
+  string doc_id = 2;
+}
+
+// A crop rectangle in source pixels, exactly as the encoder will apply it.
+message PreviewCropV1 {
+  int64 x = 1;
+  int64 y = 2;
+  int64 width = 3;
+  int64 height = 4;
+  // False where the layout is fit and the whole picture is shown, which is a
+  // different statement from a crop that happens to cover everything.
+  bool present = 5;
+}
+
+message PreviewWordV1 {
+  string text = 1;
+  // Centiseconds this word holds the highlight, from the sweep the burned-in
+  // track is written with.
+  int64 hold_centis = 2;
+}
+
+message PreviewLineV1 {
+  repeated PreviewWordV1 words = 1;
+}
+
+message PreviewCueV1 {
+  string cue_id = 1;
+  int64 first_frame = 2;
+  int64 end_frame = 3;
+  string region = 4;
+  bool karaoke = 5;
+  int64 lead_in_centis = 6;
+  // Already broken. The player must not re-wrap, for the same reason libass is
+  // told not to.
+  repeated PreviewLineV1 lines = 7;
+}
+
+message PreviewGainV1 {
+  int64 frame = 1;
+  double gain_db = 2;
+}
+
+message GetPreviewPlanResponse {
+  // The revision this plan describes. A caller holding a document at a
+  // different revision is looking at a stale picture and can tell.
+  uint64 revision = 1;
+  uint32 rate_num = 2;
+  uint32 rate_den = 3;
+  int64 frame_count = 4;
+  // One per frame of the program, in order.
+  repeated PreviewCropV1 crops = 5;
+  repeated PreviewCueV1 cues = 6;
+  repeated PreviewGainV1 gain = 7;
+  // The output frame the crops are fitted into.
+  int64 width = 8;
+  int64 height = 9;
+}
+
+// The edit documents a project holds, oldest first.
+//
+// The editor opens the newest, which is the one approving a clip just created.
+// Listing exists so that opening the editor in a later session finds the work
+// rather than an empty screen.
+message ListEditDocsRequest {
+  string project_id = 1;
+}
+
+message ListEditDocsResponse {
+  repeated EditDoc docs = 1;
 }

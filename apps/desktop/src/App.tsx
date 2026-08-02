@@ -178,6 +178,11 @@ export function App(): JSX.Element {
                   navigate('results');
                 },
               },
+              editor: {
+                onOpenResults: () => {
+                  navigate('results');
+                },
+              },
               models: {
                 state,
                 profile,
