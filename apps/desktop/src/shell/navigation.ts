@@ -52,11 +52,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Results',
     breadcrumb: 'Results',
     icon: Sparkles,
-    availability: {
-      kind: 'planned',
-      phase: 1,
-      summary: 'Ranked clip candidates with the evidence behind each score.',
-    },
+    availability: { kind: 'live' },
   },
   {
     id: 'editor',

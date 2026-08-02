@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { renderScreen } from '../src/screens/registry.js';
 import { NAV_SECTIONS } from '../src/shell/navigation.js';
 import { sectionRoute } from '../src/shell/route.js';
+import { emptyWorld, fakeApi } from './support/library.js';
 
 const models = {
   state: { status: 'connecting' } as const,
@@ -42,9 +43,24 @@ const analysis = {
   onNavigate: () => undefined,
 };
 
+const results = {
+  onInspect: () => undefined,
+  onBack: () => undefined,
+  api: fakeApi(emptyWorld()),
+};
+
 describe('the screen registry', () => {
   it('renders the real screen for a live section', () => {
-    render(renderScreen({ route: sectionRoute('models'), models, library, newProject, analysis }));
+    render(
+      renderScreen({
+        route: sectionRoute('models'),
+        models,
+        library,
+        newProject,
+        analysis,
+        results,
+      }),
+    );
     // The Models screen asks the daemon for hardware; the placeholder never
     // mentions a phase.
     expect(screen.queryByText(/Phase \d/)).toBeNull();
@@ -55,7 +71,14 @@ describe('the screen registry', () => {
     expect(planned.length).toBeGreaterThan(0);
     for (const section of planned) {
       const { unmount } = render(
-        renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }),
+        renderScreen({
+          route: sectionRoute(section.id),
+          models,
+          library,
+          newProject,
+          analysis,
+          results,
+        }),
       );
       expect(screen.getByText(/Phase \d/)).toBeTruthy();
       unmount();
@@ -65,7 +88,14 @@ describe('the screen registry', () => {
   it('never leaves a section with nothing on screen', () => {
     for (const section of NAV_SECTIONS) {
       const { container, unmount } = render(
-        renderScreen({ route: sectionRoute(section.id), models, library, newProject, analysis }),
+        renderScreen({
+          route: sectionRoute(section.id),
+          models,
+          library,
+          newProject,
+          analysis,
+          results,
+        }),
       );
       expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0);
       unmount();

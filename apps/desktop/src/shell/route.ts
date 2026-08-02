@@ -31,6 +31,21 @@ export type Route =
       readonly projectId: string;
       readonly jobId: string;
       readonly from: string;
+    }
+  /**
+   * One clip, inspected.
+   *
+   * Like Analysis Progress this has no navigation row of its own: it is reached
+   * from Results, keeps that row lit, and carries the arguments a section id has
+   * nowhere to put. Unlike Analysis Progress it names three things, because
+   * judging a clip means naming which recording and which candidate as well as
+   * which project.
+   */
+  | {
+      readonly kind: 'inspector';
+      readonly projectId: string;
+      readonly sourceId: string;
+      readonly candidateId: string;
     };
 
 export const DEFAULT_ROUTE: Route = { kind: 'section', sectionId: 'models' };
@@ -46,10 +61,20 @@ export interface Placement {
   readonly trail: readonly string[];
 }
 
+/** Which navigation row a route lights, and what its breadcrumb reads. */
 export function placementOf(route: Route): Placement {
-  const section = findSection(route.kind === 'section' ? route.sectionId : route.from);
-  return {
-    section,
-    trail: route.kind === 'section' ? [section.breadcrumb] : [section.breadcrumb, 'Analysis'],
-  };
+  if (route.kind === 'section') {
+    const section = findSection(route.sectionId);
+    return { section, trail: [section.breadcrumb] };
+  }
+  if (route.kind === 'inspector') {
+    const section = findSection('results');
+    return { section, trail: [section.breadcrumb, 'Clip'] };
+  }
+  const section = findSection(route.from);
+  return { section, trail: [section.breadcrumb, 'Analysis'] };
+}
+
+export function inspectorRoute(projectId: string, sourceId: string, candidateId: string): Route {
+  return { kind: 'inspector', projectId, sourceId, candidateId };
 }

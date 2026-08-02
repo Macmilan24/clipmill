@@ -25,6 +25,7 @@ import { Library } from './Library.js';
 import { ModelsDevice } from './ModelsDevice.js';
 import { NewProject } from './NewProject.js';
 import { PhasePlaceholder } from './PhasePlaceholder.js';
+import { ResultsScreen } from './ResultsScreen.js';
 
 /**
  * Everything a screen may need from the shell.
@@ -40,6 +41,8 @@ export interface ScreenContext {
   readonly newProject: Parameters<typeof NewProject>[0];
   /** The run-specific arguments come from the route, so these are the rest. */
   readonly analysis: Omit<Parameters<typeof AnalysisProgress>[0], 'projectId' | 'jobId'>;
+  /** The Inspector's own arguments come from the route, so these are the rest. */
+  readonly results: Omit<Parameters<typeof ResultsScreen>[0], 'candidateId'>;
 }
 
 type Screen = (context: ScreenContext) => JSX.Element;
@@ -48,6 +51,7 @@ const SCREENS: Readonly<Record<string, Screen>> = {
   library: ({ library }) => <Library {...library} />,
   'new-project': ({ newProject }) => <NewProject {...newProject} />,
   models: ({ models }) => <ModelsDevice {...models} />,
+  results: ({ results }) => <ResultsScreen {...results} candidateId={null} />,
 };
 
 /**
@@ -64,6 +68,9 @@ export function renderScreen(context: ScreenContext): JSX.Element {
     return (
       <AnalysisProgress {...context.analysis} projectId={route.projectId} jobId={route.jobId} />
     );
+  }
+  if (route.kind === 'inspector') {
+    return <ResultsScreen {...context.results} candidateId={route.candidateId} />;
   }
   const { section } = placementOf(route);
   const screen = section.availability.kind === 'live' ? SCREENS[section.id] : undefined;

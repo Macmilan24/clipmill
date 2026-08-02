@@ -7,17 +7,20 @@ use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
 };
 use clipmill_contracts::proto::ipc::v1::{
-    AnalyzeSourcePayloadV1, ApplyEditCommandRequest, CreateEditDocRequest, CreateProjectRequest,
-    CropKeyframeV1, CropWeightsV1, DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1,
-    DetectShotsPayloadV1, DiscoverCandidatesPayloadV1, Error, ErrorCode, GetDeviceProfileRequest,
-    GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse, GetProjectResponse,
-    GetSourceResponse, GetStorageStatsResponse, HealthResponse, IndexTranscriptPayloadV1,
-    IngestSourcePayloadV1, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
+    AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ClipCutV1, ClipDecisionRecordV1,
+    ClipDecisionV1, CreateEditDocRequest, CreateProjectRequest, CropKeyframeV1, CropWeightsV1,
+    DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
+    DirectClipRequest, DirectClipResponse, DiscoverCandidatesPayloadV1, Error, ErrorCode,
+    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
+    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
+    ListClipDecisionsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
     MediaFileV1, PingResponse, ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest,
     ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest,
-    ResolveMediaResponse, Response, SnapshotEditDocResponse, SolveCropPathRequest,
-    SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest,
-    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
+    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
+    SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse, StorageCategoryV1,
+    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -25,7 +28,7 @@ use prost::Message;
 use sha2::{Digest, Sha256};
 
 use crate::artifacts::ArtifactHandle;
-use crate::db::{BeginDeviceProfile, DeviceProfileState};
+use crate::db::{BeginDeviceProfile, Decision, DeviceProfileState};
 use crate::db::{DbHandle, ProjectRecord, StoreError};
 use crate::device::{DeviceProfiler, verify_profile};
 use crate::jobs::{EventFilter, TaskEventRecord};
@@ -367,6 +370,15 @@ impl Service {
             request::Body::ResolveMedia(resolve) => self.resolve_media(request_id, &resolve).await,
             request::Body::GetStorageStats(_) => self.get_storage_stats(request_id).await,
             request::Body::SolveCropPath(solve) => self.solve_crop_path(request_id, &solve).await,
+            request::Body::DirectClip(direct) => {
+                self.direct_clip(request_id, request_hash, &direct).await
+            }
+            request::Body::SetClipDecision(decide) => {
+                self.set_clip_decision(request_id, &decide).await
+            }
+            request::Body::ListClipDecisions(list) => {
+                self.list_clip_decisions(request_id, &list).await
+            }
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -1428,6 +1440,223 @@ impl Service {
     /// The same refusal ladder every artifact read runs: the address parses,
     /// this project produced it, the kind is the one asked for, and the store
     /// re-verifies the object before a byte is parsed.
+    /// Turn an approved candidate into an edit document.
+    ///
+    /// Assembling and creating in one call rather than two: a caller that
+    /// assembled, then created, would have a window where a clip is half
+    /// approved, and nothing downstream could tell that state from a crash.
+    async fn direct_clip(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        direct: &DirectClipRequest,
+    ) -> Reply {
+        let Ok(project_id) = direct.project_id.parse::<ProjectId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        };
+        let Ok(source_id) = direct.source_id.parse::<SourceId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no source named");
+        };
+        let Some(artifacts) = self.artifacts.as_ref() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "this daemon serves no artifact store",
+            );
+        };
+        let source = match self.database.get_source(source_id.to_string()).await {
+            Ok(source) => source,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        if source.project_id != project_id.as_str() {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "source does not belong to the requested project",
+            );
+        }
+
+        let evidence = match crate::inspector::load(
+            &self.database,
+            artifacts,
+            &source_id.to_string(),
+            &source.source_map_json,
+        )
+        .await
+        {
+            Ok(evidence) => evidence,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::Conflict, error.message());
+            }
+        };
+
+        let document = match assemble(&evidence, direct) {
+            Ok(document) => document,
+            Err(message) => return error_reply(request_id, ErrorCode::InvalidArgument, message),
+        };
+
+        let Some(segment) = document.video.segments.first() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the director produced a document with no segment",
+            );
+        };
+        let (start_ticks, end_ticks) = (segment.in_ticks, segment.out_ticks);
+        let decisions = document
+            .rationale
+            .as_ref()
+            .map(|rationale| rationale.decisions.clone())
+            .unwrap_or_default();
+        let Ok(document_json) = serde_json::to_string(&document) else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the directed document did not serialize",
+            );
+        };
+
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        let encoded = match self
+            .database
+            .create_edit_doc(
+                request_id.clone(),
+                request_hash,
+                project_id.to_string(),
+                document_json,
+                now,
+            )
+            .await
+        {
+            Ok(encoded) => encoded,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let Ok(doc) = clipmill_contracts::proto::ipc::v1::EditDoc::decode(encoded.as_slice())
+        else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the stored document did not decode",
+            );
+        };
+        response_reply(
+            request_id,
+            response::Body::DirectClip(DirectClipResponse {
+                doc: Some(doc),
+                start_ticks: u64::try_from(start_ticks).unwrap_or(0),
+                end_ticks: u64::try_from(end_ticks).unwrap_or(0),
+                decisions,
+            }),
+        )
+    }
+
+    async fn set_clip_decision(
+        &self,
+        request_id: String,
+        decide: &SetClipDecisionRequest,
+    ) -> Reply {
+        let Ok(project_id) = decide.project_id.parse::<ProjectId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        };
+        let Ok(source_id) = decide.source_id.parse::<SourceId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no source named");
+        };
+        if decide.candidate_id.is_empty() {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no candidate named");
+        }
+        let decision = match ClipDecisionV1::try_from(decide.decision)
+            .unwrap_or(ClipDecisionV1::Unspecified)
+        {
+            ClipDecisionV1::Rejected => Decision::Rejected,
+            ClipDecisionV1::Kept => Decision::Kept,
+            ClipDecisionV1::Approved => Decision::Approved,
+            // Refused rather than defaulted: "I did not say" is not one of the
+            // three things a person can decide about a clip.
+            ClipDecisionV1::Unspecified => {
+                return error_reply(
+                    request_id,
+                    ErrorCode::InvalidArgument,
+                    "a decision must be one of rejected, kept, or approved",
+                );
+            }
+        };
+        let source = match self.database.get_source(source_id.to_string()).await {
+            Ok(source) => source,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        if source.project_id != project_id.as_str() {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "source does not belong to the requested project",
+            );
+        }
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        if let Err(error) = self
+            .database
+            .set_clip_decision(
+                project_id.to_string(),
+                source_id.to_string(),
+                decide.candidate_id.clone(),
+                decision,
+                now,
+            )
+            .await
+        {
+            return store_error_reply(request_id, &error);
+        }
+        response_reply(
+            request_id,
+            response::Body::SetClipDecision(SetClipDecisionResponse {
+                decision: decide.decision,
+                decided_unix_millis: now,
+            }),
+        )
+    }
+
+    async fn list_clip_decisions(
+        &self,
+        request_id: String,
+        list: &ListClipDecisionsRequest,
+    ) -> Reply {
+        let Ok(project_id) = list.project_id.parse::<ProjectId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        };
+        let Ok(source_id) = list.source_id.parse::<SourceId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no source named");
+        };
+        match self
+            .database
+            .list_clip_decisions(project_id.to_string(), source_id.to_string())
+            .await
+        {
+            Ok(records) => response_reply(
+                request_id,
+                response::Body::ListClipDecisions(ListClipDecisionsResponse {
+                    decisions: records
+                        .into_iter()
+                        .map(|record| ClipDecisionRecordV1 {
+                            candidate_id: record.candidate_id,
+                            decision: i32::from(match record.decision {
+                                Decision::Rejected => 1_u8,
+                                Decision::Kept => 2,
+                                Decision::Approved => 3,
+                            }),
+                            decided_unix_millis: record.decided_unix_millis,
+                        })
+                        .collect(),
+                }),
+            ),
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
     async fn solve_crop_path(&self, request_id: String, solve: &SolveCropPathRequest) -> Reply {
         let Ok(project_id) = solve.project_id.parse::<ProjectId>() else {
             return error_reply(
@@ -2426,6 +2655,9 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ResolveMedia(_)) => "resolve_media",
         Some(request::Body::GetStorageStats(_)) => "get_storage_stats",
         Some(request::Body::SolveCropPath(_)) => "solve_crop_path",
+        Some(request::Body::DirectClip(_)) => "direct_clip",
+        Some(request::Body::SetClipDecision(_)) => "set_clip_decision",
+        Some(request::Body::ListClipDecisions(_)) => "list_clip_decisions",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",
@@ -2542,6 +2774,96 @@ fn unix_millis() -> Result<u64, &'static str> {
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "system clock is before the Unix epoch")?;
     u64::try_from(duration.as_millis()).map_err(|_| "system clock exceeds timestamp range")
+}
+
+/// Build the document for a directed clip.
+///
+/// Split out of the handler so what remains there is the refusal ladder: a
+/// reader can see every way the request is turned down before anything is
+/// assembled, which is the part that decides whether a bad request reaches the
+/// store.
+fn assemble(
+    evidence: &crate::inspector::Evidence,
+    direct: &DirectClipRequest,
+) -> Result<clipmill_edit_ir::EditDocument, String> {
+    let style_ref = if direct.style_ref.is_empty() {
+        clipmill_captions::DEFAULT_STYLE_REF.to_owned()
+    } else {
+        direct.style_ref.clone()
+    };
+    let cut = match ClipCutV1::try_from(direct.cut).unwrap_or(ClipCutV1::Unspecified) {
+        ClipCutV1::Alternative => clipmill_director::Cut::Alternative,
+        // An exact pair is snapped before anything is built from it: a boundary
+        // arriving over this socket has been through a process the director does
+        // not control, and the lattice is what legal means.
+        ClipCutV1::Exact => clipmill_director::Cut::Exact(snapped(evidence, direct)?),
+        ClipCutV1::Chosen | ClipCutV1::Unspecified => clipmill_director::Cut::Chosen,
+    };
+    clipmill_director::direct(
+        clipmill_director::Evidence {
+            candidates: &evidence.candidates,
+            ranking: &evidence.ranking,
+            transcript: &evidence.transcript,
+            index: evidence.index.as_ref(),
+            shots: evidence.shots.as_ref(),
+            faces: evidence.faces.as_ref(),
+        },
+        &clipmill_director::Request {
+            candidate_id: direct.candidate_id.clone(),
+            cut,
+            style_ref,
+            frame: evidence.frame,
+            aspect: clipmill_director::Aspect::default(),
+        },
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// A hand-set boundary, put on the candidate's lattice.
+fn snapped(
+    evidence: &crate::inspector::Evidence,
+    direct: &DirectClipRequest,
+) -> Result<clipmill_director::Boundary, String> {
+    let candidate = evidence
+        .candidates
+        .candidates
+        .iter()
+        .find(|item| item.id.as_str() == direct.candidate_id)
+        .ok_or_else(|| format!("no candidate is called {}", direct.candidate_id))?;
+    let mut starts: Vec<i64> = candidate
+        .boundary_lattice
+        .starts
+        .iter()
+        .map(|at| i64::try_from(*at).unwrap_or(i64::MAX))
+        .collect();
+    let mut ends: Vec<i64> = candidate
+        .boundary_lattice
+        .ends
+        .iter()
+        .map(|at| i64::try_from(*at).unwrap_or(i64::MAX))
+        .collect();
+    starts.sort_unstable();
+    ends.sort_unstable();
+    clipmill_director::snap(
+        clipmill_director::Lattice {
+            starts: &starts,
+            ends: &ends,
+        },
+        clipmill_director::Boundary {
+            start_ticks: i64::try_from(direct.start_ticks).unwrap_or(0),
+            end_ticks: i64::try_from(direct.end_ticks).unwrap_or(0),
+        },
+        clipmill_director::Duration {
+            min_ticks: i64::try_from(evidence.candidates.duration_target.min_ticks.get())
+                .unwrap_or(0),
+            max_ticks: i64::try_from(evidence.candidates.duration_target.max_ticks.get())
+                .unwrap_or(i64::MAX),
+        },
+        // The start is the edge a person is answering "where should this begin"
+        // with, so it is the one held.
+        clipmill_director::Edge::Start,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

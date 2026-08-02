@@ -24,7 +24,14 @@ export interface EditIr {
      * Named caption preset; the style itself lives with the presets, not in every document.
      */
     style_ref: string;
+    /**
+     * What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always.
+     */
     cues?: CaptionCue[];
+    /**
+     * What a watcher gets, when the two should differ. The kinetic grouping is burned into the picture; absent, the reading cues are burned in instead. Two lists rather than one because the caption engine produces two groupings of one token array, and this is where they would otherwise collapse back into one — a burn-in that inherited the reading grouping is merely conservative, while a sidecar that inherited the kinetic one is the divergence that engine exists to prevent. The asymmetry is deliberate.
+     */
+    burn_in?: CaptionCue[];
   };
   audio: {
     /**

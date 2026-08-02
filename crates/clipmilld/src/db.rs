@@ -31,9 +31,11 @@ mod device_store;
 pub(crate) use device_store::{BeginDeviceProfile, DeviceProfileRecord, DeviceProfileState};
 mod edit_store;
 pub(crate) use edit_store::{EditCommandRecord, EditDocRecord};
+mod decision_store;
+pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -175,6 +177,36 @@ impl DbActor {
                                 Command::ListJobs { project_id, reply } => {
                                     let _result =
                                         reply.send(job_store::list_jobs(&connection, &project_id));
+                                }
+                                Command::SetClipDecision {
+                                    project_id,
+                                    source_id,
+                                    candidate_id,
+                                    decision,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(
+                                        decision_store::set(
+                                            &connection,
+                                            &project_id,
+                                            &source_id,
+                                            &candidate_id,
+                                            decision,
+                                            now_unix_millis,
+                                        )
+                                        .map_err(StoreError::from),
+                                    );
+                                }
+                                Command::ListClipDecisions {
+                                    project_id,
+                                    source_id,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(
+                                        decision_store::list(&connection, &project_id, &source_id)
+                                            .map_err(StoreError::from),
+                                    );
                                 }
                                 Command::CancelJob {
                                     request_id,
@@ -678,6 +710,48 @@ impl DbHandle {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListJobs { project_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Record what somebody decided about a clip. Durable before it is
+    /// acknowledged, which is the whole reason it is not renderer state.
+    pub(crate) async fn set_clip_decision(
+        &self,
+        project_id: String,
+        source_id: String,
+        candidate_id: String,
+        decision: Decision,
+        now_unix_millis: u64,
+    ) -> Result<(), StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::SetClipDecision {
+                project_id,
+                source_id,
+                candidate_id,
+                decision,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn list_clip_decisions(
+        &self,
+        project_id: String,
+        source_id: String,
+    ) -> Result<Vec<DecisionRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ListClipDecisions {
+                project_id,
+                source_id,
+                reply,
+            })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1225,6 +1299,19 @@ enum Command {
         project_id: String,
         reply: oneshot::Sender<Result<Vec<JobRecord>, StoreError>>,
     },
+    SetClipDecision {
+        project_id: String,
+        source_id: String,
+        candidate_id: String,
+        decision: Decision,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<(), StoreError>>,
+    },
+    ListClipDecisions {
+        project_id: String,
+        source_id: String,
+        reply: oneshot::Sender<Result<Vec<DecisionRecord>, StoreError>>,
+    },
     CancelJob {
         request_id: String,
         request_hash: [u8; 32],
@@ -1492,8 +1579,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(edit_store::CREATE_V6_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V7_TABLES)?;
         transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
+        transaction.execute_batch(decision_store::CREATE_V9_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 8;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 9;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1519,7 +1607,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 8 {
             transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 8;")?;
+        if version < 9 {
+            transaction.execute_batch(decision_store::CREATE_V9_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 9;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -1813,10 +1904,10 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        CREATE_V1_TABLES, CREATE_V2_TABLES, ProjectRecord, SCHEMA_VERSION, SQLITE_MIN_VERSION,
-        StoreError, attach_artifact_root, create_project, delete_project, device_store, edit_store,
-        enforce_integrity_check, enforce_sqlite_version, get_project, job_store,
-        list_artifact_roots, list_projects, open_database, source_store,
+        CREATE_V1_TABLES, CREATE_V2_TABLES, Decision, ProjectRecord, SCHEMA_VERSION,
+        SQLITE_MIN_VERSION, StoreError, attach_artifact_root, create_project, decision_store,
+        delete_project, device_store, edit_store, enforce_integrity_check, enforce_sqlite_version,
+        get_project, job_store, list_artifact_roots, list_projects, open_database, source_store,
     };
     use crate::{
         DaemonError,
@@ -2446,6 +2537,75 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("backup version");
         assert_eq!(backup_version, 2);
+    }
+
+    /// The claim the Inspector's gate rests on: a decision outlives the process
+    /// that took it.
+    ///
+    /// Written against a database that is opened, written, closed, and opened
+    /// again rather than against a live handle, because "survives a kill" is a
+    /// statement about what reached the disk and nothing held in memory can
+    /// answer it.
+    #[test]
+    fn a_clip_decision_survives_the_daemon_that_recorded_it() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("decisions.db");
+        let backups = temp.path().join("backups");
+
+        let connection = open_database(&path, &backups).expect("open");
+        connection
+            .execute(
+                // OR IGNORE because opening a store seeds a project of its
+                // own; this test cares about the decision rows, not about
+                // being the first writer.
+                "INSERT OR IGNORE INTO projects(project_id, name, created_unix_millis)\n\
+                 VALUES ('prj_00000000000000000000000000', 'test', 0)",
+                [],
+            )
+            .expect("a project to hang the decision from");
+        decision_store::set(
+            &connection,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_a",
+            Decision::Rejected,
+            10,
+        )
+        .expect("record a rejection");
+        decision_store::set(
+            &connection,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_b",
+            Decision::Approved,
+            20,
+        )
+        .expect("record an approval");
+        // Changing your mind replaces the answer rather than appending to it.
+        decision_store::set(
+            &connection,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_a",
+            Decision::Kept,
+            30,
+        )
+        .expect("change of mind");
+        drop(connection);
+
+        let reopened = open_database(&path, &backups).expect("reopen");
+        let found = decision_store::list(&reopened, "prj_00000000000000000000000000", "src_1")
+            .expect("read back");
+
+        assert_eq!(found.len(), 2, "one row per candidate: {found:?}");
+        let changed = found
+            .iter()
+            .find(|record| record.candidate_id == "cand_a")
+            .expect("the candidate whose decision changed");
+        assert_eq!(changed.decision, Decision::Kept);
+        assert_eq!(changed.decided_unix_millis, 30);
+        // Newest first, which is the order a board wants.
+        assert_eq!(found[0].candidate_id, "cand_a");
     }
 
     #[test]

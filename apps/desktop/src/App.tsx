@@ -16,7 +16,13 @@ import {
 import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
-import { DEFAULT_ROUTE, type Route, placementOf, sectionRoute } from './shell/route.js';
+import {
+  DEFAULT_ROUTE,
+  type Route,
+  inspectorRoute,
+  placementOf,
+  sectionRoute,
+} from './shell/route.js';
 
 /**
  * Identity of the *current* daemon process, not merely of being connected.
@@ -163,6 +169,14 @@ export function App(): JSX.Element {
                   navigate(route.kind === 'analysis' ? route.from : 'library');
                 },
                 onNavigate: navigate,
+              },
+              results: {
+                onInspect: (projectId, sourceId, candidateId) => {
+                  setRoute(inspectorRoute(projectId, sourceId, candidateId));
+                },
+                onBack: () => {
+                  navigate('results');
+                },
               },
               models: {
                 state,

@@ -286,6 +286,91 @@ async fn read_document(
     })
 }
 
+/// The crop path for a span, as a proposal. Nothing is written, so the
+/// Inspector may ask again every time a boundary moves.
+#[tauri::command]
+async fn solve_crop_path(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    face_track_artifact_id: String,
+    start_ticks: u64,
+    end_ticks: u64,
+) -> Result<views::CropPathView, String> {
+    let request = clipmill_contracts::proto::ipc::v1::SolveCropPathRequest {
+        project_id,
+        face_track_artifact_id,
+        start_ticks,
+        end_ticks,
+        aspect_width: 9,
+        aspect_height: 16,
+        weights: None,
+    };
+    supervisor
+        .client()
+        .solve_crop_path(request)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// Turn an approved candidate into an edit document.
+///
+/// One call rather than assemble-then-create: two would leave a window where a
+/// clip is half approved, and nothing downstream could tell that from a crash.
+#[tauri::command]
+async fn direct_clip(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    request: views::DirectClipInput,
+) -> Result<views::DirectedClipView, String> {
+    supervisor
+        .client()
+        .direct_clip(request.into())
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// Record what somebody decided about a clip, durably.
+#[tauri::command]
+async fn set_clip_decision(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    source_id: String,
+    candidate_id: String,
+    decision: String,
+) -> Result<views::ClipDecisionView, String> {
+    let request = clipmill_contracts::proto::ipc::v1::SetClipDecisionRequest {
+        project_id,
+        source_id,
+        candidate_id: candidate_id.clone(),
+        decision: views::decision_code(&decision),
+    };
+    let reply = supervisor
+        .client()
+        .set_clip_decision(request)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::ClipDecisionView {
+        candidate_id,
+        decision: views::decision_word(reply.decision),
+        decided_unix_millis: reply.decided_unix_millis,
+    })
+}
+
+#[tauri::command]
+async fn list_clip_decisions(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    source_id: String,
+) -> Result<Vec<views::ClipDecisionView>, String> {
+    supervisor
+        .client()
+        .list_clip_decisions(&project_id, &source_id)
+        .await
+        .map(|records| records.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
 /// Boot the shell. The socket path is resolved through the daemon's own
 /// configuration so the two can never disagree about where to meet.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -331,7 +416,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             storage_stats,
             choose_source_file,
             register_source,
-            submit_analyze
+            submit_analyze,
+            solve_crop_path,
+            direct_clip,
+            set_clip_decision,
+            list_clip_decisions
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

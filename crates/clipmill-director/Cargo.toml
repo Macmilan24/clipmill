@@ -1,0 +1,23 @@
+[package]
+name = "clipmill-director"
+description = "The edit director: an approved candidate and a boundary become an edit document, deterministically"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+clipmill-captions.workspace = true
+clipmill-contracts.workspace = true
+clipmill-edit-ir.workspace = true
+clipmill-reframe.workspace = true
+clipmill-render.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+clipmill-captions.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

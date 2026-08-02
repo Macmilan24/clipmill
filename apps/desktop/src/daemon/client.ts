@@ -416,3 +416,117 @@ export async function subscribeTaskEvents(
     handler(event.payload);
   });
 }
+
+/** What somebody decided about a clip. Three answers, and no fourth. */
+export type ClipDecision = 'rejected' | 'kept' | 'approved';
+
+export interface ClipDecisionRecord {
+  readonly candidateId: string;
+  readonly decision: ClipDecision | 'unspecified';
+  readonly decidedUnixMillis: number;
+}
+
+/** Which cut the director should build from. */
+export type ClipCut = 'chosen' | 'alternative' | 'exact';
+
+export interface DirectClipInput {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly candidateId: string;
+  readonly cut: ClipCut;
+  readonly styleRef?: string;
+  /** Read only for `exact`, and snapped to the lattice by the daemon. */
+  readonly startTicks?: number;
+  readonly endTicks?: number;
+}
+
+export interface DirectedClip {
+  readonly docId: string;
+  readonly revision: number;
+  readonly documentJson: string;
+  /**
+   * Where the cut landed, which is not always where it was asked for: a
+   * hand-set boundary is moved onto the lattice before anything is built.
+   */
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly decisions: readonly string[];
+}
+
+export async function directClip(request: DirectClipInput): Promise<DirectedClip> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<DirectedClip>('direct_clip', { request });
+}
+
+export async function setClipDecision(
+  projectId: string,
+  sourceId: string,
+  candidateId: string,
+  decision: ClipDecision,
+): Promise<ClipDecisionRecord> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<ClipDecisionRecord>('set_clip_decision', {
+    projectId,
+    sourceId,
+    candidateId,
+    decision,
+  });
+}
+
+export async function listClipDecisions(
+  projectId: string,
+  sourceId: string,
+): Promise<readonly ClipDecisionRecord[]> {
+  if (!isTauri()) {
+    return [];
+  }
+  const { invoke } = await core();
+  return invoke<ClipDecisionRecord[]>('list_clip_decisions', { projectId, sourceId });
+}
+
+/** One point of a proposed crop path, normalized against the source frame. */
+export interface CropKeyframe {
+  readonly tTicks: number;
+  readonly centerX: number;
+  readonly centerY: number;
+  /** Height of the crop as a share of the source height. */
+  readonly scale: number;
+}
+
+export interface CropPath {
+  readonly keyframes: readonly CropKeyframe[];
+  /** True when nobody earned the frame and this is the fitted rectangle. */
+  readonly fit: boolean;
+  readonly fitReason: string;
+  readonly containment: number;
+}
+
+/**
+ * Where the camera should point over a span.
+ *
+ * A proposal: nothing is written, which is what makes it safe to ask again
+ * every time somebody moves a boundary.
+ */
+export async function solveCropPath(
+  projectId: string,
+  faceTrackArtifactId: string,
+  startTicks: number,
+  endTicks: number,
+): Promise<CropPath> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<CropPath>('solve_crop_path', {
+    projectId,
+    faceTrackArtifactId,
+    startTicks,
+    endTicks,
+  });
+}
