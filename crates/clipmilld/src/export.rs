@@ -123,14 +123,20 @@ fn network_filesystem(path: &Path) -> Option<String> {
 
 #[cfg(target_os = "linux")]
 fn network_filesystem(path: &Path) -> Option<String> {
-    use nix::sys::statfs::{
-        CIFS_MAGIC_NUMBER, CODA_SUPER_MAGIC, NFS_SUPER_MAGIC, SMB_SUPER_MAGIC, statfs,
-    };
+    use nix::sys::statfs::{CODA_SUPER_MAGIC, FsType, NFS_SUPER_MAGIC, SMB_SUPER_MAGIC, statfs};
+
+    // Linux answers with a magic number rather than a name, so the comparison
+    // is against constants. `cifs` is the one that matters in practice — it is
+    // how a modern kernel mounts an SMB share, while `SMB_SUPER_MAGIC` is the
+    // long-deprecated smbfs — and it is the one nix does not export, so it is
+    // written out here. The value is the ASCII "\xFFSMB" the kernel uses.
+    const CIFS_MAGIC: FsType = FsType(0xFF53_4D42);
+
     let measured = statfs(path).ok()?;
     let kind = measured.filesystem_type();
     let name = if kind == NFS_SUPER_MAGIC {
         "nfs"
-    } else if kind == SMB_SUPER_MAGIC || kind == CIFS_MAGIC_NUMBER {
+    } else if kind == SMB_SUPER_MAGIC || kind == CIFS_MAGIC {
         "smb"
     } else if kind == CODA_SUPER_MAGIC {
         "coda"

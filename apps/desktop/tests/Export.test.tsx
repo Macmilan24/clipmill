@@ -126,7 +126,10 @@ describe('the export screen', () => {
   });
 
   it('says a free-space figure could not be read rather than showing zero', () => {
-    show({ plan: plan({ availableBytes: undefined }) });
+    // Absent, not zero. The two are different answers and the type says so, so
+    // the key is left off rather than set to undefined.
+    const { availableBytes: _unread, ...unknown } = plan();
+    show({ plan: unknown });
     expect(screen.getByText('not readable')).toBeTruthy();
   });
 
