@@ -66,4 +66,4 @@ toml = { version = "0.9", default-features = false, features = ["parse", "serde"
 tokio = { version = "1.49", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-ulid = "1.2"
+ulid = "3.0"
