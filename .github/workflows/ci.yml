@@ -231,6 +231,39 @@ jobs:
       # document: no pinned media is needed to prove the two agree.
       - run: ./tools/drills/editor-drill.sh 1
 
+  recall:
+    name: recall (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      # The planted recording starts from a transcript, so no recognizer and no
+      # media are needed: the engine under test is the mesh, the lattice, the
+      # scorer, the boundary optimizer and the selector, which is exactly what
+      # a recall number is about.
+      - run: ./tools/drills/recall-drill.sh
+
+  golden:
+    name: golden
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: ./tools/drills/gate-golden.sh
+
   export:
     name: export (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

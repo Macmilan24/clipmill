@@ -240,6 +240,29 @@ gate-editor iterations="1":
 gate-export iterations="1":
     ./tools/drills/export-drill.sh {{iterations}}
 
+# W26 coverage: the recall arithmetic against hand-worked numbers, and the real
+# engine over a recording whose three moments were planted on purpose.
+gate-recall-smoke:
+    ./tools/drills/recall-drill.sh
+
+# W26 private gate: the real corpus, an editor's annotations, and a signed
+# report. Needs media and annotations that never enter Git.
+gate-recall corpus_dir manifest license_attestation annotations socket output bar="eval/recall/planted-bar.json" public_key="":
+    cd eval/harness && uv run clipmill-eval recall \
+      --corpus-dir {{corpus_dir}} --manifest {{manifest}} \
+      --license-attestation {{license_attestation}} \
+      --annotations {{annotations}} --socket {{socket}} \
+      --output {{output}} --bar {{bar}} \
+      {{ if public_key == "" { "" } else { "--public-key " + public_key } }}
+
+# W26: 1.5x real time at 1080x1920, attested on the machine that measured it.
+gate-render-slo minimum="1.5":
+    ./tools/drills/render-slo.sh {{minimum}}
+
+# W26: every stage's goldens at one commit. The cheapest evidence there is.
+gate-golden:
+    ./tools/drills/gate-golden.sh
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock
