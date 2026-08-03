@@ -1,0 +1,20 @@
+[package]
+name = "clipmill-export"
+description = "The delivery side: what a finished clip is checked against, what its files are called, and the archive that outlives this application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+clipmill-captions.workspace = true
+clipmill-core.workspace = true
+clipmill-edit-ir.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

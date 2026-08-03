@@ -1,0 +1,115 @@
+{
+  "assets": [
+    {
+      "hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "license": "own_content"
+    }
+  ],
+  "audio": {
+    "gain_curve": [
+      {
+        "gain_db": 0.0,
+        "t_ticks": 0
+      }
+    ],
+    "target_lufs": -14.0,
+    "true_peak_dbtp": -1.0
+  },
+  "captions": {
+    "burn_in": [],
+    "cues": [
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_1",
+        "end_ticks": 180000,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 60000,
+                "start_ticks": 0,
+                "text": "preview"
+              },
+              {
+                "end_ticks": 120000,
+                "start_ticks": 60000,
+                "text": "and"
+              }
+            ]
+          },
+          {
+            "words": [
+              {
+                "end_ticks": 180000,
+                "start_ticks": 120000,
+                "text": "render"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 0
+      },
+      {
+        "anim": "karaoke",
+        "cue_id": "cue_2",
+        "end_ticks": 450000,
+        "lines": [
+          {
+            "words": [
+              {
+                "end_ticks": 330000,
+                "start_ticks": 270000,
+                "text": "agree"
+              },
+              {
+                "end_ticks": 450000,
+                "start_ticks": 330000,
+                "text": "exactly"
+              }
+            ]
+          }
+        ],
+        "region": "lower_safe",
+        "start_ticks": 270000
+      }
+    ],
+    "style_ref": "clean"
+  },
+  "rationale": {
+    "candidate_id": "cand_1",
+    "decisions": [
+      "hook lands in the first second of the selected span",
+      "end snapped to the shot cut eight frames into the deletion"
+    ]
+  },
+  "timebase": {
+    "den": 90000,
+    "num": 1
+  },
+  "version": "ir/1",
+  "video": {
+    "segments": [
+      {
+        "in_ticks": 111150000,
+        "layout": {
+          "crop_path": [
+            {
+              "rect": {
+                "height": 1080,
+                "width": 608,
+                "x": 236,
+                "y": 0
+              },
+              "t_ticks": 0
+            }
+          ],
+          "state": "speaker_fill"
+        },
+        "out_ticks": 111690000,
+        "segment_id": "seg_1",
+        "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    ]
+  }
+}
