@@ -118,6 +118,100 @@ fn selection_takes_at_most_one_clip_from_a_cluster() {
     }
 }
 
+/// The cluster refusal is not enough on its own, and this is the case that
+/// proves it. Clustering ran over the intervals the proposers *proposed*; the
+/// boundary optimizer then re-cut every candidate, and two nominations that
+/// clustered apart can converge on one cut. The clusters cannot know that — the
+/// convergence had not happened yet — so the cut is checked again after the
+/// optimizer has spoken.
+///
+/// Measured at the `IoU` the recall metric calls a duplicate, because a set the
+/// metric scores as duplicated is a duplicated set whatever this crate prefers
+/// to call it.
+#[test]
+fn selection_never_ships_one_cut_twice_however_the_clusters_fell() {
+    let set = ranked(Request {
+        count: 20,
+        diversity: 0.7,
+    });
+    let cards = super::cards(&set);
+    let mut taken: Vec<(u64, u64)> = Vec::new();
+    for id in &set.selected {
+        let entry = cards
+            .get(id.as_str())
+            .expect("a selected id is in the cohort");
+        let span = (
+            entry.boundary.chosen.start_ticks,
+            entry.boundary.chosen.end_ticks,
+        );
+        for earlier in &taken {
+            assert!(
+                super::intersection_over_union(*earlier, span) < super::DUPLICATE,
+                "{} repeats a cut already selected: {earlier:?} and {span:?}",
+                id.as_str()
+            );
+        }
+        taken.push(span);
+    }
+    assert!(taken.len() > 1, "the fixture must select enough to compare");
+}
+
+/// The other half of the same rule. Refusing a duplicate is only honest if the
+/// set says it refused one — a short set that does not account for itself is
+/// the same failure as a padded one, wearing the opposite disguise.
+#[test]
+fn a_refused_duplicate_is_accounted_for_rather_than_replaced() {
+    let set = ranked(Request::DEFAULT);
+    assert!(
+        set.selected.len() < set.cohort.len(),
+        "this fixture must leave something unselected for the shortfall to explain"
+    );
+    let accounted: u64 = set.shortfall.iter().map(|reason| reason.count.get()).sum();
+    assert_eq!(
+        crate::as_u64(set.selected.len()) + accounted,
+        set.requested.count.get()
+    );
+    assert!(
+        set.shortfall
+            .iter()
+            .any(|reason| reason.reason
+                == contract::ShortfallReasonReason::AllRemainingAreDuplicates),
+        "clips were refused as duplicates and the set did not say so"
+    );
+    assert!(is_well_formed(&set));
+}
+
+/// The threshold is a duplicate detector, not an overlap detector, and the
+/// difference is the whole reason it is set where it is. A topic span and a
+/// quote pulled from inside it share ticks without being the same clip:
+/// refusing that pair would cost a user the moment rather than a repeat of it,
+/// which is a worse failure than the one being fixed.
+///
+/// So the number is the metric's, not one tightened until the duplicate count
+/// looked good. Stated over spans rather than over a fixture, because what is
+/// being pinned is where the line falls, and a fixture whose clips happened to
+/// stop overlapping would quietly stop testing it.
+#[test]
+fn the_threshold_separates_a_repeat_from_a_quote_inside_a_longer_span() {
+    let topic = (0, 60 * crate::fixture::SECOND);
+    // Wholly inside the topic and a third of its length: the pairing clustering
+    // exists to keep together, and a real second clip.
+    let quote = (10 * crate::fixture::SECOND, 30 * crate::fixture::SECOND);
+    assert!(
+        super::intersection_over_union(topic, quote) < super::DUPLICATE,
+        "a quote inside a topic was refused as a repeat of it"
+    );
+
+    // The same cut twice, and the same cut nudged by a sentence — both of which
+    // reached the board before this check existed.
+    assert!(super::intersection_over_union(quote, quote) >= super::DUPLICATE);
+    let nudged = (12 * crate::fixture::SECOND, 30 * crate::fixture::SECOND);
+    assert!(
+        super::intersection_over_union(quote, nudged) >= super::DUPLICATE,
+        "two cuts of one moment were let through as different clips"
+    );
+}
+
 /// The diversity dial is real: taking pure quality returns overlapping clips
 /// that a diversity-weighted selector spreads out.
 #[test]
