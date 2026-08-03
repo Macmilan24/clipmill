@@ -1508,15 +1508,12 @@
     "cand_22cdc9811efaa7bf",
     "cand_9e00833e98155fe9",
     "cand_9c884016c479866c",
-    "cand_a69cb9bf8e801216",
-    "cand_6e2869cc7732dfac",
-    "cand_b4edc61d0ed612f2",
-    "cand_81ddbc9f98bf8e3d"
+    "cand_6e2869cc7732dfac"
   ],
   "shortfall": [
     {
-      "count": 3,
-      "detail": "every remaining candidate belongs to a cluster already represented",
+      "count": 6,
+      "detail": "every remaining candidate repeats one already selected: its cluster is represented, or its chosen cut is",
       "reason": "all_remaining_are_duplicates"
     }
   ],
