@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.eval_annotation.v1.json",
+  "title": "EvalAnnotation",
+  "description": "What an editor says is worth clipping in one recording (book ch. 22). Ground truth here is plural by construction: a recording has moment *sets* rather than one right answer, each moment carries the alternative starts and ends that would also have been acceptable, and disagreement between annotators is kept rather than resolved — a moment two of three editors accept is a different fact from unanimity, and a scorer that averaged them away would report a number nobody could interpret. One document is one annotator's opinion of one source; agreement is computed across documents, never inside one.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "annotator_id",
+    "annotated_unix_millis",
+    "timebase",
+    "moments"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.eval_annotation.v1"
+    },
+    "source_fingerprint": {
+      "description": "The recording this is about, by content. A path would stop being true the moment the file moved.",
+      "$ref": "#/$defs/sha256"
+    },
+    "item_id": {
+      "description": "The corpus item, when the recording came from one. Absent for a source annotated outside a corpus.",
+      "type": "string",
+      "minLength": 1
+    },
+    "annotator_id": {
+      "description": "Who said this. Kept because disagreement is signal: the same recording annotated by two people is two documents, and the difference between them is what calibration reads.",
+      "type": "string",
+      "minLength": 1
+    },
+    "annotated_unix_millis": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timebase": {
+      "description": "The rational clock every tick in this document is counted against. Stated rather than assumed, so an annotation and a candidate set cannot silently disagree about what a tick is (decision D06).",
+      "$ref": "#/$defs/timebase"
+    },
+    "notes": {
+      "description": "Anything about the recording as a whole that shaped the annotation.",
+      "type": "string"
+    },
+    "moments": {
+      "description": "Every span this annotator would accept as a clip. An empty list is a real answer — a recording with nothing worth clipping is a fact a recall number has to be able to represent — so it is allowed and is not the same as an unannotated item.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/moment" }
+    },
+    "exclusions": {
+      "description": "Spans that must never be offered, with the reason. Separate from simply not being a moment: not-a-moment is an absence, an exclusion is a claim.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/exclusion" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timebase": {
+      "type": "object",
+      "required": ["num", "den"],
+      "additionalProperties": false,
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "interval": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "moment": {
+      "type": "object",
+      "required": ["moment_id", "span", "importance"],
+      "additionalProperties": false,
+      "properties": {
+        "moment_id": {
+          "description": "Stable within this document. Two annotators naming the same span do not have to agree on an id — agreement is computed from the spans, not the labels.",
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "description": "The annotator's preferred cut. Scoring uses this as the moment's identity; the alternatives widen what counts as having found it.",
+          "$ref": "#/$defs/interval"
+        },
+        "importance": {
+          "description": "How much it costs to miss this one. `essential` is a moment whose absence makes the result wrong; `strong` is one a good result contains; `acceptable` is one a result may contain without being better for it. Recall is reported per grade as well as overall, because a system that finds every acceptable moment and misses every essential one has a good aggregate number and is useless.",
+          "enum": ["essential", "strong", "acceptable"]
+        },
+        "alternatives": {
+          "description": "Other starts and ends the annotator would also have accepted for this same moment. These are what boundary-edge error is measured against: a cut that landed on an alternative is not an error, and scoring it as one would punish the system for agreeing with the editor.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/interval" }
+        },
+        "hook_ticks": {
+          "description": "Where the thing that makes somebody keep watching happens. Absent when the annotator could not point at one, which is different from it being at zero.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "payoff_ticks": {
+          "description": "Where the moment lands. Absent for the same reason as the hook.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "required_context": {
+          "description": "What a viewer has to have heard for this to make sense, in the annotator's words. A moment that needs context the clip cannot carry is a moment worth finding and worth cutting differently.",
+          "type": "string"
+        },
+        "topic": {
+          "description": "Free-text label, used for topic coverage rather than for scoring. Not a controlled vocabulary: imposing one before ten recordings have been annotated would be inventing a taxonomy from nothing.",
+          "type": "string"
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "required": ["span", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "span": { "$ref": "#/$defs/interval" },
+        "reason": {
+          "description": "Why this span may not be offered. A closed vocabulary, because an exclusion that could say anything is an exclusion nothing downstream can act on.",
+          "enum": [
+            "rights",
+            "personal_information",
+            "misleading_out_of_context",
+            "poor_audio",
+            "poor_picture",
+            "off_topic",
+            "duplicate_of_a_moment"
+          ]
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}
