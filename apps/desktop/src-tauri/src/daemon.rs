@@ -12,15 +12,16 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    AnalyzeSourcePayloadV1, ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1,
-    DirectClipRequest, DirectClipResponse, EditDoc, GetDeviceProfileRequest,
-    GetDeviceProfileResponse, GetJobRequest, GetPreviewPlanRequest, GetPreviewPlanResponse,
-    GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse, Job,
-    ListClipDecisionsRequest, ListEditDocsRequest, ListJobsRequest, ListProjectsRequest,
-    ListSourcesRequest, Project, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
-    RegisterSourceResponse, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
-    SetClipDecisionRequest, SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse,
-    Source, SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, request, response,
+    AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ApplyEditCommandResponse,
+    ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1, DirectClipRequest,
+    DirectClipResponse, EditDoc, GetDeviceProfileRequest, GetDeviceProfileResponse, GetJobRequest,
+    GetPreviewPlanRequest, GetPreviewPlanResponse, GetStorageStatsRequest, GetStorageStatsResponse,
+    HealthRequest, HealthResponse, Job, ListClipDecisionsRequest, ListEditDocsRequest,
+    ListJobsRequest, ListProjectsRequest, ListSourcesRequest, Project, ReadArtifactRequest,
+    ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
+    SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
+    SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
 use serde::Serialize;
@@ -135,6 +136,28 @@ impl DaemonClient {
 
     pub fn socket(&self) -> &Path {
         &self.socket
+    }
+
+    /// Apply one command to a document.
+    ///
+    /// The reply carries the inverse. The daemon keeps no undo stack — it
+    /// hands the inverse back and logs it durably beside the command, so an
+    /// undo is just another command and survives a restart the same way.
+    pub async fn apply_edit_command(
+        &self,
+        doc_id: &str,
+        expected_revision: u64,
+        command_json: String,
+    ) -> Result<ApplyEditCommandResponse, DaemonLinkError> {
+        let request = ApplyEditCommandRequest {
+            doc_id: doc_id.to_owned(),
+            expected_revision,
+            command_json,
+        };
+        match self.call(request::Body::ApplyEditCommand(request)).await? {
+            response::Body::ApplyEditCommand(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
     }
 
     /// Every edit document a project holds, oldest first.

@@ -598,3 +598,39 @@ export async function listEditDocs(projectId: string): Promise<readonly EditDocS
   const { invoke } = await core();
   return invoke<EditDocSummary[]>('list_edit_docs', { projectId });
 }
+
+/**
+ * One edit command, in the shape the Edit IR deserializes.
+ *
+ * Typed loosely on purpose: the authority on what a command is lives in the
+ * Rust crate, and a duplicate of that enum here would be a second definition
+ * to keep in step. What this side guarantees is the tag, which is what the
+ * daemon dispatches on.
+ */
+export interface EditCommandJson {
+  readonly op: string;
+  readonly [field: string]: unknown;
+}
+
+export interface AppliedCommand {
+  readonly docId: string;
+  readonly revision: number;
+  /** The command that undoes this one. The daemon keeps no undo stack. */
+  readonly inverseCommandJson: string;
+}
+
+export async function applyEditCommand(
+  docId: string,
+  expectedRevision: number,
+  command: EditCommandJson,
+): Promise<AppliedCommand> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<AppliedCommand>('apply_edit_command', {
+    docId,
+    expectedRevision,
+    commandJson: JSON.stringify(command),
+  });
+}

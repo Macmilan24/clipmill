@@ -74,3 +74,27 @@ agreeing, one of them started deciding.
   than patched per IR subtree. The revision travels with it so a caller can tell
   a stale picture from a current one, which is the cheap part of that
   optimization; incremental patches are not implemented.
+
+## Editing, and why nothing is local
+
+Every gesture in the editor becomes an IR command. A nudged crop, a split cue, a
+gain step, a trim — each is sent, applied by the daemon, and comes back with the
+command that undoes it. Nothing is held as local state and reconciled later.
+
+That is a parity property rather than an architectural preference. The render
+reads the document; a change that lived only in the renderer would look right in
+the player and be absent from the file, which is the same class of failure as a
+crop rectangle computed twice.
+
+It is also why the undo stack lives in the renderer while the _log_ lives in the
+daemon. Undoing is applying an inverse, so an undo is a command like any other:
+logged, durable, and itself undoable.
+
+Two consequences worth stating:
+
+- **A live drag commits its smoothed value.** The One-Euro filter is display
+  smoothing, but committing the raw pointer while showing the smoothed one would
+  mean the preview and the command disagreed. So what is shown is what is sent.
+- **Every apply re-fetches the plan.** Patching it incrementally is the named
+  optimization and is not done; a patched plan that drifted from the document
+  would be exactly the divergence this document exists to prevent.

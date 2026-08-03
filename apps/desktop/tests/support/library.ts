@@ -16,6 +16,7 @@ import type {
   Document,
   Job,
   MediaArtifact,
+  EditCommandJson,
   EditDocSummary,
   PreviewPlan,
   Progress,
@@ -119,6 +120,8 @@ export interface FakeWorld {
   /** The plan the player would apply, when the world has a document. */
   readonly plan?: PreviewPlan;
   readonly editDocs?: readonly EditDocSummary[];
+  /** Every command the editor sent, in order. */
+  readonly applied: EditCommandJson[];
 }
 
 export function emptyWorld(): FakeWorld {
@@ -131,6 +134,7 @@ export function emptyWorld(): FakeWorld {
     storage: null,
     directed: [],
     decisions: new Map(),
+    applied: [],
   };
 }
 
@@ -212,6 +216,17 @@ export function fakeApi(world: FakeWorld): ShellApi {
         containment: 0,
       }),
     listEditDocs: () => Promise.resolve(world.editDocs ?? []),
+    applyEditCommand: (docId, expectedRevision, command) => {
+      world.applied.push(command);
+      // The inverse a real daemon computes depends on the document; a fake
+      // that invented one would let a test pass while undo was broken, so this
+      // returns the command itself and tests assert on what was sent.
+      return Promise.resolve({
+        docId,
+        revision: expectedRevision + 1,
+        inverseCommandJson: JSON.stringify(command),
+      });
+    },
     previewPlan: () =>
       world.plan
         ? Promise.resolve(world.plan)

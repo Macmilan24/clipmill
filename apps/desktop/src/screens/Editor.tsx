@@ -13,13 +13,19 @@
  * from the same plan, so a playhead is in the same place on all four by
  * construction rather than by four pieces of code agreeing.
  */
-import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play, Redo2, Undo2 } from 'lucide-react';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '../components/ui/badge.js';
 import { Button } from '../components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
+import { Audio } from '../editor/Audio.js';
+import { Captions } from '../editor/Captions.js';
+import { Reframe } from '../editor/Reframe.js';
+import { snapToWord, ticksAt, trim } from '../editor/commands.js';
+import type { EditCommandJson } from '../daemon/client.js';
 import type { PreviewPlan } from '../daemon/client.js';
 import {
   cropAt,
@@ -40,10 +46,33 @@ export interface EditorProps {
   readonly docId: string | null;
   readonly loading: boolean;
   readonly problem: string | null;
+  readonly busy: boolean;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly resolving: boolean;
   readonly onOpenResults: () => void;
+  readonly onApply: (command: EditCommandJson) => void;
+  readonly onUndo: () => void;
+  readonly onRedo: () => void;
+  readonly onResolve: () => void;
 }
 
-export function Editor({ plan, proxyUrl, docId, loading, problem, onOpenResults }: EditorProps) {
+export function Editor({
+  plan,
+  proxyUrl,
+  docId,
+  loading,
+  problem,
+  busy,
+  canUndo,
+  canRedo,
+  resolving,
+  onOpenResults,
+  onApply,
+  onUndo,
+  onRedo,
+  onResolve,
+}: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -119,18 +148,98 @@ export function Editor({ plan, proxyUrl, docId, loading, problem, onOpenResults 
           onFrame={setFrame}
           onEnded={() => setPlaying(false)}
         />
-        <aside className="w-64 shrink-0 rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-4 text-sm">
-          <p className="text-xs text-[var(--cm-ink-2)]">Document</p>
-          <p className="truncate font-mono text-xs text-[var(--cm-ink-1)]">{docId}</p>
-          <p className="mt-3 text-xs text-[var(--cm-ink-2)]">Revision</p>
-          <Badge variant="outline">r{plan.revision}</Badge>
-          <dl className="mt-4 space-y-2 text-xs">
-            <Row label="Output" value={`${plan.width}×${plan.height}`} />
-            <Row label="Rate" value={`${(plan.rateNum / plan.rateDen).toFixed(3)} fps`} />
-            <Row label="Frames" value={String(plan.frameCount)} />
-            <Row label="Layout" value={crop ? 'Speaker-follow' : 'Fit'} />
-            <Row label="Gain here" value={`${gainAt(plan, frame).toFixed(1)} dB`} />
-          </dl>
+        <aside className="flex w-[340px] shrink-0 flex-col rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)]">
+          <div className="flex items-center justify-between border-b border-[var(--cm-line-1)] p-3">
+            <span className="flex items-center gap-2">
+              <Badge variant="outline">r{plan.revision}</Badge>
+              <span className="truncate font-mono text-[10px] text-[var(--cm-ink-3)]">{docId}</span>
+            </span>
+            <span className="flex gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!canUndo || busy}
+                onClick={onUndo}
+                aria-label="Undo"
+              >
+                <Undo2 className="size-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!canRedo || busy}
+                onClick={onRedo}
+                aria-label="Redo"
+              >
+                <Redo2 className="size-4" />
+              </Button>
+            </span>
+          </div>
+          <Tabs defaultValue="reframe" className="min-h-0 flex-1">
+            <TabsList className="m-3 w-[calc(100%-1.5rem)]">
+              <TabsTrigger value="reframe">Reframe</TabsTrigger>
+              <TabsTrigger value="captions">Captions</TabsTrigger>
+              <TabsTrigger value="audio">Audio</TabsTrigger>
+              <TabsTrigger value="clip">Clip</TabsTrigger>
+            </TabsList>
+            <TabsContent value="reframe">
+              <Reframe
+                plan={plan}
+                frame={frame}
+                busy={busy}
+                onApply={onApply}
+                onResolve={onResolve}
+                resolving={resolving}
+              />
+            </TabsContent>
+            <TabsContent value="captions">
+              <Captions plan={plan} frame={frame} busy={busy} onApply={onApply} />
+            </TabsContent>
+            <TabsContent value="audio">
+              <Audio plan={plan} frame={frame} busy={busy} onApply={onApply} />
+            </TabsContent>
+            <TabsContent value="clip">
+              <div className="flex flex-col gap-3 p-4 text-sm">
+                <dl className="space-y-2 text-xs">
+                  <Row label="Output" value={`${plan.width}×${plan.height}`} />
+                  <Row label="Rate" value={`${(plan.rateNum / plan.rateDen).toFixed(3)} fps`} />
+                  <Row label="Frames" value={String(plan.frameCount)} />
+                  <Row label="Layout" value={crop ? 'Speaker-follow' : 'Fit'} />
+                  <Row label="Gain here" value={`${gainAt(plan, frame).toFixed(1)} dB`} />
+                </dl>
+                <p className="text-xs text-[var(--cm-ink-2)]">
+                  Trimming snaps to a caption boundary rather than to the pointer: a cut inside a
+                  word is a cut a viewer hears.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      onApply(
+                        trim(
+                          ticksAt(plan, snapToWord(plan, frame)),
+                          ticksAt(plan, plan.frameCount),
+                        ),
+                      )
+                    }
+                  >
+                    Trim start here
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => onApply(trim(0, ticksAt(plan, snapToWord(plan, frame))))}
+                  >
+                    Trim end here
+                  </Button>
+                </div>
+                {problem && <p className="text-xs text-[var(--cm-danger-ink)]">{problem}</p>}
+              </div>
+            </TabsContent>
+          </Tabs>
         </aside>
       </div>
 

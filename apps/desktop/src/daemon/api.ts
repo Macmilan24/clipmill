@@ -14,7 +14,9 @@ import {
   type AnalyzeRequest,
   type ClipDecision,
   type ClipDecisionRecord,
+  type AppliedCommand,
   type CropPath,
+  type EditCommandJson,
   type EditDocSummary,
   type PreviewPlan,
   type DirectClipInput,
@@ -35,6 +37,7 @@ import {
   listSources,
   mediaUrl,
   directClip,
+  applyEditCommand,
   listClipDecisions,
   listEditDocs,
   previewPlan,
@@ -69,6 +72,11 @@ export interface ShellApi {
   ): Promise<CropPath>;
   previewPlan(projectId: string, docId: string): Promise<PreviewPlan>;
   listEditDocs(projectId: string): Promise<readonly EditDocSummary[]>;
+  applyEditCommand(
+    docId: string,
+    expectedRevision: number,
+    command: EditCommandJson,
+  ): Promise<AppliedCommand>;
   setClipDecision(
     projectId: string,
     sourceId: string,
@@ -95,6 +103,7 @@ export const daemonApi: ShellApi = {
   solveCropPath,
   previewPlan,
   listEditDocs,
+  applyEditCommand,
   setClipDecision,
   listClipDecisions,
 };

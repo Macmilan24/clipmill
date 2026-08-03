@@ -286,6 +286,22 @@ async fn read_document(
     })
 }
 
+/// Apply one command to a document, and hand back the inverse.
+#[tauri::command]
+async fn apply_edit_command(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    doc_id: String,
+    expected_revision: u64,
+    command_json: String,
+) -> Result<views::AppliedCommandView, String> {
+    supervisor
+        .client()
+        .apply_edit_command(&doc_id, expected_revision, command_json)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// Every edit document a project holds, oldest first.
 #[tauri::command]
 async fn list_edit_docs(
@@ -446,6 +462,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             choose_source_file,
             register_source,
             submit_analyze,
+            apply_edit_command,
             list_edit_docs,
             preview_plan,
             solve_crop_path,
