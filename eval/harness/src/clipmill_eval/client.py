@@ -70,6 +70,67 @@ class DaemonClient:
         )
         return _require_body(response, "submit_job").job
 
+    def submit_analyze(
+        self,
+        project_id: str,
+        source_id: str,
+        *,
+        language: str = "",
+        count: int = 0,
+        diversity_milli: int = 0,
+    ) -> daemon_pb2.Job:
+        """Submit the whole analyze DAG: probe through rank.
+
+        Every tunable is left at zero, which the payload defines as "no
+        opinion". An evaluation that passed its own duration range or set size
+        would be measuring a configuration nobody ships rather than the one a
+        user gets.
+        """
+
+        payload = daemon_pb2.AnalyzeSourcePayloadV1(
+            key_version="clipmill.analyze-source.v1",
+            source_id=source_id,
+            language=language,
+            count=count,
+            diversity_milli=diversity_milli,
+        ).SerializeToString(deterministic=True)
+        response = self._call(
+            daemon_pb2.Request(
+                submit_job=daemon_pb2.SubmitJobRequest(
+                    project_id=project_id,
+                    kind="analyze-source",
+                    payload=payload,
+                )
+            )
+        )
+        return _require_body(response, "submit_job").job
+
+    def read_artifact(self, project_id: str, artifact_id: str) -> bytes:
+        """A published document, whole.
+
+        Read in chunks and reassembled here rather than asking for everything
+        at once: the protocol caps a frame, and a caller that assumed one call
+        would suffice would silently truncate the first document large enough
+        to matter — which is exactly the ranked set of a long recording.
+        """
+
+        collected = bytearray()
+        while True:
+            response = self._call(
+                daemon_pb2.Request(
+                    read_artifact=daemon_pb2.ReadArtifactRequest(
+                        project_id=project_id,
+                        artifact_id=artifact_id,
+                        offset=len(collected),
+                    )
+                )
+            )
+            body = _require_body(response, "read_artifact")
+            collected.extend(body.chunk)
+            if not body.chunk or len(collected) >= body.total_bytes:
+                break
+        return bytes(collected)
+
     def get_job(self, job_id: str) -> daemon_pb2.Job:
         response = self._call(daemon_pb2.Request(get_job=daemon_pb2.GetJobRequest(job_id=job_id)))
         return _require_body(response, "get_job").job
