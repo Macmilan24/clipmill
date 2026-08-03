@@ -102,6 +102,9 @@ pub(crate) struct WorkerService {
     decoder: Arc<PathBuf>,
     accepting_work: Arc<AtomicBool>,
     drop_completion_ack_once: Arc<AtomicBool>,
+    /// Offered every task this service hands out, so the Local Lock's
+    /// counter sees leased work as well as builtin work.
+    policy: Arc<crate::policy::LocalLockPolicy>,
 }
 
 impl WorkerService {
@@ -118,6 +121,7 @@ impl WorkerService {
         artifact_root: PathBuf,
         weights_root: PathBuf,
         decoder: PathBuf,
+        policy: Arc<crate::policy::LocalLockPolicy>,
     ) -> Result<Self, WorkerError> {
         Ok(Self {
             database,
@@ -132,6 +136,7 @@ impl WorkerService {
             artifact_root: Arc::new(artifact_root),
             weights_root: Arc::new(weights_root),
             decoder: Arc::new(decoder),
+            policy,
             accepting_work: Arc::new(AtomicBool::new(true)),
             drop_completion_ack_once: Arc::new(AtomicBool::new(
                 std::env::var_os("CLIPMILL_TEST_DROP_COMPLETION_ACK_ONCE")
@@ -320,6 +325,7 @@ impl WorkerService {
                     })),
                 });
             };
+            self.policy.note_task_start(&task.resources.network_policy);
             let recipe = recipes::worker_recipe(&task, &self.models)
                 .map_err(|error| WorkerError::Artifact(error.to_string()))?;
             match self.artifacts.prepare(recipe).await? {

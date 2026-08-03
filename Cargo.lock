@@ -591,6 +591,7 @@ dependencies = [
  "clipmill-discovery",
  "clipmill-edit-ir",
  "clipmill-evidence",
+ "clipmill-export",
  "clipmill-reframe",
  "clipmill-render",
  "directories",

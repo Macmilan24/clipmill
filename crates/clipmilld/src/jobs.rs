@@ -883,6 +883,80 @@ impl JobPlan {
         }
     }
 
+    /// The W25 export (book ch. 10): render, then deliver.
+    ///
+    /// Two tasks rather than one RPC that does both, so the queue a user
+    /// watches is the same task event stream every other long operation
+    /// publishes on — and so a second export of a clip already rendered is a
+    /// cache hit on the expensive half and a copy on the cheap one.
+    ///
+    /// The delivery declares `render.clip.v1` as its input kind and depends on
+    /// the render, which is how it receives the render's address without the
+    /// address travelling in a payload that is hashed into its key.
+    pub(crate) fn export_clip(
+        project_id: &ProjectId,
+        job_payload: Vec<u8>,
+        render_payload: Vec<u8>,
+        deliver_payload: Vec<u8>,
+        now: u64,
+    ) -> Self {
+        let render_task = TaskId::new().to_string();
+        let deliver_task = TaskId::new().to_string();
+        let resources = |disk_bytes: u64| ResourceDeclaration {
+            cpu_threads: 2,
+            ram_bytes: 512 * 1024 * 1024,
+            accelerator_class: String::new(),
+            vram_bytes: 0,
+            disk_bytes,
+            network_policy: "local-lock".to_owned(),
+            thermal_class: "sustained".to_owned(),
+            determinism_class: "deterministic".to_owned(),
+            checkpoint_support: false,
+            preemption_cost: 4,
+        };
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "export-clip".to_owned(),
+            source_id: None,
+            payload: job_payload,
+            created_unix_millis: now,
+            tasks: vec![
+                TaskSpec {
+                    task_id: render_task.clone(),
+                    ordinal: 0,
+                    kind: render::KIND_RENDER_CLIP.to_owned(),
+                    input_kinds: Vec::new(),
+                    output_kind: "render.clip.v1".to_owned(),
+                    payload: render_payload,
+                    dependencies: Vec::new(),
+                    input_artifact_ids: Vec::new(),
+                    resources: resources(512 * 1024 * 1024),
+                    implementation: "ffmpeg-8.1.2+clipmill-render-v1".to_owned(),
+                    max_attempts: 3,
+                    is_final: false,
+                },
+                TaskSpec {
+                    task_id: deliver_task,
+                    ordinal: 1,
+                    kind: crate::export::KIND_DELIVER_EXPORT.to_owned(),
+                    input_kinds: vec!["render.clip.v1".to_owned()],
+                    output_kind: "export.package.v1".to_owned(),
+                    payload: deliver_payload,
+                    dependencies: vec![render_task],
+                    input_artifact_ids: Vec::new(),
+                    // A delivery writes the clip a second time, into a folder
+                    // the daemon does not own, so the declaration covers the
+                    // copy rather than the encode.
+                    resources: resources(1024 * 1024 * 1024),
+                    implementation: "clipmill-deliver-v1".to_owned(),
+                    max_attempts: 3,
+                    is_final: true,
+                },
+            ],
+        }
+    }
+
     /// The W15 speech chain (book ch. 13): voice activity, then recognition,
     /// then forced alignment, then the assembly that fuses them.
     ///
@@ -2176,6 +2250,7 @@ impl Scheduler {
         models: Arc<crate::models::ModelRegistry>,
         capacity: ResourceCapacity,
         builtin_fixture_executor: bool,
+        policy: Arc<crate::policy::LocalLockPolicy>,
     ) -> Self {
         debug_assert!(LEASE_TTL >= HEARTBEAT_INTERVAL.saturating_mul(3));
         let notify = Arc::new(Notify::new());
@@ -2203,6 +2278,7 @@ impl Scheduler {
             capacity,
             capacity_update,
             builtin_fixture_executor,
+            policy,
             notify,
             stop,
         ));
@@ -2241,6 +2317,7 @@ async fn run_scheduler(
     capacity: ResourceCapacity,
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     builtin_fixture_executor: bool,
+    policy: Arc<crate::policy::LocalLockPolicy>,
     notify: Arc<Notify>,
     mut stop: oneshot::Receiver<()>,
 ) {
@@ -2314,6 +2391,7 @@ async fn run_scheduler(
                 break;
             };
             let resources = task.resources.clone();
+            policy.note_task_start(&resources.network_policy);
             if !available_capacity.reserve(&resources) {
                 tracing::error!(
                     task_id = task.task_id,
@@ -2396,6 +2474,17 @@ impl BuiltinExecutors {
             analysis::KIND_MANIFEST => {
                 analysis::execute_manifest_task(&self.artifacts, task, progress).await
             }
+            kind if crate::export::is_export_kind(kind) => {
+                crate::export::execute_deliver_task(
+                    &crate::export::ExportContext {
+                        artifacts: &self.artifacts,
+                        media: &self.media,
+                    },
+                    task,
+                    progress,
+                )
+                .await
+            }
             kind if render::is_render_kind(kind) => {
                 render::execute_render_task(
                     &RenderContext {
@@ -2422,6 +2511,7 @@ fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
     let mut kinds = vec!["probe-source".to_owned(), "device-profile".to_owned()];
     kinds.extend(media::INGEST_TASK_KINDS.map(str::to_owned));
     kinds.push(render::KIND_RENDER_CLIP.to_owned());
+    kinds.push(crate::export::KIND_DELIVER_EXPORT.to_owned());
     kinds.push(speech::KIND_TRANSCRIPT.to_owned());
     kinds.push(evidence::KIND_INDEX.to_owned());
     kinds.push(discovery::KIND_DISCOVER.to_owned());

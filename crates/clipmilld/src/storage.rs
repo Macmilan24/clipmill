@@ -33,6 +33,9 @@ pub(crate) const STATE: &str = "state";
 pub(crate) struct StorageDirs {
     /// Whose free space is reported. The artifact store lives under it.
     pub data: PathBuf,
+    /// The content-addressed store itself, which is the directory a user is
+    /// pointed at when the artifacts figure is the large one.
+    pub artifacts: PathBuf,
     pub state: PathBuf,
     /// Downloaded model weights. Often outside the data directory, and often
     /// absent entirely on a fresh install.
@@ -54,6 +57,16 @@ pub(crate) struct Report {
     /// would say. `None` and zero are different answers and must not be
     /// collapsed: one means "could not be read", the other means "full".
     pub available_bytes: Option<u64>,
+    /// Where each category lives. Carried with the sizes because a size a user
+    /// cannot go and look at is a number they can do nothing about.
+    pub paths: ReportPaths,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ReportPaths {
+    pub artifacts: PathBuf,
+    pub models: PathBuf,
+    pub state: PathBuf,
 }
 
 impl StorageDirs {
@@ -70,6 +83,11 @@ impl StorageDirs {
             models: walk(&self.weights),
             state: walk(&self.state),
             available_bytes: fs2::available_space(&self.data).ok(),
+            paths: ReportPaths {
+                artifacts: self.artifacts.clone(),
+                models: self.weights.clone(),
+                state: self.state.clone(),
+            },
         }
     }
 }
@@ -152,6 +170,7 @@ mod tests {
         fs::write(state.join("clipmill.db"), [0_u8; 64]).expect("write");
 
         let dirs = StorageDirs {
+            artifacts: root.path().join("artifacts"),
             data: root.path().to_path_buf(),
             state,
             weights: root.path().join("weights"),
