@@ -31,5 +31,8 @@ echo "==> ingest fan-out conformance ($ITERATIONS iterations)"
 for iteration in $(seq 1 "$ITERATIONS"); do
   echo "ingest-drill: iteration $iteration/$ITERATIONS"
   cargo test -p clipmilld --test ingest_fanout -- --ignored --nocapture
+  # An hour-long recording, which the probe refused before it read packets as a
+  # stream. Ignored by default because it builds media; this is where it runs.
+  cargo test -p clipmilld --lib sources::tests::an_hour_long -- --ignored --nocapture
 done
 echo "ingest-drill: OK ($ITERATIONS iterations; fan-out, verification, warm identity, mutation refusal, kill recovery)"

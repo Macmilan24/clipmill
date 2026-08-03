@@ -269,5 +269,21 @@ gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-de
     ./tools/drills/verify-phase0-attestation.sh
 
 # Launch the desktop shell against a live daemon.
+#
+# Two things happen before the shell starts, and both are ordering constraints
+# rather than convenience. The pinned FFmpeg sidecar is named: `ffprobe` is not
+# on anybody's PATH, the daemon falls back to a bare name when nothing tells it
+# otherwise, and the fonts and model directories are derived from that path — so
+# without this the probe fails and the caption font resolves to nowhere. And the
+# workers are enrolled: the daemon reads its trust directory once at startup,
+# so a key created afterwards is a key it never sees.
+#
+# Run `just workers` in a second terminal to actually start them.
 app:
-    pnpm --filter @clipmill/desktop tauri dev
+    ./tools/run-workers.sh --enrol-only
+    CLIPMILL_FFPROBE="{{justfile_directory()}}/.cache/bin/ffprobe" \
+      pnpm --filter @clipmill/desktop tauri dev
+
+# Start the model workers against a running daemon. Ctrl-C stops them all.
+workers:
+    ./tools/run-workers.sh
