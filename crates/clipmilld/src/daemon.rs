@@ -206,6 +206,9 @@ impl Daemon {
         // stage that decodes video is given this path on its lease rather than
         // finding a decoder itself.
         let decoder = media_runner.ffmpeg().to_path_buf();
+        // One counter for the whole process, offered every task either lease
+        // path starts, and read by Health and by Settings.
+        let policy = Arc::new(crate::policy::LocalLockPolicy::new());
         let scheduler = Scheduler::start(
             database.handle(),
             artifacts.handle(),
@@ -218,6 +221,7 @@ impl Daemon {
             Arc::clone(&models),
             scheduler_capacity,
             config.builtin_fixture_executor,
+            Arc::clone(&policy),
         );
         let shm = ShmBroker::default();
         let worker_service = match WorkerService::new(
@@ -232,6 +236,7 @@ impl Daemon {
             config.paths.artifacts_dir.clone(),
             config.weights_dir.clone(),
             decoder,
+            Arc::clone(&policy),
         ) {
             Ok(service) => service,
             Err(error) => {
@@ -262,9 +267,12 @@ impl Daemon {
             Arc::clone(&models),
             crate::storage::StorageDirs {
                 data: config.paths.data_dir.clone(),
+                artifacts: config.paths.artifacts_dir.clone(),
                 state: config.paths.state_dir.clone(),
                 weights: config.weights_dir.clone(),
             },
+            config.artifact_gc_grace,
+            Arc::clone(&policy),
         );
 
         Ok(Self {

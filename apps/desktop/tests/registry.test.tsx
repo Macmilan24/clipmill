@@ -54,6 +54,9 @@ const editor = {
   api: fakeApi(emptyWorld()),
 };
 
+const exportScreen = { api: fakeApi(emptyWorld()) };
+const settings = { api: fakeApi(emptyWorld()) };
+
 describe('the screen registry', () => {
   it('renders the real screen for a live section', () => {
     render(
@@ -65,6 +68,8 @@ describe('the screen registry', () => {
         analysis,
         results,
         editor,
+        export: exportScreen,
+        settings,
       }),
     );
     // The Models screen asks the daemon for hardware; the placeholder never
@@ -85,6 +90,8 @@ describe('the screen registry', () => {
           analysis,
           results,
           editor,
+          export: exportScreen,
+          settings,
         }),
       );
       expect(screen.getByText(/Phase \d/)).toBeTruthy();
@@ -103,6 +110,8 @@ describe('the screen registry', () => {
           analysis,
           results,
           editor,
+          export: exportScreen,
+          settings,
         }),
       );
       expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0);

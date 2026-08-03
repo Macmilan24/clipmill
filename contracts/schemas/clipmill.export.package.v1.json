@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.export.package.v1.json",
+  "title": "ExportPackage",
+  "description": "The metadata document that ships beside a delivered clip. An export is not one file — it is the clip, two sidecars, a thumbnail, a copy of the render manifest, and this, which answers the questions an upload form asks without the user opening anything else. It restates rather than reinterprets: every number here was measured by the renderer and recorded in the render manifest, and the disclosure fields are echoed verbatim from what the user attested. A second computation would be a second chance to disagree, and on the disclosure fields a disagreement is not a bug but a false statement about the work.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "doc_id",
+    "title",
+    "render_artifact_id",
+    "video",
+    "audio",
+    "disclosure",
+    "files"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.export.package.v1"
+    },
+    "doc_id": {
+      "description": "The edit document this clip was rendered from.",
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "description": "The clip's own words, when it has a title. Empty when it does not — an untitled clip is a fact, not a blank to be filled with a filename.",
+      "type": "string"
+    },
+    "render_artifact_id": {
+      "description": "Content address of the render this was delivered from, so a package on a disk can be traced back to the artifact that produced it.",
+      "type": "string",
+      "minLength": 1
+    },
+    "video": { "$ref": "#/$defs/video_summary" },
+    "audio": { "$ref": "#/$defs/audio_summary" },
+    "disclosure": { "$ref": "#/$defs/disclosure" },
+    "files": {
+      "description": "Every file in the delivery, sorted by name so two exports of the same clip agree on order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/delivered_file" }
+    }
+  },
+  "$defs": {
+    "sha256_hex": {
+      "description": "Lower-case hex, unprefixed, matching the sha256sum-compatible checksum file delivered alongside.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "video_summary": {
+      "type": "object",
+      "required": [
+        "width",
+        "height",
+        "frame_rate_num",
+        "frame_rate_den",
+        "frame_count",
+        "duration_ticks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "frame_rate_num": {
+          "description": "Frame rate as a rational, never a decimal: 30000/1001 is not 29.97 and the difference is a frame per half hour.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "frame_rate_den": { "type": "integer", "minimum": 1 },
+        "frame_count": { "type": "integer", "minimum": 0 },
+        "duration_ticks": {
+          "description": "Program length in ticks of the document's timebase (decision D06).",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "audio_summary": {
+      "type": "object",
+      "required": ["target_lufs", "measured_lufs", "measured_true_peak_dbtp"],
+      "additionalProperties": false,
+      "properties": {
+        "target_lufs": {
+          "description": "What the render normalized to.",
+          "type": "number"
+        },
+        "measured_lufs": {
+          "description": "What the finished file measures, re-decoded from the output by the renderer rather than predicted from the filter's arguments.",
+          "type": "number"
+        },
+        "measured_true_peak_dbtp": { "type": "number" }
+      }
+    },
+    "disclosure": {
+      "description": "The rights claim and the model-use disclosure, echoed from what the user attested at render time. Carried in the package rather than left to be recalled at upload time, because by then the person answering the platform's question may not be the person who made the clip.",
+      "type": "object",
+      "required": ["source_attestation", "gates_passed", "ai_assistance", "requires_ai_disclosure"],
+      "additionalProperties": false,
+      "properties": {
+        "source_attestation": {
+          "description": "What the user said the footage is, e.g. own_content.",
+          "type": "string",
+          "minLength": 1
+        },
+        "gates_passed": {
+          "description": "Confirmations the user gave, e.g. duration_60s for a clip past the minute mark.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "ai_assistance": {
+          "description": "Model work that shaped the footage, e.g. asr_captions or reframe. Empty for a hand-authored document.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "requires_ai_disclosure": {
+          "description": "Whether a platform's synthetic-media question should be answered yes.",
+          "type": "boolean"
+        }
+      }
+    },
+    "delivered_file": {
+      "type": "object",
+      "required": ["name", "role", "sha256", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "The file's name inside the export folder. A name, never a path.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\\\]+$"
+        },
+        "role": {
+          "enum": [
+            "clip",
+            "subtitles_srt",
+            "subtitles_vtt",
+            "thumbnail",
+            "render_manifest",
+            "metadata",
+            "checksums"
+          ]
+        },
+        "sha256": { "$ref": "#/$defs/sha256_hex" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

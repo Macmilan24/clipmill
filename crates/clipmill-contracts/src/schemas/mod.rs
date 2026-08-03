@@ -5,6 +5,10 @@
 pub mod analysis_manifest;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/archive_index.rs"]
+pub mod archive_index;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/artifact_manifest.rs"]
 pub mod artifact_manifest;
 
@@ -27,6 +31,10 @@ pub mod edit_ir;
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/evidence_shots.rs"]
 pub mod evidence_shots;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/export_package.rs"]
+pub mod export_package;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/index_transcript.rs"]

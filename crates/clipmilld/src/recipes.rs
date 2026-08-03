@@ -61,6 +61,14 @@ pub(crate) struct Recipe {
     /// artifact key, so re-pinning a model invalidates exactly the stages that
     /// used it — not the whole cache, and not nothing.
     pub capability: Option<&'static str>,
+    /// Whether this stage may reach the network.
+    ///
+    /// Declared per stage rather than assumed for the daemon, because "we are
+    /// offline" is a claim somebody has to be able to check. Every stage is
+    /// `LocalLock` today and the Settings screen says so by counting this
+    /// column — which means a stage added with network access turns that claim
+    /// false without anyone remembering to go and change a boolean.
+    pub network: NetworkPolicy,
     /// Pinned executables from `bom.toml` this stage may be handed on its
     /// lease, by bill-of-materials name.
     ///
@@ -87,6 +95,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.source_map.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -95,6 +104,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.device_profile.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W11 ingest fan-out (book ch. 12).
@@ -104,6 +114,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.proxy.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -112,6 +123,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.audio.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -120,6 +132,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.audio.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -128,6 +141,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.loudness_envelope.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -136,6 +150,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.reference_index.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -144,6 +159,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.filmstrip.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -152,6 +168,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.audio_peaks.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -160,6 +177,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.frames.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -168,6 +186,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.media.ingest_manifest.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W13 render compiler (book ch. 17).
@@ -177,6 +196,21 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.render.clip.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    // The W25 delivery (book ch. 10). Runs FFmpeg for one thumbnail frame and
+    // otherwise copies bytes it verified on the way out. It declares no tools
+    // for the same reason the render does not: a builtin reaches the pinned
+    // binaries through the daemon's own supervised runner, and `tools` is the
+    // narrower right to be handed one on a lease.
+    Recipe {
+        kind: "deliver-export",
+        output_kind: "export.package.v1",
+        semantic_version: "clipmill.export.package.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W15 speech chain (book ch. 13). Three leased stages that each run a
@@ -193,6 +227,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.vad.v1",
         executor: Executor::Worker,
         capability: Some("vad"),
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -201,6 +236,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.asr.v1",
         executor: Executor::Worker,
         capability: Some("asr"),
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -209,6 +245,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.alignment.v1",
         executor: Executor::Worker,
         capability: Some("forced-align"),
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -217,6 +254,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.speech.transcript.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W17 evidence index (book ch. 14). Builtin and modelless, like the
@@ -227,6 +265,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.index.transcript.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W18 proposer mesh (book ch. 15). Builtin and modelless: it reads
@@ -237,6 +276,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.discovery.candidates.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W19 ranking baseline (book ch. 16), and the fan-in that roots a
@@ -247,6 +287,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.ranking.set.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W21 caption engine (book ch. 19). Builtin and modelless: it reads a
@@ -258,6 +299,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.captions.cues.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -266,6 +308,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.analysis.manifest.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     // The W16 shot detector (book ch. 13). Leased, but modelless: it is
@@ -279,6 +322,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.evidence.shots.v1",
         executor: Executor::Worker,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &["ffmpeg"],
     },
     // The W20 face detector (book ch. 18). Leased, and the first vision stage
@@ -292,6 +336,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.vision.face_track.v1",
         executor: Executor::Worker,
         capability: Some("detect-faces"),
+        network: NetworkPolicy::LocalLock,
         tools: &["ffmpeg"],
     },
     // The reference worker family. It carries no model, which is precisely
@@ -302,6 +347,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -310,6 +356,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -318,6 +365,7 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
     Recipe {
@@ -326,12 +374,29 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.demo.v1",
         executor: Executor::Worker,
         capability: None,
+        network: NetworkPolicy::LocalLock,
         tools: &[],
     },
 ];
 
 pub(crate) fn lookup(kind: &str) -> Option<&'static Recipe> {
     REGISTRY.iter().find(|recipe| recipe.kind == kind)
+}
+
+/// How many stages this daemon will run, and how many of them may reach the
+/// network.
+///
+/// The Local Lock's claim, reduced to two numbers a screen can show. The second
+/// one is what makes the first checkable: "engaged" on its own is a boolean
+/// somebody typed, while "twenty-eight stages, none network-allowed" is a
+/// count of the table that decides.
+pub(crate) fn network_census() -> (u32, u32) {
+    let total = u32::try_from(REGISTRY.len()).unwrap_or(u32::MAX);
+    let allowed = REGISTRY
+        .iter()
+        .filter(|recipe| recipe.network == NetworkPolicy::NetworkAllowed)
+        .count();
+    (total, u32::try_from(allowed).unwrap_or(u32::MAX))
 }
 
 /// Whether a plan may declare this kind producing this artifact.
@@ -394,7 +459,10 @@ pub(crate) fn worker_recipe(
             model_digest,
         },
         inputs: task.input_artifact_ids.clone(),
-        policy: NetworkPolicy::LocalLock,
+        // The stage's own declaration, not a constant repeated here. Two
+        // places saying "local lock" is one place too many for a claim the
+        // Settings screen reports as fact.
+        policy: recipe.network,
         config,
         semantic_version: recipe.semantic_version.to_owned(),
     })

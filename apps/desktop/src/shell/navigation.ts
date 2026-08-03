@@ -95,22 +95,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Export',
     breadcrumb: 'Export',
     icon: Upload,
-    availability: {
-      kind: 'planned',
-      phase: 1,
-      summary: 'Validating and rendering approved clip packages.',
-    },
+    availability: { kind: 'live' },
   },
   {
     id: 'settings',
     label: 'Settings',
     breadcrumb: 'Settings',
     icon: Settings,
-    availability: {
-      kind: 'planned',
-      phase: 1,
-      summary: 'Storage, privacy, security, and application behaviour.',
-    },
+    availability: { kind: 'live' },
   },
 ];
 

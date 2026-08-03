@@ -204,6 +204,27 @@ async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, Str
     Ok(path.map(|value| value.to_string()))
 }
 
+/// Ask the user where an export should land.
+///
+/// A folder rather than a file, and native for the same reason the source
+/// picker is: the renderer is granted no permission to open a dialog, so a page
+/// cannot choose a path — it can only ask this host to, and what comes back is
+/// a directory a person picked in a window the operating system drew.
+#[tauri::command]
+async fn choose_export_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let (reply, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose where exports are written")
+        .pick_folder(move |path| {
+            let _sent = reply.send(path);
+        });
+    let path = chosen
+        .await
+        .map_err(|_| "the folder dialog closed".to_owned())?;
+    Ok(path.map(|value| value.to_string()))
+}
+
 /// Register a local file as this project's source, which probes it.
 #[tauri::command]
 async fn register_source(
@@ -331,6 +352,61 @@ async fn preview_plan(
         .map_err(|error| error.to_string())
 }
 
+/// What an export would do, without doing it.
+#[tauri::command]
+async fn plan_export(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    request: views::ExportRequestInput,
+) -> Result<views::ExportPlanView, String> {
+    supervisor
+        .client()
+        .plan_export(request.into())
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// Perform an export. Answers with the job to watch.
+#[tauri::command]
+async fn export_clip(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    request: views::ExportRequestInput,
+) -> Result<String, String> {
+    supervisor
+        .client()
+        .export_clip(request.into())
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Pack a project's work into a zip.
+#[tauri::command]
+async fn export_archive(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    destination_dir: String,
+) -> Result<views::ArchiveView, String> {
+    supervisor
+        .client()
+        .export_archive(&project_id, &destination_dir)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// Whether this installation is offline, and the evidence for it.
+#[tauri::command]
+async fn local_lock(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<views::LocalLockView, String> {
+    supervisor
+        .client()
+        .local_lock()
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// The crop path for a span, as a proposal. Nothing is written, so the
 /// Inspector may ask again every time a boundary moves.
 #[tauri::command]
@@ -418,6 +494,46 @@ async fn list_clip_decisions(
 
 /// Boot the shell. The socket path is resolved through the daemon's own
 /// configuration so the two can never disagree about where to meet.
+/// Forward the daemon's task events to the renderer, across restarts.
+///
+/// The cursor is what makes a reconnect honest: the daemon replays what
+/// happened while the socket was down, so a stage that finished during the gap
+/// arrives finished rather than staying where the renderer last saw it.
+async fn stream_task_events(supervisor: Arc<DaemonSupervisor>, app: tauri::AppHandle) {
+    let mut cursor = 0_u64;
+    loop {
+        let handle = app.clone();
+        let result = supervisor
+            .client()
+            .stream_task_events(cursor, |event| {
+                cursor = cursor.max(event.event_id);
+                let view = TaskEventView {
+                    event_id: event.event_id,
+                    job_id: event.job_id,
+                    task_id: event.task_id,
+                    state: event.state,
+                    attempt: event.attempt,
+                    wait_reason: event.wait_reason,
+                    failure_class: event.failure_class,
+                    at_unix_millis: event.at_unix_millis,
+                    progress: event.progress.map(|progress| ProgressView {
+                        unit: progress.unit,
+                        done: progress.done,
+                        total: progress.total,
+                    }),
+                };
+                if let Err(error) = handle.emit(TASK_EVENT, &view) {
+                    tracing::warn!(%error, "cannot publish a task event");
+                }
+            })
+            .await;
+        if let Err(error) = result {
+            tracing::debug!(%error, cursor, "task event stream ended");
+        }
+        tokio::time::sleep(RESUBSCRIBE_DELAY).await;
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = clipmilld::Config::resolve(None, None)?;
     let socket = config.paths.socket.clone();
@@ -465,6 +581,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             apply_edit_command,
             list_edit_docs,
             preview_plan,
+            plan_export,
+            export_clip,
+            export_archive,
+            local_lock,
+            choose_export_folder,
             solve_crop_path,
             direct_clip,
             set_clip_decision,
@@ -486,45 +607,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     tokio::time::sleep(POLL_INTERVAL).await;
                 }
             });
-            // The task-event stream, kept alive across daemon restarts. The
-            // cursor is what makes a reconnect honest: the daemon replays what
-            // happened while the socket was down, so a stage that finished
-            // during the gap arrives finished rather than staying where the
-            // renderer last saw it.
-            tauri::async_runtime::spawn(async move {
-                let mut cursor = 0_u64;
-                loop {
-                    let handle = events_handle.clone();
-                    let result = events
-                        .client()
-                        .stream_task_events(cursor, |event| {
-                            cursor = cursor.max(event.event_id);
-                            let view = TaskEventView {
-                                event_id: event.event_id,
-                                job_id: event.job_id,
-                                task_id: event.task_id,
-                                state: event.state,
-                                attempt: event.attempt,
-                                wait_reason: event.wait_reason,
-                                failure_class: event.failure_class,
-                                at_unix_millis: event.at_unix_millis,
-                                progress: event.progress.map(|progress| ProgressView {
-                                    unit: progress.unit,
-                                    done: progress.done,
-                                    total: progress.total,
-                                }),
-                            };
-                            if let Err(error) = handle.emit(TASK_EVENT, &view) {
-                                tracing::warn!(%error, "cannot publish a task event");
-                            }
-                        })
-                        .await;
-                    if let Err(error) = result {
-                        tracing::debug!(%error, cursor, "task event stream ended");
-                    }
-                    tokio::time::sleep(RESUBSCRIBE_DELAY).await;
-                }
-            });
+            tauri::async_runtime::spawn(stream_task_events(events, events_handle));
             Ok(())
         })
         .run(tauri::generate_context!())?;

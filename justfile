@@ -234,6 +234,12 @@ gate-inspector iterations="1":
 gate-editor iterations="1":
     ./tools/drills/editor-drill.sh {{iterations}}
 
+# W25 coverage: the validation strip's refusals, one implementation of the
+# naming pattern, and an archive round-trip verified by a reader that has never
+# heard of this project.
+gate-export iterations="1":
+    ./tools/drills/export-drill.sh {{iterations}}
+
 # All reproducible Phase 0 gates plus the committed private-run attestation.
 # Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock

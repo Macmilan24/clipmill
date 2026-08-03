@@ -24,6 +24,9 @@ import type {
   Source,
   StorageStats,
   Task,
+  ExportPlan,
+  ExportRequest,
+  LocalLock,
 } from '../../src/daemon/client.js';
 import type { ShellApi } from '../../src/daemon/api.js';
 
@@ -122,6 +125,15 @@ export interface FakeWorld {
   readonly editDocs?: readonly EditDocSummary[];
   /** Every command the editor sent, in order. */
   readonly applied: EditCommandJson[];
+  /** What the daemon answers when asked what an export would do. */
+  readonly exportPlan?: ExportPlan;
+  /** Every export request the screen sent, in order. */
+  readonly exported: ExportRequest[];
+  /** Every archive request, as (projectId, destination) pairs. */
+  readonly archived: Array<readonly [string, string]>;
+  readonly localLock?: LocalLock;
+  /** The folder the fake dialog returns, or null for "closed". */
+  readonly chosenFolder?: string | null;
 }
 
 export function emptyWorld(): FakeWorld {
@@ -135,6 +147,8 @@ export function emptyWorld(): FakeWorld {
     directed: [],
     decisions: new Map(),
     applied: [],
+    exported: [],
+    archived: [],
   };
 }
 
@@ -243,5 +257,33 @@ export function fakeApi(world: FakeWorld): ShellApi {
           decidedUnixMillis: 0,
         })),
       ),
+    // The strip is the daemon's and so is the naming. A fake that resolved a
+    // pattern here would let a screen test pass while the real preview showed
+    // something else, which is the exact divergence the daemon-side resolver
+    // exists to prevent — so this answers only what the world was given.
+    planExport: (request) => {
+      world.exported.push(request);
+      return world.exportPlan === undefined
+        ? Promise.reject(new Error('this daemon plans no exports'))
+        : Promise.resolve(world.exportPlan);
+    },
+    exportClip: (request) => {
+      world.exported.push(request);
+      return Promise.resolve('job_export');
+    },
+    exportArchive: (projectId, destinationDir) => {
+      world.archived.push([projectId, destinationDir]);
+      return Promise.resolve({
+        path: `${destinationDir}/project.clipmill-archive.zip`,
+        sha256: 'a'.repeat(64),
+        bytes: 2048,
+        entryCount: 3,
+      });
+    },
+    fetchLocalLock: () =>
+      world.localLock === undefined
+        ? Promise.reject(new Error('this daemon reports no policy'))
+        : Promise.resolve(world.localLock),
+    chooseExportFolder: () => Promise.resolve(world.chosenFolder ?? null),
   };
 }

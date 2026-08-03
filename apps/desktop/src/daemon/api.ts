@@ -28,6 +28,11 @@ import {
   type RegisteredSource,
   type Source,
   type StorageStats,
+  type ArchiveResult,
+  type ExportPlan,
+  type ExportRequest,
+  type LocalLock,
+  chooseExportFolder,
   chooseSourceFile,
   createProject,
   fetchJob,
@@ -47,6 +52,10 @@ import {
   setClipDecision,
   resolveMedia,
   submitAnalyze,
+  planExport,
+  exportClip,
+  exportArchive,
+  fetchLocalLock,
 } from './client.js';
 
 export interface ShellApi {
@@ -84,6 +93,11 @@ export interface ShellApi {
     decision: ClipDecision,
   ): Promise<ClipDecisionRecord>;
   listClipDecisions(projectId: string, sourceId: string): Promise<readonly ClipDecisionRecord[]>;
+  planExport(request: ExportRequest): Promise<ExportPlan>;
+  exportClip(request: ExportRequest): Promise<string>;
+  exportArchive(projectId: string, destinationDir: string): Promise<ArchiveResult>;
+  fetchLocalLock(): Promise<LocalLock>;
+  chooseExportFolder(): Promise<string | null>;
 }
 
 export const daemonApi: ShellApi = {
@@ -106,4 +120,9 @@ export const daemonApi: ShellApi = {
   applyEditCommand,
   setClipDecision,
   listClipDecisions,
+  planExport,
+  exportClip,
+  exportArchive,
+  fetchLocalLock,
+  chooseExportFolder,
 };

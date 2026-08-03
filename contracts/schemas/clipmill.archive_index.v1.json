@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.archive_index.v1.json",
+  "title": "ArchiveIndex",
+  "description": "What a project archive contains, and what it deliberately leaves out (book ch. 10). The archive is the promise that a user's work is not held hostage to the application that made it, so its contents are described here rather than by ClipMill's own code. Everything that cannot be regenerated travels inside the zip: project state, edit documents, the command logs that explain how each document reached its shape, the clip decisions a user recorded, and the render manifests that say what was delivered. Media does not travel — a project's sources are three orders of magnitude larger than its documents and already exist on the user's disk — but every source is named with the fingerprint that identifies it, so a re-import can say which file it is looking for rather than failing on a path that stopped being true.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "project_id",
+    "project_name",
+    "created_unix_millis",
+    "writer_version",
+    "sources",
+    "entries"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.archive_index.v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_name": {
+      "description": "What the user called the project, for a human reading a folder of archives.",
+      "type": "string"
+    },
+    "created_unix_millis": {
+      "description": "When the archive was written. Wall time is recorded here because an archive is project state rather than a derived artifact, and a person opening one a year later needs to tell two of them apart. It is the one field that stops two archives of an unchanged project being byte-identical.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "writer_version": {
+      "description": "The application version that wrote the archive, so a reader can tell whether it predates the format it is reading.",
+      "type": "string",
+      "minLength": 1
+    },
+    "sources": {
+      "description": "The recordings this project was built from. Named, never carried.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/archived_source" }
+    },
+    "entries": {
+      "description": "Every file inside the archive besides this index, sorted by path so two archives of the same project agree on order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/archive_entry" }
+    }
+  },
+  "$defs": {
+    "sha256_hex": {
+      "description": "Lower-case hex, unprefixed, as written into the checksum files an archive can be verified with.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "archived_source": {
+      "type": "object",
+      "required": ["source_id", "fingerprint", "display_name"],
+      "additionalProperties": false,
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1 },
+        "fingerprint": {
+          "description": "The content fingerprint of the recording, which is what identifies it if the file has moved or been renamed.",
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "description": "What the user called it, for a human going to look for it.",
+          "type": "string"
+        }
+      }
+    },
+    "archive_entry": {
+      "type": "object",
+      "required": ["path", "kind", "sha256", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Location inside the archive: forward-slashed and relative. It may not begin with a separator and may not contain a parent-directory segment, so extracting an archive cannot write outside the directory it was extracted into. Stated here and enforced by the writer; the pattern only checks the first half of it, because a lookahead is not a construct every language's regex engine in this project supports.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\\\].*$"
+        },
+        "kind": {
+          "description": "What the file is. A closed vocabulary rather than a free string: a reader deciding what to do with an entry needs to know what it holds, and an unknown kind in a future archive is a reason for that reader to stop — which it can only do if the vocabulary was stated.",
+          "enum": ["state", "edit_doc", "command_log", "render_manifest", "decisions"]
+        },
+        "sha256": { "$ref": "#/$defs/sha256_hex" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -41,6 +41,10 @@ message Request {
     ListClipDecisionsRequest list_clip_decisions = 35;
     GetPreviewPlanRequest get_preview_plan = 36;
     ListEditDocsRequest list_edit_docs = 37;
+    PlanExportRequest plan_export = 38;
+    ExportClipRequest export_clip = 39;
+    ExportArchiveRequest export_archive = 40;
+    GetLocalLockRequest get_local_lock = 41;
   }
 }
 
@@ -79,6 +83,10 @@ message Response {
     ListClipDecisionsResponse list_clip_decisions = 36;
     GetPreviewPlanResponse get_preview_plan = 37;
     ListEditDocsResponse list_edit_docs = 38;
+    PlanExportResponse plan_export = 39;
+    ExportClipResponse export_clip = 40;
+    ExportArchiveResponse export_archive = 41;
+    GetLocalLockResponse get_local_lock = 42;
   }
 }
 
@@ -722,9 +730,9 @@ message MediaFileV1 {
 // weights are expensive to re-download and should not be, and state is small and
 // must not be touched. A single total would tell nobody what to do about it.
 //
-// No paths leave the daemon here. Where these directories live is a separate
-// question from how large they are, and only one of them is a screen's business
-// today.
+// Paths travel with the sizes. Phase 0 deliberately withheld them — no screen
+// then had a use for one — but Settings is the screen whose business it is:
+// "your artifacts are 40 GB" is not actionable until a user can go and look.
 message GetStorageStatsRequest {}
 
 message GetStorageStatsResponse {
@@ -735,6 +743,10 @@ message GetStorageStatsResponse {
   uint64 available_bytes = 2;
   // False when the figure above could not be read at all.
   bool available_known = 3;
+  // How long an unreferenced artifact is kept before collection may take it.
+  // Displayed rather than adjustable in Phase 1: the number is real, and a
+  // control that changed it would need a collection policy nobody has written.
+  uint64 retention_grace_seconds = 4;
 }
 
 message StorageCategoryV1 {
@@ -745,6 +757,9 @@ message StorageCategoryV1 {
   // How many things were counted — published objects for artifacts, files for
   // the rest.
   uint64 items = 3;
+  // Where this category lives, absolute. Shown so a number is somewhere a user
+  // can go, not so anything can be written there.
+  string path = 4;
 }
 
 // ---- Faces and reframing (book ch. 18) ----
@@ -1096,4 +1111,160 @@ message ListEditDocsRequest {
 
 message ListEditDocsResponse {
   repeated EditDoc docs = 1;
+}
+
+// ---- Export and archive (book ch. 10, ch. 24 Phase 1) ----
+
+// How badly a validation finding wants attention.
+//
+// Two levels and the line between them is a design decision, not a scale.
+// Blocking means the delivered file would be wrong or would not fit; advisory
+// means a person might have meant it. The burn-in caption track is what makes
+// the distinction real: it runs deliberately hot, so a reading-rate finding
+// against it is advice, while the same finding against the accessibility cues
+// blocks — those become the SRT and VTT that leave the building.
+enum ExportSeverity {
+  EXPORT_SEVERITY_UNSPECIFIED = 0;
+  EXPORT_SEVERITY_BLOCKING = 1;
+  EXPORT_SEVERITY_ADVISORY = 2;
+}
+
+message ExportFindingV1 {
+  // Stable identifier a surface keys off, e.g. "rights.missing". The wording
+  // in `detail` may be improved; this may not.
+  string code = 1;
+  ExportSeverity severity = 2;
+  // One sentence naming the thing and the number, ready to show.
+  string detail = 3;
+}
+
+message ExportValidationV1 {
+  // False when anything blocking was found. Advisories do not stop an export.
+  bool passes = 1;
+  repeated ExportFindingV1 findings = 2;
+}
+
+// What an export is being asked to do, before it is asked to do it.
+//
+// The same fields as the request that performs one, because a preview that
+// took different inputs would be a preview of a different export.
+message ExportRequestV1 {
+  string doc_id = 1;
+  // An absolute path to a local directory the user chose. Network paths are
+  // refused: a half-written export over a link that dropped is a corrupt file
+  // with a plausible size, and Phase 1 has no way to tell one from the other.
+  string destination_dir = 2;
+  // Tokens in braces, e.g. "{index}-{clip}". Empty takes the default.
+  string naming_pattern = 3;
+  // Echoed verbatim into the delivered package, e.g. "own_content".
+  string source_attestation = 4;
+  // Confirmations the user gave, e.g. "duration_60s".
+  repeated string gates_passed = 5;
+  // Model work that shaped the footage, e.g. "asr_captions".
+  repeated string ai_assistance = 6;
+  // Ordinal within this export, one-based, for the {index} token.
+  uint32 index = 7;
+  // YYYY-MM-DD for the {date} token. Supplied by the caller, because the
+  // daemon's naming code reads no clock — a name nobody can reproduce is a
+  // name a preview cannot promise.
+  string date = 8;
+  // The clip's own words for the {clip} token, when it has a title.
+  string title = 9;
+}
+
+// Check an export without performing one. No side effects, no files.
+message PlanExportRequest {
+  ExportRequestV1 request = 1;
+}
+
+message PlanExportResponse {
+  ExportValidationV1 validation = 1;
+  // The resolved filename stem, which is what the naming preview shows.
+  string stem = 2;
+  // Every file this export would write, in delivery order. Resolved by the
+  // same code that names them, so the preview cannot disagree with the result.
+  repeated string file_names = 3;
+  uint64 estimated_bytes = 4;
+  uint64 available_bytes = 5;
+  // False when free space could not be read, which a caller must distinguish
+  // from a genuinely full disk.
+  bool available_known = 6;
+}
+
+// Perform an export. Refused outright when the strip finds anything blocking,
+// with the findings attached, because an export that starts and then stops is
+// a folder of partial files.
+message ExportClipRequest {
+  ExportRequestV1 request = 1;
+}
+
+message ExportClipResponse {
+  // The job to watch. Its tasks are the render and the delivery, so progress
+  // arrives on the task event stream every other long operation uses.
+  string job_id = 1;
+}
+
+// Versioned payload for the export job (render, then deliver).
+message ExportClipPayloadV1 {
+  string key_version = 1;
+  ExportRequestV1 request = 2;
+  // Content address of the edit.ir.v1 snapshot to render and deliver.
+  string ir_artifact_id = 3;
+}
+
+// Versioned payload for the delivery stage.
+//
+// Narrower than the job payload for the reason every stage payload is: this is
+// hashed into the stage's key, so anything the stage does not read must not
+// appear here. The render it delivers arrives on the lease.
+message DeliverExportPayloadV1 {
+  string key_version = 1;
+  ExportRequestV1 request = 2;
+}
+
+// Pack a project's work into a zip that outlives this application (ch. 10).
+//
+// Media is referenced rather than copied: a project's recordings are three
+// orders of magnitude larger than its documents and already exist on the
+// user's disk. Every source is still named with its fingerprint, so a reader
+// can say which file it is looking for.
+message ExportArchiveRequest {
+  string project_id = 1;
+  string destination_dir = 2;
+}
+
+message ExportArchiveResponse {
+  // Absolute path of the archive that was written.
+  string path = 1;
+  // Lower-case hex, matching what the archive index records for its entries.
+  string sha256 = 2;
+  uint64 bytes = 3;
+  uint32 entry_count = 4;
+}
+
+// ---- Settings (13 Settings, Phase 1 subset) ----
+
+// Whether this installation is running under the Local Lock, and the evidence.
+//
+// Read rather than asserted. `engaged` is true when every stage the daemon
+// will run declares a local-lock network policy, which is a fact about the
+// stage registry rather than a constant somebody typed — a stage added with
+// network access turns this false without anyone remembering to.
+message LocalLockStatusV1 {
+  bool engaged = 1;
+  // Stages registered, and how many of them may reach the network. The second
+  // number is what makes the first one checkable.
+  uint32 stages = 2;
+  uint32 network_allowed_stages = 3;
+  // Times a task declaring network access has started since this daemon
+  // began. Zero is the expected reading, and a counter that can only be zero
+  // would not be worth showing — it is here so that a non-zero reading is
+  // possible and visible.
+  uint64 egress_attempts = 4;
+}
+
+message GetLocalLockRequest {}
+
+message GetLocalLockResponse {
+  LocalLockStatusV1 status = 1;
 }

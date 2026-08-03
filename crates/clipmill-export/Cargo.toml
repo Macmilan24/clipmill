@@ -1,0 +1,26 @@
+[package]
+name = "clipmill-export"
+description = "The delivery side: what a finished clip is checked against, what its files are called, and the archive that outlives this application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+clipmill-captions.workspace = true
+clipmill-core.workspace = true
+clipmill-edit-ir.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# The published schemas' generated types, so the structs written here and the
+# contract they claim to satisfy are pinned to each other by a test rather than
+# by two people remembering.
+clipmill-contracts.workspace = true
+
+[lints]
+workspace = true

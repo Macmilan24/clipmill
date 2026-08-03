@@ -9,19 +9,23 @@ use clipmill_artifacts::{
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ClipCutV1, ClipDecisionRecordV1,
     ClipDecisionV1, CreateEditDocRequest, CreateProjectRequest, CropKeyframeV1, CropWeightsV1,
-    DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
-    DirectClipRequest, DirectClipResponse, DiscoverCandidatesPayloadV1, Error, ErrorCode,
-    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
-    GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse, GetSourceResponse,
-    GetStorageStatsResponse, HealthResponse, IndexTranscriptPayloadV1, IngestSourcePayloadV1,
-    ListClipDecisionsRequest, ListClipDecisionsResponse, ListEditDocsResponse, ListJobsResponse,
-    ListProjectsResponse, ListSourcesResponse, MediaFileV1, PingResponse, PreviewCropV1,
-    PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewWordV1, ProbeSourcePayloadV1,
-    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
-    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
-    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
-    SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest,
-    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
+    DeliverExportPayloadV1, DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1,
+    DetectShotsPayloadV1, DirectClipRequest, DirectClipResponse, DiscoverCandidatesPayloadV1,
+    Error, ErrorCode, ExportArchiveRequest, ExportArchiveResponse, ExportClipPayloadV1,
+    ExportClipRequest, ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity,
+    ExportValidationV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
+    GetJobResponse, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
+    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
+    ListClipDecisionsResponse, ListEditDocsResponse, ListJobsResponse, ListProjectsResponse,
+    ListSourcesResponse, LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest,
+    PlanExportResponse, PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewWordV1,
+    ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse,
+    RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse,
+    Response, SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse,
+    SolveCropPathRequest, SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
+    response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -47,6 +51,7 @@ const PROJECT_NAME_MAX_CHARS: usize = 200;
 const MAX_EDIT_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const DEMO_DAG_KEY_VERSION: &str = "clipmill.demo-dag.v1";
 const RENDER_CLIP_KEY_VERSION: &str = "clipmill.render-clip.v1";
+const EXPORT_CLIP_KEY_VERSION: &str = "clipmill.export-clip.v1";
 const TRANSCRIBE_SOURCE_KEY_VERSION: &str = "clipmill.transcribe-source.v1";
 const DETECT_SHOTS_KEY_VERSION: &str = "clipmill.detect-shots.v1";
 const DETECT_FACES_KEY_VERSION: &str = "clipmill.detect-faces.v1";
@@ -71,6 +76,12 @@ pub(crate) struct Service {
     /// The three directories a storage report covers. Absent in the tests that
     /// build a service without a workspace, where there is nothing to measure.
     storage: Option<crate::storage::StorageDirs>,
+    /// How long an unreferenced artifact is kept. Reported by Settings; not
+    /// adjustable from there, because changing it needs a collection policy
+    /// Phase 1 has not written.
+    retention_grace: std::time::Duration,
+    /// The Local Lock, which Health and Settings both read rather than assert.
+    policy: std::sync::Arc<crate::policy::LocalLockPolicy>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -125,6 +136,8 @@ impl Service {
             device_profiler: None,
             models: std::sync::Arc::default(),
             storage: None,
+            retention_grace: std::time::Duration::ZERO,
+            policy: std::sync::Arc::default(),
         }
     }
 
@@ -139,6 +152,8 @@ impl Service {
         device_profiler: DeviceProfiler,
         models: std::sync::Arc<crate::models::ModelRegistry>,
         storage: crate::storage::StorageDirs,
+        retention_grace: std::time::Duration,
+        policy: std::sync::Arc<crate::policy::LocalLockPolicy>,
     ) -> Self {
         Self {
             database,
@@ -150,6 +165,8 @@ impl Service {
             device_profiler: Some(device_profiler),
             models,
             storage: Some(storage),
+            retention_grace,
+            policy,
         }
     }
 
@@ -318,7 +335,9 @@ impl Service {
                 response::Body::Health(HealthResponse {
                     daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
                     started_unix_millis: self.started_unix_millis,
-                    local_lock: true,
+                    // Derived from the stage registry and what has actually
+                    // started, never asserted. See `policy.rs`.
+                    local_lock: self.policy.status().engaged,
                 }),
             ),
             request::Body::CreateProject(create) => {
@@ -388,6 +407,14 @@ impl Service {
             request::Body::ListEditDocs(list) => {
                 self.list_edit_docs(request_id, &list.project_id).await
             }
+            request::Body::PlanExport(plan) => self.plan_export(request_id, &plan).await,
+            request::Body::ExportClip(export) => {
+                self.export_clip(request_id, request_hash, &export).await
+            }
+            request::Body::ExportArchive(archive) => {
+                self.export_archive(request_id, &archive).await
+            }
+            request::Body::GetLocalLock(_) => self.get_local_lock(request_id),
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -1780,21 +1807,29 @@ impl Service {
                 "the storage measurement did not finish",
             );
         };
-        let category = |key: &str, measured: crate::storage::Category| StorageCategoryV1 {
-            key: key.to_owned(),
-            bytes: measured.bytes,
-            items: measured.items,
+        let category = |key: &str, measured: crate::storage::Category, path: &std::path::Path| {
+            StorageCategoryV1 {
+                key: key.to_owned(),
+                bytes: measured.bytes,
+                items: measured.items,
+                path: path.to_string_lossy().into_owned(),
+            }
         };
         response_reply(
             request_id,
             response::Body::GetStorageStats(GetStorageStatsResponse {
                 categories: vec![
-                    category(crate::storage::ARTIFACTS, report.artifacts),
-                    category(crate::storage::MODELS, report.models),
-                    category(crate::storage::STATE, report.state),
+                    category(
+                        crate::storage::ARTIFACTS,
+                        report.artifacts,
+                        &report.paths.artifacts,
+                    ),
+                    category(crate::storage::MODELS, report.models, &report.paths.models),
+                    category(crate::storage::STATE, report.state, &report.paths.state),
                 ],
                 available_bytes: report.available_bytes.unwrap_or(0),
                 available_known: report.available_bytes.is_some(),
+                retention_grace_seconds: self.retention_grace.as_secs(),
             }),
         )
     }
@@ -2733,6 +2768,10 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ListClipDecisions(_)) => "list_clip_decisions",
         Some(request::Body::GetPreviewPlan(_)) => "get_preview_plan",
         Some(request::Body::ListEditDocs(_)) => "list_edit_docs",
+        Some(request::Body::PlanExport(_)) => "plan_export",
+        Some(request::Body::ExportClip(_)) => "export_clip",
+        Some(request::Body::ExportArchive(_)) => "export_archive",
+        Some(request::Body::GetLocalLock(_)) => "get_local_lock",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",
@@ -3012,6 +3051,446 @@ fn snapped(
         clipmill_director::Edge::Start,
     )
     .map_err(|error| error.to_string())
+}
+
+/// 12 Export and 13 Settings (book ch. 10, ch. 24 Phase 1).
+///
+/// Two of these four are the same operation asked twice. `plan_export` answers
+/// "what would happen", `export_clip` makes it happen, and both start by
+/// running the same strip over the same document — because a preview that
+/// checked something different from what the export checks is a preview that
+/// lies about the interesting case.
+impl Service {
+    /// The strip and the names, without touching anything.
+    async fn plan_export(&self, request_id: String, request: &PlanExportRequest) -> Reply {
+        let Some(asked) = request.request.as_ref() else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "an export request is required",
+            );
+        };
+        let (document, _record) = match self.export_document(&request_id, &asked.doc_id).await {
+            Ok(loaded) => loaded,
+            Err(reply) => return reply,
+        };
+        let pattern = match crate::export::naming_pattern(&asked.naming_pattern) {
+            Ok(pattern) => pattern,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+
+        let available = available_at(&asked.destination_dir);
+        let estimated = clipmill_export::estimate_bytes(document.program_duration_ticks());
+        let report = clipmill_export::validate(
+            &document,
+            &clipmill_export::Context {
+                source_attestation: &asked.source_attestation,
+                gates_passed: &asked.gates_passed,
+                estimated_bytes: estimated,
+                available_bytes: available,
+            },
+        );
+        // A destination that cannot be written to is a blocking finding rather
+        // than an error, so it arrives beside the others in the same list a
+        // user is already reading.
+        let mut findings = validation_of(&report);
+        if let Err(error) = crate::export::probe_destination(&asked.destination_dir) {
+            findings.passes = false;
+            findings.findings.push(ExportFindingV1 {
+                code: "destination.unusable".to_owned(),
+                severity: ExportSeverity::Blocking as i32,
+                detail: error.to_string(),
+            });
+        }
+
+        let stem = pattern.resolve(&clipmill_export::Fields {
+            project: String::new(),
+            clip: asked.title.clone(),
+            index: asked.index.max(1),
+            duration_seconds: u64::try_from(document.program_duration_ticks().max(0) / 90_000)
+                .unwrap_or(0),
+            date: asked.date.clone(),
+            // Resolved before a render exists, so `{address}` has nothing to
+            // shorten yet and the preview says so rather than inventing one.
+            address: String::new(),
+        });
+        response_reply(
+            request_id,
+            response::Body::PlanExport(PlanExportResponse {
+                validation: Some(findings),
+                file_names: delivered_names(&stem),
+                stem,
+                estimated_bytes: estimated,
+                available_bytes: available.unwrap_or(0),
+                available_known: available.is_some(),
+            }),
+        )
+    }
+
+    /// Perform an export: snapshot, render, deliver — as one job.
+    async fn export_clip(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        request: &ExportClipRequest,
+    ) -> Reply {
+        let Some(asked) = request.request.as_ref() else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "an export request is required",
+            );
+        };
+        let Some(artifacts) = &self.artifacts else {
+            return error_reply(
+                request_id,
+                ErrorCode::Unavailable,
+                "artifact publication is not available",
+            );
+        };
+        let (document, record) = match self.export_document(&request_id, &asked.doc_id).await {
+            Ok(loaded) => loaded,
+            Err(reply) => return reply,
+        };
+        if crate::export::naming_pattern(&asked.naming_pattern).is_err() {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "the naming pattern cannot be resolved",
+            );
+        }
+        for token in &asked.ai_assistance {
+            if !crate::render::ai_assistance_is_known(token) {
+                return error_reply(
+                    request_id,
+                    ErrorCode::InvalidArgument,
+                    "an export declared a disclosure token nobody recognises",
+                );
+            }
+        }
+        // Checked before the destination is created, so a refused export leaves
+        // no empty folder behind explaining nothing.
+        let report = clipmill_export::validate(
+            &document,
+            &clipmill_export::Context {
+                source_attestation: &asked.source_attestation,
+                gates_passed: &asked.gates_passed,
+                estimated_bytes: clipmill_export::estimate_bytes(document.program_duration_ticks()),
+                available_bytes: available_at(&asked.destination_dir),
+            },
+        );
+        if !report.passes() {
+            // The reasons travel in the message: an export that failed without
+            // saying why is a dialog a user closes and gives up on.
+            let reasons = report
+                .blocking()
+                .map(|finding| finding.detail.clone())
+                .collect::<Vec<_>>()
+                .join(" ");
+            return error_reply(request_id, ErrorCode::PolicyDenied, reasons);
+        }
+        let destination = match crate::export::resolve_destination(&asked.destination_dir) {
+            Ok(path) => path,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+
+        let Ok(project_id) = record.project_id.parse::<ProjectId>() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "stored edit document has an invalid project",
+            );
+        };
+        let Ok((recipe, payload)) = Self::snapshot_recipe(&document) else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "edit document could not be projected for render",
+            );
+        };
+        let ir_artifact_id = match Self::publish_snapshot(artifacts, recipe, &payload).await {
+            Ok(artifact_id) => artifact_id,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        if let Err(error) = self
+            .database
+            .attach_artifact_root(project_id.clone(), ir_artifact_id)
+            .await
+        {
+            return store_error_reply(request_id, &error);
+        }
+
+        // The destination is resolved into the payload, so the delivery reads
+        // the folder that was checked rather than re-resolving a string that
+        // may point somewhere else by the time it runs.
+        let mut resolved = asked.clone();
+        resolved.destination_dir = destination.to_string_lossy().into_owned();
+        self.submit_export(
+            request_id,
+            request_hash,
+            &project_id,
+            resolved,
+            ir_artifact_id,
+        )
+        .await
+    }
+
+    /// Plan and submit the two-task export job.
+    async fn submit_export(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: &ProjectId,
+        resolved: ExportRequestV1,
+        ir_artifact_id: clipmill_core::ArtifactId,
+    ) -> Reply {
+        let render_payload = RenderClipPayloadV1 {
+            key_version: RENDER_CLIP_KEY_VERSION.to_owned(),
+            doc_id: resolved.doc_id.clone(),
+            ir_artifact_id: ir_artifact_id.to_string(),
+            source_attestation: resolved.source_attestation.clone(),
+            gates_passed: resolved.gates_passed.clone(),
+            ai_assistance: resolved.ai_assistance.clone(),
+        }
+        .encode_to_vec();
+        let deliver_payload = DeliverExportPayloadV1 {
+            key_version: EXPORT_CLIP_KEY_VERSION.to_owned(),
+            request: Some(resolved.clone()),
+        }
+        .encode_to_vec();
+        let job_payload = ExportClipPayloadV1 {
+            key_version: EXPORT_CLIP_KEY_VERSION.to_owned(),
+            request: Some(resolved),
+            ir_artifact_id: ir_artifact_id.to_string(),
+        }
+        .encode_to_vec();
+
+        let Ok(now) = unix_millis() else {
+            return error_reply(request_id, ErrorCode::Internal, "the clock is unreadable");
+        };
+        let plan = JobPlan::export_clip(
+            project_id,
+            job_payload,
+            render_payload,
+            deliver_payload,
+            now,
+        );
+        let job_id = plan.job_id.clone();
+        match self
+            .database
+            .submit_job(request_id.clone(), request_hash, plan)
+            .await
+        {
+            Ok(result) => {
+                self.events.publish_all(result.events);
+                if let Some(scheduler) = &self.scheduler {
+                    scheduler.notify();
+                }
+                response_reply(
+                    request_id,
+                    response::Body::ExportClip(ExportClipResponse { job_id }),
+                )
+            }
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    /// Pack a project's work into a zip.
+    ///
+    /// Synchronous rather than a job: this reads state and writes one file of
+    /// documents, which is milliseconds, and a progress bar for it would be a
+    /// progress bar that is never seen.
+    async fn export_archive(&self, request_id: String, request: &ExportArchiveRequest) -> Reply {
+        let project_id = match request.project_id.parse::<ProjectId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let project = match self.database.get_project(project_id.to_string()).await {
+            Ok(project) => project,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let destination = match crate::export::resolve_destination(&request.destination_dir) {
+            Ok(path) => path,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+
+        let sources = self
+            .database
+            .list_sources(project_id.to_string())
+            .await
+            .unwrap_or_default();
+        let docs = self
+            .database
+            .list_edit_docs(project_id.to_string())
+            .await
+            .unwrap_or_default();
+        let mut logs = Vec::with_capacity(docs.len());
+        for doc in &docs {
+            match self.database.get_edit_log(doc.doc_id.clone()).await {
+                Ok((initial, entries)) => logs.push((doc.doc_id.clone(), initial, entries)),
+                // A document whose log could not be read is still worth
+                // archiving; the index will simply not claim to carry one.
+                Err(error) => tracing::warn!(%error, doc_id = doc.doc_id, "edit log unreadable"),
+            }
+        }
+        // Decisions are held per source, so the archive gathers them the same
+        // way — and carries the source each one belongs to, because a candidate
+        // id alone does not say which recording it came from.
+        let mut decisions = Vec::new();
+        for source in &sources {
+            if let Ok(found) = self
+                .database
+                .list_clip_decisions(project_id.to_string(), source.source_id.clone())
+                .await
+            {
+                decisions.extend(
+                    found
+                        .into_iter()
+                        .map(|record| (source.source_id.clone(), record)),
+                );
+            }
+        }
+        let jobs = self
+            .database
+            .list_jobs(project_id.to_string())
+            .await
+            .unwrap_or_default();
+
+        let built = crate::export::build_archive(&crate::export::ArchiveInputs {
+            project: &project,
+            sources: &sources,
+            docs: &docs,
+            logs: &logs,
+            decisions: &decisions,
+            jobs: &jobs,
+            created_unix_millis: unix_millis().unwrap_or(0),
+            writer_version: env!("CARGO_PKG_VERSION"),
+        });
+        let (bytes, entry_count) = match built {
+            Ok(built) => built,
+            Err(error) => return error_reply(request_id, ErrorCode::Internal, error.to_string()),
+        };
+        let name = format!(
+            "{}.clipmill-archive.zip",
+            crate::export::archive_stem(&project)
+        );
+        let path = destination.join(&name);
+        let digest = clipmill_export::digest_of(&bytes);
+        let written = bytes.len() as u64;
+        if let Err(error) = crate::export::write_atomically(&path, &bytes) {
+            return error_reply(request_id, ErrorCode::Internal, error.to_string());
+        }
+        response_reply(
+            request_id,
+            response::Body::ExportArchive(ExportArchiveResponse {
+                path: path.to_string_lossy().into_owned(),
+                sha256: digest,
+                bytes: written,
+                entry_count,
+            }),
+        )
+    }
+
+    fn get_local_lock(&self, request_id: String) -> Reply {
+        let status = self.policy.status();
+        response_reply(
+            request_id,
+            response::Body::GetLocalLock(GetLocalLockResponse {
+                status: Some(LocalLockStatusV1 {
+                    engaged: status.engaged,
+                    stages: status.stages,
+                    network_allowed_stages: status.network_allowed_stages,
+                    egress_attempts: status.egress_attempts,
+                }),
+            }),
+        )
+    }
+
+    /// The document an export names, parsed, with the row it came from.
+    async fn export_document(
+        &self,
+        request_id: &str,
+        doc_id: &str,
+    ) -> Result<(clipmill_edit_ir::EditDocument, crate::db::EditDocRecord), Reply> {
+        let parsed = match doc_id.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return Err(error_reply(
+                    request_id.to_owned(),
+                    ErrorCode::InvalidArgument,
+                    error.to_string(),
+                ));
+            }
+        };
+        let record = match self.database.get_edit_doc(parsed.to_string()).await {
+            Ok(record) => record,
+            Err(error) => return Err(store_error_reply(request_id.to_owned(), &error)),
+        };
+        match clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes()) {
+            Ok(document) => Ok((document, record)),
+            Err(error) => {
+                tracing::warn!(%error, "stored edit document failed to parse");
+                Err(error_reply(
+                    request_id.to_owned(),
+                    ErrorCode::Internal,
+                    "stored edit document is not valid",
+                ))
+            }
+        }
+    }
+}
+
+/// Free space where an export would land, or on the nearest folder above it
+/// that exists.
+///
+/// A destination the user has not created yet still has an answer: it will be
+/// created on the volume its parent is on, and that is the volume the export
+/// has to fit into.
+fn available_at(raw: &str) -> Option<u64> {
+    let mut candidate = std::path::Path::new(raw);
+    loop {
+        if candidate.exists() {
+            return fs2::available_space(candidate).ok();
+        }
+        candidate = candidate.parent()?;
+    }
+}
+
+fn validation_of(report: &clipmill_export::Report) -> ExportValidationV1 {
+    ExportValidationV1 {
+        passes: report.passes(),
+        findings: report
+            .findings
+            .iter()
+            .map(|finding| ExportFindingV1 {
+                code: finding.code.clone(),
+                severity: match finding.severity {
+                    clipmill_export::Severity::Blocking => ExportSeverity::Blocking as i32,
+                    clipmill_export::Severity::Advisory => ExportSeverity::Advisory as i32,
+                },
+                detail: finding.detail.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Every file an export writes, in delivery order.
+///
+/// Built from the same roles the delivery iterates, so a preview cannot list a
+/// file the export does not write or miss one it does.
+fn delivered_names(stem: &str) -> Vec<String> {
+    crate::export::DELIVERED_ROLES
+        .iter()
+        .map(|role| format!("{stem}.{}", role.extension()))
+        .collect()
 }
 
 #[cfg(test)]

@@ -17,6 +17,7 @@ clipmill-core.workspace = true
 clipmill-discovery.workspace = true
 clipmill-edit-ir.workspace = true
 clipmill-evidence.workspace = true
+clipmill-export.workspace = true
 clipmill-reframe.workspace = true
 clipmill-render.workspace = true
 directories.workspace = true
