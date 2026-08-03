@@ -95,12 +95,7 @@
     "disclosure": {
       "description": "The rights claim and the model-use disclosure, echoed from what the user attested at render time. Carried in the package rather than left to be recalled at upload time, because by then the person answering the platform's question may not be the person who made the clip.",
       "type": "object",
-      "required": [
-        "source_attestation",
-        "gates_passed",
-        "ai_assistance",
-        "requires_ai_disclosure"
-      ],
+      "required": ["source_attestation", "gates_passed", "ai_assistance", "requires_ai_disclosure"],
       "additionalProperties": false,
       "properties": {
         "source_attestation": {

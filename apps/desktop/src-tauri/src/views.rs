@@ -17,7 +17,8 @@
 //! the two ends.
 
 use clipmill_contracts::proto::ipc::v1::{
-    AnalyzeSourcePayloadV1, ClipDurationV1, GetStorageStatsResponse, Job, Project,
+    AnalyzeSourcePayloadV1, ClipDurationV1, ExportArchiveResponse, ExportRequestV1, ExportSeverity,
+    GetLocalLockResponse, GetStorageStatsResponse, Job, PlanExportResponse, Project,
     RegisterSourceResponse, ResolveMediaResponse, Source, Task,
 };
 use serde::{Deserialize, Serialize};
@@ -292,6 +293,10 @@ pub struct StorageStatsView {
     /// collapsing them here would tell a screen the disk is full.
     #[serde(rename = "availableBytes", skip_serializing_if = "Option::is_none")]
     pub available_bytes: Option<u64>,
+    /// How long an unreferenced artifact is kept before collection may take
+    /// it. Shown, not adjustable.
+    #[serde(rename = "retentionGraceSeconds")]
+    pub retention_grace_seconds: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -301,12 +306,15 @@ pub struct StorageCategoryView {
     pub key: String,
     pub bytes: u64,
     pub items: u64,
+    /// Where this category lives, so a size is somewhere a user can go.
+    pub path: String,
 }
 
 impl From<GetStorageStatsResponse> for StorageStatsView {
     fn from(stats: GetStorageStatsResponse) -> Self {
         Self {
             available_bytes: stats.available_known.then_some(stats.available_bytes),
+            retention_grace_seconds: stats.retention_grace_seconds,
             categories: stats
                 .categories
                 .into_iter()
@@ -314,6 +322,7 @@ impl From<GetStorageStatsResponse> for StorageStatsView {
                     key: category.key,
                     bytes: category.bytes,
                     items: category.items,
+                    path: category.path,
                 })
                 .collect(),
         }
@@ -626,6 +635,151 @@ impl From<clipmill_contracts::proto::ipc::v1::ApplyEditCommandResponse> for Appl
             doc_id: doc.doc_id,
             revision: doc.revision,
             inverse_command_json: reply.inverse_command_json,
+        }
+    }
+}
+
+/// What an export would do, before it does it.
+#[derive(Debug, Serialize)]
+pub struct ExportPlanView {
+    pub passes: bool,
+    pub findings: Vec<ExportFindingView>,
+    /// The resolved filename stem, which is the naming preview.
+    pub stem: String,
+    #[serde(rename = "fileNames")]
+    pub file_names: Vec<String>,
+    #[serde(rename = "estimatedBytes")]
+    pub estimated_bytes: u64,
+    /// Absent when free space could not be read, which is not the same answer
+    /// as a full disk.
+    #[serde(rename = "availableBytes", skip_serializing_if = "Option::is_none")]
+    pub available_bytes: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportFindingView {
+    pub code: String,
+    /// `blocking` or `advisory`. Sent as the word rather than the number so a
+    /// screen cannot mistake one enum ordinal for another.
+    pub severity: String,
+    pub detail: String,
+}
+
+impl From<PlanExportResponse> for ExportPlanView {
+    fn from(plan: PlanExportResponse) -> Self {
+        let validation = plan.validation.unwrap_or_default();
+        Self {
+            passes: validation.passes,
+            findings: validation
+                .findings
+                .into_iter()
+                .map(|finding| ExportFindingView {
+                    code: finding.code,
+                    // Anything that is not explicitly advisory is treated as
+                    // blocking, including a severity this build does not know:
+                    // a finding nobody can classify must not be the one that
+                    // quietly lets an export through.
+                    severity: if ExportSeverity::try_from(finding.severity)
+                        == Ok(ExportSeverity::Advisory)
+                    {
+                        "advisory".to_owned()
+                    } else {
+                        "blocking".to_owned()
+                    },
+                    detail: finding.detail,
+                })
+                .collect(),
+            stem: plan.stem,
+            file_names: plan.file_names,
+            estimated_bytes: plan.estimated_bytes,
+            available_bytes: plan.available_known.then_some(plan.available_bytes),
+        }
+    }
+}
+
+/// Where an archive was written, and what it hashes to.
+#[derive(Debug, Serialize)]
+pub struct ArchiveView {
+    pub path: String,
+    pub sha256: String,
+    pub bytes: u64,
+    #[serde(rename = "entryCount")]
+    pub entry_count: u32,
+}
+
+impl From<ExportArchiveResponse> for ArchiveView {
+    fn from(archive: ExportArchiveResponse) -> Self {
+        Self {
+            path: archive.path,
+            sha256: archive.sha256,
+            bytes: archive.bytes,
+            entry_count: archive.entry_count,
+        }
+    }
+}
+
+/// Whether this installation is offline, and the evidence for it.
+#[derive(Debug, Serialize)]
+pub struct LocalLockView {
+    pub engaged: bool,
+    pub stages: u32,
+    #[serde(rename = "networkAllowedStages")]
+    pub network_allowed_stages: u32,
+    #[serde(rename = "egressAttempts")]
+    pub egress_attempts: u64,
+}
+
+impl From<GetLocalLockResponse> for LocalLockView {
+    fn from(reply: GetLocalLockResponse) -> Self {
+        let status = reply.status.unwrap_or_default();
+        Self {
+            engaged: status.engaged,
+            stages: status.stages,
+            network_allowed_stages: status.network_allowed_stages,
+            egress_attempts: status.egress_attempts,
+        }
+    }
+}
+
+/// What the Export screen asks for, in the shape the renderer sends it.
+///
+/// A deserializable twin of the wire message rather than the wire message
+/// itself: the generated proto types carry no serde derives, and giving the
+/// renderer its own struct keeps the field names camel-cased on the side that
+/// reads them and snake-cased on the side that transmits them.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportRequestInput {
+    pub doc_id: String,
+    pub destination_dir: String,
+    #[serde(default)]
+    pub naming_pattern: String,
+    #[serde(default)]
+    pub source_attestation: String,
+    #[serde(default)]
+    pub gates_passed: Vec<String>,
+    #[serde(default)]
+    pub ai_assistance: Vec<String>,
+    #[serde(default)]
+    pub index: u32,
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+impl From<ExportRequestInput> for ExportRequestV1 {
+    fn from(input: ExportRequestInput) -> Self {
+        Self {
+            doc_id: input.doc_id,
+            destination_dir: input.destination_dir,
+            naming_pattern: input.naming_pattern,
+            source_attestation: input.source_attestation,
+            gates_passed: input.gates_passed,
+            ai_assistance: input.ai_assistance,
+            index: input.index,
+            date: input.date,
+            title: input.title,
         }
     }
 }

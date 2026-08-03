@@ -37,8 +37,9 @@ function analyzedWorld(overrides: Partial<FakeWorld> = {}): FakeWorld {
     documents: { 'sha256:map-p1': sourceMapDocument('sha256:map-p1') },
     media: { [FILMSTRIP_ID]: filmstrip(FILMSTRIP_ID, 9) },
     storage: {
-      categories: [{ key: 'artifacts', bytes: 1024, items: 3 }],
+      categories: [{ key: 'artifacts', bytes: 1024, items: 3, path: '/data/artifacts' }],
       availableBytes: 4096,
+      retentionGraceSeconds: 604_800,
     },
     ...overrides,
   };

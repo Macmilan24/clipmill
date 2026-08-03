@@ -26,6 +26,8 @@ import { ModelsDevice } from './ModelsDevice.js';
 import { NewProject } from './NewProject.js';
 import { PhasePlaceholder } from './PhasePlaceholder.js';
 import { EditorScreen } from './EditorScreen.js';
+import { ExportScreen } from './ExportScreen.js';
+import { SettingsScreen } from './SettingsScreen.js';
 import { ResultsScreen } from './ResultsScreen.js';
 
 /**
@@ -45,6 +47,9 @@ export interface ScreenContext {
   /** The Inspector's own arguments come from the route, so these are the rest. */
   readonly results: Omit<Parameters<typeof ResultsScreen>[0], 'candidateId'>;
   readonly editor: Parameters<typeof EditorScreen>[0];
+  /** Export and Settings read the daemon directly; nothing routes into them. */
+  readonly export: Parameters<typeof ExportScreen>[0];
+  readonly settings: Parameters<typeof SettingsScreen>[0];
 }
 
 type Screen = (context: ScreenContext) => JSX.Element;
@@ -55,6 +60,8 @@ const SCREENS: Readonly<Record<string, Screen>> = {
   models: ({ models }) => <ModelsDevice {...models} />,
   results: ({ results }) => <ResultsScreen {...results} candidateId={null} />,
   editor: ({ editor }) => <EditorScreen {...editor} />,
+  export: (context) => <ExportScreen {...context.export} />,
+  settings: ({ settings }) => <SettingsScreen {...settings} />,
 };
 
 /**

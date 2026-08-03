@@ -147,6 +147,8 @@ export interface StorageStats {
    * A screen must not render "0 B free" for a question that went unanswered.
    */
   readonly availableBytes?: number;
+  /** How long an unreferenced artifact is kept. Shown, not adjustable. */
+  readonly retentionGraceSeconds: number;
 }
 
 export interface StorageCategory {
@@ -154,6 +156,8 @@ export interface StorageCategory {
   readonly key: string;
   readonly bytes: number;
   readonly items: number;
+  /** Where it lives. A size a user cannot go and look at is not actionable. */
+  readonly path: string;
 }
 
 /** One published document, still as text. */
@@ -633,4 +637,106 @@ export async function applyEditCommand(
     expectedRevision,
     commandJson: JSON.stringify(command),
   });
+}
+
+/** What an export is being asked to do. */
+export interface ExportRequest {
+  readonly docId: string;
+  readonly destinationDir: string;
+  /** Tokens in braces. Empty takes the default. */
+  readonly namingPattern?: string;
+  readonly sourceAttestation?: string;
+  readonly gatesPassed?: readonly string[];
+  readonly aiAssistance?: readonly string[];
+  /** One-based ordinal within this export, for the {index} token. */
+  readonly index?: number;
+  /** YYYY-MM-DD. Supplied here because the daemon's naming reads no clock. */
+  readonly date?: string;
+  readonly title?: string;
+}
+
+export interface ExportFinding {
+  readonly code: string;
+  readonly severity: 'blocking' | 'advisory';
+  readonly detail: string;
+}
+
+/** What an export would do, answered without doing it. */
+export interface ExportPlan {
+  readonly passes: boolean;
+  readonly findings: readonly ExportFinding[];
+  /** The resolved filename stem — the naming preview, computed by the daemon. */
+  readonly stem: string;
+  readonly fileNames: readonly string[];
+  readonly estimatedBytes: number;
+  readonly availableBytes?: number;
+}
+
+export interface ArchiveResult {
+  readonly path: string;
+  readonly sha256: string;
+  readonly bytes: number;
+  readonly entryCount: number;
+}
+
+/** Whether this installation is offline, and the evidence for it. */
+export interface LocalLock {
+  readonly engaged: boolean;
+  readonly stages: number;
+  readonly networkAllowedStages: number;
+  readonly egressAttempts: number;
+}
+
+/**
+ * What an export would produce, without producing it.
+ *
+ * The stem and the file names come back from the daemon rather than being
+ * computed here, because the code that answers is the code that names the
+ * files. A preview assembled in the renderer would be a second implementation
+ * of the pattern, and the two would drift.
+ */
+export async function planExport(request: ExportRequest): Promise<ExportPlan> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<ExportPlan>('plan_export', { request });
+}
+
+/** Perform an export. Answers with the job to watch, not the finished files. */
+export async function exportClip(request: ExportRequest): Promise<string> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<string>('export_clip', { request });
+}
+
+/** Pack a project's work into a zip that outlives this application. */
+export async function exportArchive(
+  projectId: string,
+  destinationDir: string,
+): Promise<ArchiveResult> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<ArchiveResult>('export_archive', { projectId, destinationDir });
+}
+
+export async function fetchLocalLock(): Promise<LocalLock> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<LocalLock>('local_lock');
+}
+
+/** Ask the user where exports should land. Native dialog, host-side. */
+export async function chooseExportFolder(): Promise<string | null> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<string | null>('choose_export_folder');
 }

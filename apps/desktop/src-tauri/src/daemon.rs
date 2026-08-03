@@ -14,10 +14,12 @@ use std::{
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ApplyEditCommandResponse,
     ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1, DirectClipRequest,
-    DirectClipResponse, EditDoc, GetDeviceProfileRequest, GetDeviceProfileResponse, GetJobRequest,
-    GetPreviewPlanRequest, GetPreviewPlanResponse, GetStorageStatsRequest, GetStorageStatsResponse,
-    HealthRequest, HealthResponse, Job, ListClipDecisionsRequest, ListEditDocsRequest,
-    ListJobsRequest, ListProjectsRequest, ListSourcesRequest, Project, ReadArtifactRequest,
+    DirectClipResponse, EditDoc, ExportArchiveRequest, ExportArchiveResponse, ExportClipRequest,
+    ExportRequestV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetJobRequest,
+    GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
+    GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse, Job,
+    ListClipDecisionsRequest, ListEditDocsRequest, ListJobsRequest, ListProjectsRequest,
+    ListSourcesRequest, PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest,
     ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse, Request,
     ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
     SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
@@ -183,6 +185,59 @@ impl DaemonClient {
         };
         match self.call(request::Body::GetPreviewPlan(request)).await? {
             response::Body::GetPreviewPlan(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// What an export would do. Writes nothing, so a screen may ask again
+    /// every time the naming pattern changes under a keystroke.
+    pub async fn plan_export(
+        &self,
+        request: ExportRequestV1,
+    ) -> Result<PlanExportResponse, DaemonLinkError> {
+        let plan = PlanExportRequest {
+            request: Some(request),
+        };
+        match self.call(request::Body::PlanExport(plan)).await? {
+            response::Body::PlanExport(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Perform an export. Returns the job to watch, not the finished files.
+    pub async fn export_clip(&self, request: ExportRequestV1) -> Result<String, DaemonLinkError> {
+        let export = ExportClipRequest {
+            request: Some(request),
+        };
+        match self.call(request::Body::ExportClip(export)).await? {
+            response::Body::ExportClip(reply) => Ok(reply.job_id),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Pack a project's work into a zip that outlives this application.
+    pub async fn export_archive(
+        &self,
+        project_id: &str,
+        destination_dir: &str,
+    ) -> Result<ExportArchiveResponse, DaemonLinkError> {
+        let request = ExportArchiveRequest {
+            project_id: project_id.to_owned(),
+            destination_dir: destination_dir.to_owned(),
+        };
+        match self.call(request::Body::ExportArchive(request)).await? {
+            response::Body::ExportArchive(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Whether this installation is offline, with the evidence behind it.
+    pub async fn local_lock(&self) -> Result<GetLocalLockResponse, DaemonLinkError> {
+        match self
+            .call(request::Body::GetLocalLock(GetLocalLockRequest {}))
+            .await?
+        {
+            response::Body::GetLocalLock(reply) => Ok(reply),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }

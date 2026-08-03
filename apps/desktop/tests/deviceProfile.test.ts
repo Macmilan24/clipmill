@@ -139,6 +139,8 @@ describe('navigation', () => {
       'results',
       'editor',
       'models',
+      'export',
+      'settings',
     ]);
   });
 

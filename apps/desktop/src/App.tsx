@@ -183,6 +183,11 @@ export function App(): JSX.Element {
                   navigate('results');
                 },
               },
+              // Both read the daemon directly and take nothing from the shell,
+              // so the entry exists to satisfy the registry rather than to
+              // carry anything.
+              export: {},
+              settings: {},
               models: {
                 state,
                 profile,

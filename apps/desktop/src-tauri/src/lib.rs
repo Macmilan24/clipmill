@@ -204,6 +204,27 @@ async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, Str
     Ok(path.map(|value| value.to_string()))
 }
 
+/// Ask the user where an export should land.
+///
+/// A folder rather than a file, and native for the same reason the source
+/// picker is: the renderer is granted no permission to open a dialog, so a page
+/// cannot choose a path — it can only ask this host to, and what comes back is
+/// a directory a person picked in a window the operating system drew.
+#[tauri::command]
+async fn choose_export_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let (reply, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose where exports are written")
+        .pick_folder(move |path| {
+            let _sent = reply.send(path);
+        });
+    let path = chosen
+        .await
+        .map_err(|_| "the folder dialog closed".to_owned())?;
+    Ok(path.map(|value| value.to_string()))
+}
+
 /// Register a local file as this project's source, which probes it.
 #[tauri::command]
 async fn register_source(
@@ -326,6 +347,61 @@ async fn preview_plan(
     supervisor
         .client()
         .preview_plan(&project_id, &doc_id)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// What an export would do, without doing it.
+#[tauri::command]
+async fn plan_export(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    request: views::ExportRequestInput,
+) -> Result<views::ExportPlanView, String> {
+    supervisor
+        .client()
+        .plan_export(request.into())
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// Perform an export. Answers with the job to watch.
+#[tauri::command]
+async fn export_clip(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    request: views::ExportRequestInput,
+) -> Result<String, String> {
+    supervisor
+        .client()
+        .export_clip(request.into())
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Pack a project's work into a zip.
+#[tauri::command]
+async fn export_archive(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    destination_dir: String,
+) -> Result<views::ArchiveView, String> {
+    supervisor
+        .client()
+        .export_archive(&project_id, &destination_dir)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// Whether this installation is offline, and the evidence for it.
+#[tauri::command]
+async fn local_lock(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<views::LocalLockView, String> {
+    supervisor
+        .client()
+        .local_lock()
         .await
         .map(Into::into)
         .map_err(|error| error.to_string())
@@ -465,6 +541,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             apply_edit_command,
             list_edit_docs,
             preview_plan,
+            plan_export,
+            export_clip,
+            export_archive,
+            local_lock,
+            choose_export_folder,
             solve_crop_path,
             direct_clip,
             set_clip_decision,
