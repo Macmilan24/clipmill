@@ -89,7 +89,7 @@ pub struct Disclosure {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ExportPackage {
-    pub schema: String,
+    pub schema_version: String,
     pub doc_id: String,
     /// The clip's own words, when it has a title.
     pub title: String,
@@ -114,7 +114,7 @@ impl ExportPackage {
     ) -> Self {
         files.sort_by(|left, right| left.name.cmp(&right.name));
         Self {
-            schema: PACKAGE_SCHEMA_VERSION.to_owned(),
+            schema_version: PACKAGE_SCHEMA_VERSION.to_owned(),
             doc_id,
             title,
             render_artifact_id,

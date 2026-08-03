@@ -65,7 +65,7 @@ pub struct ArchivedSource {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ArchiveIndex {
-    pub schema: String,
+    pub schema_version: String,
     pub project_id: String,
     pub project_name: String,
     /// When the archive was made. Wall time is allowed here because an archive
@@ -93,7 +93,7 @@ impl ArchiveIndex {
     ) -> Self {
         entries.sort_by(|left, right| left.path.cmp(&right.path));
         Self {
-            schema: ARCHIVE_SCHEMA_VERSION.to_owned(),
+            schema_version: ARCHIVE_SCHEMA_VERSION.to_owned(),
             project_id,
             project_name,
             created_unix_millis,
@@ -105,7 +105,7 @@ impl ArchiveIndex {
 
     /// Whether this index describes a format this build understands.
     pub fn is_readable(&self) -> bool {
-        self.schema == ARCHIVE_SCHEMA_VERSION
+        self.schema_version == ARCHIVE_SCHEMA_VERSION
     }
 
     /// The entry for a path, for a reader verifying what it extracted.
@@ -149,14 +149,14 @@ mod tests {
 
     #[test]
     fn an_index_names_the_format_it_is() {
-        assert_eq!(index(Vec::new()).schema, ARCHIVE_SCHEMA_VERSION);
+        assert_eq!(index(Vec::new()).schema_version, ARCHIVE_SCHEMA_VERSION);
         assert!(index(Vec::new()).is_readable());
     }
 
     #[test]
     fn an_archive_from_a_format_this_build_does_not_know_is_not_readable() {
         let mut future = index(Vec::new());
-        future.schema = "clipmill.archive_index.v9".to_owned();
+        future.schema_version = "clipmill.archive_index.v9".to_owned();
         assert!(!future.is_readable());
     }
 

@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -83,6 +83,14 @@ pub mod request {
         GetPreviewPlan(super::GetPreviewPlanRequest),
         #[prost(message, tag = "37")]
         ListEditDocs(super::ListEditDocsRequest),
+        #[prost(message, tag = "38")]
+        PlanExport(super::PlanExportRequest),
+        #[prost(message, tag = "39")]
+        ExportClip(super::ExportClipRequest),
+        #[prost(message, tag = "40")]
+        ExportArchive(super::ExportArchiveRequest),
+        #[prost(message, tag = "41")]
+        GetLocalLock(super::GetLocalLockRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -93,7 +101,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -161,6 +169,14 @@ pub mod response {
         GetPreviewPlan(super::GetPreviewPlanResponse),
         #[prost(message, tag = "38")]
         ListEditDocs(super::ListEditDocsResponse),
+        #[prost(message, tag = "39")]
+        PlanExport(super::PlanExportResponse),
+        #[prost(message, tag = "40")]
+        ExportClip(super::ExportClipResponse),
+        #[prost(message, tag = "41")]
+        ExportArchive(super::ExportArchiveResponse),
+        #[prost(message, tag = "42")]
+        GetLocalLock(super::GetLocalLockResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -918,9 +934,9 @@ pub struct MediaFileV1 {
 /// weights are expensive to re-download and should not be, and state is small and
 /// must not be touched. A single total would tell nobody what to do about it.
 ///
-/// No paths leave the daemon here. Where these directories live is a separate
-/// question from how large they are, and only one of them is a screen's business
-/// today.
+/// Paths travel with the sizes. Phase 0 deliberately withheld them — no screen
+/// then had a use for one — but Settings is the screen whose business it is:
+/// "your artifacts are 40 GB" is not actionable until a user can go and look.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetStorageStatsRequest {}
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -935,6 +951,11 @@ pub struct GetStorageStatsResponse {
     /// False when the figure above could not be read at all.
     #[prost(bool, tag = "3")]
     pub available_known: bool,
+    /// How long an unreferenced artifact is kept before collection may take it.
+    /// Displayed rather than adjustable in Phase 1: the number is real, and a
+    /// control that changed it would need a collection policy nobody has written.
+    #[prost(uint64, tag = "4")]
+    pub retention_grace_seconds: u64,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCategoryV1 {
@@ -948,6 +969,10 @@ pub struct StorageCategoryV1 {
     /// the rest.
     #[prost(uint64, tag = "3")]
     pub items: u64,
+    /// Where this category lives, absolute. Shown so a number is somewhere a user
+    /// can go, not so anything can be written there.
+    #[prost(string, tag = "4")]
+    pub path: ::prost::alloc::string::String,
 }
 // ---- Faces and reframing (book ch. 18) ----
 
@@ -1383,6 +1408,185 @@ pub struct ListEditDocsResponse {
     #[prost(message, repeated, tag = "1")]
     pub docs: ::prost::alloc::vec::Vec<EditDoc>,
 }
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportFindingV1 {
+    /// Stable identifier a surface keys off, e.g. "rights.missing". The wording
+    /// in `detail` may be improved; this may not.
+    #[prost(string, tag = "1")]
+    pub code: ::prost::alloc::string::String,
+    #[prost(enumeration = "ExportSeverity", tag = "2")]
+    pub severity: i32,
+    /// One sentence naming the thing and the number, ready to show.
+    #[prost(string, tag = "3")]
+    pub detail: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExportValidationV1 {
+    /// False when anything blocking was found. Advisories do not stop an export.
+    #[prost(bool, tag = "1")]
+    pub passes: bool,
+    #[prost(message, repeated, tag = "2")]
+    pub findings: ::prost::alloc::vec::Vec<ExportFindingV1>,
+}
+/// What an export is being asked to do, before it is asked to do it.
+///
+/// The same fields as the request that performs one, because a preview that
+/// took different inputs would be a preview of a different export.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportRequestV1 {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+    /// An absolute path to a local directory the user chose. Network paths are
+    /// refused: a half-written export over a link that dropped is a corrupt file
+    /// with a plausible size, and Phase 1 has no way to tell one from the other.
+    #[prost(string, tag = "2")]
+    pub destination_dir: ::prost::alloc::string::String,
+    /// Tokens in braces, e.g. "{index}-{clip}". Empty takes the default.
+    #[prost(string, tag = "3")]
+    pub naming_pattern: ::prost::alloc::string::String,
+    /// Echoed verbatim into the delivered package, e.g. "own_content".
+    #[prost(string, tag = "4")]
+    pub source_attestation: ::prost::alloc::string::String,
+    /// Confirmations the user gave, e.g. "duration_60s".
+    #[prost(string, repeated, tag = "5")]
+    pub gates_passed: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Model work that shaped the footage, e.g. "asr_captions".
+    #[prost(string, repeated, tag = "6")]
+    pub ai_assistance: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Ordinal within this export, one-based, for the {index} token.
+    #[prost(uint32, tag = "7")]
+    pub index: u32,
+    /// YYYY-MM-DD for the {date} token. Supplied by the caller, because the
+    /// daemon's naming code reads no clock — a name nobody can reproduce is a
+    /// name a preview cannot promise.
+    #[prost(string, tag = "8")]
+    pub date: ::prost::alloc::string::String,
+    /// The clip's own words for the {clip} token, when it has a title.
+    #[prost(string, tag = "9")]
+    pub title: ::prost::alloc::string::String,
+}
+/// Check an export without performing one. No side effects, no files.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlanExportRequest {
+    #[prost(message, optional, tag = "1")]
+    pub request: ::core::option::Option<ExportRequestV1>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlanExportResponse {
+    #[prost(message, optional, tag = "1")]
+    pub validation: ::core::option::Option<ExportValidationV1>,
+    /// The resolved filename stem, which is what the naming preview shows.
+    #[prost(string, tag = "2")]
+    pub stem: ::prost::alloc::string::String,
+    /// Every file this export would write, in delivery order. Resolved by the
+    /// same code that names them, so the preview cannot disagree with the result.
+    #[prost(string, repeated, tag = "3")]
+    pub file_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(uint64, tag = "4")]
+    pub estimated_bytes: u64,
+    #[prost(uint64, tag = "5")]
+    pub available_bytes: u64,
+    /// False when free space could not be read, which a caller must distinguish
+    /// from a genuinely full disk.
+    #[prost(bool, tag = "6")]
+    pub available_known: bool,
+}
+/// Perform an export. Refused outright when the strip finds anything blocking,
+/// with the findings attached, because an export that starts and then stops is
+/// a folder of partial files.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportClipRequest {
+    #[prost(message, optional, tag = "1")]
+    pub request: ::core::option::Option<ExportRequestV1>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportClipResponse {
+    /// The job to watch. Its tasks are the render and the delivery, so progress
+    /// arrives on the task event stream every other long operation uses.
+    #[prost(string, tag = "1")]
+    pub job_id: ::prost::alloc::string::String,
+}
+/// Versioned payload for the export job (render, then deliver).
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportClipPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub request: ::core::option::Option<ExportRequestV1>,
+    /// Content address of the edit.ir.v1 snapshot to render and deliver.
+    #[prost(string, tag = "3")]
+    pub ir_artifact_id: ::prost::alloc::string::String,
+}
+/// Versioned payload for the delivery stage.
+///
+/// Narrower than the job payload for the reason every stage payload is: this is
+/// hashed into the stage's key, so anything the stage does not read must not
+/// appear here. The render it delivers arrives on the lease.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeliverExportPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub request: ::core::option::Option<ExportRequestV1>,
+}
+/// Pack a project's work into a zip that outlives this application (ch. 10).
+///
+/// Media is referenced rather than copied: a project's recordings are three
+/// orders of magnitude larger than its documents and already exist on the
+/// user's disk. Every source is still named with its fingerprint, so a reader
+/// can say which file it is looking for.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportArchiveRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub destination_dir: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportArchiveResponse {
+    /// Absolute path of the archive that was written.
+    #[prost(string, tag = "1")]
+    pub path: ::prost::alloc::string::String,
+    /// Lower-case hex, matching what the archive index records for its entries.
+    #[prost(string, tag = "2")]
+    pub sha256: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub bytes: u64,
+    #[prost(uint32, tag = "4")]
+    pub entry_count: u32,
+}
+// ---- Settings (13 Settings, Phase 1 subset) ----
+
+/// Whether this installation is running under the Local Lock, and the evidence.
+///
+/// Read rather than asserted. `engaged` is true when every stage the daemon
+/// will run declares a local-lock network policy, which is a fact about the
+/// stage registry rather than a constant somebody typed — a stage added with
+/// network access turns this false without anyone remembering to.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LocalLockStatusV1 {
+    #[prost(bool, tag = "1")]
+    pub engaged: bool,
+    /// Stages registered, and how many of them may reach the network. The second
+    /// number is what makes the first one checkable.
+    #[prost(uint32, tag = "2")]
+    pub stages: u32,
+    #[prost(uint32, tag = "3")]
+    pub network_allowed_stages: u32,
+    /// Times a task declaring network access has started since this daemon
+    /// began. Zero is the expected reading, and a counter that can only be zero
+    /// would not be worth showing — it is here so that a non-zero reading is
+    /// possible and visible.
+    #[prost(uint64, tag = "4")]
+    pub egress_attempts: u64,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetLocalLockRequest {}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetLocalLockResponse {
+    #[prost(message, optional, tag = "1")]
+    pub status: ::core::option::Option<LocalLockStatusV1>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ErrorCode {
@@ -1582,6 +1786,45 @@ impl ClipCutV1 {
             "CLIP_CUT_V1_CHOSEN" => Some(Self::Chosen),
             "CLIP_CUT_V1_ALTERNATIVE" => Some(Self::Alternative),
             "CLIP_CUT_V1_EXACT" => Some(Self::Exact),
+            _ => None,
+        }
+    }
+}
+// ---- Export and archive (book ch. 10, ch. 24 Phase 1) ----
+
+/// How badly a validation finding wants attention.
+///
+/// Two levels and the line between them is a design decision, not a scale.
+/// Blocking means the delivered file would be wrong or would not fit; advisory
+/// means a person might have meant it. The burn-in caption track is what makes
+/// the distinction real: it runs deliberately hot, so a reading-rate finding
+/// against it is advice, while the same finding against the accessibility cues
+/// blocks — those become the SRT and VTT that leave the building.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ExportSeverity {
+    Unspecified = 0,
+    Blocking = 1,
+    Advisory = 2,
+}
+impl ExportSeverity {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "EXPORT_SEVERITY_UNSPECIFIED",
+            Self::Blocking => "EXPORT_SEVERITY_BLOCKING",
+            Self::Advisory => "EXPORT_SEVERITY_ADVISORY",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "EXPORT_SEVERITY_UNSPECIFIED" => Some(Self::Unspecified),
+            "EXPORT_SEVERITY_BLOCKING" => Some(Self::Blocking),
+            "EXPORT_SEVERITY_ADVISORY" => Some(Self::Advisory),
             _ => None,
         }
     }
