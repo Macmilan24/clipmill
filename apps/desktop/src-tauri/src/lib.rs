@@ -494,6 +494,46 @@ async fn list_clip_decisions(
 
 /// Boot the shell. The socket path is resolved through the daemon's own
 /// configuration so the two can never disagree about where to meet.
+/// Forward the daemon's task events to the renderer, across restarts.
+///
+/// The cursor is what makes a reconnect honest: the daemon replays what
+/// happened while the socket was down, so a stage that finished during the gap
+/// arrives finished rather than staying where the renderer last saw it.
+async fn stream_task_events(supervisor: Arc<DaemonSupervisor>, app: tauri::AppHandle) {
+    let mut cursor = 0_u64;
+    loop {
+        let handle = app.clone();
+        let result = supervisor
+            .client()
+            .stream_task_events(cursor, |event| {
+                cursor = cursor.max(event.event_id);
+                let view = TaskEventView {
+                    event_id: event.event_id,
+                    job_id: event.job_id,
+                    task_id: event.task_id,
+                    state: event.state,
+                    attempt: event.attempt,
+                    wait_reason: event.wait_reason,
+                    failure_class: event.failure_class,
+                    at_unix_millis: event.at_unix_millis,
+                    progress: event.progress.map(|progress| ProgressView {
+                        unit: progress.unit,
+                        done: progress.done,
+                        total: progress.total,
+                    }),
+                };
+                if let Err(error) = handle.emit(TASK_EVENT, &view) {
+                    tracing::warn!(%error, "cannot publish a task event");
+                }
+            })
+            .await;
+        if let Err(error) = result {
+            tracing::debug!(%error, cursor, "task event stream ended");
+        }
+        tokio::time::sleep(RESUBSCRIBE_DELAY).await;
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = clipmilld::Config::resolve(None, None)?;
     let socket = config.paths.socket.clone();
@@ -567,45 +607,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     tokio::time::sleep(POLL_INTERVAL).await;
                 }
             });
-            // The task-event stream, kept alive across daemon restarts. The
-            // cursor is what makes a reconnect honest: the daemon replays what
-            // happened while the socket was down, so a stage that finished
-            // during the gap arrives finished rather than staying where the
-            // renderer last saw it.
-            tauri::async_runtime::spawn(async move {
-                let mut cursor = 0_u64;
-                loop {
-                    let handle = events_handle.clone();
-                    let result = events
-                        .client()
-                        .stream_task_events(cursor, |event| {
-                            cursor = cursor.max(event.event_id);
-                            let view = TaskEventView {
-                                event_id: event.event_id,
-                                job_id: event.job_id,
-                                task_id: event.task_id,
-                                state: event.state,
-                                attempt: event.attempt,
-                                wait_reason: event.wait_reason,
-                                failure_class: event.failure_class,
-                                at_unix_millis: event.at_unix_millis,
-                                progress: event.progress.map(|progress| ProgressView {
-                                    unit: progress.unit,
-                                    done: progress.done,
-                                    total: progress.total,
-                                }),
-                            };
-                            if let Err(error) = handle.emit(TASK_EVENT, &view) {
-                                tracing::warn!(%error, "cannot publish a task event");
-                            }
-                        })
-                        .await;
-                    if let Err(error) = result {
-                        tracing::debug!(%error, cursor, "task event stream ended");
-                    }
-                    tokio::time::sleep(RESUBSCRIBE_DELAY).await;
-                }
-            });
+            tauri::async_runtime::spawn(stream_task_events(events, events_handle));
             Ok(())
         })
         .run(tauri::generate_context!())?;

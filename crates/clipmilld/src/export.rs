@@ -495,9 +495,12 @@ fn write_package(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::unwrap_used)]
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-    use super::{DestinationError, naming_pattern, resolve_destination, seconds_of};
+    use super::{
+        ArchiveInputs, DestinationError, build_archive, naming_pattern, resolve_destination,
+        seconds_of,
+    };
 
     #[test]
     fn a_relative_destination_is_refused_before_anything_is_written() {
@@ -555,6 +558,226 @@ mod tests {
     #[test]
     fn a_pattern_nobody_can_resolve_is_an_error_rather_than_a_silent_default() {
         assert!(naming_pattern("{episode}").is_err());
+    }
+
+    /// Enough of a project to archive: one source, one document with a command
+    /// applied to it, one decision, one job.
+    struct Fixture {
+        project: crate::db::ProjectRecord,
+        sources: Vec<crate::db::SourceRecord>,
+        docs: Vec<crate::db::EditDocRecord>,
+        logs: Vec<(String, String, Vec<crate::db::EditCommandRecord>)>,
+        decisions: Vec<(String, crate::db::DecisionRecord)>,
+    }
+
+    fn inputs() -> Fixture {
+        let project = crate::db::ProjectRecord {
+            project_id: "prj_1".to_owned(),
+            name: "Pricing Talk".to_owned(),
+            created_unix_millis: 1_700_000_000_000,
+        };
+        let sources = vec![crate::db::SourceRecord {
+            source_id: "src_1".to_owned(),
+            project_id: "prj_1".to_owned(),
+            observation: crate::sources::FileObservation {
+                absolute_path: "/Users/sami/Movies/episode-14.mov".to_owned(),
+                byte_size: 8_000_000_000,
+                sample_sha256: "1".repeat(64),
+                device_id: 1,
+                inode: 2,
+                modified_unix_nanos: 3,
+            },
+            source_fingerprint: format!("sha256:{}", "1".repeat(64)),
+            source_map_json: b"{}".to_vec(),
+            source_map_artifact_id: "art_map".to_owned(),
+            created_unix_millis: 1_700_000_000_000,
+        }];
+        let document = include_str!("../../clipmill-export/tests/fixtures/short.json");
+        let docs = vec![crate::db::EditDocRecord {
+            doc_id: "doc_1".to_owned(),
+            project_id: "prj_1".to_owned(),
+            revision: 2,
+            document_json: document.to_owned(),
+            created_unix_millis: 1_700_000_000_000,
+            updated_unix_millis: 1_700_000_100_000,
+        }];
+        let logs = vec![(
+            "doc_1".to_owned(),
+            document.to_owned(),
+            vec![crate::db::EditCommandRecord {
+                revision: 1,
+                command_json: r#"{"op":"set_layout","segment_id":"seg_1","state":"fit"}"#
+                    .to_owned(),
+                inverse_json: r#"{"op":"set_layout","segment_id":"seg_1","state":"speaker_fill"}"#
+                    .to_owned(),
+            }],
+        )];
+        let decisions = vec![(
+            "src_1".to_owned(),
+            crate::db::DecisionRecord {
+                candidate_id: "cand_1".to_owned(),
+                decision: crate::db::Decision::Approved,
+                decided_unix_millis: 1_700_000_050_000,
+            },
+        )];
+        Fixture {
+            project,
+            sources,
+            docs,
+            logs,
+            decisions,
+        }
+    }
+
+    fn archive() -> (Vec<u8>, u32) {
+        let fixture = inputs();
+        build_archive(&ArchiveInputs {
+            project: &fixture.project,
+            sources: &fixture.sources,
+            docs: &fixture.docs,
+            logs: &fixture.logs,
+            decisions: &fixture.decisions,
+            jobs: &[],
+            created_unix_millis: 1_700_000_200_000,
+            writer_version: "0.0.1",
+        })
+        .expect("the archive assembles")
+    }
+
+    /// Pull one entry out of a stored zip by walking the local headers.
+    ///
+    /// Deliberately not the writer's own bookkeeping: reading the bytes back
+    /// the way an unrelated tool would is the only way this test can fail when
+    /// the writer is wrong about its own output.
+    fn extract(bytes: &[u8], wanted: &str) -> Option<Vec<u8>> {
+        let mut at = 0_usize;
+        while at + 30 <= bytes.len() && &bytes[at..at + 4] == b"PK\x03\x04" {
+            let size = u32::from_le_bytes(bytes[at + 18..at + 22].try_into().ok()?) as usize;
+            let name_length = u16::from_le_bytes(bytes[at + 26..at + 28].try_into().ok()?) as usize;
+            let extra = u16::from_le_bytes(bytes[at + 28..at + 30].try_into().ok()?) as usize;
+            let name_at = at + 30;
+            let name = std::str::from_utf8(&bytes[name_at..name_at + name_length]).ok()?;
+            let data_at = name_at + name_length + extra;
+            if name == wanted {
+                return Some(bytes[data_at..data_at + size].to_vec());
+            }
+            at = data_at + size;
+        }
+        None
+    }
+
+    fn index_of(bytes: &[u8]) -> clipmill_export::ArchiveIndex {
+        let raw = extract(bytes, clipmill_export::ARCHIVE_INDEX_FILE).expect("the index is in it");
+        serde_json::from_slice(&raw).expect("the index parses")
+    }
+
+    #[test]
+    fn every_entry_the_index_names_is_in_the_archive_at_the_digest_it_claims() {
+        let (bytes, count) = archive();
+        let index = index_of(&bytes);
+        assert!(index.is_readable());
+        // Four documents plus the index itself.
+        assert_eq!(count, 5);
+        assert_eq!(index.entries.len(), 4);
+        for entry in &index.entries {
+            let found = extract(&bytes, &entry.path)
+                .unwrap_or_else(|| panic!("{} is named but not present", entry.path));
+            assert_eq!(
+                found.len() as u64,
+                entry.bytes,
+                "{} has the wrong size",
+                entry.path
+            );
+            assert_eq!(
+                clipmill_export::digest_of(&found),
+                entry.sha256,
+                "{} does not hash to what the index says",
+                entry.path
+            );
+        }
+    }
+
+    #[test]
+    fn the_archived_document_is_the_document_the_daemon_holds() {
+        // Re-import equivalence: what comes out of the zip parses as an Edit IR
+        // document and is the one that went in, not a re-serialisation that
+        // dropped a field on the way.
+        let (bytes, _) = archive();
+        let raw = extract(&bytes, "docs/doc_1/edit-ir.json").expect("the document is in it");
+        let wrapper: serde_json::Value = serde_json::from_slice(&raw).expect("it parses");
+        assert_eq!(wrapper["revision"], 2);
+        let document = clipmill_edit_ir::EditDocument::from_canonical_json(
+            wrapper["document"].to_string().as_bytes(),
+        )
+        .expect("the archived document is an Edit IR document");
+        let fixture = inputs();
+        let live = clipmill_edit_ir::EditDocument::from_canonical_json(
+            fixture.docs[0].document_json.as_bytes(),
+        )
+        .expect("the live document parses");
+        assert_eq!(
+            document.to_canonical_json().expect("canonical"),
+            live.to_canonical_json().expect("canonical")
+        );
+    }
+
+    #[test]
+    fn the_command_log_carries_the_document_it_was_applied_to() {
+        // A list of commands without the thing they were applied to replays to
+        // nothing, which is the whole reason the initial document travels.
+        let (bytes, _) = archive();
+        let raw = extract(&bytes, "docs/doc_1/commands.json").expect("the log is in it");
+        let log: serde_json::Value = serde_json::from_slice(&raw).expect("it parses");
+        assert!(log["initial_document"].is_object());
+        assert_eq!(log["commands"][0]["revision"], 1);
+        assert_eq!(log["commands"][0]["command"]["op"], "set_layout");
+        // The inverse travels too, so the history can be walked backwards.
+        assert_eq!(log["commands"][0]["inverse"]["state"], "speaker_fill");
+    }
+
+    #[test]
+    fn sources_are_named_and_not_carried() {
+        let (bytes, _) = archive();
+        let index = index_of(&bytes);
+        assert_eq!(index.sources.len(), 1);
+        assert_eq!(index.sources[0].display_name, "episode-14.mov");
+        assert!(index.sources[0].fingerprint.starts_with("sha256:"));
+        // Eight gigabytes of footage is described in an archive of kilobytes.
+        assert!(
+            bytes.len() < 128 * 1024,
+            "the archive carried media: {} bytes",
+            bytes.len()
+        );
+    }
+
+    #[test]
+    fn two_archives_of_the_same_project_are_the_same_file() {
+        // The writer contributes no time of its own, so the only thing that can
+        // differ is the timestamp the caller supplied.
+        assert_eq!(archive().0, archive().0);
+    }
+
+    /// Leave two archives on disk for the drill to open with an unrelated
+    /// reader.
+    ///
+    /// A zip this project verifies with its own code is a zip nobody else has
+    /// agreed to. The gate opens these with Python's `zipfile` — CRCs, central
+    /// directory, and all — which is the only check that can fail when the
+    /// writer is wrong about its own format.
+    #[test]
+    fn an_archive_is_left_where_an_unrelated_reader_can_open_it() {
+        // Tests run with the crate root as the working directory, so the
+        // workspace target directory is reached from the manifest rather than
+        // from wherever cargo happened to put us.
+        let work =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/export-drill");
+        let work = work.as_path();
+        std::fs::create_dir_all(work).expect("the drill directory is creatable");
+        let (first, _) = archive();
+        let (second, _) = archive();
+        std::fs::write(work.join("project.zip"), &first).expect("the archive writes");
+        std::fs::write(work.join("again.zip"), &second).expect("the second archive writes");
+        assert_eq!(first, second);
     }
 
     #[test]
