@@ -113,7 +113,11 @@ echo "==> enrolling the worker fleet"
 ./tools/run-workers.sh --enrol-only --data-dir "$data_dir" >/dev/null
 
 echo "==> starting the daemon"
-RUST_LOG=warn \
+# Info, unlike the other drills, because this one reads the daemon's log as
+# evidence: the registry count it asserts below is an INFO line, and at `warn`
+# the assertion cannot pass however healthy the daemon is. The log goes to a
+# file in the drill's own scratch, so the verbosity costs nothing.
+RUST_LOG=info \
 CLIPMILL_MODELS_DIR="$REGISTRY_DIR" \
 CLIPMILL_WEIGHTS_DIR="$WEIGHTS_DIR" \
   target/debug/clipmilld \
