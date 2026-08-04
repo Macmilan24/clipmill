@@ -268,6 +268,37 @@ gate-golden:
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock
     ./tools/drills/verify-phase0-attestation.sh
 
+# W27: the whole product with no network and a live worker fleet.
+#
+# Every other Lock proof stops before the stages that would actually phone
+# home — the analyze gate detects shots on a silent video, the shell gate stops
+# at ingest, and the speech harness imports the model classes in-process. This
+# runs analyze, direct and render against a real daemon and five real worker
+# processes, inside a denied namespace, with the egress canary either side.
+#
+# The weights and the sidecars are fetched *before* the namespace, because
+# acquisition is a deliberate act outside the Lock and the app is never the
+# thing that downloads. The drill refuses rather than fetches.
+gate-lock-phase1:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v docker >/dev/null 2>&1; then
+        docker run --rm --network=none -v "$PWD":/w -w /w rust:1.96 ./tools/drills/lock-phase1.sh
+    else
+        echo "gate-lock-phase1: docker not found - install Docker/OrbStack, or rely on"
+        echo "the lock-phase1 CI job (the authoritative Linux-namespace gate)."
+        exit 1
+    fi
+
+# Every reproducible Phase 1 gate, plus the committed private-run attestations.
+#
+# The three private gates cannot run here: recall needs the annotated corpus,
+# the render SLO needs the reference Mac, and the accelerated speech selection
+# needs an Apple GPU no hosted runner has. What this checks is their signed
+# evidence, exactly as `gate-phase0` checks Seed-40's.
+gate-phase1: gate-phase0 gate-ingest gate-ir gate-render gate-worker2 gate-speech gate-shots gate-evidence gate-discovery gate-ranking gate-reframe gate-captions gate-inspector gate-editor gate-export gate-golden gate-recall-smoke gate-lock-phase1
+    ./tools/drills/verify-phase1-attestation.sh
+
 # Launch the desktop shell against a live daemon.
 #
 # Three things happen before the shell starts, and none is convenience.
