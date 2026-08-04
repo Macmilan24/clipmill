@@ -28,6 +28,15 @@ pub const STAGE: &str = "rank-candidates";
 /// Hand-set, and named so.
 pub const SELECTOR_RUBRIC: &str = "mmr-handset.v1";
 
+/// Above this overlap, two chosen cuts are one clip shown twice.
+///
+/// Equal to the `IoU` the recall metric credits a moment at, and for the reason
+/// that metric gives: a pair that would both be credited with finding one
+/// moment is, by that same rule, a duplicate. A selector holding itself to a
+/// looser number than the metric would ship sets the metric calls duplicated,
+/// and the project would be quoting one figure while believing another.
+const DUPLICATE: f64 = 0.5;
+
 #[derive(Debug, thiserror::Error)]
 pub enum RankingError {
     #[error("the candidate set was never searched, so there is nothing to rank")]
@@ -279,6 +288,13 @@ type Scored<'a> = (
 /// different from what is already in the set. The alternative — take the top
 /// N by score — returns the same moment cut five ways whenever the mesh works
 /// well, which is precisely when it should not.
+///
+/// Two refusals sit outside that arithmetic, because neither is a preference to
+/// be priced against quality: a second member of a cluster discovery already
+/// called one moment, and a cut that repeats one already chosen. The first is
+/// discovery's statement; the second is this function's, and it can only be
+/// made here — see [`DUPLICATE`] and the refusal itself for why the clusters do
+/// not already cover it.
 fn select(
     cohort: &[contract::Ranked],
     scored: &[Scored<'_>],
@@ -292,12 +308,12 @@ fn select(
     let lambda = crate::clamp_unit(request.diversity);
     let mut chosen: Vec<usize> = Vec::new();
     let mut chosen_clusters: BTreeSet<&str> = BTreeSet::new();
-    let mut duplicates = 0u64;
+    let mut repeats: BTreeSet<usize> = BTreeSet::new();
 
     while chosen.len() < wanted {
         let mut best: Option<(usize, f64)> = None;
         for position in 0..cohort.len() {
-            if chosen.contains(&position) {
+            if chosen.contains(&position) || repeats.contains(&position) {
                 continue;
             }
             // A cluster is discovery's own statement that two nominations are
@@ -312,6 +328,27 @@ fn select(
                     intersection_over_union(scored[*earlier].1.chosen, scored[position].1.chosen)
                 })
                 .fold(0.0, f64::max);
+            // And the same refusal again, against the cut rather than the
+            // cluster, because the clusters cannot answer this one. Clustering
+            // ran back in `discover()`, over the intervals the proposers
+            // *proposed*; the boundary optimizer above then re-cut every
+            // candidate from its own lattice. Two nominations that were far
+            // enough apart to cluster separately can land on one cut, and
+            // nothing upstream is in a position to notice — the convergence
+            // did not exist when the clusters were drawn.
+            //
+            // The marginal score below already reads this similarity, but as a
+            // preference, and at the default diversity the quality term
+            // outweighs it. Showing a user one clip twice is not a trade-off to
+            // be priced; it is the thing the set is for, so it is refused
+            // outright and accounted for as a shortfall.
+            //
+            // Refusal is permanent: the chosen set only grows, so a cut that
+            // repeats it now cannot stop repeating it later.
+            if similarity >= DUPLICATE {
+                repeats.insert(position);
+                continue;
+            }
             let marginal = lambda * scored[position].2.score - (1.0 - lambda) * similarity;
             // Exact, for the same reason the boundary tiebreak is: the
             // earlier candidate wins a genuine tie, and a tolerance would make
@@ -334,14 +371,18 @@ fn select(
         chosen_clusters.insert(cohort[position].cluster_id.as_str());
         chosen.push(position);
     }
-    duplicates += crate::as_u64(
+    // Both refusals, counted once each. A candidate can be barred on both
+    // grounds at once — its cluster taken *and* its cut repeated — so this is
+    // one pass with an `or` rather than two tallies added together, which would
+    // account for one clip twice and make the shortfall arithmetic a lie.
+    let duplicates = crate::as_u64(
         cohort
             .iter()
-            .filter(|entry| {
-                chosen_clusters.contains(entry.cluster_id.as_str())
-                    && !chosen
-                        .iter()
-                        .any(|position| cohort[*position].candidate_id == entry.candidate_id)
+            .enumerate()
+            .filter(|(position, entry)| {
+                !chosen.contains(position)
+                    && (chosen_clusters.contains(entry.cluster_id.as_str())
+                        || repeats.contains(position))
             })
             .count(),
     );
@@ -362,7 +403,8 @@ fn select(
             shortfall.push(contract::ShortfallReason {
                 reason: contract::ShortfallReasonReason::AllRemainingAreDuplicates,
                 count: value,
-                detail: "every remaining candidate belongs to a cluster already represented"
+                detail: "every remaining candidate repeats one already selected: its cluster is \
+                         represented, or its chosen cut is"
                     .parse()
                     .ok(),
             });

@@ -23,6 +23,30 @@ const TRANSCRIPT_ID: &str =
     "sha256:7a11000000000000000000000000000000000000000000000000000000000042";
 const IMPLEMENTATION: &str = "clipmill-ranking-baseline@1.0.0";
 
+/// The overlap at which the recall metric calls two clips one moment cut twice.
+/// Kept here as a literal rather than imported: this test exists to hold the
+/// selector to the number the *gate* scores at, and reading the selector's own
+/// constant would make it agree with itself by construction.
+const DUPLICATE: f64 = 0.5;
+
+/// `IoU`, written the way `clipmill_eval.recall` writes it — the sum of the two
+/// durations less their overlap — rather than the way `ranking` does. The two
+/// forms agree on every pair that overlaps at all, which is the point: if they
+/// ever stop agreeing, the project is quoting one duplicate rate and shipping
+/// another, and this is where that shows up.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "tick spans well inside f64's exact integer range"
+)]
+fn duplicate_iou(left: (u64, u64), right: (u64, u64)) -> f64 {
+    let overlap = left.1.min(right.1).saturating_sub(left.0.max(right.0));
+    let union = (left.1 - left.0) + (right.1 - right.0) - overlap;
+    if union == 0 {
+        return 0.0;
+    }
+    overlap as f64 / union as f64
+}
+
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -173,8 +197,13 @@ fn every_set_holds_what_a_results_board_relies_on() {
             assert!((0..=99).contains(&entry.display_score), "{name}");
         }
 
-        // Selection never shows one moment twice.
+        // Selection never shows one moment twice — measured both ways, because
+        // the two catch different failures. The cluster is discovery's
+        // statement, made over the *proposed* intervals; the cut is the
+        // optimizer's, made after those intervals were re-cut, and two
+        // candidates that clustered apart can still converge on one clip.
         let cards = clipmill_discovery::ranking::cards(&set);
+        let mut taken: Vec<(u64, u64)> = Vec::new();
         for id in &set.selected {
             let entry = cards
                 .get(id.as_str())
@@ -183,6 +212,18 @@ fn every_set_holds_what_a_results_board_relies_on() {
                 clusters.insert(entry.cluster_id.as_str()),
                 "{name}: two clips from one cluster were selected"
             );
+            let span = (
+                entry.boundary.chosen.start_ticks,
+                entry.boundary.chosen.end_ticks,
+            );
+            for earlier in &taken {
+                assert!(
+                    duplicate_iou(*earlier, span) < DUPLICATE,
+                    "{name}: {} repeats a cut already selected: {earlier:?} and {span:?}",
+                    id.as_str()
+                );
+            }
+            taken.push(span);
         }
     }
 }

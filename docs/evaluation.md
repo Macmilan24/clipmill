@@ -182,28 +182,57 @@ neither knows the other's answer.
 
 The first run of this gate found a real defect, which is what it is for.
 
-**Near-duplicate clips reach the results board.** Recall is 1.0 and boundary
-error is 0 ms, but the top-5 duplicate rate is **0.6**. Two candidates come out
+**Near-duplicate clips reached the results board.** Recall was 1.0 and boundary
+error 0 ms, but the top-5 duplicate rate was **0.6**. Two candidates came out
 with _identical_ chosen boundaries in _different clusters_, and three clips
-cover the same moment at 78→108, 78→97 and 78→103.
+covered the same moment at 78→108, 78→97 and 78→103.
 
 The mechanism: clustering runs during `discover()`, over the candidates'
 **proposed** intervals. The boundary optimizer then re-cuts each candidate in
 `rank()`, and two candidates that were distinct proposals converge onto the
 same cut. `select()` correctly refuses a second member of a cluster it already
-took — but nothing notices that two _different_ clusters now hold the same
-clip. The set simultaneously reports `all_remaining_are_duplicates` as a
-shortfall reason and contains duplicates, which is self-inconsistent.
+took — but nothing noticed that two _different_ clusters now held the same
+clip. The set simultaneously reported `all_remaining_are_duplicates` as a
+shortfall reason and contained duplicates, which is self-inconsistent.
 
 This contradicts the book's own rule (ch. 16): _"Asked for ten clips from a
 recording holding four good moments, the honest answer is four and a reason,
 not ten with six the system does not believe in."_
 
-It is **not fixed here**. Changing set selection is a ranking change with its
-own goldens and its own gate, and doing it inside the evaluation workstream
-would mean the code that measures and the code being measured moved in the same
-commit. `eval/recall/planted-bar.json` records 0.6 as a **ratchet**: it may be
-lowered when the defect is fixed and must never be raised.
+### The fix
+
+`select()` now makes the same refusal twice, against two different statements
+about what "the same moment" means. The cluster check is discovery's, made over
+the proposed intervals, and it stays. The new one is the selector's own: after
+the boundary optimizer has chosen, a candidate whose **chosen** interval repeats
+one already selected is refused outright and counted into the shortfall.
+
+Three things about it are load-bearing:
+
+- **It is a refusal, not a penalty.** The MMR similarity term already saw this
+  overlap, but as a preference to be traded against quality — and at the
+  default diversity of 0.7 the quality term wins. Showing a user one clip twice
+  is not a trade-off to be priced.
+- **The threshold is the metric's**, IoU 0.5, not a number tuned until the rate
+  looked good. A selector held to a looser figure than the gate would ship sets
+  the gate calls duplicated, and the project would quote one number while
+  believing another. It is checked from the test side against the metric's
+  formula rather than the selector's, so the two cannot drift apart quietly.
+- **It refuses rather than backfills.** The set gets shorter and says why; it
+  does not reach further down the cohort for a replacement.
+
+What moved: on the planted recording, 7 clips selected → **3**, one per planted
+moment, with the other 7 of the 10 requested accounted for as shortfall.
+Duplicate rate **0.6 → 0.0**, recall unchanged at 1.0, boundary error unchanged
+at 0 ms. On the committed `interview` cohort, 7 → 4; the three dropped were an
+identical cut and two repeats at IoU 0.85 and 0.63. In both cases the _cohort_
+is untouched — every candidate is still ranked, scored, and carries its card and
+its boundary. Only the selection narrowed, so nothing became unanswerable; a
+refused clip is still there to be asked about.
+
+`eval/recall/planted-bar.json` lowers the ratchet from 0.6 to **0.0**. That is
+not an aspiration: the selector and the metric now share one threshold and one
+formula, so any rate above zero means the refusal was weakened.
 
 ## The bar
 
