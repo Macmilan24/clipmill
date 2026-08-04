@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import { newest } from '../daemon/ordering.js';
 import type { ClipDecision, Project } from '../daemon/client.js';
 import { useResults } from '../results/useResults.js';
 import { ClipInspector } from './ClipInspector.js';
@@ -38,7 +39,7 @@ export function ResultsScreen({
   useEffect(() => {
     void api
       .listProjects()
-      .then((projects) => setProject(projects.at(-1) ?? null))
+      .then((projects) => setProject(newest(projects)))
       .catch(() => setProject(null));
   }, [api]);
 

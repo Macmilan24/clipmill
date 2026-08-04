@@ -198,7 +198,13 @@ impl ModelRegistry {
                 .join(&manifest.name)
                 .to_string_lossy()
                 .into_owned(),
-            digest: manifest.digest().to_string(),
+            // Prefixed, because that is what the lease contract documents
+            // and what the worker echoes into `producer.model_digest` — a
+            // field the published speech schemas require to match
+            // `^sha256:[0-9a-f]{64}$`. `Sha256Digest` displays bare hex, so
+            // sending it unadorned refused every document a model-running
+            // worker produced.
+            digest: format!("sha256:{}", manifest.digest()),
             capability: manifest.capability.clone(),
             files: manifest
                 .files
@@ -292,15 +298,20 @@ mod tests {
 
         assert_eq!(binding.root, "/opt/clipmill/models/silero-vad");
         assert_eq!(binding.capability, "vad");
+        // Prefixed. The worker echoes this straight into
+        // `producer.model_digest`, and every published speech schema requires
+        // that field to match `^sha256:[0-9a-f]{64}$` — so a bare digest here
+        // is a document the contract refuses, which is what it did.
         assert_eq!(
             binding.digest,
-            registry
-                .get("silero-vad")
-                .expect("pinned")
-                .digest()
-                .to_string(),
+            format!(
+                "sha256:{}",
+                registry.get("silero-vad").expect("pinned").digest()
+            ),
             "the worker echoes this as the producing model's identity"
         );
+        assert!(binding.digest.starts_with("sha256:"));
+        assert_eq!(binding.digest.len(), "sha256:".len() + 64);
         assert!(!binding.files.is_empty());
         for file in &binding.files {
             assert_eq!(file.sha256.len(), 64, "a bare hex digest, as pinned");

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import { newest } from '../daemon/ordering.js';
 import { batch, setCropKeyframe, setLayout } from '../editor/commands.js';
 import { useEditor } from '../editor/useEditor.js';
 import { Editor } from './Editor.js';
@@ -31,7 +32,7 @@ export function EditorScreen({ onOpenResults, api = daemonApi }: EditorScreenPro
     void (async () => {
       try {
         const projects = await api.listProjects();
-        const project = projects.at(-1);
+        const project = newest(projects);
         if (!project) {
           return;
         }

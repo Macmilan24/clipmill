@@ -269,5 +269,34 @@ gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-de
     ./tools/drills/verify-phase0-attestation.sh
 
 # Launch the desktop shell against a live daemon.
+#
+# Three things happen before the shell starts, and none is convenience.
+#
+# The pinned FFmpeg sidecar is named: `ffprobe` is not on anybody's PATH, the
+# daemon falls back to a bare name when nothing tells it otherwise, and the font
+# and weights directories are derived from that path — so without it the probe
+# fails and the caption font resolves to nowhere.
+#
+# The model registry is named for the same reason: it defaults to the relative
+# path `models/registry`, which resolves against whatever directory the daemon
+# was spawned in rather than the checkout. An empty registry does not fail
+# loudly — every stage falls back to a 512 MiB memory estimate, and a worker
+# that honestly declares less can never be handed the task. Voice activity then
+# sits planned forever with nothing to say why.
+#
+# And the workers are enrolled: the daemon reads its trust directory once at
+# startup, so a key created afterwards is a key it never sees.
+#
+# Run `just workers` in a second terminal to actually start them.
 app:
-    pnpm --filter @clipmill/desktop tauri dev
+    # The shell spawns this binary; `tauri dev` builds the shell and would
+    # happily start it beside a daemon compiled from an older commit.
+    cargo build -p clipmilld --bin clipmilld
+    ./tools/run-workers.sh --enrol-only
+    CLIPMILL_FFPROBE="{{justfile_directory()}}/.cache/bin/ffprobe" \
+      CLIPMILL_MODELS_DIR="{{justfile_directory()}}/models/registry" \
+      pnpm --filter @clipmill/desktop tauri dev
+
+# Start the model workers against a running daemon. Ctrl-C stops them all.
+workers:
+    ./tools/run-workers.sh

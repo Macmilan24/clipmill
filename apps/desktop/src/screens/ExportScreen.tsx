@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import { newest, oldestFirstNewest } from '../daemon/ordering.js';
 import type { ExportPlan, ExportRequest } from '../daemon/client.js';
 import { Export } from './Export.js';
 
@@ -60,18 +61,18 @@ export function ExportScreen({ api = daemonApi }: ExportScreenProps) {
     void (async () => {
       try {
         const projects = await api.listProjects();
-        const project = projects.at(-1);
+        const project = newest(projects);
         if (!project || !live) {
           return;
         }
         setProjectId(project.projectId);
         const docs = await api.listEditDocs(project.projectId);
-        const newest = docs.at(-1);
-        if (!newest || !live) {
+        const latestDoc = oldestFirstNewest(docs);
+        if (!latestDoc || !live) {
           return;
         }
-        setDocId(newest.docId);
-        const preview = await api.previewPlan(project.projectId, newest.docId);
+        setDocId(latestDoc.docId);
+        const preview = await api.previewPlan(project.projectId, latestDoc.docId);
         if (!live) {
           return;
         }

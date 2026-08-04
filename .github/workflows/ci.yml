@@ -247,6 +247,12 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
+      # The drill syncs `--offline`, which is the point: it must run against an
+      # environment that is already provisioned rather than fetch one mid-gate.
+      # That makes provisioning this job's business, exactly as it is for every
+      # other offline drill here — without it the gate quietly depends on a warm
+      # uv cache and fails on the first commit that touches any lockfile.
+      - run: uv sync --frozen --project eval/harness
       # The planted recording starts from a transcript, so no recognizer and no
       # media are needed: the engine under test is the mesh, the lattice, the
       # scorer, the boundary optimizer and the selector, which is exactly what

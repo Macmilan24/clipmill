@@ -22,7 +22,7 @@ use clipmill_director::Frame;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::{artifacts::ArtifactHandle, db::DbHandle};
+use crate::{artifacts::ArtifactHandle, db::DbHandle, speech};
 
 /// The documents a directed clip is assembled from.
 pub(crate) struct Evidence {
@@ -60,10 +60,17 @@ impl LoadError {
 /// Which stage publishes each document, and what the document is called inside
 /// its artifact. Written out rather than derived, because a wrong guess here
 /// reads as a missing artifact rather than as a typo.
+///
+/// These are **task** kinds, and the distinction is not pedantry: the assembly
+/// that fuses voice activity, recognition and alignment runs as
+/// `speech-transcript`, while `transcribe-source` is the *job* that carries it
+/// when the speech chain is submitted on its own. Naming the job here found
+/// nothing for every recording analyzed through the composite DAG, which is
+/// every recording a user has.
 const REQUIRED: [(&str, &str, &str); 3] = [
     ("discover-candidates", "candidates.json", "candidate set"),
     ("rank-candidates", "ranking.json", "ranking"),
-    ("transcribe-source", "transcript.json", "transcript"),
+    (speech::KIND_TRANSCRIPT, "transcript.json", "transcript"),
 ];
 
 pub(crate) async fn load(
@@ -108,7 +115,7 @@ async fn require<T: DeserializeOwned>(
     (kind, file, name): (&'static str, &'static str, &'static str),
 ) -> Result<T, LoadError> {
     let Ok(Some(address)) = database
-        .latest_source_job_artifact(source_id.to_owned(), kind.to_owned())
+        .latest_source_task_artifact(source_id.to_owned(), kind.to_owned())
         .await
     else {
         return Err(LoadError::Missing(name));
@@ -126,7 +133,7 @@ async fn optional<T: DeserializeOwned>(
     file: &str,
 ) -> Option<T> {
     let address = database
-        .latest_source_job_artifact(source_id.to_owned(), kind.to_owned())
+        .latest_source_task_artifact(source_id.to_owned(), kind.to_owned())
         .await
         .ok()
         .flatten()?;

@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File, OpenOptions},
+    io::{BufRead, BufReader},
     io::{Read, Seek, SeekFrom},
     os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
@@ -22,8 +23,28 @@ const EDGE_SAMPLE_BYTES: u64 = 1024 * 1024;
 const WINDOW_BYTES: u64 = 256 * 1024;
 const INTERIOR_WINDOWS: u64 = 16;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long the packet pass may take.
+///
+/// Longer than the metadata probe on purpose, and for a reason that is not
+/// slack: reading every packet means demuxing the whole file, so the work is
+/// proportional to its size where reading a header is not. Five minutes covers
+/// a multi-gigabyte recording on a slow disk and still refuses a file that
+/// never ends.
+const PACKET_TIMEOUT: Duration = Duration::from_mins(5);
 const TERMINATE_GRACE: Duration = Duration::from_millis(500);
 const MAX_STDOUT_BYTES: u64 = 16 * 1024 * 1024;
+/// Packets a single probe may read before the file is treated as hostile.
+///
+/// Not a length limit. Ten million packets is roughly six hours of video plus
+/// its audio, and a file claiming more than that in a container we are about to
+/// hand a decoder is not a recording somebody made.
+const MAX_PACKETS: u64 = 10_000_000;
+/// Discontinuities a single stream may have before the same conclusion.
+///
+/// A normal recording has one run per stream. A concatenation or a recovered
+/// file has a handful. Sixty-five thousand is a file whose timeline is noise,
+/// and the source map built from it would be noise too.
+const MAX_RUNS_PER_STREAM: usize = 65_536;
 const MAX_STDERR_BYTES: u64 = 256 * 1024;
 const SOURCE_FINGERPRINT_DOMAIN: &[u8] = b"clipmill.source.fingerprint.v1\0";
 const SOURCE_SAMPLE_DOMAIN: &[u8] = b"clipmill.source.sample.v1\0";
@@ -241,12 +262,12 @@ fn complete_inspection(
     scratch: &Path,
     sampled: SampledSource,
 ) -> Result<InspectedSource, SourceProbeError> {
-    let raw_probe = run_ffprobe(ffprobe, scratch, &sampled.path)?;
+    let (raw_probe, packet_runs) = run_ffprobe(ffprobe, scratch, &sampled.path)?;
     let path_after = identity(&fs::metadata(&sampled.path).map_err(io_error)?)?;
     if path_after != sampled.identity {
         return Err(SourceProbeError::SourceChanged);
     }
-    let metadata = normalize_probe(&raw_probe)?;
+    let metadata = normalize_probe(&raw_probe, &packet_runs)?;
     let canonical_metadata = serde_json_canonicalizer::to_vec(&metadata)
         .map_err(|_| SourceProbeError::InvalidProbe("metadata is not canonical JSON"))?;
     let fingerprint = digest_samples(
@@ -362,7 +383,11 @@ fn identity(metadata: &fs::Metadata) -> Result<FileIdentity, SourceProbeError> {
     })
 }
 
-fn run_ffprobe(ffprobe: &Path, scratch: &Path, source: &Path) -> Result<Value, SourceProbeError> {
+fn run_ffprobe(
+    ffprobe: &Path,
+    scratch: &Path,
+    source: &Path,
+) -> Result<(Value, BTreeMap<u64, StreamRuns>), SourceProbeError> {
     run_ffprobe_with_timeout(ffprobe, scratch, source, PROBE_TIMEOUT)
 }
 
@@ -371,7 +396,7 @@ fn run_ffprobe_with_timeout(
     scratch: &Path,
     source: &Path,
     probe_timeout: Duration,
-) -> Result<Value, SourceProbeError> {
+) -> Result<(Value, BTreeMap<u64, StreamRuns>), SourceProbeError> {
     let work = scratch.join(format!("probe_{}", Ulid::new()));
     fs::create_dir(&work).map_err(io_error)?;
     fs::set_permissions(&work, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
@@ -401,7 +426,6 @@ fn run_ffprobe_with_timeout(
         .arg("-show_format")
         .arg("-show_streams")
         .arg("-show_chapters")
-        .arg("-show_packets")
         .arg(source)
         .current_dir(&work)
         .env_clear()
@@ -432,8 +456,189 @@ fn run_ffprobe_with_timeout(
         return Err(SourceProbeError::ProbeFailed(sanitize_detail(&stderr)));
     }
     let bytes = fs::read(&stdout_path).map_err(io_error)?;
-    serde_json::from_slice(&bytes)
-        .map_err(|_| SourceProbeError::InvalidProbe("output is not valid JSON"))
+    let metadata: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| SourceProbeError::InvalidProbe("output is not valid JSON"))?;
+
+    // A second invocation, streamed. Kept separate from the metadata read so a
+    // long recording can never cost the container's headers: the two answers
+    // have very different sizes and only one of them grows with duration.
+    let packets = stream_packets(ffprobe, &work, source, Instant::now() + PACKET_TIMEOUT)?;
+    Ok((metadata, packets))
+}
+
+/// What a stream's packets amount to, kept instead of the packets themselves.
+///
+/// This is the whole point of reading packets as a stream. The mapping only
+/// ever asks two things of them — where the timeline jumps backwards, and
+/// whether more than one packet duration occurs — and both are folds. Holding
+/// the answers costs one entry per discontinuity, which for an ordinary
+/// recording is one; holding the packets costs an entry per frame, which for an
+/// hour is over a million and for the JSON that carried them was ninety
+/// megabytes.
+#[derive(Debug, Default)]
+pub(crate) struct StreamRuns {
+    /// Contiguous `(source_start, source_end)` spans, in order.
+    runs: Vec<(i128, i128)>,
+    /// Distinct positive packet durations, counted no further than two —
+    /// variable frame rate is "more than one duration occurs", and the third
+    /// one answers nothing the second did not.
+    distinct_durations: BTreeSet<i128>,
+}
+
+impl StreamRuns {
+    /// Fold one packet in, exactly as the old walk over the collected vector
+    /// did: extend the open run while time moves forward, and start a new one
+    /// when it jumps back.
+    fn observe(&mut self, pts: i128, duration: i128) -> Result<(), SourceProbeError> {
+        if duration > 0 && self.distinct_durations.len() < 2 {
+            self.distinct_durations.insert(duration);
+        }
+        let end = pts.saturating_add(duration.max(1));
+        match self.runs.last_mut() {
+            // A packet at or after the run's *start* belongs to it, however it
+            // compares with the running end. Video is stored in decode order,
+            // so with B-frames a presentation timestamp legitimately steps
+            // backwards inside a group of pictures — comparing against the end
+            // called every one of those a discontinuity and cut an hour of
+            // ordinary footage into sixty thousand segments, which is both
+            // wrong about the timeline and large enough to exceed the frame the
+            // answer travels in. A real reset lands before the run began.
+            Some((source_start, source_end)) if pts >= *source_start => {
+                *source_end = (*source_end).max(end);
+            }
+            Some(_) => {
+                if self.runs.len() >= MAX_RUNS_PER_STREAM {
+                    return Err(SourceProbeError::OutputLimit);
+                }
+                self.runs.push((pts, end));
+            }
+            None => self.runs.push((pts, end)),
+        }
+        Ok(())
+    }
+
+    fn is_variable(&self) -> bool {
+        self.distinct_durations.len() > 1
+    }
+
+    fn first_pts(&self) -> Option<i128> {
+        self.runs.first().map(|(start, _)| *start)
+    }
+}
+
+/// Read every packet's stream, timestamp and duration, keeping none of them.
+///
+/// Two things make an hour-long recording work where it did not before. The
+/// fields are named, so a packet costs about fifteen bytes of CSV instead of
+/// three hundred and seventy of JSON; and the output is consumed as it arrives
+/// and folded into [`StreamRuns`], so nothing grows with the length of the
+/// recording. The old path wrote the whole of ffprobe's JSON to a file and
+/// refused anything over sixteen megabytes, which is about ten minutes.
+///
+/// The bounds that remain are bounds on *nonsense* rather than on length: a
+/// packet count no recording reaches, and a discontinuity count no timeline
+/// has. Neither is reachable by making a video longer.
+fn stream_packets(
+    ffprobe: &Path,
+    work: &Path,
+    source: &Path,
+    deadline: Instant,
+) -> Result<BTreeMap<u64, StreamRuns>, SourceProbeError> {
+    let stderr_path = work.join("packets-stderr.txt");
+    let stderr = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&stderr_path)
+        .map_err(io_error)?;
+    let mut child = Command::new(ffprobe)
+        .arg("-v")
+        .arg("error")
+        .arg("-protocol_whitelist")
+        .arg("file,pipe")
+        // Three fields, no keys, no JSON. Everything the fold reads and
+        // nothing it does not.
+        .arg("-show_entries")
+        .arg("packet=stream_index,pts,duration")
+        .arg("-of")
+        .arg("csv=p=0")
+        .arg(source)
+        .current_dir(work)
+        .env_clear()
+        .env("LANG", "C")
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(stderr))
+        .spawn()
+        .map_err(io_error)?;
+
+    let mut runs = BTreeMap::<u64, StreamRuns>::new();
+    let outcome = (|| -> Result<(), SourceProbeError> {
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or(SourceProbeError::InvalidProbe("ffprobe produced no output"))?;
+        let mut seen = 0_u64;
+        for line in BufReader::new(stdout).lines() {
+            let line = line.map_err(io_error)?;
+            if Instant::now() >= deadline {
+                return Err(SourceProbeError::Timeout);
+            }
+            seen += 1;
+            if seen > MAX_PACKETS {
+                return Err(SourceProbeError::OutputLimit);
+            }
+            let mut fields = line.trim().split(',');
+            let (Some(index), Some(pts), Some(duration)) =
+                (fields.next(), fields.next(), fields.next())
+            else {
+                continue;
+            };
+            // A packet with no timestamp cannot place anything on a timeline,
+            // and the old path skipped it for the same reason. `N/A` is how
+            // ffprobe spells that here.
+            let (Ok(index), Ok(pts)) = (index.parse::<u64>(), pts.parse::<i128>()) else {
+                continue;
+            };
+            let duration = duration.parse::<i128>().unwrap_or(0).max(0);
+            runs.entry(index).or_default().observe(pts, duration)?;
+        }
+        Ok(())
+    })();
+
+    let status = match outcome {
+        Ok(()) => wait_bounded(&mut child, deadline)?,
+        Err(error) => {
+            terminate_child(&mut child);
+            return Err(error);
+        }
+    };
+    if fs::metadata(&stderr_path).map_err(io_error)?.len() > MAX_STDERR_BYTES {
+        return Err(SourceProbeError::OutputLimit);
+    }
+    if !status.success() {
+        let stderr = fs::read_to_string(&stderr_path).map_err(io_error)?;
+        return Err(SourceProbeError::ProbeFailed(sanitize_detail(&stderr)));
+    }
+    Ok(runs)
+}
+
+/// Wait for a child, giving up at the deadline the probe was granted.
+fn wait_bounded(
+    child: &mut std::process::Child,
+    deadline: Instant,
+) -> Result<std::process::ExitStatus, SourceProbeError> {
+    loop {
+        if let Some(status) = child.try_wait().map_err(io_error)? {
+            return Ok(status);
+        }
+        if Instant::now() >= deadline {
+            terminate_child(child);
+            return Err(SourceProbeError::Timeout);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn terminate_child(child: &mut std::process::Child) {
@@ -454,7 +659,10 @@ fn terminate_child(child: &mut std::process::Child) {
 }
 
 #[allow(clippy::too_many_lines)]
-fn normalize_probe(probe: &Value) -> Result<Value, SourceProbeError> {
+fn normalize_probe(
+    probe: &Value,
+    packets: &BTreeMap<u64, StreamRuns>,
+) -> Result<Value, SourceProbeError> {
     let raw_streams = probe
         .get("streams")
         .and_then(Value::as_array)
@@ -462,25 +670,6 @@ fn normalize_probe(probe: &Value) -> Result<Value, SourceProbeError> {
     if raw_streams.is_empty() {
         return Err(SourceProbeError::InvalidProbe("source has no streams"));
     }
-    let raw_packets = probe
-        .get("packets")
-        .and_then(Value::as_array)
-        .map_or(&[][..], Vec::as_slice);
-    let mut packets = BTreeMap::<u64, Vec<(i128, i128)>>::new();
-    for packet in raw_packets {
-        let Some(stream_index) = json_u64(packet.get("stream_index")) else {
-            continue;
-        };
-        let Some(pts) = json_i128(packet.get("pts")) else {
-            continue;
-        };
-        let duration = json_i128(packet.get("duration")).unwrap_or(0).max(0);
-        packets
-            .entry(stream_index)
-            .or_default()
-            .push((pts, duration));
-    }
-
     let mut streams = Vec::with_capacity(raw_streams.len());
     let mut timebases = BTreeMap::<u64, (i128, i128)>::new();
     let mut rotations = BTreeSet::new();
@@ -543,17 +732,8 @@ fn normalize_probe(probe: &Value) -> Result<Value, SourceProbeError> {
                 video.insert("frame_rate".to_owned(), json!({"num": num, "den": den}));
             }
             let rates_differ = raw.get("avg_frame_rate") != raw.get("r_frame_rate");
-            let packet_durations = packets
-                .get(&index)
-                .into_iter()
-                .flatten()
-                .map(|(_, duration)| duration)
-                .filter(|duration| **duration > 0)
-                .collect::<BTreeSet<_>>();
-            video.insert(
-                "vfr".to_owned(),
-                Value::Bool(rates_differ || packet_durations.len() > 1),
-            );
+            let varies = packets.get(&index).is_some_and(StreamRuns::is_variable);
+            video.insert("vfr".to_owned(), Value::Bool(rates_differ || varies));
             if let Some(color) = color_metadata(raw) {
                 video.insert("color".to_owned(), color);
             }
@@ -579,7 +759,7 @@ fn normalize_probe(probe: &Value) -> Result<Value, SourceProbeError> {
         streams.push(Value::Object(stream));
     }
 
-    let mapping = build_mapping(raw_streams, &packets, &timebases)?;
+    let mapping = build_mapping(raw_streams, packets, &timebases)?;
     let format = probe.get("format").and_then(Value::as_object);
     let format_name = format
         .and_then(|value| value.get("format_name"))
@@ -615,13 +795,13 @@ fn normalize_probe(probe: &Value) -> Result<Value, SourceProbeError> {
 
 fn build_mapping(
     raw_streams: &[Value],
-    packets: &BTreeMap<u64, Vec<(i128, i128)>>,
+    packets: &BTreeMap<u64, StreamRuns>,
     timebases: &BTreeMap<u64, (i128, i128)>,
 ) -> Result<Value, SourceProbeError> {
     let mut initial_edits = Vec::new();
-    for (index, values) in packets {
-        if let (Some((first, _)), Some((num, den))) = (values.first(), timebases.get(index)) {
-            initial_edits.push(to_edit_ticks(*first, *num, *den)?);
+    for (index, stream) in packets {
+        if let (Some(first), Some((num, den))) = (stream.first_pts(), timebases.get(index)) {
+            initial_edits.push(to_edit_ticks(first, *num, *den)?);
         }
     }
     let global_origin = initial_edits.into_iter().min().unwrap_or(0);
@@ -633,44 +813,30 @@ fn build_mapping(
             .get(&index)
             .copied()
             .ok_or(SourceProbeError::InvalidProbe("stream timebase is missing"))?;
-        let mut values = packets.get(&index).cloned().unwrap_or_default();
-        if values.is_empty() {
+        // A stream the container declared but never carried a packet for
+        // still needs a segment, from what the header said about it.
+        let mut runs = packets
+            .get(&index)
+            .map(|stream| stream.runs.clone())
+            .unwrap_or_default();
+        if runs.is_empty() {
             let start = json_i128(raw.get("start_pts")).unwrap_or(0);
             let duration = json_i128(raw.get("duration_ts")).unwrap_or(1).max(1);
-            values.push((start, duration));
+            runs.push((start, start.saturating_add(duration)));
         }
-        let mut segment_number = 0_u64;
-        let mut source_start = values[0].0;
-        let mut source_end = values[0].0.saturating_add(values[0].1.max(1));
-        let mut edit_start = to_edit_ticks(source_start, num, den)? - global_origin;
-        for (pts, duration) in values.into_iter().skip(1) {
-            if pts < source_end {
-                let edit_end = edit_start + to_edit_ticks(source_end - source_start, num, den)?;
-                segments.push(mapping_segment(
-                    index,
-                    segment_number,
-                    source_start,
-                    source_end,
-                    edit_start.max(0),
-                    edit_end.max(edit_start),
-                ));
-                segment_number += 1;
-                edit_start = edit_end;
-                source_start = pts;
-                source_end = pts.saturating_add(duration.max(1));
-            } else {
-                source_end = source_end.max(pts.saturating_add(duration.max(1)));
-            }
+        let mut edit_start = to_edit_ticks(runs[0].0, num, den)? - global_origin;
+        for (segment_number, (source_start, source_end)) in runs.into_iter().enumerate() {
+            let edit_end = edit_start + to_edit_ticks(source_end - source_start, num, den)?;
+            segments.push(mapping_segment(
+                index,
+                segment_number as u64,
+                source_start,
+                source_end,
+                edit_start.max(0),
+                edit_end.max(edit_start),
+            ));
+            edit_start = edit_end;
         }
-        let edit_end = edit_start + to_edit_ticks(source_end - source_start, num, den)?;
-        segments.push(mapping_segment(
-            index,
-            segment_number,
-            source_start,
-            source_end,
-            edit_start.max(0),
-            edit_end.max(edit_start),
-        ));
     }
     segments.sort_by_key(|value| {
         (
@@ -970,10 +1136,12 @@ impl Drop for ScratchGuard {
 mod tests {
     #![allow(clippy::expect_used)]
 
+    use std::collections::BTreeMap;
+
     use super::{
-        SMALL_FILE_LIMIT, SourceProbeError, complete_inspection, decimal_seconds_to_ticks,
-        normalize_probe, parse_ratio, round_ratio, run_ffprobe_with_timeout, sample_source,
-        sample_spans, to_edit_ticks,
+        SMALL_FILE_LIMIT, SourceProbeError, StreamRuns, complete_inspection,
+        decimal_seconds_to_ticks, normalize_probe, parse_ratio, round_ratio,
+        run_ffprobe_with_timeout, sample_source, sample_spans, to_edit_ticks,
     };
     use serde_json::json;
     use std::{fs, os::unix::fs::PermissionsExt, time::Duration};
@@ -1004,9 +1172,178 @@ mod tests {
         ));
     }
 
+    /// Fold a list of packets exactly as the streamed reader does, so a test
+    /// that writes packets out by hand still exercises the real path.
+    fn folded(packets: &[(u64, i128, i128)]) -> BTreeMap<u64, StreamRuns> {
+        let mut runs = BTreeMap::<u64, StreamRuns>::new();
+        for (index, pts, duration) in packets {
+            runs.entry(*index)
+                .or_default()
+                .observe(*pts, *duration)
+                .expect("a handful of packets is under every bound");
+        }
+        runs
+    }
+
+    /// A recording longer than the old sixteen-megabyte JSON ceiling.
+    ///
+    /// The file is made by stream-copying a short clip end to end, so it costs
+    /// no encoding and has the packet count of a real hour: about 126,000
+    /// video packets and as many again of audio. Under the previous probe this
+    /// produced roughly ninety megabytes of ffprobe JSON and was refused with
+    /// `OutputLimit` — which meant ClipMill could not import an hour-long
+    /// recording, the exact thing it is for.
+    ///
+    /// Ignored by default because it needs the pinned FFmpeg and takes a few
+    /// seconds; `gate-ingest` runs it.
+    #[test]
+    #[ignore = "needs the pinned FFmpeg sidecar; run through gate-ingest"]
+    fn an_hour_long_recording_is_probed_rather_than_refused() {
+        let (ffprobe, ffmpeg) = pinned_tools();
+        let scratch = tempfile::tempdir().expect("a scratch directory");
+        let long = scratch.path().join("long.mp4");
+        let short = scratch.path().join("short.mp4");
+        assert!(
+            std::process::Command::new(&ffmpeg)
+                .args([
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=320x180:rate=30:duration=20"
+                ])
+                .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=20"])
+                .args([
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-c:a",
+                    "aac",
+                    "-shortest"
+                ])
+                .arg(&short)
+                .output()
+                .expect("ffmpeg runs")
+                .status
+                .success()
+        );
+        assert!(
+            std::process::Command::new(&ffmpeg)
+                .args(["-y", "-stream_loop", "210", "-i"])
+                .arg(&short)
+                .args(["-c", "copy"])
+                .arg(&long)
+                .output()
+                .expect("ffmpeg runs")
+                .status
+                .success()
+        );
+
+        let (metadata, packets) =
+            run_ffprobe_with_timeout(&ffprobe, scratch.path(), &long, super::PROBE_TIMEOUT)
+                .expect("an hour-long recording is probed");
+        let normalized = normalize_probe(&metadata, &packets).expect("it normalizes");
+
+        // Over two hundred thousand packets read, and the state kept is one run
+        // per stream: the whole point of the change.
+        assert!(packets.len() >= 2, "both streams produced packets");
+        for stream in packets.values() {
+            assert_eq!(
+                stream.runs.len(),
+                1,
+                "a stream-copied loop has one continuous run"
+            );
+        }
+        let duration = normalized["container"]["duration_ticks"]
+            .as_i64()
+            .expect("the container carries a duration");
+        assert!(
+            duration > 90_000 * 3_600,
+            "the probe reported {duration} ticks, under an hour"
+        );
+    }
+
+    /// The pinned sidecars.
+    ///
+    /// Panics rather than returning `None` when they are absent. The test that
+    /// calls this is `#[ignore]`d, so it runs only when somebody asked for it —
+    /// and a test that quietly passes by doing nothing is worse than one that
+    /// fails, because the silence is indistinguishable from success.
+    fn pinned_tools() -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.cache/bin");
+        let ffprobe = root.join("ffprobe");
+        let ffmpeg = root.join("ffmpeg");
+        assert!(
+            ffprobe.is_file() && ffmpeg.is_file(),
+            "the pinned FFmpeg sidecar is missing from {}; run ./tools/fetch-ffmpeg.sh",
+            root.display()
+        );
+        (ffprobe, ffmpeg)
+    }
+
+    #[test]
+    fn the_fold_keeps_one_run_for_a_continuous_stream_however_long() {
+        // A hundred thousand packets in order: one run, two distinct durations
+        // never reached, and nothing retained per packet.
+        let mut stream = StreamRuns::default();
+        for index in 0..100_000_i128 {
+            stream.observe(index * 40, 40).expect("under every bound");
+        }
+        assert_eq!(stream.runs.len(), 1);
+        assert_eq!(stream.runs[0], (0, 99_999 * 40 + 40));
+        assert!(!stream.is_variable());
+    }
+
+    #[test]
+    fn reordered_video_packets_stay_one_run() {
+        // Decode order for a group of pictures: the I-frame, then a P-frame
+        // ahead of it, then the B-frames between them. Presentation timestamps
+        // step backwards twice and none of it is a discontinuity — this is what
+        // ordinary h264 looks like, and treating it as one cut an hour of
+        // footage into sixty thousand segments.
+        let mut stream = StreamRuns::default();
+        for (pts, duration) in [(0, 40), (120, 40), (40, 40), (80, 40), (240, 40), (160, 40)] {
+            stream.observe(pts, duration).expect("under every bound");
+        }
+        assert_eq!(stream.runs.len(), 1, "reordering is not a discontinuity");
+        assert_eq!(stream.runs[0], (0, 280));
+    }
+
+    #[test]
+    fn a_real_reset_before_the_run_began_still_splits() {
+        // The case the rule exists for: the timeline restarts.
+        let mut stream = StreamRuns::default();
+        for (pts, duration) in [(1_000, 40), (1_040, 40), (0, 40), (40, 40)] {
+            stream.observe(pts, duration).expect("under every bound");
+        }
+        assert_eq!(stream.runs.len(), 2);
+        assert_eq!(stream.runs[0], (1_000, 1_080));
+        assert_eq!(stream.runs[1], (0, 80));
+    }
+
+    #[test]
+    fn a_timeline_that_is_nothing_but_jumps_is_refused() {
+        // Every packet jumping backwards is not a recording. The bound is on
+        // nonsense, not on length, so it must be reachable only this way.
+        let mut stream = StreamRuns::default();
+        let outcome = (0..super::MAX_RUNS_PER_STREAM as i128 + 2)
+            .try_for_each(|index| stream.observe(-index * 40, 40));
+        assert!(matches!(outcome, Err(SourceProbeError::OutputLimit)));
+    }
+
     #[test]
     fn mapping_preserves_gaps_splits_resets_and_tracks_audio_offset() {
-        let normalized = normalize_probe(&json!({
+        let packets = folded(&[
+            (0, 100, 40),
+            (0, 140, 40),
+            (0, 300, 40),
+            (0, 10, 40),
+            (1, 200, 20),
+            (1, 220, 20),
+        ]);
+        let normalized = normalize_probe(
+            &json!({
             "format": {"format_name": "matroska,webm", "duration": "1.000"},
             "streams": [
                 {
@@ -1033,16 +1370,10 @@ mod tests {
                     "channel_layout": "stereo"
                 }
             ],
-            "packets": [
-                {"stream_index": 0, "pts": 100, "duration": 40},
-                {"stream_index": 0, "pts": 140, "duration": 40},
-                {"stream_index": 0, "pts": 300, "duration": 40},
-                {"stream_index": 0, "pts": 10, "duration": 40},
-                {"stream_index": 1, "pts": 200, "duration": 20},
-                {"stream_index": 1, "pts": 220, "duration": 20}
-            ],
             "chapters": []
-        }))
+            }),
+            &packets,
+        )
         .expect("normalize synthetic probe");
         let segments = normalized["mapping"]["segments"]
             .as_array()

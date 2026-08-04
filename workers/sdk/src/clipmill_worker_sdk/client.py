@@ -289,6 +289,12 @@ class WorkerClient:
                 except LeaseCancelled:
                     raise
                 except Exception as error:
+                    # The daemon is told the class only — a detail string
+                    # crossing the boundary could carry a path or a fragment of
+                    # somebody's recording. But it has to be written down
+                    # somewhere, or an unexpected failure is a word with no
+                    # cause attached and the only way to find it is to guess.
+                    LOGGER.exception("task %s failed unexpectedly", context.lease.task_id)
                     return worker_pb2.Complete(
                         lease_id=context.lease.lease_id,
                         outcome=worker_pb2.TASK_OUTCOME_RETRYABLE,
