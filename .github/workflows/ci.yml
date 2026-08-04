@@ -699,6 +699,54 @@ jobs:
       - name: Run the suite inside a no-network namespace
         run: unshare -rn ./tools/drills/network-denial.sh
 
+  lock-phase1:
+    name: lock-phase1 (Phase 1 Local Lock gate)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Allow unprivileged user namespaces (Ubuntu 24.04 default restricts them)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Restore the pinned media substrate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/bin
+            .cache/fonts
+          key: media-substrate-${{ runner.os }}-${{ hashFiles('bom.toml') }}
+      # Keyed on the manifests, as the speech job keys them: re-pinning a model
+      # fetches that model again and nothing else.
+      - name: Restore the pinned speech and vision weights
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/models
+          key: phase1-models-${{ runner.os }}-${{ hashFiles('models/registry/silero-vad.toml', 'models/registry/whisper-base.toml', 'models/registry/wav2vec2-ctc-en.toml', 'models/registry/yunet-face.toml') }}
+      # The whole point of the gate is that acquisition happens out here and
+      # never inside the Lock, so every fetch is a step of this job rather than
+      # something the drill is allowed to do for itself.
+      - name: Acquire everything, outside the namespace
+        run: |
+          ./tools/fetch-ffmpeg.sh
+          ./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en yunet-face
+          while IFS= read -r lockfile; do
+            uv sync --frozen --project "$(dirname "$lockfile")"
+          done < <(find . -name uv.lock -not -path './.git/*' -not -path './target/*' | sort)
+          cargo build -p clipmilld --bin clipmilld
+      # The fixture speaks, so the recognizer has something to recognize. macOS
+      # has `say`; Linux needs one installed, and the generator refuses to guess.
+      - name: Install a speech synthesizer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng
+      - name: Run the whole product inside a no-network namespace
+        run: unshare -rn ./tools/drills/lock-phase1.sh
+
   supply-chain:
     name: supply chain
     runs-on: ubuntu-24.04
