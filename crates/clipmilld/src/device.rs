@@ -187,6 +187,7 @@ impl DeviceProfiler {
         Ok(ResourceCapacity::measured(
             identity.cpu.logical_cores,
             available_memory,
+            measured_available_disk(&self.inner.scratch),
         ))
     }
 
@@ -1066,6 +1067,32 @@ async fn measured_total_memory() -> u64 {
             .unwrap_or(8 * 1024 * 1024 * 1024)
     } else {
         linux_memory_value("MemTotal").unwrap_or(8 * 1024 * 1024 * 1024)
+    }
+}
+
+/// Free space on the volume a task's scratch actually lands on.
+///
+/// Measured rather than assumed, and measured *here* rather than read from the
+/// device profile, because free space is the one figure in a capacity that
+/// changes between two runs on the same machine. A profile that carried it
+/// would be stale the moment anything was written.
+///
+/// The fallback is the old constant. A machine whose free space cannot be read
+/// is one this should be conservative about, not optimistic — but a stage that
+/// wants more than half a gigabyte of scratch will then wait, so the reason is
+/// logged rather than left to be deduced from a task that never runs.
+fn measured_available_disk(scratch: &std::path::Path) -> u64 {
+    const FALLBACK: u64 = 512 * 1024 * 1024;
+    match fs2::available_space(scratch) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            tracing::warn!(
+                path = %scratch.display(),
+                %error,
+                "cannot measure free space for task scratch; assuming half a gigabyte"
+            );
+            FALLBACK
+        }
     }
 }
 
