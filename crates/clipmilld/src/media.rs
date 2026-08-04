@@ -79,6 +79,30 @@ const PROGRESS_TAIL_BYTES: u64 = 4 * 1024;
 const TICKS_PER_SECOND: i128 = 90_000;
 const TICKS_PER_MILLI: i128 = 90;
 
+/// The floor a loudness reading is pinned to when it is below measurement.
+///
+/// EBU R128 gates quiet windows out rather than reporting them, and ffmpeg
+/// says so with `-inf`. Rust parses that to `f64::NEG_INFINITY` quite happily,
+/// and `serde_json` then writes it as `null` — because JSON has no infinity —
+/// producing a document whose own schema requires a number there. Digital
+/// silence already measures about -120.7 LUFS through the same filter, so this
+/// is the value the surrounding data is already using for "nothing here".
+const SILENCE_FLOOR_LUFS: f64 = -120.0;
+
+/// One `lavfi.r128` reading, with the gated ones pinned to the floor.
+///
+/// Pinned rather than dropped: the envelope is a series, and a hole in it is
+/// harder to read than a floor. See [`SILENCE_FLOOR_LUFS`] for why a raw parse
+/// is not enough.
+fn measured_lufs(value: &str) -> Option<f64> {
+    let parsed = value.trim().parse::<f64>().ok()?;
+    Some(if parsed.is_finite() {
+        parsed
+    } else {
+        SILENCE_FLOOR_LUFS
+    })
+}
+
 const FILMSTRIP_INTERVAL_TICKS: i64 = 90_000;
 const FILMSTRIP_TILE_HEIGHT: u32 = 90;
 const FRAMES_PER_SECOND: u32 = 6;
@@ -1235,13 +1259,13 @@ fn parse_loudness_metadata(
                 .and_then(|value| crate::sources::decimal_seconds_to_ticks(value).ok())
                 .and_then(|ticks| i64::try_from(ticks).ok());
         } else if let Some(value) = line.strip_prefix("lavfi.r128.M=") {
-            momentary = value.trim().parse().ok();
+            momentary = measured_lufs(value);
         } else if let Some(value) = line.strip_prefix("lavfi.r128.S=") {
-            short_term = value.trim().parse().ok();
+            short_term = measured_lufs(value);
         } else if let Some(value) = line.strip_prefix("lavfi.r128.I=") {
-            integrated = value.trim().parse().ok();
+            integrated = measured_lufs(value);
         } else if let Some(value) = line.strip_prefix("lavfi.r128.LRA=") {
-            range = value.trim().parse().ok();
+            range = measured_lufs(value);
         } else if let Some((key, value)) = line.split_once('=')
             && key.starts_with("lavfi.r128.sample_peaks_ch")
             && let Ok(peak) = value.trim().parse::<f64>()
@@ -1753,10 +1777,64 @@ mod tests {
 
     use std::fs;
 
+    use clipmill_core::Sha256Digest;
+
     use super::{
-        ProgressSlot, directory_bytes, ffmpeg_sibling, read_progress_millis, read_wav_info,
-        ticks_to_millis,
+        ProgressSlot, directory_bytes, ffmpeg_sibling, parse_loudness_metadata,
+        read_progress_millis, read_wav_info, ticks_to_millis,
     };
+
+    /// A gated window must not become `null` in the document.
+    ///
+    /// EBU R128 does not report loudness for a window below the gate; ffmpeg
+    /// says `-inf`, Rust parses that to negative infinity, and `serde_json`
+    /// writes non-finite floats as `null`. The contract requires a number
+    /// there, so the whole analysis of any recording containing a quiet
+    /// passage failed at the first consumer that parsed strictly — which is
+    /// every real recording, and none of the silent test fixtures.
+    #[test]
+    fn a_gated_loudness_window_lands_on_the_floor_rather_than_null() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("loudness.txt");
+        fs::write(
+            &path,
+            "frame:0 pts:0 pts_time:0\n\
+             lavfi.r128.M=-inf\n\
+             lavfi.r128.S=-18.4\n\
+             frame:1 pts:9000 pts_time:0.1\n\
+             lavfi.r128.M=-23.5\n\
+             lavfi.r128.S=-inf\n\
+             lavfi.r128.I=-18.5\n\
+             lavfi.r128.LRA=1.7\n",
+        )
+        .expect("write metadata");
+
+        let document = parse_loudness_metadata(&path, Sha256Digest::from_bytes([7; 32]), 90_000)
+            .expect("the envelope parses");
+        let points = document["points"].as_array().expect("points");
+        assert_eq!(points.len(), 2);
+        for point in points {
+            for field in ["momentary_lufs", "short_term_lufs"] {
+                let value = &point[field];
+                assert!(
+                    value.is_null() || value.as_f64().is_some(),
+                    "{field} is neither absent nor a number: {value}"
+                );
+                if let Some(number) = value.as_f64() {
+                    assert!(number.is_finite(), "{field} serialized a non-finite value");
+                }
+            }
+        }
+        assert_eq!(points[0]["momentary_lufs"].as_f64(), Some(-120.0));
+        assert_eq!(points[1]["short_term_lufs"].as_f64(), Some(-120.0));
+        // Serializing is where the failure actually appeared, so the assertion
+        // is made against the bytes a consumer receives rather than the tree.
+        let encoded = serde_json::to_string(&document).expect("serialize");
+        assert!(
+            !encoded.contains("null"),
+            "the document still carries a null: {encoded}"
+        );
+    }
 
     #[test]
     fn ffmpeg_path_derives_from_the_ffprobe_sibling() {

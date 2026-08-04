@@ -1570,8 +1570,7 @@ impl Service {
             Ok(encoded) => encoded,
             Err(error) => return store_error_reply(request_id, &error),
         };
-        let Ok(doc) = clipmill_contracts::proto::ipc::v1::EditDoc::decode(encoded.as_slice())
-        else {
+        let Some(doc) = created_edit_doc(&encoded) else {
             return error_reply(
                 request_id,
                 ErrorCode::Internal,
@@ -2792,6 +2791,26 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         None => "missing_body",
+    }
+}
+
+/// The document out of a stored `create_edit_doc` reply.
+///
+/// The store hands every caller a whole `Response` envelope, because all of
+/// them forward those bytes as the reply unchanged. Directing is the exception:
+/// it needs the document *inside* a response of its own, so it has to unwrap
+/// the envelope rather than decode it as the payload. Decoding the envelope
+/// straight to `EditDoc` does not fail — Protobuf reinterprets one message as
+/// another permissively — it just puts the request id where the document id
+/// goes and leaves the document empty, which is what `direct_clip` returned to
+/// every caller until this existed.
+fn created_edit_doc(encoded: &[u8]) -> Option<clipmill_contracts::proto::ipc::v1::EditDoc> {
+    match Response::decode(encoded) {
+        Ok(Response {
+            body: Some(response::Body::CreateEditDoc(created)),
+            ..
+        }) => created.doc,
+        _ => None,
     }
 }
 

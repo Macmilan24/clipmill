@@ -129,7 +129,20 @@ impl ResourceCapacity {
         }
     }
 
-    pub(crate) fn measured(logical_cores: u32, available_memory_bytes: u64) -> Self {
+    /// What this machine can actually lend a task right now.
+    ///
+    /// Disk is a parameter rather than a constant because it used to be one:
+    /// a flat 512 MiB, on every machine, whatever it had free. Delivery
+    /// declares a gigabyte of scratch, the selection query admits a task only
+    /// where `disk_bytes <= capacity`, and a gigabyte is never under half of
+    /// one — so `deliver-export` could not be scheduled anywhere, and export
+    /// through the daemon had never run. It was invisible because the export
+    /// gate tests the crate directly and never submits the job.
+    pub(crate) fn measured(
+        logical_cores: u32,
+        available_memory_bytes: u64,
+        available_disk_bytes: u64,
+    ) -> Self {
         let maximum_threads = u32::try_from(MAX_BUILTIN_TASKS).unwrap_or(u32::MAX);
         Self {
             cpu_threads: logical_cores.clamp(1, maximum_threads),
@@ -138,7 +151,7 @@ impl ResourceCapacity {
                 .checked_div(4)
                 .unwrap_or(available_memory_bytes)
                 .max(64 * 1024 * 1024),
-            disk_bytes: 512 * 1024 * 1024,
+            disk_bytes: available_disk_bytes,
             accelerator_mask: 0,
             vram_bytes: 0,
         }
@@ -2170,9 +2183,14 @@ impl SchedulerHandle {
     }
 
     pub(crate) fn apply_device_profile(&self, profile: &VerifiedDeviceProfile) {
-        let measured =
-            ResourceCapacity::measured(profile.logical_cores, profile.available_memory_bytes)
-                .with_available_backends(&profile.available_backends);
+        // As in `daemon.rs`: the profile says nothing about free space, so the
+        // figure measured when this scheduler started is the one to keep.
+        let measured = ResourceCapacity::measured(
+            profile.logical_cores,
+            profile.available_memory_bytes,
+            self.capacity_limit.disk_bytes,
+        )
+        .with_available_backends(&profile.available_backends);
         let capacity = ResourceCapacity {
             cpu_threads: measured
                 .cpu_threads
@@ -3050,7 +3068,8 @@ mod resource_tests {
     fn measured_backend_availability_controls_accelerator_admission() {
         let backends = BTreeSet::from(["videotoolbox".to_owned()]);
         let mut capacity =
-            ResourceCapacity::measured(4, 1024 * 1024 * 1024).with_available_backends(&backends);
+            ResourceCapacity::measured(4, 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024)
+                .with_available_backends(&backends);
         let mut resources = ResourceDeclaration::demo();
         resources.accelerator_class = "vaapi".to_owned();
         assert!(!capacity.reserve(&resources));

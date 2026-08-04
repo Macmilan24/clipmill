@@ -267,6 +267,46 @@ fn a_silent_source_still_occupies_its_span() {
     assert!(!plan.graph.graph.contains("[0:a]"));
 }
 
+/// The tail pad belongs to the program, never to a span.
+///
+/// `-frames:v` caps and does not pad, so the graph holds its last frame to let
+/// the encoder reach the count the plan pinned — which matters for any source
+/// not already at the render rate, where `fps` resampling yields fewer frames
+/// than the span asks for.
+///
+/// Where it sits is the whole safety of it. A pad that stops on end-of-input
+/// never stops, so one placed inside a span chain would hold that span's last
+/// frame forever and `concat` would never reach the second span: a two-segment
+/// render would hang rather than fail. After the concat there is nothing left
+/// to starve, and `-frames:v` ends the stream.
+#[test]
+fn the_tail_pad_holds_the_program_and_never_a_span() {
+    let plan = compile(&first_slice(), &[source()], &RenderProfile::default()).expect("compiles");
+    let graph = &plan.graph.graph;
+    assert_eq!(plan.spans.len(), 2, "this fixture must exercise a concat");
+    assert_eq!(
+        graph.matches("tpad=").count(),
+        1,
+        "exactly one pad, for the program: {graph}"
+    );
+    let pad = graph.find("tpad=").expect("the pad is present");
+    let concat = graph.find("concat=").expect("the concat is present");
+    assert!(
+        pad > concat,
+        "a pad before the concat would starve the second span: {graph}"
+    );
+}
+
+/// The loudness measurement pass has no video chain to pad.
+///
+/// It decodes audio only, so a video filter there would be both useless and a
+/// second place the pad could drift out of step with the encode graph.
+#[test]
+fn the_measurement_pass_carries_no_tail_pad() {
+    let plan = compile(&fit_document(), &[source()], &RenderProfile::default()).expect("compiles");
+    assert!(!plan.measurement_graph.graph.contains("tpad="));
+}
+
 #[test]
 fn a_gain_curve_becomes_a_program_time_expression() {
     let mut document = fit_document();

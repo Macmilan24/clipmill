@@ -21,6 +21,45 @@ use crate::{
     timing::{FrameRate, ticks_to_seconds},
 };
 
+/// Holds the last frame so the encoder can always reach the planned count.
+///
+/// `-frames:v` is a cap, not a pad: FFmpeg stops at the number given and never
+/// invents a frame to reach it. So the plan's count was only ever authoritative
+/// when the graph happened to produce at least that many, which is true exactly
+/// when `fps` is a no-op — that is, when the source is already at the render
+/// target. It is not, for anything a phone or a screen recorder produced, and
+/// resampling 30 to 30000/1001 yields fewer frames than the span asks for. The
+/// render then refused its own output for being two frames short.
+///
+/// Padding rather than predicting: deriving the count the way `fps` derives it
+/// would mean reimplementing FFmpeg's resampler in Rust and keeping it in step
+/// across upgrades, and a prediction can drift where a constraint cannot.
+///
+/// This is unreachable whenever the graph already satisfies the count, because
+/// `-frames:v` truncates before the pad is ever drawn from. So a source already
+/// at the target rate encodes to the same bytes it did before this existed —
+/// measured against the pinned encoder rather than argued, identical SHA-256
+/// with and without it, which is what says the goldens do not move.
+///
+/// Where it sits is the safety of it, and
+/// `the_tail_pad_holds_the_program_and_never_a_span` holds it there: a pad that
+/// stops on end-of-input never stops, so one placed inside a span chain would
+/// hold that span forever and `concat` would never reach the next.
+///
+/// Bounded at one second, and that bound is load-bearing rather than tidy. An
+/// unbounded pad (`stop=-1`) deadlocks the graph as soon as audio is mapped
+/// beside it: measured against the pinned encoder, the encode stalls at 396 of
+/// the 495 frames it was asked for and never returns, which reaches the daemon
+/// as a duration-scaled deadline rather than as anything a reader could place.
+/// A second is far more than the shortfall can be — resampling 30 to
+/// 30000/1001 loses a tenth of a percent, so even the 180-second ceiling on a
+/// clip is about five frames — and a graph short by more than that is wrong in
+/// a way the count should still refuse.
+///
+/// The cost, stated rather than hidden: a clip from a 30 fps source can end on
+/// up to two cloned frames, about 67 ms of held final image.
+const TAIL_PAD: &str = "tpad=stop_mode=clone:stop_duration=1";
+
 /// One decode span: an input file pre-seeked to a keyframe, then trimmed
 /// exactly. The keyframe comes from the source's reference index, so the
 /// decoder starts at a point it can actually start at and the trim discards
@@ -205,8 +244,10 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         let burn = match request.subtitle_file {
             // libass sees exactly one directory holding exactly one pinned
             // font, so the render cannot pick up whatever the host installed.
-            Some(file) => format!("[vcat]subtitles=filename={file}:fontsdir={FONTS_DIR}[vout]"),
-            None => "[vcat]null[vout]".to_owned(),
+            Some(file) => {
+                format!("[vcat]subtitles=filename={file}:fontsdir={FONTS_DIR},{TAIL_PAD}[vout]")
+            }
+            None => format!("[vcat]{TAIL_PAD}[vout]"),
         };
         chains.push(burn);
     }
