@@ -495,7 +495,15 @@ impl StreamRuns {
         }
         let end = pts.saturating_add(duration.max(1));
         match self.runs.last_mut() {
-            Some((_, source_end)) if pts >= *source_end => {
+            // A packet at or after the run's *start* belongs to it, however it
+            // compares with the running end. Video is stored in decode order,
+            // so with B-frames a presentation timestamp legitimately steps
+            // backwards inside a group of pictures — comparing against the end
+            // called every one of those a discontinuity and cut an hour of
+            // ordinary footage into sixty thousand segments, which is both
+            // wrong about the timeline and large enough to exceed the frame the
+            // answer travels in. A real reset lands before the run began.
+            Some((source_start, source_end)) if pts >= *source_start => {
                 *source_end = (*source_end).max(end);
             }
             Some(_) => {
@@ -1285,6 +1293,33 @@ mod tests {
         assert_eq!(stream.runs.len(), 1);
         assert_eq!(stream.runs[0], (0, 99_999 * 40 + 40));
         assert!(!stream.is_variable());
+    }
+
+    #[test]
+    fn reordered_video_packets_stay_one_run() {
+        // Decode order for a group of pictures: the I-frame, then a P-frame
+        // ahead of it, then the B-frames between them. Presentation timestamps
+        // step backwards twice and none of it is a discontinuity — this is what
+        // ordinary h264 looks like, and treating it as one cut an hour of
+        // footage into sixty thousand segments.
+        let mut stream = StreamRuns::default();
+        for (pts, duration) in [(0, 40), (120, 40), (40, 40), (80, 40), (240, 40), (160, 40)] {
+            stream.observe(pts, duration).expect("under every bound");
+        }
+        assert_eq!(stream.runs.len(), 1, "reordering is not a discontinuity");
+        assert_eq!(stream.runs[0], (0, 280));
+    }
+
+    #[test]
+    fn a_real_reset_before_the_run_began_still_splits() {
+        // The case the rule exists for: the timeline restarts.
+        let mut stream = StreamRuns::default();
+        for (pts, duration) in [(1_000, 40), (1_040, 40), (0, 40), (40, 40)] {
+            stream.observe(pts, duration).expect("under every bound");
+        }
+        assert_eq!(stream.runs.len(), 2);
+        assert_eq!(stream.runs[0], (1_000, 1_080));
+        assert_eq!(stream.runs[1], (0, 80));
     }
 
     #[test]
