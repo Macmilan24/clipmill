@@ -1,0 +1,20 @@
+{
+  "schema_version": "clipmill.eval.render_slo.v1",
+  "minimum_ratio": 1.5,
+  "measured_ratio": 1.587,
+  "program_seconds": 6.0,
+  "elapsed_seconds": 3.781,
+  "profile": "clipmill.render.vertical_1080x1920.v1",
+  "engine": {
+    "app": "clipmilld 0.0.1",
+    "ffmpeg": "ffmpeg-8.1.2-btb-n8.1.2",
+    "font_family": "Inter",
+    "font_sha256": "sha256:288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+  },
+  "machine": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "processor": "arm"
+  }
+}

@@ -165,6 +165,48 @@ class DaemonClient:
         )
         return tuple(_require_body(response, "list_sources").sources)
 
+    def direct_clip(
+        self,
+        project_id: str,
+        source_id: str,
+        candidate_id: str,
+        *,
+        cut: int = daemon_pb2.CLIP_CUT_V1_CHOSEN,
+    ) -> daemon_pb2.DirectClipResponse:
+        """Assemble a candidate into an edit document.
+
+        The chosen cut by default, because that is the one a ranking argues
+        for; the alternative exists for a person who disagrees, and asking for
+        it from a harness would measure a path no default run takes.
+        """
+
+        response = self._call(
+            daemon_pb2.Request(
+                direct_clip=daemon_pb2.DirectClipRequest(
+                    project_id=project_id,
+                    source_id=source_id,
+                    candidate_id=candidate_id,
+                    cut=cut,
+                )
+            )
+        )
+        return _require_body(response, "direct_clip")
+
+    def export_clip(self, request: daemon_pb2.ExportRequestV1) -> str:
+        """Render and deliver a document, returning the job to wait on.
+
+        The whole request travels as the contract type rather than as loose
+        arguments: the naming pattern, the attestation and the assistance
+        disclosure are one document the daemon validates together, and
+        spreading them across keywords here would let a caller build half of
+        one.
+        """
+
+        response = self._call(
+            daemon_pb2.Request(export_clip=daemon_pb2.ExportClipRequest(request=request))
+        )
+        return _require_body(response, "export_clip").job_id
+
     def get_device_profile(
         self, *, remeasure: bool = False, request_id: str | None = None
     ) -> daemon_pb2.GetDeviceProfileResponse:
