@@ -500,9 +500,13 @@ fn verify_output(plan: &RenderPlan, probed: &Value) -> Result<(), TaskExecutionE
     if let Some(frames) = frames
         && frames != plan.frame_count
     {
-        return Err(TaskExecutionError::deterministic(
-            "the render does not carry the frame count the plan pinned",
-        ));
+        // Both numbers, because the difference is the diagnosis: one frame
+        // apart is a rounding disagreement at the boundary, and wildly apart
+        // is a plan describing a different clip than the one encoded.
+        return Err(TaskExecutionError::deterministic(format!(
+            "the render carries {frames} frames and the plan pinned {}",
+            plan.frame_count
+        )));
     }
     if !streams.iter().any(|stream| stream["codec_type"] == "audio") {
         return Err(TaskExecutionError::deterministic(
