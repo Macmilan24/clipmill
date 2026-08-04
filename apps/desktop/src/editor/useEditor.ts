@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import { newest, oldestFirstNewest } from '../daemon/ordering.js';
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
 
 const PROXY_FILE = 'proxy.mp4';
@@ -52,7 +53,7 @@ export function useEditor(api: ShellApi = daemonApi): EditorState {
     void (async () => {
       try {
         const projects = await api.listProjects();
-        const project = projects.at(-1);
+        const project = newest(projects);
         if (!project) {
           if (live) {
             setLoading(false);
@@ -60,15 +61,15 @@ export function useEditor(api: ShellApi = daemonApi): EditorState {
           return;
         }
         const docs = await api.listEditDocs(project.projectId);
-        const newest = docs.at(-1);
-        if (!newest) {
+        const latestDoc = oldestFirstNewest(docs);
+        if (!latestDoc) {
           if (live) {
             setLoading(false);
           }
           return;
         }
         const [fetched, jobs] = await Promise.all([
-          api.previewPlan(project.projectId, newest.docId),
+          api.previewPlan(project.projectId, latestDoc.docId),
           api.listJobs(project.projectId).catch(() => []),
         ]);
         const proxy = jobs
@@ -76,7 +77,7 @@ export function useEditor(api: ShellApi = daemonApi): EditorState {
           .find((task) => task.outputKind === PROXY_KIND && task.outputArtifactId !== '');
         if (live) {
           setProjectId(project.projectId);
-          setDocId(newest.docId);
+          setDocId(latestDoc.docId);
           setRevision(fetched.revision);
           setPlan(fetched);
           setProxyUrl(

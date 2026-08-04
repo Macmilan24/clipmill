@@ -12,6 +12,7 @@
 import type { DiscoveryCandidates, IndexTranscript, RankingSet } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import { newest } from '../daemon/ordering.js';
 import type { ClipDecisionRecord, Job, Source } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
 import { type ClipRow, type Summary, clipRows, summarize } from './model.js';
@@ -57,7 +58,7 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
  * fingerprint.
  */
 function analyzed(jobs: readonly Job[]): Job | null {
-  return jobs.filter((job) => publishedArtifact(job, RANKING_KIND) !== null).at(-1) ?? null;
+  return newest(jobs.filter((job) => publishedArtifact(job, RANKING_KIND) !== null));
 }
 
 export class ResultsLoader {
@@ -70,7 +71,7 @@ export class ResultsLoader {
     ]);
     const source = sourceId
       ? (sources.find((candidate) => candidate.sourceId === sourceId) ?? null)
-      : (sources.at(-1) ?? null);
+      : newest(sources);
     if (!source) {
       return EMPTY_SNAPSHOT;
     }
