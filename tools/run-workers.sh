@@ -68,6 +68,7 @@ import json
 import os
 import secrets
 import sys
+import time
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -75,11 +76,25 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 identity_path, trust_dir = Path(sys.argv[1]), Path(sys.argv[2])
 
-# A ULID in Crockford base32, which is the shape `WorkerId` parses. Random
-# rather than time-ordered: nothing sorts these, and a development identity
-# should not carry when it was made.
+# A real ULID, not twenty-six random characters. The daemon parses this with
+# `Ulid::from_string` and then requires it to round-trip canonically, so the
+# first ten characters must be a 48-bit millisecond timestamp — only `0`-`7`
+# are legal in the leading position, and a random letter there overflows and is
+# refused as a malformed trust entry.
 ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-worker_id = "wrk_" + "".join(secrets.choice(ALPHABET) for _ in range(26))
+
+
+def crockford(value: int, length: int) -> str:
+    out = []
+    for _ in range(length):
+        out.append(ALPHABET[value & 0x1F])
+        value >>= 5
+    return "".join(reversed(out))
+
+
+timestamp = int(time.time() * 1000) & ((1 << 48) - 1)
+randomness = secrets.randbits(80)
+worker_id = "wrk_" + crockford(timestamp, 10) + crockford(randomness, 16)
 
 private_key = Ed25519PrivateKey.generate()
 private_bytes = private_key.private_bytes(
