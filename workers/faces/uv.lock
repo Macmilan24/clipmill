@@ -134,7 +134,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cryptography", specifier = ">=45" },
+    { name = "cryptography", specifier = ">=50" },
     { name = "protobuf", specifier = ">=5.29" },
     { name = "pyarrow", specifier = ">=18" },
     { name = "pydantic", specifier = ">=2.7" },

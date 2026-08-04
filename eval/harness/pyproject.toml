@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "Evaluation harness: corpus fetch/verify by sha256, stage runner, run-manifest recorder"
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"
-dependencies = ["clipmill-worker-sdk", "cryptography>=45", "protobuf>=5.29"]
+dependencies = ["clipmill-worker-sdk", "cryptography>=50", "protobuf>=5.29"]
 
 [project.scripts]
 clipmill-eval = "clipmill_eval.cli:main"

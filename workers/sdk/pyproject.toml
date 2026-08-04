@@ -5,7 +5,10 @@ description = "ClipMill worker protocol client: capability handshake, leases, he
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"
 dependencies = [
-  "cryptography>=45",
+  # CVE-2026-69247, fixed in 50.0.0. This is the floor every Python environment
+  # in the repository inherits: each of the other eleven lockfiles reaches
+  # cryptography through this package, so raising it here is what moves them.
+  "cryptography>=50",
   "protobuf>=5.29",
   "pyarrow>=18",
   "pydantic>=2.7",
