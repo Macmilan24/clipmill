@@ -27,6 +27,8 @@ mod clustering;
 #[cfg(test)]
 pub(crate) mod fixture;
 mod lattice;
+#[cfg(test)]
+mod planted;
 mod proposers;
 mod prosody;
 pub mod ranking;

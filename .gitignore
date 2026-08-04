@@ -27,3 +27,11 @@ apps/desktop/src-tauri/gen/
 .idea/
 .vscode/
 *.swp
+
+# Evaluation corpus media and filled annotations. The recordings are licensed
+# for evaluation and not for redistribution, and an annotation names spans in
+# them; neither belongs in a public repository. `fetch-corpus` refuses to write
+# anywhere Git would pick it up, and this is what makes the default safe.
+/eval/corpus/media/
+/eval/corpus/annotations/
+/eval/corpus/*.signed.json

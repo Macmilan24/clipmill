@@ -244,3 +244,103 @@ def _unix_millis() -> int:
 
 def _elapsed_millis(started_ns: int) -> int:
     return max(0, (time.monotonic_ns() - started_ns) // 1_000_000)
+
+
+# ---- W26: recall against annotated ground truth -----------------------------
+#
+# Kept apart from `run_corpus` on purpose. That function is the Phase-0 ingest
+# protocol — cold and warm registration, byte-for-byte cache identity — and it
+# must keep meaning what it meant. This is a different claim about a different
+# stage, and folding the two together would make one failing suite look like
+# the other.
+
+
+CANDIDATES_KIND = "discovery.candidates.v1"
+RANKING_KIND = "ranking.set.v1"
+INDEX_KIND = "index.transcript.v1"
+
+
+def analyze_and_read(
+    client: DaemonClient,
+    project_id: str,
+    source_id: str,
+    *,
+    timeout_seconds: float,
+) -> dict[str, dict[str, Any]]:
+    """Run the analyze DAG for one source and read back what it published.
+
+    The artifacts are found by the kind each task *declares* rather than by
+    guessing from the task name: a plan states the observation before the work
+    runs, which is the only way to tell "the ranking failed" from "there was no
+    ranking task".
+    """
+
+    job = client.submit_analyze(project_id, source_id)
+    finished = client.wait_for_job(job.job_id, timeout_seconds=timeout_seconds)
+    if finished.state != daemon_pb2.JOB_STATE_SUCCEEDED:
+        raise EvaluationError(
+            f"analyze did not succeed for {source_id}: {finished.failure_detail or finished.state}"
+        )
+    wanted = {CANDIDATES_KIND, RANKING_KIND, INDEX_KIND}
+    documents: dict[str, dict[str, Any]] = {}
+    for task in finished.tasks:
+        if task.output_kind in wanted and task.output_artifact_id:
+            raw = client.read_artifact(project_id, task.output_artifact_id)
+            documents[task.output_kind] = json.loads(raw)
+    missing = wanted - set(documents) - {INDEX_KIND}
+    if missing:
+        raise EvaluationError(f"analyze published nothing for {sorted(missing)}")
+    return documents
+
+
+def verify_candidates(candidates: dict[str, Any]) -> None:
+    """The three guarantees discovery makes, checked before anything is scored.
+
+    A recall number computed over a candidate set that broke its own contract
+    would be a number about something other than discovery, so this runs first
+    and refuses rather than reporting.
+    """
+
+    entries = candidates.get("candidates")
+    if not isinstance(entries, list):
+        raise EvaluationError("the candidate set carries no candidates array")
+    clusters = {
+        entry.get("id") for entry in candidates.get("clusters", []) if isinstance(entry, dict)
+    }
+    for entry in entries:
+        identifier = entry.get("id", "?")
+        if not entry.get("evidence"):
+            raise EvaluationError(f"{identifier} carries no evidence to walk back to")
+        if not entry.get("cluster_id"):
+            raise EvaluationError(f"{identifier} belongs to no cluster")
+        if clusters and entry["cluster_id"] not in clusters:
+            raise EvaluationError(f"{identifier} names a cluster that is not in the set")
+        lattice = entry.get("boundary_lattice") or {}
+        if not lattice.get("starts") or not lattice.get("ends"):
+            raise EvaluationError(f"{identifier} carries no legal boundary lattice")
+
+
+def verify_ranking(ranking: dict[str, Any], candidates: dict[str, Any]) -> None:
+    """What a ranked set must be true of before its recall means anything."""
+
+    known = {entry.get("id") for entry in candidates.get("candidates", [])}
+    ranked = ranking.get("cohort")
+    selected = ranking.get("selected")
+    if not isinstance(ranked, list) or not isinstance(selected, list):
+        raise EvaluationError("the ranking set is missing its cohort or its selection")
+    cohort = {entry.get("candidate_id") for entry in ranked}
+    unknown = cohort - known
+    if unknown:
+        raise EvaluationError(f"the ranking scored candidates discovery never proposed: {unknown}")
+    outside = set(selected) - cohort
+    if outside:
+        raise EvaluationError(f"the ranking selected clips outside its own cohort: {outside}")
+    if len(set(selected)) != len(selected):
+        raise EvaluationError("the ranking selected the same clip twice")
+    # A set smaller than requested is allowed and is the honest answer; a set
+    # larger than requested is a bug that would inflate recall for free.
+    requested = ranking.get("requested", {}).get("count")
+    if isinstance(requested, int) and len(selected) > requested:
+        raise EvaluationError(
+            f"the ranking returned {len(selected)} clips for a request of {requested}"
+        )

@@ -1,0 +1,9 @@
+{
+  "bar_id": "planted-smoke",
+  "comment": "The bar the synthetic recall smoke is held to. Recall is 1.0 because the moments were planted: failing to find something put there on purpose is a failure, not a measurement. The duplicate rate is the FIRST HONEST BASELINE, recorded rather than chosen — the engine ships 0.6 on this recording because near-duplicate detection runs before the boundary optimizer decides where clips are cut, so two candidates can converge onto one cut in two clusters. That is a real defect, it is written up in docs/evaluation.md, and this number is a ratchet: it may be lowered when the defect is fixed and must never be raised.",
+  "min_recall": 1.0,
+  "min_recall_by_importance": { "essential": 1.0 },
+  "min_multi_moment_recall": 1.0,
+  "max_duplicate_rate": 0.6,
+  "max_boundary_edge_error_millis": 500
+}

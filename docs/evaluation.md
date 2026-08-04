@@ -113,3 +113,155 @@ the structured hostile failure, hardware-profile identity, contract and
 sidecar versions, timings, cache results, and aggregate license counts without
 private paths or media bytes. Together with the green W8 security and offline
 matrix, this is the Phase 0 exit proof.
+
+---
+
+# Phase 1 evaluation: recall, annotation, and the SLOs
+
+What W26 added, and the first honest number it produced.
+
+## Ground truth is plural
+
+An annotation is the only input to this project that nothing derives — it is a
+person's opinion, and every recall figure is measured against it. So it is a
+published contract (`clipmill.eval_annotation.v1`) shaped the way the book's
+ch. 22 says ground truth actually is:
+
+- **Moment sets, not a moment.** A recording has several spans worth clipping.
+- **Alternative starts and ends per moment.** A cut that landed where the
+  annotator's second choice was is not an error, and boundary-edge error is
+  measured against every acceptable span rather than one preferred one.
+- **Importance grades** — `essential`, `strong`, `acceptable`. Recall is
+  reported per grade as well as pooled, because a system that finds every
+  acceptable moment and misses every essential one has a good aggregate number
+  and is useless.
+- **Exclusions with reasons.** Not the same as a span simply not being a
+  moment: not-a-moment is an absence, an exclusion is a claim, and offering one
+  fails a gate whatever the bar says.
+- **One document per annotator.** Disagreement is signal — a moment two of
+  three editors accept is a different fact from unanimity — so agreement is
+  computed across documents and never resolved inside one.
+
+An empty `moments` list is a real answer. A recording with nothing worth
+clipping is a fact a recall number has to be able to represent, which is why
+the key is always present rather than omitted when unfilled.
+
+## The metric stack
+
+One implementation, in `clipmill_eval.recall`, called by everything that
+reports a number. Four measurements, answering different questions:
+
+| Metric               | Question                                                    | Notes                                                                |
+| -------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| Recall@10 at IoU 0.5 | Did the acceptable moments reach the board?                 | Scored over `selected` — what a user is shown — not the whole cohort |
+| Multi-moment recall  | Did a recording with several moments give up _all_ of them? | Single-moment recordings are excluded; they cannot fail it           |
+| Duplicate rate @5    | Is the _set_ useful, or one moment cut five ways?           | A clip duplicates an **earlier, better-ranked** one                  |
+| Boundary-edge error  | Did the cut land where an editor would have put it?         | Median and p90, against the alternatives                             |
+
+Two details worth knowing before reading a number:
+
+- **IoU 0.5 is stricter than it sounds.** Two spans that overlap by half their
+  length score 1/3, not 0.5. A clip may run 50% longer than the moment and
+  still pass (2/3); three times as long does not (1/3).
+- **Recall pools over moments, not recordings.** A recording with nine moments
+  and a recording with one are different amounts of evidence, and averaging
+  their rates would weight them the same.
+
+## The planted smoke, and what it found
+
+CI cannot run the private corpus, and a synthetic recording cannot be given
+speech without a recognizer nobody has pinned for this. So the moments are
+planted **at the transcript** rather than at the audio: `clipmill-discovery`
+builds a recording with three well-separated moments — a question with its
+answer, a claim carrying numerals, a topic that opens and closes, one for each
+proposer — runs the real mesh, lattice, scorer, boundary optimizer and selector
+over it, and leaves the documents on disk. The harness scores them.
+
+The split is deliberate. The engine is Rust and the metric is Python, and
+neither knows the other's answer.
+
+The first run of this gate found a real defect, which is what it is for.
+
+**Near-duplicate clips reach the results board.** Recall is 1.0 and boundary
+error is 0 ms, but the top-5 duplicate rate is **0.6**. Two candidates come out
+with _identical_ chosen boundaries in _different clusters_, and three clips
+cover the same moment at 78→108, 78→97 and 78→103.
+
+The mechanism: clustering runs during `discover()`, over the candidates'
+**proposed** intervals. The boundary optimizer then re-cuts each candidate in
+`rank()`, and two candidates that were distinct proposals converge onto the
+same cut. `select()` correctly refuses a second member of a cluster it already
+took — but nothing notices that two _different_ clusters now hold the same
+clip. The set simultaneously reports `all_remaining_are_duplicates` as a
+shortfall reason and contains duplicates, which is self-inconsistent.
+
+This contradicts the book's own rule (ch. 16): _"Asked for ten clips from a
+recording holding four good moments, the honest answer is four and a reason,
+not ten with six the system does not believe in."_
+
+It is **not fixed here**. Changing set selection is a ranking change with its
+own goldens and its own gate, and doing it inside the evaluation workstream
+would mean the code that measures and the code being measured moved in the same
+commit. `eval/recall/planted-bar.json` records 0.6 as a **ratchet**: it may be
+lowered when the defect is fixed and must never be raised.
+
+## The bar
+
+`eval/recall/planted-bar.json` names only what it constrains. An absent key is
+not a metric silently set to zero — it is one this bar makes no claim about,
+which is the honest state before a baseline exists.
+
+The planted bar sets recall to 1.0 because the moments were _planted_: failing
+to find something put there on purpose is a failure, not a measurement. The
+private corpus has no bar yet, and will not until the first annotated run
+produces one.
+
+## Fetching the corpus
+
+`clipmill-eval fetch-corpus` is the only thing in ClipMill that reaches the
+network on purpose, and it is not part of the product: it runs on a developer's
+machine, outside the Local Lock, before any evaluation starts.
+
+- **Licences are recorded per item, from the spec, before the bytes arrive.**
+  An item whose licence cannot be named from a closed list is not fetched.
+- **Media never enters Git.** The destination is checked against the
+  repository's own ignore rules — asked of `git check-ignore` rather than
+  guessed, because a rule written here would be a second implementation of
+  ignore semantics. A question Git cannot answer is a refusal.
+- **The output is unsigned.** Signing is a separate command with a separate
+  key, so a fetch can never produce a corpus that claims to have been attested.
+
+## Worksheets
+
+`clipmill-eval annotate` runs the analyze DAG over each corpus item and writes
+two files per recording: a Markdown transcript with timecodes and exact ticks,
+and a skeleton annotation. The annotator reads one and fills the other.
+
+Sentences come from the **evidence index**, not the raw transcript. Annotating
+against a different segmentation from the one the proposers score over would
+measure the segmentation as much as the ranking. Regenerating a worksheet never
+overwrites an annotation somebody has filled in.
+
+## Gates
+
+```bash
+just gate-recall-smoke
+```
+
+```bash
+just gate-golden
+```
+
+```bash
+just gate-render-slo
+```
+
+`gate-recall-smoke` and `gate-golden` run in CI on every push. `gate-render-slo`
+does not: a shared runner's throughput says nothing about a laptop, so CI
+asserts completion and determinism only, and the 1.5× ratio is measured and
+attested on the machine that measured it — with the program's own duration
+taken from the render manifest, so a render that produced a shorter clip than
+intended cannot look fast.
+
+`gate-recall` is the private one. It needs the corpus, the annotations, and a
+running daemon, and none of the three is in this repository.

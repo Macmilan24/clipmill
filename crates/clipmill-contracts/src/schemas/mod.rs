@@ -29,6 +29,10 @@ pub mod discovery_candidates;
 pub mod edit_ir;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/eval_annotation.rs"]
+pub mod eval_annotation;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/evidence_shots.rs"]
 pub mod evidence_shots;
 

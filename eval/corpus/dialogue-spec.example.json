@@ -1,0 +1,13 @@
+{
+  "corpus_id": "EXAMPLE-replace-me",
+  "comment": "A template, not a corpus. The ten dialogue items are chosen by whoever owns the evaluation, because choosing them is an editorial act: they set what 'good' means for every recall number that follows. Copy this to dialogue-spec.json, replace every entry, and keep the file out of Git if the URLs are not public. license_id must be one of the values clipmill_eval.fetch.ALLOWED_LICENCES accepts; attribution is recorded verbatim into the signed licence attestation and is what credits the speaker.",
+  "items": [
+    {
+      "item_id": "EXAMPLE-interview-01",
+      "url": "https://example.invalid/replace-with-a-real-cc-by-recording",
+      "license_id": "CC-BY-4.0",
+      "attribution": "Speaker Name, 'Recording Title', CC BY 4.0",
+      "redistributable": false
+    }
+  ]
+}
