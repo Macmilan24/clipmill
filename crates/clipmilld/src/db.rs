@@ -2411,12 +2411,12 @@ mod tests {
             "01ARZ3NDEKTSV4RRFFQ69G5FAV",
             30,
             15_030,
-            ResourceCapacity::measured(4, 1024 * 1024 * 1024),
+            ResourceCapacity::measured(4, 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024),
         )
         .expect("query without measured backend");
         assert!(unavailable.task.is_none());
 
-        let available = ResourceCapacity::measured(4, 1024 * 1024 * 1024)
+        let available = ResourceCapacity::measured(4, 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024)
             .with_available_backends(&BTreeSet::from(["videotoolbox".to_owned()]));
         let leased = job_store::lease_next_task(
             &mut connection,

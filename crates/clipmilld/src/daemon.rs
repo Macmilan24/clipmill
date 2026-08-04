@@ -606,9 +606,14 @@ async fn startup_profile_capacity(
         tracing::warn!(%artifact_id, "active device profile artifact failed verification");
         return live;
     }
-    let measured =
-        ResourceCapacity::measured(verified.logical_cores, verified.available_memory_bytes)
-            .with_available_backends(&verified.available_backends);
+    // Disk comes from the live measurement, not the profile: a profile records
+    // what a machine *is*, and free space is what it *has right now*.
+    let measured = ResourceCapacity::measured(
+        verified.logical_cores,
+        verified.available_memory_bytes,
+        live.disk_bytes,
+    )
+    .with_available_backends(&verified.available_backends);
     tracing::info!(
         %artifact_id,
         generation = verified.measurement_generation,
