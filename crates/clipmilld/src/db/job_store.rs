@@ -1478,6 +1478,41 @@ pub(super) fn latest_source_job_artifact(
     Ok(artifact_id)
 }
 
+/// The newest artifact a *stage* published for a source, whatever job ran it.
+///
+/// Distinct from [`latest_source_job_artifact`], which matches the job's own
+/// kind and its final task — right for asking "what did this source's ingest
+/// produce", wrong for asking "where is this source's ranking". The stages a
+/// clip is directed from all run inside the composite `analyze-source` DAG, so
+/// no job is named after them and only one task in that job is final; looking
+/// them up by job kind found nothing, every time, for every recording a user
+/// actually analyzed.
+///
+/// The task's own state is what is checked rather than the job's: a stage that
+/// succeeded published something real even if a later stage in the same job
+/// failed, and refusing to read it would discard evidence that exists.
+pub(super) fn latest_source_task_artifact(
+    connection: &Connection,
+    source_id: &str,
+    task_kind: &str,
+) -> Result<Option<String>, StoreError> {
+    let artifact_id = connection
+        .query_row(
+            "SELECT t.output_artifact_id
+             FROM jobs j
+             JOIN tasks t ON t.job_id = j.job_id
+             WHERE j.source_id = ?1 AND t.kind = ?2 AND t.state = ?3
+               AND t.output_artifact_id IS NOT NULL
+             ORDER BY j.created_unix_millis DESC, j.job_id DESC, t.ordinal DESC
+             LIMIT 1",
+            params![source_id, task_kind, TaskState::Succeeded as i32],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    Ok(artifact_id)
+}
+
 pub(super) fn current_event_id(connection: &Connection) -> Result<u64, StoreError> {
     let value: i64 = connection.query_row(
         "SELECT COALESCE(MAX(event_id), 0) FROM task_events",

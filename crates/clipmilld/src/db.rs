@@ -405,6 +405,18 @@ impl DbActor {
                                     let _result = reply
                                         .send(source_store::list_sources(&connection, &project_id));
                                 }
+                                Command::LatestSourceTaskArtifact {
+                                    source_id,
+                                    kind,
+                                    reply,
+                                } => {
+                                    let _result =
+                                        reply.send(job_store::latest_source_task_artifact(
+                                            &connection,
+                                            &source_id,
+                                            &kind,
+                                        ));
+                                }
                                 Command::LatestSourceJobArtifact {
                                     source_id,
                                     kind,
@@ -1130,6 +1142,24 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    /// Newest artifact a stage published for a source, whatever job ran it.
+    pub(crate) async fn latest_source_task_artifact(
+        &self,
+        source_id: String,
+        kind: String,
+    ) -> Result<Option<String>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::LatestSourceTaskArtifact {
+                source_id,
+                kind,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     /// Final artifact of the newest succeeded job of `kind` for a source.
     pub(crate) async fn latest_source_job_artifact(
         &self,
@@ -1426,6 +1456,11 @@ enum Command {
     ListSources {
         project_id: String,
         reply: oneshot::Sender<Result<Vec<SourceRecord>, StoreError>>,
+    },
+    LatestSourceTaskArtifact {
+        source_id: String,
+        kind: String,
+        reply: oneshot::Sender<Result<Option<String>, StoreError>>,
     },
     LatestSourceJobArtifact {
         source_id: String,
@@ -3293,6 +3328,97 @@ mod tests {
             get_project(&connection, "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"),
             Err(StoreError::NotFound)
         ));
+    }
+
+    /// A stage that ran inside a composite job is found by the stage's name.
+    ///
+    /// The Inspector loads what a clip is directed from by asking for this
+    /// source's newest candidate set, ranking and transcript. All three run
+    /// inside the `analyze-source` DAG, where no job is named after them and
+    /// only the fan-in is final — so asking the job-kind query for them found
+    /// nothing every time, and approving a clip refused with "no published
+    /// candidate set" while the artifact sat in the store. Both wrong answers
+    /// are asserted here beside the right one, because either alone reads as
+    /// an arbitrary preference between two lookups.
+    #[test]
+    fn a_stage_inside_a_composite_job_is_found_by_the_stage_that_ran_it() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let record = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Directing", 10);
+        create_project(&mut connection, "create-directing", &[1; 32], &record)
+            .expect("create project");
+        let project_id = record.project_id.parse::<ProjectId>().expect("project id");
+
+        let source_id = SourceId::new().to_string();
+        source_store::register_source(
+            &mut connection,
+            "register-directing-source",
+            &[2; 32],
+            &record.project_id,
+            &source_id,
+            &InspectedSource {
+                observation: FileObservation {
+                    absolute_path: "/private/media/talk.mkv".to_owned(),
+                    byte_size: 123,
+                    sample_sha256: format!("sha256:{}", "11".repeat(32)),
+                    device_id: 1,
+                    inode: 2,
+                    modified_unix_nanos: 3,
+                },
+                source_fingerprint: format!("sha256:{}", "22".repeat(32)),
+                source_map_json: b"{\"schema_version\":\"clipmill.source_map.v1\"}".to_vec(),
+            },
+            15,
+        )
+        .expect("register source");
+
+        // The shape that matters: a job named for the whole analysis, stages
+        // inside it named for themselves, and the first of them not final.
+        let mut plan = JobPlan::demo(&project_id, b"analyze".to_vec(), 20);
+        plan.kind = "analyze-source".to_owned();
+        plan.source_id = Some(source_id.clone());
+        job_store::submit_job(&mut connection, "submit-analyze", &[2; 32], &plan).expect("submit");
+
+        let lease_id = LeaseId::new().to_string();
+        let selection = job_store::lease_next_task(
+            &mut connection,
+            &lease_id,
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15_030,
+            ResourceCapacity::w4_builtin(),
+        )
+        .expect("lease");
+        let leased = selection.task.expect("runnable task");
+        assert_eq!(leased.kind, "demo-seed", "the first stage, and not final");
+        let artifact = ArtifactId::from_digest(Sha256Digest::from_bytes([0x44; 32]));
+        job_store::complete_task(
+            &mut connection,
+            &leased.lease_id,
+            artifact,
+            &[3; 32],
+            artifact.to_string().as_bytes(),
+            31,
+        )
+        .expect("complete the stage");
+
+        assert_eq!(
+            job_store::latest_source_task_artifact(&connection, &source_id, "demo-seed")
+                .expect("stage lookup"),
+            Some(artifact.to_string()),
+        );
+        assert_eq!(
+            job_store::latest_source_job_artifact(&connection, &source_id, "demo-seed")
+                .expect("job lookup"),
+            None,
+            "a stage's name is not a job kind",
+        );
+        assert_eq!(
+            job_store::latest_source_job_artifact(&connection, &source_id, "analyze-source")
+                .expect("job lookup"),
+            None,
+            "the job's own kind reaches only its final task, which has not run",
+        );
     }
 
     #[test]
