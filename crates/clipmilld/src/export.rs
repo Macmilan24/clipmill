@@ -354,6 +354,13 @@ async fn render_thumbnail(
         "1".to_owned(),
         "-q:v".to_owned(),
         "3".to_owned(),
+        // Named, because the file cannot say it. Every output here is written
+        // under a partial suffix so a half-written file is never mistaken for
+        // a delivered one, and FFmpeg picks its muxer from the extension — so
+        // `.clipmill-partial` left it with nothing to infer from and it
+        // refused the output before reading a frame.
+        "-f".to_owned(),
+        "mjpeg".to_owned(),
         output.clone(),
     ];
     let _report = context
