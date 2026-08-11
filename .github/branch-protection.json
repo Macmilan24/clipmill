@@ -1,0 +1,213 @@
+{
+  "required_status_checks": {
+    "strict": true,
+    "checks": [
+      {
+        "context": "cache-drill (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "cache-drill (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "captions (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "captions (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "contracts (drift + fixtures)",
+        "app_id": 15368
+      },
+      {
+        "context": "edit-ir (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "edit-ir (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "editor (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "editor (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "evidence-index (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "evidence-index (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "export (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "export (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "golden",
+        "app_id": 15368
+      },
+      {
+        "context": "ingest-conformance (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "ingest-conformance (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "inspector (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "inspector (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "kill-drill (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "kill-drill (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "lock-phase1 (Phase 1 Local Lock gate)",
+        "app_id": 15368
+      },
+      {
+        "context": "media-conformance (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "media-conformance (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "network-denial (Local Lock gate)",
+        "app_id": 15368
+      },
+      {
+        "context": "phase0-eval (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "phase0-eval (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "phase0-security",
+        "app_id": 15368
+      },
+      {
+        "context": "python (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "python (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "recall (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "recall (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "reframe (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "reframe (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "render-conformance (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "render-conformance (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "rust (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "rust (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "shell-link (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "shell-link (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "shots-conformance (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "shots-conformance (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "speech-conformance (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "speech-conformance (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "supply chain",
+        "app_id": 15368
+      },
+      {
+        "context": "ts",
+        "app_id": 15368
+      },
+      {
+        "context": "worker-plane (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "worker-plane (ubuntu-24.04)",
+        "app_id": 15368
+      },
+      {
+        "context": "worker-recovery (macos-15)",
+        "app_id": 15368
+      },
+      {
+        "context": "worker-recovery (ubuntu-24.04)",
+        "app_id": 15368
+      }
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
+  "restrictions": null,
+  "required_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "block_creations": false,
+  "required_conversation_resolution": true,
+  "lock_branch": false,
+  "allow_fork_syncing": false
+}
