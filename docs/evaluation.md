@@ -245,6 +245,29 @@ to find something put there on purpose is a failure, not a measurement. The
 private corpus has no bar yet, and will not until the first annotated run
 produces one.
 
+**The two bars are not interchangeable, and the gates no longer let them be.**
+`gate-recall` and the Phase 1 verifier both name `eval/recall/corpus-bar.json`,
+a file that does not exist. Neither falls back to the planted bar: holding a
+real recording to it would be demanding that a model-free proposer never miss
+anything a person thought was worth keeping, and a gate answering a question
+about real footage with a number about planted moments is worse than a gate
+that admits it cannot answer yet.
+
+So the order is measure, then ratchet:
+
+1. Annotate the corpus — `clipmill-eval annotate` writes the worksheets.
+2. Run `just gate-recall … <report>` with **no** bar. It writes the report and
+   holds it to nothing, because there is nothing yet to hold it to.
+3. Commit that result as `eval/recall/corpus-bar.json`. The first honest
+   measurement _is_ the bar; a number chosen before the measurement would be an
+   aspiration, and gates are not the place for those.
+4. From then on the bar may be lowered and never raised, and every change to it
+   is a reviewed diff to one file rather than an edit to a gate.
+
+A bar naming no `min_recall` is refused by the exit verifier. `meets_bar` is
+right that an absent key is a claim not yet made — but the exit gate is the one
+caller for which "this bar makes no claim about recall" cannot read as a pass.
+
 ## Fetching the corpus
 
 `clipmill-eval fetch-corpus` is the only thing in ClipMill that reaches the
