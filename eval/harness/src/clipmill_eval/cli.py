@@ -202,6 +202,8 @@ def main(arguments: list[str] | None = None) -> int:
             verify_ranking(ranking, candidates)
             clips = clips_from_ranking(ranking, candidates)
             return _write_recall(score_run([(annotation, clips)]).report(), options)
+        if options.command == "check-recall":
+            return _check_recall(options)
         if options.command == "smoke":
             root, manifest_path, license_path = build_smoke_corpus(
                 options.work_dir,
@@ -246,6 +248,53 @@ def _write_recall(report: dict, options: argparse.Namespace) -> int:
     for failure in failures:
         print(f"clipmill-eval: {failure}", file=sys.stderr)
     return 1 if failures else 0
+
+
+def _check_recall(options: argparse.Namespace) -> int:
+    """Hold an already-written report to a committed bar.
+
+    The exit verifier needs the same judgement `_write_recall` makes, over a
+    report produced weeks earlier on a machine no runner has. It gets it by
+    calling the same function rather than restating the comparison in the gate:
+    a second copy of "does this report meet this bar" is a second answer the
+    first day one of them is edited, and that is not hypothetical — the copy
+    this replaces read `recall` where the bars write `min_recall`, so every
+    check found `None`, skipped itself, and passed a report of total failure.
+
+    A bar that constrains nothing is refused rather than honoured. Silence is
+    the right default *before* a baseline is measured, which is why `meets_bar`
+    treats an absent key as a claim not yet made — but an exit gate is the one
+    caller for which "this bar makes no claim about recall" cannot be a pass.
+    """
+
+    report = json.loads(options.report.read_text(encoding="utf-8"))
+    bar = json.loads(options.bar.read_text(encoding="utf-8"))
+    if report.get("schema_version") != "clipmill.eval.recall.v1":
+        print(
+            f"clipmill-eval: {options.report} is not a recall report",
+            file=sys.stderr,
+        )
+        return 1
+    if "min_recall" not in bar:
+        print(
+            f"clipmill-eval: {options.bar} states no minimum recall, so it cannot "
+            "close an exit condition about recall",
+            file=sys.stderr,
+        )
+        return 1
+    failures = meets_bar(report, bar)
+    for failure in failures:
+        print(f"clipmill-eval: {failure}", file=sys.stderr)
+    if failures:
+        return 1
+    print(
+        f"    recall {report['recall']:.3f} "
+        f"({report['moments_recalled']}/{report['moments_total']} moments), "
+        f"duplicate rate {report['duplicate_rate']:.3f}, "
+        f"median boundary error {report['boundary_edge_error_millis']['median']} ms"
+        f"  [bar {bar.get('bar_id', options.bar.stem)}]"
+    )
+    return 0
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -308,6 +357,10 @@ def _parser() -> argparse.ArgumentParser:
     score.add_argument("--ranking", type=Path, required=True)
     score.add_argument("--output", type=Path, required=True)
     score.add_argument("--bar", type=Path)
+
+    check = subcommands.add_parser("check-recall")
+    check.add_argument("--report", type=Path, required=True)
+    check.add_argument("--bar", type=Path, required=True)
 
     smoke = subcommands.add_parser("smoke")
     _daemon_arguments(smoke)

@@ -11,16 +11,25 @@
 # The two signed proofs verify themselves through their own scripts. The two
 # reports this adds are checked here: committed, the schema they claim, and the
 # number they were held to. A report that exists but misses its bar is a failed
-# gate, not a present file.
+# gate, not a present file — and the comparison is delegated to the harness that
+# produced the report rather than restated, because a gate holding its own
+# opinion about what a bar means is a second implementation of the metric.
 #
 # What this refuses is as important as what it accepts. A missing report is
 # named, with the command that produces it, because "Phase 1 is done" said over
 # an absent measurement is the one claim this whole register exists to prevent.
+# A bar that constrains nothing is refused for the same reason: a check that
+# cannot fail is indistinguishable from a check nobody wrote.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 RECALL_REPORT="${1:-eval/recall/attestation/recall.json}"
 SLO_REPORT="${2:-eval/render-slo/render-slo.json}"
+# The bar the *corpus* is held to, which is not the one the synthetic smoke is
+# held to. `planted-bar.json` requires perfect recall because its moments were
+# planted, and holding a real recording to it would be demanding that a
+# model-free proposer never miss anything a person thought was worth keeping.
+RECALL_BAR="${3:-eval/recall/corpus-bar.json}"
 
 missing=0
 
@@ -48,41 +57,26 @@ echo "==> the signed proofs, through their own verifiers"
 ./tools/drills/verify-mlx-attestation.sh
 
 echo "==> recall, against the bar it was held to"
-if require_committed "$RECALL_REPORT" "recall report" \
-  "just gate-recall <corpus> <manifest> <licences> <annotations> <socket> $RECALL_REPORT"; then
-  python3 - "$RECALL_REPORT" eval/recall/planted-bar.json <<'PY'
-import json
-import sys
-
-report = json.loads(open(sys.argv[1], encoding="utf-8").read())
-bar = json.loads(open(sys.argv[2], encoding="utf-8").read())
-if report.get("schema_version") != "clipmill.eval.recall.v1":
-    raise SystemExit("phase1-attestation: the recall report is not a recall report")
-
-# Compared against the committed bar rather than a number written here, so
-# ratcheting the bar is a reviewed change to one file and not an edit to a
-# gate. Gates over dates.
-checks = [
-    ("recall", report.get("recall"), bar.get("recall"), "at least"),
-    ("multi_moment_recall", report.get("multi_moment_recall"),
-     bar.get("multi_moment_recall"), "at least"),
-    ("duplicate_rate", report.get("duplicate_rate"), bar.get("duplicate_rate"), "at most"),
-]
-for name, measured, required, direction in checks:
-    if required is None:
-        continue
-    if measured is None:
-        raise SystemExit(f"phase1-attestation: the recall report omits {name}")
-    ok = measured >= required if direction == "at least" else measured <= required
-    if not ok:
-        raise SystemExit(
-            f"phase1-attestation: {name} is {measured}, and the bar is {direction} {required}"
-        )
-print(
-    f"    recall {report['recall']:.3f}, duplicate rate {report['duplicate_rate']:.3f}"
-    f" over {report['moments_total']} moments"
-)
-PY
+# Both the measurement and the bar are committed files, so ratcheting is a
+# reviewed change to one of them and never an edit to a gate. Gates over dates.
+#
+# The bar is required to exist rather than defaulted to something lenient. It
+# cannot be written before the corpus is annotated and measured once — that
+# first number *is* the bar — so its absence is the honest state, and a gate
+# that quietly substituted the synthetic bar would be answering a question
+# about real footage with a number about planted moments.
+recall_ready=0
+require_committed "$RECALL_REPORT" "recall report" \
+  "just gate-recall <corpus> <manifest> <licences> <annotations> <socket> $RECALL_REPORT" \
+  || recall_ready=1
+require_committed "$RECALL_BAR" "corpus recall bar" \
+  "measure the corpus once, then commit that result as the bar it ratchets from" \
+  || recall_ready=1
+if [ "$recall_ready" -eq 0 ]; then
+  # Through the harness that measured it, so the exit gate and the run apply
+  # one implementation of "does this report meet this bar".
+  uv run --offline --frozen --project eval/harness clipmill-eval check-recall \
+    --report "$RECALL_REPORT" --bar "$RECALL_BAR" || missing=1
 fi
 
 echo "==> the render SLO, on the machine that could measure it"
@@ -113,6 +107,7 @@ fi
 
 if [ "$missing" -ne 0 ]; then
   echo "phase1-attestation: Phase 1 cannot be declared over evidence that is absent" >&2
+  echo "    or that falls short of the bar it was held to" >&2
   exit 1
 fi
 
