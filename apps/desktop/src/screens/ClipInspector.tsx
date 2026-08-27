@@ -1,27 +1,29 @@
 /**
- * The Clip Inspector: one clip, everything measured about it, and a decision.
+ * One clip, and everything the system can say about why it is here.
  *
- * Three columns, and the middle one is the point. A score card can be read
- * anywhere; judging a clip means watching it, so the preview is the centre and
- * the numbers sit beside it rather than in front of it.
+ * Three panes, and the order is the argument: the other candidates, the clip
+ * itself, and the reasons. A decision made without the first pane is a decision
+ * made without comparison; a decision made without the third is a decision made
+ * on a number. Both are the failure this screen exists to prevent.
  *
- * Every number here was published by a stage and is being displayed, not
- * derived. An axis nothing measured shows the reason nothing did rather than a
- * zero, because a zero reads as a measurement of badness. Uncertainty is three
- * words rather than a shading of the score. And the boundary can be swapped for
- * the optimizer's runner-up in one click, because the runner-up is frequently
- * the editor's first choice and re-running the search to find it again would be
- * work the ranking already did.
+ * Nothing here is a summary of a summary. The bars are the ranking document's
+ * own factors, the quotes are the sentences those factors were read from
+ * resolved through the evidence index, and the boundary strip is the real
+ * lattice the optimizer chose between. Where a value is missing the panel says
+ * which and why, because an axis nobody measured is a different fact from an
+ * axis that scored nothing.
  */
-import { Check, ChevronLeft, Clock, X } from 'lucide-react';
+import { ArrowLeft, Check, Clock, TriangleAlert } from 'lucide-react';
 
-import { Badge } from '../components/ui/badge.js';
 import { Button } from '../components/ui/button.js';
-import { ScrollArea } from '../components/ui/scroll-area.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
 import type { ClipDecision, CropPath } from '../daemon/client.js';
 import { Preview, type OverlayCue } from '../inspector/Preview.js';
-import { type ClipRow, clock } from '../results/model.js';
+import { AxisBars } from '../inspector/parts/AxisBars.js';
+import { BoundaryStrip } from '../inspector/parts/BoundaryStrip.js';
+import { CandidateRail } from '../inspector/parts/CandidateRail.js';
+import { type ClipRow, clock, duration } from '../results/model.js';
+import { ScoreRing } from '../results/parts/ScoreRing.js';
 
 export interface ClipInspectorProps {
   readonly rows: readonly ClipRow[];
@@ -39,36 +41,6 @@ export interface ClipInspectorProps {
   readonly onUseAlternative: () => void;
 }
 
-/** One axis, as a labelled bar or as the reason there is no bar. */
-function AxisBar({ reading }: { readonly reading: ClipRow['axes'][number] }) {
-  if (reading.value === null) {
-    return (
-      <div className="flex flex-col gap-1 py-1.5">
-        <span className="text-xs text-[var(--cm-ink-2)]">{reading.label}</span>
-        <span className="text-xs text-[var(--cm-ink-3)] italic">
-          {reading.unavailableReason ?? 'not measured at this phase'}
-        </span>
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-1 py-1.5">
-      <span className="flex items-baseline justify-between text-xs">
-        <span className="text-[var(--cm-ink-2)]">{reading.label}</span>
-        <span className="font-medium text-[var(--cm-ink-1)]">
-          {Math.round(reading.value * 100)}
-        </span>
-      </span>
-      <span className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--cm-surface-2)]">
-        <span
-          className="block h-full rounded-full bg-[var(--cm-accent)]"
-          style={{ width: `${Math.round(reading.value * 100)}%` }}
-        />
-      </span>
-    </div>
-  );
-}
-
 export function ClipInspector({
   rows,
   candidateId,
@@ -82,234 +54,235 @@ export function ClipInspector({
   onDecide,
   onUseAlternative,
 }: ClipInspectorProps) {
-  const row = rows.find((candidate) => candidate.candidateId === candidateId) ?? rows[0];
+  const row = rows.find((candidate) => candidate.candidateId === candidateId);
+
   if (!row) {
-    return <div className="p-8 text-sm text-[var(--cm-ink-2)]">This clip is no longer ranked.</div>;
+    return (
+      <div className="grid flex-1 place-items-center p-8">
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-[13px] text-[var(--cm-text-secondary)]">
+            That clip is not in the current ranking.
+          </p>
+          <Button variant="outline" onClick={onBack}>
+            Back to the board
+          </Button>
+        </div>
+      </div>
+    );
   }
-  const cited = row.axes.filter((axis) => axis.evidence.length > 0);
+
+  const measured = row.axes.filter((axis) => axis.value !== null).length;
+  const quotes = row.axes.flatMap((axis) =>
+    axis.evidence.map((text) => ({ axis: axis.label, text })),
+  );
 
   return (
-    <div className="grid h-full grid-cols-[minmax(200px,240px)_1fr_minmax(280px,340px)] gap-4 p-6">
-      <ScrollArea className="rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)]">
-        <div className="p-3">
-          <Button variant="ghost" size="sm" className="mb-2 w-full justify-start" onClick={onBack}>
-            <ChevronLeft className="size-4" /> Results
-          </Button>
-          <p className="px-2 pb-2 text-xs text-[var(--cm-ink-2)]">Candidates ({rows.length})</p>
-          <ul className="flex flex-col gap-1">
-            {rows.map((candidate) => (
-              <li key={candidate.candidateId}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(candidate.candidateId)}
-                  aria-current={candidate.candidateId === row.candidateId}
-                  className="w-full rounded-lg px-3 py-2 text-left transition-colors aria-[current=true]:bg-[var(--cm-surface-2)] hover:bg-[var(--cm-surface-2)]"
-                >
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm text-[var(--cm-ink-1)]">
-                      {candidate.headline || `Clip ${candidate.rank}`}
-                    </span>
-                    <span className="text-xs text-[var(--cm-ink-2)]">{candidate.displayScore}</span>
-                  </span>
-                  <span className="text-xs text-[var(--cm-ink-3)]">
-                    {clock(candidate.startTicks)} · {candidate.durationSeconds.toFixed(0)}s
-                    {candidate.decision ? ` · ${candidate.decision}` : ''}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </ScrollArea>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
+      <header className="flex shrink-0 items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
+          <ArrowLeft className="size-4" aria-hidden />
+          Board
+        </Button>
+        <h1 className="truncate text-[length:var(--cm-type-card-title)] font-semibold text-[var(--cm-text-primary)]">
+          {row.headline || 'Untitled clip'}
+        </h1>
+        <span className="mono ml-auto shrink-0 text-[11px] text-[var(--cm-text-muted)]">
+          Rank {row.rank} of {rows.length}
+        </span>
+      </header>
 
-      <div className="flex flex-col items-center justify-start gap-4 rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-5">
-        <Preview
-          src={proxyUrl}
-          startTicks={row.startTicks}
-          endTicks={row.endTicks}
-          crop={crop}
-          cues={cues}
-        />
-        <section className="w-full max-w-[420px]" aria-label="Boundary">
-          <div className="flex items-center justify-between text-xs text-[var(--cm-ink-2)]">
-            <span>IN {clock(row.startTicks)}</span>
-            <span className="font-medium text-[var(--cm-ink-1)]">
-              {row.durationSeconds.toFixed(2)}s
-            </span>
-            <span>OUT {clock(row.endTicks)}</span>
+      <div className="flex min-h-0 flex-1 gap-3">
+        <CandidateRail rows={rows} candidateId={candidateId} onSelect={onSelect} />
+
+        <section
+          className="glass flex min-h-0 min-w-0 flex-1 flex-col gap-3 rounded-[var(--cm-radius-card)] p-4"
+          aria-label="The clip"
+        >
+          <div className="grid min-h-0 flex-1 place-items-center rounded-[var(--cm-radius-panel)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3">
+            <Preview
+              src={proxyUrl}
+              startTicks={row.startTicks}
+              endTicks={row.endTicks}
+              crop={crop}
+              cues={cues}
+            />
           </div>
-          {/* The lattice, drawn as the ticks a boundary may land on. Positions
-              are relative to the span the edges themselves span, so the strip
-              shows the choices the search actually had. */}
           <BoundaryStrip row={row} />
-          {row.boundary?.alternative ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3 w-full"
-              disabled={busy}
-              onClick={onUseAlternative}
-            >
-              Use the runner-up: {clock(row.boundary.alternative.startTicks)}–
-              {clock(row.boundary.alternative.endTicks)}
-            </Button>
-          ) : (
-            <p className="mt-3 text-center text-xs text-[var(--cm-ink-3)]">
-              This candidate&rsquo;s lattice offered one legal pair, so there is no alternative.
-            </p>
-          )}
         </section>
-      </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-4">
-        <Tabs defaultValue="score" className="min-h-0 flex-1">
-          <TabsList className="w-full">
-            <TabsTrigger value="score">Score</TabsTrigger>
-            <TabsTrigger value="evidence">Evidence</TabsTrigger>
-            <TabsTrigger value="boundary">Boundary</TabsTrigger>
-            <TabsTrigger value="risk">Risk</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="score">
-            <ScrollArea className="h-[420px] pr-3">
-              <div className="flex items-center gap-3 py-3">
-                <p className="text-3xl font-semibold text-[var(--cm-ink-1)]">{row.displayScore}</p>
-                <Badge variant="outline">{row.bandLabel}</Badge>
-              </div>
-              {row.axes.map((axis) => (
-                <AxisBar key={axis.axis} reading={axis} />
+        <section
+          className="glass flex w-[360px] shrink-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]"
+          aria-label="Why this clip"
+        >
+          <div className="flex items-center gap-4 border-b border-[var(--cm-glass-border)] p-4">
+            <ScoreRing score={row.displayScore} band={row.band} size="lg" caption={row.bandLabel} />
+            <dl className="flex min-w-0 flex-1 flex-col gap-2 text-[11px]">
+              {[
+                ['Length', duration(row.durationSeconds)],
+                ['Window', `${clock(row.startTicks)} – ${clock(row.endTicks)}`],
+                ['Axes measured', `${measured} of ${row.axes.length}`],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-baseline justify-between gap-2">
+                  <dt className="text-[var(--cm-text-muted)]">{label}</dt>
+                  <dd className="mono text-[var(--cm-text-primary)]">{value}</dd>
+                </div>
               ))}
-            </ScrollArea>
-          </TabsContent>
+            </dl>
+          </div>
 
-          <TabsContent value="evidence">
-            <ScrollArea className="h-[420px] pr-3">
-              {cited.length === 0 ? (
-                <p className="py-3 text-sm text-[var(--cm-ink-2)]">
-                  No factor cited a sentence. Without an evidence index there is nothing to quote.
-                </p>
-              ) : (
-                cited.map((axis) => (
-                  <div key={axis.axis} className="py-2">
-                    <p className="text-xs text-[var(--cm-ink-2)]">{axis.label}</p>
-                    {axis.evidence.map((sentence) => (
+          <Tabs defaultValue="score" className="flex min-h-0 flex-1 flex-col">
+            <TabsList className="mx-3 mt-3 shrink-0">
+              <TabsTrigger value="score">Score</TabsTrigger>
+              <TabsTrigger value="evidence">Evidence</TabsTrigger>
+              <TabsTrigger value="boundary">Boundary</TabsTrigger>
+              <TabsTrigger value="risk">Risk</TabsTrigger>
+            </TabsList>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <TabsContent value="score" className="mt-0">
+                <AxisBars axes={row.axes} />
+              </TabsContent>
+
+              <TabsContent value="evidence" className="mt-0 flex flex-col gap-3">
+                {quotes.length === 0 ? (
+                  <p className="text-[12px] text-[var(--cm-text-muted)]">
+                    No evidence index was published for this analysis, so the factors carry
+                    positions but no text.
+                  </p>
+                ) : (
+                  quotes.map((quote, index) => (
+                    <blockquote
+                      key={`${quote.axis}-${index}`}
+                      className="rounded-[var(--cm-radius-control)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3"
+                    >
+                      <p className="text-[12px] leading-relaxed text-[var(--cm-text-primary)] italic">
+                        “{quote.text}”
+                      </p>
+                      <footer className="mt-2 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
+                        {quote.axis}
+                      </footer>
+                    </blockquote>
+                  ))
+                )}
+              </TabsContent>
+
+              <TabsContent value="boundary" className="mt-0 flex flex-col gap-4">
+                {row.boundary ? (
+                  <>
+                    <ul className="flex flex-col gap-2">
+                      {row.boundary.terms.map((term) => (
+                        <li key={term.name} className="flex items-baseline justify-between gap-3">
+                          <span className="text-[12px] text-[var(--cm-text-secondary)]">
+                            {term.name.replaceAll('_', ' ')}
+                          </span>
+                          <span className="mono text-[11px] text-[var(--cm-text-primary)]">
+                            {term.value.toFixed(3)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {row.boundary.alternative ? (
+                      <div className="flex flex-col gap-2 border-t border-[var(--cm-glass-border)] pt-3">
+                        <p className="text-[11px] text-[var(--cm-text-secondary)]">
+                          The runner-up cut ran{' '}
+                          <span className="mono text-[var(--cm-text-primary)]">
+                            {clock(row.boundary.alternative.startTicks)} –{' '}
+                            {clock(row.boundary.alternative.endTicks)}
+                          </span>
+                          . Taking it rebuilds the edit document from that cut.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={onUseAlternative}
+                        >
+                          Use the alternative cut
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="border-t border-[var(--cm-glass-border)] pt-3 text-[11px] text-[var(--cm-text-muted)]">
+                        The lattice offered one legal pair, so there is no alternative to swap to.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[12px] text-[var(--cm-text-muted)]">
+                    This candidate carries no boundary record.
+                  </p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="risk" className="mt-0 flex flex-col gap-3">
+                {row.warnings.length === 0 && row.penalties.length === 0 ? (
+                  <p className="flex items-center gap-2 text-[12px] text-[var(--cm-text-secondary)]">
+                    <Check className="size-4 text-[var(--cm-success-ink)]" aria-hidden />
+                    The ranker recorded nothing against this clip.
+                  </p>
+                ) : (
+                  <>
+                    {row.warnings.map((warning) => (
                       <p
-                        key={sentence}
-                        className="mt-1 rounded-lg bg-[var(--cm-surface-2)] px-3 py-2 text-sm text-[var(--cm-ink-1)]"
+                        key={warning}
+                        className="flex items-start gap-2 text-[12px] text-[var(--cm-warning-ink)]"
                       >
-                        {sentence}
+                        <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+                        {warning}
                       </p>
                     ))}
-                  </div>
-                ))
-              )}
-            </ScrollArea>
-          </TabsContent>
+                    {row.penalties.map((penalty) => (
+                      <p
+                        key={penalty.reason}
+                        className="flex items-start justify-between gap-2 text-[12px] text-[var(--cm-text-secondary)]"
+                      >
+                        <span>{penalty.reason.replaceAll('_', ' ')}</span>
+                        <span className="mono text-[var(--cm-danger-ink)]">−{penalty.value}</span>
+                      </p>
+                    ))}
+                  </>
+                )}
+              </TabsContent>
+            </div>
+          </Tabs>
 
-          <TabsContent value="boundary">
-            <ScrollArea className="h-[420px] pr-3">
-              <p className="py-2 text-xs text-[var(--cm-ink-2)]">
-                The weighted terms behind this cut, so a boundary you disagree with can be argued
-                with.
+          <footer className="flex shrink-0 flex-col gap-2 border-t border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-4">
+            {notice && (
+              <p
+                className="flex items-start gap-2 text-[11px] text-[var(--cm-text-secondary)]"
+                role="status"
+              >
+                <Clock className="mt-px size-3 shrink-0" aria-hidden />
+                {notice}
               </p>
-              {(row.boundary?.terms ?? []).map((term) => (
-                <p key={term.name} className="flex justify-between py-1 text-sm">
-                  <span className="text-[var(--cm-ink-2)]">{term.name.replaceAll('_', ' ')}</span>
-                  <span className="text-[var(--cm-ink-1)]">{term.value.toFixed(3)}</span>
-                </p>
-              ))}
-            </ScrollArea>
-          </TabsContent>
-
-          <TabsContent value="risk">
-            <ScrollArea className="h-[420px] pr-3">
-              {row.warnings.length === 0 && row.penalties.length === 0 ? (
-                <p className="py-3 text-sm text-[var(--cm-ink-2)]">
-                  Nothing was flagged about this clip.
-                </p>
-              ) : (
-                <>
-                  {row.warnings.map((warning) => (
-                    <p key={warning} className="py-1 text-sm text-[var(--cm-warning-ink)]">
-                      {warning}
-                    </p>
-                  ))}
-                  {row.penalties.map((penalty) => (
-                    <p key={penalty.reason} className="flex justify-between py-1 text-sm">
-                      <span className="text-[var(--cm-ink-2)]">
-                        {penalty.reason.replaceAll('_', ' ')}
-                      </span>
-                      <span className="text-[var(--cm-danger-ink)]">
-                        −{penalty.value.toFixed(3)}
-                      </span>
-                    </p>
-                  ))}
-                </>
-              )}
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
-
-        {notice && <p className="text-xs text-[var(--cm-ink-2)]">{notice}</p>}
-        <div className="flex flex-col gap-2">
-          <Button disabled={busy} onClick={() => onDecide('approved')}>
-            <Check className="size-4" /> Approve for editor
-          </Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" disabled={busy} onClick={() => onDecide('kept')}>
-              <Clock className="size-4" /> Keep for later
+            )}
+            <Button
+              className="w-full justify-center"
+              disabled={busy}
+              onClick={() => onDecide('approved')}
+            >
+              {busy ? 'Working…' : 'Approve for the editor'}
             </Button>
-            <Button variant="ghost" disabled={busy} onClick={() => onDecide('rejected')}>
-              <X className="size-4" /> Reject
-            </Button>
-          </div>
-        </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={busy}
+                onClick={() => onDecide('kept')}
+              >
+                Keep for later
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 text-[var(--cm-danger-ink)]"
+                disabled={busy}
+                onClick={() => onDecide('rejected')}
+              >
+                Reject
+              </Button>
+            </div>
+          </footer>
+        </section>
       </div>
-    </div>
-  );
-}
-
-/** The lattice edges a boundary may land on, and where this one landed. */
-function BoundaryStrip({ row }: { readonly row: ClipRow }) {
-  const points = [...row.latticeStarts, ...row.latticeEnds];
-  const from = Math.min(row.startTicks, ...points);
-  const to = Math.max(row.endTicks, ...points);
-  const span = Math.max(1, to - from);
-  const position = (at: number) => `${((at - from) / span) * 100}%`;
-
-  return (
-    <div className="relative mt-2 h-10 rounded-lg bg-[var(--cm-surface-2)]">
-      <div
-        className="absolute inset-y-0 rounded-lg bg-[var(--cm-accent)]/25"
-        style={{
-          left: position(row.startTicks),
-          right: `${100 - Number.parseFloat(position(row.endTicks))}%`,
-        }}
-      />
-      {row.latticeStarts.map((at) => (
-        <span
-          key={`start-${at}`}
-          title={`A legal start at ${clock(at)}`}
-          className="absolute top-0 h-3 w-px bg-[var(--cm-ink-3)]"
-          style={{ left: position(at) }}
-        />
-      ))}
-      {row.latticeEnds.map((at) => (
-        <span
-          key={`end-${at}`}
-          title={`A legal end at ${clock(at)}`}
-          className="absolute bottom-0 h-3 w-px bg-[var(--cm-ink-3)]"
-          style={{ left: position(at) }}
-        />
-      ))}
-      <span
-        className="absolute inset-y-0 w-0.5 bg-[var(--cm-accent)]"
-        style={{ left: position(row.startTicks) }}
-      />
-      <span
-        className="absolute inset-y-0 w-0.5 bg-[var(--cm-accent)]"
-        style={{ left: position(row.endTicks) }}
-      />
     </div>
   );
 }
