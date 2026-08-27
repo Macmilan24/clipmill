@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { ClipDecision, CropPath } from '../daemon/client.js';
+import type { ClipCut, ClipDecision, CropPath } from '../daemon/client.js';
 import type { OverlayCue } from '../inspector/Preview.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { overlayCuesFromEdit } from './model.js';
@@ -29,8 +29,18 @@ export interface ResultsState {
   readonly reload: () => void;
   readonly decide: (candidateId: string, decision: ClipDecision) => Promise<void>;
   readonly solveFor: (candidateId: string) => void;
-  /** Build the edit document from a named cut, without changing the decision. */
-  readonly direct: (candidateId: string, cut: 'chosen' | 'alternative') => Promise<void>;
+  /**
+   * Build the edit document from a named cut, without changing the decision.
+   *
+   * An `exact` cut carries the window it wants. The daemon snaps that to the
+   * lattice and answers with where it actually landed, which is why the notice
+   * quotes the director rather than echoing what was asked for.
+   */
+  readonly direct: (
+    candidateId: string,
+    cut: ClipCut,
+    window?: { readonly startTicks: number; readonly endTicks: number },
+  ) => Promise<void>;
 }
 
 export function useResults(
@@ -90,7 +100,11 @@ export function useResults(
   );
 
   const direct = useCallback(
-    async (candidateId: string, cut: 'chosen' | 'alternative') => {
+    async (
+      candidateId: string,
+      cut: ClipCut,
+      window?: { readonly startTicks: number; readonly endTicks: number },
+    ) => {
       if (!projectId || !snapshot.source) {
         return;
       }
@@ -102,6 +116,7 @@ export function useResults(
           sourceId: snapshot.source.sourceId,
           candidateId,
           cut,
+          ...(window ? { startTicks: window.startTicks, endTicks: window.endTicks } : {}),
         });
         setCues(overlayCuesFromEdit(directed.documentJson, directed.startTicks));
         setNotice(

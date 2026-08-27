@@ -13,15 +13,17 @@
  * which and why, because an axis nobody measured is a different fact from an
  * axis that scored nothing.
  */
-import { ArrowLeft, Check, Clock, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, Clock, RotateCcw, Scissors, TriangleAlert } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
 import type { ClipDecision, CropPath } from '../daemon/client.js';
-import { Preview, type OverlayCue } from '../inspector/Preview.js';
+import type { OverlayCue } from '../inspector/Preview.js';
 import { AxisBars } from '../inspector/parts/AxisBars.js';
-import { BoundaryStrip } from '../inspector/parts/BoundaryStrip.js';
 import { CandidateRail } from '../inspector/parts/CandidateRail.js';
+import { FRAME_TICKS, Player, timecode } from '../inspector/parts/Player.js';
+import { Timeline } from '../inspector/parts/Timeline.js';
 import { type ClipRow, clock, duration } from '../results/model.js';
 import { ScoreRing } from '../results/parts/ScoreRing.js';
 
@@ -39,6 +41,14 @@ export interface ClipInspectorProps {
   readonly onBack: () => void;
   readonly onDecide: (decision: ClipDecision) => void;
   readonly onUseAlternative: () => void;
+  /**
+   * Build the document from a boundary the editor moved.
+   *
+   * The daemon snaps whatever it is given to the lattice, so this is a proposal
+   * rather than an instruction — which is why it is a named action and not
+   * something a drag performs on its own.
+   */
+  readonly onTakeCut: (startTicks: number, endTicks: number) => void;
 }
 
 export function ClipInspector({
@@ -53,8 +63,48 @@ export function ClipInspector({
   onBack,
   onDecide,
   onUseAlternative,
+  onTakeCut,
 }: ClipInspectorProps) {
   const row = rows.find((candidate) => candidate.candidateId === candidateId);
+
+  /** The boundary as dragged, or null while it is still the ranker's. */
+  const [draft, setDraft] = useState<{ startTicks: number; endTicks: number } | null>(null);
+  const [positionTicks, setPositionTicks] = useState(row?.startTicks ?? 0);
+  const [seekNonce, setSeekNonce] = useState(0);
+
+  // A different clip is a different window: the draft belonged to the last one,
+  // and leaving the playhead where it was would seek the proxy to a position
+  // outside the clip now on screen.
+  useEffect(() => {
+    setDraft(null);
+    setPositionTicks(row?.startTicks ?? 0);
+    setSeekNonce((nonce) => nonce + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the clip is the signal
+  }, [candidateId]);
+
+  const cut = draft ?? { startTicks: row?.startTicks ?? 0, endTicks: row?.endTicks ?? 0 };
+  const moved =
+    row !== undefined && (cut.startTicks !== row.startTicks || cut.endTicks !== row.endTicks);
+
+  const scrub = (ticks: number) => {
+    setPositionTicks(Math.min(cut.endTicks, Math.max(cut.startTicks, ticks)));
+    setSeekNonce((nonce) => nonce + 1);
+  };
+
+  /** Move one edge, keeping the window at least a frame wide. */
+  const onDraft = (edge: 'in' | 'out', ticks: number) => {
+    if (!row) {
+      return;
+    }
+    const next =
+      edge === 'in'
+        ? { startTicks: Math.min(ticks, cut.endTicks - FRAME_TICKS), endTicks: cut.endTicks }
+        : { startTicks: cut.startTicks, endTicks: Math.max(ticks, cut.startTicks + FRAME_TICKS) };
+    setDraft(next);
+    // Show the edge that moved, because a boundary is judged by what it lands on.
+    setPositionTicks(edge === 'in' ? next.startTicks : next.endTicks);
+    setSeekNonce((nonce) => nonce + 1);
+  };
 
   if (!row) {
     return (
@@ -98,16 +148,61 @@ export function ClipInspector({
           className="glass flex min-h-0 min-w-0 flex-1 flex-col gap-3 rounded-[var(--cm-radius-card)] p-4"
           aria-label="The clip"
         >
-          <div className="grid min-h-0 flex-1 place-items-center rounded-[var(--cm-radius-panel)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3">
-            <Preview
+          <div className="flex min-h-0 flex-1 flex-col rounded-[var(--cm-radius-panel)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3">
+            <Player
               src={proxyUrl}
-              startTicks={row.startTicks}
-              endTicks={row.endTicks}
+              startTicks={cut.startTicks}
+              endTicks={cut.endTicks}
               crop={crop}
               cues={cues}
+              positionTicks={positionTicks}
+              onPosition={setPositionTicks}
+              seekNonce={seekNonce}
             />
           </div>
-          <BoundaryStrip row={row} />
+
+          <Timeline
+            startTicks={cut.startTicks}
+            endTicks={cut.endTicks}
+            latticeStarts={row.latticeStarts}
+            latticeEnds={row.latticeEnds}
+            alternative={row.boundary?.alternative ?? null}
+            positionTicks={positionTicks}
+            onScrub={scrub}
+            onDraft={onDraft}
+          />
+
+          {moved && (
+            <div className="flex shrink-0 items-center gap-3 rounded-[var(--cm-radius-control)] border border-[var(--cm-glass-border)] bg-[var(--cm-glass-elevated)] px-3 py-2">
+              <p className="min-w-0 flex-1 text-[11px] text-[var(--cm-text-secondary)]">
+                Moved to{' '}
+                <span className="mono text-[var(--cm-text-primary)]">
+                  {timecode(cut.startTicks)} – {timecode(cut.endTicks)}
+                </span>
+                . The daemon snaps a cut to the lattice, so it may land nearby.
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  setDraft(null);
+                  scrub(row.startTicks);
+                }}
+              >
+                <RotateCcw className="size-3.5" aria-hidden />
+                Reset
+              </Button>
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() => onTakeCut(cut.startTicks, cut.endTicks)}
+              >
+                <Scissors className="size-3.5" aria-hidden />
+                Take this cut
+              </Button>
+            </div>
+          )}
         </section>
 
         <section
