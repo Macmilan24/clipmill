@@ -121,3 +121,29 @@
   border-radius: 1px;
   background: var(--color-primary);
 }
+
+/*
+ * Legacy surface and ink names, mapped onto the generated system.
+ *
+ * `packages/tokens/tokens.css` is the Pro-Studio Precision transcription and is
+ * the only vocabulary. Several screens built after it were written against a
+ * second, invented set — `--cm-ink-*`, `--cm-surface-*`, `--cm-line-1` — that
+ * was never defined anywhere. CSS resolves an undefined custom property to
+ * *unset*, so those screens rendered with inherited text, transparent panels
+ * and `currentColor` borders: the "wireframe" look was literally the absence of
+ * a value rather than a design decision.
+ *
+ * This maps each dead name onto the token it evidently meant, so nothing renders
+ * unstyled while its screen is waiting to be rebuilt. It is a bridge and it
+ * should shrink: a screen rebuilt against the real tokens stops needing it, and
+ * the last one to leave removes this block. Screens already rebuilt — Results
+ * and the Clip Inspector — do not reference these names at all.
+ */
+:root {
+  --cm-ink-1: var(--cm-text-primary);
+  --cm-ink-2: var(--cm-text-secondary);
+  --cm-ink-3: var(--cm-text-muted);
+  --cm-surface-1: var(--cm-glass);
+  --cm-surface-2: var(--cm-recessed);
+  --cm-line-1: var(--cm-glass-border);
+}
