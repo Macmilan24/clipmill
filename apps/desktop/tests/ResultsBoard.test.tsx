@@ -66,6 +66,9 @@ function board(overrides: Partial<Parameters<typeof Results>[0]> = {}) {
       problem={null}
       sourceName="Episode 41"
       proxyUrl={null}
+      projects={[]}
+      activeProjectId={null}
+      onChooseProject={() => {}}
       onInspect={() => {}}
       onReload={() => {}}
       {...overrides}

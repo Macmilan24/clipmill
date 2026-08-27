@@ -45,7 +45,7 @@ export interface ScreenContext {
   /** The run-specific arguments come from the route, so these are the rest. */
   readonly analysis: Omit<Parameters<typeof AnalysisProgress>[0], 'projectId' | 'jobId'>;
   /** The Inspector's own arguments come from the route, so these are the rest. */
-  readonly results: Omit<Parameters<typeof ResultsScreen>[0], 'candidateId'>;
+  readonly results: Omit<Parameters<typeof ResultsScreen>[0], 'candidateId' | 'projectId'>;
   readonly editor: Parameters<typeof EditorScreen>[0];
   /** Export and Settings read the daemon directly; nothing routes into them. */
   readonly export: Parameters<typeof ExportScreen>[0];
@@ -58,7 +58,13 @@ const SCREENS: Readonly<Record<string, Screen>> = {
   library: ({ library }) => <Library {...library} />,
   'new-project': ({ newProject }) => <NewProject {...newProject} />,
   models: ({ models }) => <ModelsDevice {...models} />,
-  results: ({ results }) => <ResultsScreen {...results} candidateId={null} />,
+  results: ({ results, route }) => (
+    <ResultsScreen
+      {...results}
+      candidateId={null}
+      projectId={route.kind === 'section' ? (route.projectId ?? null) : null}
+    />
+  ),
   editor: ({ editor }) => <EditorScreen {...editor} />,
   export: (context) => <ExportScreen {...context.export} />,
   settings: ({ settings }) => <SettingsScreen {...settings} />,
@@ -80,7 +86,13 @@ export function renderScreen(context: ScreenContext): JSX.Element {
     );
   }
   if (route.kind === 'inspector') {
-    return <ResultsScreen {...context.results} candidateId={route.candidateId} />;
+    return (
+      <ResultsScreen
+        {...context.results}
+        candidateId={route.candidateId}
+        projectId={route.projectId}
+      />
+    );
   }
   const { section } = placementOf(route);
   const screen = section.availability.kind === 'live' ? SCREENS[section.id] : undefined;

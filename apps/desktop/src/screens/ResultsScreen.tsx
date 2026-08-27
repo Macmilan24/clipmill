@@ -6,10 +6,12 @@
  * which view renders. That keeps a decision made in the Inspector visible on the
  * board without either screen knowing about the other.
  *
- * Which recording is shown is the newest analyzed source of the newest project,
- * and the header says which rather than leaving it implied. Phase 1 has no
- * project picker; inventing one here would be a navigation surface the design
- * does not have.
+ * Which recording is shown is the one the route named — the project clicked in
+ * the Library, or the clip's own project when the Inspector is open. Falling
+ * back to the newest project is what happens when nothing named one, which is
+ * the sidebar entry; the picker in the header is how that stops being a dead
+ * end, since a screen reachable from the navigation must be able to reach every
+ * recording rather than whichever the daemon wrote last.
  */
 import { useEffect, useState } from 'react';
 
@@ -23,6 +25,8 @@ import { Results } from './Results.js';
 export interface ResultsScreenProps {
   /** Set when the route is the Inspector, null on the board. */
   readonly candidateId: string | null;
+  /** The project the route named, or null to fall back to the newest. */
+  readonly projectId: string | null;
   readonly onInspect: (projectId: string, sourceId: string, candidateId: string) => void;
   readonly onBack: () => void;
   readonly api?: ShellApi;
@@ -30,18 +34,29 @@ export interface ResultsScreenProps {
 
 export function ResultsScreen({
   candidateId,
+  projectId,
   onInspect,
   onBack,
   api = daemonApi,
 }: ResultsScreenProps) {
-  const [project, setProject] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<readonly Project[]>([]);
+  /** A pick made in the header, which outranks the route until the route moves. */
+  const [picked, setPicked] = useState<string | null>(null);
 
   useEffect(() => {
     void api
       .listProjects()
-      .then((projects) => setProject(newest(projects)))
-      .catch(() => setProject(null));
+      .then(setProjects)
+      .catch(() => setProjects([]));
   }, [api]);
+
+  // A new route is a new intent, so it clears a pick made under the old one.
+  useEffect(() => {
+    setPicked(null);
+  }, [projectId]);
+
+  const wanted = picked ?? projectId;
+  const project = projects.find((candidate) => candidate.projectId === wanted) ?? newest(projects);
 
   const results = useResults(project?.projectId ?? null, null, api);
   const { snapshot, solveFor } = results;
@@ -97,6 +112,9 @@ export function ResultsScreen({
       problem={snapshot.problem}
       sourceName={sourceName}
       proxyUrl={results.proxyUrl}
+      projects={projects}
+      activeProjectId={project?.projectId ?? null}
+      onChooseProject={setPicked}
       onReload={results.reload}
       onInspect={(next) => {
         if (project && snapshot.source) {

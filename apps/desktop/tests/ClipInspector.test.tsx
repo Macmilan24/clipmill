@@ -316,3 +316,25 @@ describe('the player', () => {
     expect(screen.queryByRole('button', { name: /^play$/i })).toBeNull();
   });
 });
+
+describe('opening the clip', () => {
+  it('seeks the proxy once it has metadata, not before', () => {
+    // A `currentTime` written before the element knows its duration is dropped,
+    // which is what made the player open at the top of the whole recording.
+    show({ proxyUrl: 'clipmill-media://proxy/proxy.mp4' });
+    const video = document.querySelector('video');
+    expect(video).toBeTruthy();
+    fireEvent.loadedMetadata(video!);
+    expect(video!.currentTime).toBeCloseTo(10, 3);
+  });
+
+  it('opens at the clip it was given, not at the recording', () => {
+    show({
+      proxyUrl: 'clipmill-media://proxy/proxy.mp4',
+      rows: [row({ startTicks: 90 * SECOND, endTicks: 120 * SECOND })],
+    });
+    const video = document.querySelector('video');
+    fireEvent.loadedMetadata(video!);
+    expect(video!.currentTime).toBeCloseTo(90, 3);
+  });
+});
