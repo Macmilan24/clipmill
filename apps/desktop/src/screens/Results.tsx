@@ -7,25 +7,35 @@
  * three good moments should return three and say so, because the fourth would
  * be a clip the system does not believe in.
  *
- * Filtering is client-side because the answer is already here. Every row was
- * fetched to draw the summary, so asking the daemon again to hide some of them
- * would be a round trip that can only produce what is already on screen.
+ * Two panes: the candidates, and whichever one is selected. Selecting is not the
+ * same act as opening — a row click moves the rail so an editor can compare
+ * without losing their place, and opening the inspector is a second, deliberate
+ * step. That is why the rail carries its own button rather than the click doing
+ * both.
+ *
+ * Filtering, search and ordering are all client-side because the answer is
+ * already here. Every row was fetched to draw the summary, so asking the daemon
+ * again to hide some of them would be a round trip that can only produce what is
+ * already on screen.
  */
-import { AlertCircle, ArrowRight, Filter } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { Badge } from '../components/ui/badge.js';
-import { Button } from '../components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
 import { Skeleton } from '../components/ui/skeleton.js';
-import type { ClipDecision } from '../daemon/client.js';
+import { CandidateTable } from '../results/parts/CandidateTable.js';
+import { DetailRail } from '../results/parts/DetailRail.js';
+import { StatStrip } from '../results/parts/StatStrip.js';
+import { Toolbar } from '../results/parts/Toolbar.js';
 import {
   type ClipRow,
   type Filters,
   NO_FILTERS,
+  type SortKey,
   type Summary,
   applyFilters,
-  clock,
+  sortRows,
+  tally,
 } from '../results/model.js';
 
 export interface ResultsProps {
@@ -34,55 +44,48 @@ export interface ResultsProps {
   readonly summary: Summary | null;
   /** Why there is nothing, when there is nothing. */
   readonly problem: { readonly kind: string; readonly detail?: string } | null;
+  /** The recording these clips came out of, named rather than implied. */
+  readonly sourceName: string | null;
+  readonly proxyUrl: string | null;
   readonly onInspect: (candidateId: string) => void;
   readonly onReload: () => void;
 }
 
-/** The score, drawn as a ring rather than a number in a box. */
-function ScoreRing({ score, band }: { readonly score: number; readonly band: string }) {
-  const filled = Math.max(0, Math.min(100, score));
-  const tone =
-    band === 'strong'
-      ? 'var(--cm-success-ink)'
-      : band === 'needs_review'
-        ? 'var(--cm-warning-ink)'
-        : 'var(--cm-accent)';
-  return (
-    <div
-      className="relative grid size-14 shrink-0 place-items-center rounded-full"
-      style={{
-        background: `conic-gradient(${tone} ${filled * 3.6}deg, var(--cm-surface-2) 0deg)`,
-      }}
-      role="img"
-      aria-label={`Score ${score} of 99`}
-    >
-      <span className="grid size-11 place-items-center rounded-full bg-[var(--cm-surface-1)] text-sm font-semibold text-[var(--cm-ink-1)]">
-        {score}
-      </span>
-    </div>
-  );
-}
-
-const DECISION_LABELS: Readonly<Record<ClipDecision, string>> = {
-  approved: 'Approved',
-  kept: 'Kept',
-  rejected: 'Rejected',
-};
-
-export function Results({ loading, rows, summary, problem, onInspect, onReload }: ResultsProps) {
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
-  const shown = useMemo(() => applyFilters(rows, filters), [rows, filters]);
+export function Results({
+  loading,
+  rows,
+  summary,
+  problem,
+  sourceName,
+  proxyUrl,
+  onInspect,
+  onReload,
+}: ResultsProps) {
+  const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, query: '' });
+  const [sort, setSort] = useState<SortKey>('rank');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     onReload();
   }, [onReload]);
 
+  const tallies = useMemo(() => tally(rows), [rows]);
+  const shown = useMemo(() => sortRows(applyFilters(rows, filters), sort), [rows, filters, sort]);
+
+  // The rail follows the list. A selection that has been filtered away is a
+  // rail describing a row nobody can see, so it falls back to the first row
+  // still standing rather than holding on to a ghost.
+  const selected = useMemo(
+    () => shown.find((row) => row.candidateId === selectedId) ?? shown[0] ?? null,
+    [shown, selectedId],
+  );
+
   if (loading) {
     return (
-      <div className="flex flex-col gap-3 p-8">
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-24 w-full" />
+      <div className="flex flex-col gap-4 p-6">
+        <Skeleton className="h-[92px] w-full rounded-[var(--cm-radius-card)]" />
+        <Skeleton className="h-[var(--cm-control-standard)] w-full rounded-[var(--cm-radius-control)]" />
+        <Skeleton className="h-[420px] w-full rounded-[var(--cm-radius-card)]" />
       </div>
     );
   }
@@ -92,7 +95,7 @@ export function Results({ loading, rows, summary, problem, onInspect, onReload }
       <div className="p-8">
         <Empty>
           <EmptyHeader>
-            <AlertCircle className="size-6 text-[var(--cm-ink-3)]" />
+            <AlertCircle className="size-6 text-[var(--cm-text-muted)]" />
             <EmptyTitle>
               {problem.kind === 'no-source'
                 ? 'No recording in this project yet'
@@ -112,106 +115,68 @@ export function Results({ loading, rows, summary, problem, onInspect, onReload }
   }
 
   return (
-    <div className="flex flex-col gap-6 p-8">
-      {summary && (
-        <section
-          className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] px-5 py-4"
-          aria-label="Summary"
-        >
-          <div>
-            <p className="text-2xl font-semibold text-[var(--cm-ink-1)]">
-              {summary.selected}
-              <span className="text-[var(--cm-ink-3)]"> / {summary.requested}</span>
-            </p>
-            <p className="text-xs text-[var(--cm-ink-2)]">selected, of the number asked for</p>
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-[var(--cm-ink-1)]">{summary.cohort}</p>
-            <p className="text-xs text-[var(--cm-ink-2)]">scored in the cohort</p>
-          </div>
-          {summary.filtered > 0 && (
-            <div>
-              <p className="text-2xl font-semibold text-[var(--cm-ink-1)]">{summary.filtered}</p>
-              <p className="text-xs text-[var(--cm-ink-2)]">removed before scoring</p>
-            </div>
-          )}
-          {summary.shortfall.length > 0 && (
-            <p className="max-w-md text-xs text-[var(--cm-warning-ink)]">
-              Fewer than requested: {summary.shortfall.join('; ')}.
-            </p>
-          )}
-        </section>
-      )}
-
-      <section className="flex flex-wrap items-center gap-2" aria-label="Filters">
-        <Filter className="size-4 text-[var(--cm-ink-3)]" />
-        {(['any', 'strong', 'promising', 'needs_review'] as const).map((band) => (
-          <Button
-            key={band}
-            size="sm"
-            variant={filters.band === band ? 'default' : 'outline'}
-            onClick={() => setFilters((current) => ({ ...current, band }))}
-          >
-            {band === 'any' ? 'Any confidence' : band.replaceAll('_', ' ')}
-          </Button>
-        ))}
-        <span className="mx-2 h-5 w-px bg-[var(--cm-line-1)]" />
-        {(['any', 'undecided', 'approved', 'kept', 'rejected'] as const).map((decision) => (
-          <Button
-            key={decision}
-            size="sm"
-            variant={filters.decision === decision ? 'default' : 'outline'}
-            onClick={() => setFilters((current) => ({ ...current, decision }))}
-          >
-            {decision === 'any' ? 'Any decision' : decision}
-          </Button>
-        ))}
-        <span className="ml-auto text-xs text-[var(--cm-ink-2)]">
-          {shown.length} of {rows.length} shown
-        </span>
-      </section>
-
-      <ul className="flex flex-col gap-3">
-        {shown.map((row) => (
-          <li key={row.candidateId}>
-            <button
-              type="button"
-              onClick={() => onInspect(row.candidateId)}
-              className="flex w-full items-center gap-5 rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] px-5 py-4 text-left transition-colors hover:border-[var(--cm-accent)]"
+    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-[length:var(--cm-type-page-title)] font-semibold tracking-tight text-[var(--cm-text-primary)]">
+              {rows.length} clip {rows.length === 1 ? 'candidate' : 'candidates'}
+            </h1>
+            <span
+              className="rounded px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
+              style={{
+                color: 'var(--cm-success-ink)',
+                background: 'color-mix(in srgb, var(--cm-success-ink) 12%, transparent)',
+              }}
             >
-              <span className="w-6 shrink-0 text-sm text-[var(--cm-ink-3)]">{row.rank}</span>
-              <ScoreRing score={row.displayScore} band={row.band} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <Badge variant="outline">{row.bandLabel}</Badge>
-                  {row.decision && (
-                    <Badge variant="secondary">{DECISION_LABELS[row.decision]}</Badge>
-                  )}
-                  <span className="text-xs text-[var(--cm-ink-2)]">
-                    {clock(row.startTicks)}–{clock(row.endTicks)} · {row.durationSeconds.toFixed(1)}
-                    s
-                  </span>
-                </span>
-                <span className="mt-1 block truncate text-[15px] text-[var(--cm-ink-1)]">
-                  {row.headline || (
-                    <em className="text-[var(--cm-ink-3)]">No opening line indexed</em>
-                  )}
-                </span>
-                {row.warnings.length > 0 && (
-                  <span className="mt-1 block truncate text-xs text-[var(--cm-warning-ink)]">
-                    {row.warnings.join(' · ')}
-                  </span>
-                )}
-              </span>
-              <ArrowRight className="size-4 shrink-0 text-[var(--cm-ink-3)]" />
-            </button>
-          </li>
-        ))}
-      </ul>
+              Analyzed
+            </span>
+          </div>
+          {sourceName && (
+            <p className="text-[13px] text-[var(--cm-text-secondary)]">{sourceName}</p>
+          )}
+        </div>
+      </header>
 
-      {shown.length === 0 && rows.length > 0 && (
-        <p className="text-sm text-[var(--cm-ink-2)]">No clip matches those filters.</p>
+      {summary && (
+        <StatStrip
+          summary={summary}
+          tallies={tallies}
+          bestScore={rows.length > 0 ? Math.max(...rows.map((row) => row.displayScore)) : null}
+        />
       )}
+
+      <Toolbar
+        filters={filters}
+        sort={sort}
+        tallies={tallies}
+        shown={shown.length}
+        onFilters={setFilters}
+        onSort={setSort}
+      />
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
+        {shown.length > 0 ? (
+          <CandidateTable
+            rows={shown}
+            selectedId={selected?.candidateId ?? null}
+            onSelect={setSelectedId}
+            onOpen={onInspect}
+          />
+        ) : (
+          <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
+            <p className="text-[13px] text-[var(--cm-text-secondary)]">
+              No clip matches those filters.
+            </p>
+          </div>
+        )}
+        <DetailRail
+          row={selected}
+          proxyUrl={proxyUrl}
+          approvedCount={tallies.approved}
+          onOpen={onInspect}
+        />
+      </div>
     </div>
   );
 }

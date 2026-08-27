@@ -80,25 +80,26 @@ export function ResultsScreen({
     );
   }
 
+  // The recording is named on the board rather than in a line above it, so the
+  // header says which run these numbers describe instead of leaving it implied.
+  const sourceName = snapshot.source
+    ? [project?.name, snapshot.source.absolutePath.split('/').at(-1)].filter(Boolean).join(' · ')
+    : null;
+
   return (
-    <div className="flex min-h-0 flex-col">
-      {snapshot.source && (
-        <p className="px-8 pt-6 text-xs text-[var(--cm-ink-2)]">
-          {project?.name} · {snapshot.source.absolutePath.split('/').at(-1)}
-        </p>
-      )}
-      <Results
-        loading={results.loading}
-        rows={snapshot.rows}
-        summary={snapshot.summary}
-        problem={snapshot.problem}
-        onReload={results.reload}
-        onInspect={(next) => {
-          if (project && snapshot.source) {
-            onInspect(project.projectId, snapshot.source.sourceId, next);
-          }
-        }}
-      />
-    </div>
+    <Results
+      loading={results.loading}
+      rows={snapshot.rows}
+      summary={snapshot.summary}
+      problem={snapshot.problem}
+      sourceName={sourceName}
+      proxyUrl={results.proxyUrl}
+      onReload={results.reload}
+      onInspect={(next) => {
+        if (project && snapshot.source) {
+          onInspect(project.projectId, snapshot.source.sourceId, next);
+        }
+      }}
+    />
   );
 }

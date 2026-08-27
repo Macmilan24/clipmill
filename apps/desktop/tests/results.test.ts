@@ -10,7 +10,17 @@ import { describe, expect, it } from 'vitest';
 
 import type { DiscoveryCandidates, RankingSet } from '@clipmill/contracts';
 
-import { AXES, applyFilters, clipRows, clock, summarize } from '../src/results/model.js';
+import {
+  AXES,
+  applyFilters,
+  clipRows,
+  clock,
+  duration,
+  sortRows,
+  summarize,
+  tally,
+  topFactors,
+} from '../src/results/model.js';
 
 const FINGERPRINT = `sha256:${'11'.repeat(32)}`;
 
@@ -172,5 +182,98 @@ describe('the clock', () => {
   it('reads a tick position the way a person reads a timeline', () => {
     expect(clock(0)).toBe('0:00');
     expect(clock(90_000 * 65)).toBe('1:05');
+  });
+});
+
+describe('searching the board', () => {
+  it('matches the line a person can actually read on the row', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const withQuery = (query: string) =>
+      applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 0, query });
+
+    // Whatever the fixture's opening lines are, a query drawn from one of them
+    // finds that row and a query drawn from nothing finds none.
+    const headline = rows[0]?.headline ?? '';
+    if (headline !== '') {
+      expect(withQuery(headline.slice(0, 6)).length).toBeGreaterThan(0);
+    }
+    expect(withQuery('zzzzz-no-such-clip')).toHaveLength(0);
+  });
+
+  it('treats an absent or blank query as no filter at all', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    expect(applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 0 })).toHaveLength(
+      rows.length,
+    );
+    expect(
+      applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 0, query: '   ' }),
+    ).toHaveLength(rows.length);
+  });
+});
+
+describe('ordering the board', () => {
+  it('never adds or drops a row, whatever the order', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    for (const key of ['rank', 'score', 'longest', 'shortest', 'earliest'] as const) {
+      expect(sortRows(rows, key)).toHaveLength(rows.length);
+    }
+  });
+
+  it('leaves the snapshot\'s own array untouched', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const before = rows.map((row) => row.candidateId);
+    sortRows(rows, 'score');
+    expect(rows.map((row) => row.candidateId)).toEqual(before);
+  });
+
+  it('puts the highest score first when asked for score', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const scores = sortRows(rows, 'score').map((row) => row.displayScore);
+    expect(scores).toEqual([...scores].sort((left, right) => right - left));
+  });
+});
+
+describe('the tallies behind the filter chips', () => {
+  it('count what pressing the chip would leave', () => {
+    const rows = clipRows(ranking(), candidates(), null, [
+      { candidateId: 'cand_0000000000000001', decision: 'approved', decidedUnixMillis: 0 },
+    ]);
+    const counts = tally(rows);
+    expect(counts.all).toBe(rows.length);
+    expect(counts.approved).toBe(1);
+    expect(counts.undecided).toBe(rows.length - 1);
+    // A chip's number has to equal what the filter actually returns, or the
+    // chip is advertising a result nobody gets.
+    expect(
+      applyFilters(rows, { band: 'any', decision: 'approved', minimumScore: 0 }),
+    ).toHaveLength(counts.approved);
+    expect(applyFilters(rows, { band: 'strong', decision: 'any', minimumScore: 0 })).toHaveLength(
+      counts.strong,
+    );
+  });
+});
+
+describe('why a clip ranked where it did', () => {
+  it('orders by weighted contribution rather than by raw value', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const row = rows.find((candidate) => candidate.rank === 2);
+    expect(row).toBeDefined();
+    const factors = topFactors(row!);
+    const contribution = factors.map((axis) => (axis.value ?? 0) * (axis.weight ?? 0));
+    expect(contribution).toEqual([...contribution].sort((left, right) => right - left));
+  });
+
+  it('never offers an axis nobody measured as an explanation', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    for (const row of rows) {
+      expect(topFactors(row).every((axis) => axis.value !== null)).toBe(true);
+    }
+  });
+});
+
+describe('the duration column', () => {
+  it('reads as a length rather than a position', () => {
+    expect(duration(8)).toBe('0:08');
+    expect(duration(75)).toBe('1:15');
   });
 });

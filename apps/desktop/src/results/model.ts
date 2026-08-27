@@ -243,6 +243,14 @@ export interface Filters {
   readonly band: string | 'any';
   readonly decision: ClipDecision | 'any' | 'undecided';
   readonly minimumScore: number;
+  /**
+   * A free-text query over what a person can actually read on a row.
+   *
+   * Optional because a filter set that names no query is a filter set that does
+   * not filter by one, and every caller that predates search should keep
+   * meaning exactly what it meant.
+   */
+  readonly query?: string;
 }
 
 export const NO_FILTERS: Filters = { band: 'any', decision: 'any', minimumScore: 0 };
@@ -262,8 +270,29 @@ export function applyFilters(rows: readonly ClipRow[], filters: Filters): readon
     ) {
       return false;
     }
+    if (!matchesQuery(row, filters.query)) {
+      return false;
+    }
     return row.displayScore >= filters.minimumScore;
   });
+}
+
+/**
+ * Whether a row answers a query, over the two fields a person reads.
+ *
+ * The headline and the timecode, and nothing else. Searching the evidence would
+ * find rows whose visible text does not contain the term, which reads as the
+ * filter being broken rather than as being thorough.
+ */
+function matchesQuery(row: ClipRow, query: string | undefined): boolean {
+  const needle = (query ?? '').trim().toLowerCase();
+  if (needle === '') {
+    return true;
+  }
+  return (
+    row.headline.toLowerCase().includes(needle) ||
+    `${clock(row.startTicks)}-${clock(row.endTicks)}`.includes(needle)
+  );
 }
 
 /** A tick position as `m:ss`, which is how a person reads a timeline. */
@@ -326,4 +355,92 @@ export function overlayCues(
       )
       .join('\n'),
   }));
+}
+
+/** How a board may be ordered. Rank is the ranking's own answer. */
+export type SortKey = 'rank' | 'score' | 'longest' | 'shortest' | 'earliest';
+
+export const SORT_LABELS: Readonly<Record<SortKey, string>> = {
+  rank: 'Rank',
+  score: 'Score, high to low',
+  longest: 'Longest first',
+  shortest: 'Shortest first',
+  earliest: 'Position in recording',
+};
+
+/**
+ * The rows in a chosen order, as a new array.
+ *
+ * Sorting never drops or merges, so the count under the table is the count in
+ * it whatever the order. `toSorted` rather than `sort` because the rows belong
+ * to the snapshot and a board that reordered them in place would change what
+ * every other reader of that snapshot sees.
+ */
+export function sortRows(rows: readonly ClipRow[], key: SortKey): readonly ClipRow[] {
+  switch (key) {
+    case 'score':
+      return rows.toSorted((left, right) => right.displayScore - left.displayScore);
+    case 'longest':
+      return rows.toSorted((left, right) => right.durationSeconds - left.durationSeconds);
+    case 'shortest':
+      return rows.toSorted((left, right) => left.durationSeconds - right.durationSeconds);
+    case 'earliest':
+      return rows.toSorted((left, right) => left.startTicks - right.startTicks);
+    case 'rank':
+    default:
+      return rows.toSorted((left, right) => left.rank - right.rank);
+  }
+}
+
+/** What the filter chips count, so a chip never claims a number nobody has. */
+export interface Tallies {
+  readonly all: number;
+  readonly strong: number;
+  readonly promising: number;
+  readonly needsReview: number;
+  readonly undecided: number;
+  readonly approved: number;
+  readonly kept: number;
+  readonly rejected: number;
+  /** Rows carrying at least one warning or penalty, which is what a dot means. */
+  readonly flagged: number;
+}
+
+export function tally(rows: readonly ClipRow[]): Tallies {
+  const count = (predicate: (row: ClipRow) => boolean) => rows.filter(predicate).length;
+  return {
+    all: rows.length,
+    strong: count((row) => row.band === 'strong'),
+    promising: count((row) => row.band === 'promising'),
+    needsReview: count((row) => row.band === 'needs_review'),
+    undecided: count((row) => row.decision === null),
+    approved: count((row) => row.decision === 'approved'),
+    kept: count((row) => row.decision === 'kept'),
+    rejected: count((row) => row.decision === 'rejected'),
+    flagged: count((row) => row.warnings.length > 0 || row.penalties.length > 0),
+  };
+}
+
+/**
+ * The axes that most moved a card, with the evidence they were read from.
+ *
+ * Ordered by weighted contribution rather than by raw value: an axis scoring
+ * 0.9 at weight 0.4 moved the total less than one scoring 0.7 at weight 1.4, and
+ * "why this ranked here" is a question about the total. Unmeasured axes are
+ * never candidates — an axis nobody scored explains nothing.
+ */
+export function topFactors(row: ClipRow, limit = 3): readonly AxisReading[] {
+  return row.axes
+    .filter((axis) => axis.value !== null && axis.weight !== null)
+    .toSorted(
+      (left, right) =>
+        (right.value ?? 0) * (right.weight ?? 0) - (left.value ?? 0) * (left.weight ?? 0),
+    )
+    .slice(0, limit);
+}
+
+/** A duration as `m:ss`, for a column that reads as a length not a position. */
+export function duration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
