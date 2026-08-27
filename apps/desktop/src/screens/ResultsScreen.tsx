@@ -76,6 +76,9 @@ export function ResultsScreen({
         onUseAlternative={() => {
           void results.direct(candidateId, 'alternative');
         }}
+        onTakeCut={(startTicks, endTicks) => {
+          void results.direct(candidateId, 'exact', { startTicks, endTicks });
+        }}
       />
     );
   }

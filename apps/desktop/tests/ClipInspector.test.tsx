@@ -9,6 +9,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { TooltipProvider } from '../src/components/ui/tooltip.js';
 import { ClipInspector } from '../src/screens/ClipInspector.js';
 import type { ClipRow } from '../src/results/model.js';
 
@@ -79,9 +80,17 @@ function show(overrides: Partial<Parameters<typeof ClipInspector>[0]> = {}) {
     onBack: () => {},
     onDecide: () => {},
     onUseAlternative: () => {},
+    onTakeCut: () => {},
     ...overrides,
   };
-  render(<ClipInspector {...props} />);
+  // Wrapped as `App` wraps it: the transport's tooltips need the provider the
+  // shell mounts once at the root, and a test that rendered without it would be
+  // testing a tree the product never builds.
+  render(
+    <TooltipProvider>
+      <ClipInspector {...props} />
+    </TooltipProvider>,
+  );
 }
 
 describe('the score panel', () => {
@@ -194,5 +203,116 @@ describe('a candidate that is not in the ranking', () => {
   it('says so rather than rendering an empty inspector', () => {
     show({ candidateId: 'cand_missing' });
     expect(screen.getByText(/not in the current ranking/i)).toBeTruthy();
+  });
+});
+
+describe('the timeline', () => {
+  it('moves a handle to the next legal edge rather than anywhere', () => {
+    // The fixture's legal starts are 9s and 10s and the cut begins at 10s, so
+    // stepping back has exactly one place it may land.
+    show();
+    const handle = screen.getByRole('button', { name: /^in point at/i });
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    expect(screen.getByRole('button', { name: /^in point at 00:00:09;00/i })).toBeTruthy();
+  });
+
+  it('refuses to step past the last legal edge', () => {
+    show();
+    const handle = screen.getByRole('button', { name: /^in point at/i });
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    // 9s is the earliest start the lattice holds; there is nowhere further back.
+    expect(screen.getByRole('button', { name: /^in point at 00:00:09;00/i })).toBeTruthy();
+  });
+
+  it('offers to take the cut only once a boundary has actually moved', () => {
+    show();
+    expect(screen.queryByRole('button', { name: /take this cut/i })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('button', { name: /^in point at/i }), { key: 'ArrowLeft' });
+    expect(screen.getByRole('button', { name: /take this cut/i })).toBeTruthy();
+  });
+
+  it('sends the moved window, not the one the ranker chose', () => {
+    const taken: number[][] = [];
+    show({ onTakeCut: (start, end) => taken.push([start, end]) });
+    fireEvent.keyDown(screen.getByRole('button', { name: /^in point at/i }), { key: 'ArrowLeft' });
+    fireEvent.click(screen.getByRole('button', { name: /take this cut/i }));
+    expect(taken).toEqual([[9 * SECOND, 40 * SECOND]]);
+  });
+
+  it('says the daemon may move the cut, rather than implying it is final', () => {
+    show();
+    fireEvent.keyDown(screen.getByRole('button', { name: /^in point at/i }), { key: 'ArrowLeft' });
+    expect(screen.getByText(/snaps a cut to the lattice/i)).toBeTruthy();
+  });
+
+  it('puts a moved boundary back where the ranker had it', () => {
+    show();
+    const handle = screen.getByRole('button', { name: /^in point at/i });
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    fireEvent.click(screen.getByRole('button', { name: /reset/i }));
+    expect(screen.queryByRole('button', { name: /take this cut/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /^in point at 00:00:10;00/i })).toBeTruthy();
+  });
+
+  it('drops the draft when a different clip is opened', () => {
+    const { rerender } = render(<div />);
+    void rerender;
+    // Two candidates, so the second can be opened after the first is dragged.
+    const rows = [row(), row({ candidateId: 'cand_2', headline: 'Another clip' })];
+    const props = {
+      rows,
+      candidateId: 'cand_1',
+      proxyUrl: null,
+      crop: null,
+      cues: [],
+      busy: false,
+      notice: null,
+      onSelect: () => {},
+      onBack: () => {},
+      onDecide: () => {},
+      onUseAlternative: () => {},
+      onTakeCut: () => {},
+    };
+    const view = render(
+      <TooltipProvider>
+        <ClipInspector {...props} />
+      </TooltipProvider>,
+    );
+    fireEvent.keyDown(screen.getAllByRole('button', { name: /^in point at/i })[0]!, {
+      key: 'ArrowLeft',
+    });
+    view.rerender(
+      <TooltipProvider>
+        <ClipInspector {...props} candidateId="cand_2" />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByRole('button', { name: /take this cut/i })).toBeNull();
+  });
+});
+
+describe('the player', () => {
+  it('says there is nothing to preview rather than showing a dead frame', () => {
+    show();
+    expect(screen.getByText(/published no proxy/i)).toBeTruthy();
+  });
+
+  it('carries transport an editor can drive, once there is something to drive', () => {
+    show({ proxyUrl: 'clipmill-media://proxy/proxy.mp4' });
+    for (const name of [
+      /play/i,
+      /back one frame/i,
+      /forward one frame/i,
+      /jump to the in point/i,
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+    }
+  });
+
+  it('offers no transport at all when there is no proxy behind it', () => {
+    // Dead controls over an absent video are the failure this screen is being
+    // rebuilt to remove, so their absence is the assertion.
+    show();
+    expect(screen.queryByRole('button', { name: /^play$/i })).toBeNull();
   });
 });
