@@ -17,7 +17,16 @@
 import { type NavSection, findSection } from './navigation.js';
 
 export type Route =
-  | { readonly kind: 'section'; readonly sectionId: string }
+  /**
+   * A section, and optionally the project it was opened for.
+   *
+   * Results is the reason the argument exists. Opening a finished project from
+   * the Library used to navigate to the section and drop which project was
+   * clicked, so the screen fell back to the newest one and an editor who chose
+   * a recording was shown a different recording. A section id has nowhere to
+   * put that, so it goes here.
+   */
+  | { readonly kind: 'section'; readonly sectionId: string; readonly projectId?: string }
   /**
    * One analysis run, watched.
    *
@@ -50,8 +59,10 @@ export type Route =
 
 export const DEFAULT_ROUTE: Route = { kind: 'section', sectionId: 'models' };
 
-export function sectionRoute(sectionId: string): Route {
-  return { kind: 'section', sectionId };
+export function sectionRoute(sectionId: string, projectId?: string): Route {
+  return projectId === undefined
+    ? { kind: 'section', sectionId }
+    : { kind: 'section', sectionId, projectId };
 }
 
 export interface Placement {

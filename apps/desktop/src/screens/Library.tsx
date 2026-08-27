@@ -43,7 +43,7 @@ import { useLibrary } from '../library/useLibrary.js';
 
 export interface LibraryProps {
   readonly state: ConnectionState;
-  readonly onNavigate: (sectionId: string) => void;
+  readonly onNavigate: (sectionId: string, projectId?: string) => void;
   /** Opens one run. Only ever called for a project that has one. */
   readonly onOpenAnalysis: (projectId: string, jobId: string) => void;
   readonly onReconnect: () => void;
@@ -156,7 +156,9 @@ export function Library({
       onOpenAnalysis(entry.project.projectId, entry.job.jobId);
       return;
     }
-    onNavigate('results');
+    // Named, so Results opens the recording that was clicked rather than the
+    // newest one the daemon happens to hold.
+    onNavigate('results', entry.project.projectId);
   };
 
   if (state.status !== 'connected') {

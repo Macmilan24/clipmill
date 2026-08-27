@@ -116,8 +116,8 @@ export function App(): JSX.Element {
     void reconnectDaemon().then(setState);
   }, []);
 
-  const navigate = useCallback((sectionId: string) => {
-    setRoute(sectionRoute(sectionId));
+  const navigate = useCallback((sectionId: string, projectId?: string) => {
+    setRoute(sectionRoute(sectionId, projectId));
   }, []);
 
   // The run a screen opened, and the section it was opened from — which is the

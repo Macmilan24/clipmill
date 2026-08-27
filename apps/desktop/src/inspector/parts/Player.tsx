@@ -99,9 +99,16 @@ export function Player({
   // An external seek — a scrub, a handle drag, a different clip — moves the
   // picture. Keyed on the nonce rather than on the position so the player's own
   // time updates do not fight the element that produced them.
+  //
+  // A seek before the element has metadata is silently dropped: `currentTime`
+  // is only writable once the browser knows the duration, and until then the
+  // assignment is a no-op. That is why the clip opened at the top of the whole
+  // recording rather than at its own first frame — the seek always ran before
+  // the proxy had loaded. `readyState` decides whether to seek now or to leave
+  // it to `loadedmetadata`, which is the one event that guarantees it will take.
   useEffect(() => {
     const element = video.current;
-    if (element && Number.isFinite(positionTicks)) {
+    if (element && Number.isFinite(positionTicks) && element.readyState >= 1) {
       element.currentTime = positionTicks / TICKS_PER_SECOND;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the nonce is the signal
@@ -181,6 +188,11 @@ export function Player({
               className={fitted ? 'max-h-full max-w-full' : 'h-full w-auto max-w-none'}
               muted
               playsInline
+              onLoadedMetadata={(event) => {
+                // The first seek that can actually land. Without it the element
+                // opens at zero, which is a different clip.
+                event.currentTarget.currentTime = positionTicks / TICKS_PER_SECOND;
+              }}
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onTimeUpdate={(event) => {

@@ -201,11 +201,15 @@ describe('the Library screen', () => {
     expect(onNavigate).toHaveBeenCalledWith('new-project');
   });
 
-  it('opens a finished project at its results', async () => {
+  it('opens a finished project at its results, and names which project', async () => {
+    // The name matters as much as the destination: navigating to the section
+    // without it left Results falling back to the newest project, so clicking
+    // one recording showed another.
     const { onNavigate } = show();
 
     fireEvent.click(await screen.findByText('Episode 41 — pricing mistakes'));
-    expect(onNavigate).toHaveBeenCalledWith('results');
+    expect(onNavigate).toHaveBeenCalledWith('results', expect.any(String));
+    expect(onNavigate.mock.calls[0]?.[1]).toBeTruthy();
   });
 
   /** A run still working is a question about the run, not about its output. */

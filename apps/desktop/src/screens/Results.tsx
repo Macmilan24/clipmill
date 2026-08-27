@@ -21,6 +21,14 @@
 import { AlertCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select.js';
+import type { Project } from '../daemon/client.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
 import { Skeleton } from '../components/ui/skeleton.js';
 import { CandidateTable } from '../results/parts/CandidateTable.js';
@@ -47,6 +55,10 @@ export interface ResultsProps {
   /** The recording these clips came out of, named rather than implied. */
   readonly sourceName: string | null;
   readonly proxyUrl: string | null;
+  /** Every project, so this screen can reach a recording it was not routed to. */
+  readonly projects: readonly Project[];
+  readonly activeProjectId: string | null;
+  readonly onChooseProject: (projectId: string) => void;
   readonly onInspect: (candidateId: string) => void;
   readonly onReload: () => void;
 }
@@ -58,6 +70,9 @@ export function Results({
   problem,
   sourceName,
   proxyUrl,
+  projects,
+  activeProjectId,
+  onChooseProject,
   onInspect,
   onReload,
 }: ResultsProps) {
@@ -90,10 +105,54 @@ export function Results({
     );
   }
 
-  if (problem) {
-    return (
-      <div className="p-8">
-        <Empty>
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-[length:var(--cm-type-page-title)] font-semibold tracking-tight text-[var(--cm-text-primary)]">
+              {problem
+                ? 'Results'
+                : `${rows.length} clip ${rows.length === 1 ? 'candidate' : 'candidates'}`}
+            </h1>
+            {!problem && (
+              <span
+                className="rounded px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
+                style={{
+                  color: 'var(--cm-success-ink)',
+                  background: 'color-mix(in srgb, var(--cm-success-ink) 12%, transparent)',
+                }}
+              >
+                Analyzed
+              </span>
+            )}
+          </div>
+          {sourceName && (
+            <p className="text-[13px] text-[var(--cm-text-secondary)]">{sourceName}</p>
+          )}
+        </div>
+
+        {projects.length > 1 && activeProjectId && (
+          <label className="flex items-center gap-2">
+            <span className="sr-only">Which project&rsquo;s results to show</span>
+            <Select value={activeProjectId} onValueChange={onChooseProject}>
+              <SelectTrigger className="glass h-[var(--cm-control-standard)] w-[220px] text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.projectId} value={project.projectId}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        )}
+      </header>
+
+      {problem && (
+        <Empty className="glass rounded-[var(--cm-radius-card)]">
           <EmptyHeader>
             <AlertCircle className="size-6 text-[var(--cm-text-muted)]" />
             <EmptyTitle>
@@ -106,39 +165,13 @@ export function Results({
             <EmptyDescription>
               {problem.kind === 'unreadable'
                 ? problem.detail
-                : 'Results appear once an analysis finishes and publishes a ranked set.'}
+                : 'Results appear once an analysis finishes and publishes a ranked set. Another recording can be chosen above.'}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      </div>
-    );
-  }
+      )}
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-[length:var(--cm-type-page-title)] font-semibold tracking-tight text-[var(--cm-text-primary)]">
-              {rows.length} clip {rows.length === 1 ? 'candidate' : 'candidates'}
-            </h1>
-            <span
-              className="rounded px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
-              style={{
-                color: 'var(--cm-success-ink)',
-                background: 'color-mix(in srgb, var(--cm-success-ink) 12%, transparent)',
-              }}
-            >
-              Analyzed
-            </span>
-          </div>
-          {sourceName && (
-            <p className="text-[13px] text-[var(--cm-text-secondary)]">{sourceName}</p>
-          )}
-        </div>
-      </header>
-
-      {summary && (
+      {!problem && summary && (
         <StatStrip
           summary={summary}
           tallies={tallies}
@@ -146,37 +179,41 @@ export function Results({
         />
       )}
 
-      <Toolbar
-        filters={filters}
-        sort={sort}
-        tallies={tallies}
-        shown={shown.length}
-        onFilters={setFilters}
-        onSort={setSort}
-      />
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
-        {shown.length > 0 ? (
-          <CandidateTable
-            rows={shown}
-            selectedId={selected?.candidateId ?? null}
-            onSelect={setSelectedId}
-            onOpen={onInspect}
+      {!problem && (
+        <>
+          <Toolbar
+            filters={filters}
+            sort={sort}
+            tallies={tallies}
+            shown={shown.length}
+            onFilters={setFilters}
+            onSort={setSort}
           />
-        ) : (
-          <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
-            <p className="text-[13px] text-[var(--cm-text-secondary)]">
-              No clip matches those filters.
-            </p>
+
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
+            {shown.length > 0 ? (
+              <CandidateTable
+                rows={shown}
+                selectedId={selected?.candidateId ?? null}
+                onSelect={setSelectedId}
+                onOpen={onInspect}
+              />
+            ) : (
+              <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
+                <p className="text-[13px] text-[var(--cm-text-secondary)]">
+                  No clip matches those filters.
+                </p>
+              </div>
+            )}
+            <DetailRail
+              row={selected}
+              proxyUrl={proxyUrl}
+              approvedCount={tallies.approved}
+              onOpen={onInspect}
+            />
           </div>
-        )}
-        <DetailRail
-          row={selected}
-          proxyUrl={proxyUrl}
-          approvedCount={tallies.approved}
-          onOpen={onInspect}
-        />
-      </div>
+        </>
+      )}
     </div>
   );
 }
