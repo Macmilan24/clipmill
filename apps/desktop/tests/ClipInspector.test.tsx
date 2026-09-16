@@ -34,7 +34,7 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
         value: 0.8,
         weight: 1.4,
         unavailableReason: null,
-        evidence: ['Most founders price from fear.'],
+        evidence: [{ text: 'Most founders price from fear.', atTicks: 12 * SECOND }],
       },
       {
         axis: 'prompt_relevance',
@@ -50,6 +50,12 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
     decision: null,
     latticeStarts: [9 * SECOND, 10 * SECOND],
     latticeEnds: [40 * SECOND, 42 * SECOND],
+    recommended: true,
+    proposer: 'quote',
+    clusterId: 'clus_1',
+    hook: { text: 'Here is the thing nobody tells you.', atTicks: 10 * SECOND },
+    payoff: null,
+    flagged: false,
     ...overrides,
   };
 }
@@ -74,6 +80,7 @@ function show(overrides: Partial<Parameters<typeof ClipInspector>[0]> = {}) {
     proxyUrl: null,
     crop: null,
     cues: [],
+    peaks: null,
     busy: false,
     notice: null,
     onSelect: () => {},
@@ -94,17 +101,39 @@ function show(overrides: Partial<Parameters<typeof ClipInspector>[0]> = {}) {
 }
 
 describe('the score panel', () => {
-  it('says an axis was not measured instead of drawing it as a zero', () => {
+  it('says why an axis was not measured instead of drawing it as a zero', () => {
     show();
-    expect(screen.getByText(/not measured/i)).toBeTruthy();
     expect(screen.getByText(/no prompt was given/i)).toBeTruthy();
-    // A zero-valued bar would be indistinguishable from a scored zero.
-    expect(screen.queryByRole('img', { name: /prompt fit/i })).toBeNull();
+    // The value reads as absent, never as a number that could be mistaken
+    // for a scored zero.
+    expect(screen.getByText('—')).toBeTruthy();
   });
 
   it('counts how many axes were measured, so a thin card cannot look full', () => {
     show();
-    expect(screen.getByText('1 of 2')).toBeTruthy();
+    expect(screen.getByText(/1 of 2 measured/i)).toBeTruthy();
+  });
+
+  it('leads with the axes that moved the total, as the design draws them', () => {
+    show();
+    // Hook is the only measured axis here, so it is the hero bar and Prompt
+    // fit falls to the detailed grid.
+    expect(screen.getAllByText('Hook').length).toBeGreaterThan(0);
+    expect(screen.getByText('Prompt fit')).toBeTruthy();
+  });
+
+  it('turns a quote into a place the player can go', () => {
+    show({ proxyUrl: 'clipmill-media://proxy/proxy.mp4' });
+    const video = document.querySelector('video')!;
+    // jsdom never loads media, so it reports no metadata forever; a browser
+    // that has fired loadedmetadata reports at least HAVE_METADATA, which is
+    // what the seek waits for.
+    Object.defineProperty(video, 'readyState', { value: 1, configurable: true });
+    fireEvent.loadedMetadata(video);
+    // The hook was said at 10s; the ranker's evidence at 12s. Jumping to the
+    // evidence must move the player there.
+    fireEvent.click(screen.getAllByRole('button', { name: '0:12' })[0]!);
+    expect(video.currentTime).toBeCloseTo(12, 3);
   });
 });
 
@@ -266,6 +295,7 @@ describe('the timeline', () => {
       proxyUrl: null,
       crop: null,
       cues: [],
+      peaks: null,
       busy: false,
       notice: null,
       onSelect: () => {},

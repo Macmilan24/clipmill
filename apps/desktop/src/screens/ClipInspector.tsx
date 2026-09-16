@@ -8,10 +8,11 @@
  *
  * Nothing here is a summary of a summary. The bars are the ranking document's
  * own factors, the quotes are the sentences those factors were read from
- * resolved through the evidence index, and the boundary strip is the real
- * lattice the optimizer chose between. Where a value is missing the panel says
- * which and why, because an axis nobody measured is a different fact from an
- * axis that scored nothing.
+ * resolved through the evidence index — with the position each was said at, so
+ * a quote is a place the player can jump to — and the boundary strip is the
+ * real lattice the optimizer chose between, over the recording's own waveform.
+ * Where a value is missing the panel says which and why, because an axis nobody
+ * measured is a different fact from an axis that scored nothing.
  */
 import { ArrowLeft, Check, Clock, RotateCcw, Scissors, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -20,12 +21,13 @@ import { Button } from '../components/ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
 import type { ClipDecision, CropPath } from '../daemon/client.js';
 import type { OverlayCue } from '../inspector/Preview.js';
-import { AxisBars } from '../inspector/parts/AxisBars.js';
 import { CandidateRail } from '../inspector/parts/CandidateRail.js';
 import { FRAME_TICKS, Player, timecode } from '../inspector/parts/Player.js';
 import { Timeline } from '../inspector/parts/Timeline.js';
-import { type ClipRow, clock, duration } from '../results/model.js';
+import type { Peaks } from '../results/loader.js';
+import { type ClipRow, type Quote, clock, duration, topFactors } from '../results/model.js';
 import { ScoreRing } from '../results/parts/ScoreRing.js';
+import { TONE_INK, stateOf, wash } from '../results/parts/state.js';
 
 export interface ClipInspectorProps {
   readonly rows: readonly ClipRow[];
@@ -33,6 +35,7 @@ export interface ClipInspectorProps {
   readonly proxyUrl: string | null;
   readonly crop: CropPath | null;
   readonly cues: readonly OverlayCue[];
+  readonly peaks: Peaks | null;
   /** True while a decision or a direct is in flight. */
   readonly busy: boolean;
   /** What the last action said, when it said something. */
@@ -51,12 +54,46 @@ export interface ClipInspectorProps {
   readonly onTakeCut: (startTicks: number, endTicks: number) => void;
 }
 
+/** A quote with its position, as a card whose timecode jumps the player. */
+function QuoteCard({
+  quote,
+  label,
+  onJump,
+}: {
+  readonly quote: Quote;
+  readonly label: string;
+  readonly onJump: (ticks: number) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-[var(--cm-radius-control)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
+          {label}
+        </span>
+        <p className="text-[12px] leading-snug text-[var(--cm-text-primary)]">“{quote.text}”</p>
+      </div>
+      {quote.atTicks !== null && (
+        <button
+          type="button"
+          onClick={() => onJump(quote.atTicks!)}
+          title="Jump the player to this line"
+          className="mono shrink-0 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[var(--cm-accent-selected)]"
+          style={{ color: 'var(--cm-accent)', background: 'var(--cm-accent-selected)' }}
+        >
+          {clock(quote.atTicks)}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ClipInspector({
   rows,
   candidateId,
   proxyUrl,
   crop,
   cues,
+  peaks,
   busy,
   notice,
   onSelect,
@@ -101,7 +138,6 @@ export function ClipInspector({
         ? { startTicks: Math.min(ticks, cut.endTicks - FRAME_TICKS), endTicks: cut.endTicks }
         : { startTicks: cut.startTicks, endTicks: Math.max(ticks, cut.startTicks + FRAME_TICKS) };
     setDraft(next);
-    // Show the edge that moved, because a boundary is judged by what it lands on.
     setPositionTicks(edge === 'in' ? next.startTicks : next.endTicks);
     setSeekNonce((nonce) => nonce + 1);
   };
@@ -121,10 +157,27 @@ export function ClipInspector({
     );
   }
 
-  const measured = row.axes.filter((axis) => axis.value !== null).length;
-  const quotes = row.axes.flatMap((axis) =>
-    axis.evidence.map((text) => ({ axis: axis.label, text })),
-  );
+  const measured = row.axes.filter((axis) => axis.value !== null);
+  const hero = topFactors(row, 3);
+  const heroKeys = new Set(hero.map((axis) => axis.axis));
+  const detail = row.axes.filter((axis) => !heroKeys.has(axis.axis));
+  const state = stateOf(row);
+
+  // The reasons: what the proposer said opens and pays off the clip, then the
+  // sentences the strongest factors were read from, without repeating one.
+  const seen = new Set<string>();
+  const reasons: { label: string; quote: Quote }[] = [];
+  const add = (label: string, quote: Quote | null | undefined) => {
+    if (quote && !seen.has(quote.text)) {
+      seen.add(quote.text);
+      reasons.push({ label, quote });
+    }
+  };
+  add('Opens with', row.hook);
+  add('Pays off with', row.payoff);
+  for (const axis of hero) {
+    add(axis.label, axis.evidence[0]);
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
@@ -136,8 +189,15 @@ export function ClipInspector({
         <h1 className="truncate text-[length:var(--cm-type-card-title)] font-semibold text-[var(--cm-text-primary)]">
           {row.headline || 'Untitled clip'}
         </h1>
+        <span
+          className="shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase"
+          style={{ color: TONE_INK[state.tone], background: wash(state.tone) }}
+        >
+          {state.label}
+        </span>
         <span className="mono ml-auto shrink-0 text-[11px] text-[var(--cm-text-muted)]">
           Rank {row.rank} of {rows.length}
+          {row.proposer && <span className="font-sans"> · {row.proposer}</span>}
         </span>
       </header>
 
@@ -168,6 +228,7 @@ export function ClipInspector({
             latticeEnds={row.latticeEnds}
             alternative={row.boundary?.alternative ?? null}
             positionTicks={positionTicks}
+            peaks={peaks}
             onScrub={scrub}
             onDraft={onDraft}
           />
@@ -206,25 +267,9 @@ export function ClipInspector({
         </section>
 
         <section
-          className="glass flex w-[360px] shrink-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]"
+          className="glass flex w-[372px] shrink-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]"
           aria-label="Why this clip"
         >
-          <div className="flex items-center gap-4 border-b border-[var(--cm-glass-border)] p-4">
-            <ScoreRing score={row.displayScore} band={row.band} size="lg" caption={row.bandLabel} />
-            <dl className="flex min-w-0 flex-1 flex-col gap-2 text-[11px]">
-              {[
-                ['Length', duration(row.durationSeconds)],
-                ['Window', `${clock(row.startTicks)} – ${clock(row.endTicks)}`],
-                ['Axes measured', `${measured} of ${row.axes.length}`],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-baseline justify-between gap-2">
-                  <dt className="text-[var(--cm-text-muted)]">{label}</dt>
-                  <dd className="mono text-[var(--cm-text-primary)]">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-
           <Tabs defaultValue="score" className="flex min-h-0 flex-1 flex-col">
             <TabsList className="mx-3 mt-3 shrink-0">
               <TabsTrigger value="score">Score</TabsTrigger>
@@ -234,30 +279,124 @@ export function ClipInspector({
             </TabsList>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <TabsContent value="score" className="mt-0">
-                <AxisBars axes={row.axes} />
+              <TabsContent value="score" className="mt-0 flex flex-col gap-6">
+                <div className="flex items-center gap-5">
+                  <ScoreRing
+                    score={row.displayScore}
+                    band={row.band}
+                    size="lg"
+                    caption={row.bandLabel}
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                    {hero.map((axis, index) => (
+                      <div key={axis.axis} className="flex flex-col gap-1">
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-[10px] tracking-[0.06em] text-[var(--cm-text-secondary)] uppercase">
+                            {axis.label}
+                          </span>
+                          <span
+                            className="mono text-[11px]"
+                            style={{
+                              color: index === 0 ? 'var(--cm-accent)' : 'var(--cm-text-primary)',
+                            }}
+                          >
+                            {Math.round((axis.value ?? 0) * 100)}
+                          </span>
+                        </div>
+                        <div className="h-1 overflow-hidden rounded-full bg-[var(--cm-recessed)]">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.round((axis.value ?? 0) * 100)}%`,
+                              background:
+                                index === 0 ? 'var(--cm-accent)' : 'var(--cm-text-secondary)',
+                              boxShadow:
+                                index === 0
+                                  ? '0 0 6px color-mix(in srgb, var(--cm-accent) 60%, transparent)'
+                                  : undefined,
+                              transition: 'width 640ms cubic-bezier(0.22, 1, 0.36, 1)',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    {hero.length === 0 && (
+                      <p className="text-[11px] text-[var(--cm-text-muted)]">
+                        No axis was measured for this clip.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <h3 className="border-b border-[var(--cm-glass-border)] pb-1 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
+                    Detailed axis scores · {measured.length} of {row.axes.length} measured
+                  </h3>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    {detail.map((axis) => (
+                      <div key={axis.axis} className="flex flex-col gap-1">
+                        <div className="flex items-baseline justify-between">
+                          <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
+                            {axis.label}
+                          </span>
+                          <span className="mono text-[11px] text-[var(--cm-text-primary)]">
+                            {axis.value === null ? '—' : Math.round(axis.value * 100)}
+                          </span>
+                        </div>
+                        {axis.value === null ? (
+                          <p
+                            className="truncate text-[10px] text-[var(--cm-text-muted)]"
+                            title={axis.unavailableReason ?? 'not measured'}
+                          >
+                            {axis.unavailableReason ?? 'not measured'}
+                          </p>
+                        ) : (
+                          <div className="h-0.5 bg-[var(--cm-recessed)]">
+                            <div
+                              className="h-full bg-[var(--cm-text-secondary)]"
+                              style={{ width: `${Math.round(axis.value * 100)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {reasons.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <h3 className="border-b border-[var(--cm-glass-border)] pb-1 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
+                      Why selected
+                    </h3>
+                    {reasons.map((reason) => (
+                      <QuoteCard
+                        key={`${reason.label}-${reason.quote.text}`}
+                        label={reason.label}
+                        quote={reason.quote}
+                        onJump={scrub}
+                      />
+                    ))}
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="evidence" className="mt-0 flex flex-col gap-3">
-                {quotes.length === 0 ? (
+                {row.axes.every((axis) => axis.evidence.length === 0) ? (
                   <p className="text-[12px] text-[var(--cm-text-muted)]">
                     No evidence index was published for this analysis, so the factors carry
                     positions but no text.
                   </p>
                 ) : (
-                  quotes.map((quote, index) => (
-                    <blockquote
-                      key={`${quote.axis}-${index}`}
-                      className="rounded-[var(--cm-radius-control)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3"
-                    >
-                      <p className="text-[12px] leading-relaxed text-[var(--cm-text-primary)] italic">
-                        “{quote.text}”
-                      </p>
-                      <footer className="mt-2 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-                        {quote.axis}
-                      </footer>
-                    </blockquote>
-                  ))
+                  row.axes.flatMap((axis) =>
+                    axis.evidence.map((quote, index) => (
+                      <QuoteCard
+                        key={`${axis.axis}-${index}`}
+                        label={axis.label}
+                        quote={quote}
+                        onJump={scrub}
+                      />
+                    )),
+                  )
                 )}
               </TabsContent>
 
@@ -300,6 +439,24 @@ export function ClipInspector({
                         The lattice offered one legal pair, so there is no alternative to swap to.
                       </p>
                     )}
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[var(--cm-glass-border)] pt-3 text-[11px]">
+                      <dt className="text-[var(--cm-text-muted)]">Length</dt>
+                      <dd className="mono text-right text-[var(--cm-text-primary)]">
+                        {duration(row.durationSeconds)}
+                      </dd>
+                      <dt className="text-[var(--cm-text-muted)]">Legal pairs</dt>
+                      <dd className="mono text-right text-[var(--cm-text-primary)]">
+                        {row.latticeStarts.length}×{row.latticeEnds.length}
+                      </dd>
+                      {row.clusterId && (
+                        <>
+                          <dt className="text-[var(--cm-text-muted)]">Cluster</dt>
+                          <dd className="mono truncate text-right text-[var(--cm-text-primary)]">
+                            {row.clusterId}
+                          </dd>
+                        </>
+                      )}
+                    </dl>
                   </>
                 ) : (
                   <p className="text-[12px] text-[var(--cm-text-muted)]">

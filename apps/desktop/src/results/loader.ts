@@ -9,7 +9,13 @@
  * Nothing here interprets. It fetches and assembles; what any of it means is
  * `model.ts`, which is pure and tested without a window.
  */
-import type { DiscoveryCandidates, IndexTranscript, RankingSet } from '@clipmill/contracts';
+import type {
+  DiscoveryCandidates,
+  IndexTranscript,
+  MediaAudioPeaks,
+  MediaFilmstrip,
+  RankingSet,
+} from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
@@ -22,12 +28,39 @@ export const CANDIDATES_KIND = 'discovery.candidates.v1';
 export const INDEX_KIND = 'index.transcript.v1';
 export const PROXY_KIND = 'media.proxy.v1';
 export const FACES_KIND = 'vision.face_track.v1';
+export const FILMSTRIP_KIND = 'media.filmstrip.v1';
+export const PEAKS_KIND = 'media.audio_peaks.v1';
 
 /** Why a board has nothing to show, in words a person can act on. */
 export type ResultsProblem =
   | { readonly kind: 'no-source' }
   | { readonly kind: 'not-analyzed' }
   | { readonly kind: 'unreadable'; readonly detail: string };
+
+/** The analysis these clips came out of, by the facts the job records. */
+export interface RunInfo {
+  readonly jobId: string;
+  readonly state: Job['state'];
+  readonly completedUnixMillis: number;
+}
+
+/**
+ * The filmstrip, ready to be asked for the frame nearest a moment.
+ *
+ * Tiles carry their own position, so the still for a clip is the tile the
+ * ingest actually cut closest to its first frame — a real frame of the real
+ * recording, and never a placeholder standing in for one.
+ */
+export interface Filmstrip {
+  readonly artifactId: string;
+  readonly tiles: readonly { readonly file: string; readonly tTicks: number }[];
+}
+
+/** The loudness contour, one min/max pair per bucket, for drawing a waveform. */
+export interface Peaks {
+  readonly bucketTicks: number;
+  readonly values: readonly (readonly [number, number])[];
+}
 
 export interface ResultsSnapshot {
   readonly source: Source | null;
@@ -37,6 +70,9 @@ export interface ResultsSnapshot {
   readonly proxyArtifactId: string | null;
   /** The face tracks a crop path is solved from. Null when nobody looked. */
   readonly faceTrackArtifactId: string | null;
+  readonly run: RunInfo | null;
+  readonly filmstrip: Filmstrip | null;
+  readonly peaks: Peaks | null;
   readonly problem: ResultsProblem | null;
 }
 
@@ -46,6 +82,9 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
   summary: null,
   proxyArtifactId: null,
   faceTrackArtifactId: null,
+  run: null,
+  filmstrip: null,
+  peaks: null,
   problem: { kind: 'no-source' },
 };
 
@@ -84,12 +123,16 @@ export class ResultsLoader {
     }
 
     try {
-      const [rankingDoc, candidateDoc, indexDoc, decisions] = await Promise.all([
-        this.api.readDocument(projectId, ranking),
-        this.api.readDocument(projectId, candidates),
-        this.readOptional(projectId, publishedArtifact(job, INDEX_KIND)),
-        this.api.listClipDecisions(projectId, source.sourceId).catch(() => []),
-      ]);
+      const filmstripId = publishedArtifact(job, FILMSTRIP_KIND);
+      const [rankingDoc, candidateDoc, indexDoc, decisions, filmstripDoc, peaksDoc] =
+        await Promise.all([
+          this.api.readDocument(projectId, ranking),
+          this.api.readDocument(projectId, candidates),
+          this.readOptional(projectId, publishedArtifact(job, INDEX_KIND)),
+          this.api.listClipDecisions(projectId, source.sourceId).catch(() => []),
+          this.readOptional(projectId, filmstripId),
+          this.readOptional(projectId, publishedArtifact(job, PEAKS_KIND)),
+        ]);
       const rankingSet = JSON.parse(rankingDoc.json) as RankingSet;
       // The job did not say which recording it ranked, so the document does.
       // Showing another source's clips under this one's name would be worse
@@ -103,12 +146,28 @@ export class ResultsLoader {
         indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null,
         decisions as readonly ClipDecisionRecord[],
       );
+      const filmstrip: MediaFilmstrip | null = filmstripDoc ? JSON.parse(filmstripDoc) : null;
+      const peaks: MediaAudioPeaks | null = peaksDoc ? JSON.parse(peaksDoc) : null;
       return {
         source,
         rows,
         summary: summarize(rankingSet),
         proxyArtifactId: publishedArtifact(job, PROXY_KIND),
         faceTrackArtifactId: publishedArtifact(job, FACES_KIND),
+        run: { jobId: job.jobId, state: job.state, completedUnixMillis: job.updatedUnixMillis },
+        filmstrip:
+          filmstrip && filmstripId
+            ? {
+                artifactId: filmstripId,
+                tiles: filmstrip.tiles.map((tile) => ({ file: tile.file, tTicks: tile.t_ticks })),
+              }
+            : null,
+        peaks: peaks
+          ? {
+              bucketTicks: peaks.bucket_ticks,
+              values: peaks.peaks.map((bucket) => [bucket.min, bucket.max] as const),
+            }
+          : null,
         problem: null,
       };
     } catch (error) {

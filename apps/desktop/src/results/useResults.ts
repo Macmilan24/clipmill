@@ -28,6 +28,20 @@ export interface ResultsState {
   readonly notice: string | null;
   readonly reload: () => void;
   readonly decide: (candidateId: string, decision: ClipDecision) => Promise<void>;
+  /**
+   * Approve several at once, each through the same path a single approval takes.
+   *
+   * One reload at the end rather than one per clip: the board would otherwise
+   * redraw after each, and the decisions are already durable after each write.
+   */
+  readonly approveMany: (candidateIds: readonly string[]) => Promise<void>;
+  /**
+   * The filmstrip frame nearest a moment, as a URL the media protocol serves.
+   *
+   * Null when the run published no filmstrip. Never a placeholder: a still that
+   * is not from this recording is a picture of something else.
+   */
+  readonly tileUrl: (atTicks: number) => string | null;
   readonly solveFor: (candidateId: string) => void;
   /**
    * Build the edit document from a named cut, without changing the decision.
@@ -75,6 +89,23 @@ export function useResults(
     }
     return api.mediaUrl(projectId, snapshot.proxyArtifactId, PROXY_FILE);
   }, [api, projectId, snapshot.proxyArtifactId]);
+
+  const tileUrl = useCallback(
+    (atTicks: number): string | null => {
+      const strip = snapshot.filmstrip;
+      if (!projectId || !strip || strip.tiles.length === 0) {
+        return null;
+      }
+      let nearest = strip.tiles[0]!;
+      for (const tile of strip.tiles) {
+        if (Math.abs(tile.tTicks - atTicks) < Math.abs(nearest.tTicks - atTicks)) {
+          nearest = tile;
+        }
+      }
+      return api.mediaUrl(projectId, strip.artifactId, nearest.file);
+    },
+    [api, projectId, snapshot.filmstrip],
+  );
 
   /**
    * Ask where the camera should point over a clip.
@@ -168,6 +199,48 @@ export function useResults(
     [api, projectId, reload, snapshot.source],
   );
 
+  const approveMany = useCallback(
+    async (candidateIds: readonly string[]) => {
+      if (!projectId || !snapshot.source || candidateIds.length === 0) {
+        return;
+      }
+      setBusy(true);
+      setNotice(null);
+      const failures: string[] = [];
+      try {
+        // Sequential on purpose. The daemon is a single writer, so parallel
+        // requests would only queue behind one another there — and a failure
+        // needs to be attributable to the clip that caused it, which a
+        // `Promise.all` cannot say.
+        for (const candidateId of candidateIds) {
+          try {
+            // eslint-disable-next-line no-await-in-loop -- see above
+            await api.setClipDecision(projectId, snapshot.source.sourceId, candidateId, 'approved');
+            // eslint-disable-next-line no-await-in-loop -- see above
+            await api.directClip({
+              projectId,
+              sourceId: snapshot.source.sourceId,
+              candidateId,
+              cut: 'chosen',
+            });
+          } catch (error) {
+            failures.push((error as Error).message);
+          }
+        }
+        const done = candidateIds.length - failures.length;
+        setNotice(
+          failures.length === 0
+            ? `Approved ${done} ${done === 1 ? 'clip' : 'clips'} and sent them to the editor.`
+            : `Approved ${done} of ${candidateIds.length}; ${failures[0]}`,
+        );
+        reload();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [api, projectId, reload, snapshot.source],
+  );
+
   return {
     loading,
     snapshot,
@@ -181,6 +254,8 @@ export function useResults(
     notice,
     reload,
     decide,
+    approveMany,
+    tileUrl,
     solveFor,
     direct,
   };

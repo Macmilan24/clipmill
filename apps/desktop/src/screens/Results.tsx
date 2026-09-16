@@ -1,26 +1,29 @@
 /**
  * The Results board: every clip the ranking believes in, and what it believed.
  *
- * The board shows counts rather than adjectives. "Three of eight, four asked
- * for" is a sentence a person can act on; "great results!" is not, and the
- * shortfall reasons are shown rather than padded away — a recording that holds
- * three good moments should return three and say so, because the fourth would
- * be a clip the system does not believe in.
+ * The board shows counts rather than adjectives. "Four asked for, one
+ * recommended" is a sentence a person can act on; "great results!" is not, and
+ * the shortfall reasons are shown rather than padded away — a recording that
+ * holds three good moments should return three and say so, because the fourth
+ * would be a clip the system does not believe in.
  *
- * Two panes: the candidates, and whichever one is selected. Selecting is not the
- * same act as opening — a row click moves the rail so an editor can compare
- * without losing their place, and opening the inspector is a second, deliberate
- * step. That is why the rail carries its own button rather than the click doing
- * both.
+ * Three acts on a row, kept apart on purpose. Focusing a row moves the detail
+ * rail so an editor can compare without losing their place. Ticking it adds it
+ * to the set the footer and the header act on. Opening it is a third, deliberate
+ * step into the inspector. A click that did all three would make looking at a
+ * clip the same gesture as committing to it.
  *
- * Filtering, search and ordering are all client-side because the answer is
- * already here. Every row was fetched to draw the summary, so asking the daemon
- * again to hide some of them would be a round trip that can only produce what is
- * already on screen.
+ * Filtering, search and ordering are client-side because the answer is already
+ * here. Every row was fetched to draw the summary, so asking the daemon again to
+ * hide some of them would be a round trip that can only produce what is already
+ * on screen.
  */
-import { AlertCircle } from 'lucide-react';
+import { JobState } from '@clipmill/contracts';
+import { AlertCircle, ArrowRight } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { Button } from '../components/ui/button.js';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
 import {
   Select,
   SelectContent,
@@ -28,13 +31,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select.js';
-import type { Project } from '../daemon/client.js';
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
 import { Skeleton } from '../components/ui/skeleton.js';
+import type { Project } from '../daemon/client.js';
+import type { RunInfo } from '../results/loader.js';
+import { CandidateGrid } from '../results/parts/CandidateGrid.js';
 import { CandidateTable } from '../results/parts/CandidateTable.js';
 import { DetailRail } from '../results/parts/DetailRail.js';
 import { StatStrip } from '../results/parts/StatStrip.js';
-import { Toolbar } from '../results/parts/Toolbar.js';
+import { type BoardView, Toolbar } from '../results/parts/Toolbar.js';
+import { TONE_INK, type Tone, wash } from '../results/parts/state.js';
 import {
   type ClipRow,
   type Filters,
@@ -54,13 +59,38 @@ export interface ResultsProps {
   readonly problem: { readonly kind: string; readonly detail?: string } | null;
   /** The recording these clips came out of, named rather than implied. */
   readonly sourceName: string | null;
-  readonly proxyUrl: string | null;
+  /** The analysis that produced them, by the facts the job records. */
+  readonly run: RunInfo | null;
+  readonly tileUrl: (atTicks: number) => string | null;
   /** Every project, so this screen can reach a recording it was not routed to. */
   readonly projects: readonly Project[];
   readonly activeProjectId: string | null;
+  readonly busy: boolean;
   readonly onChooseProject: (projectId: string) => void;
   readonly onInspect: (candidateId: string) => void;
+  readonly onApproveMany: (candidateIds: readonly string[]) => void;
   readonly onReload: () => void;
+}
+
+/** The job's state as the design's badge, from the job rather than assumed. */
+function runBadge(run: RunInfo | null): { label: string; tone: Tone } | null {
+  if (!run) {
+    return null;
+  }
+  switch (run.state) {
+    case JobState.SUCCEEDED:
+      return { label: 'Analyzed', tone: 'success' };
+    case JobState.FAILED:
+      return { label: 'Failed', tone: 'danger' };
+    case JobState.CANCELLED:
+      return { label: 'Cancelled', tone: 'muted' };
+    default:
+      return { label: 'Analyzing', tone: 'accent' };
+  }
+}
+
+function completedAt(millis: number): string {
+  return new Date(millis).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 export function Results({
@@ -69,31 +99,56 @@ export function Results({
   summary,
   problem,
   sourceName,
-  proxyUrl,
+  run,
+  tileUrl,
   projects,
   activeProjectId,
+  busy,
   onChooseProject,
   onInspect,
+  onApproveMany,
   onReload,
 }: ResultsProps) {
   const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, query: '' });
   const [sort, setSort] = useState<SortKey>('rank');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<BoardView>('list');
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     onReload();
   }, [onReload]);
 
+  // A new set of rows is a new board; a tick made against the old one would be
+  // a tick against a clip that may no longer be on screen.
+  useEffect(() => {
+    setChecked(new Set());
+  }, [rows]);
+
   const tallies = useMemo(() => tally(rows), [rows]);
   const shown = useMemo(() => sortRows(applyFilters(rows, filters), sort), [rows, filters, sort]);
 
-  // The rail follows the list. A selection that has been filtered away is a
-  // rail describing a row nobody can see, so it falls back to the first row
-  // still standing rather than holding on to a ghost.
-  const selected = useMemo(
-    () => shown.find((row) => row.candidateId === selectedId) ?? shown[0] ?? null,
-    [shown, selectedId],
+  const focused = useMemo(
+    () => shown.find((row) => row.candidateId === focusedId) ?? shown[0] ?? null,
+    [shown, focusedId],
   );
+
+  const toggle = (candidateId: string) =>
+    setChecked((current) => {
+      const next = new Set(current);
+      if (next.has(candidateId)) {
+        next.delete(candidateId);
+      } else {
+        next.add(candidateId);
+      }
+      return next;
+    });
+
+  const checkedRows = useMemo(
+    () => rows.filter((row) => checked.has(row.candidateId)),
+    [rows, checked],
+  );
+  const badge = runBadge(run);
 
   if (loading) {
     return (
@@ -108,35 +163,43 @@ export function Results({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-3">
             <h1 className="text-[length:var(--cm-type-page-title)] font-semibold tracking-tight text-[var(--cm-text-primary)]">
               {problem
                 ? 'Results'
                 : `${rows.length} clip ${rows.length === 1 ? 'candidate' : 'candidates'}`}
             </h1>
-            {!problem && (
+            {badge && !problem && (
               <span
                 className="rounded px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
-                style={{
-                  color: 'var(--cm-success-ink)',
-                  background: 'color-mix(in srgb, var(--cm-success-ink) 12%, transparent)',
-                }}
+                style={{ color: TONE_INK[badge.tone], background: wash(badge.tone) }}
               >
-                Analyzed
+                {badge.label}
               </span>
             )}
           </div>
-          {sourceName && (
-            <p className="text-[13px] text-[var(--cm-text-secondary)]">{sourceName}</p>
-          )}
+          <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-[var(--cm-text-secondary)]">
+            {sourceName && <span className="truncate">{sourceName}</span>}
+            {run && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="mono text-[11px] text-[var(--cm-text-muted)]">
+                  {run.jobId.replace(/^job_/, 'run_').slice(0, 12)} · completed{' '}
+                  {completedAt(run.completedUnixMillis)}
+                </span>
+              </>
+            )}
+          </p>
         </div>
 
-        {projects.length > 1 && activeProjectId && (
-          <label className="flex items-center gap-2">
-            <span className="sr-only">Which project&rsquo;s results to show</span>
+        <div className="flex items-center gap-2">
+          {projects.length > 1 && activeProjectId && (
             <Select value={activeProjectId} onValueChange={onChooseProject}>
-              <SelectTrigger className="glass h-[var(--cm-control-standard)] w-[220px] text-[12px]">
+              <SelectTrigger
+                aria-label="Which project's results to show"
+                className="glass h-[var(--cm-control-primary)] w-[220px] text-[12px]"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -147,8 +210,28 @@ export function Results({
                 ))}
               </SelectContent>
             </Select>
-          </label>
-        )}
+          )}
+          {!problem && (
+            <Button
+              className="h-[var(--cm-control-primary)] gap-2"
+              disabled={checkedRows.length === 0}
+              onClick={() => {
+                const first = checkedRows[0];
+                if (first) {
+                  onInspect(first.candidateId);
+                }
+              }}
+              title={
+                checkedRows.length === 0
+                  ? 'Tick one or more clips to review them'
+                  : `Open the first of ${checkedRows.length} selected in the inspector`
+              }
+            >
+              Review selected
+              <ArrowRight className="size-4" aria-hidden />
+            </Button>
+          )}
+        </div>
       </header>
 
       {problem && (
@@ -184,31 +267,48 @@ export function Results({
           <Toolbar
             filters={filters}
             sort={sort}
+            view={view}
             tallies={tallies}
             shown={shown.length}
             onFilters={setFilters}
             onSort={setSort}
+            onView={setView}
           />
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
-            {shown.length > 0 ? (
-              <CandidateTable
-                rows={shown}
-                selectedId={selected?.candidateId ?? null}
-                onSelect={setSelectedId}
-                onOpen={onInspect}
-              />
-            ) : (
+            {shown.length === 0 ? (
               <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
                 <p className="text-[13px] text-[var(--cm-text-secondary)]">
                   No clip matches those filters.
                 </p>
               </div>
+            ) : view === 'list' ? (
+              <CandidateTable
+                rows={shown}
+                focusedId={focused?.candidateId ?? null}
+                checked={checked}
+                onFocus={setFocusedId}
+                onToggle={toggle}
+                onOpen={onInspect}
+              />
+            ) : (
+              <CandidateGrid
+                rows={shown}
+                focusedId={focused?.candidateId ?? null}
+                checked={checked}
+                tileUrl={tileUrl}
+                onFocus={setFocusedId}
+                onToggle={toggle}
+                onOpen={onInspect}
+              />
             )}
             <DetailRail
-              row={selected}
-              proxyUrl={proxyUrl}
+              row={focused}
+              tileUrl={tileUrl}
               approvedCount={tallies.approved}
+              checkedCount={checkedRows.length}
+              busy={busy}
+              onApproveChecked={() => onApproveMany(checkedRows.map((row) => row.candidateId))}
               onOpen={onInspect}
             />
           </div>

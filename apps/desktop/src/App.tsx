@@ -171,8 +171,8 @@ export function App(): JSX.Element {
                 onNavigate: navigate,
               },
               results: {
-                onInspect: (projectId, sourceId, candidateId) => {
-                  setRoute(inspectorRoute(projectId, sourceId, candidateId));
+                onInspect: (projectId, sourceId, candidateId, labels) => {
+                  setRoute(inspectorRoute(projectId, sourceId, candidateId, labels));
                 },
                 onBack: () => {
                   navigate('results');

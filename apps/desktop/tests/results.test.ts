@@ -219,7 +219,7 @@ describe('ordering the board', () => {
     }
   });
 
-  it('leaves the snapshot\'s own array untouched', () => {
+  it("leaves the snapshot's own array untouched", () => {
     const rows = clipRows(ranking(), candidates(), null, []);
     const before = rows.map((row) => row.candidateId);
     sortRows(rows, 'score');
@@ -244,9 +244,9 @@ describe('the tallies behind the filter chips', () => {
     expect(counts.undecided).toBe(rows.length - 1);
     // A chip's number has to equal what the filter actually returns, or the
     // chip is advertising a result nobody gets.
-    expect(
-      applyFilters(rows, { band: 'any', decision: 'approved', minimumScore: 0 }),
-    ).toHaveLength(counts.approved);
+    expect(applyFilters(rows, { band: 'any', decision: 'approved', minimumScore: 0 })).toHaveLength(
+      counts.approved,
+    );
     expect(applyFilters(rows, { band: 'strong', decision: 'any', minimumScore: 0 })).toHaveLength(
       counts.strong,
     );
