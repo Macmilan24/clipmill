@@ -64,6 +64,18 @@ export const BAND_LABELS: Readonly<Record<string, string>> = {
   needs_review: 'Needs review',
 };
 
+/**
+ * A sentence the evidence index holds, and where in the recording it was said.
+ *
+ * The position travels with the text because a quote a person can jump to is
+ * evidence and a quote they cannot is a caption. `atTicks` is null only for a
+ * topic, which is a span of keywords rather than a thing anybody said.
+ */
+export interface Quote {
+  readonly text: string;
+  readonly atTicks: number | null;
+}
+
 export interface AxisReading {
   readonly axis: Axis;
   readonly label: string;
@@ -72,8 +84,8 @@ export interface AxisReading {
   readonly weight: number | null;
   /** Why nothing measured it, when nothing did. */
   readonly unavailableReason: string | null;
-  /** The sentences it was read from, already resolved to text. */
-  readonly evidence: readonly string[];
+  /** The sentences it was read from, resolved to text and position. */
+  readonly evidence: readonly Quote[];
 }
 
 export interface BoundaryReading {
@@ -104,24 +116,46 @@ export interface ClipRow {
   /** Lattice edges, for the boundary strip. */
   readonly latticeStarts: readonly number[];
   readonly latticeEnds: readonly number[];
+  /**
+   * Whether the ranker put this clip in its selected set.
+   *
+   * The cohort is everything that was scored; `selected` is the diverse subset
+   * the ranker actually recommends. A board that showed the cohort without
+   * saying which rows the ranker stood behind would be hiding its one opinion.
+   */
+  readonly recommended: boolean;
+  /** Which proposer nominated it, by the name it publishes under. */
+  readonly proposer: string | null;
+  readonly clusterId: string | null;
+  /** What the nomination opens with and pays off with, where the proposer said. */
+  readonly hook: Quote | null;
+  readonly payoff: Quote | null;
+  /** The ranker recorded a warning or a penalty against it. */
+  readonly flagged: boolean;
 }
 
-/** Sentences and utterances by kind and position, as text. */
-function evidenceText(index: IndexTranscript | null): Map<string, string> {
-  const found = new Map<string, string>();
+/** Sentences, utterances and topics by kind and position, as quotes. */
+function evidenceQuotes(index: IndexTranscript | null): Map<string, Quote> {
+  const found = new Map<string, Quote>();
   if (!index) {
     return found;
   }
   for (const sentence of index.sentences ?? []) {
-    found.set(`sentence:${sentence.index}`, sentence.text);
+    found.set(`sentence:${sentence.index}`, {
+      text: sentence.text,
+      atTicks: sentence.start_ticks,
+    });
   }
   for (const utterance of index.utterances ?? []) {
-    found.set(`utterance:${utterance.index}`, utterance.text);
+    found.set(`utterance:${utterance.index}`, {
+      text: utterance.text,
+      atTicks: utterance.start_ticks,
+    });
   }
   for (const topic of index.topics ?? []) {
     const terms = (topic.keywords ?? []).map((keyword) => keyword.term).join(', ');
     if (terms) {
-      found.set(`topic:${topic.index}`, terms);
+      found.set(`topic:${topic.index}`, { text: terms, atTicks: null });
     }
   }
   return found;
@@ -154,8 +188,11 @@ export function clipRows(
   index: IndexTranscript | null,
   decisions: readonly ClipDecisionRecord[],
 ): readonly ClipRow[] {
-  const text = evidenceText(index);
+  const quotes = evidenceQuotes(index);
+  const quote = (reference: { kind: string; index: number } | null | undefined): Quote | null =>
+    reference ? (quotes.get(`${reference.kind}:${reference.index}`) ?? null) : null;
   const byId = new Map(candidates.candidates.map((candidate) => [candidate.id, candidate]));
+  const recommended = new Set(ranking.selected);
   const decided = new Map(
     decisions
       .filter((record) => record.decision !== 'unspecified')
@@ -189,8 +226,8 @@ export function clipRows(
             unavailableReason:
               factor && !factor.available ? (factor.unavailable_reason ?? null) : null,
             evidence: (factor?.evidence ?? [])
-              .map((reference) => text.get(`${reference.kind}:${reference.index}`) ?? '')
-              .filter((sentence) => sentence.length > 0),
+              .map((reference) => quote(reference))
+              .filter((found): found is Quote => found !== null && found.text.length > 0),
           } satisfies AxisReading;
         }),
         penalties: (ranked.penalties ?? []).map((penalty) => ({
@@ -212,6 +249,13 @@ export function clipRows(
         decision: decided.get(ranked.candidate_id) ?? null,
         latticeStarts: candidate?.boundary_lattice.starts ?? [],
         latticeEnds: candidate?.boundary_lattice.ends ?? [],
+        recommended: recommended.has(ranked.candidate_id),
+        proposer: candidate?.proposer?.name ?? null,
+        clusterId: candidate?.cluster_id ?? null,
+        hook: quote(candidate?.roles?.hook),
+        payoff: quote(candidate?.roles?.payoff),
+        flagged:
+          (ranked.uncertainty.warnings ?? []).length > 0 || (ranked.penalties ?? []).length > 0,
       } satisfies ClipRow;
     });
 }
@@ -241,7 +285,13 @@ export function summarize(ranking: RankingSet): Summary {
 /** Which rows a filter leaves. Client-side, because the answer is already here. */
 export interface Filters {
   readonly band: string | 'any';
-  readonly decision: ClipDecision | 'any' | 'undecided';
+  /**
+   * `recommended` and `flagged` are states the ranker assigns, not decisions a
+   * person made, but they are what an editor filters by first — "show me what
+   * it stands behind", "show me what it warned about" — so they live beside the
+   * decisions rather than in a second control.
+   */
+  readonly decision: ClipDecision | 'any' | 'undecided' | 'recommended' | 'flagged';
   readonly minimumScore: number;
   /**
    * A free-text query over what a person can actually read on a row.
@@ -263,9 +313,17 @@ export function applyFilters(rows: readonly ClipRow[], filters: Filters): readon
     if (filters.decision === 'undecided' && row.decision !== null) {
       return false;
     }
+    if (filters.decision === 'recommended' && !row.recommended) {
+      return false;
+    }
+    if (filters.decision === 'flagged' && !row.flagged) {
+      return false;
+    }
     if (
       filters.decision !== 'any' &&
       filters.decision !== 'undecided' &&
+      filters.decision !== 'recommended' &&
+      filters.decision !== 'flagged' &&
       row.decision !== filters.decision
     ) {
       return false;
@@ -404,6 +462,8 @@ export interface Tallies {
   readonly rejected: number;
   /** Rows carrying at least one warning or penalty, which is what a dot means. */
   readonly flagged: number;
+  /** Rows in the ranker's selected set. */
+  readonly recommended: number;
 }
 
 export function tally(rows: readonly ClipRow[]): Tallies {
@@ -417,7 +477,8 @@ export function tally(rows: readonly ClipRow[]): Tallies {
     approved: count((row) => row.decision === 'approved'),
     kept: count((row) => row.decision === 'kept'),
     rejected: count((row) => row.decision === 'rejected'),
-    flagged: count((row) => row.warnings.length > 0 || row.penalties.length > 0),
+    flagged: count((row) => row.flagged),
+    recommended: count((row) => row.recommended),
   };
 }
 

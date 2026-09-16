@@ -8,7 +8,7 @@
  * about the next clip is whether it has already been dealt with.
  */
 import type { ClipDecision } from '../../daemon/client.js';
-import { type ClipRow, clock } from '../../results/model.js';
+import { type ClipRow, duration } from '../../results/model.js';
 import { bandInk } from '../../results/parts/ScoreRing.js';
 
 const DECISION_MARK: Readonly<Record<ClipDecision, { label: string; ink: string }>> = {
@@ -69,9 +69,9 @@ export function CandidateRail({ rows, candidateId, onSelect }: CandidateRailProp
                   </span>
                 </span>
                 <span className="flex items-center gap-1.5 text-[10px] text-[var(--cm-text-muted)]">
-                  <span className="mono">{clock(row.startTicks)}</span>
-                  <span aria-hidden>·</span>
-                  <span>{row.bandLabel}</span>
+                  <span className="mono">{duration(row.durationSeconds)}</span>
+                  <span aria-hidden>•</span>
+                  <span className="truncate">{row.proposer ?? row.bandLabel}</span>
                   {mark && (
                     <>
                       <span aria-hidden>·</span>

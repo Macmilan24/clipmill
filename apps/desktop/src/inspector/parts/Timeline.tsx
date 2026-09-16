@@ -13,8 +13,9 @@
  * the authority and will move a boundary it disagrees with, which is why taking
  * the cut is a separate, named action and why the response says where it landed.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
+import type { Peaks } from '../../results/loader.js';
 import { TICKS_PER_SECOND } from '../../results/model.js';
 import { timecode } from './Player.js';
 
@@ -29,8 +30,43 @@ export interface TimelineProps {
   /** The runner-up, drawn where the lattice offered one. */
   readonly alternative: { readonly startTicks: number; readonly endTicks: number } | null;
   readonly positionTicks: number;
+  /** The recording's loudness contour, drawn behind the lattice when published. */
+  readonly peaks: Peaks | null;
   readonly onScrub: (ticks: number) => void;
   readonly onDraft: (edge: Handle, ticks: number) => void;
+}
+
+/**
+ * The waveform for a window, as one SVG path.
+ *
+ * Read from the peaks the ingest measured — one min/max pair per bucket — and
+ * never synthesised. Drawn as a mirrored band around the midline, which is how
+ * an editor expects a waveform to read, and sampled to at most one bucket per
+ * pixel-ish column so a long window does not produce a path with ten thousand
+ * points.
+ */
+function waveformPath(peaks: Peaks, from: number, to: number, columns = 240): string {
+  const firstBucket = Math.max(0, Math.floor(from / peaks.bucketTicks));
+  const lastBucket = Math.min(peaks.values.length - 1, Math.ceil(to / peaks.bucketTicks));
+  if (lastBucket <= firstBucket) {
+    return '';
+  }
+  const step = Math.max(1, Math.floor((lastBucket - firstBucket) / columns));
+  const top: string[] = [];
+  const bottom: string[] = [];
+  for (let bucket = firstBucket; bucket <= lastBucket; bucket += step) {
+    let lo = 0;
+    let hi = 0;
+    for (let inner = bucket; inner < Math.min(bucket + step, lastBucket + 1); inner += 1) {
+      const [min, max] = peaks.values[inner]!;
+      lo = Math.min(lo, min);
+      hi = Math.max(hi, max);
+    }
+    const x = (((bucket * peaks.bucketTicks - from) / (to - from)) * 100).toFixed(2);
+    top.push(`${x},${(50 - (hi / 32_767) * 46).toFixed(1)}`);
+    bottom.push(`${x},${(50 - (lo / 32_767) * 46).toFixed(1)}`);
+  }
+  return `M${top.join(' L')} L${bottom.toReversed().join(' L')} Z`;
 }
 
 /** The nearest legal edge, or the raw value when there is no lattice to hold. */
@@ -54,6 +90,7 @@ export function Timeline({
   latticeEnds,
   alternative,
   positionTicks,
+  peaks,
   onScrub,
   onDraft,
 }: TimelineProps) {
@@ -71,6 +108,7 @@ export function Timeline({
   const to = Math.max(endTicks + pad, ...(edges.length > 0 ? edges : [endTicks]));
   const width = Math.max(1, to - from);
   const at = (ticks: number) => `${((ticks - from) / width) * 100}%`;
+  const waveform = useMemo(() => (peaks ? waveformPath(peaks, from, to) : ''), [peaks, from, to]);
 
   const ticksAtClientX = useCallback(
     (clientX: number) => {
@@ -151,6 +189,17 @@ export function Timeline({
         role="group"
         aria-label="The cut, against the boundary lattice"
       >
+        {waveform && (
+          <svg
+            aria-hidden
+            className="pointer-events-none absolute inset-0 size-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            <path d={waveform} fill="var(--cm-text-disabled)" fillOpacity="0.45" />
+          </svg>
+        )}
+
         {latticeStarts.map((tick) => (
           <span
             key={`s-${tick}`}

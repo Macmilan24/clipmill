@@ -33,6 +33,12 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
     decision: null,
     latticeStarts: [],
     latticeEnds: [],
+    recommended: false,
+    proposer: null,
+    clusterId: null,
+    hook: null,
+    payoff: null,
+    flagged: false,
     ...overrides,
   };
 }
@@ -59,16 +65,20 @@ function board(overrides: Partial<Parameters<typeof Results>[0]> = {}) {
           bandLabel: 'Needs review',
           headline: 'The freemium trap for B2B SaaS',
           warnings: ['opens on an unresolved pronoun'],
+          flagged: true,
           decision: 'approved',
         }),
       ]}
       summary={SUMMARY}
       problem={null}
       sourceName="Episode 41"
-      proxyUrl={null}
+      run={null}
+      tileUrl={() => null}
       projects={[]}
       activeProjectId={null}
+      busy={false}
       onChooseProject={() => {}}
+      onApproveMany={() => {}}
       onInspect={() => {}}
       onReload={() => {}}
       {...overrides}
@@ -117,9 +127,43 @@ describe('the board', () => {
 
   it('disables a chip that would leave nothing', () => {
     board();
-    // No row is 'promising' in this fixture, so the chip must not invite a
+    // No row is recommended in this fixture, so the chip must not invite a
     // click that can only produce an empty table.
-    expect(screen.getByRole('button', { name: /promising/i })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /^recommended/i })).toHaveProperty('disabled', true);
+  });
+
+  it("shows the ranker's recommendation as a state, since it is its one opinion", () => {
+    board({ rows: [row({ recommended: true })] });
+    // Scoped to the row: the word also names a chip and a stat, which is the
+    // point — the same fact is counted, filterable and worn by the row.
+    const [only] = rowsOnScreen();
+    expect(within(only!).getByText('Recommended')).toBeTruthy();
+  });
+
+  it('lets a person decide about several clips at once, through the same path as one', () => {
+    const approved: string[][] = [];
+    board({ onApproveMany: (ids) => approved.push([...ids]) });
+    fireEvent.click(screen.getByRole('checkbox', { name: /select your first pricing/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /select the freemium/i }));
+    fireEvent.click(screen.getByRole('button', { name: /approve 2 selected/i }));
+    expect(approved).toEqual([['cand_1', 'cand_2']]);
+  });
+
+  it('switches to cards without changing what any card says', () => {
+    board();
+    fireEvent.click(screen.getByRole('button', { name: /grid view/i }));
+    // The same two clips, the same states — only the layout moved.
+    const cards = screen.getAllByRole('option');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[1]!).getByText('Approved')).toBeTruthy();
+  });
+
+  it('states the run it describes, from the job rather than a constant', () => {
+    board({
+      run: { jobId: 'job_01ABCDEFGH', state: 3, completedUnixMillis: 0 },
+    });
+    expect(screen.getByText('Analyzed')).toBeTruthy();
+    expect(screen.getByText(/run_01ABCDEF/)).toBeTruthy();
   });
 
   it('draws a signal dot only where the ranker recorded something', () => {

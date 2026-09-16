@@ -55,6 +55,14 @@ export type Route =
       readonly projectId: string;
       readonly sourceId: string;
       readonly candidateId: string;
+      /**
+       * What the breadcrumb should call the project and the clip.
+       *
+       * Ids are what the route needs to work; names are what a person needs to
+       * read it. The screen that opens the inspector already has both, so it
+       * hands the names along rather than making the top bar look them up.
+       */
+      readonly labels?: { readonly project?: string; readonly clip?: string };
     };
 
 export const DEFAULT_ROUTE: Route = { kind: 'section', sectionId: 'models' };
@@ -80,12 +88,24 @@ export function placementOf(route: Route): Placement {
   }
   if (route.kind === 'inspector') {
     const section = findSection('results');
-    return { section, trail: [section.breadcrumb, 'Clip'] };
+    const trail = [section.breadcrumb];
+    if (route.labels?.project) {
+      trail.push(route.labels.project);
+    }
+    trail.push(route.labels?.clip ?? 'Clip');
+    return { section, trail };
   }
   const section = findSection(route.from);
   return { section, trail: [section.breadcrumb, 'Analysis'] };
 }
 
-export function inspectorRoute(projectId: string, sourceId: string, candidateId: string): Route {
-  return { kind: 'inspector', projectId, sourceId, candidateId };
+export function inspectorRoute(
+  projectId: string,
+  sourceId: string,
+  candidateId: string,
+  labels?: { readonly project?: string; readonly clip?: string },
+): Route {
+  return labels
+    ? { kind: 'inspector', projectId, sourceId, candidateId, labels }
+    : { kind: 'inspector', projectId, sourceId, candidateId };
 }

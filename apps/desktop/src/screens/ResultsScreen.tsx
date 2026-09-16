@@ -27,7 +27,12 @@ export interface ResultsScreenProps {
   readonly candidateId: string | null;
   /** The project the route named, or null to fall back to the newest. */
   readonly projectId: string | null;
-  readonly onInspect: (projectId: string, sourceId: string, candidateId: string) => void;
+  readonly onInspect: (
+    projectId: string,
+    sourceId: string,
+    candidateId: string,
+    labels?: { readonly project?: string; readonly clip?: string },
+  ) => void;
   readonly onBack: () => void;
   readonly api?: ShellApi;
 }
@@ -61,6 +66,15 @@ export function ResultsScreen({
   const results = useResults(project?.projectId ?? null, null, api);
   const { snapshot, solveFor } = results;
 
+  /** The breadcrumb's words for a clip: the project's name and the clip's rank. */
+  const labelsFor = (id: string) => {
+    const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
+    return {
+      ...(project ? { project: project.name } : {}),
+      ...(row ? { clip: `Clip ${String(row.rank).padStart(2, '0')}` } : {}),
+    };
+  };
+
   // Ask where the camera should point whenever the opened clip changes. The
   // solve writes nothing, so this is a question rather than a commitment.
   useEffect(() => {
@@ -77,11 +91,12 @@ export function ResultsScreen({
         proxyUrl={results.proxyUrl}
         crop={results.crop}
         cues={results.cues}
+        peaks={snapshot.peaks}
         busy={results.busy}
         notice={results.notice}
         onSelect={(next) => {
           if (project && snapshot.source) {
-            onInspect(project.projectId, snapshot.source.sourceId, next);
+            onInspect(project.projectId, snapshot.source.sourceId, next, labelsFor(next));
           }
         }}
         onBack={onBack}
@@ -111,14 +126,19 @@ export function ResultsScreen({
       summary={snapshot.summary}
       problem={snapshot.problem}
       sourceName={sourceName}
-      proxyUrl={results.proxyUrl}
+      run={snapshot.run}
+      tileUrl={results.tileUrl}
       projects={projects}
       activeProjectId={project?.projectId ?? null}
+      busy={results.busy}
       onChooseProject={setPicked}
+      onApproveMany={(ids) => {
+        void results.approveMany(ids);
+      }}
       onReload={results.reload}
       onInspect={(next) => {
         if (project && snapshot.source) {
-          onInspect(project.projectId, snapshot.source.sourceId, next);
+          onInspect(project.projectId, snapshot.source.sourceId, next, labelsFor(next));
         }
       }}
     />

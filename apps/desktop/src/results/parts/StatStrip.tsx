@@ -1,20 +1,20 @@
 /**
- * The run, in the four numbers that describe it.
+ * The run, in the five numbers the design puts above the board.
  *
- * Every figure here is one the ranking document states. The design's strip shows
- * "recommended" and "flagged" beside them; neither is a thing this system
- * publishes, so the two that exist take their place — the cohort that was scored
- * and the candidates filtered out before scoring — and the shortfall is spelled
- * out rather than shown as a deficit against a target.
+ * Every figure is one the documents state. "Candidates" is the cohort the
+ * ranker scored; "Recommended" is its selected set — the one opinion the ranker
+ * holds, and the figure the design leads with; "Approved" and "Flagged" are the
+ * rows a person decided on and the rows the ranker warned about. The design's
+ * strip carries exactly these labels, and every one of them has a real number
+ * behind it here.
  *
- * The shortfall is the reason this strip is not decoration. "Three of four
- * asked for" is a claim a person can act on, and the sentence that follows says
- * why the fourth is missing instead of leaving them to assume a bug.
+ * The shortfall is why this strip is not decoration. "Four asked for, one
+ * recommended" is a claim a person can act on, and the sentence under it says
+ * why the other three are missing instead of leaving them to assume a bug.
  */
 import { AlertTriangle } from 'lucide-react';
 
-import type { Summary } from '../model.js';
-import type { Tallies } from '../model.js';
+import type { Summary, Tallies } from '../model.js';
 
 export interface StatStripProps {
   readonly summary: Summary;
@@ -24,33 +24,36 @@ export interface StatStripProps {
 
 interface Stat {
   readonly label: string;
-  readonly value: string;
-  readonly ink?: string | undefined;
+  readonly value: number;
+  readonly ink: string;
   readonly title: string;
 }
 
 export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
   const stats: readonly Stat[] = [
     {
-      label: 'Selected',
-      value: `${summary.selected}`,
-      title: 'Clips the ranker chose to show, after diversity selection.',
+      label: 'Candidates',
+      value: summary.cohort,
+      ink: 'var(--cm-text-primary)',
+      title: 'Every candidate the ranker scored.',
     },
     {
-      label: 'Requested',
-      value: `${summary.requested}`,
-      title: 'How many the analysis was asked for.',
-    },
-    {
-      label: 'Cohort',
-      value: `${summary.cohort}`,
-      title: 'Candidates that were scored.',
+      label: 'Recommended',
+      value: tallies.recommended,
+      ink: tallies.recommended > 0 ? 'var(--cm-success-ink)' : 'var(--cm-text-muted)',
+      title: `The ranker's selected set — ${summary.requested} were asked for.`,
     },
     {
       label: 'Approved',
-      value: `${tallies.approved}`,
-      ink: tallies.approved > 0 ? 'var(--cm-success-ink)' : undefined,
-      title: 'Clips sent to the editor.',
+      value: tallies.approved,
+      ink: tallies.approved > 0 ? 'var(--cm-accent)' : 'var(--cm-text-muted)',
+      title: 'Clips a person approved and sent to the editor.',
+    },
+    {
+      label: 'Flagged',
+      value: tallies.flagged,
+      ink: tallies.flagged > 0 ? 'var(--cm-danger-ink)' : 'var(--cm-text-muted)',
+      title: 'Clips the ranker recorded a warning or penalty against.',
     },
   ];
 
@@ -66,10 +69,7 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
             <span className="text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
               {stat.label}
             </span>
-            <span
-              className="mono text-lg leading-none"
-              style={{ color: stat.ink ?? 'var(--cm-text-primary)' }}
-            >
+            <span className="mono text-lg leading-none" style={{ color: stat.ink }}>
               {stat.value}
             </span>
           </div>
@@ -91,10 +91,8 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
         <p className="flex w-full items-start gap-2 border-t border-[var(--cm-glass-border)] pt-3 text-[12px] text-[var(--cm-warning-ink)]">
           <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
           <span>
-            Fewer than requested: {summary.shortfall.join('; ')}.{' '}
-            <span className="text-[var(--cm-text-secondary)]">
-              A recording holding three good moments returns three.
-            </span>
+            {summary.requested} asked for, {summary.selected} recommended:{' '}
+            {summary.shortfall.join('; ')}.
           </span>
         </p>
       )}
