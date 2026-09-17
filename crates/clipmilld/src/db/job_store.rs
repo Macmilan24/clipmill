@@ -1794,7 +1794,7 @@ fn get_job_from(connection: &Connection, job_id: &str) -> Result<JobRecord, Stor
     let header = connection
         .query_row(
             "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail
+                    updated_unix_millis, failure_class, failure_detail, source_id
              FROM jobs WHERE job_id = ?1",
             [job_id],
             job_header_from_row,
@@ -1808,7 +1808,7 @@ fn get_job_tx(transaction: &Transaction<'_>, job_id: &str) -> Result<JobRecord, 
     let header = transaction
         .query_row(
             "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail
+                    updated_unix_millis, failure_class, failure_detail, source_id
              FROM jobs WHERE job_id = ?1",
             [job_id],
             job_header_from_row,
@@ -1850,6 +1850,7 @@ fn complete_job_record(
     Ok(JobRecord {
         job_id: header.job_id,
         project_id: header.project_id,
+        source_id: header.source_id,
         kind: header.kind,
         state: header.state,
         created_unix_millis: header.created_unix_millis,
@@ -1864,6 +1865,7 @@ fn complete_job_record(
 struct JobHeader {
     job_id: String,
     project_id: String,
+    source_id: Option<String>,
     kind: String,
     state: i32,
     created_unix_millis: u64,
@@ -1882,6 +1884,7 @@ fn job_header_from_row(row: &Row<'_>) -> rusqlite::Result<JobHeader> {
         updated_unix_millis: sql_u64(row, 5)?,
         failure_class: row.get(6)?,
         failure_detail: row.get(7)?,
+        source_id: row.get(8)?,
     })
 }
 

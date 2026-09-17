@@ -48,6 +48,10 @@ pub(super) const CREATE_V6_TABLES: &str = "
 pub(crate) struct EditDocRecord {
     pub doc_id: String,
     pub project_id: String,
+    /// The source the document was cut from and the candidate it was built
+    /// for; both `None` for a document handed in whole rather than directed.
+    pub source_id: Option<String>,
+    pub candidate_id: Option<String>,
     pub revision: u64,
     pub document_json: String,
     pub created_unix_millis: u64,
@@ -63,6 +67,8 @@ impl From<EditDocRecord> for EditDoc {
             document_json: value.document_json,
             created_unix_millis: value.created_unix_millis,
             updated_unix_millis: value.updated_unix_millis,
+            source_id: value.source_id.unwrap_or_default(),
+            candidate_id: value.candidate_id.unwrap_or_default(),
         }
     }
 }
@@ -118,6 +124,8 @@ pub(super) fn create_edit_doc(
     let record = EditDocRecord {
         doc_id,
         project_id: project_id.to_owned(),
+        source_id: None,
+        candidate_id: None,
         revision: 0,
         document_json: canonical,
         created_unix_millis: now,
@@ -208,6 +216,8 @@ pub(super) fn apply_edit_command(
     let record = EditDocRecord {
         doc_id: doc_id.to_owned(),
         project_id,
+        source_id: None,
+        candidate_id: None,
         revision: next_revision,
         document_json: canonical,
         created_unix_millis: now,
@@ -245,6 +255,8 @@ pub(super) fn list_edit_docs(
         Ok(EditDocRecord {
             doc_id: row.get(0)?,
             project_id: row.get(1)?,
+            source_id: None,
+            candidate_id: None,
             revision: row.get::<_, i64>(2)?.try_into().unwrap_or(0),
             document_json: row.get(3)?,
             created_unix_millis: row.get::<_, i64>(4)?.try_into().unwrap_or(0),
@@ -272,6 +284,8 @@ pub(super) fn get_edit_doc(
                 Ok(EditDocRecord {
                     doc_id: row.get(0)?,
                     project_id: row.get(1)?,
+                    source_id: None,
+                    candidate_id: None,
                     revision: sql_u64(row, 2)?,
                     document_json: row.get(3)?,
                     created_unix_millis: sql_u64(row, 4)?,

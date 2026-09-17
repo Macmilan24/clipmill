@@ -2012,6 +2012,8 @@ impl From<TaskRecord> for v1::Task {
 pub(crate) struct JobRecord {
     pub job_id: String,
     pub project_id: String,
+    /// The source the job ran over; `None` for a job that is not about one.
+    pub source_id: Option<String>,
     pub kind: String,
     pub state: i32,
     pub created_unix_millis: u64,
@@ -2035,6 +2037,7 @@ impl From<JobRecord> for v1::Job {
             output_artifact_ids: value.output_artifact_ids,
             failure_class: value.failure_class,
             failure_detail: value.failure_detail,
+            source_id: value.source_id.unwrap_or_default(),
         }
     }
 }

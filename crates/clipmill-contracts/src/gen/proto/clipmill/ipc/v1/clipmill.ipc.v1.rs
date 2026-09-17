@@ -708,6 +708,14 @@ pub struct Job {
     pub failure_class: i32,
     #[prost(string, tag = "10")]
     pub failure_detail: ::prost::alloc::string::String,
+    /// The source the job ran over, or empty for a job that is not about one.
+    ///
+    /// The store has always kept this; the wire did not carry it, so a shell
+    /// holding two recordings in one project could not tell whose analysis a job
+    /// was and fell back to the newest. Which recording is the one thing a reader
+    /// of an analysis needs to know first.
+    #[prost(string, tag = "11")]
+    pub source_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Task {
@@ -1162,6 +1170,17 @@ pub struct EditDoc {
     pub created_unix_millis: u64,
     #[prost(uint64, tag = "6")]
     pub updated_unix_millis: u64,
+    /// Where the document came from: the source it was cut from and the candidate
+    /// the director built it for. Both empty for a document handed in whole by
+    /// CreateEditDoc, which names no candidate.
+    ///
+    /// This is what makes a document findable by the clip it is, rather than only
+    /// by its position in a list. "The newest document" is the wrong answer to
+    /// "which document is this clip's" the moment a project holds two.
+    #[prost(string, tag = "7")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub candidate_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateEditDocRequest {
@@ -1282,13 +1301,27 @@ pub struct DirectClipRequest {
     pub start_ticks: u64,
     #[prost(uint64, tag = "7")]
     pub end_ticks: u64,
+    /// False reopens the document this candidate already has, if it has one,
+    /// rather than building a second; edits made to it since are kept. True
+    /// builds a new document beside the existing one — a variation, asked for on
+    /// purpose. Approving a clip twice is the first; taking a different cut of it
+    /// is the second.
+    #[prost(bool, tag = "8")]
+    pub variation: bool,
+    /// Record the approval in the same transaction as the document. A decision
+    /// written first and a document that then failed to build would leave a clip
+    /// the board calls approved and the editor cannot open; one write leaves
+    /// either both or neither.
+    #[prost(bool, tag = "9")]
+    pub approve: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {
     #[prost(message, optional, tag = "1")]
     pub doc: ::core::option::Option<EditDoc>,
     /// Where the cut actually landed, which is not where it was asked for when
-    /// the request named a boundary the lattice had to move.
+    /// the request named a boundary the lattice had to move. For a reopened
+    /// document this is where its segment stands now, trims included.
     #[prost(uint64, tag = "2")]
     pub start_ticks: u64,
     #[prost(uint64, tag = "3")]
@@ -1297,6 +1330,10 @@ pub struct DirectClipResponse {
     /// without re-deriving it from the document.
     #[prost(string, repeated, tag = "4")]
     pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// True when `doc` already existed and was handed back unchanged rather than
+    /// built by this call.
+    #[prost(bool, tag = "5")]
+    pub reopened: bool,
 }
 /// What the editor's player must draw (book ch. 17).
 ///

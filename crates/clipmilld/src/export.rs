@@ -609,6 +609,8 @@ mod tests {
         let docs = vec![crate::db::EditDocRecord {
             doc_id: "doc_1".to_owned(),
             project_id: "prj_1".to_owned(),
+            source_id: None,
+            candidate_id: None,
             revision: 2,
             document_json: document.to_owned(),
             created_unix_millis: 1_700_000_000_000,
