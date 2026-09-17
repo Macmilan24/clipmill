@@ -253,6 +253,70 @@ fn trimming_the_head_removes_the_opening_words_from_both_presentations() {
     assert_eq!(document, fixture());
 }
 
+/// A cue cut through keeps its window on the side that was not cut.
+///
+/// The reading cues are held past their words so they can be read. A head
+/// trim that lands inside a cue used to shrink what remained to its words'
+/// own bounds — a caption that appeared a beat after the picture and left
+/// the moment its last word ended, too brief to read and refused at export.
+/// Now the cut side moves to the cut and the other side stays where it was.
+#[test]
+fn a_cue_cut_through_keeps_its_hold_on_the_side_that_was_not_cut() {
+    let second = TICKS_PER_SECOND;
+    // Head: the first segment now begins at source 2.6s, program 0.6s. "the"
+    // and "first" are gone; "slice" (0.8675s–1.2012s) remains, and cue_1
+    // starts with the picture and ends where it always did, a second's
+    // worth of program earlier.
+    let mut document = fixture();
+    EditCommand::Trim {
+        segment_id: "seg_open".to_owned(),
+        in_ticks: 2 * second + second * 6 / 10,
+        out_ticks: 6 * second,
+    }
+    .apply(&mut document)
+    .expect("the head trim applies");
+    let first = &document.captions.cues[0];
+    assert_eq!(first.cue_id, "cue_1");
+    assert_eq!(
+        first
+            .words()
+            .map(|word| word.text.as_str())
+            .collect::<Vec<_>>(),
+        ["slice"]
+    );
+    assert_eq!(first.start_ticks, 0, "the cut cue starts with the picture");
+    assert_eq!(first.end_ticks, 108_108 - second * 6 / 10);
+    document.validate().expect("valid after the head trim");
+
+    // Tail: the second segment now ends at source 11.5s, program 5.5s.
+    // "preview" onward is gone; "so" remains, and cue_6 is held to the end
+    // of the program rather than leaving the moment "so" ends.
+    let mut document = fixture();
+    EditCommand::Trim {
+        segment_id: "seg_close".to_owned(),
+        in_ticks: 10 * second,
+        out_ticks: 11 * second + second / 2,
+    }
+    .apply(&mut document)
+    .expect("the tail trim applies");
+    let last = document.captions.cues.last().expect("cues remain");
+    assert_eq!(last.cue_id, "cue_6");
+    assert_eq!(
+        last.words()
+            .map(|word| word.text.as_str())
+            .collect::<Vec<_>>(),
+        ["so"]
+    );
+    assert_eq!(last.start_ticks, 468_468, "the start was not touched");
+    assert_eq!(
+        last.end_ticks,
+        5 * second + second / 2,
+        "held to the program's end"
+    );
+    assert_eq!(document.program_duration_ticks(), last.end_ticks);
+    document.validate().expect("valid after the tail trim");
+}
+
 #[test]
 fn trimming_the_tail_removes_the_closing_words_from_both_presentations() {
     // The second segment plays source 10s–12s, program 4s–6s, holding "so

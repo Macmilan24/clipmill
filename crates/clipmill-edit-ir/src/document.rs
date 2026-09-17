@@ -638,17 +638,29 @@ impl EditDocument {
                             .retain(|word| word.end_ticks <= at || word.start_ticks >= removed_end);
                     }
                     cue.lines.retain(|line| !line.words.is_empty());
-                    let bounds =
-                        cue.words()
-                            .fold(None::<(i64, i64)>, |bounds, word| match bounds {
-                                None => Some((word.start_ticks, word.end_ticks)),
-                                Some((start, end)) => {
-                                    Some((start.min(word.start_ticks), end.max(word.end_ticks)))
+                    if !cue.lines.is_empty() {
+                        // The cut side moves to the cut. The other side keeps
+                        // the window the cue had: a cue is held past its words
+                        // so it can be read, and a trim that took the words on
+                        // one side is no reason to take the reading time on
+                        // the other. A cue cut through the head starts with
+                        // the picture rather than a beat after it; a cue the
+                        // cut fell inside closes up around it.
+                        let head_cut = at <= cue.start_ticks;
+                        let tail_cut = removed_end >= cue.end_ticks;
+                        if head_cut {
+                            cue.start_ticks = cue.start_ticks.max(removed_end);
+                        } else if tail_cut {
+                            cue.end_ticks = cue.end_ticks.min(at);
+                        } else {
+                            cue.end_ticks = cue.end_ticks.saturating_add(delta);
+                            for word in cue.lines.iter_mut().flat_map(|line| &mut line.words) {
+                                if word.start_ticks >= removed_end {
+                                    word.start_ticks = word.start_ticks.saturating_add(delta);
+                                    word.end_ticks = word.end_ticks.saturating_add(delta);
                                 }
-                            });
-                    if let Some((start, end)) = bounds {
-                        cue.start_ticks = start;
-                        cue.end_ticks = end;
+                            }
+                        }
                     }
                 }
                 cues.retain(|cue| !cue.lines.is_empty());

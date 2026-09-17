@@ -242,6 +242,9 @@ fn run_profile(cues: &[CaptionCue], profile: Profile) -> Vec<Violation> {
             cue_id: &cue.cue_id,
             start_ticks: cue.start_ticks,
             end_ticks: cue.end_ticks,
+            // The words are here, so a cue that left with its last word is
+            // not blamed for a blank the speech never had.
+            speech_end_ticks: cue.words().map(|word| word.end_ticks).max(),
             lines: widths,
         })
         .collect();
