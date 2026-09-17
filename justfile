@@ -204,7 +204,7 @@ gate-tokens:
 # then reports the loss when the daemon is killed underneath it.
 gate-shell:
     cargo build -p clipmilld
-    cargo test -p clipmill-shell -- --ignored --nocapture
+    cargo test -p clipmill-shell --test daemon_link -- --ignored --nocapture
 
 # W22 coverage: the whole data plane the screens sit on, out of process —
 # import, probe, transitions, documents, ranged media, and the refusals.
@@ -239,6 +239,13 @@ gate-editor iterations="1":
 # heard of this project.
 gate-export iterations="1":
     ./tools/drills/export-drill.sh {{iterations}}
+
+# Milestone 1 (upload-ready plan): one selected clip survives the complete
+# workflow, run for real through the shell's bridge against a spawned daemon
+# and the worker fleet, and the delivered file decoded to prove it. Local
+# only: it needs the macOS voice, the worker environments and the weights.
+gate-milestone-1:
+    ./tools/drills/milestone-1-drill.sh
 
 # W26 coverage: the recall arithmetic against hand-worked numbers, and the real
 # engine over a recording whose three moments were planted on purpose.
