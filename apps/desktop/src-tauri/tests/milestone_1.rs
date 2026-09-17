@@ -790,13 +790,53 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     );
     let corrected_bare = bare(&corrected_text).to_owned();
 
+    // ---- Give the clip a camera move and a gain ramp to carry through. ----
+    // The recording is a flat colour with nobody in it, so the director
+    // fitted it; a person can still ask for a crop that moves, and for gain
+    // that ramps, and both have to survive a trim: a static crop is one
+    // keyframe at zero, and advancing the head past it used to leave a
+    // speaker_fill segment with no crop at all, which the renderer refused.
+    let program_ticks = out_ticks - in_ticks;
+    let (doc, _) = apply(
+        &client,
+        &doc,
+        json!({"op": "set_layout", "segment_id": segment_id, "state": "speaker_fill"}),
+    )
+    .await;
+    let (doc, _) = apply(
+        &client,
+        &doc,
+        json!({"op": "set_crop_keyframe", "segment_id": segment_id, "t_ticks": 0,
+               "rect": {"x": 100, "y": 0, "width": 404, "height": 720}}),
+    )
+    .await;
+    let (doc, _) = apply(
+        &client,
+        &doc,
+        json!({"op": "set_crop_keyframe", "segment_id": segment_id, "t_ticks": program_ticks,
+               "rect": {"x": 700, "y": 0, "width": 404, "height": 720}}),
+    )
+    .await;
+    let (doc, _) = apply(
+        &client,
+        &doc,
+        json!({"op": "set_gain", "t_ticks": 0, "gain_db": 0.0}),
+    )
+    .await;
+    let (doc, _) = apply(
+        &client,
+        &doc,
+        json!({"op": "set_gain", "t_ticks": program_ticks, "gain_db": -6.0}),
+    )
+    .await;
+
     // ---- Trim both ends. ----
-    // Where a person trims: in to the start of the second sentence, out to
-    // the end of the second-to-last. Both are word boundaries — a cut inside
-    // a word is one the export refuses, and the editor snaps to a word for
-    // the same reason — and what remains is whole sentences, which is what a
-    // person cutting a clip down keeps. The document's cues are in program
-    // ticks; the trim speaks source ticks, the segment's own window.
+    // Where a person trims: in to the last word of the first sentence — a
+    // word boundary inside a caption, which is where a scrubbed playhead
+    // lands — and out to the end of the second-to-last sentence. A cut
+    // inside a word is one the export refuses, and the editor snaps to a
+    // word for the same reason. The document's cues are in program ticks;
+    // the trim speaks source ticks, the segment's own window.
     let sentences = document(&doc)["captions"]["cues"]
         .as_array()
         .expect("reading cues")
@@ -806,7 +846,29 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
         "the clip has sentences to trim between: {}",
         sentences.len()
     );
-    let head_cut = sentences[1]["start_ticks"].as_i64().unwrap();
+    let words_of_cue = |cue: &Value| -> Vec<String> {
+        cue["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|line| line["words"].as_array().unwrap().iter())
+            .map(|word| word["text"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let first_words = words_of_cue(&sentences[0]);
+    assert!(
+        first_words.len() >= 2,
+        "the first sentence has a last word to cut to"
+    );
+    let head_cut = sentences[0]["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|line| line["words"].as_array().unwrap().iter())
+        .last()
+        .unwrap()["start_ticks"]
+        .as_i64()
+        .unwrap();
     let keep_until = sentences[sentences.len() - 2]["end_ticks"]
         .as_i64()
         .unwrap();
@@ -830,22 +892,28 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
         (segment_id.clone(), trimmed_in, trimmed_out)
     );
     let trimmed = document(&doc);
-    let remaining = trimmed["captions"]["cues"].as_array().unwrap();
-    assert_eq!(
-        remaining.len(),
-        sentences.len() - 2,
-        "one sentence gone from each end"
-    );
-    assert_eq!(
-        remaining[0]["start_ticks"], 0,
-        "the first remaining sentence now opens the clip"
-    );
-    assert_eq!(
-        remaining[remaining.len() - 1]["end_ticks"],
-        trimmed_out - trimmed_in,
-        "the last remaining sentence now closes it"
-    );
+    // Every word said in what remains is still captioned, in order: the
+    // one word left of the first sentence, folded into the sentence after
+    // it since it could not be read alone, then every sentence up to the
+    // one the tail cut removed.
+    let kept: Vec<String> = first_words
+        .last()
+        .cloned()
+        .into_iter()
+        .chain(
+            sentences[1..sentences.len() - 1]
+                .iter()
+                .flat_map(&words_of_cue),
+        )
+        .collect();
     for presentation in ["cues", "burn_in"] {
+        let said: Vec<String> = trimmed["captions"][presentation]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(&words_of_cue)
+            .collect();
+        assert_eq!(said, kept, "{presentation}: the words that remain");
         assert!(
             trimmed["captions"][presentation]
                 .as_array()
@@ -856,6 +924,48 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
             "every {presentation} cue lies inside the trimmed program"
         );
     }
+    // One sentence gone from the tail; at the head, the fragment either
+    // stands (it could be read) or was folded into the next sentence.
+    let remaining = trimmed["captions"]["cues"].as_array().unwrap();
+    assert!(
+        remaining.len() < sentences.len(),
+        "{} cues from {}",
+        remaining.len(),
+        sentences.len()
+    );
+    assert_eq!(
+        remaining[remaining.len() - 1]["end_ticks"],
+        trimmed_out - trimmed_in,
+        "the last remaining sentence now closes the clip"
+    );
+    // The camera and the gain came through the trim: the crop at the new
+    // head is where the move had reached, the path still ends at the new
+    // tail, and the ramp opens at the level it had at the cut.
+    let path = trimmed["video"]["segments"][0]["layout"]["crop_path"]
+        .as_array()
+        .expect("a crop path");
+    assert_eq!(
+        trimmed["video"]["segments"][0]["layout"]["state"],
+        "speaker_fill"
+    );
+    assert_eq!(path.first().unwrap()["t_ticks"], 0);
+    assert_eq!(path.last().unwrap()["t_ticks"], trimmed_out - trimmed_in);
+    let expected_x = 100 + (600 * head_cut) / program_ticks;
+    let x_at_head = path[0]["rect"]["x"].as_i64().unwrap();
+    assert!(
+        (x_at_head - expected_x).abs() <= 1,
+        "the crop at the new head is {x_at_head}, the move had reached {expected_x}"
+    );
+    let gain = trimmed["audio"]["gain_curve"]
+        .as_array()
+        .expect("a gain curve");
+    assert_eq!(gain[0]["t_ticks"], 0);
+    let expected_db = -6.0 * head_cut as f64 / program_ticks as f64;
+    let db_at_head = gain[0]["gain_db"].as_f64().unwrap();
+    assert!(
+        (db_at_head - expected_db).abs() < 1e-6,
+        "the gain at the new head is {db_at_head} dB, the ramp had reached {expected_db}"
+    );
 
     // ---- Undo the tail trim, then redo it. ----
     let (doc, redo_tail) = apply(&client, &doc, undo_tail).await;
@@ -871,7 +981,10 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
         "redo cuts it again"
     );
     let reviewed_revision = doc.revision;
-    assert_eq!(reviewed_revision, 5, "correction, two trims, undo, redo");
+    assert_eq!(
+        reviewed_revision, 10,
+        "correction, layout, two keyframes, two gain points, two trims, undo, redo"
+    );
 
     // ---- Restart. ----
     daemon.stop();
