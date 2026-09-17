@@ -371,12 +371,59 @@ async fn plan_export(
 async fn export_clip(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
     request: views::ExportRequestInput,
-) -> Result<String, String> {
+) -> Result<views::QueuedExportView, String> {
     supervisor
         .client()
         .export_clip(request.into())
         .await
+        .map(Into::into)
         .map_err(|error| error.to_string())
+}
+
+/// Show a delivered file in the operating system's file manager.
+///
+/// The one thing the renderer may do with a path, and only with a path that
+/// names an existing regular file: the argument is canonicalised and checked
+/// before anything is spawned, and what is spawned is the platform's own
+/// reveal — `open -R` on macOS, the folder opener elsewhere — with the path
+/// as a single argument and no shell in between. Nothing is read, written,
+/// or executed; a file manager window comes to the front, or an error says
+/// why not.
+#[tauri::command]
+async fn reveal_path(path: String) -> Result<(), String> {
+    let target = std::path::Path::new(&path)
+        .canonicalize()
+        .map_err(|error| format!("{path}: {error}"))?;
+    let metadata = std::fs::metadata(&target).map_err(|error| format!("{path}: {error}"))?;
+    if !metadata.is_file() {
+        return Err(format!("{path} is not a file"));
+    }
+    let status = tokio::task::spawn_blocking(move || reveal_command(&target).status())
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| format!("cannot open the file manager: {error}"))?;
+    if !status.success() {
+        return Err(format!("the file manager refused: {status}"));
+    }
+    Ok(())
+}
+
+/// The platform's reveal, as a command with the path as its one argument.
+fn reveal_command(target: &std::path::Path) -> std::process::Command {
+    #[cfg(target_os = "macos")]
+    {
+        let mut command = std::process::Command::new("/usr/bin/open");
+        command.arg("-R").arg(target);
+        command
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // No reveal-in-folder on the free desktops' common opener; the
+        // folder is what can be shown.
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(target.parent().unwrap_or(target));
+        command
+    }
 }
 
 /// Pack a project's work into a zip.
@@ -389,6 +436,20 @@ async fn export_archive(
     supervisor
         .client()
         .export_archive(&project_id, &destination_dir)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// Whether an analysis could run right now, stage by stage, and what to do
+/// about the ones that could not.
+#[tauri::command]
+async fn readiness(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<views::ReadinessView, String> {
+    supervisor
+        .client()
+        .readiness()
         .await
         .map(Into::into)
         .map_err(|error| error.to_string())
@@ -585,7 +646,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             export_clip,
             export_archive,
             local_lock,
+            readiness,
             choose_export_folder,
+            reveal_path,
             solve_crop_path,
             direct_clip,
             set_clip_decision,

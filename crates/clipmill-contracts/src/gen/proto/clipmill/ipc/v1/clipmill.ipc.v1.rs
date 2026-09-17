@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -91,6 +91,8 @@ pub mod request {
         ExportArchive(super::ExportArchiveRequest),
         #[prost(message, tag = "41")]
         GetLocalLock(super::GetLocalLockRequest),
+        #[prost(message, tag = "42")]
+        GetReadiness(super::GetReadinessRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -101,7 +103,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -177,6 +179,8 @@ pub mod response {
         ExportArchive(super::ExportArchiveResponse),
         #[prost(message, tag = "42")]
         GetLocalLock(super::GetLocalLockResponse),
+        #[prost(message, tag = "43")]
+        GetReadiness(super::GetReadinessResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -708,6 +712,14 @@ pub struct Job {
     pub failure_class: i32,
     #[prost(string, tag = "10")]
     pub failure_detail: ::prost::alloc::string::String,
+    /// The source the job ran over, or empty for a job that is not about one.
+    ///
+    /// The store has always kept this; the wire did not carry it, so a shell
+    /// holding two recordings in one project could not tell whose analysis a job
+    /// was and fell back to the newest. Which recording is the one thing a reader
+    /// of an analysis needs to know first.
+    #[prost(string, tag = "11")]
+    pub source_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Task {
@@ -1162,6 +1174,23 @@ pub struct EditDoc {
     pub created_unix_millis: u64,
     #[prost(uint64, tag = "6")]
     pub updated_unix_millis: u64,
+    /// Where the document came from: the source it was cut from and the candidate
+    /// the director built it for. Both empty for a document handed in whole by
+    /// CreateEditDoc, which names no candidate.
+    ///
+    /// This is what makes a document findable by the clip it is, rather than only
+    /// by its position in a list. "The newest document" is the wrong answer to
+    /// "which document is this clip's" the moment a project holds two.
+    #[prost(string, tag = "7")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub candidate_id: ::prost::alloc::string::String,
+    /// The analysis run the clip was cut from, when the director knew it. The
+    /// candidate id is minted by a run, and the captions, boundaries and face
+    /// tracks a document was built from are that run's — so a screen reopening
+    /// it can read the same run rather than whichever one is newest.
+    #[prost(string, tag = "9")]
+    pub job_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateEditDocRequest {
@@ -1170,6 +1199,15 @@ pub struct CreateEditDocRequest {
     /// Initial document. Empty starts from the empty document.
     #[prost(string, tag = "2")]
     pub document_json: ::prost::alloc::string::String,
+    /// Which clip the document is, when the caller knows: a document handed in
+    /// whole may still be a clip of a recording, and naming it lets a later
+    /// direction of the same clip reopen it rather than build a second.
+    #[prost(string, tag = "3")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub candidate_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub job_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateEditDocResponse {
@@ -1282,13 +1320,35 @@ pub struct DirectClipRequest {
     pub start_ticks: u64,
     #[prost(uint64, tag = "7")]
     pub end_ticks: u64,
+    /// False reopens the document this candidate already has, if it has one,
+    /// rather than building a second; edits made to it since are kept. True
+    /// builds a new document beside the existing one — a variation, asked for on
+    /// purpose. Approving a clip twice is the first; taking a different cut of it
+    /// is the second.
+    #[prost(bool, tag = "8")]
+    pub variation: bool,
+    /// Record the approval in the same transaction as the document. A decision
+    /// written first and a document that then failed to build would leave a clip
+    /// the board calls approved and the editor cannot open; one write leaves
+    /// either both or neither.
+    #[prost(bool, tag = "9")]
+    pub approve: bool,
+    /// The analysis run the candidate belongs to. Every stage the director reads
+    /// — candidates, ranking, transcript, index, shots, faces — is taken from
+    /// this run, as one snapshot, rather than each from whichever run published
+    /// it last: a re-analysis that renumbered the candidates, or one still half
+    /// published, must not be mixed into a clip chosen from another. Empty takes
+    /// the newest run over the source, checked for coherence the same way.
+    #[prost(string, tag = "10")]
+    pub job_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {
     #[prost(message, optional, tag = "1")]
     pub doc: ::core::option::Option<EditDoc>,
     /// Where the cut actually landed, which is not where it was asked for when
-    /// the request named a boundary the lattice had to move.
+    /// the request named a boundary the lattice had to move. For a reopened
+    /// document this is where its segment stands now, trims included.
     #[prost(uint64, tag = "2")]
     pub start_ticks: u64,
     #[prost(uint64, tag = "3")]
@@ -1297,6 +1357,10 @@ pub struct DirectClipResponse {
     /// without re-deriving it from the document.
     #[prost(string, repeated, tag = "4")]
     pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// True when `doc` already existed and was handed back unchanged rather than
+    /// built by this call.
+    #[prost(bool, tag = "5")]
+    pub reopened: bool,
 }
 /// What the editor's player must draw (book ch. 17).
 ///
@@ -1336,6 +1400,12 @@ pub struct PreviewWordV1 {
     /// track is written with.
     #[prost(int64, tag = "2")]
     pub hold_centis: i64,
+    /// The word's identity, shared with the same word in the reading cues. A
+    /// correction is addressed to this rather than to a cue and an index, so it
+    /// lands in both presentations. Empty only for a document that predates
+    /// word identities and has not been migrated.
+    #[prost(string, tag = "3")]
+    pub word_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PreviewLineV1 {
@@ -1368,6 +1438,71 @@ pub struct PreviewGainV1 {
     #[prost(double, tag = "2")]
     pub gain_db: f64,
 }
+/// One segment of the program, and where in the source it plays.
+///
+/// This is the mapping the player used to lack. A clip cut from ten minutes
+/// into a recording starts at program frame zero and source tick 54,000,000;
+/// a player that handed the media element program seconds seeked to the
+/// recording's opening instead. Every seek, scrub and trim goes through these
+/// numbers now, and the arithmetic is the document's own `program_to_source`.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewSegmentV1 {
+    #[prost(string, tag = "1")]
+    pub segment_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    /// Source ticks the segment plays, half-open.
+    #[prost(int64, tag = "3")]
+    pub in_ticks: i64,
+    #[prost(int64, tag = "4")]
+    pub out_ticks: i64,
+    /// Where it sits on the program timeline, in ticks and in frames.
+    #[prost(int64, tag = "5")]
+    pub program_start_ticks: i64,
+    #[prost(int64, tag = "6")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "7")]
+    pub end_frame: i64,
+}
+/// A source the program draws from, as the crops are measured against it.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewSourceV1 {
+    #[prost(string, tag = "1")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// Display dimensions: the frame the crop rectangles are in. A transform
+    /// built against the output's dimensions instead was right only for a
+    /// source that happened to share its aspect.
+    #[prost(int64, tag = "3")]
+    pub display_width: i64,
+    #[prost(int64, tag = "4")]
+    pub display_height: i64,
+}
+/// The proxy a source is previewed from, and how its clock relates to the
+/// source's. Proxy second zero is `coverage_start_ticks` of the source.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewProxyV1 {
+    #[prost(string, tag = "1")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub artifact_id: ::prost::alloc::string::String,
+    /// The container inside the artifact, served over the media protocol.
+    #[prost(string, tag = "3")]
+    pub file: ::prost::alloc::string::String,
+    #[prost(int64, tag = "4")]
+    pub coverage_start_ticks: i64,
+    #[prost(int64, tag = "5")]
+    pub coverage_end_ticks: i64,
+    #[prost(int64, tag = "6")]
+    pub width: i64,
+    #[prost(int64, tag = "7")]
+    pub height: i64,
+    #[prost(uint32, tag = "8")]
+    pub rate_num: u32,
+    #[prost(uint32, tag = "9")]
+    pub rate_den: u32,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetPreviewPlanResponse {
     /// The revision this plan describes. A caller holding a document at a
@@ -1392,6 +1527,22 @@ pub struct GetPreviewPlanResponse {
     pub width: i64,
     #[prost(int64, tag = "9")]
     pub height: i64,
+    /// The program's segments, in order, each mapped to its source.
+    #[prost(message, repeated, tag = "10")]
+    pub segments: ::prost::alloc::vec::Vec<PreviewSegmentV1>,
+    /// Every source the segments name, with the frame the crops are measured in.
+    #[prost(message, repeated, tag = "11")]
+    pub sources: ::prost::alloc::vec::Vec<PreviewSourceV1>,
+    /// The proxy for each source that has one. A source with no proxy is listed
+    /// above and absent here, and the player says there is nothing to play.
+    #[prost(message, repeated, tag = "12")]
+    pub proxies: ::prost::alloc::vec::Vec<PreviewProxyV1>,
+    /// Which of the document's two cue lists `cues` came from: "burn_in" when
+    /// the document carries a kinetic grouping, "reading" when the reading cues
+    /// are what gets burned in. A cue-scoped command — split, merge, re-break —
+    /// must name the list it means, because each list numbers its own cues.
+    #[prost(string, tag = "13")]
+    pub presentation: ::prost::alloc::string::String,
 }
 /// The edit documents a project holds, oldest first.
 ///
@@ -1464,6 +1615,14 @@ pub struct ExportRequestV1 {
     /// The clip's own words for the {clip} token, when it has a title.
     #[prost(string, tag = "9")]
     pub title: ::prost::alloc::string::String,
+    /// The revision the person reviewed. Set, an export of any other revision
+    /// is refused as a conflict: planning read the document and submission
+    /// reads it again, and an edit between the two — another window, a late
+    /// command — would otherwise deliver a clip nobody looked at. Unset, the
+    /// current revision is taken, which is what a caller with no review step
+    /// means.
+    #[prost(uint64, optional, tag = "10")]
+    pub expected_revision: ::core::option::Option<u64>,
 }
 /// Check an export without performing one. No side effects, no files.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1490,6 +1649,10 @@ pub struct PlanExportResponse {
     /// from a genuinely full disk.
     #[prost(bool, tag = "6")]
     pub available_known: bool,
+    /// The revision this plan was computed over. A caller carries it into the
+    /// export request as the revision it reviewed.
+    #[prost(uint64, tag = "7")]
+    pub revision: u64,
 }
 /// Perform an export. Refused outright when the strip finds anything blocking,
 /// with the findings attached, because an export that starts and then stops is
@@ -1505,6 +1668,15 @@ pub struct ExportClipResponse {
     /// arrives on the task event stream every other long operation uses.
     #[prost(string, tag = "1")]
     pub job_id: ::prost::alloc::string::String,
+    /// What was frozen: the revision rendered, the immutable edit.ir.v1 snapshot
+    /// it was frozen as, and the folder — resolved — the files will land in.
+    /// The delivered package names its files relative to that folder.
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
+    #[prost(string, tag = "3")]
+    pub ir_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub destination_dir: ::prost::alloc::string::String,
 }
 /// Versioned payload for the export job (render, then deliver).
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1582,6 +1754,80 @@ pub struct LocalLockStatusV1 {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetLocalLockRequest {}
+/// ---- Readiness: whether an analysis could run right now ----
+///
+/// An analysis is planned against models the registry pins and workers that
+/// connect on their own. A missing weight file or a worker fleet nobody
+/// started used to show as a stage sitting planned forever with nothing to say.
+/// This is the question a screen asks before submitting, and again while a
+/// stage waits: what would each stage need, and is it here?
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetReadinessRequest {}
+/// One stage an analysis plans, and whether what it needs is present.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StageReadinessV1 {
+    /// The task kind, e.g. "speech-asr".
+    #[prost(string, tag = "1")]
+    pub stage: ::prost::alloc::string::String,
+    /// The capability it serves, as the registry spells it. Empty for a stage
+    /// that runs no model.
+    #[prost(string, tag = "2")]
+    pub capability: ::prost::alloc::string::String,
+    /// The implementation this device is bound to, e.g. "clipmill-worker-asr@0.1.0".
+    #[prost(string, tag = "3")]
+    pub implementation: ::prost::alloc::string::String,
+    /// The registry name of the model it loads, and where it must be.
+    #[prost(string, tag = "4")]
+    pub model: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub backend: ::prost::alloc::string::String,
+    /// Every pinned file of the model is on disk at the size the registry pins.
+    /// True for a stage that runs no model.
+    #[prost(bool, tag = "6")]
+    pub model_present: bool,
+    /// The pinned files that are not, when any is not.
+    #[prost(string, repeated, tag = "7")]
+    pub missing_files: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// A worker that serves this stage is connected right now.
+    #[prost(bool, tag = "8")]
+    pub worker_present: bool,
+    /// Both of the above.
+    #[prost(bool, tag = "9")]
+    pub ready: bool,
+    /// What to do about it, when not ready: one sentence naming the command.
+    #[prost(string, tag = "10")]
+    pub remedy: ::prost::alloc::string::String,
+}
+/// A worker connected right now, as it registered.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorkerPresenceV1 {
+    #[prost(string, tag = "1")]
+    pub worker_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub family: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "3")]
+    pub capabilities: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag = "4")]
+    pub backend: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "5")]
+    pub since_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetReadinessResponse {
+    /// Every stage an analysis would plan that needs a model or a worker.
+    #[prost(message, repeated, tag = "1")]
+    pub stages: ::prost::alloc::vec::Vec<StageReadinessV1>,
+    #[prost(message, repeated, tag = "2")]
+    pub workers: ::prost::alloc::vec::Vec<WorkerPresenceV1>,
+    /// The pinned decoder every media stage runs.
+    #[prost(bool, tag = "3")]
+    pub decoder_present: bool,
+    #[prost(string, tag = "4")]
+    pub decoder_path: ::prost::alloc::string::String,
+    /// Every stage is ready and the decoder is present.
+    #[prost(bool, tag = "5")]
+    pub ready: bool,
+}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetLocalLockResponse {
     #[prost(message, optional, tag = "1")]

@@ -7,18 +7,24 @@
  * board without either screen knowing about the other.
  *
  * Which recording is shown is the one the route named — the project clicked in
- * the Library, or the clip's own project when the Inspector is open. Falling
- * back to the newest project is what happens when nothing named one, which is
- * the sidebar entry; the picker in the header is how that stops being a dead
- * end, since a screen reachable from the navigation must be able to reach every
- * recording rather than whichever the daemon wrote last.
+ * the Library, or the clip's own project, source and run when the Inspector is
+ * open. Falling back to the newest project is what happens when nothing named
+ * one, which is the sidebar entry; the picker in the header is how that stops
+ * being a dead end, since a screen reachable from the navigation must be able
+ * to reach every recording rather than whichever the daemon wrote last.
+ *
+ * Approving hands the clip on. The document the daemon answers with — built,
+ * or reopened if the clip already had one — is named in full to the editor:
+ * project, source, run, candidate, document. Nothing downstream has to find it.
  */
 import { useEffect, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
-import type { ClipDecision, Project } from '../daemon/client.js';
+import type { ClipDecision, DirectedClip, Project } from '../daemon/client.js';
+import type { ClipRow } from '../results/model.js';
 import { useResults } from '../results/useResults.js';
+import type { ClipRef } from '../shell/route.js';
 import { ClipInspector } from './ClipInspector.js';
 import { Results } from './Results.js';
 
@@ -27,12 +33,19 @@ export interface ResultsScreenProps {
   readonly candidateId: string | null;
   /** The project the route named, or null to fall back to the newest. */
   readonly projectId: string | null;
+  /** The recording the route named, or null for the project's newest. */
+  readonly sourceId: string | null;
+  /** The analysis run the route named, or null for the source's newest. */
+  readonly jobId: string | null;
   readonly onInspect: (
     projectId: string,
     sourceId: string,
     candidateId: string,
     labels?: { readonly project?: string; readonly clip?: string },
+    jobId?: string,
   ) => void;
+  /** Open a clip's edit document in the editor. */
+  readonly onEdit: (clip: ClipRef) => void;
   readonly onBack: () => void;
   readonly api?: ShellApi;
 }
@@ -40,7 +53,10 @@ export interface ResultsScreenProps {
 export function ResultsScreen({
   candidateId,
   projectId,
+  sourceId,
+  jobId,
   onInspect,
+  onEdit,
   onBack,
   api = daemonApi,
 }: ResultsScreenProps) {
@@ -62,8 +78,16 @@ export function ResultsScreen({
 
   const wanted = picked ?? projectId;
   const project = projects.find((candidate) => candidate.projectId === wanted) ?? newest(projects);
+  // A pick from the header is a different recording, so the source and run the
+  // route named belong to the project it named and not to the one picked.
+  const routed = picked === null || picked === projectId;
 
-  const results = useResults(project?.projectId ?? null, null, api);
+  const results = useResults(
+    project?.projectId ?? null,
+    routed ? sourceId : null,
+    routed ? jobId : null,
+    api,
+  );
   const { snapshot, solveFor } = results;
 
   /** The breadcrumb's words for a clip: the project's name and the clip's rank. */
@@ -75,6 +99,56 @@ export function ResultsScreen({
     };
   };
 
+  const inspect = (next: string) => {
+    if (project && snapshot.source) {
+      onInspect(
+        project.projectId,
+        snapshot.source.sourceId,
+        next,
+        labelsFor(next),
+        snapshot.run?.jobId,
+      );
+    }
+  };
+
+  /**
+   * Everything the editor needs to open a row's document, named in full.
+   *
+   * The run is the document's own when the store recorded one — a reopened
+   * edit was cut from the run that minted its candidate, which may not be
+   * the run the board is showing — and the board's otherwise.
+   */
+  const clipFor = (row: ClipRow, docId: string, jobId?: string): ClipRef | null => {
+    if (!project || !snapshot.source) {
+      return null;
+    }
+    const run = jobId || snapshot.run?.jobId;
+    return {
+      projectId: project.projectId,
+      docId,
+      sourceId: snapshot.source.sourceId,
+      candidateId: row.candidateId,
+      ...(run ? { jobId: run } : {}),
+      labels: labelsFor(row.candidateId),
+    };
+  };
+
+  const edit = (row: ClipRow, docId: string, jobId?: string) => {
+    const clip = clipFor(row, docId, jobId);
+    if (clip) {
+      onEdit(clip);
+    }
+  };
+
+  /** Approving from the Inspector opens what it approved. */
+  const approve = async (id: string) => {
+    const directed: DirectedClip | null = await results.decide(id, 'approved');
+    const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
+    if (directed && row) {
+      edit(row, directed.docId, directed.jobId);
+    }
+  };
+
   // Ask where the camera should point whenever the opened clip changes. The
   // solve writes nothing, so this is a question rather than a commitment.
   useEffect(() => {
@@ -84,6 +158,7 @@ export function ResultsScreen({
   }, [candidateId, solveFor]);
 
   if (candidateId) {
+    const opened = snapshot.rows.find((row) => row.candidateId === candidateId);
     return (
       <ClipInspector
         rows={snapshot.rows}
@@ -94,14 +169,14 @@ export function ResultsScreen({
         peaks={snapshot.peaks}
         busy={results.busy}
         notice={results.notice}
-        onSelect={(next) => {
-          if (project && snapshot.source) {
-            onInspect(project.projectId, snapshot.source.sourceId, next, labelsFor(next));
-          }
-        }}
+        onSelect={inspect}
         onBack={onBack}
         onDecide={(decision: ClipDecision) => {
-          void results.decide(candidateId, decision);
+          if (decision === 'approved') {
+            void approve(candidateId);
+          } else {
+            void results.decide(candidateId, decision);
+          }
         }}
         onUseAlternative={() => {
           void results.direct(candidateId, 'alternative');
@@ -109,6 +184,13 @@ export function ResultsScreen({
         onTakeCut={(startTicks, endTicks) => {
           void results.direct(candidateId, 'exact', { startTicks, endTicks });
         }}
+        onEdit={
+          opened?.docId
+            ? () => {
+                edit(opened, opened.docId!, opened.docJobId ?? undefined);
+              }
+            : null
+        }
       />
     );
   }
@@ -136,9 +218,11 @@ export function ResultsScreen({
         void results.approveMany(ids);
       }}
       onReload={results.reload}
-      onInspect={(next) => {
-        if (project && snapshot.source) {
-          onInspect(project.projectId, snapshot.source.sourceId, next, labelsFor(next));
+      onInspect={inspect}
+      onEdit={(id) => {
+        const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
+        if (row?.docId) {
+          edit(row, row.docId, row.docJobId ?? undefined);
         }
       }}
     />

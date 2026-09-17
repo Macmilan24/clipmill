@@ -28,19 +28,27 @@ const CANDIDATE: &str = "cand_00000000000000a1";
 const SECOND: u64 = 90_000;
 
 fn transcript() -> SpeechTranscript {
+    transcript_timed(|index| {
+        let start = 10 * SECOND + index * SECOND / 2;
+        (start, start + SECOND / 3, "aligned")
+    })
+}
+
+/// The same talk with each word timed by the caller: start, end, and how.
+fn transcript_timed(timing: impl Fn(u64) -> (u64, u64, &'static str)) -> SpeechTranscript {
     let words: Vec<_> = "The whole point of pricing is that it is a decision you make on purpose."
         .split_whitespace()
         .enumerate()
         .map(|(index, text)| {
-            let start = 10 * SECOND + index as u64 * SECOND / 2;
+            let (start, end, how) = timing(index as u64);
             json!({
                 "index": index,
                 "segment_index": 0,
                 "text": text,
                 "start_ticks": start,
-                "end_ticks": start + SECOND / 3,
+                "end_ticks": end,
                 "confidence": { "p50": 0.95, "p10": 0.8 },
-                "timing": "aligned",
+                "timing": how,
             })
         })
         .collect();
@@ -291,6 +299,59 @@ fn both_caption_groupings_reach_the_document_and_hold_the_same_words() {
         "the two groupings must never disagree about the words",
     );
     assert!(document.captions.burn_in.len() > document.captions.cues.len());
+}
+
+/// Two words the transcript timed as one moment — the interval a spread over
+/// an aligner's gap used to give both of them — still direct to a document
+/// the IR accepts, with the words in order.
+///
+/// Found on a real recording: "The thing" arrived with one interval for both
+/// words and the director's document was refused for an unordered cue, which
+/// surfaced as an internal store error over two words of timing.
+#[test]
+fn words_the_transcript_timed_as_one_moment_still_direct_to_an_ordered_document() {
+    let (candidates, ranking) = (candidates(), ranking());
+    let transcript = transcript_timed(|index| {
+        let start = 10 * SECOND + index * SECOND / 2;
+        match index {
+            // "of pricing": one interval for both, as an interpolation gave.
+            3 | 4 => (
+                10 * SECOND + 3 * SECOND / 2,
+                10 * SECOND + 2 * SECOND,
+                "interpolated",
+            ),
+            _ => (start, start + SECOND / 3, "aligned"),
+        }
+    });
+    let document = direct(
+        evidence(&candidates, &ranking, &transcript),
+        &request(Cut::Chosen),
+    )
+    .expect("a document, not a refusal over two words of timing");
+
+    document.validate().expect("a valid edit document");
+    for cues in [&document.captions.cues, &document.captions.burn_in] {
+        let words = cues
+            .iter()
+            .flat_map(|cue| cue.lines.iter())
+            .flat_map(|line| line.words.iter())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            words
+                .iter()
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>()[3..5],
+            ["of", "pricing"]
+        );
+        for pair in words.windows(2) {
+            assert!(
+                pair[1].start_ticks >= pair[0].end_ticks && pair[0].end_ticks > pair[0].start_ticks,
+                "{} and {} are not in order",
+                pair[0].text,
+                pair[1].text
+            );
+        }
+    }
 }
 
 #[test]

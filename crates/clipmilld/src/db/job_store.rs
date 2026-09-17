@@ -1478,6 +1478,53 @@ pub(super) fn latest_source_job_artifact(
     Ok(artifact_id)
 }
 
+/// What one run published: the source it ran over and, per stage kind, the
+/// artifact its succeeded task wrote.
+///
+/// Every stage of one job, as one lookup, is what lets a clip be directed
+/// from the run its candidate came out of rather than from whichever run
+/// published each stage last. A stage the run has not published yet is absent
+/// here, which the caller reports as such rather than filling from another
+/// run — a half-published re-analysis mixed into an older clip is the failure
+/// this exists to make impossible.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct RunArtifacts {
+    pub source_id: Option<String>,
+    pub by_task_kind: BTreeMap<String, String>,
+}
+
+pub(super) fn run_task_artifacts(
+    connection: &Connection,
+    job_id: &str,
+) -> Result<RunArtifacts, StoreError> {
+    let source_id: Option<String> = connection
+        .query_row(
+            "SELECT j.source_id FROM jobs j JOIN projects p ON p.project_id = j.project_id
+             WHERE j.job_id = ?1 AND p.is_system = 0",
+            [job_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or(StoreError::NotFound)?;
+    let mut statement = connection.prepare(
+        "SELECT kind, output_artifact_id FROM tasks
+         WHERE job_id = ?1 AND state = ?2 AND output_artifact_id IS NOT NULL
+         ORDER BY ordinal",
+    )?;
+    let rows = statement.query_map(params![job_id, TaskState::Succeeded as i32], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut by_task_kind = BTreeMap::new();
+    for row in rows {
+        let (kind, artifact_id) = row?;
+        by_task_kind.insert(kind, artifact_id);
+    }
+    Ok(RunArtifacts {
+        source_id,
+        by_task_kind,
+    })
+}
+
 /// The newest artifact a *stage* published for a source, whatever job ran it.
 ///
 /// Distinct from [`latest_source_job_artifact`], which matches the job's own
@@ -1794,7 +1841,7 @@ fn get_job_from(connection: &Connection, job_id: &str) -> Result<JobRecord, Stor
     let header = connection
         .query_row(
             "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail
+                    updated_unix_millis, failure_class, failure_detail, source_id
              FROM jobs WHERE job_id = ?1",
             [job_id],
             job_header_from_row,
@@ -1808,7 +1855,7 @@ fn get_job_tx(transaction: &Transaction<'_>, job_id: &str) -> Result<JobRecord, 
     let header = transaction
         .query_row(
             "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail
+                    updated_unix_millis, failure_class, failure_detail, source_id
              FROM jobs WHERE job_id = ?1",
             [job_id],
             job_header_from_row,
@@ -1850,6 +1897,7 @@ fn complete_job_record(
     Ok(JobRecord {
         job_id: header.job_id,
         project_id: header.project_id,
+        source_id: header.source_id,
         kind: header.kind,
         state: header.state,
         created_unix_millis: header.created_unix_millis,
@@ -1864,6 +1912,7 @@ fn complete_job_record(
 struct JobHeader {
     job_id: String,
     project_id: String,
+    source_id: Option<String>,
     kind: String,
     state: i32,
     created_unix_millis: u64,
@@ -1882,6 +1931,7 @@ fn job_header_from_row(row: &Row<'_>) -> rusqlite::Result<JobHeader> {
         updated_unix_millis: sql_u64(row, 5)?,
         failure_class: row.get(6)?,
         failure_detail: row.get(7)?,
+        source_id: row.get(8)?,
     })
 }
 

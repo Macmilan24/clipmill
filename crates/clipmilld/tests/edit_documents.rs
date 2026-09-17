@@ -17,8 +17,8 @@ use std::{
 
 use clipmill_artifacts::ArtifactPath;
 use clipmill_contracts::proto::ipc::v1::{
-    ApplyEditCommandRequest, CreateEditDocRequest, GetEditDocRequest, Request,
-    SnapshotEditDocRequest, request, response,
+    ApplyEditCommandRequest, CreateEditDocRequest, ErrorCode, ExportClipRequest, ExportRequestV1,
+    GetEditDocRequest, PlanExportRequest, Request, SnapshotEditDocRequest, request, response,
 };
 use clipmill_core::ArtifactId;
 use clipmill_edit_ir::{EditCommand, EditDocument};
@@ -80,6 +80,7 @@ async fn create_doc(socket: &Path, request_id: &str, project_id: &str, document:
             body: Some(request::Body::CreateEditDoc(CreateEditDocRequest {
                 project_id: project_id.to_owned(),
                 document_json: document.to_owned(),
+                ..CreateEditDocRequest::default()
             })),
         },
     )
@@ -195,6 +196,10 @@ async fn running(
 }
 
 #[tokio::test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one document's life over the socket, in order"
+)]
 async fn commands_apply_invert_and_snapshot_over_the_control_socket() {
     let temp = workspace_tempdir();
     let (socket, artifacts, shutdown, task) = running(config(&temp)).await;
@@ -268,6 +273,7 @@ async fn commands_apply_invert_and_snapshot_over_the_control_socket() {
         &EditCommand::SetCueLines {
             cue_id: "cue_a".to_owned(),
             line_word_counts: vec![1, 1],
+            presentation: clipmill_edit_ir::Presentation::Reading,
         },
     )
     .await
@@ -299,6 +305,82 @@ async fn commands_apply_invert_and_snapshot_over_the_control_socket() {
         EditDocument::from_canonical_json(&bytes).is_ok(),
         "the snapshot is itself a valid edit document"
     );
+
+    // An export is of the revision that was reviewed. Planning says which
+    // revision it looked at; an export naming an older one — the document
+    // moved in between — is refused as a conflict, and one naming the current
+    // revision gets past that check to whatever the strip has to say.
+    let export = |request_id: &str, expected: Option<u64>| {
+        let request = ExportRequestV1 {
+            doc_id: doc_id.clone(),
+            destination_dir: temp.path().join("exports").to_string_lossy().into_owned(),
+            naming_pattern: String::new(),
+            source_attestation: "own_content".to_owned(),
+            gates_passed: Vec::new(),
+            ai_assistance: Vec::new(),
+            index: 1,
+            date: "2026-09-17".to_owned(),
+            title: String::new(),
+            expected_revision: expected,
+        };
+        let request_id = request_id.to_owned();
+        let socket = socket.clone();
+        async move {
+            let planned = send(
+                &socket,
+                Request {
+                    request_id: format!("{request_id}-plan"),
+                    body: Some(request::Body::PlanExport(PlanExportRequest {
+                        request: Some(request.clone()),
+                    })),
+                },
+            )
+            .await
+            .expect("plan");
+            let revision = match planned.body {
+                Some(response::Body::PlanExport(plan)) => plan.revision,
+                other => panic!("unexpected plan reply: {other:?}"),
+            };
+            let exported = send(
+                &socket,
+                Request {
+                    request_id,
+                    body: Some(request::Body::ExportClip(ExportClipRequest {
+                        request: Some(request),
+                    })),
+                },
+            )
+            .await
+            .expect("export reply");
+            (revision, exported.body)
+        }
+    };
+    let (planned_revision, stale) = export("edit-export-stale", Some(2)).await;
+    assert_eq!(
+        planned_revision, 3,
+        "the plan says which revision it looked at"
+    );
+    match stale {
+        Some(response::Body::Error(error)) => {
+            assert_eq!(error.code, ErrorCode::Conflict as i32);
+            assert!(
+                error.message.contains("revision 2 was approved")
+                    && error.message.contains("now at revision 3"),
+                "{}",
+                error.message
+            );
+        }
+        other => panic!("an export of a stale revision must conflict, got {other:?}"),
+    }
+    let (_, current) = export("edit-export-current", Some(3)).await;
+    if let Some(response::Body::Error(error)) = &current {
+        assert_ne!(
+            error.code,
+            ErrorCode::Conflict as i32,
+            "the reviewed revision is not a conflict: {}",
+            error.message
+        );
+    }
 
     stop(shutdown, task).await;
 }
@@ -341,6 +423,7 @@ async fn acknowledged_commands_survive_a_killed_daemon() {
             cue_id: "cue_a".to_owned(),
             word_index: 1,
             text: "TWO".to_owned(),
+            presentation: clipmill_edit_ir::Presentation::Reading,
         },
         EditCommand::SetGain {
             t_ticks: 0,

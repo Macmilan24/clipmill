@@ -68,6 +68,8 @@ export interface ResultsProps {
   readonly busy: boolean;
   readonly onChooseProject: (projectId: string) => void;
   readonly onInspect: (candidateId: string) => void;
+  /** Open a clip that already has an edit document in the editor. */
+  readonly onEdit: (candidateId: string) => void;
   readonly onApproveMany: (candidateIds: readonly string[]) => void;
   readonly onReload: () => void;
 }
@@ -106,6 +108,7 @@ export function Results({
   busy,
   onChooseProject,
   onInspect,
+  onEdit,
   onApproveMany,
   onReload,
 }: ResultsProps) {
@@ -310,6 +313,7 @@ export function Results({
               busy={busy}
               onApproveChecked={() => onApproveMany(checkedRows.map((row) => row.candidateId))}
               onOpen={onInspect}
+              onEdit={onEdit}
             />
           </div>
         </>

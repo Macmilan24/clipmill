@@ -16,9 +16,12 @@ import {
 import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
+import { recall, remember } from './shell/memory.js';
 import {
-  DEFAULT_ROUTE,
+  type ClipRef,
   type Route,
+  editorRoute,
+  exportRoute,
   inspectorRoute,
   placementOf,
   sectionRoute,
@@ -51,7 +54,15 @@ export function App(): JSX.Element {
     ),
   );
 
-  const [route, setRoute] = useState<Route>(DEFAULT_ROUTE);
+  // Where the shell was, and which clip it was on, put back from the last
+  // launch. The clip is what the Editor and Export rows open when reached from
+  // the sidebar with nothing named — a person's own last choice, rather than
+  // whichever document the daemon wrote most recently.
+  const [memory] = useState(() =>
+    recall(typeof localStorage === 'undefined' ? null : localStorage),
+  );
+  const [route, setRoute] = useState<Route>(memory.route);
+  const [clip, setClip] = useState<ClipRef | null>(memory.clip);
   const [state, setState] = useState<ConnectionState>({ status: 'connecting' });
   const [profile, setProfile] = useState<DeviceProfile | null>(null);
   const [artifactId, setArtifactId] = useState<string | null>(null);
@@ -116,9 +127,28 @@ export function App(): JSX.Element {
     void reconnectDaemon().then(setState);
   }, []);
 
-  const navigate = useCallback((sectionId: string, projectId?: string) => {
-    setRoute(sectionRoute(sectionId, projectId));
+  useEffect(() => {
+    remember(typeof localStorage === 'undefined' ? null : localStorage, { route, clip });
+  }, [route, clip]);
+
+  /** Open a clip in the editor or on the export screen, and remember it. */
+  const openClip = useCallback((next: ClipRef, screen: 'editor' | 'export') => {
+    setClip(next);
+    setRoute(screen === 'editor' ? editorRoute(next) : exportRoute(next));
   }, []);
+
+  const navigate = useCallback(
+    (sectionId: string, projectId?: string) => {
+      // The two rows that are about a clip open the one last opened, when
+      // there is one; the plain section is the screen saying "choose".
+      if ((sectionId === 'editor' || sectionId === 'export') && clip && projectId === undefined) {
+        setRoute(sectionId === 'editor' ? editorRoute(clip) : exportRoute(clip));
+        return;
+      }
+      setRoute(sectionRoute(sectionId, projectId));
+    },
+    [clip],
+  );
 
   // The run a screen opened, and the section it was opened from — which is the
   // row the sidebar keeps lit while it is on screen.
@@ -171,8 +201,11 @@ export function App(): JSX.Element {
                 onNavigate: navigate,
               },
               results: {
-                onInspect: (projectId, sourceId, candidateId, labels) => {
-                  setRoute(inspectorRoute(projectId, sourceId, candidateId, labels));
+                onInspect: (projectId, sourceId, candidateId, labels, jobId) => {
+                  setRoute(inspectorRoute(projectId, sourceId, candidateId, labels, jobId));
+                },
+                onEdit: (next) => {
+                  openClip(next, 'editor');
                 },
                 onBack: () => {
                   navigate('results');
@@ -182,11 +215,21 @@ export function App(): JSX.Element {
                 onOpenResults: () => {
                   navigate('results');
                 },
+                onOpen: (next) => {
+                  openClip(next, 'editor');
+                },
+                onExport: (next) => {
+                  openClip(next, 'export');
+                },
               },
-              // Both read the daemon directly and take nothing from the shell,
-              // so the entry exists to satisfy the registry rather than to
-              // carry anything.
-              export: {},
+              export: {
+                onOpen: (next) => {
+                  openClip(next, 'export');
+                },
+              },
+              // Reads the daemon directly and takes nothing from the shell, so
+              // the entry exists to satisfy the registry rather than to carry
+              // anything.
               settings: {},
               models: {
                 state,

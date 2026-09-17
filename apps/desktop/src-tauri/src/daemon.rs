@@ -15,14 +15,15 @@ use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ApplyEditCommandResponse,
     ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1, DirectClipRequest,
     DirectClipResponse, EditDoc, ExportArchiveRequest, ExportArchiveResponse, ExportClipRequest,
-    ExportRequestV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetJobRequest,
-    GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
-    GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse, Job,
-    ListClipDecisionsRequest, ListEditDocsRequest, ListJobsRequest, ListProjectsRequest,
-    ListSourcesRequest, PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest,
-    ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
+    ExportClipResponse, ExportRequestV1, GetDeviceProfileRequest, GetDeviceProfileResponse,
+    GetJobRequest, GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest,
+    GetPreviewPlanResponse, GetReadinessRequest, GetReadinessResponse, GetStorageStatsRequest,
+    GetStorageStatsResponse, HealthRequest, HealthResponse, Job, ListClipDecisionsRequest,
+    ListEditDocsRequest, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest, ReadArtifactResponse,
+    RegisterSourceRequest, RegisterSourceResponse, Request, ResolveMediaRequest,
+    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
+    SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
     SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
@@ -205,12 +206,15 @@ impl DaemonClient {
     }
 
     /// Perform an export. Returns the job to watch, not the finished files.
-    pub async fn export_clip(&self, request: ExportRequestV1) -> Result<String, DaemonLinkError> {
+    pub async fn export_clip(
+        &self,
+        request: ExportRequestV1,
+    ) -> Result<ExportClipResponse, DaemonLinkError> {
         let export = ExportClipRequest {
             request: Some(request),
         };
         match self.call(request::Body::ExportClip(export)).await? {
-            response::Body::ExportClip(reply) => Ok(reply.job_id),
+            response::Body::ExportClip(reply) => Ok(reply),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }
@@ -232,6 +236,17 @@ impl DaemonClient {
     }
 
     /// Whether this installation is offline, with the evidence behind it.
+    /// Whether an analysis could run right now, and what each stage lacks.
+    pub async fn readiness(&self) -> Result<GetReadinessResponse, DaemonLinkError> {
+        match self
+            .call(request::Body::GetReadiness(GetReadinessRequest {}))
+            .await?
+        {
+            response::Body::GetReadiness(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub async fn local_lock(&self) -> Result<GetLocalLockResponse, DaemonLinkError> {
         match self
             .call(request::Body::GetLocalLock(GetLocalLockRequest {}))

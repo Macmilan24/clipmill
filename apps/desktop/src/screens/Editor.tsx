@@ -13,8 +13,8 @@
  * from the same plan, so a playhead is in the same place on all four by
  * construction rather than by four pieces of code agreeing.
  */
-import { ChevronLeft, ChevronRight, Pause, Play, Redo2, Undo2 } from 'lucide-react';
-import type { JSX } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Play, Redo2, Undo2, Upload } from 'lucide-react';
+import type { JSX, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '../components/ui/badge.js';
@@ -24,26 +24,35 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.
 import { Audio } from '../editor/Audio.js';
 import { Captions } from '../editor/Captions.js';
 import { Reframe } from '../editor/Reframe.js';
-import { snapToWord, ticksAt, trim } from '../editor/commands.js';
+import { snapToWord, trimEndAt, trimStartAt } from '../editor/commands.js';
 import type { EditCommandJson } from '../daemon/client.js';
 import type { PreviewPlan } from '../daemon/client.js';
 import {
   cropAt,
   cueAt,
   cueLines,
-  frameAt,
+  frameAtProxySeconds,
   gainAt,
   highlightedWord,
   lanePosition,
-  secondsAt,
+  proxySecondsAt,
+  segmentAt,
+  sourceOf,
+  stageTransform,
   timecode,
 } from '../editor/player.js';
 
 export interface EditorProps {
   /** Null until a clip has been approved and a document exists. */
   readonly plan: PreviewPlan | null;
-  readonly proxyUrl: string | null;
+  /**
+   * The proxy for each source the plan names, by fingerprint, as a URL the
+   * media protocol serves. A source with no entry has nothing to play.
+   */
+  readonly proxyUrls: ReadonlyMap<string, string>;
   readonly docId: string | null;
+  /** What the clip is called — the project and the clip — when the route knew. */
+  readonly labels: { readonly project?: string; readonly clip?: string } | null;
   readonly loading: boolean;
   readonly problem: string | null;
   readonly busy: boolean;
@@ -52,7 +61,15 @@ export interface EditorProps {
   readonly resolving: boolean;
   /** Why the solver cannot be asked, or `null` when it can. */
   readonly resolveRefusal: string | null;
+  /**
+   * What to show instead of a clip when none is open: the list of edits there
+   * are. Null when a clip is named, so nothing is fetched for a list that
+   * would not be shown.
+   */
+  readonly picker: ReactNode;
   readonly onOpenResults: () => void;
+  /** Take this clip to the export screen. Null when no clip is open. */
+  readonly onExport: (() => void) | null;
   readonly onApply: (command: EditCommandJson) => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
@@ -61,8 +78,9 @@ export interface EditorProps {
 
 export function Editor({
   plan,
-  proxyUrl,
+  proxyUrls,
   docId,
+  labels,
   loading,
   problem,
   busy,
@@ -70,28 +88,68 @@ export function Editor({
   canRedo,
   resolving,
   resolveRefusal,
+  picker,
   onOpenResults,
+  onExport,
   onApply,
   onUndo,
   onRedo,
   onResolve,
 }: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
-  const [frame, setFrame] = useState(0);
+  const [playhead, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // What is drawn is always a frame the program has. A trim can shorten the
+  // program under a playhead that did not move, and between that render and
+  // the effect below that moves it back, a frame past the end would find no
+  // segment — and no segment would take the picture down with it.
+  const frame = plan ? Math.max(0, Math.min(playhead, plan.frameCount - 1)) : playhead;
 
-  const step = useCallback(
-    (by: number) => {
-      const element = video.current;
-      if (!element || !plan) {
+  // A different document is a different program; a playhead left where the
+  // last one was would seek the new proxy to a frame it may not have.
+  useEffect(() => {
+    setFrame(0);
+    setPlaying(false);
+  }, [docId]);
+
+  /**
+   * Put the playhead on a program frame, and the media element where that
+   * frame is in the proxy. Every seek goes through here — the transport, the
+   * scrubber, the arrow keys — so there is one place the two clocks meet.
+   */
+  const seek = useCallback(
+    (target: number) => {
+      if (!plan) {
         return;
       }
-      const next = Math.max(0, Math.min(plan.frameCount - 1, frame + by));
-      element.currentTime = secondsAt(plan, next);
+      const next = Math.max(0, Math.min(plan.frameCount - 1, target));
       setFrame(next);
+      const element = video.current;
+      const seconds = proxySecondsAt(plan, next);
+      if (element && seconds !== null) {
+        // Set whether or not the media has loaded: before metadata a browser
+        // keeps it as the position to start from, which is what is wanted.
+        element.currentTime = seconds;
+      }
     },
-    [frame, plan],
+    [plan],
   );
+
+  // A new plan is a new mapping. A trim moved the segment's window, so the
+  // frame the playhead is on now shows different footage and may not exist
+  // at all; the media element is told where that frame is now, and a playhead
+  // past the new end is brought back onto the program. Keyed on the plan
+  // rather than on the document because a trim changes neither the document
+  // id nor the proxy.
+  useEffect(() => {
+    if (!plan) {
+      return;
+    }
+    seek(Math.min(playhead, plan.frameCount - 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the plan is the signal
+  }, [plan]);
+
+  const step = useCallback((by: number) => seek(frame + by), [frame, seek]);
 
   // Arrow keys step a frame at a time, which is the transport an editor
   // reaches for when a cut is one frame wrong.
@@ -113,6 +171,40 @@ export function Editor({
     [plan, cue, frame],
   );
   const crop = useMemo(() => (plan ? cropAt(plan, frame) : null), [plan, frame]);
+  const segment = useMemo(() => (plan ? segmentAt(plan, frame) : null), [plan, frame]);
+
+  /**
+   * What the media element reports, read back as a program frame.
+   *
+   * The element plays the proxy, which runs on past the segment's end into
+   * footage the clip does not include. When it gets there the next segment
+   * begins — seeked to its own place in the proxy — or, on the last one, the
+   * program is over and playback stops on its final frame rather than into the
+   * rest of the recording.
+   */
+  const onProxyTime = useCallback(
+    (seconds: number) => {
+      if (!plan || !segment) {
+        return;
+      }
+      const element = video.current;
+      const proxyEnd = proxySecondsAt(plan, segment.endFrame - 1);
+      const ended = proxyEnd !== null && seconds > proxyEnd + secondsPerFrame(plan);
+      if (!ended) {
+        setFrame(frameAtProxySeconds(plan, segment, seconds));
+        return;
+      }
+      const following = plan.segments[plan.segments.indexOf(segment) + 1];
+      if (following) {
+        seek(following.firstFrame);
+        return;
+      }
+      element?.pause();
+      setPlaying(false);
+      seek(plan.frameCount - 1);
+    },
+    [plan, segment, seek],
+  );
 
   if (loading) {
     return <div className="p-8 text-sm text-[var(--cm-ink-2)]">Fetching the preview plan…</div>;
@@ -123,12 +215,17 @@ export function Editor({
       <div className="p-8">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>No clip is open in the editor</EmptyTitle>
+            <EmptyTitle>
+              {problem && labels
+                ? 'This clip could not be opened'
+                : 'No clip is open in the editor'}
+            </EmptyTitle>
             <EmptyDescription>
               {problem ??
-                'Approving a clip in the Inspector creates its edit document; the editor opens the newest one.'}
+                'Approving a clip in the Inspector creates its edit document and opens it here. Any edit already made can be reopened below.'}
             </EmptyDescription>
           </EmptyHeader>
+          {picker}
           <Button variant="outline" onClick={onOpenResults}>
             Go to Results
           </Button>
@@ -137,27 +234,45 @@ export function Editor({
     );
   }
 
+  const source = segment ? sourceOf(plan, segment) : null;
+  const proxyUrl = segment ? (proxyUrls.get(segment.sourceFingerprint) ?? null) : null;
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 p-6">
       <div className="flex min-h-0 flex-1 items-start justify-center gap-6">
         <Stage
-          plan={plan}
           proxyUrl={proxyUrl}
           videoRef={video}
           crop={crop}
+          source={source}
           lines={cue ? cueLines(cue) : []}
           cue={cue}
           highlighted={highlighted}
-          onFrame={setFrame}
+          startSeconds={proxySecondsAt(plan, frame)}
+          onProxyTime={onProxyTime}
           onEnded={() => setPlaying(false)}
         />
         <aside className="flex w-[340px] shrink-0 flex-col rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)]">
           <div className="flex items-center justify-between border-b border-[var(--cm-line-1)] p-3">
-            <span className="flex items-center gap-2">
-              <Badge variant="outline">r{plan.revision}</Badge>
-              <span className="truncate font-mono text-[10px] text-[var(--cm-ink-3)]">{docId}</span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              {labels && (
+                <span className="truncate text-xs text-[var(--cm-ink-1)]" data-testid="clip-name">
+                  {[labels.project, labels.clip].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              <span className="flex items-center gap-2">
+                <Badge variant="outline">r{plan.revision}</Badge>
+                <span className="truncate font-mono text-[10px] text-[var(--cm-ink-3)]">
+                  {docId}
+                </span>
+              </span>
             </span>
             <span className="flex gap-1">
+              {onExport && (
+                <Button size="sm" variant="ghost" onClick={onExport} aria-label="Export this clip">
+                  <Upload className="size-4" />
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
@@ -210,6 +325,12 @@ export function Editor({
                   <Row label="Frames" value={String(plan.frameCount)} />
                   <Row label="Layout" value={crop ? 'Speaker-follow' : 'Fit'} />
                   <Row label="Gain here" value={`${gainAt(plan, frame).toFixed(1)} dB`} />
+                  {segment && (
+                    <Row
+                      label="Source window"
+                      value={`${sourceClock(segment.inTicks)} – ${sourceClock(segment.outTicks)}`}
+                    />
+                  )}
                 </dl>
                 <p className="text-xs text-[var(--cm-ink-2)]">
                   Trimming snaps to a caption boundary rather than to the pointer: a cut inside a
@@ -219,23 +340,26 @@ export function Editor({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={busy}
-                    onClick={() =>
-                      onApply(
-                        trim(
-                          ticksAt(plan, snapToWord(plan, frame)),
-                          ticksAt(plan, plan.frameCount),
-                        ),
-                      )
-                    }
+                    disabled={busy || trimStartAt(plan, snapToWord(plan, frame)) === null}
+                    onClick={() => {
+                      const command = trimStartAt(plan, snapToWord(plan, frame));
+                      if (command) {
+                        onApply(command);
+                      }
+                    }}
                   >
                     Trim start here
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={busy}
-                    onClick={() => onApply(trim(0, ticksAt(plan, snapToWord(plan, frame))))}
+                    disabled={busy || trimEndAt(plan, snapToWord(plan, frame)) === null}
+                    onClick={() => {
+                      const command = trimEndAt(plan, snapToWord(plan, frame));
+                      if (command) {
+                        onApply(command);
+                      }
+                    }}
                   >
                     Trim end here
                   </Button>
@@ -252,6 +376,7 @@ export function Editor({
         frame={frame}
         playing={playing}
         onStep={step}
+        onSeek={seek}
         onToggle={() => {
           const element = video.current;
           if (!element) {
@@ -260,6 +385,11 @@ export function Editor({
           if (playing) {
             element.pause();
           } else {
+            // Playing from the program's end starts it over rather than
+            // running into the recording past the clip.
+            if (frame >= plan.frameCount - 1) {
+              seek(0);
+            }
             void element.play();
           }
           setPlaying(!playing);
@@ -280,36 +410,51 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
   );
 }
 
+/** Seconds one frame lasts, the slack allowed before a segment counts as over. */
+function secondsPerFrame(plan: PreviewPlan): number {
+  return plan.rateNum > 0 ? plan.rateDen / plan.rateNum : 0;
+}
+
+/** A source tick as `m:ss`, which is how a person reads where a clip sits. */
+function sourceClock(ticks: number): string {
+  const seconds = Math.floor(ticks / 90_000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 /** The 9:16 stage: the proxy, cropped by the plan, with the plan's captions. */
 function Stage({
-  plan,
   proxyUrl,
   videoRef,
   crop,
+  source,
   lines,
   cue,
   highlighted,
-  onFrame,
+  startSeconds,
+  onProxyTime,
   onEnded,
 }: {
-  readonly plan: PreviewPlan;
   readonly proxyUrl: string | null;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly crop: ReturnType<typeof cropAt>;
+  /** The frame the crop is measured in. Null when the plan does not know it. */
+  readonly source: { readonly displayWidth: number; readonly displayHeight: number } | null;
   readonly lines: readonly string[];
   readonly cue: ReturnType<typeof cueAt>;
   readonly highlighted: number;
-  readonly onFrame: (frame: number) => void;
+  /** Where in the proxy the current frame is, to land on when the media loads. */
+  readonly startSeconds: number | null;
+  readonly onProxyTime: (seconds: number) => void;
   readonly onEnded: () => void;
 }) {
-  // The crop is expressed against the source frame, so the transform is a scale
-  // by how much of the width it takes and a translate to its centre. Both come
-  // out of the plan; neither is a guess about what the encoder will do.
-  const transform = crop
-    ? `scale(${plan.width / crop.width}) translate(${
-        (0.5 - (crop.x + crop.width / 2) / plan.width) * 100
-      }%, ${(0.5 - (crop.y + crop.height / 2) / plan.height) * 100}%)`
-    : undefined;
+  // The crop is expressed against the source frame, and the element on stage
+  // is the source scaled to the stage's height — so the transform is built
+  // against the source's dimensions, from the plan, not against the output's,
+  // and it is applied to the video element itself: a percentage translate is
+  // a share of the transformed element's own box, and the stage-sized wrapper
+  // this used to sit on is narrower than a landscape source, so off-centre
+  // crops moved too little.
+  const transform = crop && source ? stageTransform(crop, source) : undefined;
 
   let index = 0;
   return (
@@ -318,21 +463,31 @@ function Stage({
       data-testid="stage"
     >
       {proxyUrl ? (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ transform }}>
+        <div className="absolute inset-0 flex items-center justify-center">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- the cues are
               drawn below from the plan rather than as a text track. */}
           <video
             ref={videoRef}
             src={proxyUrl}
             className={crop ? 'h-full w-auto max-w-none' : 'max-h-full max-w-full'}
+            style={{ transform }}
             playsInline
-            onTimeUpdate={(event) => onFrame(frameAt(plan, event.currentTarget.currentTime))}
+            data-testid="proxy"
+            data-start-seconds={startSeconds ?? undefined}
+            onLoadedMetadata={(event) => {
+              // A proxy opens at its own zero, which is the recording's
+              // opening; the clip begins minutes later.
+              if (startSeconds !== null) {
+                event.currentTarget.currentTime = startSeconds;
+              }
+            }}
+            onTimeUpdate={(event) => onProxyTime(event.currentTarget.currentTime)}
             onEnded={onEnded}
           />
         </div>
       ) : (
         <p className="grid h-full place-items-center p-6 text-center text-sm text-[var(--cm-ink-2)]">
-          This project published no proxy, so there is nothing to play.
+          This recording has no proxy, so there is nothing to play.
         </p>
       )}
       {lines.length > 0 && (
@@ -369,28 +524,42 @@ function Transport({
   frame,
   playing,
   onStep,
+  onSeek,
   onToggle,
 }: {
   readonly plan: PreviewPlan;
   readonly frame: number;
   readonly playing: boolean;
   readonly onStep: (by: number) => void;
+  readonly onSeek: (frame: number) => void;
   readonly onToggle: () => void;
 }) {
   return (
-    <div className="flex items-center justify-center gap-3" aria-label="Transport">
-      <Button variant="ghost" size="sm" onClick={() => onStep(-1)} aria-label="Previous frame">
-        <ChevronLeft className="size-4" />
-      </Button>
-      <Button size="sm" onClick={onToggle} aria-label={playing ? 'Pause' : 'Play'}>
-        {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => onStep(1)} aria-label="Next frame">
-        <ChevronRight className="size-4" />
-      </Button>
-      <span className="ml-3 font-mono text-xs text-[var(--cm-ink-2)]" data-testid="timecode">
-        {timecode(plan, frame)} · frame {frame} of {plan.frameCount}
-      </span>
+    <div className="flex flex-col gap-2" aria-label="Transport">
+      <input
+        type="range"
+        aria-label="Scrub"
+        min={0}
+        max={Math.max(0, plan.frameCount - 1)}
+        step={1}
+        value={frame}
+        onChange={(event) => onSeek(Number(event.target.value))}
+        className="w-full accent-[var(--cm-accent)]"
+      />
+      <div className="flex items-center justify-center gap-3">
+        <Button variant="ghost" size="sm" onClick={() => onStep(-1)} aria-label="Previous frame">
+          <ChevronLeft className="size-4" />
+        </Button>
+        <Button size="sm" onClick={onToggle} aria-label={playing ? 'Pause' : 'Play'}>
+          {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => onStep(1)} aria-label="Next frame">
+          <ChevronRight className="size-4" />
+        </Button>
+        <span className="ml-3 font-mono text-xs text-[var(--cm-ink-2)]" data-testid="timecode">
+          {timecode(plan, frame)} · frame {frame} of {plan.frameCount}
+        </span>
+      </div>
     </div>
   );
 }

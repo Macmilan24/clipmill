@@ -1,11 +1,18 @@
 /**
- * 09 Captions: the words, and the four things a person actually wants to do to
+ * 09 Captions: the words, and the five things a person actually wants to do to
  * them.
  *
- * Split, merge, re-break a line, drop a filler. Each is one IR command, so each
- * is undoable and each is replayable — and none of them re-derives anything.
- * The cue a person is editing came from the caption engine and the render will
- * read the same list back; nothing here re-wraps text or re-times a word.
+ * Correct a word, split, merge, re-break a line, drop a filler. Each is one IR
+ * command, so each is undoable and each is replayable — and none of them
+ * re-derives anything. The cue a person is editing came from the caption
+ * engine and the render will read the same list back; nothing here re-wraps
+ * text or re-times a word.
+ *
+ * A correction is addressed to the word, not to the cue it is shown in. The
+ * cues on screen are one of two groupings of the same words — the burned-in
+ * one — and the sidecars are written from the other; a correction that reached
+ * only the cue on screen left a deaf viewer reading the wrong name. The other
+ * four are about the grouping, and are addressed to the grouping on screen.
  *
  * Removing a filler is a **caption** edit and not a media edit. The word was
  * said; the caption may stop showing it. Rippling the audio to match would be a
@@ -14,14 +21,15 @@
  * Re-transcribing a selection is Phase 2 and is marked as such rather than
  * shipped as a button that quietly does nothing.
  */
-import { Scissors, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Check, Scissors, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import { Badge } from '../components/ui/badge.js';
 import { Button } from '../components/ui/button.js';
+import { Input } from '../components/ui/input.js';
 import { ScrollArea } from '../components/ui/scroll-area.js';
 import type { EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
-import { editCaptionText, mergeCues, setCueLines, splitCue } from './commands.js';
+import { correctWord, mergeCues, setCueLines, splitCue } from './commands.js';
 
 /**
  * Words a caption may stop showing without anybody having to argue about it.
@@ -60,7 +68,14 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
                 onSelectWord={(wordIndex) => setSelected({ cueId: candidate.cueId, wordIndex })}
                 onMergeWithNext={
                   position + 1 < plan.cues.length
-                    ? () => onApply(mergeCues(candidate.cueId, plan.cues[position + 1]!.cueId))
+                    ? () =>
+                        onApply(
+                          mergeCues(
+                            candidate.cueId,
+                            plan.cues[position + 1]!.cueId,
+                            plan.presentation,
+                          ),
+                        )
                     : null
                 }
                 busy={busy}
@@ -72,6 +87,7 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
 
       {cue && selected ? (
         <WordActions
+          plan={plan}
           cue={cue}
           wordIndex={selected.wordIndex}
           busy={busy}
@@ -80,7 +96,7 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
         />
       ) : (
         <p className="text-xs text-[var(--cm-ink-2)]">
-          Select a word to split the cue there, re-break its lines, or drop it.
+          Select a word to correct it, split the cue there, re-break its lines, or drop it.
         </p>
       )}
 
@@ -157,12 +173,14 @@ function Phrase({
 }
 
 function WordActions({
+  plan,
   cue,
   wordIndex,
   busy,
   onApply,
   onDone,
 }: {
+  readonly plan: PreviewPlan;
   readonly cue: PreviewCue;
   readonly wordIndex: number;
   readonly busy: boolean;
@@ -172,51 +190,88 @@ function WordActions({
   const words = cue.lines.flat();
   const total = words.length;
   const word = words[wordIndex];
+  const [draft, setDraft] = useState(word?.text ?? '');
+  // A different word is a different draft.
+  useEffect(() => {
+    setDraft(word?.text ?? '');
+  }, [word?.text, cue.cueId, wordIndex]);
+  const corrected = draft.trim();
+  const changed = word !== undefined && corrected !== '' && corrected !== word.text;
+
+  const correct = (text: string) => {
+    if (!word) {
+      return;
+    }
+    onApply(correctWord(plan, cue, wordIndex, word, text));
+    onDone();
+  };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-2">
-      <span className="text-xs text-[var(--cm-ink-2)]">
-        “{word?.text ?? ''}” in {cue.cueId}
-      </span>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={busy || wordIndex === 0 || wordIndex >= total}
-        onClick={() => {
-          // A new cue needs a name replay can reproduce, so it is derived from
-          // the cue it came out of rather than generated.
-          onApply(splitCue(cue.cueId, wordIndex, `${cue.cueId}_b`));
-          onDone();
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-2">
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (changed) {
+            correct(corrected);
+          }
         }}
       >
-        <Scissors className="size-3" /> Split here
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={busy || wordIndex === 0 || wordIndex >= total}
-        onClick={() => {
-          onApply(setCueLines(cue.cueId, [wordIndex, total - wordIndex]));
-          onDone();
-        }}
-      >
-        Break line here
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={busy || !word}
-        onClick={() => {
-          // The word was said; the caption stops showing it. Emptying the text
-          // is a caption edit — rippling the media to match would be a
-          // different decision and a much larger one.
-          onApply(editCaptionText(cue.cueId, wordIndex, '·'));
-          onDone();
-        }}
-        title="Replace this word in the caption. The audio is untouched."
-      >
-        <Trash2 className="size-3" /> Drop from caption
-      </Button>
+        <Input
+          aria-label="Correct this word"
+          value={draft}
+          disabled={busy || !word}
+          onChange={(event) => setDraft(event.target.value)}
+          className="h-8 font-mono text-xs"
+        />
+        <Button type="submit" size="sm" disabled={busy || !changed}>
+          <Check className="size-3" /> Correct
+        </Button>
+      </form>
+      <p className="text-[11px] text-[var(--cm-ink-3)]">
+        “{word?.text ?? ''}” in {cue.cueId}. A correction lands in the burned-in caption and in the
+        sidecars alike; the timing is untouched.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || wordIndex === 0 || wordIndex >= total}
+          onClick={() => {
+            // A new cue needs a name replay can reproduce, so it is derived from
+            // the cue it came out of rather than generated.
+            onApply(splitCue(cue.cueId, wordIndex, `${cue.cueId}_b`, plan.presentation));
+            onDone();
+          }}
+        >
+          <Scissors className="size-3" /> Split here
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || wordIndex === 0 || wordIndex >= total}
+          onClick={() => {
+            onApply(setCueLines(cue.cueId, [wordIndex, total - wordIndex], plan.presentation));
+            onDone();
+          }}
+        >
+          Break line here
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || !word}
+          onClick={() => {
+            // The word was said; the caption stops showing it. Emptying the
+            // text is a caption edit — rippling the media to match would be a
+            // different decision and a much larger one.
+            correct('·');
+          }}
+          title="Replace this word in the caption. The audio is untouched."
+        >
+          <Trash2 className="size-3" /> Drop from caption
+        </Button>
+      </div>
     </div>
   );
 }

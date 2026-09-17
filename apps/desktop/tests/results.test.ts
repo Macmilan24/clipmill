@@ -10,12 +10,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { DiscoveryCandidates, RankingSet } from '@clipmill/contracts';
 
+import type { EditDocSummary } from '../src/daemon/client.js';
 import {
   AXES,
   applyFilters,
   clipRows,
   clock,
   duration,
+  newestDocumentPerCandidate,
   sortRows,
   summarize,
   tally,
@@ -148,6 +150,61 @@ describe('the ranked rows', () => {
     const rows = clipRows(ranking(), candidates(), null, []);
     expect(rows[0]?.bandLabel).toBe('Strong');
     expect(rows[1]?.bandLabel).toBe('Promising');
+  });
+
+  it('attach the edit document a clip has, apart from whether it was approved', () => {
+    // Approved, and yet no document: the creation failed after the decision.
+    // A board that inferred one from the other would send the editor to open
+    // nothing.
+    const rows = clipRows(
+      ranking(),
+      candidates(),
+      null,
+      [{ candidateId: 'cand_0000000000000001', decision: 'approved', decidedUnixMillis: 0 }],
+      [edit('edt_a', 'cand_0000000000000002', 10)],
+    );
+    expect(rows[0]?.decision).toBe('approved');
+    expect(rows[0]?.docId).toBeNull();
+    expect(rows[1]?.decision).toBeNull();
+    expect(rows[1]?.docId).toBe('edt_a');
+  });
+});
+
+function edit(docId: string, candidateId: string, createdUnixMillis: number): EditDocSummary {
+  return {
+    docId,
+    projectId: 'p1',
+    sourceId: 'src_p1',
+    candidateId,
+    jobId: '',
+    revision: 0,
+    createdUnixMillis,
+    updatedUnixMillis: createdUnixMillis,
+  };
+}
+
+describe('the document a clip has', () => {
+  it('is the newest of several, which is the one the daemon reopens', () => {
+    const newest = newestDocumentPerCandidate([
+      edit('edt_first', 'cand_1', 10),
+      edit('edt_variation', 'cand_1', 20),
+      edit('edt_other', 'cand_2', 15),
+    ]);
+    expect(newest.get('cand_1')?.docId).toBe('edt_variation');
+    expect(newest.get('cand_2')?.docId).toBe('edt_other');
+  });
+
+  it('breaks a tie the way the daemon does, by the later id', () => {
+    const newest = newestDocumentPerCandidate([
+      edit('edt_b', 'cand_1', 10),
+      edit('edt_a', 'cand_1', 10),
+    ]);
+    expect(newest.get('cand_1')?.docId).toBe('edt_b');
+  });
+
+  it('leaves out a document that names no candidate', () => {
+    const newest = newestDocumentPerCandidate([edit('edt_hand', '', 10)]);
+    expect(newest.size).toBe(0);
   });
 });
 

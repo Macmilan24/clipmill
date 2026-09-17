@@ -46,6 +46,8 @@ pub enum DaemonError {
     UnsupportedSchema { found: i64, supported: i64 },
     #[error("database application id {found} does not belong to ClipMill")]
     UnexpectedApplicationId { found: i64 },
+    #[error("database schema migration to version {to} failed: {detail}")]
+    SchemaMigration { to: i64, detail: String },
 }
 
 impl DaemonError {

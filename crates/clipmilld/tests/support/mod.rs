@@ -490,6 +490,7 @@ pub async fn create_edit_doc(
             body: Some(request::Body::CreateEditDoc(CreateEditDocRequest {
                 project_id: project_id.to_owned(),
                 document_json: document_json.to_owned(),
+                ..CreateEditDocRequest::default()
             })),
         },
     )

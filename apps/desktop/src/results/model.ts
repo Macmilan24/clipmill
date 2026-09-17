@@ -19,7 +19,7 @@ import type {
   RankingSet,
 } from '@clipmill/contracts';
 
-import type { ClipDecision, ClipDecisionRecord } from '../daemon/client.js';
+import type { ClipDecision, ClipDecisionRecord, EditDocSummary } from '../daemon/client.js';
 
 /** Ticks per second, the daemon's timebase throughout. */
 export const TICKS_PER_SECOND = 90_000;
@@ -113,6 +113,16 @@ export interface ClipRow {
   readonly penalties: readonly { readonly reason: string; readonly value: number }[];
   readonly boundary: BoundaryReading | null;
   readonly decision: ClipDecision | null;
+  /**
+   * The edit document this clip has, when it has one — the newest, if it has
+   * several. Null means no edit exists yet, which is a different fact from the
+   * decision: a clip can be approved and then have its document creation fail,
+   * and a board that inferred the document from the decision would send the
+   * editor to open nothing.
+   */
+  readonly docId: string | null;
+  /** The run that document was cut from, when the store recorded one. */
+  readonly docJobId: string | null;
   /** Lattice edges, for the boundary strip. */
   readonly latticeStarts: readonly number[];
   readonly latticeEnds: readonly number[];
@@ -187,6 +197,7 @@ export function clipRows(
   candidates: DiscoveryCandidates,
   index: IndexTranscript | null,
   decisions: readonly ClipDecisionRecord[],
+  documents: readonly EditDocSummary[] = [],
 ): readonly ClipRow[] {
   const quotes = evidenceQuotes(index);
   const quote = (reference: { kind: string; index: number } | null | undefined): Quote | null =>
@@ -198,6 +209,7 @@ export function clipRows(
       .filter((record) => record.decision !== 'unspecified')
       .map((record) => [record.candidateId, record.decision as ClipDecision]),
   );
+  const edited = newestDocumentPerCandidate(documents);
 
   return [...ranking.cohort]
     .sort((left, right) => left.rank - right.rank)
@@ -247,6 +259,8 @@ export function clipRows(
             : null,
         },
         decision: decided.get(ranked.candidate_id) ?? null,
+        docId: edited.get(ranked.candidate_id)?.docId ?? null,
+        docJobId: edited.get(ranked.candidate_id)?.jobId || null,
         latticeStarts: candidate?.boundary_lattice.starts ?? [],
         latticeEnds: candidate?.boundary_lattice.ends ?? [],
         recommended: recommended.has(ranked.candidate_id),
@@ -258,6 +272,34 @@ export function clipRows(
           (ranked.uncertainty.warnings ?? []).length > 0 || (ranked.penalties ?? []).length > 0,
       } satisfies ClipRow;
     });
+}
+
+/**
+ * The newest document each candidate has.
+ *
+ * Newest by creation, the same rule the daemon reopens by: when a clip has an
+ * approval and a variation taken afterwards, the variation is what somebody
+ * was last working on. The caller has already scoped the list to one source,
+ * so the candidate id is the whole key.
+ */
+export function newestDocumentPerCandidate(
+  documents: readonly EditDocSummary[],
+): ReadonlyMap<string, EditDocSummary> {
+  const newest = new Map<string, EditDocSummary>();
+  for (const document of documents) {
+    if (document.candidateId === '') {
+      continue;
+    }
+    const held = newest.get(document.candidateId);
+    if (
+      !held ||
+      document.createdUnixMillis > held.createdUnixMillis ||
+      (document.createdUnixMillis === held.createdUnixMillis && document.docId > held.docId)
+    ) {
+      newest.set(document.candidateId, document);
+    }
+  }
+  return newest;
 }
 
 /** What a board shows above the rows: counts, not adjectives. */

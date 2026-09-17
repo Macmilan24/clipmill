@@ -48,6 +48,8 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
     penalties: [],
     boundary: null,
     decision: null,
+    docId: null,
+    docJobId: null,
     latticeStarts: [9 * SECOND, 10 * SECOND],
     latticeEnds: [40 * SECOND, 42 * SECOND],
     recommended: true,
@@ -88,6 +90,7 @@ function show(overrides: Partial<Parameters<typeof ClipInspector>[0]> = {}) {
     onDecide: () => {},
     onUseAlternative: () => {},
     onTakeCut: () => {},
+    onEdit: null,
     ...overrides,
   };
   // Wrapped as `App` wraps it: the transport's tooltips need the provider the
@@ -303,6 +306,7 @@ describe('the timeline', () => {
       onDecide: () => {},
       onUseAlternative: () => {},
       onTakeCut: () => {},
+      onEdit: null,
     };
     const view = render(
       <TooltipProvider>

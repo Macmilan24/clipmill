@@ -32,7 +32,13 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 import { shortenPath } from '../analysis/model.js';
-import type { ConnectionState } from '../daemon/client.js';
+import {
+  missingModels,
+  missingWorkers,
+  submissionBlocker,
+  useReadiness,
+} from '../analysis/readiness.js';
+import type { ConnectionState, Readiness } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 import { type ChosenSource, ImportLoader } from '../import/loader.js';
 import {
@@ -58,6 +64,82 @@ export interface NewProjectProps {
 
 const MUTED = 'text-[var(--cm-text-muted)]';
 const SECONDARY = 'text-[var(--cm-text-secondary)]';
+
+/**
+ * What the run would need, stage by stage, and what to run about it.
+ *
+ * Shown before the wait rather than during it. A stage whose model is not
+ * installed is the reason the button above is shut; a stage no worker serves
+ * is a wait the daemon will sit in until one connects, said here so nobody
+ * discovers it as a spinner.
+ */
+function ReadinessCard({
+  readiness,
+  problem,
+  onRefresh,
+}: {
+  readonly readiness: Readiness | null;
+  readonly problem: string | null;
+  readonly onRefresh: () => void;
+}): JSX.Element {
+  const models = missingModels(readiness);
+  const workers = missingWorkers(readiness);
+  const decoder = readiness !== null && !readiness.decoderPresent;
+  const ready = readiness?.ready === true;
+  return (
+    <Card data-testid="readiness">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-body">Before it runs</CardTitle>
+        <StatusBadge tone={ready ? 'success' : problem ? 'neutral' : 'warning'}>
+          {ready ? 'Ready' : problem ? 'Unknown' : 'Not ready'}
+        </StatusBadge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {problem !== null && <p className={cn('text-meta', SECONDARY)}>{problem}</p>}
+        {readiness !== null && ready && (
+          <p className={cn('text-meta', SECONDARY)}>
+            Every stage has its model and a worker to run it. {readiness.workers.length}{' '}
+            {readiness.workers.length === 1 ? 'worker is' : 'workers are'} connected.
+          </p>
+        )}
+        {decoder && (
+          <p className="text-meta text-[var(--cm-danger-ink)]">
+            The pinned decoder is missing at <span className="mono">{readiness?.decoderPath}</span>;
+            run <span className="mono">just setup</span>.
+          </p>
+        )}
+        {models.length > 0 && (
+          <ul className="flex flex-col gap-1" aria-label="Models not installed">
+            {models.map((stage) => (
+              <li key={stage.stage} className="text-meta">
+                <span className="mono text-[var(--cm-danger-ink)]">{stage.stage}</span>{' '}
+                <span className={SECONDARY}>{stage.remedy}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {workers.length > 0 && (
+          <ul className="flex flex-col gap-1" aria-label="Stages with no worker">
+            {workers.map((stage) => (
+              <li key={stage.stage} className="text-meta">
+                <span className="mono text-[var(--color-warning)]">{stage.stage}</span>{' '}
+                <span className={SECONDARY}>{stage.remedy}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {workers.length > 0 && models.length === 0 && !decoder && (
+          <p className={cn('text-meta', MUTED)}>
+            The run can be started; those stages wait until a worker connects.
+          </p>
+        )}
+        <Button variant="outline" size="sm" className="self-start" onClick={onRefresh}>
+          Check again
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 function SummaryRow({
   label,
@@ -125,7 +207,13 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
   const [error, setError] = useState<string | null>(null);
 
   const connected = state.status === 'connected';
-  const blocked = blockingReason(settings, chosen !== null, busy);
+  // What the run would need, asked before it is submitted: a model that is
+  // not installed blocks the button, and a worker that is not connected is
+  // said out loud, since the run would sit on that stage until one is.
+  const { readiness, problem: readinessProblem, refresh } = useReadiness(connected, importer.api);
+  const blocked =
+    blockingReason(settings, chosen !== null, busy) ??
+    (connected ? submissionBlocker(readiness) : null);
 
   const choose = async (): Promise<void> => {
     setBusy(true);
@@ -422,6 +510,10 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
               </p>
             </CardContent>
           </Card>
+
+          {connected && (
+            <ReadinessCard readiness={readiness} problem={readinessProblem} onRefresh={refresh} />
+          )}
         </div>
       </div>
     </>

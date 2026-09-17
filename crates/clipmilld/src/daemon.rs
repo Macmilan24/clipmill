@@ -224,6 +224,7 @@ impl Daemon {
             Arc::clone(&policy),
         );
         let shm = ShmBroker::default();
+        let roster = crate::worker::new_roster();
         let worker_service = match WorkerService::new(
             database.handle(),
             artifacts.handle(),
@@ -235,8 +236,9 @@ impl Daemon {
             Arc::clone(&models),
             config.paths.artifacts_dir.clone(),
             config.weights_dir.clone(),
-            decoder,
+            decoder.clone(),
             Arc::clone(&policy),
+            Arc::clone(&roster),
         ) {
             Ok(service) => service,
             Err(error) => {
@@ -273,6 +275,8 @@ impl Daemon {
             },
             config.artifact_gc_grace,
             Arc::clone(&policy),
+            roster,
+            decoder,
         );
 
         Ok(Self {

@@ -45,6 +45,7 @@ message Request {
     ExportClipRequest export_clip = 39;
     ExportArchiveRequest export_archive = 40;
     GetLocalLockRequest get_local_lock = 41;
+    GetReadinessRequest get_readiness = 42;
   }
 }
 
@@ -87,6 +88,7 @@ message Response {
     ExportClipResponse export_clip = 40;
     ExportArchiveResponse export_archive = 41;
     GetLocalLockResponse get_local_lock = 42;
+    GetReadinessResponse get_readiness = 43;
   }
 }
 
@@ -543,6 +545,13 @@ message Job {
   repeated string output_artifact_ids = 8;
   clipmill.worker.v1.FailureClass failure_class = 9;
   string failure_detail = 10;
+  // The source the job ran over, or empty for a job that is not about one.
+  //
+  // The store has always kept this; the wire did not carry it, so a shell
+  // holding two recordings in one project could not tell whose analysis a job
+  // was and fell back to the newest. Which recording is the one thing a reader
+  // of an analysis needs to know first.
+  string source_id = 11;
 }
 
 message Task {
@@ -905,12 +914,32 @@ message EditDoc {
   string document_json = 4;
   uint64 created_unix_millis = 5;
   uint64 updated_unix_millis = 6;
+  // Where the document came from: the source it was cut from and the candidate
+  // the director built it for. Both empty for a document handed in whole by
+  // CreateEditDoc, which names no candidate.
+  //
+  // This is what makes a document findable by the clip it is, rather than only
+  // by its position in a list. "The newest document" is the wrong answer to
+  // "which document is this clip's" the moment a project holds two.
+  string source_id = 7;
+  string candidate_id = 8;
+  // The analysis run the clip was cut from, when the director knew it. The
+  // candidate id is minted by a run, and the captions, boundaries and face
+  // tracks a document was built from are that run's — so a screen reopening
+  // it can read the same run rather than whichever one is newest.
+  string job_id = 9;
 }
 
 message CreateEditDocRequest {
   string project_id = 1;
   // Initial document. Empty starts from the empty document.
   string document_json = 2;
+  // Which clip the document is, when the caller knows: a document handed in
+  // whole may still be a clip of a recording, and naming it lets a later
+  // direction of the same clip reopen it rather than build a second.
+  string source_id = 3;
+  string candidate_id = 4;
+  string job_id = 5;
 }
 
 message CreateEditDocResponse {
@@ -1020,17 +1049,39 @@ message DirectClipRequest {
   // Read only when cut is EXACT.
   uint64 start_ticks = 6;
   uint64 end_ticks = 7;
+  // False reopens the document this candidate already has, if it has one,
+  // rather than building a second; edits made to it since are kept. True
+  // builds a new document beside the existing one — a variation, asked for on
+  // purpose. Approving a clip twice is the first; taking a different cut of it
+  // is the second.
+  bool variation = 8;
+  // Record the approval in the same transaction as the document. A decision
+  // written first and a document that then failed to build would leave a clip
+  // the board calls approved and the editor cannot open; one write leaves
+  // either both or neither.
+  bool approve = 9;
+  // The analysis run the candidate belongs to. Every stage the director reads
+  // — candidates, ranking, transcript, index, shots, faces — is taken from
+  // this run, as one snapshot, rather than each from whichever run published
+  // it last: a re-analysis that renumbered the candidates, or one still half
+  // published, must not be mixed into a clip chosen from another. Empty takes
+  // the newest run over the source, checked for coherence the same way.
+  string job_id = 10;
 }
 
 message DirectClipResponse {
   EditDoc doc = 1;
   // Where the cut actually landed, which is not where it was asked for when
-  // the request named a boundary the lattice had to move.
+  // the request named a boundary the lattice had to move. For a reopened
+  // document this is where its segment stands now, trims included.
   uint64 start_ticks = 2;
   uint64 end_ticks = 3;
   // Why the director did what it did, carried out so the interface can say so
   // without re-deriving it from the document.
   repeated string decisions = 4;
+  // True when `doc` already existed and was handed back unchanged rather than
+  // built by this call.
+  bool reopened = 5;
 }
 
 // What the editor's player must draw (book ch. 17).
@@ -1061,6 +1112,11 @@ message PreviewWordV1 {
   // Centiseconds this word holds the highlight, from the sweep the burned-in
   // track is written with.
   int64 hold_centis = 2;
+  // The word's identity, shared with the same word in the reading cues. A
+  // correction is addressed to this rather than to a cue and an index, so it
+  // lands in both presentations. Empty only for a document that predates
+  // word identities and has not been migrated.
+  string word_id = 3;
 }
 
 message PreviewLineV1 {
@@ -1084,6 +1140,51 @@ message PreviewGainV1 {
   double gain_db = 2;
 }
 
+// One segment of the program, and where in the source it plays.
+//
+// This is the mapping the player used to lack. A clip cut from ten minutes
+// into a recording starts at program frame zero and source tick 54,000,000;
+// a player that handed the media element program seconds seeked to the
+// recording's opening instead. Every seek, scrub and trim goes through these
+// numbers now, and the arithmetic is the document's own `program_to_source`.
+message PreviewSegmentV1 {
+  string segment_id = 1;
+  string source_fingerprint = 2;
+  // Source ticks the segment plays, half-open.
+  int64 in_ticks = 3;
+  int64 out_ticks = 4;
+  // Where it sits on the program timeline, in ticks and in frames.
+  int64 program_start_ticks = 5;
+  int64 first_frame = 6;
+  int64 end_frame = 7;
+}
+
+// A source the program draws from, as the crops are measured against it.
+message PreviewSourceV1 {
+  string source_fingerprint = 1;
+  string source_id = 2;
+  // Display dimensions: the frame the crop rectangles are in. A transform
+  // built against the output's dimensions instead was right only for a
+  // source that happened to share its aspect.
+  int64 display_width = 3;
+  int64 display_height = 4;
+}
+
+// The proxy a source is previewed from, and how its clock relates to the
+// source's. Proxy second zero is `coverage_start_ticks` of the source.
+message PreviewProxyV1 {
+  string source_fingerprint = 1;
+  string artifact_id = 2;
+  // The container inside the artifact, served over the media protocol.
+  string file = 3;
+  int64 coverage_start_ticks = 4;
+  int64 coverage_end_ticks = 5;
+  int64 width = 6;
+  int64 height = 7;
+  uint32 rate_num = 8;
+  uint32 rate_den = 9;
+}
+
 message GetPreviewPlanResponse {
   // The revision this plan describes. A caller holding a document at a
   // different revision is looking at a stale picture and can tell.
@@ -1098,6 +1199,18 @@ message GetPreviewPlanResponse {
   // The output frame the crops are fitted into.
   int64 width = 8;
   int64 height = 9;
+  // The program's segments, in order, each mapped to its source.
+  repeated PreviewSegmentV1 segments = 10;
+  // Every source the segments name, with the frame the crops are measured in.
+  repeated PreviewSourceV1 sources = 11;
+  // The proxy for each source that has one. A source with no proxy is listed
+  // above and absent here, and the player says there is nothing to play.
+  repeated PreviewProxyV1 proxies = 12;
+  // Which of the document's two cue lists `cues` came from: "burn_in" when
+  // the document carries a kinetic grouping, "reading" when the reading cues
+  // are what gets burned in. A cue-scoped command — split, merge, re-break —
+  // must name the list it means, because each list numbers its own cues.
+  string presentation = 13;
 }
 
 // The edit documents a project holds, oldest first.
@@ -1170,6 +1283,13 @@ message ExportRequestV1 {
   string date = 8;
   // The clip's own words for the {clip} token, when it has a title.
   string title = 9;
+  // The revision the person reviewed. Set, an export of any other revision
+  // is refused as a conflict: planning read the document and submission
+  // reads it again, and an edit between the two — another window, a late
+  // command — would otherwise deliver a clip nobody looked at. Unset, the
+  // current revision is taken, which is what a caller with no review step
+  // means.
+  optional uint64 expected_revision = 10;
 }
 
 // Check an export without performing one. No side effects, no files.
@@ -1189,6 +1309,9 @@ message PlanExportResponse {
   // False when free space could not be read, which a caller must distinguish
   // from a genuinely full disk.
   bool available_known = 6;
+  // The revision this plan was computed over. A caller carries it into the
+  // export request as the revision it reviewed.
+  uint64 revision = 7;
 }
 
 // Perform an export. Refused outright when the strip finds anything blocking,
@@ -1202,6 +1325,12 @@ message ExportClipResponse {
   // The job to watch. Its tasks are the render and the delivery, so progress
   // arrives on the task event stream every other long operation uses.
   string job_id = 1;
+  // What was frozen: the revision rendered, the immutable edit.ir.v1 snapshot
+  // it was frozen as, and the folder — resolved — the files will land in.
+  // The delivered package names its files relative to that folder.
+  uint64 revision = 2;
+  string ir_artifact_id = 3;
+  string destination_dir = 4;
 }
 
 // Versioned payload for the export job (render, then deliver).
@@ -1264,6 +1393,60 @@ message LocalLockStatusV1 {
 }
 
 message GetLocalLockRequest {}
+
+// ---- Readiness: whether an analysis could run right now ----
+//
+// An analysis is planned against models the registry pins and workers that
+// connect on their own. A missing weight file or a worker fleet nobody
+// started used to show as a stage sitting planned forever with nothing to say.
+// This is the question a screen asks before submitting, and again while a
+// stage waits: what would each stage need, and is it here?
+message GetReadinessRequest {}
+
+// One stage an analysis plans, and whether what it needs is present.
+message StageReadinessV1 {
+  // The task kind, e.g. "speech-asr".
+  string stage = 1;
+  // The capability it serves, as the registry spells it. Empty for a stage
+  // that runs no model.
+  string capability = 2;
+  // The implementation this device is bound to, e.g. "clipmill-worker-asr@0.1.0".
+  string implementation = 3;
+  // The registry name of the model it loads, and where it must be.
+  string model = 4;
+  string backend = 5;
+  // Every pinned file of the model is on disk at the size the registry pins.
+  // True for a stage that runs no model.
+  bool model_present = 6;
+  // The pinned files that are not, when any is not.
+  repeated string missing_files = 7;
+  // A worker that serves this stage is connected right now.
+  bool worker_present = 8;
+  // Both of the above.
+  bool ready = 9;
+  // What to do about it, when not ready: one sentence naming the command.
+  string remedy = 10;
+}
+
+// A worker connected right now, as it registered.
+message WorkerPresenceV1 {
+  string worker_id = 1;
+  string family = 2;
+  repeated string capabilities = 3;
+  string backend = 4;
+  uint64 since_unix_millis = 5;
+}
+
+message GetReadinessResponse {
+  // Every stage an analysis would plan that needs a model or a worker.
+  repeated StageReadinessV1 stages = 1;
+  repeated WorkerPresenceV1 workers = 2;
+  // The pinned decoder every media stage runs.
+  bool decoder_present = 3;
+  string decoder_path = 4;
+  // Every stage is ready and the decoder is present.
+  bool ready = 5;
+}
 
 message GetLocalLockResponse {
   LocalLockStatusV1 status = 1;

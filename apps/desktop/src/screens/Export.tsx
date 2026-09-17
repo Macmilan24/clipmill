@@ -14,8 +14,8 @@
  * approved would eventually not be the name they got. So every keystroke asks
  * the daemon, and what is drawn is the daemon's answer.
  */
-import { AlertTriangle, FolderOpen, Info, PackageCheck, Upload } from 'lucide-react';
-import type { JSX } from 'react';
+import { AlertTriangle, Eye, FolderOpen, Info, PackageCheck, Upload } from 'lucide-react';
+import type { JSX, ReactNode } from 'react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ import { Spinner } from '@/components/ui/spinner';
 
 import type { ExportPlan } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
+import type { Delivery, DeliveryStage } from '../export/delivery.js';
 
 /**
  * What the render actually does, stated rather than offered.
@@ -52,6 +53,10 @@ const DELIVERY: readonly (readonly [string, string])[] = [
 
 export interface ExportProps {
   readonly docId: string | null;
+  /** What the clip is called — the project and the clip — when the route knew. */
+  readonly labels: { readonly project?: string; readonly clip?: string } | null;
+  /** The list of edits to choose from, shown only when no clip is named. */
+  readonly picker: ReactNode;
   readonly destination: string;
   readonly pattern: string;
   readonly title: string;
@@ -62,7 +67,8 @@ export interface ExportProps {
   readonly planning: boolean;
   readonly busy: boolean;
   readonly error: string | null;
-  readonly queued: string | null;
+  /** The export that was queued, followed to its files. Null before one is. */
+  readonly delivery: Delivery | null;
   readonly archive: { readonly path: string; readonly entryCount: number } | null;
   readonly onDestinationChange: (value: string) => void;
   readonly onPatternChange: (value: string) => void;
@@ -70,6 +76,8 @@ export interface ExportProps {
   readonly onRightsGateChange: (passed: boolean) => void;
   readonly onExport: () => void;
   readonly onArchive: () => void;
+  /** Show a delivered file in the file manager. */
+  readonly onReveal: (path: string) => void;
 }
 
 export function Export(props: ExportProps): JSX.Element {
@@ -80,12 +88,13 @@ export function Export(props: ExportProps): JSX.Element {
           <EmptyMedia variant="icon">
             <Upload />
           </EmptyMedia>
-          <EmptyTitle>Nothing approved yet</EmptyTitle>
+          <EmptyTitle>No clip is chosen for export</EmptyTitle>
           <EmptyDescription>
-            An export delivers an edit document. Approve a clip on the Results board and it will
-            appear here.
+            An export delivers one edit document. Open a clip from the editor, or choose one of the
+            edits below.
           </EmptyDescription>
         </EmptyHeader>
+        {props.picker}
       </Empty>
     );
   }
@@ -97,9 +106,18 @@ export function Export(props: ExportProps): JSX.Element {
     (finding) => finding.severity === 'advisory',
   );
   const ready = props.plan?.passes === true && !props.busy;
+  const delivering = props.delivery !== null && !props.delivery.settled;
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1" data-testid="export-clip">
+        <h1 className="text-sm font-semibold text-[var(--cm-ink-1)]">
+          {props.labels
+            ? [props.labels.project, props.labels.clip].filter(Boolean).join(' · ')
+            : 'This clip'}
+        </h1>
+        <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">{props.docId}</span>
+      </header>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -241,19 +259,17 @@ export function Export(props: ExportProps): JSX.Element {
         </Alert>
       )}
 
-      {props.queued !== null && (
-        <Alert>
-          <PackageCheck />
-          <AlertDescription>
-            Queued as <span className="font-mono text-xs">{props.queued}</span>. It renders, then it
-            delivers; watch it on the run this project is on.
-          </AlertDescription>
-        </Alert>
+      {props.delivery !== null && (
+        <DeliveryCard delivery={props.delivery} onReveal={props.onReveal} />
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={props.onExport} disabled={!ready}>
-          {props.busy ? 'Working…' : 'Export'}
+        <Button onClick={props.onExport} disabled={!ready || delivering}>
+          {props.busy
+            ? 'Working…'
+            : props.plan
+              ? `Export revision r${props.plan.revision}`
+              : 'Export'}
         </Button>
         <Button variant="outline" onClick={props.onArchive} disabled={props.busy}>
           Archive this project
@@ -272,6 +288,109 @@ export function Export(props: ExportProps): JSX.Element {
         makes twice.
       </p>
     </div>
+  );
+}
+
+/** What a stage is doing, in a word a person reads. */
+function stageWord(stage: DeliveryStage): string {
+  switch (stage.state) {
+    case 'running':
+      return stage.progress
+        ? `${stage.progress.done} of ${stage.progress.total} ${stage.progress.unit}`
+        : 'running';
+    case 'done':
+      return 'done';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return stage.waitReason === '' ? 'waiting' : stage.waitReason;
+  }
+}
+
+/**
+ * The export as it happens, and what it left behind.
+ *
+ * The files listed are the ones the delivery's own package names — the
+ * daemon's receipt for what it wrote — at the folder the export was resolved
+ * to, so every path here is one that exists.
+ */
+function DeliveryCard({
+  delivery,
+  onReveal,
+}: {
+  readonly delivery: Delivery;
+  readonly onReveal: (path: string) => void;
+}): JSX.Element {
+  return (
+    <Card data-testid="delivery">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <PackageCheck className="size-4" />
+          {delivery.files
+            ? `Delivered revision r${delivery.revision}`
+            : delivery.failure
+              ? `Revision r${delivery.revision} was not delivered`
+              : `Delivering revision r${delivery.revision}`}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="font-mono text-[11px] text-[var(--cm-ink-3)]">{delivery.destinationDir}</p>
+        <ul className="space-y-1 text-xs" aria-label="Delivery stages">
+          {delivery.stages.map((stage) => (
+            <li key={stage.kind} className="flex justify-between gap-4">
+              <span className="text-[var(--cm-ink-2)]">{stage.label}</span>
+              <span
+                className={
+                  stage.state === 'failed'
+                    ? 'text-[var(--cm-danger-ink)]'
+                    : stage.state === 'done'
+                      ? 'text-[var(--cm-success-ink)]'
+                      : 'text-[var(--cm-ink-1)]'
+                }
+                data-testid={`stage-${stage.kind}`}
+              >
+                {stageWord(stage)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {delivery.failure !== null && (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertDescription>
+              {delivery.failure} The folder holds nothing from this export; fix the cause and export
+              again.
+            </AlertDescription>
+          </Alert>
+        )}
+        {delivery.files !== null && (
+          <ul className="space-y-1" aria-label="Delivered files">
+            {delivery.files.map((file) => (
+              <li key={file.name} className="flex items-center justify-between gap-3 text-xs">
+                <span className="min-w-0 truncate font-mono text-[11px] text-[var(--cm-ink-1)]">
+                  {file.path}
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">
+                    {formatBytes(file.bytes)}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onReveal(file.path)}
+                    aria-label={`Reveal ${file.name}`}
+                  >
+                    <Eye className="size-3" /> Reveal
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
