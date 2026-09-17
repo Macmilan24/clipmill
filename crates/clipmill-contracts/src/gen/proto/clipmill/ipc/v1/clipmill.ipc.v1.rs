@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -91,6 +91,8 @@ pub mod request {
         ExportArchive(super::ExportArchiveRequest),
         #[prost(message, tag = "41")]
         GetLocalLock(super::GetLocalLockRequest),
+        #[prost(message, tag = "42")]
+        GetReadiness(super::GetReadinessRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -101,7 +103,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -177,6 +179,8 @@ pub mod response {
         ExportArchive(super::ExportArchiveResponse),
         #[prost(message, tag = "42")]
         GetLocalLock(super::GetLocalLockResponse),
+        #[prost(message, tag = "43")]
+        GetReadiness(super::GetReadinessResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1750,6 +1754,80 @@ pub struct LocalLockStatusV1 {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetLocalLockRequest {}
+/// ---- Readiness: whether an analysis could run right now ----
+///
+/// An analysis is planned against models the registry pins and workers that
+/// connect on their own. A missing weight file or a worker fleet nobody
+/// started used to show as a stage sitting planned forever with nothing to say.
+/// This is the question a screen asks before submitting, and again while a
+/// stage waits: what would each stage need, and is it here?
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetReadinessRequest {}
+/// One stage an analysis plans, and whether what it needs is present.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StageReadinessV1 {
+    /// The task kind, e.g. "speech-asr".
+    #[prost(string, tag = "1")]
+    pub stage: ::prost::alloc::string::String,
+    /// The capability it serves, as the registry spells it. Empty for a stage
+    /// that runs no model.
+    #[prost(string, tag = "2")]
+    pub capability: ::prost::alloc::string::String,
+    /// The implementation this device is bound to, e.g. "clipmill-worker-asr@0.1.0".
+    #[prost(string, tag = "3")]
+    pub implementation: ::prost::alloc::string::String,
+    /// The registry name of the model it loads, and where it must be.
+    #[prost(string, tag = "4")]
+    pub model: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub backend: ::prost::alloc::string::String,
+    /// Every pinned file of the model is on disk at the size the registry pins.
+    /// True for a stage that runs no model.
+    #[prost(bool, tag = "6")]
+    pub model_present: bool,
+    /// The pinned files that are not, when any is not.
+    #[prost(string, repeated, tag = "7")]
+    pub missing_files: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// A worker that serves this stage is connected right now.
+    #[prost(bool, tag = "8")]
+    pub worker_present: bool,
+    /// Both of the above.
+    #[prost(bool, tag = "9")]
+    pub ready: bool,
+    /// What to do about it, when not ready: one sentence naming the command.
+    #[prost(string, tag = "10")]
+    pub remedy: ::prost::alloc::string::String,
+}
+/// A worker connected right now, as it registered.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorkerPresenceV1 {
+    #[prost(string, tag = "1")]
+    pub worker_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub family: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "3")]
+    pub capabilities: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag = "4")]
+    pub backend: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "5")]
+    pub since_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetReadinessResponse {
+    /// Every stage an analysis would plan that needs a model or a worker.
+    #[prost(message, repeated, tag = "1")]
+    pub stages: ::prost::alloc::vec::Vec<StageReadinessV1>,
+    #[prost(message, repeated, tag = "2")]
+    pub workers: ::prost::alloc::vec::Vec<WorkerPresenceV1>,
+    /// The pinned decoder every media stage runs.
+    #[prost(bool, tag = "3")]
+    pub decoder_present: bool,
+    #[prost(string, tag = "4")]
+    pub decoder_path: ::prost::alloc::string::String,
+    /// Every stage is ready and the decoder is present.
+    #[prost(bool, tag = "5")]
+    pub ready: bool,
+}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetLocalLockResponse {
     #[prost(message, optional, tag = "1")]

@@ -94,7 +94,7 @@ EXPORT_SEVERITY_BLOCKING: ExportSeverity
 EXPORT_SEVERITY_ADVISORY: ExportSeverity
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -128,6 +128,7 @@ class Request(_message.Message):
     EXPORT_CLIP_FIELD_NUMBER: _ClassVar[int]
     EXPORT_ARCHIVE_FIELD_NUMBER: _ClassVar[int]
     GET_LOCAL_LOCK_FIELD_NUMBER: _ClassVar[int]
+    GET_READINESS_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -161,10 +162,11 @@ class Request(_message.Message):
     export_clip: ExportClipRequest
     export_archive: ExportArchiveRequest
     get_local_lock: GetLocalLockRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ...) -> None: ...
+    get_readiness: GetReadinessRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -200,6 +202,7 @@ class Response(_message.Message):
     EXPORT_CLIP_FIELD_NUMBER: _ClassVar[int]
     EXPORT_ARCHIVE_FIELD_NUMBER: _ClassVar[int]
     GET_LOCAL_LOCK_FIELD_NUMBER: _ClassVar[int]
+    GET_READINESS_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -235,7 +238,8 @@ class Response(_message.Message):
     export_clip: ExportClipResponse
     export_archive: ExportArchiveResponse
     get_local_lock: GetLocalLockResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ...) -> None: ...
+    get_readiness: GetReadinessResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -1442,6 +1446,62 @@ class LocalLockStatusV1(_message.Message):
 class GetLocalLockRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
+
+class GetReadinessRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class StageReadinessV1(_message.Message):
+    __slots__ = ("stage", "capability", "implementation", "model", "backend", "model_present", "missing_files", "worker_present", "ready", "remedy")
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    IMPLEMENTATION_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    BACKEND_FIELD_NUMBER: _ClassVar[int]
+    MODEL_PRESENT_FIELD_NUMBER: _ClassVar[int]
+    MISSING_FILES_FIELD_NUMBER: _ClassVar[int]
+    WORKER_PRESENT_FIELD_NUMBER: _ClassVar[int]
+    READY_FIELD_NUMBER: _ClassVar[int]
+    REMEDY_FIELD_NUMBER: _ClassVar[int]
+    stage: str
+    capability: str
+    implementation: str
+    model: str
+    backend: str
+    model_present: bool
+    missing_files: _containers.RepeatedScalarFieldContainer[str]
+    worker_present: bool
+    ready: bool
+    remedy: str
+    def __init__(self, stage: _Optional[str] = ..., capability: _Optional[str] = ..., implementation: _Optional[str] = ..., model: _Optional[str] = ..., backend: _Optional[str] = ..., model_present: _Optional[bool] = ..., missing_files: _Optional[_Iterable[str]] = ..., worker_present: _Optional[bool] = ..., ready: _Optional[bool] = ..., remedy: _Optional[str] = ...) -> None: ...
+
+class WorkerPresenceV1(_message.Message):
+    __slots__ = ("worker_id", "family", "capabilities", "backend", "since_unix_millis")
+    WORKER_ID_FIELD_NUMBER: _ClassVar[int]
+    FAMILY_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
+    BACKEND_FIELD_NUMBER: _ClassVar[int]
+    SINCE_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    worker_id: str
+    family: str
+    capabilities: _containers.RepeatedScalarFieldContainer[str]
+    backend: str
+    since_unix_millis: int
+    def __init__(self, worker_id: _Optional[str] = ..., family: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., backend: _Optional[str] = ..., since_unix_millis: _Optional[int] = ...) -> None: ...
+
+class GetReadinessResponse(_message.Message):
+    __slots__ = ("stages", "workers", "decoder_present", "decoder_path", "ready")
+    STAGES_FIELD_NUMBER: _ClassVar[int]
+    WORKERS_FIELD_NUMBER: _ClassVar[int]
+    DECODER_PRESENT_FIELD_NUMBER: _ClassVar[int]
+    DECODER_PATH_FIELD_NUMBER: _ClassVar[int]
+    READY_FIELD_NUMBER: _ClassVar[int]
+    stages: _containers.RepeatedCompositeFieldContainer[StageReadinessV1]
+    workers: _containers.RepeatedCompositeFieldContainer[WorkerPresenceV1]
+    decoder_present: bool
+    decoder_path: str
+    ready: bool
+    def __init__(self, stages: _Optional[_Iterable[_Union[StageReadinessV1, _Mapping]]] = ..., workers: _Optional[_Iterable[_Union[WorkerPresenceV1, _Mapping]]] = ..., decoder_present: _Optional[bool] = ..., decoder_path: _Optional[str] = ..., ready: _Optional[bool] = ...) -> None: ...
 
 class GetLocalLockResponse(_message.Message):
     __slots__ = ("status",)

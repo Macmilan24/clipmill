@@ -479,6 +479,18 @@ pub(crate) fn worker_recipe(
 /// device profile nor the model registry is consulted here: re-measuring a
 /// device changes what the next plan chooses and never what an existing task
 /// means.
+/// The stages a worker runs without a model: leased, but with nothing to bind.
+///
+/// Readiness asks about these separately, because no binding names them and
+/// a worker fleet with no shot detector is a stage that waits forever.
+pub(crate) fn modelless_worker_stages() -> impl Iterator<Item = &'static str> {
+    REGISTRY
+        .iter()
+        .filter(|recipe| recipe.executor == Executor::Worker && recipe.capability.is_none())
+        .filter(|recipe| !recipe.kind.starts_with("demo-"))
+        .map(|recipe| recipe.kind)
+}
+
 pub(crate) fn model_for(
     stage: &str,
     capability: &'static str,

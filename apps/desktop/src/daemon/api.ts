@@ -33,6 +33,7 @@ import {
   type ExportRequest,
   type QueuedExport,
   type LocalLock,
+  type Readiness,
   chooseExportFolder,
   chooseSourceFile,
   createProject,
@@ -57,6 +58,7 @@ import {
   exportClip,
   exportArchive,
   fetchLocalLock,
+  fetchReadiness,
   revealPath,
 } from './client.js';
 
@@ -101,6 +103,8 @@ export interface ShellApi {
   revealPath(path: string): Promise<void>;
   exportArchive(projectId: string, destinationDir: string): Promise<ArchiveResult>;
   fetchLocalLock(): Promise<LocalLock>;
+  /** Whether an analysis could run right now, stage by stage. */
+  fetchReadiness(): Promise<Readiness>;
   chooseExportFolder(): Promise<string | null>;
 }
 
@@ -128,6 +132,7 @@ export const daemonApi: ShellApi = {
   exportClip,
   exportArchive,
   fetchLocalLock,
+  fetchReadiness,
   chooseExportFolder,
   revealPath,
 };

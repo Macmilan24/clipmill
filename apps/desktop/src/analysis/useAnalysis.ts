@@ -43,7 +43,7 @@ export interface AnalysisData {
 export class AnalysisLoader {
   private readonly library: LibraryLoader;
 
-  constructor(private readonly api: ShellApi = daemonApi) {
+  constructor(readonly api: ShellApi = daemonApi) {
     this.library = new LibraryLoader(api);
   }
 

@@ -50,7 +50,7 @@ export interface ChosenSource {
 }
 
 export class ImportLoader {
-  constructor(private readonly api: ShellApi = daemonApi) {}
+  constructor(readonly api: ShellApi = daemonApi) {}
 
   /** The native dialog. `null` when it was closed without choosing. */
   choose(): Promise<string | null> {

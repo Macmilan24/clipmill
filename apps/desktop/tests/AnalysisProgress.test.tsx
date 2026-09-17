@@ -20,8 +20,10 @@ import {
   filmstrip,
   job,
   project,
+  readiness,
   source,
   sourceMapDocument,
+  stageReadiness,
   task,
 } from './support/library.js';
 
@@ -178,6 +180,51 @@ describe('the Analysis Progress screen', () => {
     show(finished);
     const button = await screen.findByRole('button', { name: 'View results' });
     expect(button.hasAttribute('disabled')).toBe(false);
+  });
+
+  it("says what a waiting stage is waiting for, in the daemon's words", async () => {
+    // The task fixture names its kind after the artifact it publishes; the
+    // readiness report is keyed by that same task kind.
+    const scene = {
+      ...running(),
+      readiness: readiness([
+        stageReadiness('speech.asr', { workerPresent: false }),
+        stageReadiness('speech.vad'),
+      ]),
+    };
+    show(scene);
+    const reason = await screen.findByTestId('waiting-speech.asr.v1');
+    expect(reason.textContent).toMatch(/No worker is connected that runs speech\.asr/);
+    expect(reason.textContent).toMatch(/just workers/);
+    // A stage whose worker is here waits on its dependencies, not on a remedy.
+    expect(screen.queryByTestId('waiting-speech.vad.v1')).toBeNull();
+    // The running stage is not waiting.
+    expect(screen.queryByTestId('waiting-media.frames.v1')).toBeNull();
+  });
+
+  it('stops naming waits once the run has finished', async () => {
+    const scene = running();
+    const finished = {
+      ...scene,
+      readiness: readiness([stageReadiness('speech.asr', { workerPresent: false })]),
+      jobs: {
+        p1: [
+          job(
+            'p1',
+            JobState.FAILED,
+            scene.jobs.p1![0]!.tasks.map((entry) =>
+              task(
+                entry.outputKind,
+                entry.state === TaskState.SUCCEEDED ? TaskState.SUCCEEDED : TaskState.CANCELLED,
+              ),
+            ),
+          ),
+        ],
+      },
+    };
+    show(finished);
+    await screen.findByRole('list', { name: 'Pipeline stages' });
+    expect(screen.queryByTestId('waiting-speech.asr.v1')).toBeNull();
   });
 
   it('shows why a run stopped instead of only that it did', async () => {

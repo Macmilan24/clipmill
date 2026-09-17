@@ -9,7 +9,7 @@ import {
   Minus,
   ShieldCheck,
 } from 'lucide-react';
-import { type JSX, useEffect, useState } from 'react';
+import { type JSX, useEffect, useMemo, useState } from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
 
@@ -34,7 +34,8 @@ import {
   stageCounts,
   stageRows,
 } from '../analysis/model.js';
-import { type AnalysisLoader, useAnalysis } from '../analysis/useAnalysis.js';
+import { useReadiness, waitingReasons } from '../analysis/readiness.js';
+import { AnalysisLoader, useAnalysis } from '../analysis/useAnalysis.js';
 import type { Job, TaskEvent } from '../daemon/client.js';
 import {
   acceleratorMemory,
@@ -81,7 +82,14 @@ const STATE_STYLE: Readonly<
   skipped: { icon: <Minus className={cn('size-4', MUTED)} />, text: MUTED },
 };
 
-function StageLine({ row }: { readonly row: StageRow }): JSX.Element {
+function StageLine({
+  row,
+  waitingFor,
+}: {
+  readonly row: StageRow;
+  /** Why the stage is waiting, when the daemon's readiness report knows. */
+  readonly waitingFor: string | null;
+}): JSX.Element {
   const style = STATE_STYLE[row.state];
   const active = row.state === 'running';
 
@@ -103,6 +111,16 @@ function StageLine({ row }: { readonly row: StageRow }): JSX.Element {
         <div className={cn('truncate text-meta', SECONDARY)}>
           {row.state === 'skipped' ? 'Not needed for this recording' : row.stage.detail}
         </div>
+        {/* A wait with a name and a command beside it, in place of a spinner
+            that would sit there until someone guessed. */}
+        {waitingFor !== null && (
+          <div
+            className="mt-0.5 text-meta text-[var(--cm-warning-ink)]"
+            data-testid={`waiting-${row.stage.kind}`}
+          >
+            {waitingFor}
+          </div>
+        )}
       </div>
       <span
         className={cn(
@@ -289,6 +307,16 @@ export function AnalysisProgress({
   const status = readStatus(job);
   const running = status.kind === 'analyzing' || status.kind === 'queued';
 
+  // While the run is live, the readiness report is re-read so a stage that
+  // is waiting on a worker or a model says so — and stops saying so the
+  // moment the worker connects. A finished run has nothing to wait for.
+  const api = useMemo(() => (loader ?? new AnalysisLoader()).api, [loader]);
+  const { readiness } = useReadiness(running, api);
+  const waiting = useMemo(
+    () => (running ? waitingReasons(job, readiness) : new Map<string, string>()),
+    [job, readiness, running],
+  );
+
   // Elapsed counts up while the run is live, and stops when it stops.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -381,7 +409,15 @@ export function AnalysisProgress({
           </CardHeader>
           <CardContent className="px-0" role="list" aria-label="Pipeline stages">
             {rows.map((row) => (
-              <StageLine key={row.stage.kind} row={row} />
+              <StageLine
+                key={row.stage.kind}
+                row={row}
+                waitingFor={
+                  [row.stage.kind, ...(row.stage.covers ?? [])]
+                    .map((kind) => waiting.get(kind))
+                    .find((reason) => reason !== undefined) ?? null
+                }
+              />
             ))}
           </CardContent>
         </Card>
