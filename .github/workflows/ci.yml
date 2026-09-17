@@ -26,14 +26,19 @@ jobs:
         with:
           setup_only: true
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # Pinned to the version the committed tree was generated with. Unpinned,
+      # the day the cache expired this installed 0.8.0, whose output differs in
+      # every schema module, and the drift check failed for a change nobody
+      # made. Upgrading is a deliberate regenerate-and-commit, with the key
+      # below bumped so the cache follows.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: typify-cache
         with:
           path: ~/.cargo/bin/cargo-typify
-          key: cargo-typify-${{ runner.os }}-v1
+          key: cargo-typify-0.7.0-${{ runner.os }}-v1
       - name: Install cargo-typify
         if: steps.typify-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-typify --locked
+        run: cargo install cargo-typify --version 0.7.0 --locked
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
