@@ -642,7 +642,7 @@ class TaskEvent(_message.Message):
     def __init__(self, job_id: _Optional[str] = ..., task_id: _Optional[str] = ..., state: _Optional[_Union[TaskState, str]] = ..., progress: _Optional[_Union[_worker_pb2.ProgressUnits, _Mapping]] = ..., wait_reason: _Optional[str] = ..., at_unix_millis: _Optional[int] = ..., event_id: _Optional[int] = ..., attempt: _Optional[int] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ...) -> None: ...
 
 class Job(_message.Message):
-    __slots__ = ("job_id", "project_id", "kind", "state", "created_unix_millis", "updated_unix_millis", "tasks", "output_artifact_ids", "failure_class", "failure_detail", "source_id")
+    __slots__ = ("job_id", "project_id", "kind", "state", "created_unix_millis", "updated_unix_millis", "tasks", "output_artifact_ids", "failure_class", "failure_detail", "source_id", "export")
     JOB_ID_FIELD_NUMBER: _ClassVar[int]
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
@@ -654,6 +654,7 @@ class Job(_message.Message):
     FAILURE_CLASS_FIELD_NUMBER: _ClassVar[int]
     FAILURE_DETAIL_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    EXPORT_FIELD_NUMBER: _ClassVar[int]
     job_id: str
     project_id: str
     kind: str
@@ -665,7 +666,20 @@ class Job(_message.Message):
     failure_class: _worker_pb2.FailureClass
     failure_detail: str
     source_id: str
-    def __init__(self, job_id: _Optional[str] = ..., project_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[JobState, str]] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., tasks: _Optional[_Iterable[_Union[Task, _Mapping]]] = ..., output_artifact_ids: _Optional[_Iterable[str]] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ..., failure_detail: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
+    export: ExportSummaryV1
+    def __init__(self, job_id: _Optional[str] = ..., project_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[JobState, str]] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., tasks: _Optional[_Iterable[_Union[Task, _Mapping]]] = ..., output_artifact_ids: _Optional[_Iterable[str]] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ..., failure_detail: _Optional[str] = ..., source_id: _Optional[str] = ..., export: _Optional[_Union[ExportSummaryV1, _Mapping]] = ...) -> None: ...
+
+class ExportSummaryV1(_message.Message):
+    __slots__ = ("doc_id", "revision", "ir_artifact_id", "destination_dir")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    DESTINATION_DIR_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    revision: int
+    ir_artifact_id: str
+    destination_dir: str
+    def __init__(self, doc_id: _Optional[str] = ..., revision: _Optional[int] = ..., ir_artifact_id: _Optional[str] = ..., destination_dir: _Optional[str] = ...) -> None: ...
 
 class Task(_message.Message):
     __slots__ = ("task_id", "kind", "state", "attempt", "max_attempts", "progress", "wait_reason", "output_artifact_id", "output_kind")

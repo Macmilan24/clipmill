@@ -21,8 +21,36 @@ import type { Job, QueuedExport, Task } from '../daemon/client.js';
 
 const PACKAGE_KIND = 'export.package.v1';
 const RENDER_KIND = 'render.clip.v1';
+const EXPORT_JOB_KIND = 'export-clip';
 /** How often the job is re-read while it runs. A local socket; cheap. */
 const POLL_MILLIS = 750;
+/** How long to wait before asking again after a read that failed. */
+const RETRY_MILLIS = 2_000;
+
+/**
+ * The export a document most recently queued, from the daemon's own jobs.
+ *
+ * An export job carries what it is delivering, so a screen reopened on the
+ * document — after navigating away, or after the application relaunched —
+ * finds the export where it durably is rather than in state a remount
+ * started without. Newest first, because that is the one somebody is
+ * waiting on; an older one has already been looked at.
+ */
+export function latestExportOf(jobs: readonly Job[], docId: string): QueuedExport | null {
+  const mine = jobs
+    .filter((job) => job.kind === EXPORT_JOB_KIND && job.export?.docId === docId)
+    .toSorted((left, right) => right.createdUnixMillis - left.createdUnixMillis);
+  const job = mine[0];
+  if (!job?.export) {
+    return null;
+  }
+  return {
+    jobId: job.jobId,
+    revision: job.export.revision,
+    irArtifactId: job.export.irArtifactId,
+    destinationDir: job.export.destinationDir,
+  };
+}
 
 export type StageState = 'waiting' | 'running' | 'done' | 'failed' | 'cancelled';
 
@@ -59,6 +87,12 @@ export interface Delivery {
   readonly files: readonly DeliveredPath[] | null;
   /** The daemon's account of what went wrong, when something did. */
   readonly failure: string | null;
+  /**
+   * Why the last read of the job failed, while it is still being followed.
+   * Not an outcome: the job is durable and goes on, and the read is tried
+   * again until the job itself says how it ended.
+   */
+  readonly interruption: string | null;
 }
 
 function stageState(task: Task | undefined): StageState {
@@ -136,6 +170,11 @@ export function failureOf(job: Job | null): string | null {
  * Polls rather than subscribing, because the whole job is two tasks on a
  * local socket and a subscription's cursor bookkeeping would be more code
  * than the thing it saves. Stops when the job settles or the export changes.
+ *
+ * A read that fails — the daemon restarting, a socket that dropped — is not
+ * an outcome. The job is durable and goes on without this screen, so the
+ * failure is shown and the read is tried again, until the job itself says
+ * how it ended.
  */
 export function useDelivery(
   projectId: string | null,
@@ -162,6 +201,7 @@ export function useDelivery(
           return;
         }
         setJob(current);
+        setProblem(null);
         if (!settled(current)) {
           timer = setTimeout(() => void read(), POLL_MILLIS);
           return;
@@ -180,6 +220,7 @@ export function useDelivery(
       } catch (error) {
         if (live) {
           setProblem((error as Error).message);
+          timer = setTimeout(() => void read(), RETRY_MILLIS);
         }
       }
     };
@@ -199,8 +240,9 @@ export function useDelivery(
     revision: queued.revision,
     destinationDir: queued.destinationDir,
     stages: deliveryStages(job),
-    settled: settled(job) || problem !== null,
+    settled: settled(job),
     files,
-    failure: problem ?? failureOf(job),
+    failure: failureOf(job),
+    interruption: settled(job) ? null : problem,
   };
 }

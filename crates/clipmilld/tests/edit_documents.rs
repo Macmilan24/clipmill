@@ -26,7 +26,9 @@ use clipmilld::{Config, Daemon, DaemonError};
 use tempfile::TempDir;
 use tokio::{sync::oneshot, task::JoinHandle};
 
-use support::{create, send, wait_for_exit, wait_until_ready, workspace_tempdir};
+use support::{
+    create, get_job, list_jobs, send, wait_for_exit, wait_until_ready, workspace_tempdir,
+};
 
 fn config(temp: &TempDir) -> Config {
     Config::from_sources_with_gc(
@@ -373,13 +375,48 @@ async fn commands_apply_invert_and_snapshot_over_the_control_socket() {
         other => panic!("an export of a stale revision must conflict, got {other:?}"),
     }
     let (_, current) = export("edit-export-current", Some(3)).await;
-    if let Some(response::Body::Error(error)) = &current {
-        assert_ne!(
-            error.code,
-            ErrorCode::Conflict as i32,
-            "the reviewed revision is not a conflict: {}",
-            error.message
-        );
+    match &current {
+        Some(response::Body::Error(error)) => {
+            assert_ne!(
+                error.code,
+                ErrorCode::Conflict as i32,
+                "the reviewed revision is not a conflict: {}",
+                error.message
+            );
+        }
+        Some(response::Body::ExportClip(queued)) => {
+            // The job carries what it is delivering, so a screen reopened
+            // on the document — or the application relaunched — can find
+            // the export again from the daemon rather than from state it
+            // no longer has.
+            let job = get_job(&socket, "edit-export-job", &queued.job_id)
+                .await
+                .expect("the export job");
+            let summary = job.export.expect("an export job says what it delivers");
+            assert_eq!(summary.doc_id, doc_id);
+            assert_eq!(summary.revision, 3);
+            assert_eq!(summary.ir_artifact_id, queued.ir_artifact_id);
+            assert_eq!(summary.destination_dir, queued.destination_dir);
+            let listed = list_jobs(&socket, "edit-export-list", &project.project_id)
+                .await
+                .expect("the project's jobs");
+            let found = listed
+                .iter()
+                .find(|job| job.job_id == queued.job_id)
+                .expect("the export is listed");
+            assert_eq!(
+                found.export.as_ref().map(|e| e.doc_id.as_str()),
+                Some(doc_id.as_str())
+            );
+            assert!(
+                listed
+                    .iter()
+                    .filter(|job| job.kind != "export-clip")
+                    .all(|job| job.export.is_none()),
+                "only an export job says so"
+            );
+        }
+        other => panic!("unexpected export reply: {other:?}"),
     }
 
     stop(shutdown, task).await;

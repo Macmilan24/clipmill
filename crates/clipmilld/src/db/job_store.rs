@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use clipmill_contracts::proto::{
-    ipc::v1::{CancelJobResponse, JobState, Response, SubmitJobResponse, TaskState, response},
+    ipc::v1::{
+        CancelJobResponse, ExportClipPayloadV1, ExportSummaryV1, JobState, Response,
+        SubmitJobResponse, TaskState, response,
+    },
     worker::v1::FailureClass,
 };
 use clipmill_core::{ArtifactId, JobId, ProjectId, TaskId};
@@ -1837,15 +1840,13 @@ fn valid_label(value: &str, maximum: usize) -> bool {
     count > 0 && count <= maximum && !value.chars().any(char::is_control)
 }
 
+const JOB_HEADER_SQL: &str = "SELECT job_id, project_id, kind, state, created_unix_millis,
+            updated_unix_millis, failure_class, failure_detail, source_id, payload
+     FROM jobs WHERE job_id = ?1";
+
 fn get_job_from(connection: &Connection, job_id: &str) -> Result<JobRecord, StoreError> {
     let header = connection
-        .query_row(
-            "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail, source_id
-             FROM jobs WHERE job_id = ?1",
-            [job_id],
-            job_header_from_row,
-        )
+        .query_row(JOB_HEADER_SQL, [job_id], job_header_from_row)
         .optional()?
         .ok_or(StoreError::NotFound)?;
     complete_job_record(connection, header)
@@ -1853,13 +1854,7 @@ fn get_job_from(connection: &Connection, job_id: &str) -> Result<JobRecord, Stor
 
 fn get_job_tx(transaction: &Transaction<'_>, job_id: &str) -> Result<JobRecord, StoreError> {
     let header = transaction
-        .query_row(
-            "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail, source_id
-             FROM jobs WHERE job_id = ?1",
-            [job_id],
-            job_header_from_row,
-        )
+        .query_row(JOB_HEADER_SQL, [job_id], job_header_from_row)
         .optional()?
         .ok_or(StoreError::NotFound)?;
     complete_job_record(transaction, header)
@@ -1894,6 +1889,21 @@ fn complete_job_record(
                 .and_then(|is_final| is_final.then_some(task.output_artifact_id.clone()))
         })
         .collect();
+    // An export job says what it is delivering, off its own payload. The
+    // payload is the durable record of the request; a screen that reopens a
+    // document finds its export here rather than in state a remount lost.
+    let export = (header.kind == crate::jobs::KIND_EXPORT_CLIP)
+        .then(|| ExportClipPayloadV1::decode(header.payload.as_slice()).ok())
+        .flatten()
+        .and_then(|payload| {
+            let request = payload.request?;
+            Some(ExportSummaryV1 {
+                doc_id: request.doc_id,
+                revision: request.expected_revision.unwrap_or_default(),
+                ir_artifact_id: payload.ir_artifact_id,
+                destination_dir: request.destination_dir,
+            })
+        });
     Ok(JobRecord {
         job_id: header.job_id,
         project_id: header.project_id,
@@ -1906,6 +1916,7 @@ fn complete_job_record(
         output_artifact_ids,
         failure_class: header.failure_class,
         failure_detail: header.failure_detail,
+        export,
     })
 }
 
@@ -1919,6 +1930,7 @@ struct JobHeader {
     updated_unix_millis: u64,
     failure_class: i32,
     failure_detail: String,
+    payload: Vec<u8>,
 }
 
 fn job_header_from_row(row: &Row<'_>) -> rusqlite::Result<JobHeader> {
@@ -1932,6 +1944,7 @@ fn job_header_from_row(row: &Row<'_>) -> rusqlite::Result<JobHeader> {
         failure_class: row.get(6)?,
         failure_detail: row.get(7)?,
         source_id: row.get(8)?,
+        payload: row.get(9)?,
     })
 }
 
