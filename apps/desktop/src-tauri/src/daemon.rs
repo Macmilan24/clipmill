@@ -17,12 +17,13 @@ use clipmill_contracts::proto::ipc::v1::{
     DirectClipResponse, EditDoc, ExportArchiveRequest, ExportArchiveResponse, ExportClipRequest,
     ExportClipResponse, ExportRequestV1, GetDeviceProfileRequest, GetDeviceProfileResponse,
     GetJobRequest, GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest,
-    GetPreviewPlanResponse, GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest,
-    HealthResponse, Job, ListClipDecisionsRequest, ListEditDocsRequest, ListJobsRequest,
-    ListProjectsRequest, ListSourcesRequest, PlanExportRequest, PlanExportResponse, Project,
-    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse,
-    Request, ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
+    GetPreviewPlanResponse, GetReadinessRequest, GetReadinessResponse, GetStorageStatsRequest,
+    GetStorageStatsResponse, HealthRequest, HealthResponse, Job, ListClipDecisionsRequest,
+    ListEditDocsRequest, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest, ReadArtifactResponse,
+    RegisterSourceRequest, RegisterSourceResponse, Request, ResolveMediaRequest,
+    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
+    SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
     SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
@@ -235,6 +236,17 @@ impl DaemonClient {
     }
 
     /// Whether this installation is offline, with the evidence behind it.
+    /// Whether an analysis could run right now, and what each stage lacks.
+    pub async fn readiness(&self) -> Result<GetReadinessResponse, DaemonLinkError> {
+        match self
+            .call(request::Body::GetReadiness(GetReadinessRequest {}))
+            .await?
+        {
+            response::Body::GetReadiness(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub async fn local_lock(&self) -> Result<GetLocalLockResponse, DaemonLinkError> {
         match self
             .call(request::Body::GetLocalLock(GetLocalLockRequest {}))

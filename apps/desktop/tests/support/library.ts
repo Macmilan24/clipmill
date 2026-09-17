@@ -27,6 +27,8 @@ import type {
   ExportPlan,
   ExportRequest,
   LocalLock,
+  Readiness,
+  StageReadiness,
 } from '../../src/daemon/client.js';
 import type { ShellApi } from '../../src/daemon/api.js';
 
@@ -60,6 +62,63 @@ export function task(outputKind: string, state: TaskState, overrides: Partial<Ta
     waitReason: '',
     outputArtifactId: state === TaskState.SUCCEEDED ? `sha256:art-${outputKind}` : '',
     ...overrides,
+  };
+}
+
+/** One stage of the daemon's readiness report, ready unless said otherwise. */
+export function stageReadiness(
+  stage: string,
+  overrides: Partial<StageReadiness> = {},
+): StageReadiness {
+  const model = `${stage}-weights`;
+  const base: StageReadiness = {
+    stage,
+    capability: stage,
+    implementation: `${stage}-impl`,
+    model,
+    backend: 'mlx',
+    modelPresent: true,
+    missingFiles: [],
+    workerPresent: true,
+    ready: true,
+    remedy: '',
+  };
+  const merged = { ...base, ...overrides };
+  const ready = merged.modelPresent && merged.workerPresent;
+  const remedy = merged.modelPresent
+    ? merged.workerPresent
+      ? ''
+      : `No worker is connected that runs ${stage}: start the workers with \`just workers\`.`
+    : `The model ${merged.model} is not installed: run \`tools/fetch-models.sh\` to fetch the pinned weights (${merged.missingFiles.length} file(s) missing).`;
+  return { ...merged, ready, remedy: overrides.remedy ?? remedy };
+}
+
+/** A readiness report over the given stages, with the decoder in place. */
+export function readiness(
+  stages: readonly StageReadiness[],
+  overrides: Partial<Readiness> = {},
+): Readiness {
+  const merged: Omit<Readiness, 'ready'> = {
+    decoderPresent: true,
+    decoderPath: '/Library/Application Support/dev.clipmill.ClipMill/tools/ffmpeg',
+    stages,
+    workers: stages.some((stage) => stage.workerPresent)
+      ? [
+          {
+            workerId: 'worker-1',
+            family: 'speech',
+            capabilities: stages.filter((stage) => stage.workerPresent).map((stage) => stage.stage),
+            backend: 'mlx',
+            sinceUnixMillis: NOW - 30_000,
+          },
+        ]
+      : [],
+    ...overrides,
+  };
+  return {
+    ...merged,
+    ready:
+      overrides.ready ?? (merged.decoderPresent && merged.stages.every((stage) => stage.ready)),
   };
 }
 
@@ -137,6 +196,8 @@ export interface FakeWorld {
   /** Every archive request, as (projectId, destination) pairs. */
   readonly archived: Array<readonly [string, string]>;
   readonly localLock?: LocalLock;
+  /** What the daemon says an analysis would need, when the world says. */
+  readonly readiness?: Readiness;
   /** The folder the fake dialog returns, or null for "closed". */
   readonly chosenFolder?: string | null;
 }
@@ -336,5 +397,9 @@ export function fakeApi(world: FakeWorld): ShellApi {
         ? Promise.reject(new Error('this daemon reports no policy'))
         : Promise.resolve(world.localLock),
     chooseExportFolder: () => Promise.resolve(world.chosenFolder ?? null),
+    fetchReadiness: () =>
+      world.readiness === undefined
+        ? Promise.reject(new Error('this daemon reports no readiness'))
+        : Promise.resolve(world.readiness),
   };
 }

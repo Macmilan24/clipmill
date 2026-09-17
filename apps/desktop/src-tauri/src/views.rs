@@ -898,6 +898,81 @@ impl From<GetLocalLockResponse> for LocalLockView {
     }
 }
 
+/// Whether an analysis could run right now, stage by stage.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadinessView {
+    pub ready: bool,
+    pub decoder_present: bool,
+    pub decoder_path: String,
+    pub stages: Vec<StageReadinessView>,
+    pub workers: Vec<WorkerPresenceView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageReadinessView {
+    /// The task kind, e.g. `speech-asr`.
+    pub stage: String,
+    pub capability: String,
+    pub implementation: String,
+    pub model: String,
+    pub backend: String,
+    pub model_present: bool,
+    pub missing_files: Vec<String>,
+    pub worker_present: bool,
+    pub ready: bool,
+    /// What to do about it, when not ready.
+    pub remedy: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerPresenceView {
+    pub worker_id: String,
+    pub family: String,
+    pub capabilities: Vec<String>,
+    pub backend: String,
+    pub since_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::GetReadinessResponse> for ReadinessView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::GetReadinessResponse) -> Self {
+        Self {
+            ready: reply.ready,
+            decoder_present: reply.decoder_present,
+            decoder_path: reply.decoder_path,
+            stages: reply
+                .stages
+                .into_iter()
+                .map(|stage| StageReadinessView {
+                    stage: stage.stage,
+                    capability: stage.capability,
+                    implementation: stage.implementation,
+                    model: stage.model,
+                    backend: stage.backend,
+                    model_present: stage.model_present,
+                    missing_files: stage.missing_files,
+                    worker_present: stage.worker_present,
+                    ready: stage.ready,
+                    remedy: stage.remedy,
+                })
+                .collect(),
+            workers: reply
+                .workers
+                .into_iter()
+                .map(|worker| WorkerPresenceView {
+                    worker_id: worker.worker_id,
+                    family: worker.family,
+                    capabilities: worker.capabilities,
+                    backend: worker.backend,
+                    since_unix_millis: worker.since_unix_millis,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// What the Export screen asks for, in the shape the renderer sends it.
 ///
 /// A deserializable twin of the wire message rather than the wire message

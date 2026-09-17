@@ -45,6 +45,7 @@ message Request {
     ExportClipRequest export_clip = 39;
     ExportArchiveRequest export_archive = 40;
     GetLocalLockRequest get_local_lock = 41;
+    GetReadinessRequest get_readiness = 42;
   }
 }
 
@@ -87,6 +88,7 @@ message Response {
     ExportClipResponse export_clip = 40;
     ExportArchiveResponse export_archive = 41;
     GetLocalLockResponse get_local_lock = 42;
+    GetReadinessResponse get_readiness = 43;
   }
 }
 
@@ -1391,6 +1393,60 @@ message LocalLockStatusV1 {
 }
 
 message GetLocalLockRequest {}
+
+// ---- Readiness: whether an analysis could run right now ----
+//
+// An analysis is planned against models the registry pins and workers that
+// connect on their own. A missing weight file or a worker fleet nobody
+// started used to show as a stage sitting planned forever with nothing to say.
+// This is the question a screen asks before submitting, and again while a
+// stage waits: what would each stage need, and is it here?
+message GetReadinessRequest {}
+
+// One stage an analysis plans, and whether what it needs is present.
+message StageReadinessV1 {
+  // The task kind, e.g. "speech-asr".
+  string stage = 1;
+  // The capability it serves, as the registry spells it. Empty for a stage
+  // that runs no model.
+  string capability = 2;
+  // The implementation this device is bound to, e.g. "clipmill-worker-asr@0.1.0".
+  string implementation = 3;
+  // The registry name of the model it loads, and where it must be.
+  string model = 4;
+  string backend = 5;
+  // Every pinned file of the model is on disk at the size the registry pins.
+  // True for a stage that runs no model.
+  bool model_present = 6;
+  // The pinned files that are not, when any is not.
+  repeated string missing_files = 7;
+  // A worker that serves this stage is connected right now.
+  bool worker_present = 8;
+  // Both of the above.
+  bool ready = 9;
+  // What to do about it, when not ready: one sentence naming the command.
+  string remedy = 10;
+}
+
+// A worker connected right now, as it registered.
+message WorkerPresenceV1 {
+  string worker_id = 1;
+  string family = 2;
+  repeated string capabilities = 3;
+  string backend = 4;
+  uint64 since_unix_millis = 5;
+}
+
+message GetReadinessResponse {
+  // Every stage an analysis would plan that needs a model or a worker.
+  repeated StageReadinessV1 stages = 1;
+  repeated WorkerPresenceV1 workers = 2;
+  // The pinned decoder every media stage runs.
+  bool decoder_present = 3;
+  string decoder_path = 4;
+  // Every stage is ready and the decoder is present.
+  bool ready = 5;
+}
 
 message GetLocalLockResponse {
   LocalLockStatusV1 status = 1;

@@ -441,6 +441,20 @@ async fn export_archive(
         .map_err(|error| error.to_string())
 }
 
+/// Whether an analysis could run right now, stage by stage, and what to do
+/// about the ones that could not.
+#[tauri::command]
+async fn readiness(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<views::ReadinessView, String> {
+    supervisor
+        .client()
+        .readiness()
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// Whether this installation is offline, and the evidence for it.
 #[tauri::command]
 async fn local_lock(
@@ -632,6 +646,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             export_clip,
             export_archive,
             local_lock,
+            readiness,
             choose_export_folder,
             reveal_path,
             solve_crop_path,

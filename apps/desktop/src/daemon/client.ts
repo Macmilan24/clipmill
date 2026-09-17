@@ -801,6 +801,53 @@ export interface ArchiveResult {
   readonly entryCount: number;
 }
 
+/** One stage an analysis plans, and whether what it needs is here. */
+export interface StageReadiness {
+  /** The task kind, e.g. `speech-asr`; what a job's task calls itself. */
+  readonly stage: string;
+  readonly capability: string;
+  readonly implementation: string;
+  readonly model: string;
+  readonly backend: string;
+  readonly modelPresent: boolean;
+  readonly missingFiles: readonly string[];
+  readonly workerPresent: boolean;
+  readonly ready: boolean;
+  /** What to do about it, when not ready: one sentence naming the command. */
+  readonly remedy: string;
+}
+
+export interface WorkerPresence {
+  readonly workerId: string;
+  readonly family: string;
+  readonly capabilities: readonly string[];
+  readonly backend: string;
+  readonly sinceUnixMillis: number;
+}
+
+/**
+ * Whether an analysis could run right now.
+ *
+ * Asked before a run is submitted and again while a stage waits, because a
+ * missing weight file or a worker fleet nobody started used to show as a
+ * stage sitting planned forever with nothing to say.
+ */
+export interface Readiness {
+  readonly ready: boolean;
+  readonly decoderPresent: boolean;
+  readonly decoderPath: string;
+  readonly stages: readonly StageReadiness[];
+  readonly workers: readonly WorkerPresence[];
+}
+
+export async function fetchReadiness(): Promise<Readiness> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<Readiness>('readiness');
+}
+
 /** Whether this installation is offline, and the evidence for it. */
 export interface LocalLock {
   readonly engaged: boolean;

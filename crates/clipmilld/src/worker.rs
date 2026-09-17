@@ -88,7 +88,7 @@ pub(crate) struct WorkerService {
     scheduler: SchedulerHandle,
     daemon_epoch: String,
     trust: Arc<BTreeMap<String, [u8; 32]>>,
-    active_workers: Arc<Mutex<BTreeSet<String>>>,
+    active_workers: WorkerRoster,
     shm: ShmBroker,
     models: Arc<ModelRegistry>,
     artifact_root: Arc<PathBuf>,
@@ -122,6 +122,7 @@ impl WorkerService {
         weights_root: PathBuf,
         decoder: PathBuf,
         policy: Arc<crate::policy::LocalLockPolicy>,
+        roster: WorkerRoster,
     ) -> Result<Self, WorkerError> {
         Ok(Self {
             database,
@@ -130,7 +131,7 @@ impl WorkerService {
             scheduler,
             daemon_epoch,
             trust: Arc::new(load_trust(trust_dir)?),
-            active_workers: Arc::new(Mutex::new(BTreeSet::new())),
+            active_workers: roster,
             shm,
             models,
             artifact_root: Arc::new(artifact_root),
@@ -174,7 +175,16 @@ impl WorkerService {
         };
         validate_registration(&descriptor, &challenge, &self.trust)?;
         let worker_id = descriptor.worker_id.clone();
-        let _active = ActiveWorker::acquire(Arc::clone(&self.active_workers), worker_id.clone())?;
+        let _active = ActiveWorker::acquire(
+            Arc::clone(&self.active_workers),
+            worker_id.clone(),
+            WorkerPresence {
+                family: descriptor.family.clone(),
+                capabilities: descriptor.capabilities.clone(),
+                backend: descriptor.backend.clone(),
+                since_unix_millis: now_millis(),
+            },
+        )?;
         let session_id = ulid::Ulid::new().to_string();
         write_response(
             &mut stream,
@@ -704,21 +714,54 @@ struct ActiveLease {
     accepted: bool,
 }
 
+/// A worker connected right now, as it registered.
+///
+/// The daemon never kept a list of who is connected: a worker registered,
+/// pulled, and was forgotten between pulls, so nothing could say whether a
+/// stage sitting planned was waiting for a worker that would come or for one
+/// nobody had started. The roster is that list, held for exactly as long as
+/// the connection is.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WorkerPresence {
+    pub family: String,
+    /// The task kinds it serves, which is what the scheduler leases by.
+    pub capabilities: Vec<String>,
+    pub backend: String,
+    pub since_unix_millis: u64,
+}
+
+impl WorkerPresence {
+    /// Whether this worker would be handed a task of the kind.
+    pub(crate) fn serves(&self, task_kind: &str) -> bool {
+        self.capabilities.iter().any(|kind| kind == task_kind)
+    }
+}
+
+/// Every worker connected right now, by id. Shared between the worker plane,
+/// which writes it, and the control service, which reads it for readiness.
+pub(crate) type WorkerRoster = Arc<Mutex<BTreeMap<String, WorkerPresence>>>;
+
+pub(crate) fn new_roster() -> WorkerRoster {
+    Arc::new(Mutex::new(BTreeMap::new()))
+}
+
 #[derive(Debug)]
 struct ActiveWorker {
-    workers: Arc<Mutex<BTreeSet<String>>>,
+    workers: WorkerRoster,
     worker_id: String,
 }
 
 impl ActiveWorker {
     fn acquire(
-        workers: Arc<Mutex<BTreeSet<String>>>,
+        workers: WorkerRoster,
         worker_id: String,
+        presence: WorkerPresence,
     ) -> Result<Self, WorkerError> {
         let mut active = workers.lock().map_err(|_| WorkerError::Stopped)?;
-        if !active.insert(worker_id.clone()) {
+        if active.contains_key(&worker_id) {
             return Err(WorkerError::DuplicateWorker);
         }
+        active.insert(worker_id.clone(), presence);
         drop(active);
         Ok(Self { workers, worker_id })
     }
@@ -1128,10 +1171,7 @@ impl WorkerError {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use std::{
-        collections::{BTreeMap, BTreeSet},
-        sync::{Arc, Mutex},
-    };
+    use std::{collections::BTreeMap, sync::Arc};
 
     use clipmill_contracts::proto::worker::v1::{CapabilityDescriptor, RegistrationChallenge};
     use ed25519_dalek::{Signer, SigningKey};
@@ -1140,8 +1180,8 @@ mod tests {
 
     use super::{
         ActiveWorker, CURRENT_PROTOCOL, MAX_FRAME_BYTES, PREVIOUS_PROTOCOL, ResourceCapacity,
-        WorkerError, admit_capacity, read_request, registration_preimage, valid_word,
-        validate_registration,
+        WorkerError, WorkerPresence, admit_capacity, new_roster, read_request,
+        registration_preimage, valid_word, validate_registration,
     };
 
     fn signed_descriptor(
@@ -1372,15 +1412,37 @@ mod tests {
         ));
         descriptor.protocol_version = "1.1".to_owned();
 
-        let workers = Arc::new(Mutex::new(BTreeSet::new()));
-        let active = ActiveWorker::acquire(Arc::clone(&workers), descriptor.worker_id.clone())
-            .expect("first worker");
+        let workers = new_roster();
+        let presence = || WorkerPresence {
+            family: "echo".to_owned(),
+            capabilities: vec!["demo-seed".to_owned()],
+            backend: "cpu".to_owned(),
+            since_unix_millis: 1,
+        };
+        let active = ActiveWorker::acquire(
+            Arc::clone(&workers),
+            descriptor.worker_id.clone(),
+            presence(),
+        )
+        .expect("first worker");
+        // Present, and answering for the kinds it registered.
+        let listed = workers.lock().expect("roster");
+        assert!(listed[&descriptor.worker_id].serves("demo-seed"));
+        assert!(!listed[&descriptor.worker_id].serves("speech-asr"));
+        drop(listed);
         assert!(matches!(
-            ActiveWorker::acquire(Arc::clone(&workers), descriptor.worker_id.clone()),
+            ActiveWorker::acquire(
+                Arc::clone(&workers),
+                descriptor.worker_id.clone(),
+                presence()
+            ),
             Err(WorkerError::DuplicateWorker)
         ));
         drop(active);
-        ActiveWorker::acquire(workers, descriptor.worker_id).expect("worker ID released");
+        // Gone the moment the connection is.
+        assert!(workers.lock().expect("roster").is_empty());
+        ActiveWorker::acquire(workers, descriptor.worker_id, presence())
+            .expect("worker ID released");
     }
 
     #[tokio::test]

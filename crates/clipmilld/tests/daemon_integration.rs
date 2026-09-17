@@ -17,7 +17,7 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::ipc::v1::{
     CancelJobRequest, CreateProjectRequest, DeleteProjectRequest, ErrorCode, GetProjectRequest,
-    HealthRequest, Job, JobState, ListProjectsRequest, PingRequest, Request,
+    GetReadinessRequest, HealthRequest, Job, JobState, ListProjectsRequest, PingRequest, Request,
     SubscribeTaskEventsRequest, TaskState, request, response,
 };
 use clipmill_core::{ProjectId, Sha256Digest};
@@ -493,6 +493,73 @@ async fn invalid_and_unavailable_requests_return_stable_errors() {
     let verified = verify_device_profile(&profile.profile_json, None).expect("verified profile");
     assert_eq!(verified.measurement_generation, 1);
     assert!(profile.artifact_id.starts_with("sha256:"));
+
+    stop(shutdown, task).await;
+}
+
+/// What an analysis would need, and that none of it is here.
+///
+/// A daemon with no workers connected, a decoder that is a path nobody put a
+/// binary at, and no weights on disk: every stage says so by name and says
+/// what to run about it. This is what a screen shows instead of a spinner.
+#[tokio::test]
+async fn readiness_names_every_stage_an_analysis_needs_and_what_each_is_missing() {
+    let temp = workspace_tempdir();
+    let (socket, shutdown, task) = running(config(&temp)).await;
+
+    let reply = send(
+        &socket,
+        Request {
+            request_id: "readiness".to_owned(),
+            body: Some(request::Body::GetReadiness(GetReadinessRequest {})),
+        },
+    )
+    .await
+    .expect("readiness response");
+    let Some(response::Body::GetReadiness(readiness)) = reply.body else {
+        panic!("expected a readiness report");
+    };
+    assert!(!readiness.ready);
+    assert!(!readiness.decoder_present);
+    assert!(readiness.workers.is_empty(), "nothing has connected");
+
+    let stages: Vec<&str> = readiness
+        .stages
+        .iter()
+        .map(|stage| stage.stage.as_str())
+        .collect();
+    // Every stage the planner binds a model for, and the modelless worker
+    // stage beside them.
+    for expected in [
+        "speech-vad",
+        "speech-asr",
+        "speech-align",
+        "detect-faces",
+        "detect-shots",
+    ] {
+        assert!(
+            stages.contains(&expected),
+            "{expected} missing from {stages:?}"
+        );
+    }
+    for stage in &readiness.stages {
+        assert!(
+            !stage.ready,
+            "{} cannot be ready with nothing installed",
+            stage.stage
+        );
+        assert!(!stage.worker_present);
+        if stage.stage == "detect-shots" {
+            // Modelless: nothing to install, only a worker to start.
+            assert!(stage.model_present);
+            assert!(stage.remedy.contains("just workers"), "{}", stage.remedy);
+        } else {
+            assert!(!stage.model_present, "{} has no weights here", stage.stage);
+            assert!(!stage.missing_files.is_empty());
+            assert!(stage.remedy.contains("fetch-models"), "{}", stage.remedy);
+            assert!(!stage.implementation.is_empty());
+        }
+    }
 
     stop(shutdown, task).await;
 }

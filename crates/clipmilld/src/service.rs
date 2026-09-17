@@ -15,17 +15,18 @@ use clipmill_contracts::proto::ipc::v1::{
     ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity, ExportValidationV1,
     GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
     GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse,
-    GetSourceResponse, GetStorageStatsResponse, HealthResponse, IndexTranscriptPayloadV1,
-    IngestSourcePayloadV1, ListClipDecisionsRequest, ListClipDecisionsResponse,
-    ListEditDocsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest, PlanExportResponse,
-    PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1,
-    PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
-    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
-    StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
-    TranscribeSourcePayloadV1, request, response,
+    GetReadinessResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
+    ListClipDecisionsResponse, ListEditDocsResponse, ListJobsResponse, ListProjectsResponse,
+    ListSourcesResponse, LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest,
+    PlanExportResponse, PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1,
+    PreviewSegmentV1, PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1,
+    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
+    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
+    SolveCropPathResponse, StageReadinessV1, StorageCategoryV1, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1,
+    WorkerPresenceV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -82,6 +83,10 @@ pub(crate) struct Service {
     retention_grace: std::time::Duration,
     /// The Local Lock, which Health and Settings both read rather than assert.
     policy: std::sync::Arc<crate::policy::LocalLockPolicy>,
+    /// Who is connected to the worker plane right now, for readiness.
+    roster: crate::worker::WorkerRoster,
+    /// The pinned decoder every media stage runs, for the same question.
+    decoder: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -138,6 +143,8 @@ impl Service {
             storage: None,
             retention_grace: std::time::Duration::ZERO,
             policy: std::sync::Arc::default(),
+            roster: crate::worker::new_roster(),
+            decoder: None,
         }
     }
 
@@ -154,6 +161,8 @@ impl Service {
         storage: crate::storage::StorageDirs,
         retention_grace: std::time::Duration,
         policy: std::sync::Arc<crate::policy::LocalLockPolicy>,
+        roster: crate::worker::WorkerRoster,
+        decoder: std::path::PathBuf,
     ) -> Self {
         Self {
             database,
@@ -167,6 +176,8 @@ impl Service {
             storage: Some(storage),
             retention_grace,
             policy,
+            roster,
+            decoder: Some(decoder),
         }
     }
 
@@ -415,6 +426,7 @@ impl Service {
                 self.export_archive(request_id, &archive).await
             }
             request::Body::GetLocalLock(_) => self.get_local_lock(request_id),
+            request::Body::GetReadiness(_) => self.get_readiness(request_id),
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -2899,6 +2911,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ExportClip(_)) => "export_clip",
         Some(request::Body::ExportArchive(_)) => "export_archive",
         Some(request::Body::GetLocalLock(_)) => "get_local_lock",
+        Some(request::Body::GetReadiness(_)) => "get_readiness",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",
@@ -3555,6 +3568,109 @@ impl Service {
         )
     }
 
+    /// Whether an analysis could run right now, stage by stage.
+    ///
+    /// Answered from what the planner would bind — the same bindings a job
+    /// is planned with — against what is on disk and who is connected. A
+    /// stage is ready when its model's pinned files are present at the sizes
+    /// the registry pins and a worker that serves the stage is on the roster.
+    /// The remedy names the command, because a status that says "not ready"
+    /// and nothing else is a spinner with a label.
+    fn get_readiness(&self, request_id: String) -> Reply {
+        let bindings = self
+            .scheduler
+            .as_ref()
+            .map(crate::jobs::SchedulerHandle::bindings)
+            .unwrap_or_default();
+        let roster = self
+            .roster
+            .lock()
+            .map(|workers| workers.clone())
+            .unwrap_or_default();
+        let weights = self.storage.as_ref().map(|dirs| dirs.weights.clone());
+        let mut stages = Vec::new();
+        for binding in bindings.iter() {
+            let (present, missing) = weights.as_deref().map_or_else(
+                || (false, vec![binding.model.clone()]),
+                |root| self.model_files_present(&binding.model, root),
+            );
+            stages.push(stage_readiness(
+                &binding.stage,
+                &binding.capability,
+                &binding.implementation,
+                &binding.model,
+                &binding.backend,
+                present,
+                missing,
+                roster.values().any(|worker| worker.serves(&binding.stage)),
+            ));
+        }
+        // The stages that run no model but still need a worker.
+        for kind in crate::recipes::modelless_worker_stages() {
+            stages.push(stage_readiness(
+                kind,
+                "",
+                "",
+                "",
+                "",
+                true,
+                Vec::new(),
+                roster.values().any(|worker| worker.serves(kind)),
+            ));
+        }
+        stages.sort_by(|left, right| left.stage.cmp(&right.stage));
+        let decoder_path = self
+            .decoder
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let decoder_present = self.decoder.as_ref().is_some_and(|path| path.is_file());
+        let ready = decoder_present && stages.iter().all(|stage| stage.ready);
+        response_reply(
+            request_id,
+            response::Body::GetReadiness(GetReadinessResponse {
+                workers: roster
+                    .into_iter()
+                    .map(|(worker_id, presence)| WorkerPresenceV1 {
+                        worker_id,
+                        family: presence.family,
+                        capabilities: presence.capabilities,
+                        backend: presence.backend,
+                        since_unix_millis: presence.since_unix_millis,
+                    })
+                    .collect(),
+                stages,
+                decoder_present,
+                decoder_path,
+                ready,
+            }),
+        )
+    }
+
+    /// Whether every pinned file of a model is where the worker will look,
+    /// at the size the registry pins. Sizes rather than digests: a truncated
+    /// download is the common failure, and the worker hashes before loading.
+    fn model_files_present(
+        &self,
+        model: &str,
+        weights_root: &std::path::Path,
+    ) -> (bool, Vec<String>) {
+        let Some(manifest) = self.models.get(model) else {
+            return (false, vec![format!("{model} (not in the registry)")]);
+        };
+        let missing: Vec<String> = manifest
+            .files
+            .iter()
+            .filter(|file| {
+                let path = weights_root.join(model).join(&file.path);
+                !std::fs::metadata(&path)
+                    .is_ok_and(|meta| meta.is_file() && meta.len() == file.bytes)
+            })
+            .map(|file| format!("{model}/{}", file.path))
+            .collect();
+        (missing.is_empty(), missing)
+    }
+
     /// The document an export names, parsed, with the row it came from.
     async fn export_document(
         &self,
@@ -3586,6 +3702,43 @@ impl Service {
                 ))
             }
         }
+    }
+}
+
+/// One stage's readiness row, with the sentence that says what to do.
+#[allow(clippy::too_many_arguments)]
+fn stage_readiness(
+    stage: &str,
+    capability: &str,
+    implementation: &str,
+    model: &str,
+    backend: &str,
+    model_present: bool,
+    missing_files: Vec<String>,
+    worker_present: bool,
+) -> StageReadinessV1 {
+    let remedy = match (model_present, worker_present) {
+        (true, true) => String::new(),
+        (false, _) => format!(
+            "The model {model} is not installed: run `tools/fetch-models.sh` to fetch the \
+             pinned weights ({} file(s) missing).",
+            missing_files.len()
+        ),
+        (true, false) => format!(
+            "No worker is connected that runs {stage}: start the workers with `just workers`."
+        ),
+    };
+    StageReadinessV1 {
+        stage: stage.to_owned(),
+        capability: capability.to_owned(),
+        implementation: implementation.to_owned(),
+        model: model.to_owned(),
+        backend: backend.to_owned(),
+        model_present,
+        missing_files,
+        worker_present,
+        ready: model_present && worker_present,
+        remedy,
     }
 }
 
