@@ -28,9 +28,25 @@ export interface ReframeProps {
   /** Ask the solver again, for the span the document covers. */
   readonly onResolve: () => void;
   readonly resolving: boolean;
+  /**
+   * Why the solver cannot be asked, or `null` when it can.
+   *
+   * Shown rather than only obeyed. A button that is disabled without saying why
+   * is the same failure as one that is enabled and does nothing — the editor is
+   * left guessing whether they misread the control or the product is broken.
+   */
+  readonly resolveRefusal: string | null;
 }
 
-export function Reframe({ plan, frame, busy, onApply, onResolve, resolving }: ReframeProps) {
+export function Reframe({
+  plan,
+  frame,
+  busy,
+  onApply,
+  onResolve,
+  resolving,
+  resolveRefusal,
+}: ReframeProps) {
   const crop = cropAt(plan, frame);
   const [dragging, setDragging] = useState(false);
   const filter = useRef(new OneEuro());
@@ -157,19 +173,31 @@ export function Reframe({ plan, frame, busy, onApply, onResolve, resolving }: Re
       ) : (
         <p className="text-xs text-[var(--cm-ink-2)]">
           This clip is fitted, so there is no crop to move. Switching to speaker-follow without a
-          solved path would give the renderer an empty one, so ask the solver first.
+          solved path would give the renderer an empty one, which it refuses —{' '}
+          {resolveRefusal ? 'and there is nothing to solve from yet.' : 'so ask the solver first.'}
         </p>
       )}
 
       <section>
-        <Button size="sm" variant="outline" disabled={busy || resolving} onClick={onResolve}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || resolving || resolveRefusal !== null}
+          onClick={onResolve}
+        >
           {resolving ? 'Solving…' : 'Re-solve the path'}
         </Button>
-        <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-          The solver is asked again over this clip&rsquo;s span and its keyframes are written as one
-          undoable step. Tracking weights are the solver&rsquo;s defaults;{' '}
-          <Badge variant="outline">per-clip weights</Badge> are a Phase 2 surface.
-        </p>
+        {resolveRefusal ? (
+          <p className="mt-2 text-xs text-[var(--cm-ink-2)]" role="note">
+            {resolveRefusal}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
+            The solver is asked again over this clip&rsquo;s span and its keyframes are written as
+            one undoable step. Tracking weights are the solver&rsquo;s defaults;{' '}
+            <Badge variant="outline">per-clip weights</Badge> are a Phase 2 surface.
+          </p>
+        )}
       </section>
     </div>
   );
