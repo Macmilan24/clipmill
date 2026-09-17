@@ -1181,6 +1181,12 @@ pub struct EditDoc {
     pub source_id: ::prost::alloc::string::String,
     #[prost(string, tag = "8")]
     pub candidate_id: ::prost::alloc::string::String,
+    /// The analysis run the clip was cut from, when the director knew it. The
+    /// candidate id is minted by a run, and the captions, boundaries and face
+    /// tracks a document was built from are that run's — so a screen reopening
+    /// it can read the same run rather than whichever one is newest.
+    #[prost(string, tag = "9")]
+    pub job_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateEditDocRequest {
@@ -1189,6 +1195,15 @@ pub struct CreateEditDocRequest {
     /// Initial document. Empty starts from the empty document.
     #[prost(string, tag = "2")]
     pub document_json: ::prost::alloc::string::String,
+    /// Which clip the document is, when the caller knows: a document handed in
+    /// whole may still be a clip of a recording, and naming it lets a later
+    /// direction of the same clip reopen it rather than build a second.
+    #[prost(string, tag = "3")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub candidate_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub job_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateEditDocResponse {
@@ -1314,6 +1329,14 @@ pub struct DirectClipRequest {
     /// either both or neither.
     #[prost(bool, tag = "9")]
     pub approve: bool,
+    /// The analysis run the candidate belongs to. Every stage the director reads
+    /// — candidates, ranking, transcript, index, shots, faces — is taken from
+    /// this run, as one snapshot, rather than each from whichever run published
+    /// it last: a re-analysis that renumbered the candidates, or one still half
+    /// published, must not be mixed into a clip chosen from another. Empty takes
+    /// the newest run over the source, checked for coherence the same way.
+    #[prost(string, tag = "10")]
+    pub job_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {
@@ -1373,6 +1396,12 @@ pub struct PreviewWordV1 {
     /// track is written with.
     #[prost(int64, tag = "2")]
     pub hold_centis: i64,
+    /// The word's identity, shared with the same word in the reading cues. A
+    /// correction is addressed to this rather than to a cue and an index, so it
+    /// lands in both presentations. Empty only for a document that predates
+    /// word identities and has not been migrated.
+    #[prost(string, tag = "3")]
+    pub word_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PreviewLineV1 {
@@ -1405,6 +1434,71 @@ pub struct PreviewGainV1 {
     #[prost(double, tag = "2")]
     pub gain_db: f64,
 }
+/// One segment of the program, and where in the source it plays.
+///
+/// This is the mapping the player used to lack. A clip cut from ten minutes
+/// into a recording starts at program frame zero and source tick 54,000,000;
+/// a player that handed the media element program seconds seeked to the
+/// recording's opening instead. Every seek, scrub and trim goes through these
+/// numbers now, and the arithmetic is the document's own `program_to_source`.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewSegmentV1 {
+    #[prost(string, tag = "1")]
+    pub segment_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    /// Source ticks the segment plays, half-open.
+    #[prost(int64, tag = "3")]
+    pub in_ticks: i64,
+    #[prost(int64, tag = "4")]
+    pub out_ticks: i64,
+    /// Where it sits on the program timeline, in ticks and in frames.
+    #[prost(int64, tag = "5")]
+    pub program_start_ticks: i64,
+    #[prost(int64, tag = "6")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "7")]
+    pub end_frame: i64,
+}
+/// A source the program draws from, as the crops are measured against it.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewSourceV1 {
+    #[prost(string, tag = "1")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_id: ::prost::alloc::string::String,
+    /// Display dimensions: the frame the crop rectangles are in. A transform
+    /// built against the output's dimensions instead was right only for a
+    /// source that happened to share its aspect.
+    #[prost(int64, tag = "3")]
+    pub display_width: i64,
+    #[prost(int64, tag = "4")]
+    pub display_height: i64,
+}
+/// The proxy a source is previewed from, and how its clock relates to the
+/// source's. Proxy second zero is `coverage_start_ticks` of the source.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewProxyV1 {
+    #[prost(string, tag = "1")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub artifact_id: ::prost::alloc::string::String,
+    /// The container inside the artifact, served over the media protocol.
+    #[prost(string, tag = "3")]
+    pub file: ::prost::alloc::string::String,
+    #[prost(int64, tag = "4")]
+    pub coverage_start_ticks: i64,
+    #[prost(int64, tag = "5")]
+    pub coverage_end_ticks: i64,
+    #[prost(int64, tag = "6")]
+    pub width: i64,
+    #[prost(int64, tag = "7")]
+    pub height: i64,
+    #[prost(uint32, tag = "8")]
+    pub rate_num: u32,
+    #[prost(uint32, tag = "9")]
+    pub rate_den: u32,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetPreviewPlanResponse {
     /// The revision this plan describes. A caller holding a document at a
@@ -1429,6 +1523,16 @@ pub struct GetPreviewPlanResponse {
     pub width: i64,
     #[prost(int64, tag = "9")]
     pub height: i64,
+    /// The program's segments, in order, each mapped to its source.
+    #[prost(message, repeated, tag = "10")]
+    pub segments: ::prost::alloc::vec::Vec<PreviewSegmentV1>,
+    /// Every source the segments name, with the frame the crops are measured in.
+    #[prost(message, repeated, tag = "11")]
+    pub sources: ::prost::alloc::vec::Vec<PreviewSourceV1>,
+    /// The proxy for each source that has one. A source with no proxy is listed
+    /// above and absent here, and the player says there is nothing to play.
+    #[prost(message, repeated, tag = "12")]
+    pub proxies: ::prost::alloc::vec::Vec<PreviewProxyV1>,
 }
 /// The edit documents a project holds, oldest first.
 ///

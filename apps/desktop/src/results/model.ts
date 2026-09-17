@@ -121,6 +121,8 @@ export interface ClipRow {
    * editor to open nothing.
    */
   readonly docId: string | null;
+  /** The run that document was cut from, when the store recorded one. */
+  readonly docJobId: string | null;
   /** Lattice edges, for the boundary strip. */
   readonly latticeStarts: readonly number[];
   readonly latticeEnds: readonly number[];
@@ -257,7 +259,8 @@ export function clipRows(
             : null,
         },
         decision: decided.get(ranked.candidate_id) ?? null,
-        docId: edited.get(ranked.candidate_id) ?? null,
+        docId: edited.get(ranked.candidate_id)?.docId ?? null,
+        docJobId: edited.get(ranked.candidate_id)?.jobId || null,
         latticeStarts: candidate?.boundary_lattice.starts ?? [],
         latticeEnds: candidate?.boundary_lattice.ends ?? [],
         recommended: recommended.has(ranked.candidate_id),
@@ -281,7 +284,7 @@ export function clipRows(
  */
 export function newestDocumentPerCandidate(
   documents: readonly EditDocSummary[],
-): ReadonlyMap<string, string> {
+): ReadonlyMap<string, EditDocSummary> {
   const newest = new Map<string, EditDocSummary>();
   for (const document of documents) {
     if (document.candidateId === '') {
@@ -296,7 +299,7 @@ export function newestDocumentPerCandidate(
       newest.set(document.candidateId, document);
     }
   }
-  return new Map([...newest].map(([candidateId, document]) => [candidateId, document.docId]));
+  return newest;
 }
 
 /** What a board shows above the rows: counts, not adjectives. */

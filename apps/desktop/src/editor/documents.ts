@@ -59,6 +59,7 @@ export function documentEntries(
           docId: document.docId,
           sourceId: document.sourceId,
           ...(document.candidateId === '' ? {} : { candidateId: document.candidateId }),
+          ...(document.jobId === '' ? {} : { jobId: document.jobId }),
           labels: { project: project.name, clip: clipLabel(document, source) },
         },
         projectName: project.name,

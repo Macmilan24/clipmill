@@ -6,6 +6,16 @@
 //! enough to read as what it is: a refusal ladder followed by one call into the
 //! director.
 //!
+//! The six are read as **one snapshot**. A candidate id is minted by a run, and
+//! the boundaries, transcript and face tracks a clip is built from are that
+//! run's; a document assembled from the newest publication of each stage would
+//! mix a re-analysis that renumbered the candidates, or one still half
+//! published, into a clip chosen from another. So a caller that names the run
+//! gets that run's stages and nothing else, and a caller that does not gets
+//! the newest of each — checked, either way, against what the documents say
+//! about one another: the ranking names the candidate set and transcript it
+//! was computed over, and a set that is not the one loaded is a refusal.
+//!
 //! The optional three are optional for different reasons and the distinction is
 //! kept. No evidence index means captions break on punctuation alone. No shot
 //! detection means nothing is known about where the picture changes. No face
@@ -43,16 +53,27 @@ pub(crate) enum LoadError {
     Unverified(&'static str),
     /// The source map states no usable frame, so there is nothing to crop in.
     NoFrame,
+    /// The run the caller named does not exist, or is not this source's.
+    NoSuchRun,
+    /// The stages loaded do not describe one another: the ranking was
+    /// computed over a different candidate set or transcript than the one
+    /// published beside it.
+    Incoherent(&'static str),
 }
 
 impl LoadError {
     pub(crate) fn message(&self) -> String {
         match self {
             Self::Missing(what) => {
-                format!("this source has no published {what} to direct a clip from")
+                format!("this analysis has no published {what} to direct a clip from")
             }
             Self::Unverified(what) => format!("the published {what} does not match its manifest"),
             Self::NoFrame => "the source map states no usable frame size".to_owned(),
+            Self::NoSuchRun => "the analysis run named is not one this source has".to_owned(),
+            Self::Incoherent(what) => format!(
+                "the published ranking was computed over a different {what} than the one \
+                 published beside it; the analysis is not one snapshot"
+            ),
         }
     }
 }
@@ -73,29 +94,67 @@ const REQUIRED: [(&str, &str, &str); 3] = [
     (speech::KIND_TRANSCRIPT, "transcript.json", "transcript"),
 ];
 
+const OPTIONAL: [(&str, &str); 3] = [
+    ("index-transcript", "index.json"),
+    ("detect-shots", "shots.json"),
+    ("detect-faces", "faces.json"),
+];
+
+/// Where each stage's artifact is found: one run's publications, or the newest
+/// of each stage over the source.
+enum Stages {
+    Run(crate::db::RunArtifacts),
+    Newest { source_id: String },
+}
+
+impl Stages {
+    async fn address(&self, database: &DbHandle, task_kind: &str) -> Option<String> {
+        match self {
+            Self::Run(run) => run.by_task_kind.get(task_kind).cloned(),
+            Self::Newest { source_id } => database
+                .latest_source_task_artifact(source_id.clone(), task_kind.to_owned())
+                .await
+                .ok()
+                .flatten(),
+        }
+    }
+}
+
+/// Load a clip's evidence: from the run named, or the newest of each stage.
 pub(crate) async fn load(
     database: &DbHandle,
     artifacts: &ArtifactHandle,
     source_id: &str,
     source_map_json: &[u8],
+    run: Option<&str>,
 ) -> Result<Evidence, LoadError> {
-    let candidates: DiscoveryCandidates =
-        require(database, artifacts, source_id, REQUIRED[0]).await?;
-    let ranking: RankingSet = require(database, artifacts, source_id, REQUIRED[1]).await?;
-    let transcript: SpeechTranscript = require(database, artifacts, source_id, REQUIRED[2]).await?;
+    let stages = match run {
+        Some(job_id) => {
+            let run = database
+                .run_task_artifacts(job_id.to_owned())
+                .await
+                .map_err(|_| LoadError::NoSuchRun)?;
+            if run.source_id.as_deref() != Some(source_id) {
+                return Err(LoadError::NoSuchRun);
+            }
+            Stages::Run(run)
+        }
+        None => Stages::Newest {
+            source_id: source_id.to_owned(),
+        },
+    };
 
-    let index: Option<IndexTranscript> = optional(
-        database,
-        artifacts,
-        source_id,
-        "index-transcript",
-        "index.json",
-    )
-    .await;
-    let shots: Option<EvidenceShots> =
-        optional(database, artifacts, source_id, "detect-shots", "shots.json").await;
-    let faces: Option<VisionFaceTrack> =
-        optional(database, artifacts, source_id, "detect-faces", "faces.json").await;
+    let (candidates_id, candidates): (String, DiscoveryCandidates) =
+        require(database, artifacts, &stages, REQUIRED[0]).await?;
+    let (_, ranking): (String, RankingSet) =
+        require(database, artifacts, &stages, REQUIRED[1]).await?;
+    let (transcript_id, transcript): (String, SpeechTranscript) =
+        require(database, artifacts, &stages, REQUIRED[2]).await?;
+    check_coherence(&ranking, &candidates_id, &transcript_id)?;
+
+    let index: Option<IndexTranscript> = optional(database, artifacts, &stages, OPTIONAL[0]).await;
+    let shots: Option<EvidenceShots> = optional(database, artifacts, &stages, OPTIONAL[1]).await;
+    let faces: Option<VisionFaceTrack> = optional(database, artifacts, &stages, OPTIONAL[2]).await;
 
     Ok(Evidence {
         candidates,
@@ -108,35 +167,48 @@ pub(crate) async fn load(
     })
 }
 
+/// The ranking's own account of its inputs, held against what was loaded.
+///
+/// A deterministic check of citations, not of judgement: it establishes that
+/// the three documents are one analysis, which is all a citation can
+/// establish. The index is not checked because it is optional to load, and a
+/// ranking computed with one is still a ranking of these candidates.
+pub(crate) fn check_coherence(
+    ranking: &RankingSet,
+    candidates_id: &str,
+    transcript_id: &str,
+) -> Result<(), LoadError> {
+    if ranking.inputs.candidates_artifact_id.as_str() != candidates_id {
+        return Err(LoadError::Incoherent("candidate set"));
+    }
+    if ranking.inputs.transcript_artifact_id.as_str() != transcript_id {
+        return Err(LoadError::Incoherent("transcript"));
+    }
+    Ok(())
+}
+
 async fn require<T: DeserializeOwned>(
     database: &DbHandle,
     artifacts: &ArtifactHandle,
-    source_id: &str,
+    stages: &Stages,
     (kind, file, name): (&'static str, &'static str, &'static str),
-) -> Result<T, LoadError> {
-    let Ok(Some(address)) = database
-        .latest_source_task_artifact(source_id.to_owned(), kind.to_owned())
-        .await
-    else {
+) -> Result<(String, T), LoadError> {
+    let Some(address) = stages.address(database, kind).await else {
         return Err(LoadError::Missing(name));
     };
-    read(artifacts, &address, file)
+    let document = read(artifacts, &address, file)
         .await
-        .ok_or(LoadError::Unverified(name))
+        .ok_or(LoadError::Unverified(name))?;
+    Ok((address, document))
 }
 
 async fn optional<T: DeserializeOwned>(
     database: &DbHandle,
     artifacts: &ArtifactHandle,
-    source_id: &str,
-    kind: &str,
-    file: &str,
+    stages: &Stages,
+    (kind, file): (&'static str, &'static str),
 ) -> Option<T> {
-    let address = database
-        .latest_source_task_artifact(source_id.to_owned(), kind.to_owned())
-        .await
-        .ok()
-        .flatten()?;
+    let address = stages.address(database, kind).await?;
     read(artifacts, &address, file).await
 }
 
@@ -156,7 +228,7 @@ async fn read<T: DeserializeOwned>(
 }
 
 /// Display dimensions of the source's first video stream.
-fn frame_of(source_map_json: &[u8]) -> Option<Frame> {
+pub(crate) fn frame_of(source_map_json: &[u8]) -> Option<Frame> {
     let map: Value = serde_json::from_slice(source_map_json).ok()?;
     let streams = map.get("streams")?.as_array()?;
     let video = streams.iter().find(|stream| stream["kind"] == "video")?;
@@ -175,7 +247,9 @@ fn frame_of(source_map_json: &[u8]) -> Option<Frame> {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use super::frame_of;
+    use clipmill_contracts::schemas::ranking_set::RankingSet;
+
+    use super::{LoadError, check_coherence, frame_of};
 
     #[test]
     fn the_display_dimensions_are_preferred_over_the_coded_ones() {
@@ -207,5 +281,43 @@ mod tests {
         let map = br#"{"streams":[{"kind":"video","video":{
             "coded_width":0,"coded_height":720}}]}"#;
         assert!(frame_of(map).is_none());
+    }
+
+    /// The published interview ranking, whose inputs name the fixtures it was
+    /// computed over.
+    fn ranking() -> RankingSet {
+        let raw = include_str!("../../../contracts/fixtures/ranking.set/valid/interview.json");
+        serde_json::from_str(raw).expect("the interview ranking fixture parses")
+    }
+
+    #[test]
+    fn a_ranking_is_coherent_with_the_candidates_and_transcript_it_names() {
+        let ranking = ranking();
+        let candidates = ranking.inputs.candidates_artifact_id.to_string();
+        let transcript = ranking.inputs.transcript_artifact_id.to_string();
+        assert!(check_coherence(&ranking, &candidates, &transcript).is_ok());
+    }
+
+    #[test]
+    fn a_ranking_over_another_candidate_set_is_refused_as_not_one_snapshot() {
+        // A re-analysis published a new candidate set beside an old ranking:
+        // the newest of each stage, read together, is not an analysis.
+        let ranking = ranking();
+        let other = format!("sha256:{}", "ee".repeat(32));
+        let transcript = ranking.inputs.transcript_artifact_id.to_string();
+        assert!(matches!(
+            check_coherence(&ranking, &other, &transcript),
+            Err(LoadError::Incoherent("candidate set"))
+        ));
+        let candidates = ranking.inputs.candidates_artifact_id.to_string();
+        assert!(matches!(
+            check_coherence(&ranking, &candidates, &other),
+            Err(LoadError::Incoherent("transcript"))
+        ));
+        assert!(
+            LoadError::Incoherent("transcript")
+                .message()
+                .contains("not one snapshot")
+        );
     }
 }

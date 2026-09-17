@@ -235,6 +235,7 @@ export function fakeApi(world: FakeWorld): ShellApi {
         projectId: request.projectId,
         sourceId: request.sourceId,
         candidateId: request.candidateId,
+        jobId: existing?.jobId ?? request.jobId ?? '',
         revision: existing?.revision ?? 0,
         documentJson: '{}',
         startTicks: request.startTicks ?? 0,

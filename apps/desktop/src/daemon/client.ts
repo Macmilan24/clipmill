@@ -463,6 +463,13 @@ export interface DirectClipInput {
    * never approved without an edit to open or edited without being approved.
    */
   readonly approve?: boolean;
+  /**
+   * The analysis run the candidate belongs to. The director reads every stage
+   * from this run, as one snapshot; a re-analysis that renumbered the
+   * candidates, or one still half published, cannot be mixed into a clip
+   * chosen from another. Left off, the newest run over the source.
+   */
+  readonly jobId?: string;
 }
 
 export interface DirectedClip {
@@ -470,6 +477,8 @@ export interface DirectedClip {
   readonly projectId: string;
   readonly sourceId: string;
   readonly candidateId: string;
+  /** The run the document was cut from; empty when it was not recorded. */
+  readonly jobId: string;
   readonly revision: number;
   readonly documentJson: string;
   /**
@@ -566,6 +575,53 @@ export async function solveCropPath(
 export interface PreviewWord {
   readonly text: string;
   readonly holdCentis: number;
+  /**
+   * The word's identity, shared with the same word in the reading cues. A
+   * correction is addressed to this, so it lands in both presentations.
+   * Empty only for a document that predates word identities.
+   */
+  readonly wordId: string;
+}
+
+/**
+ * One segment of the program, and where in the source it plays.
+ *
+ * The numbers every seek, scrub and trim go through. A clip cut from ten
+ * minutes into a recording starts at program frame zero and source tick
+ * 54,000,000; a player that handed the media element program seconds seeked
+ * to the recording's opening instead.
+ */
+export interface PreviewSegment {
+  readonly segmentId: string;
+  readonly sourceFingerprint: string;
+  /** Source ticks the segment plays, half-open. */
+  readonly inTicks: number;
+  readonly outTicks: number;
+  readonly programStartTicks: number;
+  /** Program frames the segment occupies, half-open. */
+  readonly firstFrame: number;
+  readonly endFrame: number;
+}
+
+/** A source the program draws from: the frame the crops are measured in. */
+export interface PreviewSource {
+  readonly sourceFingerprint: string;
+  readonly sourceId: string;
+  readonly displayWidth: number;
+  readonly displayHeight: number;
+}
+
+/** The proxy a source is previewed from. Proxy second zero is `coverageStartTicks`. */
+export interface PreviewProxy {
+  readonly sourceFingerprint: string;
+  readonly artifactId: string;
+  readonly file: string;
+  readonly coverageStartTicks: number;
+  readonly coverageEndTicks: number;
+  readonly width: number;
+  readonly height: number;
+  readonly rateNum: number;
+  readonly rateDen: number;
 }
 
 export interface PreviewCue {
@@ -603,6 +659,12 @@ export interface PreviewPlan {
   readonly gain: readonly PreviewGain[];
   readonly width: number;
   readonly height: number;
+  /** The program's segments, in order, each mapped to its source. */
+  readonly segments: readonly PreviewSegment[];
+  /** Every source the segments name. */
+  readonly sources: readonly PreviewSource[];
+  /** The proxy for each source that has one. */
+  readonly proxies: readonly PreviewProxy[];
 }
 
 export async function previewPlan(projectId: string, docId: string): Promise<PreviewPlan> {
@@ -623,6 +685,8 @@ export interface EditDocSummary {
    */
   readonly sourceId: string;
   readonly candidateId: string;
+  /** The run it was cut from; empty when it was not recorded. */
+  readonly jobId: string;
   readonly revision: number;
   readonly createdUnixMillis: number;
   readonly updatedUnixMillis: number;

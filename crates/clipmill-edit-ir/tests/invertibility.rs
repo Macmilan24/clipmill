@@ -39,6 +39,7 @@ fn word(text: &str, start: i64, end: i64) -> CaptionWord {
         text: text.to_owned(),
         start_ticks: start,
         end_ticks: end,
+        word_id: Some(format!("w@{start}")),
     }
 }
 

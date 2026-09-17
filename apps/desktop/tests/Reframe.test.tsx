@@ -16,11 +16,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { PreviewPlan } from '../src/daemon/client.js';
 import { Reframe } from '../src/editor/Reframe.js';
+import { mapping } from './support/plan.js';
 
 const NO_FACES = 'Nothing has detected faces in this recording, so there is no track to follow.';
 
 function plan(crops: PreviewPlan['crops']): PreviewPlan {
+  const program = { frameCount: 30, rateNum: 30_000, rateDen: 1_001 };
   return {
+    ...mapping(program),
     revision: 1,
     rateNum: 30_000,
     rateDen: 1_001,

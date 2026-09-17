@@ -25,9 +25,12 @@ import {
   ticksAt,
   trim,
 } from '../src/editor/commands.js';
+import { mapping } from './support/plan.js';
 
 function plan(): PreviewPlan {
+  const program = { frameCount: 60, rateNum: 30_000, rateDen: 1_001 };
   return {
+    ...mapping(program),
     revision: 1,
     rateNum: 30_000,
     rateDen: 1_001,
@@ -41,7 +44,7 @@ function plan(): PreviewPlan {
         region: 'lower_safe',
         karaoke: true,
         leadInCentis: 0,
-        lines: [[{ text: 'the', holdCentis: 20 }]],
+        lines: [[{ text: 'the', holdCentis: 20, wordId: 'w1' }]],
       },
       {
         cueId: 'hot_2',
@@ -50,7 +53,7 @@ function plan(): PreviewPlan {
         region: 'lower_safe',
         karaoke: true,
         leadInCentis: 0,
-        lines: [[{ text: 'point', holdCentis: 20 }]],
+        lines: [[{ text: 'point', holdCentis: 20, wordId: 'w2' }]],
       },
     ],
     gain: [],

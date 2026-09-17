@@ -19,12 +19,13 @@ use clipmill_contracts::proto::ipc::v1::{
     IngestSourcePayloadV1, ListClipDecisionsRequest, ListClipDecisionsResponse,
     ListEditDocsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
     LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest, PlanExportResponse,
-    PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewWordV1, ProbeSourcePayloadV1,
-    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
-    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
-    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
-    SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest,
-    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
+    PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1,
+    PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
+    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
+    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
+    StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -1481,13 +1482,17 @@ impl Service {
     /// assembled, then created, would have a window where a clip is half
     /// approved, and nothing downstream could tell that state from a crash.
     ///
-    /// The document is assembled every time and stored only when the clip has
-    /// none yet, or when a variation was asked for. Directing a clip that
-    /// already has a document hands that document back as it stands — the
-    /// trims and corrections somebody made to it are why it is the answer —
-    /// and the reply says so. An approval, when requested, lands in the same
-    /// transaction as the document, so "approved but nothing to open" is not a
-    /// state the store can be left in.
+    /// Directing a clip that already has a document hands that document back
+    /// as it stands — the trims and corrections somebody made to it are why it
+    /// is the answer — and the reply says so. That is asked of the store
+    /// *before* any evidence is read: a saved edit is reopenable whether or
+    /// not the analysis it was cut from can still be loaded, and a re-analysis
+    /// that renumbered the candidates must not lock a person out of the edit
+    /// they made. Only a clip with no document, or a variation asked for by
+    /// name, needs the director — and it reads the run the request names, as
+    /// one snapshot. An approval, when requested, lands in the same
+    /// transaction as the document either way, so "approved but nothing to
+    /// open" is not a state the store can be left in.
     async fn direct_clip(
         &self,
         request_id: String,
@@ -1518,55 +1523,56 @@ impl Service {
                 "source does not belong to the requested project",
             );
         }
-
-        let evidence = match crate::inspector::load(
-            &self.database,
-            artifacts,
-            &source_id.to_string(),
-            &source.source_map_json,
-        )
-        .await
-        {
-            Ok(evidence) => evidence,
-            Err(error) => {
-                return error_reply(request_id, ErrorCode::Conflict, error.message());
-            }
-        };
-
-        let document = match assemble(&evidence, direct) {
-            Ok(document) => document,
-            Err(message) => return error_reply(request_id, ErrorCode::InvalidArgument, message),
-        };
-
-        if document.video.segments.is_empty() {
-            return error_reply(
-                request_id,
-                ErrorCode::Internal,
-                "the director produced a document with no segment",
-            );
+        if direct.candidate_id.is_empty() {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no candidate named");
         }
-        let Ok(document_json) = serde_json::to_string(&document) else {
-            return error_reply(
-                request_id,
-                ErrorCode::Internal,
-                "the directed document did not serialize",
-            );
-        };
-
         let now = match unix_millis() {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        let identity = crate::db::ClipIdentity {
+            project: project_id.to_string(),
+            source: source_id.to_string(),
+            candidate: direct.candidate_id.clone(),
+            run: (!direct.job_id.is_empty()).then(|| direct.job_id.clone()),
+        };
+
+        if !direct.variation {
+            match self
+                .database
+                .reopen_edit_doc(
+                    request_id.clone(),
+                    request_hash,
+                    identity.clone(),
+                    direct.approve,
+                    now,
+                )
+                .await
+            {
+                Ok(Some(bytes)) => {
+                    return Reply {
+                        bytes,
+                        outcome: Outcome::Success,
+                    };
+                }
+                Ok(None) => {}
+                Err(error) => return store_error_reply(request_id, &error),
+            }
+        }
+
+        let document_json = match self
+            .assemble_clip(artifacts, &source.source_map_json, identity.clone(), direct)
+            .await
+        {
+            Ok(json) => json,
+            Err((code, message)) => return error_reply(request_id, code, message),
         };
         match self
             .database
             .direct_edit_doc(
                 request_id.clone(),
                 request_hash,
-                crate::db::ClipIdentity {
-                    project: project_id.to_string(),
-                    source: source_id.to_string(),
-                    candidate: direct.candidate_id.clone(),
-                },
+                identity,
                 document_json,
                 crate::db::DirectOptions {
                     variation: direct.variation,
@@ -1586,6 +1592,39 @@ impl Service {
             },
             Err(error) => store_error_reply(request_id, &error),
         }
+    }
+
+    /// Read the clip's run and build the document the director proposes.
+    async fn assemble_clip(
+        &self,
+        artifacts: &ArtifactHandle,
+        source_map_json: &[u8],
+        identity: crate::db::ClipIdentity,
+        direct: &DirectClipRequest,
+    ) -> Result<String, (ErrorCode, String)> {
+        let evidence = crate::inspector::load(
+            &self.database,
+            artifacts,
+            &identity.source,
+            source_map_json,
+            identity.run.as_deref(),
+        )
+        .await
+        .map_err(|error| (ErrorCode::Conflict, error.message()))?;
+        let document =
+            assemble(&evidence, direct).map_err(|message| (ErrorCode::InvalidArgument, message))?;
+        if document.video.segments.is_empty() {
+            return Err((
+                ErrorCode::Internal,
+                "the director produced a document with no segment".to_owned(),
+            ));
+        }
+        serde_json::to_string(&document).map_err(|_| {
+            (
+                ErrorCode::Internal,
+                "the directed document did not serialize".to_owned(),
+            )
+        })
     }
 
     async fn set_clip_decision(
@@ -2185,6 +2224,7 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
+        let name = |value: &str| (!value.is_empty()).then(|| value.to_owned());
         match self
             .database
             .create_edit_doc(
@@ -2192,6 +2232,11 @@ impl Service {
                 request_hash,
                 project_id.to_string(),
                 create.document_json.clone(),
+                crate::db::DocumentOrigin {
+                    source: name(&create.source_id),
+                    candidate: name(&create.candidate_id),
+                    run: name(&create.job_id),
+                },
                 now,
             )
             .await
@@ -2283,13 +2328,96 @@ impl Service {
                 "the stored document did not parse",
             );
         };
-        match clipmill_render::preview_plan(&document, &clipmill_render::RenderProfile::default()) {
-            Ok(plan) => response_reply(
-                request_id,
-                response::Body::GetPreviewPlan(preview_response(record.revision, &plan)),
-            ),
-            Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
+        let plan = match clipmill_render::preview_plan(
+            &document,
+            &clipmill_render::RenderProfile::default(),
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let (sources, proxies) = self.preview_media(&project_id, &document).await;
+        let mut reply = preview_response(record.revision, &plan);
+        reply.sources = sources;
+        reply.proxies = proxies;
+        response_reply(request_id, response::Body::GetPreviewPlan(reply))
+    }
+
+    /// The sources a document draws from and the proxy each is previewed on.
+    ///
+    /// Resolved here, beside the plan, rather than left to the shell: the
+    /// shell used to take whichever proxy the project published last, which
+    /// is the wrong recording as soon as a project holds two. A source is
+    /// matched by the fingerprint the segment names, the frame the crops are
+    /// measured in comes from its probe, and the proxy is the newest one
+    /// published over it. A source with no proxy is listed without one; the
+    /// player then says there is nothing to play rather than playing
+    /// something else.
+    async fn preview_media(
+        &self,
+        project_id: &ProjectId,
+        document: &clipmill_edit_ir::EditDocument,
+    ) -> (Vec<PreviewSourceV1>, Vec<PreviewProxyV1>) {
+        let mut sources = Vec::new();
+        let mut proxies = Vec::new();
+        let Ok(registered) = self.database.list_sources(project_id.to_string()).await else {
+            return (sources, proxies);
+        };
+        let mut seen: Vec<&str> = Vec::new();
+        for segment in &document.video.segments {
+            let fingerprint = segment.source_fingerprint.as_str();
+            if seen.contains(&fingerprint) {
+                continue;
+            }
+            seen.push(fingerprint);
+            let Some(source) = registered
+                .iter()
+                .find(|source| source.source_fingerprint == fingerprint)
+            else {
+                continue;
+            };
+            let frame = crate::inspector::frame_of(&source.source_map_json);
+            sources.push(PreviewSourceV1 {
+                source_fingerprint: fingerprint.to_owned(),
+                source_id: source.source_id.clone(),
+                display_width: frame.map_or(0, |frame| frame.width),
+                display_height: frame.map_or(0, |frame| frame.height),
+            });
+            if let Some(proxy) = self.proxy_of(&source.source_id).await {
+                proxies.push(PreviewProxyV1 {
+                    source_fingerprint: fingerprint.to_owned(),
+                    ..proxy
+                });
+            }
         }
+        (sources, proxies)
+    }
+
+    /// The newest proxy published over a source, as the player needs it.
+    async fn proxy_of(&self, source_id: &str) -> Option<PreviewProxyV1> {
+        let artifacts = self.artifacts.as_ref()?;
+        let address = self
+            .database
+            .latest_source_task_artifact(source_id.to_owned(), crate::media::KIND_PROXY.to_owned())
+            .await
+            .ok()
+            .flatten()?;
+        let artifact_id = address.parse::<clipmill_core::ArtifactId>().ok()?;
+        let lease = artifacts.open(artifact_id).await.ok()?;
+        let descriptor: clipmill_contracts::schemas::media_proxy::MediaProxy =
+            crate::media::read_artifact_document(&lease, "proxy.json").ok()?;
+        Some(PreviewProxyV1 {
+            source_fingerprint: String::new(),
+            artifact_id: address,
+            file: descriptor.file.to_string(),
+            coverage_start_ticks: i64::try_from(descriptor.coverage.start_ticks).unwrap_or(0),
+            coverage_end_ticks: i64::try_from(descriptor.coverage.end_ticks).unwrap_or(i64::MAX),
+            width: descriptor.video.width,
+            height: descriptor.video.height,
+            rate_num: u32::try_from(descriptor.video.frame_rate.num.get()).unwrap_or(0),
+            rate_den: u32::try_from(descriptor.video.frame_rate.den.get()).unwrap_or(0),
+        })
     }
 
     /// Every document a project holds, oldest first.
@@ -2943,6 +3071,7 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                             .map(|word| PreviewWordV1 {
                                 text: word.text.clone(),
                                 hold_centis: word.hold_centis,
+                                word_id: word.word_id.clone().unwrap_or_default(),
                             })
                             .collect(),
                     })
@@ -2959,6 +3088,22 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
             .collect(),
         width: plan.width,
         height: plan.height,
+        segments: plan
+            .segments
+            .iter()
+            .map(|segment| PreviewSegmentV1 {
+                segment_id: segment.segment_id.clone(),
+                source_fingerprint: segment.source_fingerprint.clone(),
+                in_ticks: segment.in_ticks,
+                out_ticks: segment.out_ticks,
+                program_start_ticks: segment.program_start_ticks,
+                first_frame: segment.first_frame,
+                end_frame: segment.end_frame,
+            })
+            .collect(),
+        // Resolved by the handler, which is the one with a database.
+        sources: Vec::new(),
+        proxies: Vec::new(),
     }
 }
 

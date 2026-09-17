@@ -111,23 +111,30 @@ export function ResultsScreen({
     }
   };
 
-  /** Everything the editor needs to open a row's document, named in full. */
-  const clipFor = (row: ClipRow, docId: string): ClipRef | null => {
+  /**
+   * Everything the editor needs to open a row's document, named in full.
+   *
+   * The run is the document's own when the store recorded one — a reopened
+   * edit was cut from the run that minted its candidate, which may not be
+   * the run the board is showing — and the board's otherwise.
+   */
+  const clipFor = (row: ClipRow, docId: string, jobId?: string): ClipRef | null => {
     if (!project || !snapshot.source) {
       return null;
     }
+    const run = jobId || snapshot.run?.jobId;
     return {
       projectId: project.projectId,
       docId,
       sourceId: snapshot.source.sourceId,
       candidateId: row.candidateId,
-      ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
+      ...(run ? { jobId: run } : {}),
       labels: labelsFor(row.candidateId),
     };
   };
 
-  const edit = (row: ClipRow, docId: string) => {
-    const clip = clipFor(row, docId);
+  const edit = (row: ClipRow, docId: string, jobId?: string) => {
+    const clip = clipFor(row, docId, jobId);
     if (clip) {
       onEdit(clip);
     }
@@ -138,7 +145,7 @@ export function ResultsScreen({
     const directed: DirectedClip | null = await results.decide(id, 'approved');
     const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
     if (directed && row) {
-      edit(row, directed.docId);
+      edit(row, directed.docId, directed.jobId);
     }
   };
 
@@ -180,7 +187,7 @@ export function ResultsScreen({
         onEdit={
           opened?.docId
             ? () => {
-                edit(opened, opened.docId!);
+                edit(opened, opened.docId!, opened.docJobId ?? undefined);
               }
             : null
         }
@@ -215,7 +222,7 @@ export function ResultsScreen({
       onEdit={(id) => {
         const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
         if (row?.docId) {
-          edit(row, row.docId);
+          edit(row, row.docId, row.docJobId ?? undefined);
         }
       }}
     />

@@ -921,12 +921,23 @@ message EditDoc {
   // "which document is this clip's" the moment a project holds two.
   string source_id = 7;
   string candidate_id = 8;
+  // The analysis run the clip was cut from, when the director knew it. The
+  // candidate id is minted by a run, and the captions, boundaries and face
+  // tracks a document was built from are that run's — so a screen reopening
+  // it can read the same run rather than whichever one is newest.
+  string job_id = 9;
 }
 
 message CreateEditDocRequest {
   string project_id = 1;
   // Initial document. Empty starts from the empty document.
   string document_json = 2;
+  // Which clip the document is, when the caller knows: a document handed in
+  // whole may still be a clip of a recording, and naming it lets a later
+  // direction of the same clip reopen it rather than build a second.
+  string source_id = 3;
+  string candidate_id = 4;
+  string job_id = 5;
 }
 
 message CreateEditDocResponse {
@@ -1047,6 +1058,13 @@ message DirectClipRequest {
   // the board calls approved and the editor cannot open; one write leaves
   // either both or neither.
   bool approve = 9;
+  // The analysis run the candidate belongs to. Every stage the director reads
+  // — candidates, ranking, transcript, index, shots, faces — is taken from
+  // this run, as one snapshot, rather than each from whichever run published
+  // it last: a re-analysis that renumbered the candidates, or one still half
+  // published, must not be mixed into a clip chosen from another. Empty takes
+  // the newest run over the source, checked for coherence the same way.
+  string job_id = 10;
 }
 
 message DirectClipResponse {
@@ -1092,6 +1110,11 @@ message PreviewWordV1 {
   // Centiseconds this word holds the highlight, from the sweep the burned-in
   // track is written with.
   int64 hold_centis = 2;
+  // The word's identity, shared with the same word in the reading cues. A
+  // correction is addressed to this rather than to a cue and an index, so it
+  // lands in both presentations. Empty only for a document that predates
+  // word identities and has not been migrated.
+  string word_id = 3;
 }
 
 message PreviewLineV1 {
@@ -1115,6 +1138,51 @@ message PreviewGainV1 {
   double gain_db = 2;
 }
 
+// One segment of the program, and where in the source it plays.
+//
+// This is the mapping the player used to lack. A clip cut from ten minutes
+// into a recording starts at program frame zero and source tick 54,000,000;
+// a player that handed the media element program seconds seeked to the
+// recording's opening instead. Every seek, scrub and trim goes through these
+// numbers now, and the arithmetic is the document's own `program_to_source`.
+message PreviewSegmentV1 {
+  string segment_id = 1;
+  string source_fingerprint = 2;
+  // Source ticks the segment plays, half-open.
+  int64 in_ticks = 3;
+  int64 out_ticks = 4;
+  // Where it sits on the program timeline, in ticks and in frames.
+  int64 program_start_ticks = 5;
+  int64 first_frame = 6;
+  int64 end_frame = 7;
+}
+
+// A source the program draws from, as the crops are measured against it.
+message PreviewSourceV1 {
+  string source_fingerprint = 1;
+  string source_id = 2;
+  // Display dimensions: the frame the crop rectangles are in. A transform
+  // built against the output's dimensions instead was right only for a
+  // source that happened to share its aspect.
+  int64 display_width = 3;
+  int64 display_height = 4;
+}
+
+// The proxy a source is previewed from, and how its clock relates to the
+// source's. Proxy second zero is `coverage_start_ticks` of the source.
+message PreviewProxyV1 {
+  string source_fingerprint = 1;
+  string artifact_id = 2;
+  // The container inside the artifact, served over the media protocol.
+  string file = 3;
+  int64 coverage_start_ticks = 4;
+  int64 coverage_end_ticks = 5;
+  int64 width = 6;
+  int64 height = 7;
+  uint32 rate_num = 8;
+  uint32 rate_den = 9;
+}
+
 message GetPreviewPlanResponse {
   // The revision this plan describes. A caller holding a document at a
   // different revision is looking at a stale picture and can tell.
@@ -1129,6 +1197,13 @@ message GetPreviewPlanResponse {
   // The output frame the crops are fitted into.
   int64 width = 8;
   int64 height = 9;
+  // The program's segments, in order, each mapped to its source.
+  repeated PreviewSegmentV1 segments = 10;
+  // Every source the segments name, with the frame the crops are measured in.
+  repeated PreviewSourceV1 sources = 11;
+  // The proxy for each source that has one. A source with no proxy is listed
+  // above and absent here, and the player says there is nothing to play.
+  repeated PreviewProxyV1 proxies = 12;
 }
 
 // The edit documents a project holds, oldest first.

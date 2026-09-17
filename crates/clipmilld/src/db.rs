@@ -24,18 +24,20 @@ use crate::jobs::{
 };
 
 mod job_store;
-pub(crate) use job_store::MutationResult;
+pub(crate) use job_store::{MutationResult, RunArtifacts};
 mod source_store;
 pub(crate) use source_store::SourceRecord;
 mod device_store;
 pub(crate) use device_store::{BeginDeviceProfile, DeviceProfileRecord, DeviceProfileState};
 mod edit_store;
-pub(crate) use edit_store::{ClipIdentity, DirectOptions, EditCommandRecord, EditDocRecord};
+pub(crate) use edit_store::{
+    ClipIdentity, DirectOptions, DocumentOrigin, EditCommandRecord, EditDocRecord,
+};
 mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 11;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -434,6 +436,7 @@ impl DbActor {
                                     request_hash,
                                     project_id,
                                     document_json,
+                                    origin,
                                     now_unix_millis,
                                     reply,
                                 } => {
@@ -443,8 +446,30 @@ impl DbActor {
                                         &request_hash,
                                         &project_id,
                                         &document_json,
+                                        &origin,
                                         now_unix_millis,
                                     ));
+                                }
+                                Command::ReopenEditDoc {
+                                    request_id,
+                                    request_hash,
+                                    identity,
+                                    approve,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(edit_store::reopen_edit_doc(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &identity,
+                                        approve,
+                                        now_unix_millis,
+                                    ));
+                                }
+                                Command::RunTaskArtifacts { job_id, reply } => {
+                                    let _result = reply
+                                        .send(job_store::run_task_artifacts(&connection, &job_id));
                                 }
                                 Command::DirectEditDoc {
                                     request_id,
@@ -1065,6 +1090,7 @@ impl DbHandle {
         request_hash: [u8; 32],
         project_id: String,
         document_json: String,
+        origin: DocumentOrigin,
         now_unix_millis: u64,
     ) -> Result<Vec<u8>, StoreError> {
         let (reply, received) = oneshot::channel();
@@ -1074,9 +1100,48 @@ impl DbHandle {
                 request_hash,
                 project_id,
                 document_json,
+                origin,
                 now_unix_millis,
                 reply,
             })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// The document a clip already has, reopened with the approval if asked —
+    /// or `None`, with nothing written, when it has none.
+    pub(crate) async fn reopen_edit_doc(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        identity: ClipIdentity,
+        approve: bool,
+        now_unix_millis: u64,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ReopenEditDoc {
+                request_id,
+                request_hash,
+                identity,
+                approve,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// What one run published, by the stage that published it.
+    pub(crate) async fn run_task_artifacts(
+        &self,
+        job_id: String,
+    ) -> Result<RunArtifacts, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::RunTaskArtifacts { job_id, reply })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1324,8 +1389,21 @@ enum Command {
         request_hash: [u8; 32],
         project_id: String,
         document_json: String,
+        origin: DocumentOrigin,
         now_unix_millis: u64,
         reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
+    ReopenEditDoc {
+        request_id: String,
+        request_hash: [u8; 32],
+        identity: ClipIdentity,
+        approve: bool,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<Option<Vec<u8>>, StoreError>>,
+    },
+    RunTaskArtifacts {
+        job_id: String,
+        reply: oneshot::Sender<Result<RunArtifacts, StoreError>>,
     },
     DirectEditDoc {
         request_id: String,
@@ -1691,8 +1769,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(job_store::CREATE_V8_TABLES)?;
         transaction.execute_batch(decision_store::CREATE_V9_TABLES)?;
         transaction.execute_batch(edit_store::CREATE_V10_TABLES)?;
+        transaction.execute_batch(edit_store::CREATE_V11_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 10;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 11;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1724,7 +1803,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 10 {
             transaction.execute_batch(edit_store::CREATE_V10_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 10;")?;
+        if version < 11 {
+            transaction.execute_batch(edit_store::CREATE_V11_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 11;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -2068,6 +2150,7 @@ mod tests {
             &[2; 32],
             "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV",
             &sample_edit_document(),
+            &edit_store::DocumentOrigin::default(),
             10,
         )
         .expect("create edit doc");
@@ -2162,6 +2245,7 @@ mod tests {
             &[2; 32],
             "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV",
             "",
+            &edit_store::DocumentOrigin::default(),
             10,
         )
         .expect("create edit doc");
@@ -2745,6 +2829,7 @@ mod tests {
             project: "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
             source: "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
             candidate: "cand_7".to_owned(),
+            run: None,
         };
         let plain = edit_store::DirectOptions {
             variation: false,
@@ -2899,6 +2984,7 @@ mod tests {
             project: "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
             source: "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
             candidate: "cand_7".to_owned(),
+            run: None,
         };
         let approving = edit_store::DirectOptions {
             variation: false,
@@ -3094,6 +3180,7 @@ mod tests {
                     project: "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
                     source: "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
                     candidate: "cand_3".to_owned(),
+                    run: None,
                 },
                 &sample_edit_document(),
                 edit_store::DirectOptions {
@@ -3126,6 +3213,274 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("backup version");
         assert_eq!(backup_version, 9);
+    }
+
+    /// Reopening reads the store and nothing else.
+    ///
+    /// The service asks this before it loads any evidence, so a clip's saved
+    /// edit comes back whether or not the analysis it was cut from can still be
+    /// read — and when there is nothing to reopen, nothing is written and the
+    /// request id is still free for the creation that follows to claim.
+    #[test]
+    fn reopening_a_clip_needs_no_evidence_and_writes_nothing_when_there_is_none() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        create_project(
+            &mut connection,
+            "create-project",
+            &[1; 32],
+            &project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Edits", 1),
+        )
+        .expect("project");
+        let identity = edit_store::ClipIdentity {
+            project: "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            source: "src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            candidate: "cand_7".to_owned(),
+            run: Some("job_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned()),
+        };
+
+        // Nothing to reopen: no reply, no decision, and the request id unclaimed.
+        let nothing =
+            edit_store::reopen_edit_doc(&mut connection, "direct-1", &[2; 32], &identity, true, 10)
+                .expect("reopen");
+        assert!(nothing.is_none());
+        assert!(
+            decision_store::list(&connection, &identity.project, &identity.source)
+                .expect("decisions")
+                .is_empty()
+        );
+        let created = directed(
+            &edit_store::direct_edit_doc(
+                &mut connection,
+                "direct-1",
+                &[2; 32],
+                &identity,
+                &sample_edit_document(),
+                edit_store::DirectOptions {
+                    variation: false,
+                    approve: true,
+                },
+                11,
+            )
+            .expect("the same request id then creates"),
+        );
+        assert!(!created.reopened);
+        let doc = created.doc.expect("doc");
+        assert_eq!(doc.job_id, "job_01ARZ3NDEKTSV4RRFFQ69G5FAV");
+
+        // Now there is one: reopened as it stands, the approval recorded, and
+        // nothing about the analysis consulted.
+        let again = directed(
+            &edit_store::reopen_edit_doc(
+                &mut connection,
+                "direct-2",
+                &[3; 32],
+                &identity,
+                true,
+                20,
+            )
+            .expect("reopen")
+            .expect("a document to reopen"),
+        );
+        assert!(again.reopened);
+        assert_eq!(again.doc.expect("doc").doc_id, doc.doc_id);
+        let decisions = decision_store::list(&connection, &identity.project, &identity.source)
+            .expect("decisions");
+        assert_eq!(decisions[0].decision, Decision::Approved);
+        assert_eq!(decisions[0].decided_unix_millis, 20);
+
+        // A retry of the reopen is the same reply.
+        let replayed =
+            edit_store::reopen_edit_doc(&mut connection, "direct-2", &[3; 32], &identity, true, 30)
+                .expect("replay")
+                .expect("remembered");
+        assert_eq!(directed(&replayed).doc.expect("doc").doc_id, doc.doc_id);
+    }
+
+    /// What one run published is that run's, whatever a newer one has done.
+    ///
+    /// Two analyses of one recording, the older complete and the newer with a
+    /// stage still to publish: directing from the older run must read its own
+    /// stages, and the newer run's missing stage is reported missing rather
+    /// than filled from the older.
+    #[test]
+    fn a_runs_stages_are_read_from_that_run_and_no_other() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let record = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Runs", 10);
+        create_project(&mut connection, "create-runs", &[1; 32], &record).expect("project");
+        let project_id = record.project_id.parse::<ProjectId>().expect("project id");
+        let source_id = SourceId::new().to_string();
+        source_store::register_source(
+            &mut connection,
+            "register-runs-source",
+            &[2; 32],
+            &record.project_id,
+            &source_id,
+            &InspectedSource {
+                observation: FileObservation {
+                    absolute_path: "/private/media/talk.mkv".to_owned(),
+                    byte_size: 123,
+                    sample_sha256: format!("sha256:{}", "11".repeat(32)),
+                    device_id: 1,
+                    inode: 2,
+                    modified_unix_nanos: 3,
+                },
+                source_fingerprint: format!("sha256:{}", "22".repeat(32)),
+                source_map_json: b"{\"schema_version\":\"clipmill.source_map.v1\"}".to_vec(),
+            },
+            15,
+        )
+        .expect("register source");
+
+        let mut submit = |request: &str, at: u64| {
+            let mut plan = JobPlan::demo(&project_id, b"analyze".to_vec(), at);
+            plan.kind = "analyze-source".to_owned();
+            plan.source_id = Some(source_id.clone());
+            let job_id = plan.job_id.clone();
+            job_store::submit_job(&mut connection, request, &[3; 32], &plan).expect("submit");
+            job_id
+        };
+        let older = submit("submit-older", 20);
+        let newer = submit("submit-newer", 40);
+
+        // The older run publishes its first stage; the newer one is leased
+        // and has published nothing.
+        let lease = |connection: &mut Connection, at: u64| {
+            job_store::lease_next_task(
+                connection,
+                &LeaseId::new().to_string(),
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                at,
+                at + 15_000,
+                ResourceCapacity::w4_builtin(),
+            )
+            .expect("lease")
+            .task
+            .expect("a runnable task")
+        };
+        let first = lease(&mut connection, 30);
+        assert_eq!(first.job_id, older, "the older run is scheduled first");
+        let artifact = ArtifactId::from_digest(Sha256Digest::from_bytes([0x44; 32]));
+        job_store::complete_task(
+            &mut connection,
+            &first.lease_id,
+            artifact,
+            &[4; 32],
+            artifact.to_string().as_bytes(),
+            31,
+        )
+        .expect("complete the stage");
+
+        let older_run = job_store::run_task_artifacts(&connection, &older).expect("older run");
+        assert_eq!(older_run.source_id.as_deref(), Some(source_id.as_str()));
+        assert_eq!(
+            older_run.by_task_kind.get("demo-seed"),
+            Some(&artifact.to_string())
+        );
+        let newer_run = job_store::run_task_artifacts(&connection, &newer).expect("newer run");
+        assert!(
+            newer_run.by_task_kind.is_empty(),
+            "a stage the newer run has not published is not filled from the older"
+        );
+        assert!(matches!(
+            job_store::run_task_artifacts(&connection, "job_01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+            Err(StoreError::NotFound)
+        ));
+    }
+
+    #[test]
+    fn v10_upgrade_adds_the_run_a_document_was_cut_from() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v10.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v10 database");
+        for schema in [
+            CREATE_V1_TABLES,
+            CREATE_V2_TABLES,
+            job_store::CREATE_V3_TABLES,
+            source_store::CREATE_V4_TABLES,
+            device_store::CREATE_V5_TABLES,
+            edit_store::CREATE_V6_TABLES,
+            job_store::CREATE_V7_TABLES,
+            job_store::CREATE_V8_TABLES,
+            decision_store::CREATE_V9_TABLES,
+            edit_store::CREATE_V10_TABLES,
+        ] {
+            connection.execute_batch(schema).expect("v10 schema");
+        }
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO projects(project_id, name, created_unix_millis)
+                 VALUES ('prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'V10', 1);
+                 INSERT INTO edit_docs(doc_id, project_id, revision, initial_document, document,
+                                       created_unix_millis, updated_unix_millis,
+                                       source_id, candidate_id)
+                 VALUES ('edt_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 0,
+                         '{sample}', '{sample}', 2, 2,
+                         'src_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'cand_3');
+                 PRAGMA application_id = 1129074765;
+                 PRAGMA user_version = 10;",
+                sample = sample_edit_document(),
+            ))
+            .expect("v10 state");
+        drop(connection);
+
+        let mut upgraded = open_database(&path, &backups).expect("upgrade v10");
+        let version: i64 = upgraded
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version");
+        assert_eq!(version, SCHEMA_VERSION);
+        let docs =
+            edit_store::list_edit_docs(&upgraded, "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV").expect("list");
+        assert_eq!(docs[0].candidate_id.as_deref(), Some("cand_3"));
+        // The run is not guessed for a document that predates it.
+        assert_eq!(docs[0].job_id, None);
+
+        // A document handed in whole may still say which clip it is.
+        let created = edit_store::create_edit_doc(
+            &mut upgraded,
+            "create-named",
+            &[5; 32],
+            "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            &sample_edit_document(),
+            &edit_store::DocumentOrigin {
+                source: Some("src_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned()),
+                candidate: Some("cand_9".to_owned()),
+                run: Some("job_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned()),
+            },
+            10,
+        )
+        .expect("create");
+        let doc_id = created_doc_id(&created);
+        let listed =
+            edit_store::list_edit_docs(&upgraded, "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV").expect("list");
+        let named = listed
+            .iter()
+            .find(|record| record.doc_id == doc_id)
+            .expect("the named document");
+        assert_eq!(named.candidate_id.as_deref(), Some("cand_9"));
+        assert_eq!(
+            named.job_id.as_deref(),
+            Some("job_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+        );
+        // And a candidate with no source is refused: it could never be reopened.
+        assert!(matches!(
+            edit_store::create_edit_doc(
+                &mut upgraded,
+                "create-orphan",
+                &[6; 32],
+                "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                &sample_edit_document(),
+                &edit_store::DocumentOrigin {
+                    source: None,
+                    candidate: Some("cand_9".to_owned()),
+                    run: None,
+                },
+                11,
+            ),
+            Err(StoreError::InvalidData(_))
+        ));
     }
 
     #[test]
