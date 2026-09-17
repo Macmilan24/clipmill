@@ -77,42 +77,18 @@ pub struct DecodeSpan {
 
 /// The crop rectangle a segment shows on one of its own frames.
 ///
-/// This is the only sanctioned crop interpolation. The preview plan (W24)
-/// calls it; the emitted expression mirrors it; the parity drill compares the
-/// two. A second implementation anywhere is a parity bug with a head start.
+/// This is the only sanctioned crop interpolation, and it lives with the
+/// document: `clipmill_edit_ir::crop_along`, keyed here by frame. The
+/// preview plan (W24) calls it; the emitted expression mirrors it; the
+/// parity drill compares the two; and a trim evaluates the same arithmetic
+/// in ticks to keep the crop at a new boundary. A second implementation
+/// anywhere is a parity bug with a head start.
 pub fn crop_rect_at(path: &[CropKeyframe], rate: FrameRate, frame: i64) -> Option<CropRect> {
-    let first = path.first()?;
-    let last = path.last()?;
-    if frame <= rate.frame_at(first.t_ticks) {
-        return Some(first.rect);
-    }
-    if frame >= rate.frame_at(last.t_ticks) {
-        return Some(last.rect);
-    }
-    for pair in path.windows(2) {
-        let (before, after) = (pair[0], pair[1]);
-        let start = rate.frame_at(before.t_ticks);
-        let end = rate.frame_at(after.t_ticks);
-        if frame < start || frame >= end || end <= start {
-            continue;
-        }
-        let span = end - start;
-        let offset = frame - start;
-        return Some(CropRect {
-            x: interpolate(before.rect.x, after.rect.x, offset, span),
-            y: interpolate(before.rect.y, after.rect.y, offset, span),
-            width: before.rect.width,
-            height: before.rect.height,
-        });
-    }
-    Some(last.rect)
-}
-
-fn interpolate(from: i64, to: i64, offset: i64, span: i64) -> i64 {
-    if span <= 0 {
-        return from;
-    }
-    from + ((to - from) * offset).div_euclid(span)
+    let by_frame: Vec<(i64, CropRect)> = path
+        .iter()
+        .map(|keyframe| (rate.frame_at(keyframe.t_ticks), keyframe.rect))
+        .collect();
+    clipmill_edit_ir::crop_along(&by_frame, frame)
 }
 
 /// Where the second pass's loudness normalisation is substituted in.

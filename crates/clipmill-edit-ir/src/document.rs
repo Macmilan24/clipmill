@@ -44,6 +44,51 @@ pub struct CropKeyframe {
     pub rect: CropRect,
 }
 
+/// The crop a path holds at a position along it.
+///
+/// The rectangle's position is interpolated between the keyframes on either
+/// side and its size is held from the earlier one; before the first keyframe
+/// and after the last the path holds flat. Positions are whatever unit the
+/// caller keyed the path by — the renderer asks in frames, a trim asks in
+/// ticks — so there is exactly one implementation of the arithmetic: this
+/// one. A second, anywhere, is a parity bug with a head start.
+#[must_use]
+pub fn crop_along(path: &[(i64, CropRect)], at: i64) -> Option<CropRect> {
+    let (first_at, first) = path.first()?;
+    let (last_at, last) = path.last()?;
+    if at <= *first_at {
+        return Some(*first);
+    }
+    if at >= *last_at {
+        return Some(*last);
+    }
+    for pair in path.windows(2) {
+        let ((start, before), (end, after)) = (pair[0], pair[1]);
+        if at < start || at >= end || end <= start {
+            continue;
+        }
+        let span = end - start;
+        let offset = at - start;
+        return Some(CropRect {
+            x: interpolate(before.x, after.x, offset, span),
+            y: interpolate(before.y, after.y, offset, span),
+            width: before.width,
+            height: before.height,
+        });
+    }
+    Some(*last)
+}
+
+/// Linear interpolation in integers, rounded toward negative infinity so a
+/// path evaluated forwards and backwards lands on the same pixel.
+#[must_use]
+pub fn interpolate(from: i64, to: i64, offset: i64, span: i64) -> i64 {
+    if span <= 0 {
+        return from;
+    }
+    from + ((to - from) * offset).div_euclid(span)
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayoutState {
@@ -375,6 +420,37 @@ pub struct GainPoint {
     pub gain_db: f64,
 }
 
+/// The gain a curve holds at a program tick: linear in decibels between the
+/// points on either side, held flat before the first and after the last, and
+/// nothing when there is no automation. This is the rule the renderer's
+/// volume expression writes, so a trim that keeps this value at its new
+/// boundary keeps what would have been heard there.
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "ticks of a clip, far inside a double's exact integers"
+)]
+pub fn gain_at(curve: &[GainPoint], t_ticks: i64) -> Option<f64> {
+    let first = curve.first()?;
+    let last = curve.last()?;
+    if t_ticks <= first.t_ticks {
+        return Some(first.gain_db);
+    }
+    if t_ticks >= last.t_ticks {
+        return Some(last.gain_db);
+    }
+    for pair in curve.windows(2) {
+        let (before, after) = (pair[0], pair[1]);
+        if t_ticks < before.t_ticks || t_ticks >= after.t_ticks {
+            continue;
+        }
+        let span = (after.t_ticks - before.t_ticks) as f64;
+        let offset = (t_ticks - before.t_ticks) as f64;
+        return Some(before.gain_db + (after.gain_db - before.gain_db) * offset / span);
+    }
+    Some(last.gain_db)
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioTrack {
@@ -615,12 +691,24 @@ impl EditDocument {
     /// would mean showing a word over speech that no longer plays.
     /// Returns whether anything was destroyed, which decides whether a caller
     /// can invert itself narrowly or must restore the prior arrangement.
-    pub(crate) fn splice_program_content(&mut self, at: i64, remove: i64, insert: i64) -> bool {
+    ///
+    /// `program_end` is where the program ended before the splice, in the
+    /// same coordinates: what the cut leaves after it is the material between
+    /// `removed_end` and there, and a cut that reaches the end leaves nothing
+    /// to carry a value into.
+    pub(crate) fn splice_program_content(
+        &mut self,
+        at: i64,
+        remove: i64,
+        insert: i64,
+        program_end: i64,
+    ) -> bool {
         let removed_end = at.saturating_add(remove.max(0));
         let delta = insert.max(0).saturating_sub(remove.max(0));
         let words_before = self.caption_word_count();
         let cues_before = self.caption_cue_count();
         let gain_before = self.audio.gain_curve.len();
+        let gain_was = self.audio.gain_curve.clone();
         if remove > 0 {
             // Both presentations: they are two groupings of one word list and
             // a word that no longer plays is gone from each. Splicing only the
@@ -665,13 +753,15 @@ impl EditDocument {
                 }
                 cues.retain(|cue| !cue.lines.is_empty());
             }
+            self.pin_gain_around(at, removed_end, removed_end < program_end);
             self.audio
                 .gain_curve
                 .retain(|point| point.t_ticks < at || point.t_ticks >= removed_end);
         }
         let destroyed = self.caption_word_count() != words_before
             || self.caption_cue_count() != cues_before
-            || self.audio.gain_curve.len() != gain_before;
+            || self.audio.gain_curve.len() != gain_before
+            || self.audio.gain_curve != gain_was;
         if delta == 0 {
             return destroyed;
         }
@@ -699,6 +789,52 @@ impl EditDocument {
         destroyed
     }
 
+    /// Keep what the gain curve was doing at the edges of a cut.
+    ///
+    /// The renderer holds the first point backwards and the last forwards
+    /// and ramps between neighbours, so removing the points inside a cut is
+    /// not the same as removing the cut: a ramp that crossed the boundary now
+    /// starts from a different point, and a hold that a removed point defined
+    /// is gone with it. Before the points inside are removed, the value the
+    /// curve held at each edge is written down as a point of its own — at the
+    /// end of the cut when material follows it and anything before it defined
+    /// that value, and on the last tick before the cut when anything at or
+    /// after it did. The kept material then sounds as it did; only the cut is
+    /// gone.
+    fn pin_gain_around(&mut self, at: i64, removed_end: i64, material_follows: bool) {
+        let curve = &self.audio.gain_curve;
+        if curve.is_empty() {
+            return;
+        }
+        let mut pins = Vec::new();
+        if material_follows
+            && curve.iter().any(|point| point.t_ticks < removed_end)
+            && !curve.iter().any(|point| point.t_ticks == removed_end)
+            && let Some(gain_db) = gain_at(curve, removed_end)
+        {
+            pins.push(GainPoint {
+                t_ticks: removed_end,
+                gain_db,
+            });
+        }
+        let last_kept = at - 1;
+        if at > 0
+            && curve.iter().any(|point| point.t_ticks >= at)
+            && !curve.iter().any(|point| point.t_ticks == last_kept)
+            && let Some(gain_db) = gain_at(curve, last_kept)
+        {
+            pins.push(GainPoint {
+                t_ticks: last_kept,
+                gain_db,
+            });
+        }
+        if pins.is_empty() {
+            return;
+        }
+        self.audio.gain_curve.extend(pins);
+        self.audio.gain_curve.sort_by_key(|point| point.t_ticks);
+    }
+
     fn caption_word_count(&self) -> usize {
         self.captions.words().count()
     }
@@ -712,22 +848,51 @@ impl EditDocument {
     /// time `old_in + t`; points that fall outside the new window are dropped
     /// rather than clamped, because a clamped keyframe is a camera move the
     /// user never asked for.
+    ///
+    /// What is never dropped is the crop itself. A keyframe before the new
+    /// in point decided where the camera stood at that boundary — a static
+    /// crop is one keyframe at zero, and advancing the head past it used to
+    /// leave a `speaker_fill` segment with no path at all, which the preview
+    /// drew as fit and the renderer refused. The crop the path held at each
+    /// new boundary is evaluated and kept as a keyframe there, so the picture
+    /// on the first and last frame is the picture that was there before.
     pub(crate) fn retime_crop_path(
         path: &[CropKeyframe],
         old_in: i64,
         new_in: i64,
         new_duration: i64,
     ) -> Vec<CropKeyframe> {
-        path.iter()
-            .filter_map(|keyframe| {
-                let source = old_in.saturating_add(keyframe.t_ticks);
-                let local = source.saturating_sub(new_in);
-                (0..=new_duration).contains(&local).then_some(CropKeyframe {
-                    t_ticks: local,
-                    rect: keyframe.rect,
-                })
+        let new_out = new_in.saturating_add(new_duration);
+        let in_source: Vec<(i64, CropRect)> = path
+            .iter()
+            .map(|keyframe| (old_in.saturating_add(keyframe.t_ticks), keyframe.rect))
+            .collect();
+        let mut kept: Vec<CropKeyframe> = in_source
+            .iter()
+            .filter(|(source, _)| (new_in..=new_out).contains(source))
+            .map(|(source, rect)| CropKeyframe {
+                t_ticks: source - new_in,
+                rect: *rect,
             })
-            .collect()
+            .collect();
+        if in_source.iter().any(|(source, _)| *source < new_in)
+            && kept.first().is_none_or(|keyframe| keyframe.t_ticks != 0)
+            && let Some(rect) = crop_along(&in_source, new_in)
+        {
+            kept.insert(0, CropKeyframe { t_ticks: 0, rect });
+        }
+        if in_source.iter().any(|(source, _)| *source > new_out)
+            && kept
+                .last()
+                .is_none_or(|keyframe| keyframe.t_ticks != new_duration)
+            && let Some(rect) = crop_along(&in_source, new_out)
+        {
+            kept.push(CropKeyframe {
+                t_ticks: new_duration,
+                rect,
+            });
+        }
+        kept
     }
 
     /// Every invariant the command engine promises to preserve. Commands

@@ -383,6 +383,74 @@ mod tests {
         );
     }
 
+    /// The reproduction that showed a trim could leave a clip no route back
+    /// to export: trimmed at the start of the last word of its first cue,
+    /// the document was left with a one-word caption too brief to read, the
+    /// strip refused the sidecar, and the caption panel could not reach the
+    /// reading cues to mend it. The trim now folds the fragment into the
+    /// cue beside it, so what the strip sees is a clip it can pass.
+    #[test]
+    fn a_trim_that_cuts_into_a_caption_leaves_a_clip_the_strip_still_passes() {
+        let mut trimmed = document();
+        trimmed.captions.burn_in = trimmed.captions.cues.clone();
+        trimmed.assign_word_ids();
+        let before = trimmed.clone();
+        let segment = trimmed.video.segments[0].clone();
+        let last_word_start = before.captions.cues[0]
+            .words()
+            .last()
+            .expect("a word")
+            .start_ticks;
+        let gates = Vec::new();
+        assert!(validate(&before, &context(&gates)).passes());
+
+        let inverse = clipmill_edit_ir::EditCommand::Trim {
+            segment_id: segment.segment_id.clone(),
+            in_ticks: segment.in_ticks + last_word_start,
+            out_ticks: segment.out_ticks,
+        }
+        .apply(&mut trimmed)
+        .expect("the trim applies");
+        let report = validate(&trimmed, &context(&gates));
+        assert!(report.passes(), "{:?}", report.findings);
+        assert!(report.blocking().next().is_none(), "{:?}", report.findings);
+        // Every word said in what remains is still captioned, in both groupings.
+        let said = |document: &EditDocument| {
+            document
+                .captions
+                .cues
+                .iter()
+                .flat_map(clipmill_edit_ir::CaptionCue::words)
+                .map(|word| word.text.clone())
+                .collect::<Vec<_>>()
+        };
+        let kept = before.captions.cues[0]
+            .words()
+            .last()
+            .into_iter()
+            .chain(
+                before.captions.cues[1..]
+                    .iter()
+                    .flat_map(clipmill_edit_ir::CaptionCue::words),
+            )
+            .map(|word| word.text.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(said(&trimmed), kept);
+        assert_eq!(
+            trimmed
+                .captions
+                .burn_in
+                .iter()
+                .flat_map(clipmill_edit_ir::CaptionCue::words)
+                .map(|word| word.text.clone())
+                .collect::<Vec<_>>(),
+            kept
+        );
+
+        inverse.apply(&mut trimmed).expect("undo");
+        assert_eq!(trimmed, before);
+    }
+
     #[test]
     fn a_cut_inside_a_word_blocks_and_names_the_word() {
         let mut clipped = document();

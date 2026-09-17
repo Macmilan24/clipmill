@@ -509,6 +509,7 @@ dependencies = [
 name = "clipmill-edit-ir"
 version = "0.0.1"
 dependencies = [
+ "clipmill-captions",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
