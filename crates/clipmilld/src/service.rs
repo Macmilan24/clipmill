@@ -3215,7 +3215,7 @@ impl Service {
                 "an export request is required",
             );
         };
-        let (document, _record) = match self.export_document(&request_id, &asked.doc_id).await {
+        let (document, record) = match self.export_document(&request_id, &asked.doc_id).await {
             Ok(loaded) => loaded,
             Err(reply) => return reply,
         };
@@ -3270,6 +3270,7 @@ impl Service {
                 estimated_bytes: estimated,
                 available_bytes: available.unwrap_or(0),
                 available_known: available.is_some(),
+                revision: record.revision,
             }),
         )
     }
@@ -3299,21 +3300,8 @@ impl Service {
             Ok(loaded) => loaded,
             Err(reply) => return reply,
         };
-        if crate::export::naming_pattern(&asked.naming_pattern).is_err() {
-            return error_reply(
-                request_id,
-                ErrorCode::InvalidArgument,
-                "the naming pattern cannot be resolved",
-            );
-        }
-        for token in &asked.ai_assistance {
-            if !crate::render::ai_assistance_is_known(token) {
-                return error_reply(
-                    request_id,
-                    ErrorCode::InvalidArgument,
-                    "an export declared a disclosure token nobody recognises",
-                );
-            }
+        if let Err((code, message)) = admit_export(asked, record.revision) {
+            return error_reply(request_id, code, message);
         }
         // Checked before the destination is created, so a refused export leaves
         // no empty folder behind explaining nothing.
@@ -3380,6 +3368,7 @@ impl Service {
             &project_id,
             resolved,
             ir_artifact_id,
+            record.revision,
         )
         .await
     }
@@ -3392,6 +3381,7 @@ impl Service {
         project_id: &ProjectId,
         resolved: ExportRequestV1,
         ir_artifact_id: clipmill_core::ArtifactId,
+        revision: u64,
     ) -> Reply {
         let render_payload = RenderClipPayloadV1 {
             key_version: RENDER_CLIP_KEY_VERSION.to_owned(),
@@ -3407,6 +3397,7 @@ impl Service {
             request: Some(resolved.clone()),
         }
         .encode_to_vec();
+        let destination_dir = resolved.destination_dir.clone();
         let job_payload = ExportClipPayloadV1 {
             key_version: EXPORT_CLIP_KEY_VERSION.to_owned(),
             request: Some(resolved),
@@ -3437,7 +3428,12 @@ impl Service {
                 }
                 response_reply(
                     request_id,
-                    response::Body::ExportClip(ExportClipResponse { job_id }),
+                    response::Body::ExportClip(ExportClipResponse {
+                        job_id,
+                        revision,
+                        ir_artifact_id: ir_artifact_id.to_string(),
+                        destination_dir,
+                    }),
                 )
             }
             Err(error) => store_error_reply(request_id, &error),
@@ -3591,6 +3587,43 @@ impl Service {
             }
         }
     }
+}
+
+/// The refusals an export request earns before anything is read or written.
+///
+/// The revision the person reviewed is the one that may leave. An edit that
+/// landed between the review and this request — another window, a late
+/// command — would otherwise be delivered unseen; the caller re-plans against
+/// what the document is now and asks again.
+fn admit_export(asked: &ExportRequestV1, revision: u64) -> Result<(), (ErrorCode, String)> {
+    if let Some(expected) = asked.expected_revision
+        && expected != revision
+    {
+        return Err((
+            ErrorCode::Conflict,
+            format!(
+                "the document moved since it was reviewed: revision {expected} was approved, \
+                 it is now at revision {revision}"
+            ),
+        ));
+    }
+    if crate::export::naming_pattern(&asked.naming_pattern).is_err() {
+        return Err((
+            ErrorCode::InvalidArgument,
+            "the naming pattern cannot be resolved".to_owned(),
+        ));
+    }
+    if let Some(token) = asked
+        .ai_assistance
+        .iter()
+        .find(|token| !crate::render::ai_assistance_is_known(token))
+    {
+        return Err((
+            ErrorCode::InvalidArgument,
+            format!("an export declared a disclosure token nobody recognises: {token}"),
+        ));
+    }
+    Ok(())
 }
 
 /// Free space where an export would land, or on the nearest folder above it

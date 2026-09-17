@@ -132,6 +132,8 @@ export interface FakeWorld {
   readonly exportPlan?: ExportPlan;
   /** Every export request the screen sent, in order. */
   readonly exported: ExportRequest[];
+  /** Every path the screen asked the host to reveal. */
+  readonly revealed: string[];
   /** Every archive request, as (projectId, destination) pairs. */
   readonly archived: Array<readonly [string, string]>;
   readonly localLock?: LocalLock;
@@ -152,6 +154,7 @@ export function emptyWorld(): FakeWorld {
     applied: [],
     planned: [],
     exported: [],
+    revealed: [],
     archived: [],
   };
 }
@@ -296,7 +299,28 @@ export function fakeApi(world: FakeWorld): ShellApi {
     },
     exportClip: (request) => {
       world.exported.push(request);
-      return Promise.resolve('job_export');
+      // The daemon refuses to export a revision other than the one reviewed.
+      if (
+        request.expectedRevision !== undefined &&
+        world.plan !== undefined &&
+        request.expectedRevision !== world.plan.revision
+      ) {
+        return Promise.reject(
+          new Error(
+            `the document moved since it was reviewed: revision ${request.expectedRevision} was approved, it is now at revision ${world.plan.revision}`,
+          ),
+        );
+      }
+      return Promise.resolve({
+        jobId: 'job_export',
+        revision: request.expectedRevision ?? world.plan?.revision ?? 0,
+        irArtifactId: 'sha256:ir-snapshot',
+        destinationDir: request.destinationDir,
+      });
+    },
+    revealPath: (path) => {
+      world.revealed.push(path);
+      return Promise.resolve();
     },
     exportArchive: (projectId, destinationDir) => {
       world.archived.push([projectId, destinationDir]);

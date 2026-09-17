@@ -9,6 +9,12 @@
  * project's clip the moment someone approved one in an older project. With no
  * clip named, the screen lists every edit there is and lets a person choose.
  *
+ * Which *revision* is exported is not decided here either, but it is held.
+ * The plan says which revision it checked, the request carries that revision
+ * as the one reviewed, and the daemon refuses any other: an edit that landed
+ * between the review and the click is a conflict, re-planned and shown, not
+ * a clip nobody looked at. What was queued is then followed to the files.
+ *
  * Every keystroke in the pattern or the destination re-plans, debounced. That
  * is deliberate churn: the alternative is resolving the pattern here, which
  * would be a second implementation of the naming rules and would eventually
@@ -18,9 +24,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { ExportPlan, ExportRequest } from '../daemon/client.js';
+import type { ExportPlan, ExportRequest, QueuedExport } from '../daemon/client.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import { useDelivery } from '../export/delivery.js';
 import type { ClipRef } from '../shell/route.js';
 import { Export } from './Export.js';
 
@@ -62,9 +69,12 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
   const [planning, setPlanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [queued, setQueued] = useState<string | null>(null);
+  const [queued, setQueued] = useState<QueuedExport | null>(null);
   const [archive, setArchive] = useState<{ path: string; entryCount: number } | null>(null);
+  /** Bumped to plan again over the document as it is now, after a conflict. */
+  const [replan, setReplan] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const delivery = useDelivery(projectId, queued, api);
 
   // The named document's plan: its duration decides whether the rights gate
   // applies, and its opening words are the title's default. A different clip
@@ -156,7 +166,7 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
         clearTimeout(timer.current);
       }
     };
-  }, [api, request, destination]);
+  }, [api, request, destination, replan]);
 
   const onChooseFolder = useCallback(async () => {
     try {
@@ -170,19 +180,39 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
   }, [api]);
 
   const onExport = useCallback(async () => {
-    if (request === null) {
+    if (request === null || plan === null) {
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      setQueued(await api.exportClip(request));
+      // The revision the plan checked is the revision that may leave.
+      setQueued(await api.exportClip({ ...request, expectedRevision: plan.revision }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setError(message);
+      if (message.includes('moved since it was reviewed')) {
+        // The document is not what was reviewed. Plan again over what it is
+        // now, so the findings and the names on screen are of that, and let
+        // the person look before asking again.
+        setPlan(null);
+        setReplan((count) => count + 1);
+      }
     } finally {
       setBusy(false);
     }
-  }, [api, request]);
+  }, [api, request, plan]);
+
+  const onReveal = useCallback(
+    async (path: string) => {
+      try {
+        await api.revealPath(path);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [api],
+  );
 
   const onArchive = useCallback(async () => {
     if (projectId === null || destination.trim() === '') {
@@ -216,7 +246,7 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
       planning={planning}
       busy={busy}
       error={error}
-      queued={queued}
+      delivery={delivery}
       archive={archive}
       onDestinationChange={setDestination}
       onPatternChange={setPattern}
@@ -224,6 +254,7 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
       onRightsGateChange={setGatePassed}
       onExport={() => void onExport()}
       onArchive={() => void onArchive()}
+      onReveal={(path) => void onReveal(path)}
     />
   );
 }

@@ -1611,6 +1611,14 @@ pub struct ExportRequestV1 {
     /// The clip's own words for the {clip} token, when it has a title.
     #[prost(string, tag = "9")]
     pub title: ::prost::alloc::string::String,
+    /// The revision the person reviewed. Set, an export of any other revision
+    /// is refused as a conflict: planning read the document and submission
+    /// reads it again, and an edit between the two — another window, a late
+    /// command — would otherwise deliver a clip nobody looked at. Unset, the
+    /// current revision is taken, which is what a caller with no review step
+    /// means.
+    #[prost(uint64, optional, tag = "10")]
+    pub expected_revision: ::core::option::Option<u64>,
 }
 /// Check an export without performing one. No side effects, no files.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1637,6 +1645,10 @@ pub struct PlanExportResponse {
     /// from a genuinely full disk.
     #[prost(bool, tag = "6")]
     pub available_known: bool,
+    /// The revision this plan was computed over. A caller carries it into the
+    /// export request as the revision it reviewed.
+    #[prost(uint64, tag = "7")]
+    pub revision: u64,
 }
 /// Perform an export. Refused outright when the strip finds anything blocking,
 /// with the findings attached, because an export that starts and then stops is
@@ -1652,6 +1664,15 @@ pub struct ExportClipResponse {
     /// arrives on the task event stream every other long operation uses.
     #[prost(string, tag = "1")]
     pub job_id: ::prost::alloc::string::String,
+    /// What was frozen: the revision rendered, the immutable edit.ir.v1 snapshot
+    /// it was frozen as, and the folder — resolved — the files will land in.
+    /// The delivered package names its files relative to that folder.
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
+    #[prost(string, tag = "3")]
+    pub ir_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub destination_dir: ::prost::alloc::string::String,
 }
 /// Versioned payload for the export job (render, then deliver).
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
