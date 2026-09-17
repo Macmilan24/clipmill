@@ -10,7 +10,7 @@
 use clipmill_edit_ir::{
     Asset, AudioTrack, CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionTrack,
     CaptionWord, CropKeyframe, CropRect, EditCommand, EditDocument, GainPoint, Layout, LayoutState,
-    Rationale, VideoSegment, VideoTrack,
+    Presentation, Rationale, VideoSegment, VideoTrack,
 };
 
 const FINGERPRINT: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -146,6 +146,10 @@ fn sample_document() -> EditDocument {
 }
 
 /// Commands spanning every variant that a user can reach directly.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one candidate of every command, in order"
+)]
 fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand> {
     let duration = document.program_duration_ticks().max(1);
     let segment_ids = document
@@ -210,28 +214,34 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
         }
     }
     if let Some(cue_id) = pick(rng, &cue_ids) {
-        let index = document.cue_index(&cue_id).unwrap_or(0);
+        let index = document
+            .cue_index(Presentation::Reading, &cue_id)
+            .unwrap_or(0);
         let cue = &document.captions.cues[index];
         commands.push(EditCommand::EditCaptionText {
             cue_id: cue_id.clone(),
             word_index: usize::try_from(rng.below(cue.word_count().max(1) as u64)).unwrap_or(0),
             text: "corrected".to_owned(),
+            presentation: Presentation::Reading,
         });
         if cue.word_count() >= 2 {
             commands.push(EditCommand::SplitCue {
                 cue_id: cue_id.clone(),
                 at_word_index: 1,
                 new_cue_id: format!("{cue_id}_split"),
+                presentation: Presentation::Reading,
             });
             commands.push(EditCommand::SetCueLines {
                 cue_id: cue_id.clone(),
                 line_word_counts: vec![1, cue.word_count() - 1],
+                presentation: Presentation::Reading,
             });
         }
         if index + 1 < document.captions.cues.len() {
             commands.push(EditCommand::MergeCues {
                 first_cue_id: cue_id,
                 second_cue_id: document.captions.cues[index + 1].cue_id.clone(),
+                presentation: Presentation::Reading,
             });
         }
     }
@@ -326,6 +336,7 @@ fn a_batch_undoes_as_one_step() {
                 cue_id: "cue_1".to_owned(),
                 word_index: 0,
                 text: "The".to_owned(),
+                presentation: Presentation::Reading,
             },
             EditCommand::RippleDelete {
                 start_ticks: 10_000,
@@ -404,6 +415,7 @@ fn splitting_and_merging_a_cue_preserves_stored_line_breaks() {
     let reflow = EditCommand::SetCueLines {
         cue_id: "cue_1".to_owned(),
         line_word_counts: vec![2, 1],
+        presentation: Presentation::Reading,
     };
     reflow.apply(&mut document).expect("reflow applies");
     let before = document.to_canonical_json().expect("before");
@@ -412,6 +424,7 @@ fn splitting_and_merging_a_cue_preserves_stored_line_breaks() {
         cue_id: "cue_1".to_owned(),
         at_word_index: 1,
         new_cue_id: "cue_1b".to_owned(),
+        presentation: Presentation::Reading,
     };
     let inverse = split.apply(&mut document).expect("split applies");
     assert_eq!(document.captions.cues[0].word_count(), 1);

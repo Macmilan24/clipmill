@@ -551,6 +551,8 @@ pub struct PreviewPlanView {
     pub sources: Vec<PreviewSourceView>,
     /// The proxy for each source that has one.
     pub proxies: Vec<PreviewProxyView>,
+    /// Which cue list `cues` came from: `burn_in` or `reading`.
+    pub presentation: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -706,6 +708,7 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                     rate_den: proxy.rate_den,
                 })
                 .collect(),
+            presentation: reply.presentation,
         }
     }
 }

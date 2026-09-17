@@ -3104,6 +3104,7 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
         // Resolved by the handler, which is the one with a database.
         sources: Vec::new(),
         proxies: Vec::new(),
+        presentation: plan.presentation.as_str().to_owned(),
     }
 }
 

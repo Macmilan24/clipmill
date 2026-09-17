@@ -205,6 +205,32 @@ pub struct CaptionTrack {
     pub burn_in: Vec<CaptionCue>,
 }
 
+/// Which of the two groupings a cue-scoped command is addressed to.
+///
+/// A cue id names a cue in one list; the same id can name a different cue in
+/// the other, because each grouping numbers its own. A command that split or
+/// merged "the cue called `cue_2`" therefore has to say which `cue_2`, and the
+/// default is the reading list because that is what every command meant
+/// before the burned-in list existed.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Presentation {
+    /// The reading cues, from which every sidecar is written.
+    #[default]
+    Reading,
+    /// The kinetic cues burned into the picture.
+    BurnIn,
+}
+
+impl Presentation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Reading => "reading",
+            Self::BurnIn => "burn_in",
+        }
+    }
+}
+
 impl CaptionTrack {
     /// The cues that are burned into the picture: the kinetic grouping when the
     /// document carries one, and the reading cues when it does not.
@@ -214,6 +240,48 @@ impl CaptionTrack {
         } else {
             &self.burn_in
         }
+    }
+
+    /// Which list `burned()` answers from, so a surface showing those cues
+    /// can address its cue-scoped commands to the same list.
+    pub fn burned_presentation(&self) -> Presentation {
+        if self.burn_in.is_empty() {
+            Presentation::Reading
+        } else {
+            Presentation::BurnIn
+        }
+    }
+
+    pub fn list(&self, presentation: Presentation) -> &[CaptionCue] {
+        match presentation {
+            Presentation::Reading => &self.cues,
+            Presentation::BurnIn => &self.burn_in,
+        }
+    }
+
+    pub fn list_mut(&mut self, presentation: Presentation) -> &mut Vec<CaptionCue> {
+        match presentation {
+            Presentation::Reading => &mut self.cues,
+            Presentation::BurnIn => &mut self.burn_in,
+        }
+    }
+
+    /// Every word of every cue in both groupings, mutably.
+    pub fn words_mut(&mut self) -> impl Iterator<Item = &mut CaptionWord> {
+        self.cues
+            .iter_mut()
+            .chain(self.burn_in.iter_mut())
+            .flat_map(|cue| cue.lines.iter_mut())
+            .flat_map(|line| line.words.iter_mut())
+    }
+
+    /// Every word of every cue in both groupings.
+    pub fn words(&self) -> impl Iterator<Item = &CaptionWord> {
+        self.cues
+            .iter()
+            .chain(self.burn_in.iter())
+            .flat_map(|cue| cue.lines.iter())
+            .flat_map(|line| line.words.iter())
     }
 }
 
@@ -226,6 +294,7 @@ impl CaptionTrack {
 /// them together would report every kinetic cue as a duplicate of a reading one.
 fn validate_cues(cues: &[CaptionCue]) -> Result<(), DocumentError> {
     let mut seen_cues = Vec::with_capacity(cues.len());
+    let mut seen_words: Vec<&str> = Vec::new();
     let mut previous_end: Option<i64> = None;
     for cue in cues {
         if cue.cue_id.is_empty() {
@@ -257,6 +326,43 @@ fn validate_cues(cues: &[CaptionCue]) -> Result<(), DocumentError> {
                 return Err(DocumentError::UnorderedCaptionWords(cue.cue_id.clone()));
             }
             word_cursor = Some(word.end_ticks);
+            if let Some(word_id) = &word.word_id {
+                if word_id.is_empty() {
+                    return Err(DocumentError::EmptyIdentifier);
+                }
+                if seen_words.contains(&word_id.as_str()) {
+                    return Err(DocumentError::DuplicateWord(word_id.clone()));
+                }
+                seen_words.push(word_id.as_str());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The one thing two groupings of one word list may never disagree on.
+///
+/// A word carries the same id in both presentations because it is the same
+/// word; a correction lands in both because it is addressed to the id. If the
+/// two ever held different text under one id, a viewer would read one word
+/// and a reader the other, which is the divergence the caption engine's whole
+/// shape exists to make impossible — so it is refused here rather than
+/// discovered on a sidecar.
+fn validate_shared_words(track: &CaptionTrack) -> Result<(), DocumentError> {
+    let mut reading: Vec<(&str, &str)> = Vec::new();
+    for word in track.cues.iter().flat_map(CaptionCue::words) {
+        if let Some(word_id) = &word.word_id {
+            reading.push((word_id.as_str(), word.text.as_str()));
+        }
+    }
+    for word in track.burn_in.iter().flat_map(CaptionCue::words) {
+        let Some(word_id) = &word.word_id else {
+            continue;
+        };
+        if let Some((_, text)) = reading.iter().find(|(id, _)| *id == word_id.as_str())
+            && *text != word.text.as_str()
+        {
+            return Err(DocumentError::DivergentWord(word_id.clone()));
         }
     }
     Ok(())
@@ -422,13 +528,67 @@ impl EditDocument {
             .ok_or_else(|| DocumentError::UnknownSegment(segment_id.to_owned()))
     }
 
-    /// Position of a caption cue by identifier.
-    pub fn cue_index(&self, cue_id: &str) -> Result<usize, DocumentError> {
+    /// Position of a caption cue by identifier, in the named presentation.
+    pub fn cue_index(
+        &self,
+        presentation: Presentation,
+        cue_id: &str,
+    ) -> Result<usize, DocumentError> {
         self.captions
-            .cues
+            .list(presentation)
             .iter()
             .position(|cue| cue.cue_id == cue_id)
             .ok_or_else(|| DocumentError::UnknownCue(cue_id.to_owned()))
+    }
+
+    /// Give every word an identity, where it has none.
+    ///
+    /// The migration for documents that predate word ids. The two groupings
+    /// are two arrangements of one word list, so a word is the same word in
+    /// both when it starts at the same tick — timing is what the projection
+    /// copied into each — and its id is derived from that tick. Words that
+    /// already carry an id are left alone; the id is a name, not a position,
+    /// and renaming would break a correction somebody addressed to it.
+    /// Returns whether anything changed, so a caller can tell a migrated
+    /// document from one that needed nothing.
+    pub fn assign_word_ids(&mut self) -> bool {
+        let mut changed = false;
+        for word in self.captions.words_mut() {
+            if word.word_id.is_none() {
+                word.word_id = Some(format!("w@{}", word.start_ticks));
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// Whether every word carries an identity.
+    pub fn words_are_identified(&self) -> bool {
+        self.captions.words().all(|word| word.word_id.is_some())
+    }
+
+    /// The text one word carries, in either presentation.
+    pub fn word_text(&self, word_id: &str) -> Option<&str> {
+        self.captions
+            .words()
+            .find(|word| word.word_id.as_deref() == Some(word_id))
+            .map(|word| word.text.as_str())
+    }
+
+    /// Give one word new text, wherever it appears. Returns the text it had.
+    pub(crate) fn set_word_text(
+        &mut self,
+        word_id: &str,
+        text: &str,
+    ) -> Result<String, DocumentError> {
+        let mut previous: Option<String> = None;
+        for word in self.captions.words_mut() {
+            if word.word_id.as_deref() == Some(word_id) {
+                let was = std::mem::replace(&mut word.text, text.to_owned());
+                previous.get_or_insert(was);
+            }
+        }
+        previous.ok_or_else(|| DocumentError::UnknownWord(word_id.to_owned()))
     }
 
     /// Derive an unused identifier from an existing one. Deterministic by
@@ -459,53 +619,63 @@ impl EditDocument {
         let removed_end = at.saturating_add(remove.max(0));
         let delta = insert.max(0).saturating_sub(remove.max(0));
         let words_before = self.caption_word_count();
-        let cues_before = self.captions.cues.len();
+        let cues_before = self.caption_cue_count();
         let gain_before = self.audio.gain_curve.len();
         if remove > 0 {
-            for cue in &mut self.captions.cues {
-                if cue.end_ticks <= at || cue.start_ticks >= removed_end {
-                    continue;
+            // Both presentations: they are two groupings of one word list and
+            // a word that no longer plays is gone from each. Splicing only the
+            // reading cues left the burned-in ones showing a caption over
+            // speech that had been cut — the picture and the sidecar
+            // disagreeing about what was said.
+            for presentation in [Presentation::Reading, Presentation::BurnIn] {
+                let cues = self.captions.list_mut(presentation);
+                for cue in cues.iter_mut() {
+                    if cue.end_ticks <= at || cue.start_ticks >= removed_end {
+                        continue;
+                    }
+                    for line in &mut cue.lines {
+                        line.words
+                            .retain(|word| word.end_ticks <= at || word.start_ticks >= removed_end);
+                    }
+                    cue.lines.retain(|line| !line.words.is_empty());
+                    let bounds =
+                        cue.words()
+                            .fold(None::<(i64, i64)>, |bounds, word| match bounds {
+                                None => Some((word.start_ticks, word.end_ticks)),
+                                Some((start, end)) => {
+                                    Some((start.min(word.start_ticks), end.max(word.end_ticks)))
+                                }
+                            });
+                    if let Some((start, end)) = bounds {
+                        cue.start_ticks = start;
+                        cue.end_ticks = end;
+                    }
                 }
-                for line in &mut cue.lines {
-                    line.words
-                        .retain(|word| word.end_ticks <= at || word.start_ticks >= removed_end);
-                }
-                cue.lines.retain(|line| !line.words.is_empty());
-                let bounds = cue
-                    .words()
-                    .fold(None::<(i64, i64)>, |bounds, word| match bounds {
-                        None => Some((word.start_ticks, word.end_ticks)),
-                        Some((start, end)) => {
-                            Some((start.min(word.start_ticks), end.max(word.end_ticks)))
-                        }
-                    });
-                if let Some((start, end)) = bounds {
-                    cue.start_ticks = start;
-                    cue.end_ticks = end;
-                }
+                cues.retain(|cue| !cue.lines.is_empty());
             }
-            self.captions.cues.retain(|cue| !cue.lines.is_empty());
             self.audio
                 .gain_curve
                 .retain(|point| point.t_ticks < at || point.t_ticks >= removed_end);
         }
         let destroyed = self.caption_word_count() != words_before
-            || self.captions.cues.len() != cues_before
+            || self.caption_cue_count() != cues_before
             || self.audio.gain_curve.len() != gain_before;
         if delta == 0 {
             return destroyed;
         }
         let shift_from = if delta < 0 { removed_end } else { at };
-        for cue in &mut self.captions.cues {
-            if cue.start_ticks < shift_from {
-                continue;
-            }
-            cue.start_ticks = cue.start_ticks.saturating_add(delta).max(0);
-            cue.end_ticks = cue.end_ticks.saturating_add(delta).max(0);
-            for line in &mut cue.lines {
-                for word in &mut line.words {
-                    word.start_ticks = word.start_ticks.saturating_add(delta).max(0);
-                    word.end_ticks = word.end_ticks.saturating_add(delta).max(0);
+        for presentation in [Presentation::Reading, Presentation::BurnIn] {
+            for cue in self.captions.list_mut(presentation).iter_mut() {
+                if cue.start_ticks < shift_from {
+                    continue;
+                }
+                cue.start_ticks = cue.start_ticks.saturating_add(delta).max(0);
+                cue.end_ticks = cue.end_ticks.saturating_add(delta).max(0);
+                for line in &mut cue.lines {
+                    for word in &mut line.words {
+                        word.start_ticks = word.start_ticks.saturating_add(delta).max(0);
+                        word.end_ticks = word.end_ticks.saturating_add(delta).max(0);
+                    }
                 }
             }
         }
@@ -518,7 +688,11 @@ impl EditDocument {
     }
 
     fn caption_word_count(&self) -> usize {
-        self.captions.cues.iter().map(CaptionCue::word_count).sum()
+        self.captions.words().count()
+    }
+
+    fn caption_cue_count(&self) -> usize {
+        self.captions.cues.len() + self.captions.burn_in.len()
     }
 
     /// Re-time a segment's crop path when its source window moves. Keyframes
@@ -604,6 +778,7 @@ impl EditDocument {
 
         validate_cues(&self.captions.cues)?;
         validate_cues(&self.captions.burn_in)?;
+        validate_shared_words(&self.captions)?;
 
         let mut previous_gain: Option<i64> = None;
         for point in &self.audio.gain_curve {
@@ -659,6 +834,12 @@ pub enum DocumentError {
     WordOutsideCue(String),
     #[error("cue {0} has unordered words")]
     UnorderedCaptionWords(String),
+    #[error("word {0} appears more than once in one presentation")]
+    DuplicateWord(String),
+    #[error("word {0} reads differently in the two presentations")]
+    DivergentWord(String),
+    #[error("no word named {0}")]
+    UnknownWord(String),
     #[error("caption lines must each carry at least one word")]
     EmptyCaptionLine,
     #[error("line breaks must cover exactly the cue's words")]

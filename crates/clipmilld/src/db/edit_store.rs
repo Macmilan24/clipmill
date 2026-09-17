@@ -163,12 +163,16 @@ pub(super) fn create_edit_doc(
             "a document naming a candidate must name the source it was cut from",
         ));
     }
-    let document = if document_json.trim().is_empty() {
+    let mut document = if document_json.trim().is_empty() {
         EditDocument::default()
     } else {
         EditDocument::from_canonical_json(document_json.as_bytes())
             .map_err(|_| StoreError::InvalidData("initial edit document is not valid"))?
     };
+    // Every stored document names its words, so a correction can be
+    // addressed to one; a document handed in without ids is given them here,
+    // once, before anything is logged against it.
+    document.assign_word_ids();
     let canonical = canonical_document(&document)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     if let Some(response) = replay(&transaction, request_id, request_hash)? {
@@ -341,8 +345,9 @@ pub(super) fn direct_edit_doc(
             "a directed document names its source and its candidate",
         ));
     }
-    let document = EditDocument::from_canonical_json(document_json.as_bytes())
+    let mut document = EditDocument::from_canonical_json(document_json.as_bytes())
         .map_err(|_| StoreError::InvalidData("directed edit document is not valid"))?;
+    document.assign_word_ids();
     let canonical = canonical_document(&document)?;
 
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -651,6 +656,63 @@ pub(super) fn get_edit_log(
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok((initial, entries))
+}
+
+/// Give every stored document's words their identity.
+///
+/// The log is the truth and the live document is derived from it, so the
+/// migration is done the way the log is checked: the initial document is
+/// given ids and every logged command is replayed over it, which yields a
+/// live document whose corrections landed in both presentations — a
+/// correction logged before ids existed reached one grouping only, and the
+/// replay is where it reaches the other. A log that no longer replays (none
+/// should) falls back to giving the live document ids as it stands, so no
+/// document is left without them. Runs inside the schema transaction, so a
+/// store is either wholly migrated or not at all.
+pub(super) fn migrate_word_ids(transaction: &Transaction<'_>) -> Result<(), StoreError> {
+    let mut statement = transaction.prepare("SELECT doc_id FROM edit_docs ORDER BY doc_id")?;
+    let doc_ids = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(statement);
+    for doc_id in doc_ids {
+        let (initial_json, entries) = get_edit_log(transaction, &doc_id)?;
+        let live_json: String = transaction.query_row(
+            "SELECT document FROM edit_docs WHERE doc_id = ?1",
+            [&doc_id],
+            |row| row.get(0),
+        )?;
+        let mut initial = EditDocument::from_canonical_json(initial_json.as_bytes())
+            .map_err(|_| StoreError::InvalidData("stored initial edit document is not valid"))?;
+        let mut live = EditDocument::from_canonical_json(live_json.as_bytes())
+            .map_err(|_| StoreError::InvalidData("stored edit document is not valid"))?;
+        if !initial.assign_word_ids() && live.words_are_identified() {
+            continue;
+        }
+        let migrated_live = replay_log(&initial, &entries).unwrap_or_else(|| {
+            live.assign_word_ids();
+            live
+        });
+        transaction.execute(
+            "UPDATE edit_docs SET initial_document = ?1, document = ?2 WHERE doc_id = ?3",
+            params![
+                canonical_document(&initial)?,
+                canonical_document(&migrated_live)?,
+                doc_id
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+/// The log applied over a document, or nothing if any step refuses.
+fn replay_log(initial: &EditDocument, entries: &[EditCommandRecord]) -> Option<EditDocument> {
+    let mut document = initial.clone();
+    for entry in entries {
+        let command = EditCommand::from_canonical_json(entry.command_json.as_bytes()).ok()?;
+        command.apply(&mut document).ok()?;
+    }
+    Some(document)
 }
 
 fn canonical_document(document: &EditDocument) -> Result<String, StoreError> {

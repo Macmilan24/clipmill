@@ -26,10 +26,11 @@ export function programTicks(plan: Pick<PreviewPlan, 'frameCount' | 'rateNum' | 
 export function mapping(
   plan: Pick<PreviewPlan, 'frameCount' | 'rateNum' | 'rateDen'>,
   inSeconds = 600,
-  overrides: Partial<Pick<PreviewPlan, 'segments' | 'sources' | 'proxies'>> = {},
-): Pick<PreviewPlan, 'segments' | 'sources' | 'proxies'> {
+  overrides: Partial<Pick<PreviewPlan, 'segments' | 'sources' | 'proxies' | 'presentation'>> = {},
+): Pick<PreviewPlan, 'segments' | 'sources' | 'proxies' | 'presentation'> {
   const inTicks = inSeconds * TICKS;
   return {
+    presentation: 'burn_in',
     segments: [
       {
         segmentId: 'seg_1',

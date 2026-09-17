@@ -1805,6 +1805,13 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         }
         if version < 11 {
             transaction.execute_batch(edit_store::CREATE_V11_TABLES)?;
+            edit_store::migrate_word_ids(&transaction).map_err(|error| match error {
+                StoreError::Database(inner) => DaemonError::Database(inner),
+                other => DaemonError::SchemaMigration {
+                    to: 11,
+                    detail: other.to_string(),
+                },
+            })?;
         }
         transaction.execute_batch("PRAGMA user_version = 11;")?;
         transaction.commit()?;
@@ -2165,6 +2172,7 @@ mod tests {
                 cue_id: "cue_a".to_owned(),
                 word_index: 1,
                 text: "TWO".to_owned(),
+                presentation: clipmill_edit_ir::Presentation::Reading,
             },
             EditCommand::Trim {
                 segment_id: "seg_a".to_owned(),
@@ -3481,6 +3489,124 @@ mod tests {
             ),
             Err(StoreError::InvalidData(_))
         ));
+    }
+
+    /// Existing documents get word ids by replaying their own logs.
+    ///
+    /// A correction logged before ids existed reached the reading cues only;
+    /// the burned-in cue on screen kept the old word. Replaying that log over
+    /// the initial document, once its words are named, is where the
+    /// correction reaches the other presentation — and the replay invariant
+    /// the store has always held, that the log reproduces the live document,
+    /// holds for the migrated pair.
+    #[test]
+    fn v10_upgrade_names_every_word_and_replays_the_log_over_the_named_ones() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("v10-words.db");
+        let backups = temp.path().join("backups");
+        let connection = Connection::open(&path).expect("open v10 database");
+        for schema in [
+            CREATE_V1_TABLES,
+            CREATE_V2_TABLES,
+            job_store::CREATE_V3_TABLES,
+            source_store::CREATE_V4_TABLES,
+            device_store::CREATE_V5_TABLES,
+            edit_store::CREATE_V6_TABLES,
+            job_store::CREATE_V7_TABLES,
+            job_store::CREATE_V8_TABLES,
+            decision_store::CREATE_V9_TABLES,
+            edit_store::CREATE_V10_TABLES,
+        ] {
+            connection.execute_batch(schema).expect("v10 schema");
+        }
+        // The published two-intents fixture, and the live document the old
+        // command engine produced from it: "timestamp" corrected in the
+        // reading cue `cue_3` and nowhere else.
+        let initial =
+            include_str!("../../../contracts/fixtures/edit_ir/valid/two_caption_intents.json");
+        let mut live_document =
+            clipmill_edit_ir::EditDocument::from_canonical_json(initial.as_bytes())
+                .expect("fixture parses");
+        for cue in &mut live_document.captions.cues {
+            if cue.cue_id == "cue_3" {
+                "timecode".clone_into(&mut cue.lines[0].words[1].text);
+            }
+        }
+        let live = String::from_utf8(live_document.to_canonical_json().expect("canonical"))
+            .expect("utf-8");
+        let initial_canonical = String::from_utf8(
+            clipmill_edit_ir::EditDocument::from_canonical_json(initial.as_bytes())
+                .expect("parses")
+                .to_canonical_json()
+                .expect("canonical"),
+        )
+        .expect("utf-8");
+        let command =
+            r#"{"cue_id":"cue_3","op":"edit_caption_text","text":"timecode","word_index":1}"#;
+        let inverse =
+            r#"{"cue_id":"cue_3","op":"edit_caption_text","text":"timestamp","word_index":1}"#;
+        connection
+            .execute(
+                "INSERT INTO projects(project_id, name, created_unix_millis)
+                 VALUES ('prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'V10', 1)",
+                [],
+            )
+            .expect("project");
+        connection
+            .execute(
+                "INSERT INTO edit_docs(doc_id, project_id, revision, initial_document, document,
+                                       created_unix_millis, updated_unix_millis)
+                 VALUES ('edt_01ARZ3NDEKTSV4RRFFQ69G5FAV', 'prj_01ARZ3NDEKTSV4RRFFQ69G5FAV', 1,
+                         ?1, ?2, 2, 3)",
+                params![initial_canonical, live],
+            )
+            .expect("document");
+        connection
+            .execute(
+                "INSERT INTO edit_commands(doc_id, revision, command, inverse, applied_unix_millis)
+                 VALUES ('edt_01ARZ3NDEKTSV4RRFFQ69G5FAV', 1, ?1, ?2, 3)",
+                params![command, inverse],
+            )
+            .expect("log");
+        connection
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 10;")
+            .expect("v10 state");
+        drop(connection);
+
+        let upgraded = open_database(&path, &backups).expect("upgrade v10");
+        let record = edit_store::get_edit_doc(&upgraded, "edt_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+            .expect("document");
+        let migrated =
+            clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes())
+                .expect("migrated document parses");
+        assert!(migrated.words_are_identified());
+        let texts = |cues: &[clipmill_edit_ir::CaptionCue]| {
+            cues.iter()
+                .flat_map(clipmill_edit_ir::CaptionCue::words)
+                .map(|word| word.text.clone())
+                .collect::<Vec<_>>()
+        };
+        assert!(texts(&migrated.captions.cues).contains(&"timecode".to_owned()));
+        assert!(
+            texts(&migrated.captions.burn_in).contains(&"timecode".to_owned()),
+            "the replay carried the correction into the burned-in cue"
+        );
+        assert!(!texts(&migrated.captions.burn_in).contains(&"timestamp".to_owned()));
+
+        // The log still reproduces the live document from the initial one.
+        let (initial_json, entries) =
+            edit_store::get_edit_log(&upgraded, "edt_01ARZ3NDEKTSV4RRFFQ69G5FAV").expect("log");
+        let mut replayed =
+            clipmill_edit_ir::EditDocument::from_canonical_json(initial_json.as_bytes())
+                .expect("initial parses");
+        assert!(replayed.words_are_identified());
+        for entry in &entries {
+            clipmill_edit_ir::EditCommand::from_canonical_json(entry.command_json.as_bytes())
+                .expect("command")
+                .apply(&mut replayed)
+                .expect("replays");
+        }
+        assert_eq!(replayed, migrated);
     }
 
     #[test]
