@@ -89,21 +89,37 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
 };
 
 /**
- * The newest job that actually published a ranking.
+ * The analysis these clips are read from.
  *
- * A job does not carry which source it ran over, so this cannot be filtered by
- * one. What it can do is refuse to guess: a ranking is only shown when its own
- * document names the same recording, checked by the caller against the source's
- * fingerprint.
+ * The run the route named, when it named one: a candidate id belongs to the
+ * run that minted it, and a re-analysis that renumbered them must not swap
+ * the clip underneath an open Inspector. Otherwise the newest job that ran
+ * over this source and published a ranking. A job that does not say which
+ * source it ran over — one recorded before jobs carried that — is still a
+ * candidate, and the ranking's own fingerprint is what the caller checks it
+ * against in either case.
  */
-function analyzed(jobs: readonly Job[]): Job | null {
-  return newest(jobs.filter((job) => publishedArtifact(job, RANKING_KIND) !== null));
+function analyzed(jobs: readonly Job[], sourceId: string, jobId: string | null): Job | null {
+  if (jobId) {
+    return jobs.find((job) => job.jobId === jobId) ?? null;
+  }
+  return newest(
+    jobs.filter(
+      (job) =>
+        publishedArtifact(job, RANKING_KIND) !== null &&
+        (job.sourceId === '' || job.sourceId === sourceId),
+    ),
+  );
 }
 
 export class ResultsLoader {
   constructor(private readonly api: ShellApi = daemonApi) {}
 
-  async load(projectId: string, sourceId: string | null): Promise<ResultsSnapshot> {
+  async load(
+    projectId: string,
+    sourceId: string | null,
+    jobId: string | null = null,
+  ): Promise<ResultsSnapshot> {
     const [jobs, sources] = await Promise.all([
       this.api.listJobs(projectId),
       this.api.listSources(projectId),
@@ -115,7 +131,7 @@ export class ResultsLoader {
       return EMPTY_SNAPSHOT;
     }
 
-    const job = analyzed(jobs);
+    const job = analyzed(jobs, source.sourceId, jobId);
     const ranking = publishedArtifact(job, RANKING_KIND);
     const candidates = publishedArtifact(job, CANDIDATES_KIND);
     if (!job || !ranking || !candidates) {
@@ -124,7 +140,7 @@ export class ResultsLoader {
 
     try {
       const filmstripId = publishedArtifact(job, FILMSTRIP_KIND);
-      const [rankingDoc, candidateDoc, indexDoc, decisions, filmstripDoc, peaksDoc] =
+      const [rankingDoc, candidateDoc, indexDoc, decisions, filmstripDoc, peaksDoc, documents] =
         await Promise.all([
           this.api.readDocument(projectId, ranking),
           this.api.readDocument(projectId, candidates),
@@ -132,11 +148,13 @@ export class ResultsLoader {
           this.api.listClipDecisions(projectId, source.sourceId).catch(() => []),
           this.readOptional(projectId, filmstripId),
           this.readOptional(projectId, publishedArtifact(job, PEAKS_KIND)),
+          // Which clips already have an edit. A failure here loses a badge,
+          // not the board, so it is read like the optional documents.
+          this.api.listEditDocs(projectId).catch(() => []),
         ]);
       const rankingSet = JSON.parse(rankingDoc.json) as RankingSet;
-      // The job did not say which recording it ranked, so the document does.
-      // Showing another source's clips under this one's name would be worse
-      // than showing none.
+      // The ranking names the recording it ranked. Showing another source's
+      // clips under this one's name would be worse than showing none.
       if (rankingSet.source_fingerprint !== source.sourceFingerprint) {
         return { ...EMPTY_SNAPSHOT, source, problem: { kind: 'not-analyzed' } };
       }
@@ -145,6 +163,7 @@ export class ResultsLoader {
         JSON.parse(candidateDoc.json) as DiscoveryCandidates,
         indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null,
         decisions as readonly ClipDecisionRecord[],
+        documents.filter((document) => document.sourceId === source.sourceId),
       );
       const filmstrip: MediaFilmstrip | null = filmstripDoc ? JSON.parse(filmstripDoc) : null;
       const peaks: MediaAudioPeaks | null = peaksDoc ? JSON.parse(peaksDoc) : null;

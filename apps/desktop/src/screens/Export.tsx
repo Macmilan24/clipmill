@@ -15,7 +15,7 @@
  * the daemon, and what is drawn is the daemon's answer.
  */
 import { AlertTriangle, FolderOpen, Info, PackageCheck, Upload } from 'lucide-react';
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +52,10 @@ const DELIVERY: readonly (readonly [string, string])[] = [
 
 export interface ExportProps {
   readonly docId: string | null;
+  /** What the clip is called — the project and the clip — when the route knew. */
+  readonly labels: { readonly project?: string; readonly clip?: string } | null;
+  /** The list of edits to choose from, shown only when no clip is named. */
+  readonly picker: ReactNode;
   readonly destination: string;
   readonly pattern: string;
   readonly title: string;
@@ -80,12 +84,13 @@ export function Export(props: ExportProps): JSX.Element {
           <EmptyMedia variant="icon">
             <Upload />
           </EmptyMedia>
-          <EmptyTitle>Nothing approved yet</EmptyTitle>
+          <EmptyTitle>No clip is chosen for export</EmptyTitle>
           <EmptyDescription>
-            An export delivers an edit document. Approve a clip on the Results board and it will
-            appear here.
+            An export delivers one edit document. Open a clip from the editor, or choose one of the
+            edits below.
           </EmptyDescription>
         </EmptyHeader>
+        {props.picker}
       </Empty>
     );
   }
@@ -100,6 +105,14 @@ export function Export(props: ExportProps): JSX.Element {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1" data-testid="export-clip">
+        <h1 className="text-sm font-semibold text-[var(--cm-ink-1)]">
+          {props.labels
+            ? [props.labels.project, props.labels.clip].filter(Boolean).join(' · ')
+            : 'This clip'}
+        </h1>
+        <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">{props.docId}</span>
+      </header>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">

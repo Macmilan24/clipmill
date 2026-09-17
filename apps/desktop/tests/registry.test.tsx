@@ -45,16 +45,19 @@ const analysis = {
 
 const results = {
   onInspect: () => undefined,
+  onEdit: () => undefined,
   onBack: () => undefined,
   api: fakeApi(emptyWorld()),
 };
 
 const editor = {
   onOpenResults: () => undefined,
+  onOpen: () => undefined,
+  onExport: () => undefined,
   api: fakeApi(emptyWorld()),
 };
 
-const exportScreen = { api: fakeApi(emptyWorld()) };
+const exportScreen = { onOpen: () => undefined, api: fakeApi(emptyWorld()) };
 const settings = { api: fakeApi(emptyWorld()) };
 
 describe('the screen registry', () => {

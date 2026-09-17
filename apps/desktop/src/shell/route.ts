@@ -16,6 +16,30 @@
  */
 import { type NavSection, findSection } from './navigation.js';
 
+/**
+ * One clip, named by everything a screen needs to open it.
+ *
+ * The editor and the export used to open "the newest document of the newest
+ * project", which is right for one project with one approval and wrong the
+ * moment a second of either exists: approving a clip in an older project
+ * opened another project's edit. So the identity travels. The document is what
+ * is opened; the project scopes every call about it; the source is where its
+ * proxy and face tracks come from; the candidate and the run are which clip of
+ * which analysis it was cut from, kept so a screen can say so and so a re-run
+ * that renumbered the candidates cannot quietly swap the clip underneath.
+ */
+export interface ClipRef {
+  readonly projectId: string;
+  readonly docId: string;
+  readonly sourceId: string;
+  /** Absent for a document handed in whole rather than directed from a clip. */
+  readonly candidateId?: string;
+  /** The analysis run the clip came out of, when the opener knew it. */
+  readonly jobId?: string;
+  /** What the breadcrumb should call the project and the clip. */
+  readonly labels?: { readonly project?: string; readonly clip?: string };
+}
+
 export type Route =
   /**
    * A section, and optionally the project it was opened for.
@@ -63,7 +87,22 @@ export type Route =
        * hands the names along rather than making the top bar look them up.
        */
       readonly labels?: { readonly project?: string; readonly clip?: string };
-    };
+      /**
+       * The analysis run whose candidate this is. Absent when the opener did
+       * not know — the board then shows the newest finished run of the source.
+       */
+      readonly jobId?: string;
+    }
+  /**
+   * One clip, in the editor or on the export screen.
+   *
+   * Both answer to their own navigation row, so unlike the two above they are
+   * not a section with a hidden argument: the row is lit and the breadcrumb
+   * names the clip. Reaching the row with no clip open is the plain section
+   * route, and the screen says what to do about that.
+   */
+  | { readonly kind: 'editor'; readonly clip: ClipRef }
+  | { readonly kind: 'export'; readonly clip: ClipRef };
 
 export const DEFAULT_ROUTE: Route = { kind: 'section', sectionId: 'models' };
 
@@ -87,16 +126,27 @@ export function placementOf(route: Route): Placement {
     return { section, trail: [section.breadcrumb] };
   }
   if (route.kind === 'inspector') {
-    const section = findSection('results');
-    const trail = [section.breadcrumb];
-    if (route.labels?.project) {
-      trail.push(route.labels.project);
-    }
-    trail.push(route.labels?.clip ?? 'Clip');
-    return { section, trail };
+    return { section: findSection('results'), trail: clipTrail('results', route.labels) };
+  }
+  if (route.kind === 'editor' || route.kind === 'export') {
+    return { section: findSection(route.kind), trail: clipTrail(route.kind, route.clip.labels) };
   }
   const section = findSection(route.from);
   return { section, trail: [section.breadcrumb, 'Analysis'] };
+}
+
+/** Section, then the project if it was named, then the clip. */
+function clipTrail(
+  sectionId: string,
+  labels: { readonly project?: string; readonly clip?: string } | undefined,
+): readonly string[] {
+  const section = findSection(sectionId);
+  const trail = [section.breadcrumb];
+  if (labels?.project) {
+    trail.push(labels.project);
+  }
+  trail.push(labels?.clip ?? 'Clip');
+  return trail;
 }
 
 export function inspectorRoute(
@@ -104,8 +154,27 @@ export function inspectorRoute(
   sourceId: string,
   candidateId: string,
   labels?: { readonly project?: string; readonly clip?: string },
+  jobId?: string,
 ): Route {
-  return labels
-    ? { kind: 'inspector', projectId, sourceId, candidateId, labels }
-    : { kind: 'inspector', projectId, sourceId, candidateId };
+  return {
+    kind: 'inspector',
+    projectId,
+    sourceId,
+    candidateId,
+    ...(labels ? { labels } : {}),
+    ...(jobId ? { jobId } : {}),
+  };
+}
+
+export function editorRoute(clip: ClipRef): Route {
+  return { kind: 'editor', clip };
+}
+
+export function exportRoute(clip: ClipRef): Route {
+  return { kind: 'export', clip };
+}
+
+/** The clip a route is about, when it is about one. */
+export function clipOf(route: Route): ClipRef | null {
+  return route.kind === 'editor' || route.kind === 'export' ? route.clip : null;
 }

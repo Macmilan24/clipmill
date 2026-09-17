@@ -52,6 +52,14 @@ export interface ClipInspectorProps {
    * something a drag performs on its own.
    */
   readonly onTakeCut: (startTicks: number, endTicks: number) => void;
+  /**
+   * Open the clip's existing edit document in the editor.
+   *
+   * Null when the clip has none yet. Approving is what makes one — and opens
+   * it — so this is the way back to an edit that already exists, offered
+   * beside the approval rather than folded into it.
+   */
+  readonly onEdit: (() => void) | null;
 }
 
 /** A quote with its position, as a card whose timecode jumps the player. */
@@ -101,6 +109,7 @@ export function ClipInspector({
   onDecide,
   onUseAlternative,
   onTakeCut,
+  onEdit,
 }: ClipInspectorProps) {
   const row = rows.find((candidate) => candidate.candidateId === candidateId);
 
@@ -512,8 +521,14 @@ export function ClipInspector({
               disabled={busy}
               onClick={() => onDecide('approved')}
             >
-              {busy ? 'Working…' : 'Approve for the editor'}
+              {busy ? 'Working…' : onEdit ? 'Approve and open the edit' : 'Approve for the editor'}
             </Button>
+            {onEdit && (
+              <Button variant="outline" className="w-full justify-center gap-2" onClick={onEdit}>
+                <Scissors className="size-4" aria-hidden />
+                Open the existing edit
+              </Button>
+            )}
             <div className="flex gap-2">
               <Button
                 variant="outline"
