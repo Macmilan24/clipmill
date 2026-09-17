@@ -370,9 +370,26 @@ fn window_end(
     let wanted = speech_start
         .saturating_add(profile.min_duration_ticks.max(readable))
         .max(speech_end);
-    // Never shorter than the speech itself: a caption that disappears while the
-    // word is still being said is worse than one that is briefly crowded.
-    wanted.min(ceiling).max(speech_end)
+    // Never shorter than the speech itself, with one exception. When the next
+    // cue's first word follows this cue's last so closely that there is no
+    // room for the blank between them, the cue gives the blank up out of its
+    // own last word — two frames off the end of a word being said, which
+    // nobody sees — rather than run into the next cue, which every reader
+    // sees. The exception has a floor of its own: the last word must still
+    // appear, so a word shorter than the blank keeps its whole time and the
+    // crowding is left to the speech that forced it.
+    let last_word_start = tokens[start..end]
+        .iter()
+        .map(|token| token.start_ticks)
+        .max()
+        .unwrap_or(speech_start);
+    let floor = match tokens.get(end) {
+        Some(token) if token.start_ticks - profile.min_gap_ticks >= last_word_start => {
+            speech_end.min(token.start_ticks - profile.min_gap_ticks)
+        }
+        _ => speech_end,
+    };
+    wanted.min(ceiling).max(floor)
 }
 
 /// The best way to break a run across the profile's lines.

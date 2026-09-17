@@ -87,6 +87,9 @@ fn facts<'a>(
             cue_id: &ids[index],
             start_ticks: cue.start_ticks,
             end_ticks: cue.end_ticks,
+            // Held to the blank without exception: these are the cues the
+            // engine made, and the goldens are where it answers for them.
+            speech_end_ticks: None,
             lines: &widths[index],
         })
         .collect()
@@ -127,6 +130,64 @@ fn the_sidecar_grouping_has_no_reading_speed_violations_at_all() {
         reading.is_empty(),
         "the sidecar profile was not met: {reading:#?}"
     );
+}
+
+/// Speech as a recogniser and an aligner return it: words a few hundredths
+/// of a second apart, closer than the two-frame blank the sidecar profile
+/// wants between cues. The engine leaves the blank anyway, out of the end
+/// of the cue's last word, so the sidecar still meets the profile; only a
+/// last word too short to give anything up keeps its whole time.
+#[test]
+fn continuous_speech_still_gets_its_blank_between_cues() {
+    let profile = Profile::ACCESSIBILITY_EN;
+    // The paragraph as spoken, then closed up: every silence between words
+    // becomes forty milliseconds, under the profile's blank.
+    let mut tokens = spoken(PARAGRAPH);
+    let mut at = 0_i64;
+    for token in &mut tokens {
+        let length = token.end_ticks - token.start_ticks;
+        token.start_ticks = at;
+        token.end_ticks = at + length;
+        at += length + 3_600;
+    }
+    let window = span(&tokens);
+
+    let cues = segment(&tokens, &[], window, profile, Weights::default()).unwrap();
+    assert!(cues.len() > 1, "the paragraph needs several cues");
+    for pair in cues.windows(2) {
+        let (before, after) = (&pair[0], &pair[1]);
+        let last_word = &tokens[before.first_token + before.token_count - 1];
+        if last_word.end_ticks - last_word.start_ticks > profile.min_gap_ticks {
+            assert!(
+                after.start_ticks - before.end_ticks >= profile.min_gap_ticks,
+                "no blank between the cue ending at {} and the one starting at {}",
+                before.end_ticks,
+                after.start_ticks
+            );
+            assert!(
+                before.end_ticks > last_word.start_ticks,
+                "the last word still appears"
+            );
+        }
+    }
+    let (widths, ids) = checkable(&cues);
+    let facts: Vec<CueFacts<'_>> = cues
+        .iter()
+        .enumerate()
+        .map(|(index, cue)| CueFacts {
+            cue_id: &ids[index],
+            start_ticks: cue.start_ticks,
+            end_ticks: cue.end_ticks,
+            speech_end_ticks: Some(tokens[cue.first_token + cue.token_count - 1].end_ticks),
+            lines: &widths[index],
+        })
+        .collect();
+    let crowded: Vec<String> = validate(&facts, profile, &[])
+        .iter()
+        .filter(|item| matches!(item, clipmill_captions::Violation::Crowds { .. }))
+        .map(|item| format!("{}: {}", item.cue_id(), item.message()))
+        .collect();
+    assert!(crowded.is_empty(), "{crowded:#?}");
 }
 
 #[test]

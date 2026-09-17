@@ -68,6 +68,35 @@ fn program_time_is_source_time_less_the_clip_offset() {
     assert!(moved.start_ticks >= 0);
 }
 
+/// A cue that leaves the screen before its last word is fully said — the
+/// segmenter gives up the end of a long last word to leave the blank before
+/// the next cue — keeps its words inside its own window, so the document it
+/// projects to is one the IR accepts and the sweep ends with the caption.
+#[test]
+fn a_word_the_cue_gave_up_its_blank_from_ends_with_the_cue() {
+    let mut cues = document("one_sentence_two_ways");
+    let cue = &mut cues.intents.accessibility.cues[0];
+    let last_token = usize::try_from(cue.first_token + cue.token_count.get() - 1).unwrap();
+    let spoken_until = cues.tokens[last_token].end_ticks.get();
+    let early = spoken_until - 7_500;
+    cues.intents.accessibility.cues[0].end_ticks = early.try_into().unwrap();
+
+    let track = project(&cues, Intent::Accessibility, CLEAN, 0).unwrap();
+    let first = &track.cues[0];
+    let last_word = first.words().last().unwrap();
+    assert_eq!(u64::try_from(first.end_ticks).unwrap(), early);
+    assert_eq!(
+        last_word.end_ticks, first.end_ticks,
+        "the word ends with the cue"
+    );
+    assert!(last_word.end_ticks > last_word.start_ticks);
+    let document = clipmill_edit_ir::EditDocument {
+        captions: track,
+        ..clipmill_edit_ir::EditDocument::default()
+    };
+    document.validate().expect("a cue holds its own words");
+}
+
 #[test]
 fn a_cue_whose_words_were_cut_away_is_dropped_rather_than_pinned_to_zero() {
     let cues = document("one_sentence_two_ways");

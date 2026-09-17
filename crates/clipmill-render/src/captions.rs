@@ -88,7 +88,7 @@ pub fn project(
             end_ticks: end,
             region: region_of(cue),
             anim: animation,
-            lines: lines_of(document, cue, offset_ticks)?,
+            lines: lines_of(document, cue, offset_ticks, (start.max(0), end))?,
         });
     }
     Ok(CaptionTrack {
@@ -114,10 +114,16 @@ fn region_of(cue: &Cue) -> CaptionRegion {
 /// The ranges are checked rather than trusted. A line naming a token outside
 /// its cue would render text from a caption the viewer is not looking at, and
 /// that is worth a refusal rather than a truncation.
+///
+/// Each word is kept inside the cue's own window. A cue may leave the screen
+/// before its last word is fully said — the segmenter gives up the end of a
+/// long last word to leave the blank before the next cue — and the word's
+/// sweep then ends with the cue, since there is no caption left to sweep.
 fn lines_of(
     document: &CaptionCues,
     cue: &Cue,
     offset_ticks: i64,
+    window: (i64, i64),
 ) -> Result<Vec<CaptionLine>, ProjectionError> {
     let cue_first = as_usize(cue.first_token);
     let cue_end = cue_first + as_usize(cue.token_count.get());
@@ -134,14 +140,22 @@ fn lines_of(
         }
         let words = document.tokens[first..end]
             .iter()
-            .map(|token| CaptionWord {
-                text: apply_corrections(document, token.index, token.text.to_string()),
-                start_ticks: (as_i64(token.start_ticks) - offset_ticks).max(0),
-                end_ticks: (as_i64(token.end_ticks.get()) - offset_ticks).max(1),
-                // The transcript's word index: the one identity both groupings
-                // were built from, so the same word carries the same id in
-                // each and a correction can find it in both.
-                word_id: Some(word_id(token.word_index)),
+            .map(|token| {
+                let start_ticks = (as_i64(token.start_ticks) - offset_ticks)
+                    .max(window.0)
+                    .min(window.1 - 1);
+                let end_ticks = (as_i64(token.end_ticks.get()) - offset_ticks)
+                    .min(window.1)
+                    .max(start_ticks + 1);
+                CaptionWord {
+                    text: apply_corrections(document, token.index, token.text.to_string()),
+                    start_ticks,
+                    end_ticks,
+                    // The transcript's word index: the one identity both
+                    // groupings were built from, so the same word carries the
+                    // same id in each and a correction can find it in both.
+                    word_id: Some(word_id(token.word_index)),
+                }
             })
             .collect();
         lines.push(CaptionLine { words });
