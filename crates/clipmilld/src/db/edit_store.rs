@@ -345,8 +345,14 @@ pub(super) fn direct_edit_doc(
             "a directed document names its source and its candidate",
         ));
     }
-    let mut document = EditDocument::from_canonical_json(document_json.as_bytes())
-        .map_err(|_| StoreError::InvalidData("directed edit document is not valid"))?;
+    let mut document =
+        EditDocument::from_canonical_json(document_json.as_bytes()).map_err(|error| {
+            // The director's own document, refused by the document's own
+            // rules: the reason belongs in the log, since the reply cannot
+            // carry it and nobody can act on "not valid".
+            tracing::warn!(%error, "directed edit document refused");
+            StoreError::InvalidData("directed edit document is not valid")
+        })?;
     document.assign_word_ids();
     let canonical = canonical_document(&document)?;
 

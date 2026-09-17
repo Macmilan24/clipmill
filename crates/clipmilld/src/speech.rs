@@ -367,41 +367,59 @@ fn spread_words(
     }
 
     // Individual words, dropped out of an utterance that otherwise aligned.
-    // Each sits between the words its neighbours occupy.
+    // Each sits between the words its neighbours occupy — and words dropped
+    // side by side share that gap in order, rather than each taking all of
+    // it. Two words given one interval read as two words at once, which no
+    // caption can carry and the document's own rules refuse.
     let placed_at = aligned_positions(segment, &missing, measured);
+    let mut missing = missing
+        .iter()
+        .filter_map(|span| span.word_index.map(|position| (position, *span)))
+        .collect::<Vec<_>>();
+    missing.sort_by_key(|(position, _)| *position);
     let mut spread = Vec::new();
-    for span in missing {
-        let Some(position) = span.word_index else {
-            continue;
-        };
+    let mut run_start = 0;
+    while run_start < missing.len() {
+        let (first_position, _) = missing[run_start];
         let before = placed_at
             .iter()
-            .filter(|(at, _)| *at < position)
+            .filter(|(at, _)| *at < first_position)
             .map(|(_, word)| word.end_ticks)
             .max()
             .unwrap_or(segment.hint_start_ticks);
         let after = placed_at
             .iter()
-            .filter(|(at, _)| *at > position)
+            .filter(|(at, _)| *at > first_position)
             .map(|(_, word)| word.start_ticks)
             .min()
             .unwrap_or(segment.hint_end_ticks);
-        let (start, end) = if after > before {
-            (before, after)
-        } else {
-            // Neighbours meet: give the word a single frame of the timebase so
-            // it still has an interval, and let the invalid region say what it
-            // is worth.
-            (before, before.saturating_add(1))
-        };
-        spread.push((
-            start,
-            end,
-            span.text.clone(),
-            transcript::WordTiming::Interpolated,
-            0.0,
-            0.0,
-        ));
+        // The run: every missing word up to the next placed one.
+        let mut run_end = run_start + 1;
+        while run_end < missing.len()
+            && placed_at
+                .iter()
+                .all(|(at, _)| *at < first_position || *at > missing[run_end].0)
+        {
+            run_end += 1;
+        }
+        let run = &missing[run_start..run_end];
+        let count = u64::try_from(run.len()).unwrap_or(1).max(1);
+        // Each word gets an equal share of the gap and never less than one
+        // tick, so the run stays in order even when its neighbours meet and
+        // the invalid region is left to say what the timing is worth.
+        let each = (after.saturating_sub(before) / count).max(1);
+        for (offset, (_, span)) in (0..).zip(run) {
+            let start = before.saturating_add(offset * each);
+            spread.push((
+                start,
+                start.saturating_add(each),
+                span.text.clone(),
+                transcript::WordTiming::Interpolated,
+                0.0,
+                0.0,
+            ));
+        }
+        run_start = run_end;
     }
     spread
 }
