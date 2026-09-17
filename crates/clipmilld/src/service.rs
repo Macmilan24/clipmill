@@ -1584,6 +1584,7 @@ impl Service {
                 start_ticks: u64::try_from(start_ticks).unwrap_or(0),
                 end_ticks: u64::try_from(end_ticks).unwrap_or(0),
                 decisions,
+                reopened: false,
             }),
         )
     }

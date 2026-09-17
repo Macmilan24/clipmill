@@ -75,6 +75,7 @@ export function job(projectId: string, state: JobState, tasks: readonly Task[] =
     outputArtifactIds: [],
     failureClass: 0,
     failureDetail: '',
+    sourceId: `src_${projectId}`,
   };
 }
 
@@ -215,11 +216,15 @@ export function fakeApi(world: FakeWorld): ShellApi {
       world.directed.push(request);
       return Promise.resolve({
         docId: 'edt_00000000000000000000000000',
+        projectId: request.projectId,
+        sourceId: request.sourceId,
+        candidateId: request.candidateId,
         revision: 0,
         documentJson: '{}',
         startTicks: request.startTicks ?? 0,
         endTicks: request.endTicks ?? 0,
         decisions: [],
+        reopened: false,
       });
     },
     solveCropPath: () =>

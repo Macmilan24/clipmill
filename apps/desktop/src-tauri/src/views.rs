@@ -152,6 +152,11 @@ pub struct JobView {
     /// retry could help, and the detail says what actually went wrong.
     #[serde(rename = "failureDetail")]
     pub failure_detail: String,
+    /// The recording the job ran over, or empty for a job not about one. A
+    /// project can hold several recordings, and which one an analysis belongs
+    /// to is the first thing a screen reading it needs to know.
+    #[serde(rename = "sourceId")]
+    pub source_id: String,
 }
 
 impl From<Job> for JobView {
@@ -167,6 +172,7 @@ impl From<Job> for JobView {
             output_artifact_ids: job.output_artifact_ids,
             failure_class: job.failure_class,
             failure_detail: job.failure_detail,
+            source_id: job.source_id,
         }
     }
 }
@@ -361,6 +367,13 @@ pub struct DirectClipInput {
     pub start_ticks: u64,
     #[serde(default)]
     pub end_ticks: u64,
+    /// Build a second document beside the one this candidate already has,
+    /// rather than reopening it.
+    #[serde(default)]
+    pub variation: bool,
+    /// Record the approval in the same write as the document.
+    #[serde(default)]
+    pub approve: bool,
 }
 
 impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipRequest {
@@ -377,6 +390,8 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             style_ref: input.style_ref,
             start_ticks: input.start_ticks,
             end_ticks: input.end_ticks,
+            variation: input.variation,
+            approve: input.approve,
         }
     }
 }
@@ -386,6 +401,9 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
 #[serde(rename_all = "camelCase")]
 pub struct DirectedClipView {
     pub doc_id: String,
+    pub project_id: String,
+    pub source_id: String,
+    pub candidate_id: String,
     pub revision: u64,
     pub document_json: String,
     /// Where the cut actually landed, which is not always where it was asked
@@ -394,6 +412,8 @@ pub struct DirectedClipView {
     pub end_ticks: u64,
     /// Why the director did what it did, in sentences.
     pub decisions: Vec<String>,
+    /// True when the document already existed and came back as it stands.
+    pub reopened: bool,
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::DirectClipResponse> for DirectedClipView {
@@ -401,11 +421,15 @@ impl From<clipmill_contracts::proto::ipc::v1::DirectClipResponse> for DirectedCl
         let doc = reply.doc.unwrap_or_default();
         Self {
             doc_id: doc.doc_id,
+            project_id: doc.project_id,
+            source_id: doc.source_id,
+            candidate_id: doc.candidate_id,
             revision: doc.revision,
             document_json: doc.document_json,
             start_ticks: reply.start_ticks,
             end_ticks: reply.end_ticks,
             decisions: reply.decisions,
+            reopened: reply.reopened,
         }
     }
 }
@@ -600,6 +624,10 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
 pub struct EditDocView {
     pub doc_id: String,
     pub project_id: String,
+    /// The source it was cut from and the candidate it was built for; both
+    /// empty for a document that was handed in whole rather than directed.
+    pub source_id: String,
+    pub candidate_id: String,
     pub revision: u64,
     pub created_unix_millis: u64,
     pub updated_unix_millis: u64,
@@ -610,6 +638,8 @@ impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
         Self {
             doc_id: doc.doc_id,
             project_id: doc.project_id,
+            source_id: doc.source_id,
+            candidate_id: doc.candidate_id,
             revision: doc.revision,
             created_unix_millis: doc.created_unix_millis,
             updated_unix_millis: doc.updated_unix_millis,

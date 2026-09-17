@@ -543,6 +543,13 @@ message Job {
   repeated string output_artifact_ids = 8;
   clipmill.worker.v1.FailureClass failure_class = 9;
   string failure_detail = 10;
+  // The source the job ran over, or empty for a job that is not about one.
+  //
+  // The store has always kept this; the wire did not carry it, so a shell
+  // holding two recordings in one project could not tell whose analysis a job
+  // was and fell back to the newest. Which recording is the one thing a reader
+  // of an analysis needs to know first.
+  string source_id = 11;
 }
 
 message Task {
@@ -905,6 +912,15 @@ message EditDoc {
   string document_json = 4;
   uint64 created_unix_millis = 5;
   uint64 updated_unix_millis = 6;
+  // Where the document came from: the source it was cut from and the candidate
+  // the director built it for. Both empty for a document handed in whole by
+  // CreateEditDoc, which names no candidate.
+  //
+  // This is what makes a document findable by the clip it is, rather than only
+  // by its position in a list. "The newest document" is the wrong answer to
+  // "which document is this clip's" the moment a project holds two.
+  string source_id = 7;
+  string candidate_id = 8;
 }
 
 message CreateEditDocRequest {
@@ -1020,17 +1036,32 @@ message DirectClipRequest {
   // Read only when cut is EXACT.
   uint64 start_ticks = 6;
   uint64 end_ticks = 7;
+  // False reopens the document this candidate already has, if it has one,
+  // rather than building a second; edits made to it since are kept. True
+  // builds a new document beside the existing one — a variation, asked for on
+  // purpose. Approving a clip twice is the first; taking a different cut of it
+  // is the second.
+  bool variation = 8;
+  // Record the approval in the same transaction as the document. A decision
+  // written first and a document that then failed to build would leave a clip
+  // the board calls approved and the editor cannot open; one write leaves
+  // either both or neither.
+  bool approve = 9;
 }
 
 message DirectClipResponse {
   EditDoc doc = 1;
   // Where the cut actually landed, which is not where it was asked for when
-  // the request named a boundary the lattice had to move.
+  // the request named a boundary the lattice had to move. For a reopened
+  // document this is where its segment stands now, trims included.
   uint64 start_ticks = 2;
   uint64 end_ticks = 3;
   // Why the director did what it did, carried out so the interface can say so
   // without re-deriving it from the document.
   repeated string decisions = 4;
+  // True when `doc` already existed and was handed back unchanged rather than
+  // built by this call.
+  bool reopened = 5;
 }
 
 // What the editor's player must draw (book ch. 17).

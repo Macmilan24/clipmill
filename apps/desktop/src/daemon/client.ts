@@ -96,6 +96,14 @@ export interface Job {
   readonly outputArtifactIds: readonly string[];
   readonly failureClass: FailureClass;
   readonly failureDetail: string;
+  /**
+   * The recording the job ran over, or empty for a job not about one.
+   *
+   * A project holds any number of recordings, and an analysis is of exactly
+   * one; a screen that could not tell which fell back to the newest job and
+   * showed one recording's clips under another's name.
+   */
+  readonly sourceId: string;
 }
 
 /** One transition, as it happened. */
@@ -442,19 +450,38 @@ export interface DirectClipInput {
   /** Read only for `exact`, and snapped to the lattice by the daemon. */
   readonly startTicks?: number;
   readonly endTicks?: number;
+  /**
+   * Build a second document beside the one this candidate already has.
+   *
+   * Left off, the daemon reopens the existing document — edits and all —
+   * which is what approving a clip twice should mean. Taking a different cut
+   * of a clip that already has an edit is a variation, and says so.
+   */
+  readonly variation?: boolean;
+  /**
+   * Record the approval in the same write as the document, so a clip is
+   * never approved without an edit to open or edited without being approved.
+   */
+  readonly approve?: boolean;
 }
 
 export interface DirectedClip {
   readonly docId: string;
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly candidateId: string;
   readonly revision: number;
   readonly documentJson: string;
   /**
    * Where the cut landed, which is not always where it was asked for: a
    * hand-set boundary is moved onto the lattice before anything is built.
+   * For a reopened document, where its segment stands now, trims included.
    */
   readonly startTicks: number;
   readonly endTicks: number;
   readonly decisions: readonly string[];
+  /** True when the document already existed and came back as it stands. */
+  readonly reopened: boolean;
 }
 
 export async function directClip(request: DirectClipInput): Promise<DirectedClip> {
@@ -590,6 +617,12 @@ export async function previewPlan(projectId: string, docId: string): Promise<Pre
 export interface EditDocSummary {
   readonly docId: string;
   readonly projectId: string;
+  /**
+   * The source it was cut from and the candidate it was built for. Both empty
+   * for a document handed in whole rather than directed from a clip.
+   */
+  readonly sourceId: string;
+  readonly candidateId: string;
   readonly revision: number;
   readonly createdUnixMillis: number;
   readonly updatedUnixMillis: number;
