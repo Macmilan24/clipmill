@@ -269,6 +269,7 @@ async fn commands_apply_invert_and_snapshot_over_the_control_socket() {
         &EditCommand::SetCueLines {
             cue_id: "cue_a".to_owned(),
             line_word_counts: vec![1, 1],
+            presentation: clipmill_edit_ir::Presentation::Reading,
         },
     )
     .await
@@ -342,6 +343,7 @@ async fn acknowledged_commands_survive_a_killed_daemon() {
             cue_id: "cue_a".to_owned(),
             word_index: 1,
             text: "TWO".to_owned(),
+            presentation: clipmill_edit_ir::Presentation::Reading,
         },
         EditCommand::SetGain {
             t_ticks: 0,

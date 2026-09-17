@@ -105,11 +105,19 @@ export interface CaptionCue {
           text: string;
           start_ticks: number;
           end_ticks: number;
+          /**
+           * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
+           */
+          word_id?: string;
         },
         ...{
           text: string;
           start_ticks: number;
           end_ticks: number;
+          /**
+           * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
+           */
+          word_id?: string;
         }[]
       ];
     },
@@ -122,11 +130,19 @@ export interface CaptionCue {
           text: string;
           start_ticks: number;
           end_ticks: number;
+          /**
+           * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
+           */
+          word_id?: string;
         },
         ...{
           text: string;
           start_ticks: number;
           end_ticks: number;
+          /**
+           * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
+           */
+          word_id?: string;
         }[]
       ];
     }[]

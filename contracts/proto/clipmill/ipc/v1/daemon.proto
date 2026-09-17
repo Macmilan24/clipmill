@@ -1204,6 +1204,11 @@ message GetPreviewPlanResponse {
   // The proxy for each source that has one. A source with no proxy is listed
   // above and absent here, and the player says there is nothing to play.
   repeated PreviewProxyV1 proxies = 12;
+  // Which of the document's two cue lists `cues` came from: "burn_in" when
+  // the document carries a kinetic grouping, "reading" when the reading cues
+  // are what gets burned in. A cue-scoped command — split, merge, re-break —
+  // must name the list it means, because each list numbers its own cues.
+  string presentation = 13;
 }
 
 // The edit documents a project holds, oldest first.

@@ -665,6 +665,11 @@ export interface PreviewPlan {
   readonly sources: readonly PreviewSource[];
   /** The proxy for each source that has one. */
   readonly proxies: readonly PreviewProxy[];
+  /**
+   * Which of the document's cue lists `cues` came from. A cue-scoped command
+   * names the list it means, because each list numbers its own cues.
+   */
+  readonly presentation: 'reading' | 'burn_in';
 }
 
 export async function previewPlan(projectId: string, docId: string): Promise<PreviewPlan> {

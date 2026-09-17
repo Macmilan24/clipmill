@@ -112,6 +112,10 @@ class Word(BaseModel):
     text: constr(min_length=1)
     start_ticks: conint(ge=0)
     end_ticks: conint(ge=1)
+    word_id: constr(min_length=1) | None = Field(
+        None,
+        description='Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.',
+    )
 
 
 class Line(BaseModel):

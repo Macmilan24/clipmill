@@ -19,5 +19,6 @@ pub use command::{CommandError, EditCommand};
 pub use document::{
     Asset, AudioTrack, CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionTrack,
     CaptionWord, CropKeyframe, CropRect, DocumentError, EditDocument, GainPoint, IR_VERSION,
-    Layout, LayoutState, Rationale, TICKS_PER_SECOND, Timebase, VideoSegment, VideoTrack,
+    Layout, LayoutState, Presentation, Rationale, TICKS_PER_SECOND, Timebase, VideoSegment,
+    VideoTrack,
 };

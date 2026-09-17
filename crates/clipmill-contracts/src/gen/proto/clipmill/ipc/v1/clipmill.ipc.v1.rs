@@ -1533,6 +1533,12 @@ pub struct GetPreviewPlanResponse {
     /// above and absent here, and the player says there is nothing to play.
     #[prost(message, repeated, tag = "12")]
     pub proxies: ::prost::alloc::vec::Vec<PreviewProxyV1>,
+    /// Which of the document's two cue lists `cues` came from: "burn_in" when
+    /// the document carries a kinetic grouping, "reading" when the reading cues
+    /// are what gets burned in. A cue-scoped command — split, merge, re-break —
+    /// must name the list it means, because each list numbers its own cues.
+    #[prost(string, tag = "13")]
+    pub presentation: ::prost::alloc::string::String,
 }
 /// The edit documents a project holds, oldest first.
 ///

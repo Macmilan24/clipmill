@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::document::{
     CaptionCue, CropKeyframe, CropRect, DocumentError, EditDocument, GainPoint, LayoutState,
-    VideoSegment,
+    Presentation, VideoSegment,
 };
 
 /// One typed, serializable edit. Applying a command returns the command that
@@ -38,6 +38,11 @@ pub enum EditCommand {
         segments: Vec<VideoSegment>,
         cues: Vec<CaptionCue>,
         gain_curve: Vec<GainPoint>,
+        /// The burned-in cues as they were. Absent in a log written before
+        /// trims touched that list, and then left as it stands — which is
+        /// what those trims had done to it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        burn_in: Option<Vec<CaptionCue>>,
     },
     SetLayout {
         segment_id: String,
@@ -53,10 +58,21 @@ pub enum EditCommand {
         segment_id: String,
         t_ticks: i64,
     },
-    /// Correct one word's text without disturbing its timing.
+    /// Correct one word's text without disturbing its timing, addressed by
+    /// cue and position. The word's other occurrence — the same word in the
+    /// other presentation — is corrected with it when the word carries an id.
     EditCaptionText {
         cue_id: String,
         word_index: usize,
+        text: String,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
+    },
+    /// Correct one word's text wherever it appears. The correction belongs
+    /// to the word, and the word is in both presentations; a cue and an
+    /// index name one grouping only, and not the one the player shows.
+    SetWordText {
+        word_id: String,
         text: String,
     },
     /// Re-flow a cue's words into lines. Line breaks are stored, never
@@ -64,6 +80,8 @@ pub enum EditCommand {
     SetCueLines {
         cue_id: String,
         line_word_counts: Vec<usize>,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
     },
     /// Split a cue at a word boundary. The caller names the new cue so that
     /// replay reproduces the same identifier.
@@ -71,10 +89,14 @@ pub enum EditCommand {
         cue_id: String,
         at_word_index: usize,
         new_cue_id: String,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
     },
     MergeCues {
         first_cue_id: String,
         second_cue_id: String,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
     },
     SetGain {
         t_ticks: i64,
@@ -87,6 +109,16 @@ pub enum EditCommand {
     Batch {
         commands: Vec<EditCommand>,
     },
+}
+
+/// The reading presentation is the default, and a command that names it is
+/// written as it always was, so a log replays byte for byte.
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if hands the field by reference"
+)]
+fn is_reading(presentation: &Presentation) -> bool {
+    *presentation == Presentation::Reading
 }
 
 impl EditCommand {
@@ -119,10 +151,14 @@ impl EditCommand {
                 segments,
                 cues,
                 gain_curve,
+                burn_in,
             } => {
                 let inverse = Self::capture(document);
                 document.video.segments.clone_from(segments);
                 document.captions.cues.clone_from(cues);
+                if let Some(burn_in) = burn_in {
+                    document.captions.burn_in.clone_from(burn_in);
+                }
                 document.audio.gain_curve.clone_from(gain_curve);
                 Ok(inverse)
             }
@@ -202,37 +238,60 @@ impl EditCommand {
                 cue_id,
                 word_index,
                 text,
+                presentation,
             } => {
-                let index = document.cue_index(cue_id)?;
+                let index = document.cue_index(*presentation, cue_id)?;
                 let cue = document
                     .captions
-                    .cues
-                    .get_mut(index)
+                    .list(*presentation)
+                    .get(index)
                     .ok_or_else(|| DocumentError::UnknownCue(cue_id.clone()))?;
-                let mut cursor = 0_usize;
-                for line in &mut cue.lines {
-                    for word in &mut line.words {
-                        if cursor == *word_index {
-                            let previous = std::mem::replace(&mut word.text, text.clone());
-                            return Ok(Self::EditCaptionText {
-                                cue_id: cue_id.clone(),
-                                word_index: *word_index,
-                                text: previous,
-                            });
-                        }
-                        cursor += 1;
-                    }
-                }
-                Err(CommandError::NoSuchWord(*word_index))
+                let word = cue
+                    .words()
+                    .nth(*word_index)
+                    .ok_or(CommandError::NoSuchWord(*word_index))?;
+                let previous = if let Some(word_id) = word.word_id.clone() {
+                    // The word is known by name: the correction reaches its
+                    // twin in the other presentation too.
+                    document.set_word_text(&word_id, text)?
+                } else {
+                    // A document that predates word ids: this occurrence only.
+                    let cue = document
+                        .captions
+                        .list_mut(*presentation)
+                        .get_mut(index)
+                        .ok_or_else(|| DocumentError::UnknownCue(cue_id.clone()))?;
+                    let word = cue
+                        .lines
+                        .iter_mut()
+                        .flat_map(|line| line.words.iter_mut())
+                        .nth(*word_index)
+                        .ok_or(CommandError::NoSuchWord(*word_index))?;
+                    std::mem::replace(&mut word.text, text.clone())
+                };
+                Ok(Self::EditCaptionText {
+                    cue_id: cue_id.clone(),
+                    word_index: *word_index,
+                    text: previous,
+                    presentation: *presentation,
+                })
+            }
+            Self::SetWordText { word_id, text } => {
+                let previous = document.set_word_text(word_id, text)?;
+                Ok(Self::SetWordText {
+                    word_id: word_id.clone(),
+                    text: previous,
+                })
             }
             Self::SetCueLines {
                 cue_id,
                 line_word_counts,
+                presentation,
             } => {
-                let index = document.cue_index(cue_id)?;
+                let index = document.cue_index(*presentation, cue_id)?;
                 let cue = document
                     .captions
-                    .cues
+                    .list_mut(*presentation)
                     .get_mut(index)
                     .ok_or_else(|| DocumentError::UnknownCue(cue_id.clone()))?;
                 let previous = cue.line_word_counts();
@@ -240,17 +299,20 @@ impl EditCommand {
                 Ok(Self::SetCueLines {
                     cue_id: cue_id.clone(),
                     line_word_counts: previous,
+                    presentation: *presentation,
                 })
             }
             Self::SplitCue {
                 cue_id,
                 at_word_index,
                 new_cue_id,
-            } => Self::apply_split_cue(document, cue_id, *at_word_index, new_cue_id),
+                presentation,
+            } => Self::apply_split_cue(document, *presentation, cue_id, *at_word_index, new_cue_id),
             Self::MergeCues {
                 first_cue_id,
                 second_cue_id,
-            } => Self::apply_merge_cues(document, first_cue_id, second_cue_id),
+                presentation,
+            } => Self::apply_merge_cues(document, *presentation, first_cue_id, second_cue_id),
             Self::SetGain { t_ticks, gain_db } => {
                 let curve = &mut document.audio.gain_curve;
                 match curve.binary_search_by_key(t_ticks, |point| point.t_ticks) {
@@ -302,9 +364,19 @@ impl EditCommand {
             segments: document.video.segments.clone(),
             cues: document.captions.cues.clone(),
             gain_curve: document.audio.gain_curve.clone(),
+            burn_in: Some(document.captions.burn_in.clone()),
         }
     }
 
+    /// Move a segment's source window, and everything anchored to it.
+    ///
+    /// The head and the tail are two different edits and are spliced as two.
+    /// Advancing the in point removes program time at the segment's *start*:
+    /// the words said there are gone and everything after them moves earlier.
+    /// Moving the out point changes program time at its *end*. Treating any
+    /// shortening as a tail deletion, as this once did, kept the original
+    /// opening caption over footage that now began a second later and cut
+    /// the caption that was actually still playing.
     fn apply_trim(
         document: &mut EditDocument,
         segment_id: &str,
@@ -339,13 +411,25 @@ impl EditCommand {
             new_duration,
         );
         let keyframes_lost = segment.layout.crop_path.len() != keyframes_before;
+
+        // The tail first, in the old program coordinates, so the head's
+        // shift does not move the tail before it is cut.
         let old_end = program_start.saturating_add(old_duration);
-        let new_end = program_start.saturating_add(new_duration);
-        let content_lost = if new_duration < old_duration {
-            document.splice_program_content(new_end, old_end.saturating_sub(new_end), 0)
-        } else {
-            document.splice_program_content(old_end, 0, new_end.saturating_sub(old_end))
+        let tail_delta = out_ticks.saturating_sub(old_out);
+        let mut content_lost = match tail_delta.signum() {
+            -1 => {
+                let cut_from = old_end.saturating_add(tail_delta);
+                document.splice_program_content(cut_from, -tail_delta, 0)
+            }
+            1 => document.splice_program_content(old_end, 0, tail_delta),
+            _ => false,
         };
+        let head_delta = in_ticks.saturating_sub(old_in);
+        match head_delta.signum() {
+            1 => content_lost |= document.splice_program_content(program_start, head_delta, 0),
+            -1 => content_lost |= document.splice_program_content(program_start, 0, -head_delta),
+            _ => {}
+        }
         if keyframes_lost || content_lost {
             // Shortening a segment can strand captions in the tail it gave up
             // and push crop keyframes outside the new window. Restoring the
@@ -442,6 +526,7 @@ impl EditCommand {
 
     fn apply_split_cue(
         document: &mut EditDocument,
+        presentation: Presentation,
         cue_id: &str,
         at_word_index: usize,
         new_cue_id: &str,
@@ -451,16 +536,16 @@ impl EditCommand {
         }
         if document
             .captions
-            .cues
+            .list(presentation)
             .iter()
             .any(|cue| cue.cue_id == new_cue_id)
         {
             return Err(CommandError::CueAlreadyExists(new_cue_id.to_owned()));
         }
-        let index = document.cue_index(cue_id)?;
+        let index = document.cue_index(presentation, cue_id)?;
         let cue = document
             .captions
-            .cues
+            .list(presentation)
             .get(index)
             .ok_or_else(|| DocumentError::UnknownCue(cue_id.to_owned()))?
             .clone();
@@ -486,16 +571,21 @@ impl EditCommand {
         tail.lines.push(crate::document::CaptionLine {
             words: tail_words.to_vec(),
         });
-        document.captions.cues.splice(index..=index, [head, tail]);
+        document
+            .captions
+            .list_mut(presentation)
+            .splice(index..=index, [head, tail]);
         Ok(Self::Batch {
             commands: vec![
                 Self::MergeCues {
                     first_cue_id: cue_id.to_owned(),
                     second_cue_id: new_cue_id.to_owned(),
+                    presentation,
                 },
                 Self::SetCueLines {
                     cue_id: cue_id.to_owned(),
                     line_word_counts: original_counts,
+                    presentation,
                 },
             ],
         })
@@ -503,18 +593,18 @@ impl EditCommand {
 
     fn apply_merge_cues(
         document: &mut EditDocument,
+        presentation: Presentation,
         first_cue_id: &str,
         second_cue_id: &str,
     ) -> Result<Self, CommandError> {
-        let first_index = document.cue_index(first_cue_id)?;
-        let second_index = document.cue_index(second_cue_id)?;
+        let first_index = document.cue_index(presentation, first_cue_id)?;
+        let second_index = document.cue_index(presentation, second_cue_id)?;
         if second_index != first_index.saturating_add(1) {
             return Err(CommandError::CuesNotAdjacent);
         }
-        let second = document.captions.cues.remove(second_index);
-        let first = document
-            .captions
-            .cues
+        let cues = document.captions.list_mut(presentation);
+        let second = cues.remove(second_index);
+        let first = cues
             .get_mut(first_index)
             .ok_or_else(|| DocumentError::UnknownCue(first_cue_id.to_owned()))?;
         let first_counts = first.line_word_counts();
@@ -528,14 +618,17 @@ impl EditCommand {
                     cue_id: first_cue_id.to_owned(),
                     at_word_index: split_at,
                     new_cue_id: second_cue_id.to_owned(),
+                    presentation,
                 },
                 Self::SetCueLines {
                     cue_id: first_cue_id.to_owned(),
                     line_word_counts: first_counts,
+                    presentation,
                 },
                 Self::SetCueLines {
                     cue_id: second_cue_id.to_owned(),
                     line_word_counts: second_counts,
+                    presentation,
                 },
             ],
         })

@@ -19,7 +19,9 @@
 //! different word, a different crop rectangle, a different frame for a cue.
 //! `gate-editor` renders fixture documents and compares.
 
-use clipmill_edit_ir::{CaptionAnimation, CaptionCue, CaptionRegion, EditDocument, LayoutState};
+use clipmill_edit_ir::{
+    CaptionAnimation, CaptionCue, CaptionRegion, EditDocument, LayoutState, Presentation,
+};
 
 use crate::{
     graph::crop_rect_at,
@@ -117,6 +119,9 @@ pub struct PreviewPlan {
     pub height: i64,
     /// The program's segments, in order, each mapped to its source.
     pub segments: Vec<PreviewSegment>,
+    /// Which cue list `cues` came from, so a surface showing them addresses
+    /// its cue-scoped commands to the same list.
+    pub presentation: Presentation,
 }
 
 /// Interpret a document against the proxy timeline.
@@ -149,6 +154,7 @@ pub fn preview_plan(
         crops: crops(document, rate, frame_count),
         cues: cues(document, rate),
         segments: segments(document, rate),
+        presentation: document.captions.burned_presentation(),
         gain: document
             .audio
             .gain_curve

@@ -45,8 +45,27 @@ export function trim(inTicks: number, outTicks: number, segmentId = SEGMENT): Ed
   return { op: 'trim', segment_id: segmentId, in_ticks: inTicks, out_ticks: outTicks };
 }
 
-export function editCaptionText(cueId: string, wordIndex: number, text: string): EditCommandJson {
-  return { op: 'edit_caption_text', cue_id: cueId, word_index: wordIndex, text };
+/** Which of the document's two cue lists a cue-scoped command means. */
+export type Presentation = 'reading' | 'burn_in';
+
+/** The presentation field, written only when it is not the default. */
+function inList(presentation: Presentation): { readonly presentation?: Presentation } {
+  return presentation === 'reading' ? {} : { presentation };
+}
+
+export function editCaptionText(
+  cueId: string,
+  wordIndex: number,
+  text: string,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'edit_caption_text',
+    cue_id: cueId,
+    word_index: wordIndex,
+    text,
+    ...inList(presentation),
+  };
 }
 
 /**
@@ -157,16 +176,64 @@ export function segmentTicksAt(
   return { segmentId: segment.segmentId, tTicks: ticksAt(plan, frame - segment.firstFrame) };
 }
 
-export function setCueLines(cueId: string, lineWordCounts: readonly number[]): EditCommandJson {
-  return { op: 'set_cue_lines', cue_id: cueId, line_word_counts: [...lineWordCounts] };
+export function setCueLines(
+  cueId: string,
+  lineWordCounts: readonly number[],
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'set_cue_lines',
+    cue_id: cueId,
+    line_word_counts: [...lineWordCounts],
+    ...inList(presentation),
+  };
 }
 
-export function splitCue(cueId: string, atWordIndex: number, newCueId: string): EditCommandJson {
-  return { op: 'split_cue', cue_id: cueId, at_word_index: atWordIndex, new_cue_id: newCueId };
+export function splitCue(
+  cueId: string,
+  atWordIndex: number,
+  newCueId: string,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'split_cue',
+    cue_id: cueId,
+    at_word_index: atWordIndex,
+    new_cue_id: newCueId,
+    ...inList(presentation),
+  };
 }
 
-export function mergeCues(firstCueId: string, secondCueId: string): EditCommandJson {
-  return { op: 'merge_cues', first_cue_id: firstCueId, second_cue_id: secondCueId };
+export function mergeCues(
+  firstCueId: string,
+  secondCueId: string,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'merge_cues',
+    first_cue_id: firstCueId,
+    second_cue_id: secondCueId,
+    ...inList(presentation),
+  };
+}
+
+/**
+ * The command that corrects one shown word, whatever the document knows it by.
+ *
+ * Addressed to the word's identity when it has one, so it lands in both
+ * presentations. A document that predates ids is corrected by cue and index
+ * in the presentation on screen — the one place the command can reach.
+ */
+export function correctWord(
+  plan: PreviewPlan,
+  cue: { readonly cueId: string },
+  wordIndex: number,
+  word: { readonly wordId: string },
+  text: string,
+): EditCommandJson {
+  return word.wordId === ''
+    ? editCaptionText(cue.cueId, wordIndex, text, plan.presentation)
+    : setWordText(word.wordId, text);
 }
 
 export function setGain(tTicks: number, gainDb: number): EditCommandJson {
