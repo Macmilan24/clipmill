@@ -105,7 +105,7 @@ pub fn derive(
     let language = transcript.language.as_str().to_owned();
     let (profiles, direction, _known) = profile::for_language(&language);
     let span = span_of(transcript, request)?;
-    let tokens = tokens_of(transcript, index, span);
+    let tokens = sequential(tokens_of(transcript, index, span));
     if tokens.is_empty() {
         return Err(DeriveError::NoWords);
     }
@@ -247,6 +247,33 @@ fn tokens_of(
             }
         })
         .collect()
+}
+
+/// The words as the transcript timed them, made strictly sequential.
+///
+/// A transcript is a measurement and is not edited here, but two words at
+/// one moment cannot be captioned: every rule downstream — the cue windows,
+/// the karaoke sweep, the edit document's own validation — has each word end
+/// before the next begins. Where a producer gave two words one interval (a
+/// spread over a gap the aligner left, an aligner that overlapped by a
+/// sample), the later word is moved to start where the earlier ends and kept
+/// at least a tick long. A tick is eleven microseconds; the alternative was a
+/// document refused for a cue whose words were out of order, and a clip
+/// nobody could open.
+fn sequential(mut built: Vec<Built>) -> Vec<Built> {
+    let mut cursor: Option<i64> = None;
+    for entry in &mut built {
+        if let Some(end) = cursor
+            && entry.token.start_ticks < end
+        {
+            entry.token.start_ticks = end;
+        }
+        if entry.token.end_ticks <= entry.token.start_ticks {
+            entry.token.end_ticks = entry.token.start_ticks + 1;
+        }
+        cursor = Some(entry.token.end_ticks);
+    }
+    built
 }
 
 /// One token, plus what it needs to point back at the transcript.

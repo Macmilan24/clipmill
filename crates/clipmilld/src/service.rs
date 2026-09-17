@@ -2972,6 +2972,9 @@ fn store_error_reply(request_id: String, error: &StoreError) -> Reply {
         StoreError::Conflict => error_reply(request_id, ErrorCode::Conflict, error.to_string()),
         StoreError::NotFound => error_reply(request_id, ErrorCode::NotFound, error.to_string()),
         StoreError::Database(_) | StoreError::InvalidData(_) | StoreError::Stopped => {
+            // The caller is told only that the store failed; the reason is
+            // for the log, where a store that refuses a document says why.
+            tracing::warn!(%request_id, error = %error, "store request failed");
             error_reply(request_id, ErrorCode::Internal, "internal database error")
         }
     }
