@@ -192,6 +192,20 @@ a plan, and what comes back is checked field by field before it is believed.
 The Editor and Export rows then open the last clip opened — a person's own
 choice — when reached with nothing named.
 
+## An export is the daemon's to remember
+
+The export screen used to follow an export through a job id it held in its
+own state, which a remount starts without: leave the screen while a render
+runs, come back, and the delivery panel was gone — the job still running,
+the files still arriving, nothing on screen following them. An export job
+now carries what it is delivering (`Job.export`: the document, the revision
+rendered, the immutable snapshot, the destination), read off its own payload,
+and the screen opened on a document asks the daemon for the document's
+newest export and follows it from where it is — running, delivered, or
+failed — after navigating away and after the application relaunched. A read
+of the job that fails on the way is said and tried again; only the job
+itself says how it ended.
+
 ## What a run would need, said before the wait
 
 A run submitted to a daemon whose workers nobody had started, or whose

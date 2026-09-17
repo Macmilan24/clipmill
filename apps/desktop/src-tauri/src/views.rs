@@ -18,8 +18,8 @@
 
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ClipDurationV1, ExportArchiveResponse, ExportRequestV1, ExportSeverity,
-    GetLocalLockResponse, GetStorageStatsResponse, Job, PlanExportResponse, Project,
-    RegisterSourceResponse, ResolveMediaResponse, Source, Task,
+    ExportSummaryV1, GetLocalLockResponse, GetStorageStatsResponse, Job, PlanExportResponse,
+    Project, RegisterSourceResponse, ResolveMediaResponse, Source, Task,
 };
 use serde::{Deserialize, Serialize};
 
@@ -157,6 +157,32 @@ pub struct JobView {
     /// to is the first thing a screen reading it needs to know.
     #[serde(rename = "sourceId")]
     pub source_id: String,
+    /// What an export job is delivering, off its own payload; absent for
+    /// every other kind. It is what lets the export screen find a document's
+    /// export again after it was left or the application relaunched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export: Option<ExportSummaryView>,
+}
+
+/// The identity of an export, as its job carries it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportSummaryView {
+    pub doc_id: String,
+    pub revision: u64,
+    pub ir_artifact_id: String,
+    pub destination_dir: String,
+}
+
+impl From<ExportSummaryV1> for ExportSummaryView {
+    fn from(summary: ExportSummaryV1) -> Self {
+        Self {
+            doc_id: summary.doc_id,
+            revision: summary.revision,
+            ir_artifact_id: summary.ir_artifact_id,
+            destination_dir: summary.destination_dir,
+        }
+    }
 }
 
 impl From<Job> for JobView {
@@ -173,6 +199,7 @@ impl From<Job> for JobView {
             failure_class: job.failure_class,
             failure_detail: job.failure_detail,
             source_id: job.source_id,
+            export: job.export.map(Into::into),
         }
     }
 }

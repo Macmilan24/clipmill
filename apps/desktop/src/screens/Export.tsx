@@ -356,6 +356,12 @@ function DeliveryCard({
             </li>
           ))}
         </ul>
+        {delivery.interruption !== null && (
+          <p className="text-xs text-[var(--cm-ink-3)]" data-testid="delivery-interruption">
+            The export goes on in the daemon; the last look at it failed ({delivery.interruption}).
+            Asking again.
+          </p>
+        )}
         {delivery.failure !== null && (
           <Alert variant="destructive">
             <AlertTriangle />

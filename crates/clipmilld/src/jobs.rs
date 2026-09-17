@@ -930,7 +930,7 @@ impl JobPlan {
         Self {
             job_id: JobId::new().to_string(),
             project_id: project_id.to_string(),
-            kind: "export-clip".to_owned(),
+            kind: KIND_EXPORT_CLIP.to_owned(),
             source_id: None,
             payload: job_payload,
             created_unix_millis: now,
@@ -2008,6 +2008,9 @@ impl From<TaskRecord> for v1::Task {
     }
 }
 
+/// The kind of the job an export submits: the render, then the delivery.
+pub(crate) const KIND_EXPORT_CLIP: &str = "export-clip";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct JobRecord {
     pub job_id: String,
@@ -2022,6 +2025,8 @@ pub(crate) struct JobRecord {
     pub output_artifact_ids: Vec<String>,
     pub failure_class: i32,
     pub failure_detail: String,
+    /// What an export job is delivering; `None` for every other kind.
+    pub export: Option<v1::ExportSummaryV1>,
 }
 
 impl From<JobRecord> for v1::Job {
@@ -2038,6 +2043,7 @@ impl From<JobRecord> for v1::Job {
             failure_class: value.failure_class,
             failure_detail: value.failure_detail,
             source_id: value.source_id.unwrap_or_default(),
+            export: value.export,
         }
     }
 }

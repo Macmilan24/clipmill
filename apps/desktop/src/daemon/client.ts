@@ -104,6 +104,24 @@ export interface Job {
    * showed one recording's clips under another's name.
    */
   readonly sourceId: string;
+  /**
+   * What an export job is delivering, off its own payload; absent for every
+   * other kind. An export is durable daemon state, and this is how the export
+   * screen finds a document's export again after it was left or the
+   * application relaunched — rather than in renderer state a remount lost.
+   */
+  readonly export?: ExportSummary;
+}
+
+/** The identity of an export, as its job carries it. */
+export interface ExportSummary {
+  readonly docId: string;
+  /** The revision that was rendered. */
+  readonly revision: number;
+  /** The immutable edit.ir.v1 snapshot it was frozen as. */
+  readonly irArtifactId: string;
+  /** The folder, resolved, the files land in. */
+  readonly destinationDir: string;
 }
 
 /** One transition, as it happened. */

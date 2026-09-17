@@ -720,6 +720,28 @@ pub struct Job {
     /// of an analysis needs to know first.
     #[prost(string, tag = "11")]
     pub source_id: ::prost::alloc::string::String,
+    /// What an export job is delivering, read off its own payload; absent for
+    /// every other kind of job. An export is durable daemon state, and this is
+    /// what lets a screen find the export of a document again after the screen
+    /// was left or the application relaunched, rather than remembering it in
+    /// renderer state that a remount starts without.
+    #[prost(message, optional, tag = "12")]
+    pub export: ::core::option::Option<ExportSummaryV1>,
+}
+/// The identity of an export, as its job carries it.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportSummaryV1 {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+    /// The revision that was rendered.
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
+    /// The immutable edit.ir.v1 snapshot it was frozen as.
+    #[prost(string, tag = "3")]
+    pub ir_artifact_id: ::prost::alloc::string::String,
+    /// The folder, resolved, the files land in.
+    #[prost(string, tag = "4")]
+    pub destination_dir: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Task {

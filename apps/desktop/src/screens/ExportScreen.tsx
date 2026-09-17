@@ -27,7 +27,7 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { ExportPlan, ExportRequest, QueuedExport } from '../daemon/client.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
-import { useDelivery } from '../export/delivery.js';
+import { latestExportOf, useDelivery } from '../export/delivery.js';
 import type { ClipRef } from '../shell/route.js';
 import { Export } from './Export.js';
 
@@ -104,6 +104,22 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
         if (live) {
           setError(cause instanceof Error ? cause.message : String(cause));
         }
+      }
+    })();
+    // The document's export, if it has one, is the daemon's to remember:
+    // an export queued before this screen was left — or before the
+    // application was relaunched — is still running or already delivered,
+    // and it is followed from where it is rather than forgotten.
+    void (async () => {
+      try {
+        const jobs = await api.listJobs(projectId);
+        const found = latestExportOf(jobs, docId);
+        if (live && found !== null) {
+          setQueued((current) => current ?? found);
+        }
+      } catch {
+        // No jobs to read is no export to restore; the screen is what it
+        // was without one.
       }
     })();
     return () => {
