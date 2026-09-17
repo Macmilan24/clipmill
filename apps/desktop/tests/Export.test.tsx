@@ -29,6 +29,7 @@ function plan(overrides: Partial<ExportPlan> = {}): ExportPlan {
     ],
     estimatedBytes: 130_000_000,
     availableBytes: 335_007_449_088,
+    revision: 4,
     ...overrides,
   };
 }
@@ -49,7 +50,7 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
     planning: false,
     busy: false,
     error: null,
-    queued: null,
+    delivery: null,
     archive: null,
     onDestinationChange: vi.fn(),
     onPatternChange: vi.fn(),
@@ -57,6 +58,7 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
     onRightsGateChange: vi.fn(),
     onExport,
     onArchive: vi.fn(),
+    onReveal: vi.fn(),
     ...overrides,
   };
   render(<Export {...props} />);
@@ -94,7 +96,7 @@ describe('the export screen', () => {
       }),
     });
     expect(screen.getByText(/lands inside/)).toBeTruthy();
-    const button = screen.getByRole('button', { name: 'Export' });
+    const button = screen.getByRole('button', { name: /^export revision r4$/i });
     fireEvent.click(button);
     expect(onExport).not.toHaveBeenCalled();
   });
@@ -113,7 +115,7 @@ describe('the export screen', () => {
       }),
     });
     expect(screen.getByText(/46 characters a second/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    fireEvent.click(screen.getByRole('button', { name: /^export revision r4$/i }));
     expect(onExport).toHaveBeenCalledOnce();
   });
 
@@ -138,6 +140,6 @@ describe('the export screen', () => {
   it('says no clip is chosen rather than showing an empty form', () => {
     show({ docId: null, labels: null });
     expect(screen.getByText('No clip is chosen for export')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^export/i })).toBeNull();
   });
 });

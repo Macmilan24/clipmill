@@ -755,6 +755,13 @@ export interface ExportRequest {
   /** YYYY-MM-DD. Supplied here because the daemon's naming reads no clock. */
   readonly date?: string;
   readonly title?: string;
+  /**
+   * The revision the person reviewed. The daemon refuses to export any
+   * other, so an edit that landed between the review and the click — another
+   * window, a late command — is a conflict to re-check rather than a clip
+   * nobody looked at.
+   */
+  readonly expectedRevision?: number;
 }
 
 export interface ExportFinding {
@@ -772,6 +779,19 @@ export interface ExportPlan {
   readonly fileNames: readonly string[];
   readonly estimatedBytes: number;
   readonly availableBytes?: number;
+  /** The revision this plan was computed over — what is being reviewed. */
+  readonly revision: number;
+}
+
+/** What an export froze when it was queued. */
+export interface QueuedExport {
+  /** The job to watch: its two tasks are the render and the delivery. */
+  readonly jobId: string;
+  /** The revision rendered, and the immutable snapshot it was frozen as. */
+  readonly revision: number;
+  readonly irArtifactId: string;
+  /** The folder, resolved, the files land in. */
+  readonly destinationDir: string;
 }
 
 export interface ArchiveResult {
@@ -806,12 +826,26 @@ export async function planExport(request: ExportRequest): Promise<ExportPlan> {
 }
 
 /** Perform an export. Answers with the job to watch, not the finished files. */
-export async function exportClip(request: ExportRequest): Promise<string> {
+export async function exportClip(request: ExportRequest): Promise<QueuedExport> {
   if (!isTauri()) {
     throw new Error(NOT_IN_SHELL.reason);
   }
   const { invoke } = await core();
-  return invoke<string>('export_clip', { request });
+  return invoke<QueuedExport>('export_clip', { request });
+}
+
+/**
+ * Show a delivered file in the operating system's file manager.
+ *
+ * The host checks the path names an existing file before anything is
+ * spawned; nothing here can read, write or run it.
+ */
+export async function revealPath(path: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  await invoke<void>('reveal_path', { path });
 }
 
 /** Pack a project's work into a zip that outlives this application. */

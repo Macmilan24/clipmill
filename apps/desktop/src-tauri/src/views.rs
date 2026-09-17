@@ -782,6 +782,9 @@ pub struct ExportPlanView {
     /// as a full disk.
     #[serde(rename = "availableBytes", skip_serializing_if = "Option::is_none")]
     pub available_bytes: Option<u64>,
+    /// The revision this plan was computed over: what the person is reviewing,
+    /// and what the export must be of.
+    pub revision: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -821,6 +824,32 @@ impl From<PlanExportResponse> for ExportPlanView {
             file_names: plan.file_names,
             estimated_bytes: plan.estimated_bytes,
             available_bytes: plan.available_known.then_some(plan.available_bytes),
+            revision: plan.revision,
+        }
+    }
+}
+
+/// What an export froze when it was queued.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedExportView {
+    /// The job to watch: its two tasks are the render and the delivery.
+    pub job_id: String,
+    /// The revision rendered, and the immutable snapshot it was frozen as.
+    pub revision: u64,
+    pub ir_artifact_id: String,
+    /// The folder, resolved, the files land in; the delivered package names
+    /// its files relative to it.
+    pub destination_dir: String,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::ExportClipResponse> for QueuedExportView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::ExportClipResponse) -> Self {
+        Self {
+            job_id: reply.job_id,
+            revision: reply.revision,
+            ir_artifact_id: reply.ir_artifact_id,
+            destination_dir: reply.destination_dir,
         }
     }
 }
@@ -894,6 +923,10 @@ pub struct ExportRequestInput {
     pub date: String,
     #[serde(default)]
     pub title: String,
+    /// The revision the person reviewed; the daemon refuses to export any
+    /// other. Absent takes the current revision.
+    #[serde(default)]
+    pub expected_revision: Option<u64>,
 }
 
 impl From<ExportRequestInput> for ExportRequestV1 {
@@ -908,6 +941,7 @@ impl From<ExportRequestInput> for ExportRequestV1 {
             index: input.index,
             date: input.date,
             title: input.title,
+            expected_revision: input.expected_revision,
         }
     }
 }

@@ -1281,6 +1281,13 @@ message ExportRequestV1 {
   string date = 8;
   // The clip's own words for the {clip} token, when it has a title.
   string title = 9;
+  // The revision the person reviewed. Set, an export of any other revision
+  // is refused as a conflict: planning read the document and submission
+  // reads it again, and an edit between the two — another window, a late
+  // command — would otherwise deliver a clip nobody looked at. Unset, the
+  // current revision is taken, which is what a caller with no review step
+  // means.
+  optional uint64 expected_revision = 10;
 }
 
 // Check an export without performing one. No side effects, no files.
@@ -1300,6 +1307,9 @@ message PlanExportResponse {
   // False when free space could not be read, which a caller must distinguish
   // from a genuinely full disk.
   bool available_known = 6;
+  // The revision this plan was computed over. A caller carries it into the
+  // export request as the revision it reviewed.
+  uint64 revision = 7;
 }
 
 // Perform an export. Refused outright when the strip finds anything blocking,
@@ -1313,6 +1323,12 @@ message ExportClipResponse {
   // The job to watch. Its tasks are the render and the delivery, so progress
   // arrives on the task event stream every other long operation uses.
   string job_id = 1;
+  // What was frozen: the revision rendered, the immutable edit.ir.v1 snapshot
+  // it was frozen as, and the folder — resolved — the files will land in.
+  // The delivered package names its files relative to that folder.
+  uint64 revision = 2;
+  string ir_artifact_id = 3;
+  string destination_dir = 4;
 }
 
 // Versioned payload for the export job (render, then deliver).

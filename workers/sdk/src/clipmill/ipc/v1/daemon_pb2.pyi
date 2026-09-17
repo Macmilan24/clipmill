@@ -1324,7 +1324,7 @@ class ExportValidationV1(_message.Message):
     def __init__(self, passes: _Optional[bool] = ..., findings: _Optional[_Iterable[_Union[ExportFindingV1, _Mapping]]] = ...) -> None: ...
 
 class ExportRequestV1(_message.Message):
-    __slots__ = ("doc_id", "destination_dir", "naming_pattern", "source_attestation", "gates_passed", "ai_assistance", "index", "date", "title")
+    __slots__ = ("doc_id", "destination_dir", "naming_pattern", "source_attestation", "gates_passed", "ai_assistance", "index", "date", "title", "expected_revision")
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     DESTINATION_DIR_FIELD_NUMBER: _ClassVar[int]
     NAMING_PATTERN_FIELD_NUMBER: _ClassVar[int]
@@ -1334,6 +1334,7 @@ class ExportRequestV1(_message.Message):
     INDEX_FIELD_NUMBER: _ClassVar[int]
     DATE_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
     doc_id: str
     destination_dir: str
     naming_pattern: str
@@ -1343,7 +1344,8 @@ class ExportRequestV1(_message.Message):
     index: int
     date: str
     title: str
-    def __init__(self, doc_id: _Optional[str] = ..., destination_dir: _Optional[str] = ..., naming_pattern: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ..., index: _Optional[int] = ..., date: _Optional[str] = ..., title: _Optional[str] = ...) -> None: ...
+    expected_revision: int
+    def __init__(self, doc_id: _Optional[str] = ..., destination_dir: _Optional[str] = ..., naming_pattern: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ..., index: _Optional[int] = ..., date: _Optional[str] = ..., title: _Optional[str] = ..., expected_revision: _Optional[int] = ...) -> None: ...
 
 class PlanExportRequest(_message.Message):
     __slots__ = ("request",)
@@ -1352,20 +1354,22 @@ class PlanExportRequest(_message.Message):
     def __init__(self, request: _Optional[_Union[ExportRequestV1, _Mapping]] = ...) -> None: ...
 
 class PlanExportResponse(_message.Message):
-    __slots__ = ("validation", "stem", "file_names", "estimated_bytes", "available_bytes", "available_known")
+    __slots__ = ("validation", "stem", "file_names", "estimated_bytes", "available_bytes", "available_known", "revision")
     VALIDATION_FIELD_NUMBER: _ClassVar[int]
     STEM_FIELD_NUMBER: _ClassVar[int]
     FILE_NAMES_FIELD_NUMBER: _ClassVar[int]
     ESTIMATED_BYTES_FIELD_NUMBER: _ClassVar[int]
     AVAILABLE_BYTES_FIELD_NUMBER: _ClassVar[int]
     AVAILABLE_KNOWN_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
     validation: ExportValidationV1
     stem: str
     file_names: _containers.RepeatedScalarFieldContainer[str]
     estimated_bytes: int
     available_bytes: int
     available_known: bool
-    def __init__(self, validation: _Optional[_Union[ExportValidationV1, _Mapping]] = ..., stem: _Optional[str] = ..., file_names: _Optional[_Iterable[str]] = ..., estimated_bytes: _Optional[int] = ..., available_bytes: _Optional[int] = ..., available_known: _Optional[bool] = ...) -> None: ...
+    revision: int
+    def __init__(self, validation: _Optional[_Union[ExportValidationV1, _Mapping]] = ..., stem: _Optional[str] = ..., file_names: _Optional[_Iterable[str]] = ..., estimated_bytes: _Optional[int] = ..., available_bytes: _Optional[int] = ..., available_known: _Optional[bool] = ..., revision: _Optional[int] = ...) -> None: ...
 
 class ExportClipRequest(_message.Message):
     __slots__ = ("request",)
@@ -1374,10 +1378,16 @@ class ExportClipRequest(_message.Message):
     def __init__(self, request: _Optional[_Union[ExportRequestV1, _Mapping]] = ...) -> None: ...
 
 class ExportClipResponse(_message.Message):
-    __slots__ = ("job_id",)
+    __slots__ = ("job_id", "revision", "ir_artifact_id", "destination_dir")
     JOB_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    DESTINATION_DIR_FIELD_NUMBER: _ClassVar[int]
     job_id: str
-    def __init__(self, job_id: _Optional[str] = ...) -> None: ...
+    revision: int
+    ir_artifact_id: str
+    destination_dir: str
+    def __init__(self, job_id: _Optional[str] = ..., revision: _Optional[int] = ..., ir_artifact_id: _Optional[str] = ..., destination_dir: _Optional[str] = ...) -> None: ...
 
 class ExportClipPayloadV1(_message.Message):
     __slots__ = ("key_version", "request", "ir_artifact_id")

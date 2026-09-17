@@ -6,9 +6,11 @@
  * its own, and the screen is handed a clip in the older one: every request it
  * sends must name that document, and the archive must be of that project.
  */
+import { JobState, TaskState } from '@clipmill/contracts';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { ExportPlan, Job } from '../src/daemon/client.js';
 import { ExportScreen } from '../src/screens/ExportScreen.js';
 import type { ClipRef } from '../src/shell/route.js';
 import {
@@ -22,7 +24,7 @@ import {
   document,
   twoProjects,
 } from './support/clips.js';
-import { type FakeWorld, fakeApi } from './support/library.js';
+import { type FakeWorld, fakeApi, job, task } from './support/library.js';
 
 const OLDER_CLIP: ClipRef = {
   projectId: OLD,
@@ -50,6 +52,7 @@ describe('the export screen, handed a clip in an older project', () => {
           stem: '01-charging-less',
           fileNames: ['01-charging-less.mp4'],
           estimatedBytes: 1_000,
+          revision: 0,
         },
       }),
     );
@@ -70,6 +73,7 @@ describe('the export screen, handed a clip in an older project', () => {
           stem: '01-charging-less',
           fileNames: ['01-charging-less.mp4'],
           estimatedBytes: 1_000,
+          revision: 0,
         },
       }),
     );
@@ -82,9 +86,9 @@ describe('the export screen, handed a clip in an older project', () => {
     });
     expect(world.exported.every((request) => request.docId === OLD_DOC)).toBe(true);
 
-    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export revision/i }));
     await waitFor(() => {
-      expect(screen.getByText(/queued as/i)).toBeTruthy();
+      expect(screen.getByTestId('delivery')).toBeTruthy();
     });
     expect(world.exported.at(-1)).toMatchObject({
       docId: OLD_DOC,
@@ -124,5 +128,183 @@ describe('the export screen, reached with no clip named', () => {
     );
     fireEvent.click(older!.querySelector('button')!);
     expect(onOpen.mock.calls[0]?.[0]).toMatchObject({ projectId: OLD, docId: OLD_DOC });
+  });
+});
+
+function passing(revision = 0): ExportPlan {
+  return {
+    passes: true,
+    findings: [],
+    stem: '01-charging-less',
+    fileNames: ['01-charging-less.mp4', '01-charging-less.srt'],
+    estimatedBytes: 1_000,
+    revision,
+  };
+}
+
+/** Choose a folder and wait for the plan the daemon answers with. */
+async function planned(world: FakeWorld) {
+  await screen.findByTestId('export-clip');
+  fireEvent.change(screen.getByLabelText(/folder/i), {
+    target: { value: '/Users/sami/Movies/clips' },
+  });
+  await waitFor(() => {
+    expect(world.exported.length).toBeGreaterThanOrEqual(1);
+  });
+}
+
+/** The export job in a state, with the package artifact when delivered. */
+function exportJob(state: JobState, tasks: readonly ReturnType<typeof task>[]): Job {
+  return { ...job(OLD, state, tasks), jobId: 'job_export', kind: 'export-clip' };
+}
+
+const PACKAGE = {
+  artifactId: 'sha256:package',
+  kind: 'export.package.v1',
+  json: JSON.stringify({
+    schema_version: 'clipmill.export.package.v1',
+    doc_id: OLD_DOC,
+    title: '',
+    render_artifact_id: 'sha256:render',
+    video: {},
+    audio: {},
+    disclosure: {},
+    files: [
+      { name: '01-charging-less.mp4', role: 'clip', sha256: 'a'.repeat(64), bytes: 900 },
+      { name: '01-charging-less.srt', role: 'subtitles_srt', sha256: 'b'.repeat(64), bytes: 90 },
+    ],
+  }),
+};
+
+describe('the export screen and the revision that was reviewed', () => {
+  it('sends the revision the plan checked, and says which it is exporting', async () => {
+    const world = twoProjects({
+      exportPlan: passing(4),
+      plan: { ...twoProjects().plan!, revision: 4 },
+    });
+    show(OLDER_CLIP, world);
+    await planned(world);
+    const button = await screen.findByRole('button', { name: /export revision r4/i });
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(world.exported.some((request) => request.expectedRevision === 4)).toBe(true);
+    });
+  });
+
+  it('re-plans and says so when the document moved since the review', async () => {
+    // The plan checked revision 4; by the time the click lands the document is
+    // at revision 5, and the daemon refuses. The screen shows the refusal and
+    // plans again over what the document is now rather than exporting blind.
+    const world = twoProjects({
+      exportPlan: passing(4),
+      plan: { ...twoProjects().plan!, revision: 5 },
+    });
+    show(OLDER_CLIP, world);
+    await planned(world);
+    const plansBefore = world.exported.length;
+    fireEvent.click(await screen.findByRole('button', { name: /export revision r4/i }));
+    expect(await screen.findByText(/moved since it was reviewed/i)).toBeTruthy();
+    await waitFor(() => {
+      expect(world.exported.length).toBeGreaterThan(plansBefore);
+    });
+    expect(screen.queryByTestId('delivery')).toBeNull();
+  });
+});
+
+describe('following a queued export', () => {
+  it('shows the render and the delivery as they happen', async () => {
+    const base = twoProjects();
+    const world = twoProjects({
+      exportPlan: passing(0),
+      jobs: {
+        ...base.jobs,
+        [OLD]: [
+          ...base.jobs[OLD]!,
+          exportJob(JobState.RUNNING, [
+            task('render.clip.v1', TaskState.RUNNING, {
+              progress: { unit: 'frames', done: 120, total: 900 },
+            }),
+            task('export.package.v1', TaskState.PLANNED),
+          ]),
+        ],
+      },
+    });
+    show(OLDER_CLIP, world);
+    await planned(world);
+    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    const card = await screen.findByTestId('delivery');
+    expect(card.textContent).toContain('Delivering revision r0');
+    expect(card.textContent).toContain('/Users/sami/Movies/clips');
+    await waitFor(() => {
+      expect(screen.getByTestId('stage-render').textContent).toBe('120 of 900 frames');
+    });
+    expect(screen.getByTestId('stage-deliver').textContent).toBe('waiting');
+    // Nothing can be exported twice while one is in flight.
+    expect(screen.getByRole('button', { name: /export revision/i })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
+  it('lists the files the delivery wrote, at the folder it wrote them to, and reveals one', async () => {
+    const base = twoProjects();
+    const world = twoProjects({
+      exportPlan: passing(0),
+      jobs: {
+        ...base.jobs,
+        [OLD]: [
+          ...base.jobs[OLD]!,
+          exportJob(JobState.SUCCEEDED, [
+            task('render.clip.v1', TaskState.SUCCEEDED),
+            task('export.package.v1', TaskState.SUCCEEDED, {
+              outputArtifactId: PACKAGE.artifactId,
+            }),
+          ]),
+        ],
+      },
+      documents: { ...base.documents, [PACKAGE.artifactId]: PACKAGE },
+    });
+    show(OLDER_CLIP, world);
+    await planned(world);
+    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    const files = await screen.findByRole('list', { name: /delivered files/i });
+    expect(files.textContent).toContain('/Users/sami/Movies/clips/01-charging-less.mp4');
+    expect(files.textContent).toContain('/Users/sami/Movies/clips/01-charging-less.srt');
+    expect(screen.getByTestId('delivery').textContent).toContain('Delivered revision r0');
+    fireEvent.click(screen.getByRole('button', { name: /reveal 01-charging-less\.mp4/i }));
+    expect(world.revealed).toEqual(['/Users/sami/Movies/clips/01-charging-less.mp4']);
+  });
+
+  it('says why an export failed, in the daemon\u2019s words', async () => {
+    const base = twoProjects();
+    const world = twoProjects({
+      exportPlan: passing(0),
+      jobs: {
+        ...base.jobs,
+        [OLD]: [
+          ...base.jobs[OLD]!,
+          {
+            ...exportJob(JobState.FAILED, [
+              task('render.clip.v1', TaskState.FAILED),
+              task('export.package.v1', TaskState.CANCELLED),
+            ]),
+            failureDetail: 'the encoder ran out of disk at frame 411',
+          },
+        ],
+      },
+    });
+    show(OLDER_CLIP, world);
+    await planned(world);
+    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    expect(await screen.findByText(/ran out of disk at frame 411/i)).toBeTruthy();
+    expect(screen.getByTestId('stage-render').textContent).toBe('failed');
+    expect(screen.queryByRole('list', { name: /delivered files/i })).toBeNull();
+    // The failure is over; another export can be asked for.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export revision/i })).toHaveProperty(
+        'disabled',
+        false,
+      );
+    });
   });
 });
