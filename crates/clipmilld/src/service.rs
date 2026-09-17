@@ -10,22 +10,21 @@ use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ClipCutV1, ClipDecisionRecordV1,
     ClipDecisionV1, CreateEditDocRequest, CreateProjectRequest, CropKeyframeV1, CropWeightsV1,
     DeliverExportPayloadV1, DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1,
-    DetectShotsPayloadV1, DirectClipRequest, DirectClipResponse, DiscoverCandidatesPayloadV1,
-    Error, ErrorCode, ExportArchiveRequest, ExportArchiveResponse, ExportClipPayloadV1,
-    ExportClipRequest, ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity,
-    ExportValidationV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
-    GetJobResponse, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
-    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
-    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
-    ListClipDecisionsResponse, ListEditDocsResponse, ListJobsResponse, ListProjectsResponse,
-    ListSourcesResponse, LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest,
-    PlanExportResponse, PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewWordV1,
-    ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse,
-    RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse,
-    Response, SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse,
-    SolveCropPathRequest, SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
-    response,
+    DetectShotsPayloadV1, DirectClipRequest, DiscoverCandidatesPayloadV1, Error, ErrorCode,
+    ExportArchiveRequest, ExportArchiveResponse, ExportClipPayloadV1, ExportClipRequest,
+    ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity, ExportValidationV1,
+    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
+    GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse,
+    GetSourceResponse, GetStorageStatsResponse, HealthResponse, IndexTranscriptPayloadV1,
+    IngestSourcePayloadV1, ListClipDecisionsRequest, ListClipDecisionsResponse,
+    ListEditDocsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
+    LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest, PlanExportResponse,
+    PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewWordV1, ProbeSourcePayloadV1,
+    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
+    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
+    SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest, SubscribeTaskEventsRequest,
+    SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -1481,6 +1480,14 @@ impl Service {
     /// Assembling and creating in one call rather than two: a caller that
     /// assembled, then created, would have a window where a clip is half
     /// approved, and nothing downstream could tell that state from a crash.
+    ///
+    /// The document is assembled every time and stored only when the clip has
+    /// none yet, or when a variation was asked for. Directing a clip that
+    /// already has a document hands that document back as it stands — the
+    /// trims and corrections somebody made to it are why it is the answer —
+    /// and the reply says so. An approval, when requested, lands in the same
+    /// transaction as the document, so "approved but nothing to open" is not a
+    /// state the store can be left in.
     async fn direct_clip(
         &self,
         request_id: String,
@@ -1531,19 +1538,13 @@ impl Service {
             Err(message) => return error_reply(request_id, ErrorCode::InvalidArgument, message),
         };
 
-        let Some(segment) = document.video.segments.first() else {
+        if document.video.segments.is_empty() {
             return error_reply(
                 request_id,
                 ErrorCode::Internal,
                 "the director produced a document with no segment",
             );
-        };
-        let (start_ticks, end_ticks) = (segment.in_ticks, segment.out_ticks);
-        let decisions = document
-            .rationale
-            .as_ref()
-            .map(|rationale| rationale.decisions.clone())
-            .unwrap_or_default();
+        }
         let Ok(document_json) = serde_json::to_string(&document) else {
             return error_reply(
                 request_id,
@@ -1556,37 +1557,35 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
-        let encoded = match self
+        match self
             .database
-            .create_edit_doc(
+            .direct_edit_doc(
                 request_id.clone(),
                 request_hash,
-                project_id.to_string(),
+                crate::db::ClipIdentity {
+                    project: project_id.to_string(),
+                    source: source_id.to_string(),
+                    candidate: direct.candidate_id.clone(),
+                },
                 document_json,
+                crate::db::DirectOptions {
+                    variation: direct.variation,
+                    approve: direct.approve,
+                },
                 now,
             )
             .await
         {
-            Ok(encoded) => encoded,
-            Err(error) => return store_error_reply(request_id, &error),
-        };
-        let Some(doc) = created_edit_doc(&encoded) else {
-            return error_reply(
-                request_id,
-                ErrorCode::Internal,
-                "the stored document did not decode",
-            );
-        };
-        response_reply(
-            request_id,
-            response::Body::DirectClip(DirectClipResponse {
-                doc: Some(doc),
-                start_ticks: u64::try_from(start_ticks).unwrap_or(0),
-                end_ticks: u64::try_from(end_ticks).unwrap_or(0),
-                decisions,
-                reopened: false,
-            }),
-        )
+            // The store encoded the whole reply — the document, where its
+            // segment stands, and whether it was reopened — because for a
+            // reopened document those answers come from the stored copy, not
+            // from the one assembled above.
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
+            Err(error) => store_error_reply(request_id, &error),
+        }
     }
 
     async fn set_clip_decision(
@@ -2792,26 +2791,6 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         None => "missing_body",
-    }
-}
-
-/// The document out of a stored `create_edit_doc` reply.
-///
-/// The store hands every caller a whole `Response` envelope, because all of
-/// them forward those bytes as the reply unchanged. Directing is the exception:
-/// it needs the document *inside* a response of its own, so it has to unwrap
-/// the envelope rather than decode it as the payload. Decoding the envelope
-/// straight to `EditDoc` does not fail — Protobuf reinterprets one message as
-/// another permissively — it just puts the request id where the document id
-/// goes and leaves the document empty, which is what `direct_clip` returned to
-/// every caller until this existed.
-fn created_edit_doc(encoded: &[u8]) -> Option<clipmill_contracts::proto::ipc::v1::EditDoc> {
-    match Response::decode(encoded) {
-        Ok(Response {
-            body: Some(response::Body::CreateEditDoc(created)),
-            ..
-        }) => created.doc,
-        _ => None,
     }
 }
 

@@ -8,16 +8,23 @@
 //! A command is applied and logged in one transaction against the single
 //! writer, so an acknowledged edit is durable by the time the caller sees it
 //! and the log can never describe a document that was never reached.
+//!
+//! A directed document also knows which clip it is. The source it was cut from
+//! and the candidate it was built for sit beside it as columns, so "the
+//! document for this clip" is a lookup rather than a guess at the newest — and
+//! directing the same clip again finds that document and hands it back, edits
+//! included, instead of building a second one nobody asked for.
 
 use clipmill_contracts::proto::ipc::v1::{
-    ApplyEditCommandResponse, CreateEditDocResponse, EditDoc, Response, response,
+    ApplyEditCommandResponse, CreateEditDocResponse, DirectClipResponse, EditDoc, Response,
+    response,
 };
 use clipmill_core::{EditDocId, ProjectId};
 use clipmill_edit_ir::{EditCommand, EditDocument};
 use prost::Message;
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 
-use super::{StoreError, remember, replay};
+use super::{Decision, StoreError, decision_store, remember, replay};
 
 pub(super) const CREATE_V6_TABLES: &str = "
     CREATE TABLE edit_docs (
@@ -42,6 +49,40 @@ pub(super) const CREATE_V6_TABLES: &str = "
         applied_unix_millis INTEGER NOT NULL CHECK(applied_unix_millis >= 0),
         PRIMARY KEY(doc_id, revision)
     ) STRICT, WITHOUT ROWID;
+";
+
+/// Which clip a document is: the source it was cut from and the candidate it
+/// was built for.
+///
+/// Nullable, because a document handed in whole through `CreateEditDoc` names
+/// no candidate and never will. The backfill recovers what it can for rows
+/// that predate the columns: the candidate is in the document's own rationale,
+/// and the source is the registered recording whose fingerprint the first
+/// segment names. A row the backfill cannot place stays null and is listed
+/// as a document with no clip, which is what it is.
+pub(super) const CREATE_V10_TABLES: &str = "
+    ALTER TABLE edit_docs ADD COLUMN source_id TEXT;
+    ALTER TABLE edit_docs ADD COLUMN candidate_id TEXT;
+
+    UPDATE edit_docs
+       SET candidate_id = json_extract(document, '$.rationale.candidate_id')
+     WHERE candidate_id IS NULL
+       AND json_type(document, '$.rationale.candidate_id') = 'text';
+
+    UPDATE edit_docs
+       SET source_id = (
+           SELECT s.source_id FROM sources s
+            WHERE s.project_id = edit_docs.project_id
+              AND s.source_fingerprint =
+                  json_extract(edit_docs.document, '$.video.segments[0].source_fingerprint')
+            ORDER BY s.created_unix_millis ASC, s.source_id ASC
+            LIMIT 1
+       )
+     WHERE source_id IS NULL;
+
+    CREATE INDEX edit_docs_by_clip
+        ON edit_docs(project_id, source_id, candidate_id, created_unix_millis DESC, doc_id DESC)
+        WHERE candidate_id IS NOT NULL;
 ";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -143,6 +184,193 @@ pub(super) fn create_edit_doc(
     Ok(response)
 }
 
+/// Which clip a directed document is for: the project, the recording in it,
+/// and the candidate the director built from.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ClipIdentity {
+    pub project: String,
+    pub source: String,
+    pub candidate: String,
+}
+
+/// What `direct_edit_doc` is asked to do beyond storing a document.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DirectOptions {
+    /// Build a second document beside an existing one rather than reopening
+    /// it.
+    pub variation: bool,
+    /// Record the approval in the same transaction.
+    pub approve: bool,
+}
+
+/// What came back: the document, and whether it already existed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct Directed {
+    pub record: EditDocRecord,
+    pub reopened: bool,
+}
+
+/// The document for a clip: found if the clip has one, created if not.
+///
+/// One transaction does three things that must not be separable. It looks for
+/// a document this candidate already has and, unless a variation was asked
+/// for, hands that back untouched — the edits somebody made to it are the
+/// reason it is the answer. Otherwise it stores the document the director
+/// assembled. And if the caller is approving, it records the decision in the
+/// same write, so a clip is never approved without a document to open and
+/// never has a document without the approval that made it.
+///
+/// The reply is stored under the request id like every mutation, so a retry
+/// after a lost response gets the same bytes rather than a second document.
+pub(super) fn direct_edit_doc(
+    connection: &mut Connection,
+    request_id: &str,
+    request_hash: &[u8; 32],
+    identity: &ClipIdentity,
+    document_json: &str,
+    options: DirectOptions,
+    now: u64,
+) -> Result<Vec<u8>, StoreError> {
+    identity
+        .project
+        .parse::<ProjectId>()
+        .map_err(|_| StoreError::InvalidData("edit document project id is invalid"))?;
+    if identity.source.is_empty() || identity.candidate.is_empty() {
+        return Err(StoreError::InvalidData(
+            "a directed document names its source and its candidate",
+        ));
+    }
+    let document = EditDocument::from_canonical_json(document_json.as_bytes())
+        .map_err(|_| StoreError::InvalidData("directed edit document is not valid"))?;
+    let canonical = canonical_document(&document)?;
+
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if let Some(response) = replay(&transaction, request_id, request_hash)? {
+        transaction.commit()?;
+        return Ok(response);
+    }
+    let project_exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM projects WHERE project_id = ?1 AND is_system = 0)",
+        [&identity.project],
+        |row| row.get(0),
+    )?;
+    if !project_exists {
+        return Err(StoreError::NotFound);
+    }
+
+    let existing = if options.variation {
+        None
+    } else {
+        newest_for_clip(&transaction, identity)?
+    };
+    let directed = if let Some(record) = existing {
+        Directed {
+            record,
+            reopened: true,
+        }
+    } else {
+        let doc_id = EditDocId::new().to_string();
+        let now_sql = sqlite_u64(now)?;
+        transaction.execute(
+            "INSERT INTO edit_docs(
+                doc_id, project_id, revision, initial_document, document,
+                created_unix_millis, updated_unix_millis, source_id, candidate_id
+             ) VALUES (?1, ?2, 0, ?3, ?3, ?4, ?4, ?5, ?6)",
+            params![
+                doc_id,
+                identity.project,
+                canonical,
+                now_sql,
+                identity.source,
+                identity.candidate
+            ],
+        )?;
+        Directed {
+            record: EditDocRecord {
+                doc_id,
+                project_id: identity.project.clone(),
+                source_id: Some(identity.source.clone()),
+                candidate_id: Some(identity.candidate.clone()),
+                revision: 0,
+                document_json: canonical,
+                created_unix_millis: now,
+                updated_unix_millis: now,
+            },
+            reopened: false,
+        }
+    };
+    if options.approve {
+        decision_store::set(
+            &transaction,
+            &identity.project,
+            &identity.source,
+            &identity.candidate,
+            Decision::Approved,
+            now,
+        )?;
+    }
+
+    let response = Response {
+        request_id: request_id.to_owned(),
+        body: Some(response::Body::DirectClip(direct_response(&directed)?)),
+    }
+    .encode_to_vec();
+    remember(&transaction, request_id, request_hash, &response, now)?;
+    transaction.commit()?;
+    Ok(response)
+}
+
+/// The reply for a directed document, read off the document itself.
+///
+/// The cut and the decisions come from the stored document rather than from
+/// what the director assembled this time, because for a reopened document the
+/// two differ — a trim moved the segment, and the segment is what the caller
+/// is about to open.
+fn direct_response(directed: &Directed) -> Result<DirectClipResponse, StoreError> {
+    let document = EditDocument::from_canonical_json(directed.record.document_json.as_bytes())
+        .map_err(|_| StoreError::InvalidData("stored edit document is not valid"))?;
+    let (start_ticks, end_ticks) = document
+        .video
+        .segments
+        .first()
+        .map(|segment| (segment.in_ticks, segment.out_ticks))
+        .unwrap_or_default();
+    Ok(DirectClipResponse {
+        doc: Some(directed.record.clone().into()),
+        start_ticks: u64::try_from(start_ticks).unwrap_or(0),
+        end_ticks: u64::try_from(end_ticks).unwrap_or(0),
+        decisions: document
+            .rationale
+            .map(|rationale| rationale.decisions)
+            .unwrap_or_default(),
+        reopened: directed.reopened,
+    })
+}
+
+/// The newest document a clip has, if it has one.
+///
+/// Newest by creation, because when a clip has several — an approval and a
+/// variation taken afterwards — the one somebody made last is the one they
+/// were last working on.
+fn newest_for_clip(
+    transaction: &Transaction<'_>,
+    identity: &ClipIdentity,
+) -> Result<Option<EditDocRecord>, StoreError> {
+    transaction
+        .query_row(
+            "SELECT doc_id, project_id, revision, document,
+                    created_unix_millis, updated_unix_millis, source_id, candidate_id
+               FROM edit_docs
+              WHERE project_id = ?1 AND source_id = ?2 AND candidate_id = ?3
+              ORDER BY created_unix_millis DESC, doc_id DESC
+              LIMIT 1",
+            params![identity.project, identity.source, identity.candidate],
+            record_from_row,
+        )
+        .optional()
+        .map_err(StoreError::from)
+}
+
 pub(super) fn apply_edit_command(
     connection: &mut Connection,
     request_id: &str,
@@ -159,23 +387,25 @@ pub(super) fn apply_edit_command(
         transaction.commit()?;
         return Ok(response);
     }
-    let row: Option<(String, i64, String)> = transaction
+    let Some(current) = transaction
         .query_row(
-            "SELECT project_id, revision, document FROM edit_docs WHERE doc_id = ?1",
+            "SELECT doc_id, project_id, revision, document,
+                    created_unix_millis, updated_unix_millis, source_id, candidate_id
+               FROM edit_docs WHERE doc_id = ?1",
             [doc_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            record_from_row,
         )
-        .optional()?;
-    let Some((project_id, revision, document_json)) = row else {
+        .optional()?
+    else {
         return Err(StoreError::NotFound);
     };
-    let revision = u64_from_i64(revision)?;
-    if revision != expected_revision {
+    if current.revision != expected_revision {
         // The client edited a document it had not seen the latest state of.
         // Rebasing silently would discard whichever edit lost the race.
         return Err(StoreError::Conflict);
     }
-    let mut document = EditDocument::from_canonical_json(document_json.as_bytes())
+    let revision = current.revision;
+    let mut document = EditDocument::from_canonical_json(current.document_json.as_bytes())
         .map_err(|_| StoreError::InvalidData("stored edit document is not valid"))?;
     let inverse = command
         .apply(&mut document)
@@ -214,14 +444,11 @@ pub(super) fn apply_edit_command(
         params![sqlite_u64(next_revision)?, canonical, now_sql, doc_id],
     )?;
     let record = EditDocRecord {
-        doc_id: doc_id.to_owned(),
-        project_id,
-        source_id: None,
-        candidate_id: None,
         revision: next_revision,
         document_json: canonical,
         created_unix_millis: now,
         updated_unix_millis: now,
+        ..current
     };
     let response = Response {
         request_id: request_id.to_owned(),
@@ -246,23 +473,13 @@ pub(super) fn list_edit_docs(
     project_id: &str,
 ) -> Result<Vec<EditDocRecord>, StoreError> {
     let mut statement = connection.prepare(
-        "SELECT doc_id, project_id, revision, document, created_unix_millis, updated_unix_millis
+        "SELECT doc_id, project_id, revision, document,
+                created_unix_millis, updated_unix_millis, source_id, candidate_id
            FROM edit_docs
           WHERE project_id = ?1
           ORDER BY created_unix_millis ASC, doc_id ASC",
     )?;
-    let rows = statement.query_map([project_id], |row| {
-        Ok(EditDocRecord {
-            doc_id: row.get(0)?,
-            project_id: row.get(1)?,
-            source_id: None,
-            candidate_id: None,
-            revision: row.get::<_, i64>(2)?.try_into().unwrap_or(0),
-            document_json: row.get(3)?,
-            created_unix_millis: row.get::<_, i64>(4)?.try_into().unwrap_or(0),
-            updated_unix_millis: row.get::<_, i64>(5)?.try_into().unwrap_or(0),
-        })
-    })?;
+    let rows = statement.query_map([project_id], record_from_row)?;
     let mut found = Vec::new();
     for row in rows {
         found.push(row?);
@@ -277,24 +494,27 @@ pub(super) fn get_edit_doc(
     connection
         .query_row(
             "SELECT doc_id, project_id, revision, document,
-                    created_unix_millis, updated_unix_millis
+                    created_unix_millis, updated_unix_millis, source_id, candidate_id
              FROM edit_docs WHERE doc_id = ?1",
             [doc_id],
-            |row| {
-                Ok(EditDocRecord {
-                    doc_id: row.get(0)?,
-                    project_id: row.get(1)?,
-                    source_id: None,
-                    candidate_id: None,
-                    revision: sql_u64(row, 2)?,
-                    document_json: row.get(3)?,
-                    created_unix_millis: sql_u64(row, 4)?,
-                    updated_unix_millis: sql_u64(row, 5)?,
-                })
-            },
+            record_from_row,
         )
         .optional()?
         .ok_or(StoreError::NotFound)
+}
+
+/// One row of `edit_docs`, in the column order every read here uses.
+fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EditDocRecord> {
+    Ok(EditDocRecord {
+        doc_id: row.get(0)?,
+        project_id: row.get(1)?,
+        revision: sql_u64(row, 2)?,
+        document_json: row.get(3)?,
+        created_unix_millis: sql_u64(row, 4)?,
+        updated_unix_millis: sql_u64(row, 5)?,
+        source_id: row.get(6)?,
+        candidate_id: row.get(7)?,
+    })
 }
 
 /// The document the log started from, plus every logged step. Replaying the
@@ -338,10 +558,6 @@ fn canonical_document(document: &EditDocument) -> Result<String, StoreError> {
 
 fn sqlite_u64(value: u64) -> Result<i64, StoreError> {
     i64::try_from(value).map_err(|_| StoreError::InvalidData("value exceeds SQLite integer range"))
-}
-
-fn u64_from_i64(value: i64) -> Result<u64, StoreError> {
-    u64::try_from(value).map_err(|_| StoreError::InvalidData("stored revision is negative"))
 }
 
 fn sql_u64(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
