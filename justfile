@@ -247,12 +247,26 @@ gate-recall-smoke:
 
 # W26 private gate: the real corpus, an editor's annotations, and a signed
 # report. Needs media and annotations that never enter Git.
-gate-recall corpus_dir manifest license_attestation annotations socket output bar="eval/recall/planted-bar.json" public_key="":
-    cd eval/harness && uv run clipmill-eval recall \
+#
+# The bar defaults to the corpus's own, not the synthetic one. `planted-bar.json`
+# demands perfect recall because its moments were planted there on purpose;
+# asking that of a real recording would be asking a model-free proposer never to
+# miss anything a person thought was worth keeping. Before the corpus has been
+# measured once there is no honest bar to default to, so this names a file that
+# does not exist yet and the gate says so rather than substituting one. Pass
+# `bar=""` for that first measurement, which is the run that produces it.
+#
+# Reached with `--project` rather than by changing directory: every path here is
+# the caller's, and a `cd` into the harness silently reinterpreted each one
+# against `eval/harness/` — which is why the default bar could never have
+# resolved from where this recipe used to stand.
+gate-recall corpus_dir manifest license_attestation annotations socket output bar="eval/recall/corpus-bar.json" public_key="":
+    uv run --project eval/harness clipmill-eval recall \
       --corpus-dir {{corpus_dir}} --manifest {{manifest}} \
       --license-attestation {{license_attestation}} \
       --annotations {{annotations}} --socket {{socket}} \
-      --output {{output}} --bar {{bar}} \
+      --output {{output}} \
+      {{ if bar == "" { "" } else { "--bar " + bar } }} \
       {{ if public_key == "" { "" } else { "--public-key " + public_key } }}
 
 # W26: 1.5x real time at 1080x1920, attested on the machine that measured it.

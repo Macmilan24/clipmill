@@ -50,6 +50,8 @@ export interface EditorProps {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly resolving: boolean;
+  /** Why the solver cannot be asked, or `null` when it can. */
+  readonly resolveRefusal: string | null;
   readonly onOpenResults: () => void;
   readonly onApply: (command: EditCommandJson) => void;
   readonly onUndo: () => void;
@@ -67,6 +69,7 @@ export function Editor({
   canUndo,
   canRedo,
   resolving,
+  resolveRefusal,
   onOpenResults,
   onApply,
   onUndo,
@@ -190,6 +193,7 @@ export function Editor({
                 onApply={onApply}
                 onResolve={onResolve}
                 resolving={resolving}
+                resolveRefusal={resolveRefusal}
               />
             </TabsContent>
             <TabsContent value="captions">
