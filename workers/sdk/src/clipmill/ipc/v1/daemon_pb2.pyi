@@ -980,7 +980,7 @@ class GetDeviceProfileResponse(_message.Message):
     def __init__(self, artifact_id: _Optional[str] = ..., profile_json: _Optional[str] = ...) -> None: ...
 
 class EditDoc(_message.Message):
-    __slots__ = ("doc_id", "project_id", "revision", "document_json", "created_unix_millis", "updated_unix_millis", "source_id", "candidate_id")
+    __slots__ = ("doc_id", "project_id", "revision", "document_json", "created_unix_millis", "updated_unix_millis", "source_id", "candidate_id", "job_id")
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
@@ -989,6 +989,7 @@ class EditDoc(_message.Message):
     UPDATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
+    JOB_ID_FIELD_NUMBER: _ClassVar[int]
     doc_id: str
     project_id: str
     revision: int
@@ -997,15 +998,22 @@ class EditDoc(_message.Message):
     updated_unix_millis: int
     source_id: str
     candidate_id: str
-    def __init__(self, doc_id: _Optional[str] = ..., project_id: _Optional[str] = ..., revision: _Optional[int] = ..., document_json: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ...) -> None: ...
+    job_id: str
+    def __init__(self, doc_id: _Optional[str] = ..., project_id: _Optional[str] = ..., revision: _Optional[int] = ..., document_json: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., job_id: _Optional[str] = ...) -> None: ...
 
 class CreateEditDocRequest(_message.Message):
-    __slots__ = ("project_id", "document_json")
+    __slots__ = ("project_id", "document_json", "source_id", "candidate_id", "job_id")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     DOCUMENT_JSON_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
+    JOB_ID_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     document_json: str
-    def __init__(self, project_id: _Optional[str] = ..., document_json: _Optional[str] = ...) -> None: ...
+    source_id: str
+    candidate_id: str
+    job_id: str
+    def __init__(self, project_id: _Optional[str] = ..., document_json: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., job_id: _Optional[str] = ...) -> None: ...
 
 class CreateEditDocResponse(_message.Message):
     __slots__ = ("doc",)
@@ -1102,7 +1110,7 @@ class ListClipDecisionsResponse(_message.Message):
     def __init__(self, decisions: _Optional[_Iterable[_Union[ClipDecisionRecordV1, _Mapping]]] = ...) -> None: ...
 
 class DirectClipRequest(_message.Message):
-    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve")
+    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -1112,6 +1120,7 @@ class DirectClipRequest(_message.Message):
     END_TICKS_FIELD_NUMBER: _ClassVar[int]
     VARIATION_FIELD_NUMBER: _ClassVar[int]
     APPROVE_FIELD_NUMBER: _ClassVar[int]
+    JOB_ID_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     source_id: str
     candidate_id: str
@@ -1121,7 +1130,8 @@ class DirectClipRequest(_message.Message):
     end_ticks: int
     variation: bool
     approve: bool
-    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ...) -> None: ...
+    job_id: str
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ...) -> None: ...
 
 class DirectClipResponse(_message.Message):
     __slots__ = ("doc", "start_ticks", "end_ticks", "decisions", "reopened")
@@ -1160,12 +1170,14 @@ class PreviewCropV1(_message.Message):
     def __init__(self, x: _Optional[int] = ..., y: _Optional[int] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., present: _Optional[bool] = ...) -> None: ...
 
 class PreviewWordV1(_message.Message):
-    __slots__ = ("text", "hold_centis")
+    __slots__ = ("text", "hold_centis", "word_id")
     TEXT_FIELD_NUMBER: _ClassVar[int]
     HOLD_CENTIS_FIELD_NUMBER: _ClassVar[int]
+    WORD_ID_FIELD_NUMBER: _ClassVar[int]
     text: str
     hold_centis: int
-    def __init__(self, text: _Optional[str] = ..., hold_centis: _Optional[int] = ...) -> None: ...
+    word_id: str
+    def __init__(self, text: _Optional[str] = ..., hold_centis: _Optional[int] = ..., word_id: _Optional[str] = ...) -> None: ...
 
 class PreviewLineV1(_message.Message):
     __slots__ = ("words",)
@@ -1199,8 +1211,60 @@ class PreviewGainV1(_message.Message):
     gain_db: float
     def __init__(self, frame: _Optional[int] = ..., gain_db: _Optional[float] = ...) -> None: ...
 
+class PreviewSegmentV1(_message.Message):
+    __slots__ = ("segment_id", "source_fingerprint", "in_ticks", "out_ticks", "program_start_ticks", "first_frame", "end_frame")
+    SEGMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    IN_TICKS_FIELD_NUMBER: _ClassVar[int]
+    OUT_TICKS_FIELD_NUMBER: _ClassVar[int]
+    PROGRAM_START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    FIRST_FRAME_FIELD_NUMBER: _ClassVar[int]
+    END_FRAME_FIELD_NUMBER: _ClassVar[int]
+    segment_id: str
+    source_fingerprint: str
+    in_ticks: int
+    out_ticks: int
+    program_start_ticks: int
+    first_frame: int
+    end_frame: int
+    def __init__(self, segment_id: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., in_ticks: _Optional[int] = ..., out_ticks: _Optional[int] = ..., program_start_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ...) -> None: ...
+
+class PreviewSourceV1(_message.Message):
+    __slots__ = ("source_fingerprint", "source_id", "display_width", "display_height")
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_WIDTH_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    source_fingerprint: str
+    source_id: str
+    display_width: int
+    display_height: int
+    def __init__(self, source_fingerprint: _Optional[str] = ..., source_id: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
+
+class PreviewProxyV1(_message.Message):
+    __slots__ = ("source_fingerprint", "artifact_id", "file", "coverage_start_ticks", "coverage_end_ticks", "width", "height", "rate_num", "rate_den")
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    COVERAGE_START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    COVERAGE_END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    WIDTH_FIELD_NUMBER: _ClassVar[int]
+    HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    RATE_NUM_FIELD_NUMBER: _ClassVar[int]
+    RATE_DEN_FIELD_NUMBER: _ClassVar[int]
+    source_fingerprint: str
+    artifact_id: str
+    file: str
+    coverage_start_ticks: int
+    coverage_end_ticks: int
+    width: int
+    height: int
+    rate_num: int
+    rate_den: int
+    def __init__(self, source_fingerprint: _Optional[str] = ..., artifact_id: _Optional[str] = ..., file: _Optional[str] = ..., coverage_start_ticks: _Optional[int] = ..., coverage_end_ticks: _Optional[int] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ...) -> None: ...
+
 class GetPreviewPlanResponse(_message.Message):
-    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height")
+    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies")
     REVISION_FIELD_NUMBER: _ClassVar[int]
     RATE_NUM_FIELD_NUMBER: _ClassVar[int]
     RATE_DEN_FIELD_NUMBER: _ClassVar[int]
@@ -1210,6 +1274,9 @@ class GetPreviewPlanResponse(_message.Message):
     GAIN_FIELD_NUMBER: _ClassVar[int]
     WIDTH_FIELD_NUMBER: _ClassVar[int]
     HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    SEGMENTS_FIELD_NUMBER: _ClassVar[int]
+    SOURCES_FIELD_NUMBER: _ClassVar[int]
+    PROXIES_FIELD_NUMBER: _ClassVar[int]
     revision: int
     rate_num: int
     rate_den: int
@@ -1219,7 +1286,10 @@ class GetPreviewPlanResponse(_message.Message):
     gain: _containers.RepeatedCompositeFieldContainer[PreviewGainV1]
     width: int
     height: int
-    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ...) -> None: ...
+    segments: _containers.RepeatedCompositeFieldContainer[PreviewSegmentV1]
+    sources: _containers.RepeatedCompositeFieldContainer[PreviewSourceV1]
+    proxies: _containers.RepeatedCompositeFieldContainer[PreviewProxyV1]
+    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ...) -> None: ...
 
 class ListEditDocsRequest(_message.Message):
     __slots__ = ("project_id",)

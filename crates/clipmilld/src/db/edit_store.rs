@@ -85,6 +85,16 @@ pub(super) const CREATE_V10_TABLES: &str = "
         WHERE candidate_id IS NOT NULL;
 ";
 
+/// The analysis run a document was cut from.
+///
+/// Nullable: a document handed in whole names no run, and one directed
+/// before runs were recorded cannot be told which. Nothing is backfilled —
+/// the document does not say, and a guess at the newest run would be exactly
+/// the substitution the column exists to remove.
+pub(super) const CREATE_V11_TABLES: &str = "
+    ALTER TABLE edit_docs ADD COLUMN job_id TEXT;
+";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct EditDocRecord {
     pub doc_id: String,
@@ -93,6 +103,8 @@ pub(crate) struct EditDocRecord {
     /// for; both `None` for a document handed in whole rather than directed.
     pub source_id: Option<String>,
     pub candidate_id: Option<String>,
+    /// The analysis run it was cut from, when the director knew it.
+    pub job_id: Option<String>,
     pub revision: u64,
     pub document_json: String,
     pub created_unix_millis: u64,
@@ -110,6 +122,7 @@ impl From<EditDocRecord> for EditDoc {
             updated_unix_millis: value.updated_unix_millis,
             source_id: value.source_id.unwrap_or_default(),
             candidate_id: value.candidate_id.unwrap_or_default(),
+            job_id: value.job_id.unwrap_or_default(),
         }
     }
 }
@@ -122,17 +135,34 @@ pub(crate) struct EditCommandRecord {
     pub inverse_json: String,
 }
 
+/// Which clip a hand-created document is, when the caller says.
+///
+/// Optional as a whole and in parts: a document may name a source and no
+/// candidate (a clip nobody ranked), or a candidate and no run.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct DocumentOrigin {
+    pub source: Option<String>,
+    pub candidate: Option<String>,
+    pub run: Option<String>,
+}
+
 pub(super) fn create_edit_doc(
     connection: &mut Connection,
     request_id: &str,
     request_hash: &[u8; 32],
     project_id: &str,
     document_json: &str,
+    origin: &DocumentOrigin,
     now: u64,
 ) -> Result<Vec<u8>, StoreError> {
     project_id
         .parse::<ProjectId>()
         .map_err(|_| StoreError::InvalidData("edit document project id is invalid"))?;
+    if origin.candidate.is_some() && origin.source.is_none() {
+        return Err(StoreError::InvalidData(
+            "a document naming a candidate must name the source it was cut from",
+        ));
+    }
     let document = if document_json.trim().is_empty() {
         EditDocument::default()
     } else {
@@ -158,15 +188,24 @@ pub(super) fn create_edit_doc(
     transaction.execute(
         "INSERT INTO edit_docs(
             doc_id, project_id, revision, initial_document, document,
-            created_unix_millis, updated_unix_millis
-         ) VALUES (?1, ?2, 0, ?3, ?3, ?4, ?4)",
-        params![doc_id, project_id, canonical, now_sql],
+            created_unix_millis, updated_unix_millis, source_id, candidate_id, job_id
+         ) VALUES (?1, ?2, 0, ?3, ?3, ?4, ?4, ?5, ?6, ?7)",
+        params![
+            doc_id,
+            project_id,
+            canonical,
+            now_sql,
+            origin.source,
+            origin.candidate,
+            origin.run
+        ],
     )?;
     let record = EditDocRecord {
         doc_id,
         project_id: project_id.to_owned(),
-        source_id: None,
-        candidate_id: None,
+        source_id: origin.source.clone(),
+        candidate_id: origin.candidate.clone(),
+        job_id: origin.run.clone(),
         revision: 0,
         document_json: canonical,
         created_unix_millis: now,
@@ -185,12 +224,14 @@ pub(super) fn create_edit_doc(
 }
 
 /// Which clip a directed document is for: the project, the recording in it,
-/// and the candidate the director built from.
+/// and the candidate the director built from — and the run that minted the
+/// candidate, when the caller named one.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ClipIdentity {
     pub project: String,
     pub source: String,
     pub candidate: String,
+    pub run: Option<String>,
 }
 
 /// What `direct_edit_doc` is asked to do beyond storing a document.
@@ -208,6 +249,66 @@ pub(crate) struct DirectOptions {
 pub(crate) struct Directed {
     pub record: EditDocRecord,
     pub reopened: bool,
+}
+
+/// The document a clip already has, reopened — or nothing, and no write.
+///
+/// The half of directing that needs no evidence. A clip's saved edit is the
+/// answer to directing it again whether or not the analysis it was cut from
+/// can still be loaded — a re-analysis may have renumbered the candidates, a
+/// stage may fail to verify — so the service asks this first and assembles
+/// only when there is nothing to reopen. The approval, when asked for, lands
+/// in the same transaction; a retry of a lost reply is the same reply.
+pub(super) fn reopen_edit_doc(
+    connection: &mut Connection,
+    request_id: &str,
+    request_hash: &[u8; 32],
+    identity: &ClipIdentity,
+    approve: bool,
+    now: u64,
+) -> Result<Option<Vec<u8>>, StoreError> {
+    identity
+        .project
+        .parse::<ProjectId>()
+        .map_err(|_| StoreError::InvalidData("edit document project id is invalid"))?;
+    if identity.source.is_empty() || identity.candidate.is_empty() {
+        return Err(StoreError::InvalidData(
+            "a directed document names its source and its candidate",
+        ));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if let Some(response) = replay(&transaction, request_id, request_hash)? {
+        transaction.commit()?;
+        return Ok(Some(response));
+    }
+    let Some(record) = newest_for_clip(&transaction, identity)? else {
+        // Nothing to reopen and nothing written: the transaction held no
+        // change, and the request id stays free for the creation to claim.
+        transaction.commit()?;
+        return Ok(None);
+    };
+    if approve {
+        decision_store::set(
+            &transaction,
+            &identity.project,
+            &identity.source,
+            &identity.candidate,
+            Decision::Approved,
+            now,
+        )?;
+    }
+    let directed = Directed {
+        record,
+        reopened: true,
+    };
+    let response = Response {
+        request_id: request_id.to_owned(),
+        body: Some(response::Body::DirectClip(direct_response(&directed)?)),
+    }
+    .encode_to_vec();
+    remember(&transaction, request_id, request_hash, &response, now)?;
+    transaction.commit()?;
+    Ok(Some(response))
 }
 
 /// The document for a clip: found if the clip has one, created if not.
@@ -274,15 +375,16 @@ pub(super) fn direct_edit_doc(
         transaction.execute(
             "INSERT INTO edit_docs(
                 doc_id, project_id, revision, initial_document, document,
-                created_unix_millis, updated_unix_millis, source_id, candidate_id
-             ) VALUES (?1, ?2, 0, ?3, ?3, ?4, ?4, ?5, ?6)",
+                created_unix_millis, updated_unix_millis, source_id, candidate_id, job_id
+             ) VALUES (?1, ?2, 0, ?3, ?3, ?4, ?4, ?5, ?6, ?7)",
             params![
                 doc_id,
                 identity.project,
                 canonical,
                 now_sql,
                 identity.source,
-                identity.candidate
+                identity.candidate,
+                identity.run
             ],
         )?;
         Directed {
@@ -291,6 +393,7 @@ pub(super) fn direct_edit_doc(
                 project_id: identity.project.clone(),
                 source_id: Some(identity.source.clone()),
                 candidate_id: Some(identity.candidate.clone()),
+                job_id: identity.run.clone(),
                 revision: 0,
                 document_json: canonical,
                 created_unix_millis: now,
@@ -359,7 +462,7 @@ fn newest_for_clip(
     transaction
         .query_row(
             "SELECT doc_id, project_id, revision, document,
-                    created_unix_millis, updated_unix_millis, source_id, candidate_id
+                    created_unix_millis, updated_unix_millis, source_id, candidate_id, job_id
                FROM edit_docs
               WHERE project_id = ?1 AND source_id = ?2 AND candidate_id = ?3
               ORDER BY created_unix_millis DESC, doc_id DESC
@@ -390,7 +493,7 @@ pub(super) fn apply_edit_command(
     let Some(current) = transaction
         .query_row(
             "SELECT doc_id, project_id, revision, document,
-                    created_unix_millis, updated_unix_millis, source_id, candidate_id
+                    created_unix_millis, updated_unix_millis, source_id, candidate_id, job_id
                FROM edit_docs WHERE doc_id = ?1",
             [doc_id],
             record_from_row,
@@ -474,7 +577,7 @@ pub(super) fn list_edit_docs(
 ) -> Result<Vec<EditDocRecord>, StoreError> {
     let mut statement = connection.prepare(
         "SELECT doc_id, project_id, revision, document,
-                created_unix_millis, updated_unix_millis, source_id, candidate_id
+                created_unix_millis, updated_unix_millis, source_id, candidate_id, job_id
            FROM edit_docs
           WHERE project_id = ?1
           ORDER BY created_unix_millis ASC, doc_id ASC",
@@ -494,7 +597,7 @@ pub(super) fn get_edit_doc(
     connection
         .query_row(
             "SELECT doc_id, project_id, revision, document,
-                    created_unix_millis, updated_unix_millis, source_id, candidate_id
+                    created_unix_millis, updated_unix_millis, source_id, candidate_id, job_id
              FROM edit_docs WHERE doc_id = ?1",
             [doc_id],
             record_from_row,
@@ -514,6 +617,7 @@ fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EditDocRecord> {
         updated_unix_millis: sql_u64(row, 5)?,
         source_id: row.get(6)?,
         candidate_id: row.get(7)?,
+        job_id: row.get(8)?,
     })
 }
 

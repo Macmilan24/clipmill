@@ -174,6 +174,7 @@ export function useResults(
           // this the daemon would hand back the existing document — with the
           // boundary this call was trying to replace.
           variation: true,
+          ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
         });
         took(directed);
         reload();
@@ -208,6 +209,9 @@ export function useResults(
             candidateId,
             cut: 'chosen',
             approve: true,
+            // The run the board is showing: its candidate, its boundaries,
+            // its transcript — not whichever run published each stage last.
+            ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
           });
           took(directed);
         } else {
@@ -248,6 +252,7 @@ export function useResults(
               candidateId,
               cut: 'chosen',
               approve: true,
+              ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
             });
           } catch (error) {
             failures.push((error as Error).message);

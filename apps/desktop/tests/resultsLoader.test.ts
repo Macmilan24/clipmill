@@ -101,6 +101,7 @@ describe('which analysis the board reads', () => {
         projectId: OLD,
         sourceId: OLD_SOURCE,
         candidateId: CANDIDATE,
+        jobId: OLD_JOB,
         revision: 1,
         createdUnixMillis: 1,
         updatedUnixMillis: 1,
@@ -110,6 +111,7 @@ describe('which analysis the board reads', () => {
         projectId: OLD,
         sourceId: OTHER_SOURCE,
         candidateId: CANDIDATE,
+        jobId: OTHER_JOB,
         revision: 1,
         createdUnixMillis: 2,
         updatedUnixMillis: 2,
@@ -120,5 +122,6 @@ describe('which analysis the board reads', () => {
     // The other recording's document is for a candidate with the same id in
     // a different run; it is not this clip's edit.
     expect(row?.docId).toBe('edt_here');
+    expect(row?.docJobId).toBe(OLD_JOB);
   });
 });

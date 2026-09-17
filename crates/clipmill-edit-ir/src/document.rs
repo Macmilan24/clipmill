@@ -95,6 +95,16 @@ pub struct CaptionWord {
     pub text: String,
     pub start_ticks: i64,
     pub end_ticks: i64,
+    /// Which word this is, across both presentations.
+    ///
+    /// The reading cues and the burned-in cues are two groupings of one word
+    /// list, and a correction belongs to the word, not to a grouping. The id
+    /// is what lets one correction land in both; the projection mints it from
+    /// the transcript's word index, and a document that predates ids is given
+    /// them by [`EditDocument::assign_word_ids`] from timing. `None` is only
+    /// ever a document nobody has migrated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub word_id: Option<String>,
 }
 
 /// One rendered line. Line breaks are **decided once and stored here** — the

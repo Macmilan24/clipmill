@@ -374,6 +374,10 @@ pub struct DirectClipInput {
     /// Record the approval in the same write as the document.
     #[serde(default)]
     pub approve: bool,
+    /// The analysis run the candidate belongs to; every stage the director
+    /// reads is taken from it. Empty takes the newest run over the source.
+    #[serde(default)]
+    pub job_id: String,
 }
 
 impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipRequest {
@@ -392,6 +396,7 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             end_ticks: input.end_ticks,
             variation: input.variation,
             approve: input.approve,
+            job_id: input.job_id,
         }
     }
 }
@@ -404,6 +409,8 @@ pub struct DirectedClipView {
     pub project_id: String,
     pub source_id: String,
     pub candidate_id: String,
+    /// The run the document was cut from; empty when it was not recorded.
+    pub job_id: String,
     pub revision: u64,
     pub document_json: String,
     /// Where the cut actually landed, which is not always where it was asked
@@ -424,6 +431,7 @@ impl From<clipmill_contracts::proto::ipc::v1::DirectClipResponse> for DirectedCl
             project_id: doc.project_id,
             source_id: doc.source_id,
             candidate_id: doc.candidate_id,
+            job_id: doc.job_id,
             revision: doc.revision,
             document_json: doc.document_json,
             start_ticks: reply.start_ticks,
@@ -536,6 +544,48 @@ pub struct PreviewPlanView {
     pub gain: Vec<PreviewGainView>,
     pub width: i64,
     pub height: i64,
+    /// The program's segments, each mapped to its source: the numbers every
+    /// seek, scrub and trim go through.
+    pub segments: Vec<PreviewSegmentView>,
+    /// The sources the segments name, with the frame the crops are measured in.
+    pub sources: Vec<PreviewSourceView>,
+    /// The proxy for each source that has one.
+    pub proxies: Vec<PreviewProxyView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSegmentView {
+    pub segment_id: String,
+    pub source_fingerprint: String,
+    pub in_ticks: i64,
+    pub out_ticks: i64,
+    pub program_start_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSourceView {
+    pub source_fingerprint: String,
+    pub source_id: String,
+    pub display_width: i64,
+    pub display_height: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewProxyView {
+    pub source_fingerprint: String,
+    pub artifact_id: String,
+    pub file: String,
+    pub coverage_start_ticks: i64,
+    pub coverage_end_ticks: i64,
+    pub width: i64,
+    pub height: i64,
+    pub rate_num: u32,
+    pub rate_den: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -555,6 +605,9 @@ pub struct PreviewCueView {
 pub struct PreviewWordView {
     pub text: String,
     pub hold_centis: i64,
+    /// The word's identity across both presentations; empty for a word the
+    /// document never gave one.
+    pub word_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -598,6 +651,7 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                                 .map(|word| PreviewWordView {
                                     text: word.text,
                                     hold_centis: word.hold_centis,
+                                    word_id: word.word_id,
                                 })
                                 .collect()
                         })
@@ -614,6 +668,44 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 .collect(),
             width: reply.width,
             height: reply.height,
+            segments: reply
+                .segments
+                .into_iter()
+                .map(|segment| PreviewSegmentView {
+                    segment_id: segment.segment_id,
+                    source_fingerprint: segment.source_fingerprint,
+                    in_ticks: segment.in_ticks,
+                    out_ticks: segment.out_ticks,
+                    program_start_ticks: segment.program_start_ticks,
+                    first_frame: segment.first_frame,
+                    end_frame: segment.end_frame,
+                })
+                .collect(),
+            sources: reply
+                .sources
+                .into_iter()
+                .map(|source| PreviewSourceView {
+                    source_fingerprint: source.source_fingerprint,
+                    source_id: source.source_id,
+                    display_width: source.display_width,
+                    display_height: source.display_height,
+                })
+                .collect(),
+            proxies: reply
+                .proxies
+                .into_iter()
+                .map(|proxy| PreviewProxyView {
+                    source_fingerprint: proxy.source_fingerprint,
+                    artifact_id: proxy.artifact_id,
+                    file: proxy.file,
+                    coverage_start_ticks: proxy.coverage_start_ticks,
+                    coverage_end_ticks: proxy.coverage_end_ticks,
+                    width: proxy.width,
+                    height: proxy.height,
+                    rate_num: proxy.rate_num,
+                    rate_den: proxy.rate_den,
+                })
+                .collect(),
         }
     }
 }
@@ -628,6 +720,8 @@ pub struct EditDocView {
     /// empty for a document that was handed in whole rather than directed.
     pub source_id: String,
     pub candidate_id: String,
+    /// The run it was cut from; empty when it was not recorded.
+    pub job_id: String,
     pub revision: u64,
     pub created_unix_millis: u64,
     pub updated_unix_millis: u64,
@@ -640,6 +734,7 @@ impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
             project_id: doc.project_id,
             source_id: doc.source_id,
             candidate_id: doc.candidate_id,
+            job_id: doc.job_id,
             revision: doc.revision,
             created_unix_millis: doc.created_unix_millis,
             updated_unix_millis: doc.updated_unix_millis,

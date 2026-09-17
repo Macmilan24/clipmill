@@ -1478,6 +1478,53 @@ pub(super) fn latest_source_job_artifact(
     Ok(artifact_id)
 }
 
+/// What one run published: the source it ran over and, per stage kind, the
+/// artifact its succeeded task wrote.
+///
+/// Every stage of one job, as one lookup, is what lets a clip be directed
+/// from the run its candidate came out of rather than from whichever run
+/// published each stage last. A stage the run has not published yet is absent
+/// here, which the caller reports as such rather than filling from another
+/// run — a half-published re-analysis mixed into an older clip is the failure
+/// this exists to make impossible.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct RunArtifacts {
+    pub source_id: Option<String>,
+    pub by_task_kind: BTreeMap<String, String>,
+}
+
+pub(super) fn run_task_artifacts(
+    connection: &Connection,
+    job_id: &str,
+) -> Result<RunArtifacts, StoreError> {
+    let source_id: Option<String> = connection
+        .query_row(
+            "SELECT j.source_id FROM jobs j JOIN projects p ON p.project_id = j.project_id
+             WHERE j.job_id = ?1 AND p.is_system = 0",
+            [job_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or(StoreError::NotFound)?;
+    let mut statement = connection.prepare(
+        "SELECT kind, output_artifact_id FROM tasks
+         WHERE job_id = ?1 AND state = ?2 AND output_artifact_id IS NOT NULL
+         ORDER BY ordinal",
+    )?;
+    let rows = statement.query_map(params![job_id, TaskState::Succeeded as i32], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut by_task_kind = BTreeMap::new();
+    for row in rows {
+        let (kind, artifact_id) = row?;
+        by_task_kind.insert(kind, artifact_id);
+    }
+    Ok(RunArtifacts {
+        source_id,
+        by_task_kind,
+    })
+}
+
 /// The newest artifact a *stage* published for a source, whatever job ran it.
 ///
 /// Distinct from [`latest_source_job_artifact`], which matches the job's own

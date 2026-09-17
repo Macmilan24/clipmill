@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PreviewPlan } from '../src/daemon/client.js';
+import { mapping } from './support/plan.js';
 import {
   cropAt,
   cueAt,
@@ -23,7 +24,9 @@ import {
 
 /** Thirty frames, a crop that moves, one karaoke cue, one gain step. */
 function plan(): PreviewPlan {
+  const program = { frameCount: 30, rateNum: 30_000, rateDen: 1_001 };
   return {
+    ...mapping(program),
     revision: 3,
     rateNum: 30_000,
     rateDen: 1_001,
@@ -41,10 +44,10 @@ function plan(): PreviewPlan {
         leadInCentis: 10,
         lines: [
           [
-            { text: 'the', holdCentis: 20 },
-            { text: 'whole', holdCentis: 20 },
+            { text: 'the', holdCentis: 20, wordId: 'w1' },
+            { text: 'whole', holdCentis: 20, wordId: 'w2' },
           ],
-          [{ text: 'point', holdCentis: 10 }],
+          [{ text: 'point', holdCentis: 10, wordId: 'w3' }],
         ],
       },
     ],

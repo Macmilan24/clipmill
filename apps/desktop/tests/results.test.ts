@@ -176,6 +176,7 @@ function edit(docId: string, candidateId: string, createdUnixMillis: number): Ed
     projectId: 'p1',
     sourceId: 'src_p1',
     candidateId,
+    jobId: '',
     revision: 0,
     createdUnixMillis,
     updatedUnixMillis: createdUnixMillis,
@@ -189,8 +190,8 @@ describe('the document a clip has', () => {
       edit('edt_variation', 'cand_1', 20),
       edit('edt_other', 'cand_2', 15),
     ]);
-    expect(newest.get('cand_1')).toBe('edt_variation');
-    expect(newest.get('cand_2')).toBe('edt_other');
+    expect(newest.get('cand_1')?.docId).toBe('edt_variation');
+    expect(newest.get('cand_2')?.docId).toBe('edt_other');
   });
 
   it('breaks a tie the way the daemon does, by the later id', () => {
@@ -198,7 +199,7 @@ describe('the document a clip has', () => {
       edit('edt_b', 'cand_1', 10),
       edit('edt_a', 'cand_1', 10),
     ]);
-    expect(newest.get('cand_1')).toBe('edt_b');
+    expect(newest.get('cand_1')?.docId).toBe('edt_b');
   });
 
   it('leaves out a document that names no candidate', () => {

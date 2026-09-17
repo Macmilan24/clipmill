@@ -138,6 +138,10 @@ fn lines_of(
                 text: apply_corrections(document, token.index, token.text.to_string()),
                 start_ticks: (as_i64(token.start_ticks) - offset_ticks).max(0),
                 end_ticks: (as_i64(token.end_ticks.get()) - offset_ticks).max(1),
+                // The transcript's word index: the one identity both groupings
+                // were built from, so the same word carries the same id in
+                // each and a correction can find it in both.
+                word_id: Some(word_id(token.word_index)),
             })
             .collect();
         lines.push(CaptionLine { words });
@@ -201,6 +205,11 @@ fn colour(from: PresetColour) -> Colour {
         blue: from.blue,
         transparency: 255 - from.alpha,
     }
+}
+
+/// The id a transcript word carries into every caption presentation.
+pub fn word_id(word_index: u64) -> String {
+    format!("w{word_index}")
 }
 
 fn as_i64(value: u64) -> i64 {

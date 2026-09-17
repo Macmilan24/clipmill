@@ -321,6 +321,7 @@ mod tests {
             text: text.to_owned(),
             start_ticks: start_frame * FRAME_TICKS,
             end_ticks: end_frame * FRAME_TICKS,
+            word_id: None,
         }
     }
 

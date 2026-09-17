@@ -80,6 +80,7 @@ async fn create_doc(socket: &Path, request_id: &str, project_id: &str, document:
             body: Some(request::Body::CreateEditDoc(CreateEditDocRequest {
                 project_id: project_id.to_owned(),
                 document_json: document.to_owned(),
+                ..CreateEditDocRequest::default()
             })),
         },
     )

@@ -135,6 +135,9 @@ describe('approving a clip in an older project', () => {
       candidateId: CANDIDATE,
       cut: 'chosen',
       approve: true,
+      // The run the board is showing, so the director reads that run's
+      // stages and not whichever a re-analysis published last.
+      jobId: OLD_JOB,
     });
     // One write, not two. A decision recorded first and a document that then
     // failed to build was how a clip ended up approved with nothing to open.
@@ -163,7 +166,8 @@ describe('approving a clip in an older project', () => {
     const world = twoProjects({
       editDocs: [
         document('p_new', 'edt_0000000000000000000000NEW1', CANDIDATE),
-        document(OLD, OLD_DOC, CANDIDATE, { revision: 3 }),
+        // Cut from an earlier run of this recording than the board shows.
+        document(OLD, OLD_DOC, CANDIDATE, { revision: 3, jobId: 'job-older-run' }),
       ],
     });
     const { onEdit } = inspect(world);
@@ -171,7 +175,13 @@ describe('approving a clip in an older project', () => {
     await waitFor(() => {
       expect(onEdit).toHaveBeenCalledTimes(1);
     });
-    expect(onEdit.mock.calls[0]?.[0]).toMatchObject({ projectId: OLD, docId: OLD_DOC });
+    // The editor is handed the document's own run, not the board's: its
+    // captions and face tracks are that run's.
+    expect(onEdit.mock.calls[0]?.[0]).toMatchObject({
+      projectId: OLD,
+      docId: OLD_DOC,
+      jobId: 'job-older-run',
+    });
     expect(screen.getByRole('status').textContent).toMatch(/already has an edit/i);
   });
 

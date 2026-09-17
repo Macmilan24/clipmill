@@ -32,6 +32,7 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
     boundary: null,
     decision: null,
     docId: null,
+    docJobId: null,
     latticeStarts: [],
     latticeEnds: [],
     recommended: false,

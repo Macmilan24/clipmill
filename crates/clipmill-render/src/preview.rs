@@ -45,6 +45,28 @@ pub struct PreviewWord {
     /// Centiseconds this word holds the highlight, from the sweep the burned-in
     /// track uses. Zero on a cue with no animation.
     pub hold_centis: i64,
+    /// The word's identity, shared with its twin in the reading cues, so a
+    /// correction addressed to it lands in both presentations. `None` only
+    /// for a word the document never gave an id.
+    pub word_id: Option<String>,
+}
+
+/// One segment of the program, and where in the source it plays.
+///
+/// The player used to hand the media element program seconds, which is right
+/// only for a clip cut from the recording's first frame. These are the
+/// document's own `program_to_source` numbers, in ticks and in the frames the
+/// rest of the plan is indexed by, so a seek, a scrub and a trim all go
+/// through one mapping.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreviewSegment {
+    pub segment_id: String,
+    pub source_fingerprint: String,
+    pub in_ticks: i64,
+    pub out_ticks: i64,
+    pub program_start_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -93,6 +115,8 @@ pub struct PreviewPlan {
     /// The output frame the crops are fitted into.
     pub width: i64,
     pub height: i64,
+    /// The program's segments, in order, each mapped to its source.
+    pub segments: Vec<PreviewSegment>,
 }
 
 /// Interpret a document against the proxy timeline.
@@ -124,6 +148,7 @@ pub fn preview_plan(
         frame_count,
         crops: crops(document, rate, frame_count),
         cues: cues(document, rate),
+        segments: segments(document, rate),
         gain: document
             .audio
             .gain_curve
@@ -136,6 +161,33 @@ pub fn preview_plan(
         width: profile.width,
         height: profile.height,
     })
+}
+
+/// Where each segment sits, in frames and in ticks, by the same walk the crops
+/// use — so the frame a segment starts on is the frame its first crop is at.
+fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
+    let starts = document.segment_program_starts();
+    let mut at = 0_i64;
+    document
+        .video
+        .segments
+        .iter()
+        .zip(starts)
+        .map(|(segment, program_start_ticks)| {
+            let frames = rate.frame_count(segment.duration_ticks());
+            let first_frame = at;
+            at += frames;
+            PreviewSegment {
+                segment_id: segment.segment_id.clone(),
+                source_fingerprint: segment.source_fingerprint.clone(),
+                in_ticks: segment.in_ticks,
+                out_ticks: segment.out_ticks,
+                program_start_ticks,
+                first_frame,
+                end_frame: at,
+            }
+        })
+        .collect()
 }
 
 /// The crop at every frame of the program.
@@ -225,6 +277,7 @@ fn lines(cue: &CaptionCue, swept: &Sweep) -> Vec<PreviewLine> {
                     PreviewWord {
                         text: word.text.clone(),
                         hold_centis: hold,
+                        word_id: word.word_id.clone(),
                     }
                 })
                 .collect(),

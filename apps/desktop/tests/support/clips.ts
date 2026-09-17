@@ -13,6 +13,7 @@ import { JobState, TaskState } from '@clipmill/contracts';
 
 import type { EditDocSummary, PreviewPlan } from '../../src/daemon/client.js';
 import { NOW, emptyWorld, project, source, task, job, type FakeWorld } from './library.js';
+import { FINGERPRINT, TICKS, mapping } from './plan.js';
 
 export const OLD = 'p_old';
 export const NEW = 'p_new';
@@ -105,9 +106,37 @@ function candidates(): DiscoveryCandidates {
   } as unknown as DiscoveryCandidates;
 }
 
-/** A plan any document can answer with: one second at 30 fps, one cue. */
+/**
+ * A plan any document can answer with: one second at 30 fps, one cue, cut
+ * from ten minutes into the older recording — far enough in that a player
+ * seeking to zero is visibly wrong.
+ */
 export function plan(): PreviewPlan {
+  const program = { frameCount: 30, rateNum: 30, rateDen: 1 };
   return {
+    ...mapping(program, 600, {
+      sources: [
+        {
+          sourceFingerprint: FINGERPRINT,
+          sourceId: OLD_SOURCE,
+          displayWidth: 1920,
+          displayHeight: 1080,
+        },
+      ],
+      proxies: [
+        {
+          sourceFingerprint: FINGERPRINT,
+          artifactId: OLD_PROXY,
+          file: 'proxy.mp4',
+          coverageStartTicks: 0,
+          coverageEndTicks: 3600 * TICKS,
+          width: 1280,
+          height: 720,
+          rateNum: 30,
+          rateDen: 1,
+        },
+      ],
+    }),
     revision: 0,
     rateNum: 30,
     rateDen: 1,
@@ -123,8 +152,8 @@ export function plan(): PreviewPlan {
         leadInCentis: 0,
         lines: [
           [
-            { text: 'Charging', holdCentis: 50 },
-            { text: 'less', holdCentis: 50 },
+            { text: 'Charging', holdCentis: 50, wordId: 'w1' },
+            { text: 'less', holdCentis: 50, wordId: 'w2' },
           ],
         ],
       },
@@ -146,6 +175,7 @@ export function document(
     projectId,
     sourceId: `src_${projectId}`,
     candidateId,
+    jobId: `job-${projectId}`,
     revision: 0,
     createdUnixMillis: NOW - 1_000,
     updatedUnixMillis: NOW - 1_000,
