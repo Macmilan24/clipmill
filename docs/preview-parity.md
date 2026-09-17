@@ -62,13 +62,46 @@ karaoke holds read back out of the ASS the encoder would be handed.
 If those agree, the two sides are the same interpreter. If they ever stop
 agreeing, one of them started deciding.
 
+## The program, the source, and the proxy
+
+Three clocks meet in the player, and the plan says how. Crops, cues and gain
+are indexed on the **program** — frame 0 is the clip's first frame. The
+segments say which **source** ticks each run of program frames plays, so a
+program frame maps to a source tick through the segment it is in. The proxies
+say which artifact plays a source and which source tick its own second zero
+is, so a source tick maps to a proxy second through the proxy's coverage. The
+player, the scrubber, the crop transform and the trim commands all go through
+those two tables rather than assuming the clip starts where the recording
+does; a trim speaks source ticks because a segment's window is in source
+ticks. The crop transform is measured against the source's display
+dimensions, which the plan also carries, because a transform built against the
+output's dimensions was right only for a source that shared its aspect.
+
+The plan names the revision it describes, the editor sends every command
+against the revision it holds, and a plan that arrives for a revision the
+editor has already moved past is discarded. Two commands in flight cannot
+leave the player showing the older answer.
+
+## One word, two groupings
+
+The reading cues and the burned-in cues are two groupings of one word list,
+and every word carries an identity shared with its twin in the other
+grouping — minted by the projection from the transcript's word index, or given
+to an older document from timing, once. A correction is addressed to the word
+(`set_word_text`) and lands in both presentations; the plan's words carry the
+id so the caption panel can address it. The two groupings may not read
+differently under one id, and a document that does is refused at validation
+rather than found on a sidecar.
+
 ## What this phase does not check
 
-- **Nothing decodes the export.** The gate compares the plan against the render
-  _plan_, not against pixels out of an encoder. Frame-accurate pixel comparison
-  is the render gate's job and it already exists; what is not yet joined up is a
-  single run that goes plan → render → decode → compare. That is worth building
-  and is not built.
+- **Only the milestone gate decodes an export.** `gate-editor` compares the
+  plan against the render _plan_, not against pixels out of an encoder.
+  `gate-milestone-1` closes part of that gap for one scenario: it exports a
+  trimmed, corrected clip and reads the delivered frames back to the source
+  seconds they came from, on a recording whose picture names its own time.
+  A general plan → render → decode → compare over arbitrary footage is still
+  not built.
 - **Latency is not gated.** The plan names an SLO — command under 100 ms, first
   changed frame under 500 ms — and the plan is currently fetched whole rather
   than patched per IR subtree. The revision travels with it so a caller can tell

@@ -125,9 +125,11 @@ no egress path at all, but it should become a real policy read when one exists.
 
 Two doors, two lists, and neither is "everything in the store".
 
-`ReadArtifact` serves **documents** over the control socket: eleven kinds, each
+`ReadArtifact` serves **documents** over the control socket: twelve kinds, each
 carrying exactly one file that the kind — not the request — names, so a caller
-cannot point somewhere else inside the object. Anything larger than a chunk
+cannot point somewhere else inside the object. The twelfth is the delivered
+export package, which is how the export screen learns what was actually
+written — names, sizes, digests — rather than what the plan predicted. Anything larger than a chunk
 arrives in several replies and the response states the total, so a truncated
 document is an error rather than one with the end missing.
 
@@ -190,6 +192,48 @@ a plan, and what comes back is checked field by field before it is believed.
 The Editor and Export rows then open the last clip opened — a person's own
 choice — when reached with nothing named.
 
+## What a run would need, said before the wait
+
+A run submitted to a daemon whose workers nobody had started, or whose
+weights had never been fetched, used to sit with its first model stage
+planned and a spinner beside it for as long as anyone left it. The scheduler
+was right to hold the task — a worker may connect at any moment — but nothing
+on screen said that, and a person could not tell a wait from a hang.
+
+`GetReadiness` is the daemon's answer, per stage: whether the pinned weight
+files are on disk, whether a worker that serves that task kind is connected,
+and the command that fixes each shortfall, in the reply. The worker plane
+keeps the roster as workers announce themselves and leave; the service reads
+it rather than inferring presence from the task table.
+
+The two shortfalls are different and the screens keep them apart. A model
+that is not installed cannot be waited into existence, so **New Project shuts
+the button** and names the fetch command; the pinned decoder missing is the
+same kind of thing. A worker that is not connected may be started at any
+moment and the daemon holds the task until it is, so **the run may start** and
+the card says which stages will wait. **Analysis Progress** re-reads the
+report while the run is live and writes the reason under the stage that is
+waiting, in the daemon's words, and stops asking when the run stops. A daemon
+that cannot answer is shown as unknown rather than as ready.
+
+## The player's two clocks
+
+The preview plan is indexed on the program timeline — frame 0 is the first
+frame of the clip — and the proxy it plays is the whole recording. Mapping one
+onto the other used to be the renderer's guess, and the guess was that program
+second zero was proxy second zero, which is right for exactly the clip that
+starts where the recording does. The plan now carries the mapping: each
+**segment** with the source ticks it plays and the program frames it occupies,
+each **source** with the display dimensions the crop rectangles are measured
+in, and each **proxy** with the artifact and file to stream and the source
+ticks its own second zero covers. The player maps a program frame to source
+ticks through the segment and to a proxy second through the proxy's coverage;
+scrubbing, the crop transform and the trim commands all go through the same
+three tables, and a trim speaks source ticks because that is what a segment's
+window is. The plan is bound to the document revision it describes, and an
+answer that arrives after the document has moved on is discarded rather than
+drawn.
+
 ## The file dialog
 
 Opening a file picker is the host's, not the page's. The dialog plugin is
@@ -232,3 +276,14 @@ GTK4.
 Both need the pinned FFmpeg sidecars and a built `clipmilld`, so their tests are
 `#[ignore]`d out of `cargo test --workspace` and run in the `shell-link` CI job on
 macOS and Linux.
+
+- `just gate-milestone-1` — the upload-ready plan's Milestone 1 exit, run for
+  real through the same daemon link and media door. From an older project while
+  a newer one exists, a clip several minutes into a synthesized talk is chosen,
+  played and scrubbed through the media door, a name is corrected, both ends are
+  trimmed, the trim is undone and redone, the daemon is killed and respawned,
+  the reviewed revision is exported (and a stale one refused), and the delivered
+  file is decoded: every sampled frame is read back to the source second it came
+  from, the sidecars and the burned-in track both carry the correction, and the
+  manifest names the reviewed snapshot. It needs the worker fleet, the weights
+  and the macOS voice, so it is a local gate rather than a CI job.
