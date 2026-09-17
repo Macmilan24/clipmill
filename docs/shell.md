@@ -166,6 +166,30 @@ reopening resumes rather than restarts, and the copy says that. The live log
 begins when the screen opens, because the host holds one subscription for the
 whole application and replays from its own cursor.
 
+## Which clip a screen is about
+
+A route is what the shell holds, and the active section is derived from it —
+see `shell/route.ts`. Three screens are about one particular thing and carry
+its identity in the route rather than in a section id: Analysis Progress
+carries a run, the Inspector carries a project, source, candidate and run, and
+the Editor and Export screens carry a **clip** — project, document, source,
+candidate and run, plus the names the breadcrumb reads.
+
+The rule the routes enforce: **nothing opens "the newest".** The editor and the
+export used to open the newest document of the newest project, which is right
+for one project with one approval and wrong the moment a second of either
+exists. Now the Inspector hands the clip it approved to the editor in full, the
+editor hands the same clip to the export, and a screen reached from the sidebar
+with nothing named lists every edit there is rather than guessing. The board
+reads the analysis of the selected recording — the run the route named, or the
+newest run over that source — because a job says which source it ran over.
+
+The shell remembers where it was and which clip it was on, in local storage,
+and puts both back on relaunch. Only identities are kept, never a document or
+a plan, and what comes back is checked field by field before it is believed.
+The Editor and Export rows then open the last clip opened — a person's own
+choice — when reached with nothing named.
+
 ## The file dialog
 
 Opening a file picker is the host's, not the page's. The dialog plugin is
