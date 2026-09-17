@@ -26,6 +26,7 @@ import {
   Lightbulb,
   type LucideIcon,
   MessageSquareQuote,
+  Scissors,
   Sparkles,
   Waves,
   Wrench,
@@ -57,6 +58,8 @@ export interface DetailRailProps {
   readonly busy: boolean;
   readonly onApproveChecked: () => void;
   readonly onOpen: (candidateId: string) => void;
+  /** Open the clip's edit document. Offered only for a row that has one. */
+  readonly onEdit: (candidateId: string) => void;
 }
 
 export function DetailRail({
@@ -67,6 +70,7 @@ export function DetailRail({
   busy,
   onApproveChecked,
   onOpen,
+  onEdit,
 }: DetailRailProps) {
   if (!row) {
     return (
@@ -223,14 +227,25 @@ export function DetailRail({
             {busy ? 'Approving…' : `Approve ${checkedCount} selected`}
           </Button>
         ) : (
-          <Button
-            variant="outline"
-            className="w-full justify-center gap-2"
-            onClick={() => onOpen(row.candidateId)}
-          >
-            Open in the inspector
-            <ArrowRight className="size-4" aria-hidden />
-          </Button>
+          <>
+            {row.docId !== null && (
+              <Button
+                className="w-full justify-center gap-2"
+                onClick={() => onEdit(row.candidateId)}
+              >
+                <Scissors className="size-4" aria-hidden />
+                Open in the editor
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              className="w-full justify-center gap-2"
+              onClick={() => onOpen(row.candidateId)}
+            >
+              Open in the inspector
+              <ArrowRight className="size-4" aria-hidden />
+            </Button>
+          </>
         )}
       </div>
     </aside>

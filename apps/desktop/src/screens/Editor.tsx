@@ -13,8 +13,8 @@
  * from the same plan, so a playhead is in the same place on all four by
  * construction rather than by four pieces of code agreeing.
  */
-import { ChevronLeft, ChevronRight, Pause, Play, Redo2, Undo2 } from 'lucide-react';
-import type { JSX } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Play, Redo2, Undo2, Upload } from 'lucide-react';
+import type { JSX, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '../components/ui/badge.js';
@@ -44,6 +44,8 @@ export interface EditorProps {
   readonly plan: PreviewPlan | null;
   readonly proxyUrl: string | null;
   readonly docId: string | null;
+  /** What the clip is called — the project and the clip — when the route knew. */
+  readonly labels: { readonly project?: string; readonly clip?: string } | null;
   readonly loading: boolean;
   readonly problem: string | null;
   readonly busy: boolean;
@@ -52,7 +54,15 @@ export interface EditorProps {
   readonly resolving: boolean;
   /** Why the solver cannot be asked, or `null` when it can. */
   readonly resolveRefusal: string | null;
+  /**
+   * What to show instead of a clip when none is open: the list of edits there
+   * are. Null when a clip is named, so nothing is fetched for a list that
+   * would not be shown.
+   */
+  readonly picker: ReactNode;
   readonly onOpenResults: () => void;
+  /** Take this clip to the export screen. Null when no clip is open. */
+  readonly onExport: (() => void) | null;
   readonly onApply: (command: EditCommandJson) => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
@@ -63,6 +73,7 @@ export function Editor({
   plan,
   proxyUrl,
   docId,
+  labels,
   loading,
   problem,
   busy,
@@ -70,7 +81,9 @@ export function Editor({
   canRedo,
   resolving,
   resolveRefusal,
+  picker,
   onOpenResults,
+  onExport,
   onApply,
   onUndo,
   onRedo,
@@ -123,12 +136,17 @@ export function Editor({
       <div className="p-8">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>No clip is open in the editor</EmptyTitle>
+            <EmptyTitle>
+              {problem && labels
+                ? 'This clip could not be opened'
+                : 'No clip is open in the editor'}
+            </EmptyTitle>
             <EmptyDescription>
               {problem ??
-                'Approving a clip in the Inspector creates its edit document; the editor opens the newest one.'}
+                'Approving a clip in the Inspector creates its edit document and opens it here. Any edit already made can be reopened below.'}
             </EmptyDescription>
           </EmptyHeader>
+          {picker}
           <Button variant="outline" onClick={onOpenResults}>
             Go to Results
           </Button>
@@ -153,11 +171,25 @@ export function Editor({
         />
         <aside className="flex w-[340px] shrink-0 flex-col rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)]">
           <div className="flex items-center justify-between border-b border-[var(--cm-line-1)] p-3">
-            <span className="flex items-center gap-2">
-              <Badge variant="outline">r{plan.revision}</Badge>
-              <span className="truncate font-mono text-[10px] text-[var(--cm-ink-3)]">{docId}</span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              {labels && (
+                <span className="truncate text-xs text-[var(--cm-ink-1)]" data-testid="clip-name">
+                  {[labels.project, labels.clip].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              <span className="flex items-center gap-2">
+                <Badge variant="outline">r{plan.revision}</Badge>
+                <span className="truncate font-mono text-[10px] text-[var(--cm-ink-3)]">
+                  {docId}
+                </span>
+              </span>
             </span>
             <span className="flex gap-1">
+              {onExport && (
+                <Button size="sm" variant="ghost" onClick={onExport} aria-label="Export this clip">
+                  <Upload className="size-4" />
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"

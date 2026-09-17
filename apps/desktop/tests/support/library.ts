@@ -126,6 +126,8 @@ export interface FakeWorld {
   readonly editDocs?: readonly EditDocSummary[];
   /** Every command the editor sent, in order. */
   readonly applied: EditCommandJson[];
+  /** Every plan asked for, as (projectId, docId) pairs — which document opened. */
+  readonly planned: Array<readonly [string, string]>;
   /** What the daemon answers when asked what an export would do. */
   readonly exportPlan?: ExportPlan;
   /** Every export request the screen sent, in order. */
@@ -148,6 +150,7 @@ export function emptyWorld(): FakeWorld {
     directed: [],
     decisions: new Map(),
     applied: [],
+    planned: [],
     exported: [],
     archived: [],
   };
@@ -214,17 +217,30 @@ export function fakeApi(world: FakeWorld): ShellApi {
     // call was refused. These record what was asked and nothing else.
     directClip: (request) => {
       world.directed.push(request);
+      // The one rule of the daemon's worth mirroring: a clip that already has
+      // a document gets it back unless a variation was asked for. A screen
+      // that navigated to a freshly minted id when the daemon would have
+      // reopened an existing one would be tested against a daemon that does
+      // not exist.
+      const existing = request.variation
+        ? undefined
+        : (world.editDocs ?? []).find(
+            (document) =>
+              document.projectId === request.projectId &&
+              document.sourceId === request.sourceId &&
+              document.candidateId === request.candidateId,
+          );
       return Promise.resolve({
-        docId: 'edt_00000000000000000000000000',
+        docId: existing?.docId ?? 'edt_00000000000000000000000000',
         projectId: request.projectId,
         sourceId: request.sourceId,
         candidateId: request.candidateId,
-        revision: 0,
+        revision: existing?.revision ?? 0,
         documentJson: '{}',
         startTicks: request.startTicks ?? 0,
         endTicks: request.endTicks ?? 0,
         decisions: [],
-        reopened: false,
+        reopened: existing !== undefined,
       });
     },
     solveCropPath: () =>
@@ -234,7 +250,10 @@ export function fakeApi(world: FakeWorld): ShellApi {
         fitReason: 'nothing looked for faces',
         containment: 0,
       }),
-    listEditDocs: () => Promise.resolve(world.editDocs ?? []),
+    listEditDocs: (projectId) =>
+      Promise.resolve(
+        (world.editDocs ?? []).filter((document) => document.projectId === projectId),
+      ),
     applyEditCommand: (docId, expectedRevision, command) => {
       world.applied.push(command);
       // The inverse a real daemon computes depends on the document; a fake
@@ -246,10 +265,12 @@ export function fakeApi(world: FakeWorld): ShellApi {
         inverseCommandJson: JSON.stringify(command),
       });
     },
-    previewPlan: () =>
-      world.plan
+    previewPlan: (projectId, docId) => {
+      world.planned.push([projectId, docId]);
+      return world.plan
         ? Promise.resolve(world.plan)
-        : Promise.reject(new Error('this project has no such document')),
+        : Promise.reject(new Error('this project has no such document'));
+    },
     setClipDecision: (_projectId, _sourceId, candidateId, decision) => {
       world.decisions.set(candidateId, decision);
       return Promise.resolve({ candidateId, decision, decidedUnixMillis: 0 });

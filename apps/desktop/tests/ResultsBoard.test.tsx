@@ -31,6 +31,7 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
     penalties: [],
     boundary: null,
     decision: null,
+    docId: null,
     latticeStarts: [],
     latticeEnds: [],
     recommended: false,
@@ -80,6 +81,7 @@ function board(overrides: Partial<Parameters<typeof Results>[0]> = {}) {
       onChooseProject={() => {}}
       onApproveMany={() => {}}
       onInspect={() => {}}
+      onEdit={() => {}}
       onReload={() => {}}
       {...overrides}
     />,

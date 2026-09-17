@@ -37,6 +37,8 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
   const onExport = vi.fn();
   const props = {
     docId: 'edt_1',
+    labels: { project: 'Episode 41', clip: 'Clip 01' },
+    picker: null,
     destination: '/Users/sami/Movies/clips',
     pattern: '{index}-{clip}',
     title: 'Charging less',
@@ -133,9 +135,9 @@ describe('the export screen', () => {
     expect(screen.getByText('not readable')).toBeTruthy();
   });
 
-  it('says nothing is approved rather than showing an empty form', () => {
-    show({ docId: null });
-    expect(screen.getByText('Nothing approved yet')).toBeTruthy();
+  it('says no clip is chosen rather than showing an empty form', () => {
+    show({ docId: null, labels: null });
+    expect(screen.getByText('No clip is chosen for export')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Export' })).toBeNull();
   });
 });
