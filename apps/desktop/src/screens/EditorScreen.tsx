@@ -15,9 +15,10 @@
 import { useCallback, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import { batch, setCropKeyframe, setLayout } from '../editor/commands.js';
+import { batch, setCropKeyframe, setLayout, solvedKeyframe } from '../editor/commands.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import { sourceOf } from '../editor/player.js';
 import { useEditor } from '../editor/useEditor.js';
 import type { ClipRef } from '../shell/route.js';
 import { Editor } from './Editor.js';
@@ -65,7 +66,14 @@ export function EditorScreen({
   const onResolve = useCallback(async () => {
     const plan = editor.plan;
     const faceTrack = editor.faceTrack;
-    if (!faceTrack || !plan) {
+    // The span the solver is asked about is the segment's own window into the
+    // source — the face tracks are in source time — and the answer comes back
+    // in shares of the source frame, which the plan names. Asked from zero to
+    // the clip's duration and converted against the output's dimensions, as
+    // this was, the path followed faces from the recording's opening.
+    const segment = plan?.segments[0];
+    const source = plan && segment ? sourceOf(plan, segment) : null;
+    if (!faceTrack || !plan || !segment || !source) {
       return;
     }
     setResolving(true);
@@ -73,28 +81,21 @@ export function EditorScreen({
       const solved = await api.solveCropPath(
         faceTrack.projectId,
         faceTrack.artifactId,
-        0,
-        Math.round((plan.frameCount * plan.rateDen * 90_000) / plan.rateNum),
+        segment.inTicks,
+        segment.outTicks,
       );
       if (solved.fit || solved.keyframes.length === 0) {
-        await editor.apply(setLayout('fit'));
+        await editor.apply(setLayout('fit', segment.segmentId));
         return;
       }
+      const aspect = { width: plan.width, height: plan.height };
       await editor.apply(
         batch([
-          setLayout('speaker_fill'),
-          ...solved.keyframes.map((keyframe) =>
-            setCropKeyframe(Number(keyframe.tTicks), {
-              // The solver answers in shares of the frame; the document holds
-              // pixels, and the output's own dimensions are what they are of.
-              x: Math.round(
-                (keyframe.centerX - (keyframe.scale * plan.width) / plan.height / 2) * plan.height,
-              ),
-              y: Math.round((keyframe.centerY - keyframe.scale / 2) * plan.height),
-              width: Math.round((keyframe.scale * plan.height * plan.width) / plan.height),
-              height: Math.round(keyframe.scale * plan.height),
-            }),
-          ),
+          setLayout('speaker_fill', segment.segmentId),
+          ...solved.keyframes.map((keyframe) => {
+            const converted = solvedKeyframe(keyframe, segment, source, aspect);
+            return setCropKeyframe(converted.tTicks, converted.rect, segment.segmentId);
+          }),
         ]),
       );
     } finally {
@@ -105,7 +106,7 @@ export function EditorScreen({
   return (
     <Editor
       plan={editor.plan}
-      proxyUrl={editor.proxyUrl}
+      proxyUrls={editor.proxyUrls}
       docId={editor.docId}
       labels={clip?.labels ?? null}
       loading={editor.loading}

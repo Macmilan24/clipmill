@@ -17,8 +17,14 @@ import { useCallback, useRef, useState } from 'react';
 import { Badge } from '../components/ui/badge.js';
 import { Button } from '../components/ui/button.js';
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
-import { OneEuro, removeCropKeyframe, setCropKeyframe, setLayout, ticksAt } from './commands.js';
-import { cropAt } from './player.js';
+import {
+  OneEuro,
+  removeCropKeyframe,
+  segmentTicksAt,
+  setCropKeyframe,
+  setLayout,
+} from './commands.js';
+import { cropAt, segmentAt, sourceOf } from './player.js';
 
 export interface ReframeProps {
   readonly plan: PreviewPlan;
@@ -54,23 +60,36 @@ export function Reframe({
 
   const shown = live ?? (crop ? { x: crop.x, y: crop.y } : null);
 
+  // The crop lives in the source frame, and so does the keyframe's clock: a
+  // keyframe is at segment-local ticks, so the segment the playhead is in is
+  // what a nudge is addressed to.
+  const segment = segmentAt(plan, frame);
+  const source = segment ? sourceOf(plan, segment) : null;
+  const at = segmentTicksAt(plan, frame);
+
   const nudge = useCallback(
     (dx: number, dy: number) => {
       if (!crop) {
         return;
       }
-      const x = clamp(crop.x + dx, 0, Math.max(0, plan.width * 2 - crop.width));
-      const y = clamp(crop.y + dy, 0, Math.max(0, plan.height * 2 - crop.height));
+      const frameWidth = source?.displayWidth ?? plan.width * 2;
+      const frameHeight = source?.displayHeight ?? plan.height * 2;
+      const x = clamp(crop.x + dx, 0, Math.max(0, frameWidth - crop.width));
+      const y = clamp(crop.y + dy, 0, Math.max(0, frameHeight - crop.height));
       onApply(
-        setCropKeyframe(ticksAt(plan, frame), {
-          x,
-          y,
-          width: crop.width,
-          height: crop.height,
-        }),
+        setCropKeyframe(
+          at.tTicks,
+          {
+            x,
+            y,
+            width: crop.width,
+            height: crop.height,
+          },
+          at.segmentId,
+        ),
       );
     },
-    [crop, frame, onApply, plan],
+    [at.segmentId, at.tTicks, crop, onApply, plan, source],
   );
 
   return (
@@ -82,7 +101,7 @@ export function Reframe({
             size="sm"
             variant={crop ? 'default' : 'outline'}
             disabled={busy}
-            onClick={() => onApply(setLayout('speaker_fill'))}
+            onClick={() => onApply(setLayout('speaker_fill', at.segmentId))}
           >
             Speaker-follow
           </Button>
@@ -90,7 +109,7 @@ export function Reframe({
             size="sm"
             variant={crop ? 'outline' : 'default'}
             disabled={busy}
-            onClick={() => onApply(setLayout('fit'))}
+            onClick={() => onApply(setLayout('fit', at.segmentId))}
           >
             Fit
           </Button>
@@ -137,7 +156,7 @@ export function Reframe({
                 size="sm"
                 variant="ghost"
                 disabled={busy}
-                onClick={() => onApply(removeCropKeyframe(ticksAt(plan, frame)))}
+                onClick={() => onApply(removeCropKeyframe(at.tTicks, at.segmentId))}
                 title="Remove the keyframe at this frame"
               >
                 ⌫

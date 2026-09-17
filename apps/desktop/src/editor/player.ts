@@ -8,12 +8,25 @@
  * would be a second implementation of the render's arithmetic — and the whole
  * point of the plan is that there is only one.
  *
- * The one thing this file *does* compute is the mapping from a media element's
- * `currentTime` to a frame index, and that is unavoidable: a browser reports
- * seconds. It is done by one function so there is one place to look when a
- * frame is off by one.
+ * The one thing this file *does* compute is the mapping between a media
+ * element's `currentTime` and a frame index, and that is unavoidable: a
+ * browser reports seconds, of the proxy, while the plan is in frames, of the
+ * program. The two are not the same clock. A clip cut from ten minutes into a
+ * recording starts at program frame zero and proxy second six hundred, and a
+ * player that confused them seeked to the recording's opening — so the
+ * conversion goes through the plan's own segment map, in one place, and every
+ * seek, scrub and trim uses it.
  */
-import type { PreviewCue, PreviewPlan } from '../daemon/client.js';
+import type {
+  PreviewCue,
+  PreviewPlan,
+  PreviewProxy,
+  PreviewSegment,
+  PreviewSource,
+} from '../daemon/client.js';
+
+/** Ticks per second, the daemon's timebase throughout. */
+const TICKS_PER_SECOND = 90_000;
 
 /** The frame a playhead in seconds is inside. */
 export function frameAt(plan: PreviewPlan, seconds: number): number {
@@ -30,6 +43,110 @@ export function secondsAt(plan: PreviewPlan, frame: number): number {
     return 0;
   }
   return (frame * plan.rateDen) / plan.rateNum;
+}
+
+/** The segment a program frame plays from, or null off the end. */
+export function segmentAt(plan: PreviewPlan, frame: number): PreviewSegment | null {
+  return (
+    plan.segments.find((segment) => frame >= segment.firstFrame && frame < segment.endFrame) ?? null
+  );
+}
+
+/** The source a segment names, when the plan knows it. */
+export function sourceOf(plan: PreviewPlan, segment: PreviewSegment): PreviewSource | null {
+  return (
+    plan.sources.find((source) => source.sourceFingerprint === segment.sourceFingerprint) ?? null
+  );
+}
+
+/** The proxy a segment plays from, when its source has one. */
+export function proxyOf(plan: PreviewPlan, segment: PreviewSegment): PreviewProxy | null {
+  return (
+    plan.proxies.find((proxy) => proxy.sourceFingerprint === segment.sourceFingerprint) ?? null
+  );
+}
+
+/**
+ * The source tick a program frame plays, through the segment it is in.
+ *
+ * The document's own `program_to_source`, in frames: the frame's offset into
+ * its segment, in ticks at the plan's rate, added to where the segment starts
+ * in the source.
+ */
+export function sourceTicksAt(plan: PreviewPlan, frame: number): number | null {
+  const segment = segmentAt(plan, frame);
+  if (!segment) {
+    return null;
+  }
+  return (
+    segment.inTicks + Math.round(secondsAt(plan, frame - segment.firstFrame) * TICKS_PER_SECOND)
+  );
+}
+
+/**
+ * Where the media element must be, in proxy seconds, to show a program frame.
+ *
+ * Null when the frame's source has no proxy — which is "nothing to play",
+ * not "play from zero".
+ */
+export function proxySecondsAt(plan: PreviewPlan, frame: number): number | null {
+  const segment = segmentAt(plan, frame);
+  const proxy = segment ? proxyOf(plan, segment) : null;
+  const ticks = sourceTicksAt(plan, frame);
+  if (!proxy || ticks === null) {
+    return null;
+  }
+  return (ticks - proxy.coverageStartTicks) / TICKS_PER_SECOND;
+}
+
+/**
+ * The program frame a media element's time is showing, inside one segment.
+ *
+ * The inverse of `proxySecondsAt`, for the segment that is playing: a time
+ * past the segment's end answers with the segment's last frame, and the
+ * caller — which is what knows a segment ended — moves on to the next.
+ */
+export function frameAtProxySeconds(
+  plan: PreviewPlan,
+  segment: PreviewSegment,
+  seconds: number,
+): number {
+  const proxy = proxyOf(plan, segment);
+  if (!proxy || plan.rateNum <= 0 || plan.rateDen <= 0) {
+    return segment.firstFrame;
+  }
+  const sourceTicks = seconds * TICKS_PER_SECOND + proxy.coverageStartTicks;
+  const offsetSeconds = (sourceTicks - segment.inTicks) / TICKS_PER_SECOND;
+  const frame = segment.firstFrame + Math.floor((offsetSeconds * plan.rateNum) / plan.rateDen);
+  return Math.max(segment.firstFrame, Math.min(segment.endFrame - 1, frame));
+}
+
+/**
+ * The CSS transform that shows a crop in a stage the crop's aspect fills.
+ *
+ * The crop is a rectangle in the *source* frame, and the element on stage is
+ * the source scaled to the stage's height. So the scale is how many times the
+ * crop's height goes into the source's, and the translate moves the crop's
+ * centre to the element's centre, as a share of the element's own size. Built
+ * against the output's dimensions instead, as it was, this was right only for
+ * a source that happened to share the output's aspect.
+ */
+export function stageTransform(
+  crop: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  source: { readonly displayWidth: number; readonly displayHeight: number },
+): string | undefined {
+  if (
+    crop.width <= 0 ||
+    crop.height <= 0 ||
+    source.displayWidth <= 0 ||
+    source.displayHeight <= 0
+  ) {
+    return undefined;
+  }
+  const scale = source.displayHeight / crop.height;
+  const dx = (0.5 - (crop.x + crop.width / 2) / source.displayWidth) * 100;
+  const dy = (0.5 - (crop.y + crop.height / 2) / source.displayHeight) * 100;
+  return `scale(${scale}) translate(${dx}%, ${dy}%)`;
 }
 
 /** The crop the encoder will apply at a frame, or null where it fits. */

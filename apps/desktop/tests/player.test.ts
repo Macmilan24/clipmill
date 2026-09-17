@@ -9,18 +9,23 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PreviewPlan } from '../src/daemon/client.js';
-import { mapping } from './support/plan.js';
 import {
   cropAt,
   cueAt,
   cueLines,
   frameAt,
+  frameAtProxySeconds,
   gainAt,
   highlightedWord,
   lanePosition,
+  proxySecondsAt,
   secondsAt,
+  segmentAt,
+  sourceTicksAt,
+  stageTransform,
   timecode,
 } from '../src/editor/player.js';
+import { TICKS, mapping } from './support/plan.js';
 
 /** Thirty frames, a crop that moves, one karaoke cue, one gain step. */
 function plan(): PreviewPlan {
@@ -146,5 +151,73 @@ describe('the lanes', () => {
     expect(gainAt(at, 14)).toBe(0);
     expect(gainAt(at, 15)).toBe(-6);
     expect(gainAt(at, 29)).toBe(-6);
+  });
+});
+
+/**
+ * The two clocks, kept apart.
+ *
+ * The plan is in program frames; the media element is in proxy seconds; the
+ * clip is cut from ten minutes into the recording. Every conversion below is
+ * the one a seek, a scrub or a trim makes, and every expected number is the
+ * document's own `program_to_source` worked by hand.
+ */
+describe('mapping the program onto the recording', () => {
+  it('finds the source tick a frame plays, through its segment', () => {
+    expect(sourceTicksAt(plan(), 0)).toBe(600 * TICKS);
+    // Frame 15 at 30000/1001 is 15 × 1001 / 30000 s = 0.5005 s = 45,045 ticks.
+    expect(sourceTicksAt(plan(), 15)).toBe(600 * TICKS + 45_045);
+    expect(segmentAt(plan(), 999)).toBeNull();
+    expect(sourceTicksAt(plan(), 999)).toBeNull();
+  });
+
+  it('seeks the proxy to the recording\u2019s time, less where the proxy begins', () => {
+    expect(proxySecondsAt(plan(), 0)).toBeCloseTo(600, 6);
+    expect(proxySecondsAt(plan(), 15)).toBeCloseTo(600.5005, 6);
+    // A proxy that covers the recording from ten seconds in starts its own
+    // clock there.
+    const offset: PreviewPlan = {
+      ...plan(),
+      proxies: [{ ...plan().proxies[0]!, coverageStartTicks: 10 * TICKS }],
+    };
+    expect(proxySecondsAt(offset, 0)).toBeCloseTo(590, 6);
+    // No proxy is no answer, not second zero.
+    expect(proxySecondsAt({ ...plan(), proxies: [] }, 0)).toBeNull();
+  });
+
+  it('reads the media element\u2019s time back as a program frame, clamped to the segment', () => {
+    const segment = plan().segments[0]!;
+    expect(frameAtProxySeconds(plan(), segment, 600)).toBe(0);
+    expect(frameAtProxySeconds(plan(), segment, 600.5)).toBe(14);
+    // Past the segment's end is its last frame; the player decides what
+    // comes next.
+    expect(frameAtProxySeconds(plan(), segment, 700)).toBe(29);
+    expect(frameAtProxySeconds(plan(), segment, 0)).toBe(0);
+  });
+
+  it('builds the crop transform against the source frame, not the output', () => {
+    // A 9:16 crop of a 1920×1080 source, 200 px from the left: full height,
+    // so no scale, and the crop's centre (504) moved to the frame's (960).
+    expect(
+      stageTransform(
+        { x: 200, y: 0, width: 608, height: 1080 },
+        { displayWidth: 1920, displayHeight: 1080 },
+      ),
+    ).toBe('scale(1) translate(23.75%, 0%)');
+    // Half the height: scaled up twice, centred on the crop.
+    const halved = stageTransform(
+      { x: 656, y: 270, width: 304, height: 540 },
+      { displayWidth: 1920, displayHeight: 1080 },
+    );
+    const [, scale, dx, dy] = /scale\((.+)\) translate\((.+)%, (.+)%\)/.exec(halved ?? '') ?? [];
+    expect(Number(scale)).toBe(2);
+    expect(Number(dx)).toBeCloseTo(7.9167, 3);
+    expect(Number(dy)).toBe(0);
+    expect(
+      stageTransform(
+        { x: 0, y: 0, width: 0, height: 0 },
+        { displayWidth: 1920, displayHeight: 1080 },
+      ),
+    ).toBeUndefined();
   });
 });
