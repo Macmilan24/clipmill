@@ -152,12 +152,13 @@ recogniser, admission adds their `[memory]` declarations, and the development
 machine has 24 GB. Sizes below are the 4-bit MLX builds as published in
 September 2026.
 
-| Job                   | Candidate                                                | 4-bit resident | Fits 24 GB beside speech | Notes                                                                                                         |
-| --------------------- | -------------------------------------------------------- | -------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| propose/review        | **Gemma 4 12B** (`mlx-community`, Apache-2.0)            | ~8 GB          | yes                      | The first candidate on this machine: dense, structured output, room to spare                                  |
-| propose/review        | Gemma 4 26B-A4B (MoE, 3.8B active)                       | ~18 GB         | tight                    | Fast per token; admission decides whether it can sit beside the speech models                                 |
-| propose/review + look | **Qwen3.8-27B** (dense, natively multimodal, Apache-2.0) | ~15–18 GB      | no, not beside speech    | The strongest local model and one model for all three jobs — on 32 GB+ machines, or run after speech finishes |
-| look                  | Gemma 4 12B's vision input, or Qwen3.8-27B where it fits | —              | —                        | Frame sets, short answers; the E4B build as the small-machine fallback                                        |
+| Job                   | Candidate                                                               | 4-bit resident | Fits 24 GB beside speech | Notes                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------- | -------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| all three jobs        | **Qwen3.5-9B** (natively multimodal; `mlx-community` 4-bit via mlx-vlm) | ~5–6 GB        | yes                      | The first candidate on this machine: one model for propose, review and look, 25–35 tok/s, room to spare       |
+| propose/review        | **Gemma 4 12B** (`mlx-community`, Apache-2.0)                           | ~8 GB          | yes                      | The head-to-head for the text jobs: dense, structured output                                                  |
+| propose/review        | Gemma 4 26B-A4B (MoE, 3.8B active)                                      | ~18 GB         | tight                    | Fast per token; admission decides whether it can sit beside the speech models                                 |
+| propose/review + look | **Qwen3.8-27B** (dense, natively multimodal, Apache-2.0)                | ~15–18 GB      | no, not beside speech    | The strongest local model and one model for all three jobs — on 32 GB+ machines, or run after speech finishes |
+| look                  | Qwen3.5-9B (same model), or Qwen3.8-27B where it fits                   | —              | —                        | Frame sets, short answers; Qwen3.5-4B as the small-machine fallback                                           |
 
 GLM-5.3-Flash (320B-A18B) and DeepSeek V4.1-Flash (~100B MoE) are not
 laptop-local — the community MLX ports need 48 GB with SSD streaming or a
@@ -278,11 +279,13 @@ runnable end to end after every one.
 
 ## Decisions to take before step 2
 
-- **Which local text model to start with.** Benchmark Gemma 4 12B against
-  Gemma 4 26B-A4B on this machine — and Qwen3.8-27B on a machine that holds
-  it — for structured-output reliability, latency per window and resident
-  memory beside the speech models; record the choice as a decision with the
-  numbers. The registry entry is written for whichever wins, by digest.
+- **Which local model to start with.** Benchmark Qwen3.5-9B against Gemma 4
+  12B on this machine (and Gemma 4 26B-A4B if admission allows it; Qwen3.8-27B
+  on a machine that holds it) for structured-output reliability, latency per
+  window, resident memory beside the speech models, and — for Qwen3.5-9B —
+  whether one model serving all three jobs beats two; record the choice as a
+  decision with the numbers. The registry entry is written for whichever
+  wins, by digest, licence verified at that point.
 - **Licence class for editorial weights.** Extend the class rule
   (editorial weights never ship in an export) or restrict to permissive
   models; decide and record.
