@@ -8,7 +8,7 @@
  * rather than sampled, and a log that says it begins when the screen opens.
  */
 import { JobState, TaskState } from '@clipmill/contracts';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AnalysisLoader } from '../src/analysis/useAnalysis.js';
@@ -20,8 +20,10 @@ import {
   filmstrip,
   job,
   project,
+  readiness,
   source,
   sourceMapDocument,
+  stageReadiness,
   task,
 } from './support/library.js';
 
@@ -43,6 +45,7 @@ function running(): FakeWorld {
           task('speech.alignment.v1', TaskState.PLANNED),
           task('speech.transcript.v1', TaskState.PLANNED),
           task('index.transcript.v1', TaskState.PLANNED),
+          task('editorial.windows.v1', TaskState.PLANNED),
           task('discovery.candidates.v1', TaskState.PLANNED),
           task('ranking.set.v1', TaskState.PLANNED),
         ]),
@@ -72,10 +75,37 @@ function show(scene = running(), overrides: Record<string, unknown> = {}) {
 }
 
 describe('the Analysis Progress screen', () => {
+  it('retries the selected run source locally even when another recording is listed first', async () => {
+    const selected = source('p1');
+    const scene = {
+      ...running(),
+      sources: {
+        p1: [{ ...selected, sourceId: 'src_wrong', absolutePath: '/wrong.mp4' }, selected],
+      },
+      jobs: { p1: [job('p1', JobState.FAILED)] },
+    };
+    const api = fakeApi(scene);
+    const submitAnalyze = vi.fn(api.submitAnalyze);
+    const onRestarted = vi.fn();
+    show(scene, { loader: new AnalysisLoader({ ...api, submitAnalyze }), onRestarted });
+    fireEvent.click(await screen.findByRole('button', { name: 'Analyze again locally' }));
+    await waitFor(() =>
+      expect(submitAnalyze).toHaveBeenCalledWith('p1', {
+        sourceId: selected.sourceId,
+        language: 'en',
+        minTicks: 20 * 90000,
+        maxTicks: 90 * 90000,
+        count: 5,
+        localEditorial: true,
+      }),
+    );
+    await waitFor(() => expect(onRestarted).toHaveBeenCalledWith('p1', 'job-p1'));
+  });
+
   it('shows every stage of the pipeline, named for a reader', async () => {
     show();
     const pipeline = within(await screen.findByRole('list', { name: 'Pipeline stages' }));
-    expect(pipeline.getAllByRole('listitem')).toHaveLength(10);
+    expect(pipeline.getAllByRole('listitem')).toHaveLength(14);
     for (const label of [
       'Inspect source',
       'Ingest',
@@ -85,7 +115,8 @@ describe('the Analysis Progress screen', () => {
       'Assemble transcript',
       'Detect shots',
       'Index transcript',
-      'Propose candidates',
+      'Cut windows',
+      'Validate candidates',
       'Rank candidates',
     ]) {
       expect(pipeline.getByText(label)).toBeTruthy();
@@ -178,6 +209,51 @@ describe('the Analysis Progress screen', () => {
     show(finished);
     const button = await screen.findByRole('button', { name: 'View results' });
     expect(button.hasAttribute('disabled')).toBe(false);
+  });
+
+  it("says what a waiting stage is waiting for, in the daemon's words", async () => {
+    // The task fixture names its kind after the artifact it publishes; the
+    // readiness report is keyed by that same task kind.
+    const scene = {
+      ...running(),
+      readiness: readiness([
+        stageReadiness('speech.asr', { workerPresent: false }),
+        stageReadiness('speech.vad'),
+      ]),
+    };
+    show(scene);
+    const reason = await screen.findByTestId('waiting-speech.asr.v1');
+    expect(reason.textContent).toMatch(/No worker is connected that runs speech\.asr/);
+    expect(reason.textContent).toMatch(/just workers/);
+    // A stage whose worker is here waits on its dependencies, not on a remedy.
+    expect(screen.queryByTestId('waiting-speech.vad.v1')).toBeNull();
+    // The running stage is not waiting.
+    expect(screen.queryByTestId('waiting-media.frames.v1')).toBeNull();
+  });
+
+  it('stops naming waits once the run has finished', async () => {
+    const scene = running();
+    const finished = {
+      ...scene,
+      readiness: readiness([stageReadiness('speech.asr', { workerPresent: false })]),
+      jobs: {
+        p1: [
+          job(
+            'p1',
+            JobState.FAILED,
+            scene.jobs.p1![0]!.tasks.map((entry) =>
+              task(
+                entry.outputKind,
+                entry.state === TaskState.SUCCEEDED ? TaskState.SUCCEEDED : TaskState.CANCELLED,
+              ),
+            ),
+          ),
+        ],
+      },
+    };
+    show(finished);
+    await screen.findByRole('list', { name: 'Pipeline stages' });
+    expect(screen.queryByTestId('waiting-speech.asr.v1')).toBeNull();
   });
 
   it('shows why a run stopped instead of only that it did', async () => {

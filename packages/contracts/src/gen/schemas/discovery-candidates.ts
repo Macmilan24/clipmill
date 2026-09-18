@@ -37,6 +37,7 @@ export interface DiscoveryCandidates {
    * Near-duplicate groupings. Every candidate belongs to exactly one cluster, including the ones that duplicate nothing. Ranking sends a cluster's representative forward and can still offer the alternatives, so a diversity decision is shown rather than silent.
    */
   clusters: Cluster[];
+  editorial?: EditorialCoverage;
 }
 export interface Producer {
   stage: string;
@@ -119,6 +120,7 @@ export interface Candidate {
    * Reasons this candidate must not be published even if it ranks well.
    */
   exclusions: Exclusion[];
+  editorial?: EditorialMoment;
 }
 export interface Interval {
   start_ticks: number;
@@ -161,6 +163,18 @@ export interface Exclusion {
   reason: "invalid_region" | "below_coverage" | "rights_excluded";
   detail?: string;
 }
+export interface EditorialMoment {
+  title: string;
+  hook: string;
+  setup: string;
+  payoff: string;
+  reason: string;
+  /**
+   * @minItems 1
+   */
+  proposal_ids: [string, ...string[]];
+  uncertainties: string[];
+}
 export interface Cluster {
   id: ClusterId;
   /**
@@ -175,4 +189,17 @@ export interface Cluster {
    * The weakest pairwise similarity inside the cluster, so a consumer can see how loose the grouping is. One for a cluster of one, which duplicates nothing.
    */
   similarity: number;
+}
+/**
+ * Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.
+ */
+export interface EditorialCoverage {
+  window_count: number;
+  answered_windows: number;
+  failed_windows: {
+    index: number;
+    detail: string;
+  }[];
+  failed_reviews: number;
+  failed_visual_checks: number;
 }

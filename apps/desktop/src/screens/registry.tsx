@@ -15,14 +15,21 @@
  * One screen is not a section at all. Analysis Progress is about a particular
  * run, has no navigation row by design, and is reached from the two screens that
  * can name a run — so the route decides, and only then does the section.
+ *
+ * Two sections take an argument the same way. The Editor and Export rows open
+ * a clip when the route names one and a list of clips when it does not; the
+ * route decides which, and the screen never has to guess at "the newest".
  */
-import type { JSX } from 'react';
+import { lazy, Suspense, type JSX } from 'react';
 
 import type { Route } from '../shell/route.js';
-import { placementOf } from '../shell/route.js';
+import { clipOf, placementOf } from '../shell/route.js';
 import { AnalysisProgress } from './AnalysisProgress.js';
 import { Library } from './Library.js';
-import { ModelsDevice } from './ModelsDevice.js';
+// Hardware charts are loaded only when their screen is opened.
+const ModelsDevice = lazy(() =>
+  import('./ModelsDevice.js').then((module) => ({ default: module.ModelsDevice })),
+);
 import { NewProject } from './NewProject.js';
 import { PhasePlaceholder } from './PhasePlaceholder.js';
 import { EditorScreen } from './EditorScreen.js';
@@ -45,10 +52,14 @@ export interface ScreenContext {
   /** The run-specific arguments come from the route, so these are the rest. */
   readonly analysis: Omit<Parameters<typeof AnalysisProgress>[0], 'projectId' | 'jobId'>;
   /** The Inspector's own arguments come from the route, so these are the rest. */
-  readonly results: Omit<Parameters<typeof ResultsScreen>[0], 'candidateId'>;
-  readonly editor: Parameters<typeof EditorScreen>[0];
-  /** Export and Settings read the daemon directly; nothing routes into them. */
-  readonly export: Parameters<typeof ExportScreen>[0];
+  readonly results: Omit<
+    Parameters<typeof ResultsScreen>[0],
+    'candidateId' | 'projectId' | 'sourceId' | 'jobId'
+  >;
+  /** The clip comes from the route, so this is the rest. */
+  readonly editor: Omit<Parameters<typeof EditorScreen>[0], 'clip'>;
+  readonly export: Omit<Parameters<typeof ExportScreen>[0], 'clip'>;
+  /** Settings reads the daemon directly; nothing routes into it. */
   readonly settings: Parameters<typeof SettingsScreen>[0];
 }
 
@@ -57,10 +68,28 @@ type Screen = (context: ScreenContext) => JSX.Element;
 const SCREENS: Readonly<Record<string, Screen>> = {
   library: ({ library }) => <Library {...library} />,
   'new-project': ({ newProject }) => <NewProject {...newProject} />,
-  models: ({ models }) => <ModelsDevice {...models} />,
-  results: ({ results }) => <ResultsScreen {...results} candidateId={null} />,
-  editor: ({ editor }) => <EditorScreen {...editor} />,
-  export: (context) => <ExportScreen {...context.export} />,
+  models: ({ models }) => (
+    <Suspense
+      fallback={
+        <p role="status" className="text-xs text-[var(--cm-text-secondary)]">
+          Loading Models &amp; Device…
+        </p>
+      }
+    >
+      <ModelsDevice {...models} />
+    </Suspense>
+  ),
+  results: ({ results, route }) => (
+    <ResultsScreen
+      {...results}
+      candidateId={null}
+      projectId={route.kind === 'section' ? (route.projectId ?? null) : null}
+      sourceId={route.kind === 'section' ? (route.sourceId ?? null) : null}
+      jobId={route.kind === 'section' ? (route.jobId ?? null) : null}
+    />
+  ),
+  editor: ({ editor, route }) => <EditorScreen {...editor} clip={clipOf(route)} />,
+  export: (context) => <ExportScreen {...context.export} clip={clipOf(context.route)} />,
   settings: ({ settings }) => <SettingsScreen {...settings} />,
 };
 
@@ -80,7 +109,15 @@ export function renderScreen(context: ScreenContext): JSX.Element {
     );
   }
   if (route.kind === 'inspector') {
-    return <ResultsScreen {...context.results} candidateId={route.candidateId} />;
+    return (
+      <ResultsScreen
+        {...context.results}
+        candidateId={route.candidateId}
+        projectId={route.projectId}
+        sourceId={route.sourceId}
+        jobId={route.jobId ?? null}
+      />
+    );
   }
   const { section } = placementOf(route);
   const screen = section.availability.kind === 'live' ? SCREENS[section.id] : undefined;

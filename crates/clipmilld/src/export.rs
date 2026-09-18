@@ -250,12 +250,33 @@ struct Delivery<'a> {
 
 /// What the export writes, in delivery order. The clip first because it is the
 /// thing; the checksums last because they describe everything before them.
+///
+/// All of it or none of it. A delivery that stopped part way used to leave
+/// the clip and the sidecars in the folder with no metadata and no checksums
+/// beside them — a folder that looked delivered and was not, under a message
+/// that said it held nothing. What was placed before the failure is taken
+/// back out, so the message is true and the next export starts clean.
 async fn deliver_files(
     context: &ExportContext<'_>,
     delivery: &Delivery<'_>,
     progress: &ProgressSlot,
 ) -> Result<Vec<DeliveredFile>, TaskExecutionError> {
     let mut delivered = Vec::new();
+    let outcome = deliver_files_in_order(context, delivery, progress, &mut delivered).await;
+    if outcome.is_err() {
+        for file in &delivered {
+            let _removed = fs::remove_file(delivery.destination.join(&file.name));
+        }
+    }
+    outcome.map(|()| delivered)
+}
+
+async fn deliver_files_in_order(
+    context: &ExportContext<'_>,
+    delivery: &Delivery<'_>,
+    progress: &ProgressSlot,
+    delivered: &mut Vec<DeliveredFile>,
+) -> Result<(), TaskExecutionError> {
     for (source, role) in [
         (CLIP_FILE, FileRole::Clip),
         (SRT_FILE, FileRole::SubtitlesSrt),
@@ -289,9 +310,9 @@ async fn deliver_files(
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
     delivered.push(place(delivery, FileRole::Metadata, &package_bytes)?);
 
-    let checksums = checksum_file(&delivered);
+    let checksums = checksum_file(delivered);
     delivered.push(place(delivery, FileRole::Checksums, checksums.as_bytes())?);
-    Ok(delivered)
+    Ok(())
 }
 
 /// Write one file into the destination through a temporary name.
@@ -332,7 +353,14 @@ async fn render_thumbnail(
     delivery: &Delivery<'_>,
     progress: &ProgressSlot,
 ) -> Result<Vec<u8>, TaskExecutionError> {
-    let work = delivery.destination.to_path_buf();
+    // Written in a private directory of its own and placed afterwards, not
+    // into the destination: the run's output budget is measured over its
+    // whole output directory, and a user's folder already holding the clip
+    // just delivered — or anything else of theirs — read as a runaway.
+    let work = context
+        .media
+        .private_output_dir()
+        .map_err(MediaError::into_task_error)?;
     let output = format!("{}.thumbnail{PARTIAL_SUFFIX}", delivery.stem);
     // A tenth of the way in, so a clip that opens on a fade does not deliver a
     // black poster, and clamped so a very short clip still lands inside itself.
@@ -378,10 +406,9 @@ async fn render_thumbnail(
         .await
         .map_err(MediaError::into_task_error)?;
     let path = work.join(&output);
-    let bytes =
-        fs::read(&path).map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    let _removed = fs::remove_file(&path);
-    Ok(bytes)
+    let bytes = fs::read(&path).map_err(|error| TaskExecutionError::transient(error.to_string()));
+    let _removed = fs::remove_dir_all(&work);
+    bytes
 }
 
 fn video_of(manifest: &RenderManifest) -> VideoSummary {
@@ -609,6 +636,9 @@ mod tests {
         let docs = vec![crate::db::EditDocRecord {
             doc_id: "doc_1".to_owned(),
             project_id: "prj_1".to_owned(),
+            source_id: None,
+            candidate_id: None,
+            job_id: None,
             revision: 2,
             document_json: document.to_owned(),
             created_unix_millis: 1_700_000_000_000,

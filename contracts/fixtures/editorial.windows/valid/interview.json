@@ -1,0 +1,198 @@
+{
+  "budget": {
+    "context_sentences": 2,
+    "overlap_words": 80,
+    "target_words": 600
+  },
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 6426000,
+    "start_ticks": 0
+  },
+  "inputs": {
+    "index_artifact_id": "sha256:1de0000000000000000000000000000000000000000000000000000000000011",
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "outline": [
+    {
+      "end_ticks": 1458000,
+      "first_sentence_index": 0,
+      "keywords": [
+        "every",
+        "build",
+        "deterministic",
+        "encoder",
+        "lands"
+      ],
+      "sentence_count": 4,
+      "start_ticks": 0,
+      "topic_index": 0
+    },
+    {
+      "end_ticks": 6336000,
+      "first_sentence_index": 4,
+      "keywords": [
+        "word",
+        "against",
+        "cut",
+        "ticks",
+        "timebase"
+      ],
+      "sentence_count": 10,
+      "start_ticks": 1494000,
+      "topic_index": 1
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-editorial-windows@1.0.0",
+    "stage": "editorial-windows"
+  },
+  "schema_version": "clipmill.editorial.windows.v1",
+  "sentences": [
+    {
+      "end_ticks": 225000,
+      "first_word_index": 0,
+      "index": 0,
+      "start_ticks": 0,
+      "terminator": "punctuation",
+      "text": "What makes a renderer deterministic",
+      "word_count": 5
+    },
+    {
+      "end_ticks": 621000,
+      "first_word_index": 5,
+      "index": 1,
+      "start_ticks": 261000,
+      "terminator": "punctuation",
+      "text": "The encoder settings are pinned to one profile",
+      "word_count": 8
+    },
+    {
+      "end_ticks": 1107000,
+      "first_word_index": 13,
+      "index": 2,
+      "start_ticks": 657000,
+      "terminator": "punctuation",
+      "text": "Every frame lands on the same tick on every machine",
+      "word_count": 10
+    },
+    {
+      "end_ticks": 1458000,
+      "first_word_index": 23,
+      "index": 3,
+      "start_ticks": 1143000,
+      "terminator": "punctuation",
+      "text": "Nobody can reproduce a build that drifts",
+      "word_count": 7
+    },
+    {
+      "end_ticks": 1899000,
+      "first_word_index": 30,
+      "index": 4,
+      "start_ticks": 1494000,
+      "terminator": "punctuation",
+      "text": "That is the whole reason the profile is frozen",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 2529000,
+      "first_word_index": 39,
+      "index": 5,
+      "start_ticks": 2259000,
+      "terminator": "punctuation",
+      "text": "How does alignment measure word timing",
+      "word_count": 6
+    },
+    {
+      "end_ticks": 2970000,
+      "first_word_index": 45,
+      "index": 6,
+      "start_ticks": 2565000,
+      "terminator": "punctuation",
+      "text": "A CTC model scores each frame against the text",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 3321000,
+      "first_word_index": 54,
+      "index": 7,
+      "start_ticks": 3006000,
+      "terminator": "punctuation",
+      "text": "The peaks become word boundaries in ticks",
+      "word_count": 7
+    },
+    {
+      "end_ticks": 3762000,
+      "first_word_index": 61,
+      "index": 8,
+      "start_ticks": 3357000,
+      "terminator": "punctuation",
+      "text": "Interpolated timing is labelled and never presented as measured",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 4293000,
+      "first_word_index": 70,
+      "index": 9,
+      "start_ticks": 3798000,
+      "terminator": "punctuation",
+      "text": "Precision here is what stops a cut landing inside a word",
+      "word_count": 11
+    },
+    {
+      "end_ticks": 4968000,
+      "first_word_index": 81,
+      "index": 10,
+      "start_ticks": 4653000,
+      "terminator": "punctuation",
+      "text": "What breaks when the timebase is wrong",
+      "word_count": 7
+    },
+    {
+      "end_ticks": 5454000,
+      "first_word_index": 88,
+      "index": 11,
+      "start_ticks": 5004000,
+      "terminator": "punctuation",
+      "text": "A caption drifts a frame further out with every cut",
+      "word_count": 10
+    },
+    {
+      "end_ticks": 5895000,
+      "first_word_index": 98,
+      "index": 12,
+      "start_ticks": 5490000,
+      "terminator": "punctuation",
+      "text": "Viewers read it as sloppiness rather than as arithmetic",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 6336000,
+      "first_word_index": 107,
+      "index": 13,
+      "start_ticks": 5931000,
+      "terminator": "punctuation",
+      "text": "Integer ticks against a stated timebase remove the question",
+      "word_count": 9
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "windows": [
+    {
+      "context_after_sentences": 0,
+      "context_before_sentences": 0,
+      "end_ticks": 6336000,
+      "first_sentence_index": 0,
+      "index": 0,
+      "sentence_count": 14,
+      "start_ticks": 0,
+      "topic_indexes": [
+        0,
+        1
+      ],
+      "word_count": 116
+    }
+  ]
+}

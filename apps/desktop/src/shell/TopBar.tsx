@@ -12,12 +12,10 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 import type { ConnectionState } from '../daemon/client.js';
-import { formatBytes } from '../deviceProfile.js';
 
 interface TopBarProps {
   /** Outermost first. One part for a section, two for a screen inside one. */
@@ -31,11 +29,11 @@ interface TopBarProps {
 function statusLabel(state: ConnectionState): { text: string; tone: string } {
   switch (state.status) {
     case 'connected':
-      return { text: `daemon ${state.daemonVersion}`, tone: 'text-[var(--color-success)]' };
+      return { text: 'Engine ready', tone: 'text-[var(--color-success)]' };
     case 'connecting':
-      return { text: 'connecting', tone: 'text-[var(--color-warning)]' };
+      return { text: 'Connecting', tone: 'text-[var(--color-warning)]' };
     default:
-      return { text: 'daemon offline', tone: 'text-[var(--color-destructive)]' };
+      return { text: 'Engine offline', tone: 'text-[var(--color-destructive)]' };
   }
 }
 
@@ -49,23 +47,19 @@ function statusLabel(state: ConnectionState): { text: string; tone: string } {
  * circle was a badge for something that does not exist, and a letter nobody
  * chose is worse than the space it occupied.
  */
-export function TopBar({ trail, theme, onToggleTheme, state, profile }: TopBarProps): JSX.Element {
+export function TopBar({ trail, theme, onToggleTheme, state }: TopBarProps): JSX.Element {
   const status = statusLabel(state);
-  const total = profile?.memory.total_bytes;
-  const available = profile?.phase0?.available_memory_bytes;
-  const used = total !== undefined && available !== undefined ? total - available : undefined;
-  const ratio = used !== undefined && total !== undefined && total > 0 ? (used / total) * 100 : 0;
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
 
   return (
-    <header className="glass flex h-13 flex-none items-center justify-between rounded-none border-x-0 border-t-0 px-6 shadow-none">
-      <Breadcrumb>
-        <BreadcrumbList>
+    <header className="studio-topbar glass flex h-13 flex-none items-center justify-between rounded-none border-x-0 border-t-0 px-6 shadow-none">
+      <Breadcrumb className="min-w-0 overflow-hidden">
+        <BreadcrumbList className="flex-nowrap">
           {trail.map((part, index) => (
             <Fragment key={part}>
               {index === 0 ? null : <BreadcrumbSeparator />}
               <BreadcrumbItem>
-                <BreadcrumbPage className="text-body text-[var(--cm-text-secondary)]">
+                <BreadcrumbPage className="max-w-72 truncate text-[12px] text-[var(--cm-text-secondary)]">
                   {part}
                 </BreadcrumbPage>
               </BreadcrumbItem>
@@ -75,21 +69,13 @@ export function TopBar({ trail, theme, onToggleTheme, state, profile }: TopBarPr
       </Breadcrumb>
 
       <div className="flex items-center gap-4 text-[var(--cm-text-secondary)]">
-        {used === undefined ? null : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="flex items-center gap-1.5">
-                <span className="mono text-technical">
-                  RAM {formatBytes(used)}/{formatBytes(total)}
-                </span>
-                <Progress value={ratio} className="h-1 w-10" />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>Measured at the last device profile, not sampled live</TooltipContent>
-          </Tooltip>
-        )}
-
-        <span className={cn('mono text-technical', status.tone)}>{status.text}</span>
+        <span
+          className="flex items-center gap-2 text-[11px] text-[var(--cm-text-secondary)]"
+          title={state.status === 'connected' ? `Local engine ${state.daemonVersion}` : status.text}
+        >
+          <span className={cn('size-1.5 rounded-full bg-current', status.tone)} aria-hidden />
+          {status.text}
+        </span>
 
         <Tooltip>
           <TooltipTrigger asChild>

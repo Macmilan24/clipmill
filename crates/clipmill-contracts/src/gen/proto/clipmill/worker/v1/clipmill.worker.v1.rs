@@ -97,6 +97,9 @@ pub struct TaskLease {
     /// the stage payload instead.
     #[prost(message, repeated, tag = "15")]
     pub tools: ::prost::alloc::vec::Vec<ToolBinding>,
+    /// For durable per-run cloud budget accounting; never part of the artifact key.
+    #[prost(string, tag = "16")]
+    pub job_id: ::prost::alloc::string::String,
 }
 /// Where one pinned executable is, and which build it is.
 ///

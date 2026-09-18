@@ -94,7 +94,7 @@ EXPORT_SEVERITY_BLOCKING: ExportSeverity
 EXPORT_SEVERITY_ADVISORY: ExportSeverity
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -128,6 +128,7 @@ class Request(_message.Message):
     EXPORT_CLIP_FIELD_NUMBER: _ClassVar[int]
     EXPORT_ARCHIVE_FIELD_NUMBER: _ClassVar[int]
     GET_LOCAL_LOCK_FIELD_NUMBER: _ClassVar[int]
+    GET_READINESS_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -161,10 +162,11 @@ class Request(_message.Message):
     export_clip: ExportClipRequest
     export_archive: ExportArchiveRequest
     get_local_lock: GetLocalLockRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ...) -> None: ...
+    get_readiness: GetReadinessRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -200,6 +202,7 @@ class Response(_message.Message):
     EXPORT_CLIP_FIELD_NUMBER: _ClassVar[int]
     EXPORT_ARCHIVE_FIELD_NUMBER: _ClassVar[int]
     GET_LOCAL_LOCK_FIELD_NUMBER: _ClassVar[int]
+    GET_READINESS_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -235,7 +238,8 @@ class Response(_message.Message):
     export_clip: ExportClipResponse
     export_archive: ExportArchiveResponse
     get_local_lock: GetLocalLockResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ...) -> None: ...
+    get_readiness: GetReadinessResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -467,6 +471,22 @@ class IndexStagePayloadV1(_message.Message):
     stage: str
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
 
+class EditorialStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "duration", "prompt_digest", "max_output_tokens", "cloud")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    DURATION_FIELD_NUMBER: _ClassVar[int]
+    PROMPT_DIGEST_FIELD_NUMBER: _ClassVar[int]
+    MAX_OUTPUT_TOKENS_FIELD_NUMBER: _ClassVar[int]
+    CLOUD_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    duration: ClipDurationV1
+    prompt_digest: str
+    max_output_tokens: int
+    cloud: EditorialCloudV1
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ..., cloud: _Optional[_Union[EditorialCloudV1, _Mapping]] = ...) -> None: ...
+
 class DiscoverCandidatesPayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "duration")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -546,20 +566,34 @@ class CaptionsStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., span_start_ticks: _Optional[int] = ..., span_end_ticks: _Optional[int] = ...) -> None: ...
 
 class AnalyzeSourcePayloadV1(_message.Message):
-    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli")
+    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli", "local_editorial", "cloud_editorial")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     DURATION_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    LOCAL_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
+    CLOUD_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     source_id: str
     language: str
     duration: ClipDurationV1
     count: int
     diversity_milli: int
-    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+    local_editorial: bool
+    cloud_editorial: EditorialCloudV1
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., cloud_editorial: _Optional[_Union[EditorialCloudV1, _Mapping]] = ...) -> None: ...
+
+class EditorialCloudV1(_message.Message):
+    __slots__ = ("transcript_consent", "budget_micro_usd", "model")
+    TRANSCRIPT_CONSENT_FIELD_NUMBER: _ClassVar[int]
+    BUDGET_MICRO_USD_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    transcript_consent: bool
+    budget_micro_usd: int
+    model: str
+    def __init__(self, transcript_consent: _Optional[bool] = ..., budget_micro_usd: _Optional[int] = ..., model: _Optional[str] = ...) -> None: ...
 
 class AnalysisStagePayloadV1(_message.Message):
     __slots__ = ("key_version", "stage", "source_fingerprint", "skipped")
@@ -638,7 +672,7 @@ class TaskEvent(_message.Message):
     def __init__(self, job_id: _Optional[str] = ..., task_id: _Optional[str] = ..., state: _Optional[_Union[TaskState, str]] = ..., progress: _Optional[_Union[_worker_pb2.ProgressUnits, _Mapping]] = ..., wait_reason: _Optional[str] = ..., at_unix_millis: _Optional[int] = ..., event_id: _Optional[int] = ..., attempt: _Optional[int] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ...) -> None: ...
 
 class Job(_message.Message):
-    __slots__ = ("job_id", "project_id", "kind", "state", "created_unix_millis", "updated_unix_millis", "tasks", "output_artifact_ids", "failure_class", "failure_detail")
+    __slots__ = ("job_id", "project_id", "kind", "state", "created_unix_millis", "updated_unix_millis", "tasks", "output_artifact_ids", "failure_class", "failure_detail", "source_id", "export")
     JOB_ID_FIELD_NUMBER: _ClassVar[int]
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
@@ -649,6 +683,8 @@ class Job(_message.Message):
     OUTPUT_ARTIFACT_IDS_FIELD_NUMBER: _ClassVar[int]
     FAILURE_CLASS_FIELD_NUMBER: _ClassVar[int]
     FAILURE_DETAIL_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    EXPORT_FIELD_NUMBER: _ClassVar[int]
     job_id: str
     project_id: str
     kind: str
@@ -659,7 +695,21 @@ class Job(_message.Message):
     output_artifact_ids: _containers.RepeatedScalarFieldContainer[str]
     failure_class: _worker_pb2.FailureClass
     failure_detail: str
-    def __init__(self, job_id: _Optional[str] = ..., project_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[JobState, str]] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., tasks: _Optional[_Iterable[_Union[Task, _Mapping]]] = ..., output_artifact_ids: _Optional[_Iterable[str]] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ..., failure_detail: _Optional[str] = ...) -> None: ...
+    source_id: str
+    export: ExportSummaryV1
+    def __init__(self, job_id: _Optional[str] = ..., project_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[JobState, str]] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., tasks: _Optional[_Iterable[_Union[Task, _Mapping]]] = ..., output_artifact_ids: _Optional[_Iterable[str]] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ..., failure_detail: _Optional[str] = ..., source_id: _Optional[str] = ..., export: _Optional[_Union[ExportSummaryV1, _Mapping]] = ...) -> None: ...
+
+class ExportSummaryV1(_message.Message):
+    __slots__ = ("doc_id", "revision", "ir_artifact_id", "destination_dir")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    DESTINATION_DIR_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    revision: int
+    ir_artifact_id: str
+    destination_dir: str
+    def __init__(self, doc_id: _Optional[str] = ..., revision: _Optional[int] = ..., ir_artifact_id: _Optional[str] = ..., destination_dir: _Optional[str] = ...) -> None: ...
 
 class Task(_message.Message):
     __slots__ = ("task_id", "kind", "state", "attempt", "max_attempts", "progress", "wait_reason", "output_artifact_id", "output_kind")
@@ -978,28 +1028,40 @@ class GetDeviceProfileResponse(_message.Message):
     def __init__(self, artifact_id: _Optional[str] = ..., profile_json: _Optional[str] = ...) -> None: ...
 
 class EditDoc(_message.Message):
-    __slots__ = ("doc_id", "project_id", "revision", "document_json", "created_unix_millis", "updated_unix_millis")
+    __slots__ = ("doc_id", "project_id", "revision", "document_json", "created_unix_millis", "updated_unix_millis", "source_id", "candidate_id", "job_id")
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
     DOCUMENT_JSON_FIELD_NUMBER: _ClassVar[int]
     CREATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
     UPDATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
+    JOB_ID_FIELD_NUMBER: _ClassVar[int]
     doc_id: str
     project_id: str
     revision: int
     document_json: str
     created_unix_millis: int
     updated_unix_millis: int
-    def __init__(self, doc_id: _Optional[str] = ..., project_id: _Optional[str] = ..., revision: _Optional[int] = ..., document_json: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ...) -> None: ...
+    source_id: str
+    candidate_id: str
+    job_id: str
+    def __init__(self, doc_id: _Optional[str] = ..., project_id: _Optional[str] = ..., revision: _Optional[int] = ..., document_json: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., job_id: _Optional[str] = ...) -> None: ...
 
 class CreateEditDocRequest(_message.Message):
-    __slots__ = ("project_id", "document_json")
+    __slots__ = ("project_id", "document_json", "source_id", "candidate_id", "job_id")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     DOCUMENT_JSON_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
+    JOB_ID_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     document_json: str
-    def __init__(self, project_id: _Optional[str] = ..., document_json: _Optional[str] = ...) -> None: ...
+    source_id: str
+    candidate_id: str
+    job_id: str
+    def __init__(self, project_id: _Optional[str] = ..., document_json: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., job_id: _Optional[str] = ...) -> None: ...
 
 class CreateEditDocResponse(_message.Message):
     __slots__ = ("doc",)
@@ -1096,7 +1158,7 @@ class ListClipDecisionsResponse(_message.Message):
     def __init__(self, decisions: _Optional[_Iterable[_Union[ClipDecisionRecordV1, _Mapping]]] = ...) -> None: ...
 
 class DirectClipRequest(_message.Message):
-    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks")
+    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -1104,6 +1166,9 @@ class DirectClipRequest(_message.Message):
     STYLE_REF_FIELD_NUMBER: _ClassVar[int]
     START_TICKS_FIELD_NUMBER: _ClassVar[int]
     END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    VARIATION_FIELD_NUMBER: _ClassVar[int]
+    APPROVE_FIELD_NUMBER: _ClassVar[int]
+    JOB_ID_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     source_id: str
     candidate_id: str
@@ -1111,19 +1176,24 @@ class DirectClipRequest(_message.Message):
     style_ref: str
     start_ticks: int
     end_ticks: int
-    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ...) -> None: ...
+    variation: bool
+    approve: bool
+    job_id: str
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ...) -> None: ...
 
 class DirectClipResponse(_message.Message):
-    __slots__ = ("doc", "start_ticks", "end_ticks", "decisions")
+    __slots__ = ("doc", "start_ticks", "end_ticks", "decisions", "reopened")
     DOC_FIELD_NUMBER: _ClassVar[int]
     START_TICKS_FIELD_NUMBER: _ClassVar[int]
     END_TICKS_FIELD_NUMBER: _ClassVar[int]
     DECISIONS_FIELD_NUMBER: _ClassVar[int]
+    REOPENED_FIELD_NUMBER: _ClassVar[int]
     doc: EditDoc
     start_ticks: int
     end_ticks: int
     decisions: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, doc: _Optional[_Union[EditDoc, _Mapping]] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., decisions: _Optional[_Iterable[str]] = ...) -> None: ...
+    reopened: bool
+    def __init__(self, doc: _Optional[_Union[EditDoc, _Mapping]] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., decisions: _Optional[_Iterable[str]] = ..., reopened: _Optional[bool] = ...) -> None: ...
 
 class GetPreviewPlanRequest(_message.Message):
     __slots__ = ("project_id", "doc_id")
@@ -1148,12 +1218,14 @@ class PreviewCropV1(_message.Message):
     def __init__(self, x: _Optional[int] = ..., y: _Optional[int] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., present: _Optional[bool] = ...) -> None: ...
 
 class PreviewWordV1(_message.Message):
-    __slots__ = ("text", "hold_centis")
+    __slots__ = ("text", "hold_centis", "word_id")
     TEXT_FIELD_NUMBER: _ClassVar[int]
     HOLD_CENTIS_FIELD_NUMBER: _ClassVar[int]
+    WORD_ID_FIELD_NUMBER: _ClassVar[int]
     text: str
     hold_centis: int
-    def __init__(self, text: _Optional[str] = ..., hold_centis: _Optional[int] = ...) -> None: ...
+    word_id: str
+    def __init__(self, text: _Optional[str] = ..., hold_centis: _Optional[int] = ..., word_id: _Optional[str] = ...) -> None: ...
 
 class PreviewLineV1(_message.Message):
     __slots__ = ("words",)
@@ -1187,8 +1259,60 @@ class PreviewGainV1(_message.Message):
     gain_db: float
     def __init__(self, frame: _Optional[int] = ..., gain_db: _Optional[float] = ...) -> None: ...
 
+class PreviewSegmentV1(_message.Message):
+    __slots__ = ("segment_id", "source_fingerprint", "in_ticks", "out_ticks", "program_start_ticks", "first_frame", "end_frame")
+    SEGMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    IN_TICKS_FIELD_NUMBER: _ClassVar[int]
+    OUT_TICKS_FIELD_NUMBER: _ClassVar[int]
+    PROGRAM_START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    FIRST_FRAME_FIELD_NUMBER: _ClassVar[int]
+    END_FRAME_FIELD_NUMBER: _ClassVar[int]
+    segment_id: str
+    source_fingerprint: str
+    in_ticks: int
+    out_ticks: int
+    program_start_ticks: int
+    first_frame: int
+    end_frame: int
+    def __init__(self, segment_id: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., in_ticks: _Optional[int] = ..., out_ticks: _Optional[int] = ..., program_start_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ...) -> None: ...
+
+class PreviewSourceV1(_message.Message):
+    __slots__ = ("source_fingerprint", "source_id", "display_width", "display_height")
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_WIDTH_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    source_fingerprint: str
+    source_id: str
+    display_width: int
+    display_height: int
+    def __init__(self, source_fingerprint: _Optional[str] = ..., source_id: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
+
+class PreviewProxyV1(_message.Message):
+    __slots__ = ("source_fingerprint", "artifact_id", "file", "coverage_start_ticks", "coverage_end_ticks", "width", "height", "rate_num", "rate_den")
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    COVERAGE_START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    COVERAGE_END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    WIDTH_FIELD_NUMBER: _ClassVar[int]
+    HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    RATE_NUM_FIELD_NUMBER: _ClassVar[int]
+    RATE_DEN_FIELD_NUMBER: _ClassVar[int]
+    source_fingerprint: str
+    artifact_id: str
+    file: str
+    coverage_start_ticks: int
+    coverage_end_ticks: int
+    width: int
+    height: int
+    rate_num: int
+    rate_den: int
+    def __init__(self, source_fingerprint: _Optional[str] = ..., artifact_id: _Optional[str] = ..., file: _Optional[str] = ..., coverage_start_ticks: _Optional[int] = ..., coverage_end_ticks: _Optional[int] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ...) -> None: ...
+
 class GetPreviewPlanResponse(_message.Message):
-    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height")
+    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies", "presentation")
     REVISION_FIELD_NUMBER: _ClassVar[int]
     RATE_NUM_FIELD_NUMBER: _ClassVar[int]
     RATE_DEN_FIELD_NUMBER: _ClassVar[int]
@@ -1198,6 +1322,10 @@ class GetPreviewPlanResponse(_message.Message):
     GAIN_FIELD_NUMBER: _ClassVar[int]
     WIDTH_FIELD_NUMBER: _ClassVar[int]
     HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    SEGMENTS_FIELD_NUMBER: _ClassVar[int]
+    SOURCES_FIELD_NUMBER: _ClassVar[int]
+    PROXIES_FIELD_NUMBER: _ClassVar[int]
+    PRESENTATION_FIELD_NUMBER: _ClassVar[int]
     revision: int
     rate_num: int
     rate_den: int
@@ -1207,7 +1335,11 @@ class GetPreviewPlanResponse(_message.Message):
     gain: _containers.RepeatedCompositeFieldContainer[PreviewGainV1]
     width: int
     height: int
-    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ...) -> None: ...
+    segments: _containers.RepeatedCompositeFieldContainer[PreviewSegmentV1]
+    sources: _containers.RepeatedCompositeFieldContainer[PreviewSourceV1]
+    proxies: _containers.RepeatedCompositeFieldContainer[PreviewProxyV1]
+    presentation: str
+    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ..., presentation: _Optional[str] = ...) -> None: ...
 
 class ListEditDocsRequest(_message.Message):
     __slots__ = ("project_id",)
@@ -1240,7 +1372,7 @@ class ExportValidationV1(_message.Message):
     def __init__(self, passes: _Optional[bool] = ..., findings: _Optional[_Iterable[_Union[ExportFindingV1, _Mapping]]] = ...) -> None: ...
 
 class ExportRequestV1(_message.Message):
-    __slots__ = ("doc_id", "destination_dir", "naming_pattern", "source_attestation", "gates_passed", "ai_assistance", "index", "date", "title")
+    __slots__ = ("doc_id", "destination_dir", "naming_pattern", "source_attestation", "gates_passed", "ai_assistance", "index", "date", "title", "expected_revision")
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     DESTINATION_DIR_FIELD_NUMBER: _ClassVar[int]
     NAMING_PATTERN_FIELD_NUMBER: _ClassVar[int]
@@ -1250,6 +1382,7 @@ class ExportRequestV1(_message.Message):
     INDEX_FIELD_NUMBER: _ClassVar[int]
     DATE_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
     doc_id: str
     destination_dir: str
     naming_pattern: str
@@ -1259,7 +1392,8 @@ class ExportRequestV1(_message.Message):
     index: int
     date: str
     title: str
-    def __init__(self, doc_id: _Optional[str] = ..., destination_dir: _Optional[str] = ..., naming_pattern: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ..., index: _Optional[int] = ..., date: _Optional[str] = ..., title: _Optional[str] = ...) -> None: ...
+    expected_revision: int
+    def __init__(self, doc_id: _Optional[str] = ..., destination_dir: _Optional[str] = ..., naming_pattern: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ..., index: _Optional[int] = ..., date: _Optional[str] = ..., title: _Optional[str] = ..., expected_revision: _Optional[int] = ...) -> None: ...
 
 class PlanExportRequest(_message.Message):
     __slots__ = ("request",)
@@ -1268,20 +1402,22 @@ class PlanExportRequest(_message.Message):
     def __init__(self, request: _Optional[_Union[ExportRequestV1, _Mapping]] = ...) -> None: ...
 
 class PlanExportResponse(_message.Message):
-    __slots__ = ("validation", "stem", "file_names", "estimated_bytes", "available_bytes", "available_known")
+    __slots__ = ("validation", "stem", "file_names", "estimated_bytes", "available_bytes", "available_known", "revision")
     VALIDATION_FIELD_NUMBER: _ClassVar[int]
     STEM_FIELD_NUMBER: _ClassVar[int]
     FILE_NAMES_FIELD_NUMBER: _ClassVar[int]
     ESTIMATED_BYTES_FIELD_NUMBER: _ClassVar[int]
     AVAILABLE_BYTES_FIELD_NUMBER: _ClassVar[int]
     AVAILABLE_KNOWN_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
     validation: ExportValidationV1
     stem: str
     file_names: _containers.RepeatedScalarFieldContainer[str]
     estimated_bytes: int
     available_bytes: int
     available_known: bool
-    def __init__(self, validation: _Optional[_Union[ExportValidationV1, _Mapping]] = ..., stem: _Optional[str] = ..., file_names: _Optional[_Iterable[str]] = ..., estimated_bytes: _Optional[int] = ..., available_bytes: _Optional[int] = ..., available_known: _Optional[bool] = ...) -> None: ...
+    revision: int
+    def __init__(self, validation: _Optional[_Union[ExportValidationV1, _Mapping]] = ..., stem: _Optional[str] = ..., file_names: _Optional[_Iterable[str]] = ..., estimated_bytes: _Optional[int] = ..., available_bytes: _Optional[int] = ..., available_known: _Optional[bool] = ..., revision: _Optional[int] = ...) -> None: ...
 
 class ExportClipRequest(_message.Message):
     __slots__ = ("request",)
@@ -1290,10 +1426,16 @@ class ExportClipRequest(_message.Message):
     def __init__(self, request: _Optional[_Union[ExportRequestV1, _Mapping]] = ...) -> None: ...
 
 class ExportClipResponse(_message.Message):
-    __slots__ = ("job_id",)
+    __slots__ = ("job_id", "revision", "ir_artifact_id", "destination_dir")
     JOB_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    DESTINATION_DIR_FIELD_NUMBER: _ClassVar[int]
     job_id: str
-    def __init__(self, job_id: _Optional[str] = ...) -> None: ...
+    revision: int
+    ir_artifact_id: str
+    destination_dir: str
+    def __init__(self, job_id: _Optional[str] = ..., revision: _Optional[int] = ..., ir_artifact_id: _Optional[str] = ..., destination_dir: _Optional[str] = ...) -> None: ...
 
 class ExportClipPayloadV1(_message.Message):
     __slots__ = ("key_version", "request", "ir_artifact_id")
@@ -1348,6 +1490,62 @@ class LocalLockStatusV1(_message.Message):
 class GetLocalLockRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
+
+class GetReadinessRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class StageReadinessV1(_message.Message):
+    __slots__ = ("stage", "capability", "implementation", "model", "backend", "model_present", "missing_files", "worker_present", "ready", "remedy")
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    IMPLEMENTATION_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    BACKEND_FIELD_NUMBER: _ClassVar[int]
+    MODEL_PRESENT_FIELD_NUMBER: _ClassVar[int]
+    MISSING_FILES_FIELD_NUMBER: _ClassVar[int]
+    WORKER_PRESENT_FIELD_NUMBER: _ClassVar[int]
+    READY_FIELD_NUMBER: _ClassVar[int]
+    REMEDY_FIELD_NUMBER: _ClassVar[int]
+    stage: str
+    capability: str
+    implementation: str
+    model: str
+    backend: str
+    model_present: bool
+    missing_files: _containers.RepeatedScalarFieldContainer[str]
+    worker_present: bool
+    ready: bool
+    remedy: str
+    def __init__(self, stage: _Optional[str] = ..., capability: _Optional[str] = ..., implementation: _Optional[str] = ..., model: _Optional[str] = ..., backend: _Optional[str] = ..., model_present: _Optional[bool] = ..., missing_files: _Optional[_Iterable[str]] = ..., worker_present: _Optional[bool] = ..., ready: _Optional[bool] = ..., remedy: _Optional[str] = ...) -> None: ...
+
+class WorkerPresenceV1(_message.Message):
+    __slots__ = ("worker_id", "family", "capabilities", "backend", "since_unix_millis")
+    WORKER_ID_FIELD_NUMBER: _ClassVar[int]
+    FAMILY_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
+    BACKEND_FIELD_NUMBER: _ClassVar[int]
+    SINCE_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    worker_id: str
+    family: str
+    capabilities: _containers.RepeatedScalarFieldContainer[str]
+    backend: str
+    since_unix_millis: int
+    def __init__(self, worker_id: _Optional[str] = ..., family: _Optional[str] = ..., capabilities: _Optional[_Iterable[str]] = ..., backend: _Optional[str] = ..., since_unix_millis: _Optional[int] = ...) -> None: ...
+
+class GetReadinessResponse(_message.Message):
+    __slots__ = ("stages", "workers", "decoder_present", "decoder_path", "ready")
+    STAGES_FIELD_NUMBER: _ClassVar[int]
+    WORKERS_FIELD_NUMBER: _ClassVar[int]
+    DECODER_PRESENT_FIELD_NUMBER: _ClassVar[int]
+    DECODER_PATH_FIELD_NUMBER: _ClassVar[int]
+    READY_FIELD_NUMBER: _ClassVar[int]
+    stages: _containers.RepeatedCompositeFieldContainer[StageReadinessV1]
+    workers: _containers.RepeatedCompositeFieldContainer[WorkerPresenceV1]
+    decoder_present: bool
+    decoder_path: str
+    ready: bool
+    def __init__(self, stages: _Optional[_Iterable[_Union[StageReadinessV1, _Mapping]]] = ..., workers: _Optional[_Iterable[_Union[WorkerPresenceV1, _Mapping]]] = ..., decoder_present: _Optional[bool] = ..., decoder_path: _Optional[str] = ..., ready: _Optional[bool] = ...) -> None: ...
 
 class GetLocalLockResponse(_message.Message):
     __slots__ = ("status",)

@@ -87,6 +87,39 @@ they are called.
 Approving is the only decision that directs. Keeping and rejecting record an
 opinion and nothing else.
 
+## A document knows which clip it is
+
+A directed document is stored with the source it was cut from and the candidate
+it was built for, and `ListEditDocs` says so for every document. That is what
+makes "the document for this clip" a lookup rather than a guess: the editor and
+the export used to open the newest document of the newest project, which is
+right for exactly one project with exactly one approval and wrong the moment a
+second of either exists.
+
+Three rules follow, all in one store transaction:
+
+- **Directing a clip that already has a document reopens it.** The trims and
+  corrections somebody made to it are the reason it is the answer, so the
+  reply carries where its segment stands now and says `reopened`. Approving
+  twice — from the Inspector, from a batch, after a restart — is one edit, not
+  two that look alike.
+- **A variation is asked for by name.** `variation: true` stores a second
+  document beside the first. Taking a different cut of a clip that already has
+  an edit is one; approving it again is not. Once a clip has several, the
+  newest is the one reopened, because it is the one somebody was last working
+  on.
+- **`approve: true` records the decision in the same write.** The two-call
+  approval — decide, then direct — could leave a clip the board called approved
+  and the editor could not open whenever the second call failed. Now either
+  both reach the disk or neither does, and a retry of a lost reply is the same
+  reply rather than a second document.
+
+Documents that predate the identity columns get theirs back where the document
+itself says: the candidate from its rationale, the source from the registered
+recording whose fingerprint its first segment names. A document handed in whole
+through `CreateEditDoc` names no candidate and is listed as a document with no
+clip, which is what it is.
+
 ## What this phase does not do
 
 - **The boundary strip shows the lattice; it does not drag yet.** The snapping
@@ -94,9 +127,8 @@ opinion and nothing else.
   handle a person grabs is the editor's surface, and the alternative is one
   click. Shipping a drag that only the daemon could interpret would be a control
   whose behaviour lives somewhere the user cannot see.
-- **One recording at a time.** The board shows the newest analyzed source of the
-  newest project and says which. Phase 1 has no project picker, and inventing
-  one here would be a navigation surface the design does not have.
+- **One recording at a time.** The board shows one source of one project and
+  says which: the one the route named, or the picker in its header.
 - **No caption overlay before approval.** The burned-in grouping lives in the
   document approving creates; drawing cues before that would show captions the
   render has not been asked to draw.

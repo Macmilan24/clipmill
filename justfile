@@ -8,7 +8,13 @@ setup:
     ./tools/fetch-ffmpeg.sh
     cd workers/sdk && uv sync
     cd workers/echo && uv sync
+    cd workers/vad && uv sync
+    cd workers/asr-whispercpp && uv sync
+    cd workers/align && uv sync
+    cd workers/speech-mlx && uv sync
     cd workers/shots && uv sync
+    cd workers/faces && uv sync
+    cd workers/editorial && uv sync
     cd eval/harness && uv sync
     pnpm install
 
@@ -30,6 +36,7 @@ lint:
 # Every test suite, matching CI.
 test:
     cargo test --workspace
+    python3 -m unittest discover -s tools/security/tests
     cd workers/sdk && uv run pytest
     cd workers/echo && uv run pytest
     cd workers/vad && uv run pytest
@@ -37,6 +44,8 @@ test:
     cd workers/align && uv run pytest
     cd workers/speech-mlx && uv run pytest
     cd workers/shots && uv run pytest
+    cd workers/faces && uv run pytest
+    cd workers/editorial && uv run pytest
     cd eval/harness && uv run pytest
     pnpm typecheck
     pnpm test
@@ -49,7 +58,7 @@ gate-contracts:
     git diff --exit-code -- crates/clipmill-contracts/src/gen packages/contracts/src/gen workers/sdk/src/clipmill workers/sdk/src/clipmill_worker_sdk/gen
     python3 tools/schema-lint/check.py contracts/schemas/*.json
     cargo test -p clipmill-contracts
-    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py tests/test_ranking_contracts.py
+    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py tests/test_ranking_contracts.py tests/test_editorial_contracts.py
     pnpm --filter @clipmill/contracts test
 
 # W2 coverage: acknowledged project mutations survive forced termination.
@@ -138,6 +147,17 @@ gate-evidence iterations="1":
 gate-discovery iterations="1":
     ./tools/drills/discovery-drill.sh {{iterations}}
 
+# Editorial contracts and failure cases; needs no model weights.
+gate-editorial-unit iterations="1":
+    ./tools/drills/editorial-drill.sh {{iterations}}
+
+# Real pinned Qwen, daemon, workers, review, and immutable MP4/SRT/VTT export.
+# Uses the existing synthesized talk (created by gate-milestone-1), not a benchmark.
+gate-editorial iterations="1":
+    ./tools/drills/editorial-drill.sh {{iterations}}
+    cargo build -p clipmilld --bin clipmilld
+    workers/editorial/.venv/bin/python tools/drills/editorial-live.py
+
 # W19 coverage: what a clip is worth, where it is cut, which to show, and the
 # one job that produces all of it. The score card against cards written by hand
 # — an axis nobody measured must be distinguishable from one measured at zero —
@@ -204,7 +224,7 @@ gate-tokens:
 # then reports the loss when the daemon is killed underneath it.
 gate-shell:
     cargo build -p clipmilld
-    cargo test -p clipmill-shell -- --ignored --nocapture
+    cargo test -p clipmill-shell --test daemon_link -- --ignored --nocapture
 
 # W22 coverage: the whole data plane the screens sit on, out of process —
 # import, probe, transitions, documents, ranged media, and the refusals.
@@ -239,6 +259,13 @@ gate-editor iterations="1":
 # heard of this project.
 gate-export iterations="1":
     ./tools/drills/export-drill.sh {{iterations}}
+
+# Milestone 1 (upload-ready plan): one selected clip survives the complete
+# workflow, run for real through the shell's bridge against a spawned daemon
+# and the worker fleet, and the delivered file decoded to prove it. Local
+# only: it needs the macOS voice, the worker environments and the weights.
+gate-milestone-1:
+    ./tools/drills/milestone-1-drill.sh
 
 # W26 coverage: the recall arithmetic against hand-worked numbers, and the real
 # engine over a recording whose three moments were planted on purpose.

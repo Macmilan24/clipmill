@@ -1,0 +1,89 @@
+{
+  "inputs": {
+    "windows_artifact_id": "sha256:e01a000000000000000000000000000000000000000000000000000000000031"
+  },
+  "producer": {
+    "decoding": {
+      "constrained": true,
+      "max_output_tokens": 1024,
+      "seed": 7,
+      "temperature_milli": 0
+    },
+    "implementation": "clipmill-worker-editorial@0.1.0",
+    "model": {
+      "digest": "sha256:9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45",
+      "name": "qwen3.5-9b-mlx"
+    },
+    "prompt_version": "propose.v1",
+    "route": "local",
+    "stage": "editorial-propose"
+  },
+  "schema_version": "clipmill.editorial.proposals.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "windows": [
+    {
+      "proposals": [
+        {
+          "first_sentence_index": 2,
+          "hook": "A question every new creator asks.",
+          "id": "prop_0_1",
+          "payoff": "The answer is the room.",
+          "reason": "Sentences 2 to 5 ask the question and answer it.",
+          "sentence_count": 4,
+          "setup": "The expensive microphone that still sounds thin.",
+          "splittable": false,
+          "start_ticks": 1234,
+          "start_word_index": 12,
+          "title": "The room, not the microphone",
+          "uncertainties": []
+        }
+      ],
+      "status": "answered",
+      "window_index": 0
+    },
+    {
+      "proposals": [],
+      "status": "none",
+      "window_index": 1
+    },
+    {
+      "proposals": [
+        {
+          "first_sentence_index": 7,
+          "hook": "A number that surprised the host.",
+          "id": "prop_2_1",
+          "payoff": "Close, far, and turn the gain down.",
+          "reason": "Sentences 7 to 11 carry a figure and the rule that follows from it.",
+          "sentence_count": 5,
+          "setup": "Sixty three percent leave for the sound.",
+          "splittable": true,
+          "subspans": [
+            {
+              "first_sentence_index": 7,
+              "sentence_count": 2
+            },
+            {
+              "first_sentence_index": 8,
+              "sentence_count": 4
+            }
+          ],
+          "title": "The rule in one sentence",
+          "uncertainties": [
+            "Whether the percentage is quoted correctly."
+          ]
+        }
+      ],
+      "status": "answered",
+      "window_index": 2
+    },
+    {
+      "failure": {
+        "detail": "the reply was not a JSON object",
+        "failure_class": "deterministic"
+      },
+      "proposals": [],
+      "status": "malformed",
+      "window_index": 3
+    }
+  ]
+}

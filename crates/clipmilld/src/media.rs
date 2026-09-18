@@ -179,6 +179,12 @@ pub(crate) struct MediaRunner {
 
 /// One FFmpeg invocation: arguments after the fixed containment prefix,
 /// relative output names resolved against `output_dir`.
+///
+/// `output_dir` must hold nothing but this run's outputs: the budget is
+/// measured over the whole directory, because a runaway encode is refused by
+/// what it wrote and FFmpeg does not report that. A directory with other
+/// files in it — a user's own folder — reads as a runaway before the run
+/// starts; see [`MediaRunner::private_output_dir`].
 pub(crate) struct FfmpegSpec {
     pub args: Vec<OsString>,
     pub output_dir: PathBuf,
@@ -233,6 +239,20 @@ impl MediaRunner {
         })
         .await
         .map_err(|_| MediaError::Stopped)?
+    }
+
+    /// A fresh private directory for one run's outputs, under the scratch.
+    ///
+    /// For an output that is read back and placed elsewhere rather than
+    /// committed from a staging area — a thumbnail written into a user's
+    /// folder was measured against everything already in that folder, and
+    /// a folder with a clip in it exceeded the thumbnail's budget before a
+    /// frame was decoded. The caller removes it when the bytes are in hand.
+    pub(crate) fn private_output_dir(&self) -> Result<PathBuf, MediaError> {
+        let dir = self.scratch.join(format!("out_{}", Ulid::new()));
+        fs::create_dir(&dir).map_err(io_error)?;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+        Ok(dir)
     }
 
     /// Bounded FFprobe over a committed output or the registered source.

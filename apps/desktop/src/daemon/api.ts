@@ -31,7 +31,9 @@ import {
   type ArchiveResult,
   type ExportPlan,
   type ExportRequest,
+  type QueuedExport,
   type LocalLock,
+  type Readiness,
   chooseExportFolder,
   chooseSourceFile,
   createProject,
@@ -56,6 +58,8 @@ import {
   exportClip,
   exportArchive,
   fetchLocalLock,
+  fetchReadiness,
+  revealPath,
 } from './client.js';
 
 export interface ShellApi {
@@ -94,9 +98,13 @@ export interface ShellApi {
   ): Promise<ClipDecisionRecord>;
   listClipDecisions(projectId: string, sourceId: string): Promise<readonly ClipDecisionRecord[]>;
   planExport(request: ExportRequest): Promise<ExportPlan>;
-  exportClip(request: ExportRequest): Promise<string>;
+  exportClip(request: ExportRequest): Promise<QueuedExport>;
+  /** Show a delivered file in the file manager. Host-side, checked there. */
+  revealPath(path: string): Promise<void>;
   exportArchive(projectId: string, destinationDir: string): Promise<ArchiveResult>;
   fetchLocalLock(): Promise<LocalLock>;
+  /** Whether an analysis could run right now, stage by stage. */
+  fetchReadiness(): Promise<Readiness>;
   chooseExportFolder(): Promise<string | null>;
 }
 
@@ -124,5 +132,7 @@ export const daemonApi: ShellApi = {
   exportClip,
   exportArchive,
   fetchLocalLock,
+  fetchReadiness,
   chooseExportFolder,
+  revealPath,
 };

@@ -8,13 +8,20 @@
  * daemon receives, and that the ones which state a fact — the cloud toggle, the
  * rights gate — behave as facts rather than as decoration.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AnalyzeRequest, ConnectionState } from '../src/daemon/client.js';
 import { ImportLoader } from '../src/import/loader.js';
 import { NewProject } from '../src/screens/NewProject.js';
-import { type FakeWorld, emptyWorld, fakeApi, sourceMapDocument } from './support/library.js';
+import {
+  type FakeWorld,
+  emptyWorld,
+  fakeApi,
+  readiness,
+  sourceMapDocument,
+  stageReadiness,
+} from './support/library.js';
 
 const CONNECTED: ConnectionState = {
   status: 'connected',
@@ -102,12 +109,40 @@ describe('the New Project screen', () => {
     });
   });
 
-  /** The cloud toggle is a statement of what this build does, not a preference. */
-  it('leaves the cloud switch off and unswitchable', () => {
-    show();
-    const cloud = screen.getByRole('switch', { name: 'Use cloud models' });
-    expect(cloud.getAttribute('data-state')).toBe('unchecked');
-    expect(cloud.hasAttribute('disabled')).toBe(true);
+  it('defaults to local Qwen and requires fresh cloud consent after changing routes', async () => {
+    const { submitted } = show();
+    await chooseFile();
+    fireEvent.click(screen.getByRole('checkbox'));
+    const route = screen.getByLabelText('Editorial analysis');
+    expect((route as HTMLSelectElement).value).toBe('local');
+    fireEvent.change(route, { target: { value: 'cloud' } });
+    expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: /Allow transcript sharing/ }));
+    fireEvent.change(route, { target: { value: 'local' } });
+    fireEvent.change(route, { target: { value: 'cloud' } });
+    expect(
+      screen.getByRole('checkbox', { name: /Allow transcript sharing/ }).getAttribute('data-state'),
+    ).toBe('unchecked');
+    fireEvent.click(screen.getByRole('checkbox', { name: /Allow transcript sharing/ }));
+    fireEvent.change(screen.getByLabelText('Maximum spend for this run (USD)'), {
+      target: { value: '0' },
+    });
+    expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    fireEvent.change(screen.getByLabelText('Maximum spend for this run (USD)'), {
+      target: { value: '2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Analyze video/ }));
+    await waitFor(() => expect(submitted).toHaveLength(1));
+    expect(submitted[0]?.request.localEditorial).toBe(false);
+    expect(submitted[0]?.request.cloudEditorial).toEqual({
+      transcriptConsent: true,
+      budgetMicroUsd: 2000000,
+      model: 'claude-sonnet-4-6',
+    });
   });
 
   it('sends the preset, the count and the language the form was set to', async () => {
@@ -130,6 +165,7 @@ describe('the New Project screen', () => {
     // Ticks, at the contract's 1/90000, converted once on this side.
     expect(submitted[0]?.request).toEqual({
       sourceId: 'src_prj_pricing-mistakes-episode-41',
+      localEditorial: true,
       language: '',
       minTicks: 60 * 90_000,
       maxTicks: 180 * 90_000,
@@ -178,6 +214,107 @@ describe('the New Project screen', () => {
     expect(
       await screen.findByText('Closing ClipMill pauses the run; it resumes when you reopen.'),
     ).toBeTruthy();
+  });
+
+  it('says what the run would need before it is started, when all of it is here', async () => {
+    show(
+      scene({
+        readiness: readiness([stageReadiness('speech-asr'), stageReadiness('detect-shots')]),
+      }),
+    );
+    const card = within(await screen.findByTestId('readiness'));
+    expect(card.getByText('Ready')).toBeTruthy();
+    expect(card.getByText(/1 worker is connected/)).toBeTruthy();
+    expect(card.queryByRole('list')).toBeNull();
+  });
+
+  it('shuts the button while a model is not installed, and names the command', async () => {
+    show(
+      scene({
+        readiness: readiness([
+          stageReadiness('speech-asr', { modelPresent: false, missingFiles: ['weights.npz'] }),
+          stageReadiness('detect-shots'),
+        ]),
+      }),
+    );
+    await chooseFile();
+    fireEvent.click(screen.getByRole('checkbox'));
+    const start = screen.getByRole('button', { name: /Analyze video/ });
+    await waitFor(() => {
+      expect(start.hasAttribute('disabled')).toBe(true);
+    });
+    expect(screen.getByText(/not installed \(speech-asr-weights\)/)).toBeTruthy();
+    const models = within(screen.getByRole('list', { name: 'Models not installed' }));
+    expect(models.getByText(/tools\/fetch-models\.sh/)).toBeTruthy();
+    expect(screen.getByText('Not ready')).toBeTruthy();
+  });
+
+  it('lets a run start when only a worker is missing, and says the stage will wait', async () => {
+    const { submitted } = show(
+      scene({
+        readiness: readiness([
+          stageReadiness('speech-asr'),
+          stageReadiness('detect-shots', { workerPresent: false }),
+        ]),
+      }),
+    );
+    await chooseFile();
+    fireEvent.click(screen.getByRole('checkbox'));
+    const workers = within(await screen.findByRole('list', { name: 'Stages with no worker' }));
+    expect(workers.getByText(/just workers/)).toBeTruthy();
+    expect(screen.getByText(/those stages wait until a worker connects/)).toBeTruthy();
+    const start = screen.getByRole('button', { name: /Analyze video/ });
+    expect(start.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(start);
+    await waitFor(() => {
+      expect(submitted).toHaveLength(1);
+    });
+  });
+
+  it('shuts the button while the pinned decoder is missing', async () => {
+    show(
+      scene({
+        readiness: readiness([stageReadiness('speech-asr')], {
+          decoderPresent: false,
+          decoderPath: '/nowhere/ffmpeg',
+        }),
+      }),
+    );
+    await chooseFile();
+    fireEvent.click(screen.getByRole('checkbox'));
+    const start = screen.getByRole('button', { name: /Analyze video/ });
+    await waitFor(() => {
+      expect(start.hasAttribute('disabled')).toBe(true);
+    });
+    expect(screen.getAllByText(/just setup/).length).toBeGreaterThan(0);
+  });
+
+  it('says when readiness could not be read, and asks again on request', async () => {
+    const world = scene();
+    let asked = 0;
+    const api = fakeApi(world);
+    render(
+      <NewProject
+        state={CONNECTED}
+        onStarted={vi.fn()}
+        loader={
+          new ImportLoader({
+            ...api,
+            fetchReadiness: () => {
+              asked += 1;
+              return asked === 1
+                ? Promise.reject(new Error('the daemon is still starting'))
+                : Promise.resolve(readiness([stageReadiness('speech-asr')]));
+            },
+          })
+        }
+      />,
+    );
+    const card = within(await screen.findByTestId('readiness'));
+    expect(await card.findByText('the daemon is still starting')).toBeTruthy();
+    expect(card.getByText('Unknown')).toBeTruthy();
+    fireEvent.click(card.getByRole('button', { name: 'Check again' }));
+    expect(await card.findByText('Ready')).toBeTruthy();
   });
 
   it('reports a refusal instead of leaving the button spinning', async () => {

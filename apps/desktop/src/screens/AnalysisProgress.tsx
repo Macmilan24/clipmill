@@ -9,7 +9,7 @@ import {
   Minus,
   ShieldCheck,
 } from 'lucide-react';
-import { type JSX, useEffect, useState } from 'react';
+import { type JSX, useEffect, useMemo, useState } from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
 
@@ -34,7 +34,8 @@ import {
   stageCounts,
   stageRows,
 } from '../analysis/model.js';
-import { type AnalysisLoader, useAnalysis } from '../analysis/useAnalysis.js';
+import { useReadiness, waitingReasons } from '../analysis/readiness.js';
+import { AnalysisLoader, useAnalysis } from '../analysis/useAnalysis.js';
 import type { Job, TaskEvent } from '../daemon/client.js';
 import {
   acceleratorMemory,
@@ -56,6 +57,7 @@ export interface AnalysisProgressProps {
   readonly jobId: string;
   readonly profile: DeviceProfile | null;
   readonly onBack: () => void;
+  readonly onRestarted?: (projectId: string, jobId: string) => void;
   readonly onNavigate: (sectionId: string) => void;
   /** Injected by tests, which drive the screen through a fake daemon. */
   readonly loader?: AnalysisLoader;
@@ -81,7 +83,14 @@ const STATE_STYLE: Readonly<
   skipped: { icon: <Minus className={cn('size-4', MUTED)} />, text: MUTED },
 };
 
-function StageLine({ row }: { readonly row: StageRow }): JSX.Element {
+function StageLine({
+  row,
+  waitingFor,
+}: {
+  readonly row: StageRow;
+  /** Why the stage is waiting, when the daemon's readiness report knows. */
+  readonly waitingFor: string | null;
+}): JSX.Element {
   const style = STATE_STYLE[row.state];
   const active = row.state === 'running';
 
@@ -103,6 +112,16 @@ function StageLine({ row }: { readonly row: StageRow }): JSX.Element {
         <div className={cn('truncate text-meta', SECONDARY)}>
           {row.state === 'skipped' ? 'Not needed for this recording' : row.stage.detail}
         </div>
+        {/* A wait with a name and a command beside it, in place of a spinner
+            that would sit there until someone guessed. */}
+        {waitingFor !== null && (
+          <div
+            className="mt-0.5 text-meta text-[var(--cm-warning-ink)]"
+            data-testid={`waiting-${row.stage.kind}`}
+          >
+            {waitingFor}
+          </div>
+        )}
       </div>
       <span
         className={cn(
@@ -174,7 +193,13 @@ function SourceCard({
  * is. An animated meter reading a number nobody took would be the one thing this
  * screen exists to avoid.
  */
-function DeviceCard({ profile }: { readonly profile: DeviceProfile | null }): JSX.Element {
+function DeviceCard({
+  profile,
+  cloud,
+}: {
+  readonly profile: DeviceProfile | null;
+  readonly cloud: boolean;
+}): JSX.Element {
   const accelerator = profile === null ? undefined : primaryAccelerator(profile);
   const rows: readonly (readonly [string, string])[] =
     profile === null
@@ -205,7 +230,11 @@ function DeviceCard({ profile }: { readonly profile: DeviceProfile | null }): JS
         <Separator className="my-3 bg-[var(--cm-glass-border)]" />
         <div className="flex items-center gap-1.5">
           <ShieldCheck className="size-3.5 text-[var(--color-success)]" />
-          <span className={cn('text-meta', SECONDARY)}>Network 0 B · Local Lock enforced</span>
+          <span className={cn('text-meta', SECONDARY)}>
+            {cloud
+              ? 'Cloud-assisted · transcript sharing enabled'
+              : 'Local processing · no cloud stages in this run'}
+          </span>
         </div>
         <p className={cn('mt-2 text-technical', MUTED)}>
           Measured at the last device profile. Nothing here is sampled live.
@@ -277,6 +306,7 @@ export function AnalysisProgress({
   jobId,
   profile,
   onBack,
+  onRestarted,
   onNavigate,
   loader,
 }: AnalysisProgressProps): JSX.Element {
@@ -286,8 +316,21 @@ export function AnalysisProgress({
     loader,
   );
 
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const cloud = job?.tasks.some((task) => task.kind.endsWith('-cloud')) ?? false;
   const status = readStatus(job);
   const running = status.kind === 'analyzing' || status.kind === 'queued';
+
+  // While the run is live, the readiness report is re-read so a stage that
+  // is waiting on a worker or a model says so — and stops saying so the
+  // moment the worker connects. A finished run has nothing to wait for.
+  const api = useMemo(() => (loader ?? new AnalysisLoader()).api, [loader]);
+  const { readiness } = useReadiness(running, api);
+  const waiting = useMemo(
+    () => (running ? waitingReasons(job, readiness) : new Map<string, string>()),
+    [job, readiness, running],
+  );
 
   // Elapsed counts up while the run is live, and stops when it stops.
   const [now, setNow] = useState(() => Date.now());
@@ -374,14 +417,24 @@ export function AnalysisProgress({
       <div className="grid grid-cols-[minmax(0,744fr)_minmax(0,400fr)] items-start gap-4">
         <Card className="glass rounded-xl">
           <CardHeader>
-            <CardTitle className="text-section-title">Local analysis pipeline</CardTitle>
+            <CardTitle className="text-section-title">
+              {cloud ? 'Cloud-assisted analysis pipeline' : 'Local analysis pipeline'}
+            </CardTitle>
             <span className={cn('mono text-technical', SECONDARY)}>
               {counts.planned} stages · durable
             </span>
           </CardHeader>
           <CardContent className="px-0" role="list" aria-label="Pipeline stages">
             {rows.map((row) => (
-              <StageLine key={row.stage.kind} row={row} />
+              <StageLine
+                key={row.stage.kind}
+                row={row}
+                waitingFor={
+                  [row.stage.kind, ...(row.stage.covers ?? [])]
+                    .map((kind) => waiting.get(kind))
+                    .find((reason) => reason !== undefined) ?? null
+                }
+              />
             ))}
           </CardContent>
         </Card>
@@ -395,7 +448,7 @@ export function AnalysisProgress({
             spec={formatVideoSpec(sourceMap)}
             thumbnail={thumbnail}
           />
-          <DeviceCard profile={profile} />
+          <DeviceCard profile={profile} cloud={cloud} />
           <LiveLog events={events} job={job} />
           <Button
             className="w-full"
@@ -406,6 +459,39 @@ export function AnalysisProgress({
           >
             {status.kind === 'analyzed' ? 'View results' : 'View results when ready'}
           </Button>
+          {status.kind === 'failed' && source && onRestarted && (
+            <>
+              <Button
+                variant="outline"
+                disabled={restarting}
+                onClick={() => {
+                  setRestarting(true);
+                  setRestartError(null);
+                  void api
+                    .submitAnalyze(projectId, {
+                      sourceId: source.sourceId,
+                      language: 'en',
+                      minTicks: 20 * 90_000,
+                      maxTicks: 90 * 90_000,
+                      count: 5,
+                      localEditorial: true,
+                    })
+                    .then((next) => onRestarted(projectId, next.jobId))
+                    .catch((cause: unknown) =>
+                      setRestartError(cause instanceof Error ? cause.message : String(cause)),
+                    )
+                    .finally(() => setRestarting(false));
+                }}
+              >
+                {restarting ? 'Starting…' : 'Analyze again locally'}
+              </Button>
+              <p className="text-xs">
+                Uses this recording with Qwen 3.5: up to five clips, 20–90 seconds. Existing edits
+                stay saved.
+              </p>
+              {restartError && <p role="alert">{restartError}</p>}
+            </>
+          )}
           {/* kill_on_drop: the daemon is this shell's child, so closing the app
               stops the run. Jobs are durable and artifacts are content-addressed,
               so reopening resumes from where it stopped rather than restarting. */}

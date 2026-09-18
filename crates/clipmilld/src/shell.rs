@@ -27,7 +27,7 @@
 /// Ordered by where a shell meets them: the source it imported, what ingest
 /// derived, the transcript, the structure over it, the nominations, the ranking,
 /// the analysis that roots them all, then the edit and its render.
-const DOCUMENTS: [(&str, &str); 11] = [
+const DOCUMENTS: [(&str, &str); 12] = [
     ("evidence.source_map.v1", "source-map.json"),
     ("media.ingest_manifest.v1", "ingest-manifest.json"),
     // A waveform, and a document despite the `media.` prefix: its peaks are in
@@ -44,6 +44,9 @@ const DOCUMENTS: [(&str, &str); 11] = [
     // A render's manifest, not its video. The video is on the media list under
     // the same kind, because the two are different doors onto one artifact.
     ("render.clip.v1", "render-manifest.json"),
+    // What a delivery wrote: the files by name, with their digests and sizes,
+    // so an export screen can say which files exist and where.
+    ("export.package.v1", "export-package.json"),
 ];
 
 /// Where a media descriptor keeps the names of the files beside it.
@@ -201,6 +204,7 @@ mod tests {
                 "edit.ir.v1",
                 "evidence.shots.v1",
                 "evidence.source_map.v1",
+                "export.package.v1",
                 "index.transcript.v1",
                 "media.audio_peaks.v1",
                 "media.ingest_manifest.v1",

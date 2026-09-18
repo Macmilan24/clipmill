@@ -16,12 +16,16 @@ import {
 import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
+import { recall, remember } from './shell/memory.js';
 import {
-  DEFAULT_ROUTE,
+  type ClipRef,
   type Route,
+  editorRoute,
+  exportRoute,
   inspectorRoute,
   placementOf,
   sectionRoute,
+  resultsRouteFor,
 } from './shell/route.js';
 
 /**
@@ -51,7 +55,15 @@ export function App(): JSX.Element {
     ),
   );
 
-  const [route, setRoute] = useState<Route>(DEFAULT_ROUTE);
+  // Where the shell was, and which clip it was on, put back from the last
+  // launch. The clip is what the Editor and Export rows open when reached from
+  // the sidebar with nothing named — a person's own last choice, rather than
+  // whichever document the daemon wrote most recently.
+  const [memory] = useState(() =>
+    recall(typeof localStorage === 'undefined' ? null : localStorage),
+  );
+  const [route, setRoute] = useState<Route>(memory.route);
+  const [clip, setClip] = useState<ClipRef | null>(memory.clip);
   const [state, setState] = useState<ConnectionState>({ status: 'connecting' });
   const [profile, setProfile] = useState<DeviceProfile | null>(null);
   const [artifactId, setArtifactId] = useState<string | null>(null);
@@ -116,9 +128,28 @@ export function App(): JSX.Element {
     void reconnectDaemon().then(setState);
   }, []);
 
-  const navigate = useCallback((sectionId: string) => {
-    setRoute(sectionRoute(sectionId));
+  useEffect(() => {
+    remember(typeof localStorage === 'undefined' ? null : localStorage, { route, clip });
+  }, [route, clip]);
+
+  /** Open a clip in the editor or on the export screen, and remember it. */
+  const openClip = useCallback((next: ClipRef, screen: 'editor' | 'export') => {
+    setClip(next);
+    setRoute(screen === 'editor' ? editorRoute(next) : exportRoute(next));
   }, []);
+
+  const navigate = useCallback(
+    (sectionId: string, projectId?: string) => {
+      // The two rows that are about a clip open the one last opened, when
+      // there is one; the plain section is the screen saying "choose".
+      if ((sectionId === 'editor' || sectionId === 'export') && clip && projectId === undefined) {
+        setRoute(sectionId === 'editor' ? editorRoute(clip) : exportRoute(clip));
+        return;
+      }
+      setRoute(sectionRoute(sectionId, projectId));
+    },
+    [clip],
+  );
 
   // The run a screen opened, and the section it was opened from — which is the
   // row the sidebar keeps lit while it is on screen.
@@ -130,15 +161,13 @@ export function App(): JSX.Element {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="ambient" aria-hidden="true" />
       <SidebarProvider
-        // The shell is fixed at the design's width and never collapses; the
-        // provider is here for the menu primitives, not for responsiveness.
+        // The sidebar becomes an icon rail in compact desktop windows.
         style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
-        className="relative z-1 h-full min-h-0"
+        className="studio-shell relative h-full min-h-0"
       >
         <AppSidebar activeId={section.id} onSelect={navigate} state={state} />
-        <SidebarInset className="min-w-0 bg-transparent">
+        <SidebarInset className="min-h-0 min-w-0 bg-transparent">
           <TopBar
             trail={trail}
             theme={theme}
@@ -146,7 +175,9 @@ export function App(): JSX.Element {
             state={state}
             profile={profile}
           />
-          <main className="min-h-0 flex-1 overflow-y-auto p-6">
+          <main
+            className={`studio-main ${['results', 'editor'].includes(section.id) ? 'studio-main-workspace' : 'studio-main-page'}`}
+          >
             {renderScreen({
               route,
               library: {
@@ -165,28 +196,43 @@ export function App(): JSX.Element {
               },
               analysis: {
                 profile,
+                onRestarted: (projectId, jobId) => openAnalysis(projectId, jobId, 'library'),
                 onBack: () => {
                   navigate(route.kind === 'analysis' ? route.from : 'library');
                 },
                 onNavigate: navigate,
               },
               results: {
-                onInspect: (projectId, sourceId, candidateId) => {
-                  setRoute(inspectorRoute(projectId, sourceId, candidateId));
+                onInspect: (projectId, sourceId, candidateId, labels, jobId) => {
+                  setRoute(inspectorRoute(projectId, sourceId, candidateId, labels, jobId));
+                },
+                onEdit: (next) => {
+                  openClip(next, 'editor');
                 },
                 onBack: () => {
-                  navigate('results');
+                  setRoute(resultsRouteFor(route));
                 },
               },
               editor: {
                 onOpenResults: () => {
-                  navigate('results');
+                  setRoute(resultsRouteFor(route));
+                },
+                onOpen: (next) => {
+                  openClip(next, 'editor');
+                },
+                onExport: (next) => {
+                  openClip(next, 'export');
                 },
               },
-              // Both read the daemon directly and take nothing from the shell,
-              // so the entry exists to satisfy the registry rather than to
-              // carry anything.
-              export: {},
+              export: {
+                onEdit: (next) => openClip(next, 'editor'),
+                onOpen: (next) => {
+                  openClip(next, 'export');
+                },
+              },
+              // Reads the daemon directly and takes nothing from the shell, so
+              // the entry exists to satisfy the registry rather than to carry
+              // anything.
               settings: {},
               models: {
                 state,

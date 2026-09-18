@@ -27,6 +27,8 @@ import type {
   ExportPlan,
   ExportRequest,
   LocalLock,
+  Readiness,
+  StageReadiness,
 } from '../../src/daemon/client.js';
 import type { ShellApi } from '../../src/daemon/api.js';
 
@@ -63,6 +65,63 @@ export function task(outputKind: string, state: TaskState, overrides: Partial<Ta
   };
 }
 
+/** One stage of the daemon's readiness report, ready unless said otherwise. */
+export function stageReadiness(
+  stage: string,
+  overrides: Partial<StageReadiness> = {},
+): StageReadiness {
+  const model = `${stage}-weights`;
+  const base: StageReadiness = {
+    stage,
+    capability: stage,
+    implementation: `${stage}-impl`,
+    model,
+    backend: 'mlx',
+    modelPresent: true,
+    missingFiles: [],
+    workerPresent: true,
+    ready: true,
+    remedy: '',
+  };
+  const merged = { ...base, ...overrides };
+  const ready = merged.modelPresent && merged.workerPresent;
+  const remedy = merged.modelPresent
+    ? merged.workerPresent
+      ? ''
+      : `No worker is connected that runs ${stage}: start the workers with \`just workers\`.`
+    : `The model ${merged.model} is not installed: run \`tools/fetch-models.sh\` to fetch the pinned weights (${merged.missingFiles.length} file(s) missing).`;
+  return { ...merged, ready, remedy: overrides.remedy ?? remedy };
+}
+
+/** A readiness report over the given stages, with the decoder in place. */
+export function readiness(
+  stages: readonly StageReadiness[],
+  overrides: Partial<Readiness> = {},
+): Readiness {
+  const merged: Omit<Readiness, 'ready'> = {
+    decoderPresent: true,
+    decoderPath: '/Library/Application Support/dev.clipmill.ClipMill/tools/ffmpeg',
+    stages,
+    workers: stages.some((stage) => stage.workerPresent)
+      ? [
+          {
+            workerId: 'worker-1',
+            family: 'speech',
+            capabilities: stages.filter((stage) => stage.workerPresent).map((stage) => stage.stage),
+            backend: 'mlx',
+            sinceUnixMillis: NOW - 30_000,
+          },
+        ]
+      : [],
+    ...overrides,
+  };
+  return {
+    ...merged,
+    ready:
+      overrides.ready ?? (merged.decoderPresent && merged.stages.every((stage) => stage.ready)),
+  };
+}
+
 export function job(projectId: string, state: JobState, tasks: readonly Task[] = []): Job {
   return {
     jobId: `job-${projectId}`,
@@ -75,6 +134,7 @@ export function job(projectId: string, state: JobState, tasks: readonly Task[] =
     outputArtifactIds: [],
     failureClass: 0,
     failureDetail: '',
+    sourceId: `src_${projectId}`,
   };
 }
 
@@ -125,13 +185,19 @@ export interface FakeWorld {
   readonly editDocs?: readonly EditDocSummary[];
   /** Every command the editor sent, in order. */
   readonly applied: EditCommandJson[];
+  /** Every plan asked for, as (projectId, docId) pairs — which document opened. */
+  readonly planned: Array<readonly [string, string]>;
   /** What the daemon answers when asked what an export would do. */
   readonly exportPlan?: ExportPlan;
   /** Every export request the screen sent, in order. */
   readonly exported: ExportRequest[];
+  /** Every path the screen asked the host to reveal. */
+  readonly revealed: string[];
   /** Every archive request, as (projectId, destination) pairs. */
   readonly archived: Array<readonly [string, string]>;
   readonly localLock?: LocalLock;
+  /** What the daemon says an analysis would need, when the world says. */
+  readonly readiness?: Readiness;
   /** The folder the fake dialog returns, or null for "closed". */
   readonly chosenFolder?: string | null;
 }
@@ -147,7 +213,9 @@ export function emptyWorld(): FakeWorld {
     directed: [],
     decisions: new Map(),
     applied: [],
+    planned: [],
     exported: [],
+    revealed: [],
     archived: [],
   };
 }
@@ -213,13 +281,31 @@ export function fakeApi(world: FakeWorld): ShellApi {
     // call was refused. These record what was asked and nothing else.
     directClip: (request) => {
       world.directed.push(request);
+      // The one rule of the daemon's worth mirroring: a clip that already has
+      // a document gets it back unless a variation was asked for. A screen
+      // that navigated to a freshly minted id when the daemon would have
+      // reopened an existing one would be tested against a daemon that does
+      // not exist.
+      const existing = request.variation
+        ? undefined
+        : (world.editDocs ?? []).find(
+            (document) =>
+              document.projectId === request.projectId &&
+              document.sourceId === request.sourceId &&
+              document.candidateId === request.candidateId,
+          );
       return Promise.resolve({
-        docId: 'edt_00000000000000000000000000',
-        revision: 0,
+        docId: existing?.docId ?? 'edt_00000000000000000000000000',
+        projectId: request.projectId,
+        sourceId: request.sourceId,
+        candidateId: request.candidateId,
+        jobId: existing?.jobId ?? request.jobId ?? '',
+        revision: existing?.revision ?? 0,
         documentJson: '{}',
         startTicks: request.startTicks ?? 0,
         endTicks: request.endTicks ?? 0,
         decisions: [],
+        reopened: existing !== undefined,
       });
     },
     solveCropPath: () =>
@@ -229,7 +315,10 @@ export function fakeApi(world: FakeWorld): ShellApi {
         fitReason: 'nothing looked for faces',
         containment: 0,
       }),
-    listEditDocs: () => Promise.resolve(world.editDocs ?? []),
+    listEditDocs: (projectId) =>
+      Promise.resolve(
+        (world.editDocs ?? []).filter((document) => document.projectId === projectId),
+      ),
     applyEditCommand: (docId, expectedRevision, command) => {
       world.applied.push(command);
       // The inverse a real daemon computes depends on the document; a fake
@@ -241,10 +330,12 @@ export function fakeApi(world: FakeWorld): ShellApi {
         inverseCommandJson: JSON.stringify(command),
       });
     },
-    previewPlan: () =>
-      world.plan
+    previewPlan: (projectId, docId) => {
+      world.planned.push([projectId, docId]);
+      return world.plan
         ? Promise.resolve(world.plan)
-        : Promise.reject(new Error('this project has no such document')),
+        : Promise.reject(new Error('this project has no such document'));
+    },
     setClipDecision: (_projectId, _sourceId, candidateId, decision) => {
       world.decisions.set(candidateId, decision);
       return Promise.resolve({ candidateId, decision, decidedUnixMillis: 0 });
@@ -269,7 +360,28 @@ export function fakeApi(world: FakeWorld): ShellApi {
     },
     exportClip: (request) => {
       world.exported.push(request);
-      return Promise.resolve('job_export');
+      // The daemon refuses to export a revision other than the one reviewed.
+      if (
+        request.expectedRevision !== undefined &&
+        world.plan !== undefined &&
+        request.expectedRevision !== world.plan.revision
+      ) {
+        return Promise.reject(
+          new Error(
+            `the document moved since it was reviewed: revision ${request.expectedRevision} was approved, it is now at revision ${world.plan.revision}`,
+          ),
+        );
+      }
+      return Promise.resolve({
+        jobId: 'job_export',
+        revision: request.expectedRevision ?? world.plan?.revision ?? 0,
+        irArtifactId: 'sha256:ir-snapshot',
+        destinationDir: request.destinationDir,
+      });
+    },
+    revealPath: (path) => {
+      world.revealed.push(path);
+      return Promise.resolve();
     },
     exportArchive: (projectId, destinationDir) => {
       world.archived.push([projectId, destinationDir]);
@@ -285,5 +397,9 @@ export function fakeApi(world: FakeWorld): ShellApi {
         ? Promise.reject(new Error('this daemon reports no policy'))
         : Promise.resolve(world.localLock),
     chooseExportFolder: () => Promise.resolve(world.chosenFolder ?? null),
+    fetchReadiness: () =>
+      world.readiness === undefined
+        ? Promise.reject(new Error('this daemon reports no readiness'))
+        : Promise.resolve(world.readiness),
   };
 }

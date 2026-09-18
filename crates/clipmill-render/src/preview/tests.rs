@@ -41,6 +41,7 @@ fn word(text: &str, from: i64, to: i64) -> CaptionWord {
         text: text.to_owned(),
         start_ticks: from * FRAME_TICKS,
         end_ticks: to * FRAME_TICKS,
+        word_id: None,
     }
 }
 

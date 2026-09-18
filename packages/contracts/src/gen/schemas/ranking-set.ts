@@ -21,6 +21,7 @@ export interface RankingSet {
     candidates_artifact_id: Sha256;
     index_artifact_id: Sha256;
     transcript_artifact_id: Sha256;
+    judgments_artifact_id?: Sha256;
   };
   producer: Producer;
   /**
@@ -57,6 +58,7 @@ export interface RankingSet {
    * Candidates the stage-one filters removed before scoring, with the reason. Kept so the interface can answer 'what happened to that one?' rather than the candidate simply vanishing between two documents.
    */
   filtered?: FilteredCandidate[];
+  editorial?: EditorialCoverage;
 }
 export interface Producer {
   stage: string;
@@ -89,6 +91,16 @@ export interface Ranked {
    * Echoed from discovery, so the interface can offer the cluster's alternatives without opening the candidate set.
    */
   cluster_id: string;
+  review?: {
+    status: "accepted" | "needs_review";
+    reasons: string[];
+    route: "local" | "cloud";
+    summary?: string;
+  };
+  /**
+   * The editorial proposal's concise title, separate from the review summary.
+   */
+  title?: string;
 }
 /**
  * One axis of the score card. A factor this phase cannot measure is reported `available: false` with a stated reason and contributes nothing to the score — not zero, which would read as a measurement of badness, and not a neutral default, which would read as a measurement at all.
@@ -184,4 +196,17 @@ export interface FilteredCandidate {
   candidate_id: CandidateId;
   reason: "excluded_by_discovery" | "no_legal_boundary" | "below_floor";
   detail?: string;
+}
+/**
+ * Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.
+ */
+export interface EditorialCoverage {
+  window_count: number;
+  answered_windows: number;
+  failed_windows: {
+    index: number;
+    detail: string;
+  }[];
+  failed_reviews: number;
+  failed_visual_checks: number;
 }

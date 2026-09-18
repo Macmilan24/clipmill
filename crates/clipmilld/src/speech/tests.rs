@@ -254,6 +254,105 @@ fn a_single_unplaced_word_lands_between_the_words_around_it() {
     );
 }
 
+/// Two words the aligner dropped side by side share the gap they fell into,
+/// in order, rather than each being handed the whole of it.
+///
+/// Found on a real recording: "The thing" came back with one interval for
+/// both words, and the director's document was refused for a cue whose words
+/// were out of order — a clip nobody could open, over two words of timing.
+#[test]
+fn neighbouring_unplaced_words_share_the_gap_in_order() {
+    let mut recognized = recognized();
+    recognized.segments[1].text = "Every timestamp 101 202 integer tick.".to_owned();
+    let mut alignment = alignment();
+    let (is_end, an_start) = {
+        let word = |text: &str| {
+            alignment
+                .words
+                .iter()
+                .find(|word| *word.text == text)
+                .expect("the fixture word")
+                .clone()
+        };
+        (word("is").end_ticks, word("an").start_ticks)
+    };
+    let timestamp_end = alignment
+        .words
+        .iter()
+        .find(|word| *word.text == "timestamp")
+        .expect("timestamp")
+        .end_ticks;
+    let integer_start = alignment
+        .words
+        .iter()
+        .find(|word| *word.text == "integer")
+        .expect("integer")
+        .start_ticks;
+    assert!(is_end <= an_start, "the fixture's words are in order");
+    alignment
+        .words
+        .retain(|word| *word.text != "is" && *word.text != "an");
+    for (position, word) in alignment.words.iter_mut().enumerate() {
+        word.index = u64::try_from(position).expect("fits");
+    }
+    for (position, text) in [(2, "101"), (3, "202")] {
+        alignment.unaligned.push(
+            clipmill_contracts::schemas::speech_alignment::UnalignedSpan {
+                segment_index: 1,
+                word_index: Some(position),
+                text: text.to_owned(),
+                reason: clipmill_contracts::schemas::speech_alignment::UnalignedSpanReason::OutOfVocabulary,
+                detail: None,
+            },
+        );
+    }
+
+    let assembled =
+        assemble(&activity(), &recognized, &alignment, inputs(), ASSEMBLER).expect("assembles");
+    let spoken = assembled
+        .document
+        .words
+        .iter()
+        .filter(|word| word.segment_index == 1)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spoken
+            .iter()
+            .map(|word| word.text.to_string())
+            .collect::<Vec<_>>(),
+        ["Every", "timestamp", "101", "202", "integer", "tick"]
+    );
+    let first = spoken[2];
+    let second = spoken[3];
+    assert_eq!(
+        first.start_ticks, timestamp_end,
+        "the run begins where the word before it ends"
+    );
+    assert_eq!(
+        first.end_ticks, second.start_ticks,
+        "the second begins where the first ends"
+    );
+    assert!(
+        second.end_ticks <= integer_start,
+        "the run ends by the word after it"
+    );
+    assert_eq!(
+        second.end_ticks - second.start_ticks,
+        first.end_ticks - first.start_ticks,
+        "the gap is shared equally"
+    );
+    // The whole word list stays in order: no word begins before the one
+    // before it ends, which is what a caption cue will later insist on.
+    for pair in assembled.document.words.windows(2) {
+        assert!(
+            pair[1].start_ticks >= pair[0].end_ticks,
+            "{} and {} overlap",
+            *pair[0].text,
+            *pair[1].text
+        );
+    }
+}
+
 /// The transcript's own confidence answers "is this text safe to quote", which
 /// is a question about recognition. Word confidence in this document is timing
 /// confidence, so aggregating that instead would report a transcript as

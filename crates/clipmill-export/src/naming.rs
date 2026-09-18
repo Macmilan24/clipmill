@@ -101,7 +101,10 @@ pub enum PatternError {
     UnclosedToken,
     #[error("the pattern resolves to an empty name")]
     Empty,
-    #[error("the pattern names no clip, so every file in an export would collide")]
+    #[error(
+        "the name pattern needs {{index}} or {{clip}} in it, so each clip gets a name of its own; \
+         without one, every file in an export would collide"
+    )]
     NotUnique,
 }
 

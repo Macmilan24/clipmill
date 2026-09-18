@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.editorial.proposals.v1.json",
+  "title": "EditorialProposals",
+  "description": "What an editorial model proposed, window by window, before anything checked it (plan, Milestone 2). A proposal is a moment with a hook, the setup it needs, and a payoff, cited by sentence index — and by word index only at its edges — because a model that invents a timestamp invents a cut; timestamps come from the alignment, through the validator, never from here. A window may honestly hold no moment, and a window the model failed on is recorded as a failure rather than as an empty answer, so that 'nothing worthwhile here' and 'the model could not say' never look alike. This document is the model's word and is trusted for nothing: `editorial-validate` refuses every reference it cannot walk back to the transcript before a candidate exists.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "inputs", "producer", "windows"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.editorial.proposals.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "inputs": {
+      "type": "object",
+      "required": ["windows_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "windows_artifact_id": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "producer": { "$ref": "#/$defs/model_producer" },
+    "windows": {
+      "description": "One entry per window of the input, in order, whether or not the model proposed anything for it. A window absent from this list was not asked, which is a different document from one the model answered 'none' to.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/window_answer" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "model_producer": {
+      "description": "Who answered, and under what: the implementation, the model by name and digest, the route the request took, the prompt version and the decoding configuration. Together with the inputs this is the cache identity of the answer; a changed prompt is a different result and an unchanged one is a hit.",
+      "type": "object",
+      "required": ["stage", "implementation", "route", "model", "prompt_version", "decoding"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "route": {
+          "description": "'local' ran on this machine under the Local Lock; 'cloud' left it, with the provider named in the model.",
+          "type": "string",
+          "enum": ["local", "cloud"]
+        },
+        "model": { "$ref": "#/$defs/model" },
+        "prompt_version": {
+          "description": "The versioned prompt and rubric the model was given, e.g. 'propose.v1', with its digest so a reworded prompt under the same name is a different answer.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decoding": { "$ref": "#/$defs/decoding" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "The registry name of a local model, or the provider's model identifier on the cloud route.",
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "description": "The registry's digest of the local weights. Absent on the cloud route, where the weights are not ours to hash.",
+          "$ref": "#/$defs/sha256"
+        },
+        "provider": {
+          "description": "The cloud provider, on that route.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "decoding": {
+      "type": "object",
+      "required": ["temperature_milli", "seed", "max_output_tokens", "constrained"],
+      "additionalProperties": false,
+      "properties": {
+        "temperature_milli": {
+          "description": "Temperature in thousandths, an integer so the key is exact. Zero is what the local route runs at.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "seed": { "type": "integer", "minimum": 0 },
+        "max_output_tokens": { "type": "integer", "minimum": 1 },
+        "constrained": {
+          "description": "Whether the reply was decoded under the answer's JSON schema, so it is structurally valid or the window is marked malformed — never a parse of prose.",
+          "type": "boolean"
+        }
+      }
+    },
+    "window_answer": {
+      "type": "object",
+      "required": ["window_index", "status", "proposals"],
+      "additionalProperties": false,
+      "properties": {
+        "window_index": { "type": "integer", "minimum": 0 },
+        "status": {
+          "description": "'answered' with proposals; 'none' when the model said there was no complete moment in the window; 'malformed' when its reply did not fit the schema; 'failed' when the model could not be run — each a different thing to show a person.",
+          "type": "string",
+          "enum": ["answered", "none", "malformed", "failed"]
+        },
+        "failure": {
+          "description": "For 'malformed' and 'failed': what happened, in one sentence, and whether trying again could help.",
+          "type": "object",
+          "required": ["failure_class", "detail"],
+          "additionalProperties": false,
+          "properties": {
+            "failure_class": {
+              "type": "string",
+              "enum": ["deterministic", "transient", "cancelled", "budget"]
+            },
+            "detail": { "type": "string", "minLength": 1 }
+          }
+        },
+        "proposals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/proposal" }
+        }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "required": [
+        "id",
+        "first_sentence_index",
+        "sentence_count",
+        "title",
+        "hook",
+        "setup",
+        "payoff",
+        "reason",
+        "uncertainties",
+        "splittable"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique within the document, e.g. 'prop_3_1' for the first proposal of window 3.",
+          "type": "string",
+          "pattern": "^prop_[0-9]+_[0-9]+$"
+        },
+        "first_sentence_index": {
+          "description": "The moment, as whole sentences of the window's core. Sentences are the unit a model can be trusted to point at.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "sentence_count": { "type": "integer", "minimum": 1 },
+        "start_word_index": {
+          "description": "Optionally, a word inside the first sentence the moment really begins on, when the sentence's opening is not part of it. Transcript word index; must lie inside the first sentence.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_word_index": {
+          "description": "Optionally, the last word inside the last sentence the moment really ends on. Transcript word index; must lie inside the last sentence.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "hook": {
+          "description": "In the model's words: what makes a viewer stay for the first seconds.",
+          "type": "string",
+          "minLength": 1
+        },
+        "setup": {
+          "description": "What the viewer must have heard for the payoff to land, and whether the moment carries it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "payoff": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "description": "One source-grounded sentence on why this is worth a clip. Grounded means it can be checked against the cited sentences, not that it was.",
+          "type": "string",
+          "minLength": 1
+        },
+        "uncertainties": {
+          "description": "What the model said it was unsure of — a reference it could not resolve, a claim it could not verify — each one line.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "splittable": {
+          "description": "The model's view that the moment holds shorter moments that stand alone; when true, `subspans` names them, so a proposal over the duration target is split into meaningful parts rather than discarded for length.",
+          "type": "boolean"
+        },
+        "subspans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["first_sentence_index", "sentence_count"],
+            "additionalProperties": false,
+            "properties": {
+              "first_sentence_index": { "type": "integer", "minimum": 0 },
+              "sentence_count": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

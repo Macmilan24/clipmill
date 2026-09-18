@@ -11,8 +11,15 @@
  * operation and put the fields where the deserializer expects them.
  */
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
-import { secondsAt } from './player.js';
+import { secondsAt, segmentAt, sourceTicksAt } from './player.js';
 
+/**
+ * The segment a document has when the plan does not say.
+ *
+ * The director cuts one segment and calls it this. Every builder takes the id
+ * from the plan where it can, so a document with two segments is addressed
+ * correctly; the constant is what remains for a caller with no plan in hand.
+ */
 export const SEGMENT = 'seg_1';
 
 /** Which way the camera is framed. Three modes, exactly as the plan names them. */
@@ -38,20 +45,195 @@ export function trim(inTicks: number, outTicks: number, segmentId = SEGMENT): Ed
   return { op: 'trim', segment_id: segmentId, in_ticks: inTicks, out_ticks: outTicks };
 }
 
-export function editCaptionText(cueId: string, wordIndex: number, text: string): EditCommandJson {
-  return { op: 'edit_caption_text', cue_id: cueId, word_index: wordIndex, text };
+/** Which of the document's two cue lists a cue-scoped command means. */
+export type Presentation = 'reading' | 'burn_in';
+
+/** The presentation field, written only when it is not the default. */
+function inList(presentation: Presentation): { readonly presentation?: Presentation } {
+  return presentation === 'reading' ? {} : { presentation };
 }
 
-export function setCueLines(cueId: string, lineWordCounts: readonly number[]): EditCommandJson {
-  return { op: 'set_cue_lines', cue_id: cueId, line_word_counts: [...lineWordCounts] };
+export function editCaptionText(
+  cueId: string,
+  wordIndex: number,
+  text: string,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'edit_caption_text',
+    cue_id: cueId,
+    word_index: wordIndex,
+    text,
+    ...inList(presentation),
+  };
 }
 
-export function splitCue(cueId: string, atWordIndex: number, newCueId: string): EditCommandJson {
-  return { op: 'split_cue', cue_id: cueId, at_word_index: atWordIndex, new_cue_id: newCueId };
+/**
+ * Correct one word, wherever it appears.
+ *
+ * Addressed to the word's identity rather than to a cue and an index, so the
+ * correction lands in the burned-in cue on screen and in the reading cue the
+ * sidecars are written from. The cue-and-index form above finds a word in one
+ * grouping only, and the grouping it finds is not the one the player shows.
+ */
+export function setWordText(wordId: string, text: string): EditCommandJson {
+  return { op: 'set_word_text', word_id: wordId, text };
 }
 
-export function mergeCues(firstCueId: string, secondCueId: string): EditCommandJson {
-  return { op: 'merge_cues', first_cue_id: firstCueId, second_cue_id: secondCueId };
+/**
+ * Trim the segment a frame is in so it begins there.
+ *
+ * `Trim` speaks source ticks — the segment's own window into the recording —
+ * so the frame is mapped through the plan's segments rather than sent as
+ * program ticks, which read as a window at the recording's opening. Null when
+ * the frame is off the program or the plan carries no segments.
+ */
+export function trimStartAt(plan: PreviewPlan, frame: number): EditCommandJson | null {
+  const segment = segmentAt(plan, frame);
+  const ticks = sourceTicksAt(plan, frame);
+  if (!segment || ticks === null || ticks >= segment.outTicks) {
+    return null;
+  }
+  return trim(ticks, segment.outTicks, segment.segmentId);
+}
+
+/** Trim the segment a frame is in so it ends there. */
+export function trimEndAt(plan: PreviewPlan, frame: number): EditCommandJson | null {
+  const segment = segmentAt(plan, frame);
+  const ticks = sourceTicksAt(plan, frame);
+  if (!segment || ticks === null || ticks <= segment.inTicks) {
+    return null;
+  }
+  return trim(segment.inTicks, ticks, segment.segmentId);
+}
+
+/**
+ * A solved keyframe as the crop keyframe the document stores.
+ *
+ * The solver answers in shares of the source frame at source ticks; the
+ * document holds source pixels at segment-local ticks. This is the director's
+ * own conversion, repeated here so a path the editor re-solves is the path the
+ * director would have written: the height is what the solver decided, the
+ * width follows the output aspect, both are even for the encoder's chroma
+ * planes, and the rectangle is kept inside the frame. Converted against the
+ * *output's* dimensions instead, as it was, a landscape source got a crop
+ * measured in a frame it is not in.
+ */
+export function solvedKeyframe(
+  keyframe: {
+    readonly tTicks: number;
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly scale: number;
+  },
+  segment: { readonly inTicks: number },
+  source: { readonly displayWidth: number; readonly displayHeight: number },
+  aspect: { readonly width: number; readonly height: number },
+): { readonly tTicks: number; readonly rect: CropRect } {
+  const frameWidth = source.displayWidth;
+  const frameHeight = source.displayHeight;
+  let height = clamp(Math.round(keyframe.scale * frameHeight), 2, frameHeight);
+  let width = clamp(Math.floor((height * aspect.width) / aspect.height), 2, frameWidth);
+  height -= height % 2;
+  width -= width % 2;
+  const x = Math.round(keyframe.centerX * frameWidth) - Math.floor(width / 2);
+  const y = Math.round(keyframe.centerY * frameHeight) - Math.floor(height / 2);
+  return {
+    tTicks: Number(keyframe.tTicks) - segment.inTicks,
+    rect: {
+      x: clamp(x, 0, Math.max(0, frameWidth - width)),
+      y: clamp(y, 0, Math.max(0, frameHeight - height)),
+      width,
+      height,
+    },
+  };
+}
+
+interface CropRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(high, value));
+}
+
+/**
+ * Where a frame sits inside its own segment, which is the clock crop keyframes
+ * keep: segment-local ticks, so a trim of the window cannot silently re-time
+ * the camera move.
+ */
+export function segmentTicksAt(
+  plan: PreviewPlan,
+  frame: number,
+): { readonly segmentId: string; readonly tTicks: number } {
+  const segment = segmentAt(plan, frame);
+  if (!segment) {
+    return { segmentId: SEGMENT, tTicks: ticksAt(plan, frame) };
+  }
+  return { segmentId: segment.segmentId, tTicks: ticksAt(plan, frame - segment.firstFrame) };
+}
+
+export function setCueLines(
+  cueId: string,
+  lineWordCounts: readonly number[],
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'set_cue_lines',
+    cue_id: cueId,
+    line_word_counts: [...lineWordCounts],
+    ...inList(presentation),
+  };
+}
+
+export function splitCue(
+  cueId: string,
+  atWordIndex: number,
+  newCueId: string,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'split_cue',
+    cue_id: cueId,
+    at_word_index: atWordIndex,
+    new_cue_id: newCueId,
+    ...inList(presentation),
+  };
+}
+
+export function mergeCues(
+  firstCueId: string,
+  secondCueId: string,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'merge_cues',
+    first_cue_id: firstCueId,
+    second_cue_id: secondCueId,
+    ...inList(presentation),
+  };
+}
+
+/**
+ * The command that corrects one shown word, whatever the document knows it by.
+ *
+ * Addressed to the word's identity when it has one, so it lands in both
+ * presentations. A document that predates ids is corrected by cue and index
+ * in the presentation on screen — the one place the command can reach.
+ */
+export function correctWord(
+  plan: PreviewPlan,
+  cue: { readonly cueId: string },
+  wordIndex: number,
+  word: { readonly wordId: string },
+  text: string,
+): EditCommandJson {
+  return word.wordId === ''
+    ? editCaptionText(cue.cueId, wordIndex, text, plan.presentation)
+    : setWordText(word.wordId, text);
 }
 
 export function setGain(tTicks: number, gainDb: number): EditCommandJson {

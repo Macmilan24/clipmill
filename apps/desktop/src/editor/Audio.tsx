@@ -57,7 +57,7 @@ export function Audio({ plan, frame, busy, onApply }: AudioProps) {
 
       <section>
         <p className="mb-2 text-xs text-[var(--cm-ink-2)]">At this frame</p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -95,8 +95,8 @@ export function Audio({ plan, frame, busy, onApply }: AudioProps) {
           <Row label="Curve offset here" value={`${here >= 0 ? '+' : ''}${here.toFixed(1)} dB`} />
         </dl>
         <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-          This is the curve, not a measurement. The export runs a two-pass loudness normalization to
-          the target above; what an editor changes here is the shape going into it.
+          Export normalizes the final audio to −14 LUFS. These adjustments change the level before
+          normalization.
         </p>
       </section>
     </div>

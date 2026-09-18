@@ -356,6 +356,181 @@ impl<'de> ::serde::Deserialize<'de> for CandidateId {
             })
     }
 }
+#[doc = "`EditorialCoverage`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"answered_windows\","]
+#[doc = "    \"failed_reviews\","]
+#[doc = "    \"failed_visual_checks\","]
+#[doc = "    \"failed_windows\","]
+#[doc = "    \"window_count\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"answered_windows\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"failed_reviews\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"failed_visual_checks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"failed_windows\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"detail\","]
+#[doc = "          \"index\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"detail\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"minLength\": 1"]
+#[doc = "          },"]
+#[doc = "          \"index\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"window_count\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditorialCoverage {
+    pub answered_windows: u64,
+    pub failed_reviews: u64,
+    pub failed_visual_checks: u64,
+    pub failed_windows: ::std::vec::Vec<EditorialCoverageFailedWindowsItem>,
+    pub window_count: u64,
+}
+impl EditorialCoverage {
+    pub fn builder() -> builder::EditorialCoverage {
+        Default::default()
+    }
+}
+#[doc = "`EditorialCoverageFailedWindowsItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"detail\","]
+#[doc = "    \"index\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"detail\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"index\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditorialCoverageFailedWindowsItem {
+    pub detail: EditorialCoverageFailedWindowsItemDetail,
+    pub index: u64,
+}
+impl EditorialCoverageFailedWindowsItem {
+    pub fn builder() -> builder::EditorialCoverageFailedWindowsItem {
+        Default::default()
+    }
+}
+#[doc = "`EditorialCoverageFailedWindowsItemDetail`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialCoverageFailedWindowsItemDetail(::std::string::String);
+impl ::std::ops::Deref for EditorialCoverageFailedWindowsItemDetail {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialCoverageFailedWindowsItemDetail> for ::std::string::String {
+    fn from(value: EditorialCoverageFailedWindowsItemDetail) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialCoverageFailedWindowsItemDetail {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialCoverageFailedWindowsItemDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialCoverageFailedWindowsItemDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialCoverageFailedWindowsItemDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialCoverageFailedWindowsItemDetail {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "`EvidenceReference`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1371,9 +1546,49 @@ impl<'de> ::serde::Deserialize<'de> for ProducerStage {
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 1.0"]
 #[doc = "    },"]
+#[doc = "    \"review\": {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"reasons\","]
+#[doc = "        \"route\","]
+#[doc = "        \"status\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"reasons\": {"]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"type\": \"string\""]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"route\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"local\","]
+#[doc = "            \"cloud\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"status\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"accepted\","]
+#[doc = "            \"needs_review\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"summary\": {"]
+#[doc = "          \"type\": \"string\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"score\": {"]
 #[doc = "      \"description\": \"The raw q(c) the percentile came from, kept so a re-tune can be reasoned about without recomputing and so two candidates a percentile rounded together can still be told apart.\","]
 #[doc = "      \"type\": \"number\""]
+#[doc = "    },"]
+#[doc = "    \"title\": {"]
+#[doc = "      \"description\": \"The editorial proposal's concise title, separate from the review summary.\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 120,"]
+#[doc = "      \"minLength\": 1"]
 #[doc = "    },"]
 #[doc = "    \"uncertainty\": {"]
 #[doc = "      \"$ref\": \"#/$defs/uncertainty\""]
@@ -1397,8 +1612,13 @@ pub struct Ranked {
     pub penalties: ::std::vec::Vec<Penalty>,
     #[doc = "Position in the cohort, from one. Ties are broken by candidate id, so the order does not depend on which proposer ran first."]
     pub rank: ::std::num::NonZeroU64,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub review: ::std::option::Option<RankedReview>,
     #[doc = "The raw q(c) the percentile came from, kept so a re-tune can be reasoned about without recomputing and so two candidates a percentile rounded together can still be told apart."]
     pub score: f64,
+    #[doc = "The editorial proposal's concise title, separate from the review summary."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub title: ::std::option::Option<RankedTitle>,
     pub uncertainty: Uncertainty,
 }
 impl Ranked {
@@ -1477,6 +1697,278 @@ impl<'de> ::serde::Deserialize<'de> for RankedClusterId {
             })
     }
 }
+#[doc = "`RankedReview`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"reasons\","]
+#[doc = "    \"route\","]
+#[doc = "    \"status\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"reasons\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"string\""]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"route\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"local\","]
+#[doc = "        \"cloud\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"status\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"accepted\","]
+#[doc = "        \"needs_review\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"summary\": {"]
+#[doc = "      \"type\": \"string\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RankedReview {
+    pub reasons: ::std::vec::Vec<::std::string::String>,
+    pub route: RankedReviewRoute,
+    pub status: RankedReviewStatus,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub summary: ::std::option::Option<::std::string::String>,
+}
+impl RankedReview {
+    pub fn builder() -> builder::RankedReview {
+        Default::default()
+    }
+}
+#[doc = "`RankedReviewRoute`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"local\","]
+#[doc = "    \"cloud\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum RankedReviewRoute {
+    #[serde(rename = "local")]
+    Local,
+    #[serde(rename = "cloud")]
+    Cloud,
+}
+impl ::std::fmt::Display for RankedReviewRoute {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Local => f.write_str("local"),
+            Self::Cloud => f.write_str("cloud"),
+        }
+    }
+}
+impl ::std::str::FromStr for RankedReviewRoute {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "local" => Ok(Self::Local),
+            "cloud" => Ok(Self::Cloud),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for RankedReviewRoute {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RankedReviewRoute {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RankedReviewRoute {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`RankedReviewStatus`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"accepted\","]
+#[doc = "    \"needs_review\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum RankedReviewStatus {
+    #[serde(rename = "accepted")]
+    Accepted,
+    #[serde(rename = "needs_review")]
+    NeedsReview,
+}
+impl ::std::fmt::Display for RankedReviewStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Accepted => f.write_str("accepted"),
+            Self::NeedsReview => f.write_str("needs_review"),
+        }
+    }
+}
+impl ::std::str::FromStr for RankedReviewStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "accepted" => Ok(Self::Accepted),
+            "needs_review" => Ok(Self::NeedsReview),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for RankedReviewStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RankedReviewStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RankedReviewStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "The editorial proposal's concise title, separate from the review summary."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The editorial proposal's concise title, separate from the review summary.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 120,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RankedTitle(::std::string::String);
+impl ::std::ops::Deref for RankedTitle {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RankedTitle> for ::std::string::String {
+    fn from(value: RankedTitle) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RankedTitle {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 120usize {
+            return Err("longer than 120 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RankedTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RankedTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RankedTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RankedTitle {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "Which nominated clips are worth showing, in what order, and cut where (book ch. 16). Three decisions live here that discovery deliberately left open: what each candidate is worth, where its boundaries should actually fall, and which subset of a cohort a user should see. Every one of them is shown rather than asserted — the score is decomposed into named factors with the evidence behind them, the chosen boundary is published beside the runner-up it beat, and a set smaller than the one requested says why instead of padding itself."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1506,6 +1998,10 @@ impl<'de> ::serde::Deserialize<'de> for RankedClusterId {
 #[doc = "        \"$ref\": \"#/$defs/ranked\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"editorial\": {"]
+#[doc = "      \"description\": \"Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.\","]
+#[doc = "      \"$ref\": \"#/$defs/editorial_coverage\""]
+#[doc = "    },"]
 #[doc = "    \"filtered\": {"]
 #[doc = "      \"description\": \"Candidates the stage-one filters removed before scoring, with the reason. Kept so the interface can answer 'what happened to that one?' rather than the candidate simply vanishing between two documents.\","]
 #[doc = "      \"type\": \"array\","]
@@ -1526,6 +2022,9 @@ impl<'de> ::serde::Deserialize<'de> for RankedClusterId {
 #[doc = "          \"$ref\": \"#/$defs/sha256\""]
 #[doc = "        },"]
 #[doc = "        \"index_artifact_id\": {"]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        },"]
+#[doc = "        \"judgments_artifact_id\": {"]
 #[doc = "          \"$ref\": \"#/$defs/sha256\""]
 #[doc = "        },"]
 #[doc = "        \"transcript_artifact_id\": {"]
@@ -1613,6 +2112,9 @@ impl<'de> ::serde::Deserialize<'de> for RankedClusterId {
 pub struct RankingSet {
     #[doc = "Every candidate that survived the stage-one filters, scored and ordered. Percentiles are within this list, which is what makes the displayed number an editorial index rather than a probability."]
     pub cohort: ::std::vec::Vec<Ranked>,
+    #[doc = "Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub editorial: ::std::option::Option<EditorialCoverage>,
     #[doc = "Candidates the stage-one filters removed before scoring, with the reason. Kept so the interface can answer 'what happened to that one?' rather than the candidate simply vanishing between two documents."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub filtered: ::std::vec::Vec<FilteredCandidate>,
@@ -1652,6 +2154,9 @@ impl RankingSet {
 #[doc = "    \"index_artifact_id\": {"]
 #[doc = "      \"$ref\": \"#/$defs/sha256\""]
 #[doc = "    },"]
+#[doc = "    \"judgments_artifact_id\": {"]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
+#[doc = "    },"]
 #[doc = "    \"transcript_artifact_id\": {"]
 #[doc = "      \"$ref\": \"#/$defs/sha256\""]
 #[doc = "    }"]
@@ -1665,6 +2170,8 @@ impl RankingSet {
 pub struct RankingSetInputs {
     pub candidates_artifact_id: Sha256,
     pub index_artifact_id: Sha256,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub judgments_artifact_id: ::std::option::Option<Sha256>,
     pub transcript_artifact_id: Sha256,
 }
 impl RankingSetInputs {
@@ -2715,6 +3222,166 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct EditorialCoverage {
+        answered_windows: ::std::result::Result<u64, ::std::string::String>,
+        failed_reviews: ::std::result::Result<u64, ::std::string::String>,
+        failed_visual_checks: ::std::result::Result<u64, ::std::string::String>,
+        failed_windows: ::std::result::Result<
+            ::std::vec::Vec<super::EditorialCoverageFailedWindowsItem>,
+            ::std::string::String,
+        >,
+        window_count: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditorialCoverage {
+        fn default() -> Self {
+            Self {
+                answered_windows: Err("no value supplied for answered_windows".to_string()),
+                failed_reviews: Err("no value supplied for failed_reviews".to_string()),
+                failed_visual_checks: Err("no value supplied for failed_visual_checks".to_string()),
+                failed_windows: Err("no value supplied for failed_windows".to_string()),
+                window_count: Err("no value supplied for window_count".to_string()),
+            }
+        }
+    }
+    impl EditorialCoverage {
+        pub fn answered_windows<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.answered_windows = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for answered_windows: {e}"));
+            self
+        }
+        pub fn failed_reviews<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.failed_reviews = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for failed_reviews: {e}"));
+            self
+        }
+        pub fn failed_visual_checks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.failed_visual_checks = value.try_into().map_err(|e| {
+                format!("error converting supplied value for failed_visual_checks: {e}")
+            });
+            self
+        }
+        pub fn failed_windows<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::EditorialCoverageFailedWindowsItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.failed_windows = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for failed_windows: {e}"));
+            self
+        }
+        pub fn window_count<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.window_count = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for window_count: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditorialCoverage> for super::EditorialCoverage {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditorialCoverage,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                answered_windows: value.answered_windows?,
+                failed_reviews: value.failed_reviews?,
+                failed_visual_checks: value.failed_visual_checks?,
+                failed_windows: value.failed_windows?,
+                window_count: value.window_count?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditorialCoverage> for EditorialCoverage {
+        fn from(value: super::EditorialCoverage) -> Self {
+            Self {
+                answered_windows: Ok(value.answered_windows),
+                failed_reviews: Ok(value.failed_reviews),
+                failed_visual_checks: Ok(value.failed_visual_checks),
+                failed_windows: Ok(value.failed_windows),
+                window_count: Ok(value.window_count),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditorialCoverageFailedWindowsItem {
+        detail: ::std::result::Result<
+            super::EditorialCoverageFailedWindowsItemDetail,
+            ::std::string::String,
+        >,
+        index: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditorialCoverageFailedWindowsItem {
+        fn default() -> Self {
+            Self {
+                detail: Err("no value supplied for detail".to_string()),
+                index: Err("no value supplied for index".to_string()),
+            }
+        }
+    }
+    impl EditorialCoverageFailedWindowsItem {
+        pub fn detail<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialCoverageFailedWindowsItemDetail>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.detail = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for detail: {e}"));
+            self
+        }
+        pub fn index<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.index = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for index: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditorialCoverageFailedWindowsItem>
+        for super::EditorialCoverageFailedWindowsItem
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditorialCoverageFailedWindowsItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                detail: value.detail?,
+                index: value.index?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditorialCoverageFailedWindowsItem>
+        for EditorialCoverageFailedWindowsItem
+    {
+        fn from(value: super::EditorialCoverageFailedWindowsItem) -> Self {
+            Self {
+                detail: Ok(value.detail),
+                index: Ok(value.index),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct EvidenceReference {
         index: ::std::result::Result<u64, ::std::string::String>,
         kind: ::std::result::Result<super::EvidenceReferenceKind, ::std::string::String>,
@@ -3133,7 +3800,13 @@ pub mod builder {
         factors: ::std::result::Result<::std::vec::Vec<super::Factor>, ::std::string::String>,
         penalties: ::std::result::Result<::std::vec::Vec<super::Penalty>, ::std::string::String>,
         rank: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        review: ::std::result::Result<
+            ::std::option::Option<super::RankedReview>,
+            ::std::string::String,
+        >,
         score: ::std::result::Result<f64, ::std::string::String>,
+        title:
+            ::std::result::Result<::std::option::Option<super::RankedTitle>, ::std::string::String>,
         uncertainty: ::std::result::Result<super::Uncertainty, ::std::string::String>,
     }
     impl ::std::default::Default for Ranked {
@@ -3146,7 +3819,9 @@ pub mod builder {
                 factors: Err("no value supplied for factors".to_string()),
                 penalties: Err("no value supplied for penalties".to_string()),
                 rank: Err("no value supplied for rank".to_string()),
+                review: Ok(Default::default()),
                 score: Err("no value supplied for score".to_string()),
+                title: Ok(Default::default()),
                 uncertainty: Err("no value supplied for uncertainty".to_string()),
             }
         }
@@ -3222,6 +3897,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for rank: {e}"));
             self
         }
+        pub fn review<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::RankedReview>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.review = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for review: {e}"));
+            self
+        }
         pub fn score<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<f64>,
@@ -3230,6 +3915,16 @@ pub mod builder {
             self.score = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for score: {e}"));
+            self
+        }
+        pub fn title<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::RankedTitle>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.title = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for title: {e}"));
             self
         }
         pub fn uncertainty<T>(mut self, value: T) -> Self
@@ -3254,7 +3949,9 @@ pub mod builder {
                 factors: value.factors?,
                 penalties: value.penalties?,
                 rank: value.rank?,
+                review: value.review?,
                 score: value.score?,
+                title: value.title?,
                 uncertainty: value.uncertainty?,
             })
         }
@@ -3269,14 +3966,106 @@ pub mod builder {
                 factors: Ok(value.factors),
                 penalties: Ok(value.penalties),
                 rank: Ok(value.rank),
+                review: Ok(value.review),
                 score: Ok(value.score),
+                title: Ok(value.title),
                 uncertainty: Ok(value.uncertainty),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct RankedReview {
+        reasons:
+            ::std::result::Result<::std::vec::Vec<::std::string::String>, ::std::string::String>,
+        route: ::std::result::Result<super::RankedReviewRoute, ::std::string::String>,
+        status: ::std::result::Result<super::RankedReviewStatus, ::std::string::String>,
+        summary: ::std::result::Result<
+            ::std::option::Option<::std::string::String>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for RankedReview {
+        fn default() -> Self {
+            Self {
+                reasons: Err("no value supplied for reasons".to_string()),
+                route: Err("no value supplied for route".to_string()),
+                status: Err("no value supplied for status".to_string()),
+                summary: Ok(Default::default()),
+            }
+        }
+    }
+    impl RankedReview {
+        pub fn reasons<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<::std::string::String>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.reasons = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for reasons: {e}"));
+            self
+        }
+        pub fn route<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RankedReviewRoute>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.route = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for route: {e}"));
+            self
+        }
+        pub fn status<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RankedReviewStatus>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.status = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for status: {e}"));
+            self
+        }
+        pub fn summary<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.summary = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for summary: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<RankedReview> for super::RankedReview {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: RankedReview,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                reasons: value.reasons?,
+                route: value.route?,
+                status: value.status?,
+                summary: value.summary?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::RankedReview> for RankedReview {
+        fn from(value: super::RankedReview) -> Self {
+            Self {
+                reasons: Ok(value.reasons),
+                route: Ok(value.route),
+                status: Ok(value.status),
+                summary: Ok(value.summary),
             }
         }
     }
     #[derive(Clone, Debug)]
     pub struct RankingSet {
         cohort: ::std::result::Result<::std::vec::Vec<super::Ranked>, ::std::string::String>,
+        editorial: ::std::result::Result<
+            ::std::option::Option<super::EditorialCoverage>,
+            ::std::string::String,
+        >,
         filtered:
             ::std::result::Result<::std::vec::Vec<super::FilteredCandidate>, ::std::string::String>,
         inputs: ::std::result::Result<super::RankingSetInputs, ::std::string::String>,
@@ -3296,6 +4085,7 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 cohort: Err("no value supplied for cohort".to_string()),
+                editorial: Ok(Default::default()),
                 filtered: Ok(Default::default()),
                 inputs: Err("no value supplied for inputs".to_string()),
                 producer: Err("no value supplied for producer".to_string()),
@@ -3317,6 +4107,16 @@ pub mod builder {
             self.cohort = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for cohort: {e}"));
+            self
+        }
+        pub fn editorial<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditorialCoverage>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.editorial = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for editorial: {e}"));
             self
         }
         pub fn filtered<T>(mut self, value: T) -> Self
@@ -3417,6 +4217,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 cohort: value.cohort?,
+                editorial: value.editorial?,
                 filtered: value.filtered?,
                 inputs: value.inputs?,
                 producer: value.producer?,
@@ -3433,6 +4234,7 @@ pub mod builder {
         fn from(value: super::RankingSet) -> Self {
             Self {
                 cohort: Ok(value.cohort),
+                editorial: Ok(value.editorial),
                 filtered: Ok(value.filtered),
                 inputs: Ok(value.inputs),
                 producer: Ok(value.producer),
@@ -3449,6 +4251,8 @@ pub mod builder {
     pub struct RankingSetInputs {
         candidates_artifact_id: ::std::result::Result<super::Sha256, ::std::string::String>,
         index_artifact_id: ::std::result::Result<super::Sha256, ::std::string::String>,
+        judgments_artifact_id:
+            ::std::result::Result<::std::option::Option<super::Sha256>, ::std::string::String>,
         transcript_artifact_id: ::std::result::Result<super::Sha256, ::std::string::String>,
     }
     impl ::std::default::Default for RankingSetInputs {
@@ -3458,6 +4262,7 @@ pub mod builder {
                     "no value supplied for candidates_artifact_id".to_string()
                 ),
                 index_artifact_id: Err("no value supplied for index_artifact_id".to_string()),
+                judgments_artifact_id: Ok(Default::default()),
                 transcript_artifact_id: Err(
                     "no value supplied for transcript_artifact_id".to_string()
                 ),
@@ -3485,6 +4290,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for index_artifact_id: {e}"));
             self
         }
+        pub fn judgments_artifact_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::Sha256>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.judgments_artifact_id = value.try_into().map_err(|e| {
+                format!("error converting supplied value for judgments_artifact_id: {e}")
+            });
+            self
+        }
         pub fn transcript_artifact_id<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::Sha256>,
@@ -3504,6 +4319,7 @@ pub mod builder {
             Ok(Self {
                 candidates_artifact_id: value.candidates_artifact_id?,
                 index_artifact_id: value.index_artifact_id?,
+                judgments_artifact_id: value.judgments_artifact_id?,
                 transcript_artifact_id: value.transcript_artifact_id?,
             })
         }
@@ -3513,6 +4329,7 @@ pub mod builder {
             Self {
                 candidates_artifact_id: Ok(value.candidates_artifact_id),
                 index_artifact_id: Ok(value.index_artifact_id),
+                judgments_artifact_id: Ok(value.judgments_artifact_id),
                 transcript_artifact_id: Ok(value.transcript_artifact_id),
             }
         }

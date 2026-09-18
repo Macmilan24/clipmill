@@ -20,11 +20,17 @@ export type { SpeechAsr } from './gen/schemas/speech-asr.js';
 export type { SpeechAlignment } from './gen/schemas/speech-alignment.js';
 export type { SpeechTranscript } from './gen/schemas/speech-transcript.js';
 export type { EvidenceShots } from './gen/schemas/evidence-shots.js';
+export type { EditorialJudgments } from './gen/schemas/editorial-judgments.js';
+export type { EditorialLooks } from './gen/schemas/editorial-looks.js';
+export type { EditorialProposals } from './gen/schemas/editorial-proposals.js';
+export type { EditorialTrace } from './gen/schemas/editorial-trace.js';
+export type { EditorialWindows } from './gen/schemas/editorial-windows.js';
 export type { IndexTranscript } from './gen/schemas/index-transcript.js';
 export type { DiscoveryCandidates } from './gen/schemas/discovery-candidates.js';
 export type { RankingSet } from './gen/schemas/ranking-set.js';
 export type { AnalysisManifest } from './gen/schemas/analysis-manifest.js';
 export type { VisionFaceTrack } from './gen/schemas/vision-face-track.js';
+export type { ExportPackage } from './gen/schemas/export-package.js';
 
 // IPC control plane.
 export { PingRequestSchema, PingResponseSchema } from './gen/proto/clipmill/ipc/v1/ping_pb.js';

@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.editorial.trace.v1.json",
+  "title": "EditorialTrace",
+  "description": "Every call an editorial stage made to a model, with what was sent and what came back, kept locally for diagnosis (plan, Milestone 2). This is the document to open when a proposal is strange: the exact prompt, the exact reply, the model, the route, the tokens, and on the cloud route the spend against the run's budget. It is never on the shell's readable list and never leaves the machine in an export or an archive. Credentials are not in it by construction — a call carries the request text after the transport layer, and the transport layer is where a key lives.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "producer", "calls"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.editorial.trace.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "budget": {
+      "description": "On the cloud route: the cap the run was given and what it spent, in millionths of a US dollar so the arithmetic is exact. Absent on the local route, which spends nothing.",
+      "type": "object",
+      "required": ["cap_micro_usd", "spent_micro_usd"],
+      "additionalProperties": false,
+      "properties": {
+        "cap_micro_usd": { "type": "integer", "minimum": 0 },
+        "spent_micro_usd": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "calls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/call" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "call": {
+      "type": "object",
+      "required": [
+        "index",
+        "job",
+        "route",
+        "model",
+        "prompt_version",
+        "request_text",
+        "outcome",
+        "started_unix_millis",
+        "duration_millis",
+        "tokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "job": {
+          "type": "string",
+          "enum": ["propose", "review", "look"]
+        },
+        "window_index": {
+          "description": "The window a propose call was over.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_id": {
+          "description": "The candidate a review or look call was about.",
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "route": { "type": "string", "enum": ["local", "cloud"] },
+        "model": {
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "digest": { "$ref": "#/$defs/sha256" },
+            "provider": { "type": "string", "minLength": 1 }
+          }
+        },
+        "prompt_version": { "type": "string", "minLength": 1 },
+        "request_text": {
+          "description": "The prompt as the model received it, text only; frames shown to a visual model are named by `frames` rather than embedded.",
+          "type": "string"
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["t_ticks"],
+            "additionalProperties": false,
+            "properties": {
+              "t_ticks": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "response_text": {
+          "description": "The reply as it came back, verbatim, even when it was malformed — especially then.",
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["answered", "none", "malformed", "failed", "cancelled", "budget"]
+        },
+        "detail": { "type": "string", "minLength": 1 },
+        "started_unix_millis": { "type": "integer", "minimum": 0 },
+        "duration_millis": { "type": "integer", "minimum": 0 },
+        "tokens": {
+          "type": "object",
+          "required": ["input", "output"],
+          "additionalProperties": false,
+          "properties": {
+            "input": { "type": "integer", "minimum": 0 },
+            "output": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "cost_micro_usd": {
+          "description": "What this call cost on the cloud route, from the provider's published prices at the time.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,13 @@ updates:
     directories:
       - /workers/sdk
       - /workers/echo
+      - /workers/vad
+      - /workers/asr-whispercpp
+      - /workers/align
+      - /workers/speech-mlx
+      - /workers/shots
+      - /workers/faces
+      - /workers/editorial
       - /eval/harness
     schedule:
       interval: weekly

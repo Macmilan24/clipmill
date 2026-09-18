@@ -19,7 +19,7 @@ import type {
   RankingSet,
 } from '@clipmill/contracts';
 
-import type { ClipDecision, ClipDecisionRecord } from '../daemon/client.js';
+import type { ClipDecision, ClipDecisionRecord, EditDocSummary } from '../daemon/client.js';
 
 /** Ticks per second, the daemon's timebase throughout. */
 export const TICKS_PER_SECOND = 90_000;
@@ -64,6 +64,18 @@ export const BAND_LABELS: Readonly<Record<string, string>> = {
   needs_review: 'Needs review',
 };
 
+/**
+ * A sentence the evidence index holds, and where in the recording it was said.
+ *
+ * The position travels with the text because a quote a person can jump to is
+ * evidence and a quote they cannot is a caption. `atTicks` is null only for a
+ * topic, which is a span of keywords rather than a thing anybody said.
+ */
+export interface Quote {
+  readonly text: string;
+  readonly atTicks: number | null;
+}
+
 export interface AxisReading {
   readonly axis: Axis;
   readonly label: string;
@@ -72,8 +84,8 @@ export interface AxisReading {
   readonly weight: number | null;
   /** Why nothing measured it, when nothing did. */
   readonly unavailableReason: string | null;
-  /** The sentences it was read from, already resolved to text. */
-  readonly evidence: readonly string[];
+  /** The sentences it was read from, resolved to text and position. */
+  readonly evidence: readonly Quote[];
 }
 
 export interface BoundaryReading {
@@ -89,39 +101,79 @@ export interface ClipRow {
   readonly candidateId: string;
   readonly rank: number;
   readonly displayScore: number;
+  readonly review?:
+    | {
+        readonly status: string;
+        readonly reasons: readonly string[];
+        readonly route: string;
+        readonly summary?: string;
+      }
+    | undefined;
   readonly band: string;
   readonly bandLabel: string;
   readonly warnings: readonly string[];
   readonly startTicks: number;
   readonly endTicks: number;
   readonly durationSeconds: number;
-  /** The clip's own first sentence, which is what a person recognises it by. */
+  /** The proposal's concise title, falling back to the clip's own opening sentence. */
   readonly headline: string;
   readonly axes: readonly AxisReading[];
   readonly penalties: readonly { readonly reason: string; readonly value: number }[];
   readonly boundary: BoundaryReading | null;
   readonly decision: ClipDecision | null;
+  /**
+   * The edit document this clip has, when it has one — the newest, if it has
+   * several. Null means no edit exists yet, which is a different fact from the
+   * decision: a clip can be approved and then have its document creation fail,
+   * and a board that inferred the document from the decision would send the
+   * editor to open nothing.
+   */
+  readonly docId: string | null;
+  /** The run that document was cut from, when the store recorded one. */
+  readonly docJobId: string | null;
   /** Lattice edges, for the boundary strip. */
   readonly latticeStarts: readonly number[];
   readonly latticeEnds: readonly number[];
+  /**
+   * Whether the ranker put this clip in its selected set.
+   *
+   * The cohort is everything that was scored; `selected` is the diverse subset
+   * the ranker actually recommends. A board that showed the cohort without
+   * saying which rows the ranker stood behind would be hiding its one opinion.
+   */
+  readonly recommended: boolean;
+  /** Which proposer nominated it, by the name it publishes under. */
+  readonly proposer: string | null;
+  readonly clusterId: string | null;
+  /** What the nomination opens with and pays off with, where the proposer said. */
+  readonly hook: Quote | null;
+  readonly payoff: Quote | null;
+  /** The ranker recorded a warning or a penalty against it. */
+  readonly flagged: boolean;
 }
 
-/** Sentences and utterances by kind and position, as text. */
-function evidenceText(index: IndexTranscript | null): Map<string, string> {
-  const found = new Map<string, string>();
+/** Sentences, utterances and topics by kind and position, as quotes. */
+function evidenceQuotes(index: IndexTranscript | null): Map<string, Quote> {
+  const found = new Map<string, Quote>();
   if (!index) {
     return found;
   }
   for (const sentence of index.sentences ?? []) {
-    found.set(`sentence:${sentence.index}`, sentence.text);
+    found.set(`sentence:${sentence.index}`, {
+      text: sentence.text,
+      atTicks: sentence.start_ticks,
+    });
   }
   for (const utterance of index.utterances ?? []) {
-    found.set(`utterance:${utterance.index}`, utterance.text);
+    found.set(`utterance:${utterance.index}`, {
+      text: utterance.text,
+      atTicks: utterance.start_ticks,
+    });
   }
   for (const topic of index.topics ?? []) {
     const terms = (topic.keywords ?? []).map((keyword) => keyword.term).join(', ');
     if (terms) {
-      found.set(`topic:${topic.index}`, terms);
+      found.set(`topic:${topic.index}`, { text: terms, atTicks: null });
     }
   }
   return found;
@@ -153,14 +205,19 @@ export function clipRows(
   candidates: DiscoveryCandidates,
   index: IndexTranscript | null,
   decisions: readonly ClipDecisionRecord[],
+  documents: readonly EditDocSummary[] = [],
 ): readonly ClipRow[] {
-  const text = evidenceText(index);
+  const quotes = evidenceQuotes(index);
+  const quote = (reference: { kind: string; index: number } | null | undefined): Quote | null =>
+    reference ? (quotes.get(`${reference.kind}:${reference.index}`) ?? null) : null;
   const byId = new Map(candidates.candidates.map((candidate) => [candidate.id, candidate]));
+  const recommended = new Set(ranking.selected);
   const decided = new Map(
     decisions
       .filter((record) => record.decision !== 'unspecified')
       .map((record) => [record.candidateId, record.decision as ClipDecision]),
   );
+  const edited = newestDocumentPerCandidate(documents);
 
   return [...ranking.cohort]
     .sort((left, right) => left.rank - right.rank)
@@ -172,13 +229,22 @@ export function clipRows(
         candidateId: ranked.candidate_id,
         rank: ranked.rank,
         displayScore: ranked.display_score,
-        band: ranked.uncertainty.band,
-        bandLabel: BAND_LABELS[ranked.uncertainty.band] ?? ranked.uncertainty.band,
-        warnings: ranked.uncertainty.warnings ?? [],
+        review: ranked.review,
+        band: ranked.review
+          ? ranked.review.status === 'accepted'
+            ? 'strong'
+            : 'needs_review'
+          : ranked.uncertainty.band,
+        bandLabel: ranked.review
+          ? ranked.review.status === 'accepted'
+            ? 'Ready to review'
+            : 'Needs review'
+          : (BAND_LABELS[ranked.uncertainty.band] ?? ranked.uncertainty.band),
+        warnings: [...(ranked.review?.reasons ?? []), ...(ranked.uncertainty.warnings ?? [])],
         startTicks: chosen.start_ticks,
         endTicks: chosen.end_ticks,
         durationSeconds: (chosen.end_ticks - chosen.start_ticks) / TICKS_PER_SECOND,
-        headline: headlineFor(index, chosen.start_ticks, chosen.end_ticks),
+        headline: ranked.title?.trim() || headlineFor(index, chosen.start_ticks, chosen.end_ticks),
         axes: AXES.map((axis) => {
           const factor = factors.get(axis);
           return {
@@ -189,8 +255,8 @@ export function clipRows(
             unavailableReason:
               factor && !factor.available ? (factor.unavailable_reason ?? null) : null,
             evidence: (factor?.evidence ?? [])
-              .map((reference) => text.get(`${reference.kind}:${reference.index}`) ?? '')
-              .filter((sentence) => sentence.length > 0),
+              .map((reference) => quote(reference))
+              .filter((found): found is Quote => found !== null && found.text.length > 0),
           } satisfies AxisReading;
         }),
         penalties: (ranked.penalties ?? []).map((penalty) => ({
@@ -210,10 +276,47 @@ export function clipRows(
             : null,
         },
         decision: decided.get(ranked.candidate_id) ?? null,
+        docId: edited.get(ranked.candidate_id)?.docId ?? null,
+        docJobId: edited.get(ranked.candidate_id)?.jobId || null,
         latticeStarts: candidate?.boundary_lattice.starts ?? [],
         latticeEnds: candidate?.boundary_lattice.ends ?? [],
+        recommended: recommended.has(ranked.candidate_id),
+        proposer: candidate?.proposer?.name ?? null,
+        clusterId: candidate?.cluster_id ?? null,
+        hook: quote(candidate?.roles?.hook),
+        payoff: quote(candidate?.roles?.payoff),
+        flagged:
+          (ranked.uncertainty.warnings ?? []).length > 0 || (ranked.penalties ?? []).length > 0,
       } satisfies ClipRow;
     });
+}
+
+/**
+ * The newest document each candidate has.
+ *
+ * Newest by creation, the same rule the daemon reopens by: when a clip has an
+ * approval and a variation taken afterwards, the variation is what somebody
+ * was last working on. The caller has already scoped the list to one source,
+ * so the candidate id is the whole key.
+ */
+export function newestDocumentPerCandidate(
+  documents: readonly EditDocSummary[],
+): ReadonlyMap<string, EditDocSummary> {
+  const newest = new Map<string, EditDocSummary>();
+  for (const document of documents) {
+    if (document.candidateId === '') {
+      continue;
+    }
+    const held = newest.get(document.candidateId);
+    if (
+      !held ||
+      document.createdUnixMillis > held.createdUnixMillis ||
+      (document.createdUnixMillis === held.createdUnixMillis && document.docId > held.docId)
+    ) {
+      newest.set(document.candidateId, document);
+    }
+  }
+  return newest;
 }
 
 /** What a board shows above the rows: counts, not adjectives. */
@@ -223,10 +326,31 @@ export interface Summary {
   readonly requested: number;
   /** Why fewer clips came back than were asked for. Never padded away. */
   readonly shortfall: readonly string[];
+  /** Missing analysis is independent of whether the requested clip count was met. */
+  readonly warnings?: readonly string[];
   readonly filtered: number;
 }
 
 export function summarize(ranking: RankingSet): Summary {
+  const coverage = ranking.editorial;
+  const warnings: string[] = [];
+  if (coverage) {
+    if (coverage.failed_windows.length > 0) {
+      warnings.push(
+        `${coverage.failed_windows.length} of ${coverage.window_count} windows could not be assessed.`,
+      );
+    }
+    if (coverage.failed_reviews > 0) {
+      warnings.push(
+        `${coverage.failed_reviews} ${coverage.failed_reviews === 1 ? 'candidate' : 'candidates'} could not be reviewed.`,
+      );
+    }
+    if (coverage.failed_visual_checks > 0) {
+      warnings.push(
+        `Visual checks were unavailable for ${coverage.failed_visual_checks} ${coverage.failed_visual_checks === 1 ? 'candidate' : 'candidates'}.`,
+      );
+    }
+  }
   return {
     selected: ranking.selected.length,
     cohort: ranking.cohort.length,
@@ -234,6 +358,7 @@ export function summarize(ranking: RankingSet): Summary {
     shortfall: (ranking.shortfall ?? []).map(
       (reason) => reason.detail ?? `${reason.count} ${reason.reason.replaceAll('_', ' ')}`,
     ),
+    warnings,
     filtered: (ranking.filtered ?? []).length,
   };
 }
@@ -241,8 +366,22 @@ export function summarize(ranking: RankingSet): Summary {
 /** Which rows a filter leaves. Client-side, because the answer is already here. */
 export interface Filters {
   readonly band: string | 'any';
-  readonly decision: ClipDecision | 'any' | 'undecided';
+  /**
+   * `recommended` and `flagged` are states the ranker assigns, not decisions a
+   * person made, but they are what an editor filters by first — "show me what
+   * it stands behind", "show me what it warned about" — so they live beside the
+   * decisions rather than in a second control.
+   */
+  readonly decision: ClipDecision | 'any' | 'undecided' | 'recommended' | 'flagged';
   readonly minimumScore: number;
+  /**
+   * A free-text query over what a person can actually read on a row.
+   *
+   * Optional because a filter set that names no query is a filter set that does
+   * not filter by one, and every caller that predates search should keep
+   * meaning exactly what it meant.
+   */
+  readonly query?: string;
 }
 
 export const NO_FILTERS: Filters = { band: 'any', decision: 'any', minimumScore: 0 };
@@ -255,15 +394,44 @@ export function applyFilters(rows: readonly ClipRow[], filters: Filters): readon
     if (filters.decision === 'undecided' && row.decision !== null) {
       return false;
     }
+    if (filters.decision === 'recommended' && !row.recommended) {
+      return false;
+    }
+    if (filters.decision === 'flagged' && !row.flagged) {
+      return false;
+    }
     if (
       filters.decision !== 'any' &&
       filters.decision !== 'undecided' &&
+      filters.decision !== 'recommended' &&
+      filters.decision !== 'flagged' &&
       row.decision !== filters.decision
     ) {
       return false;
     }
-    return row.displayScore >= filters.minimumScore;
+    if (!matchesQuery(row, filters.query)) {
+      return false;
+    }
+    return row.review !== undefined || row.displayScore >= filters.minimumScore;
   });
+}
+
+/**
+ * Whether a row answers a query, over the two fields a person reads.
+ *
+ * The headline and the timecode, and nothing else. Searching the evidence would
+ * find rows whose visible text does not contain the term, which reads as the
+ * filter being broken rather than as being thorough.
+ */
+function matchesQuery(row: ClipRow, query: string | undefined): boolean {
+  const needle = (query ?? '').trim().toLowerCase();
+  if (needle === '') {
+    return true;
+  }
+  return (
+    row.headline.toLowerCase().includes(needle) ||
+    `${clock(row.startTicks)}-${clock(row.endTicks)}`.includes(needle)
+  );
 }
 
 /** A tick position as `m:ss`, which is how a person reads a timeline. */
@@ -326,4 +494,99 @@ export function overlayCues(
       )
       .join('\n'),
   }));
+}
+
+/** How a board may be ordered. Rank is the ranking's own answer. */
+export type SortKey = 'rank' | 'score' | 'longest' | 'shortest' | 'earliest';
+
+export const SORT_LABELS: Readonly<Record<SortKey, string>> = {
+  rank: 'Rank',
+  score: 'Score, high to low',
+  longest: 'Longest first',
+  shortest: 'Shortest first',
+  earliest: 'Position in recording',
+};
+
+/**
+ * The rows in a chosen order, as a new array.
+ *
+ * Sorting never drops or merges, so the count under the table is the count in
+ * it whatever the order. `toSorted` rather than `sort` because the rows belong
+ * to the snapshot and a board that reordered them in place would change what
+ * every other reader of that snapshot sees.
+ */
+export function sortRows(rows: readonly ClipRow[], key: SortKey): readonly ClipRow[] {
+  switch (key) {
+    case 'score':
+      return rows.toSorted((left, right) =>
+        left.review || right.review
+          ? left.rank - right.rank
+          : right.displayScore - left.displayScore,
+      );
+    case 'longest':
+      return rows.toSorted((left, right) => right.durationSeconds - left.durationSeconds);
+    case 'shortest':
+      return rows.toSorted((left, right) => left.durationSeconds - right.durationSeconds);
+    case 'earliest':
+      return rows.toSorted((left, right) => left.startTicks - right.startTicks);
+    case 'rank':
+    default:
+      return rows.toSorted((left, right) => left.rank - right.rank);
+  }
+}
+
+/** What the filter chips count, so a chip never claims a number nobody has. */
+export interface Tallies {
+  readonly all: number;
+  readonly strong: number;
+  readonly promising: number;
+  readonly needsReview: number;
+  readonly undecided: number;
+  readonly approved: number;
+  readonly kept: number;
+  readonly rejected: number;
+  /** Rows carrying at least one warning or penalty, which is what a dot means. */
+  readonly flagged: number;
+  /** Rows in the ranker's selected set. */
+  readonly recommended: number;
+}
+
+export function tally(rows: readonly ClipRow[]): Tallies {
+  const count = (predicate: (row: ClipRow) => boolean) => rows.filter(predicate).length;
+  return {
+    all: rows.length,
+    strong: count((row) => row.band === 'strong'),
+    promising: count((row) => row.band === 'promising'),
+    needsReview: count((row) => row.band === 'needs_review'),
+    undecided: count((row) => row.decision === null),
+    approved: count((row) => row.decision === 'approved'),
+    kept: count((row) => row.decision === 'kept'),
+    rejected: count((row) => row.decision === 'rejected'),
+    flagged: count((row) => row.flagged),
+    recommended: count((row) => row.recommended),
+  };
+}
+
+/**
+ * The axes that most moved a card, with the evidence they were read from.
+ *
+ * Ordered by weighted contribution rather than by raw value: an axis scoring
+ * 0.9 at weight 0.4 moved the total less than one scoring 0.7 at weight 1.4, and
+ * "why this ranked here" is a question about the total. Unmeasured axes are
+ * never candidates — an axis nobody scored explains nothing.
+ */
+export function topFactors(row: ClipRow, limit = 3): readonly AxisReading[] {
+  return row.axes
+    .filter((axis) => axis.value !== null && axis.weight !== null)
+    .toSorted(
+      (left, right) =>
+        (right.value ?? 0) * (right.weight ?? 0) - (left.value ?? 0) * (left.weight ?? 0),
+    )
+    .slice(0, limit);
+}
+
+/** A duration as `m:ss`, for a column that reads as a length not a position. */
+export function duration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }

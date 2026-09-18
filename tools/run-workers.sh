@@ -22,10 +22,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENROL_ONLY=0
+CLOUD_EDITORIAL="${CLIPMILL_EDITORIAL_CLOUD:-0}"
 DATA_DIR="${CLIPMILL_DATA_DIR:-}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --enrol-only) ENROL_ONLY=1 ;;
+    --cloud-editorial) CLOUD_EDITORIAL=1 ;;
     --data-dir) DATA_DIR="${2:?--data-dir needs a path}"; shift ;;
     *) echo "run-workers: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -51,6 +53,18 @@ WORKER_SOCKET="$RUN_DIR/clipmill-workers.sock"
 # than derived: guessing a console-script name from a directory name is the
 # kind of cleverness that breaks the day somebody adds the sixth worker.
 FAMILIES="vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr align:clipmill-worker-align shots:clipmill-worker-shots faces:clipmill-worker-faces"
+
+# Editorial inference is explicitly selected and initially supported on Apple silicon.
+if [ "${CLIPMILL_EDITORIAL:-1}" = 1 ] && [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] && [ -d workers/editorial/.venv ]; then
+  FAMILIES="$FAMILIES editorial:clipmill-worker-editorial"
+fi
+
+# This is a distinct process and credential, never a capability of the local
+# worker. Starting it permits cloud leasing; each lease still needs the user's
+# per-run transcript consent and a budget. Visual checks stay on the local worker.
+if [ "$CLOUD_EDITORIAL" = 1 ]; then
+  FAMILIES="$FAMILIES editorial-cloud:clipmill-worker-editorial-cloud"
+fi
 
 mkdir -p "$TRUST_DIR" "$IDENTITY_DIR"
 chmod 700 "$TRUST_DIR" "$IDENTITY_DIR"
@@ -140,6 +154,13 @@ if [ "$ENROL_ONLY" -eq 1 ]; then
   exit 0
 fi
 
+if echo "$FAMILIES" | tr ' ' '\n' | rg -q '^editorial:'; then
+  if ! workers/editorial/.venv/bin/python tools/editorial-runtime-check.py --data-dir "$DATA_DIR"; then
+    echo "run-workers: editorial runtime is not ready; its stages will show as unavailable" >&2
+  fi
+fi
+
+
 if [ ! -S "$WORKER_SOCKET" ]; then
   echo "run-workers: no daemon is listening at $WORKER_SOCKET" >&2
   echo "run-workers: start the app first (just app), then run this" >&2
@@ -173,9 +194,16 @@ for entry in $FAMILIES; do
   family="${entry%%:*}"
   command="${entry##*:}"
   identity="$IDENTITY_DIR/$family.json"
+  directory="$family"
+  if [ "$family" = editorial-cloud ]; then directory=editorial; fi
+  if [ ! -x "workers/$directory/.venv/bin/$command" ]; then
+    echo "run-workers: $family is not installed; run uv sync --locked --directory workers/$directory during setup, then retry." >&2
+    exit 2
+  fi
   (
-    cd "workers/$family"
-    exec uv run "$command" \
+    cd "workers/$directory"
+    # Worker startup is offline; dependency installation belongs to setup.
+    exec uv run --offline --no-sync "$command" \
       --identity "$identity" \
       --worker-socket "$WORKER_SOCKET"
   ) &

@@ -18,8 +18,8 @@
 
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ClipDurationV1, ExportArchiveResponse, ExportRequestV1, ExportSeverity,
-    GetLocalLockResponse, GetStorageStatsResponse, Job, PlanExportResponse, Project,
-    RegisterSourceResponse, ResolveMediaResponse, Source, Task,
+    ExportSummaryV1, GetLocalLockResponse, GetStorageStatsResponse, Job, PlanExportResponse,
+    Project, RegisterSourceResponse, ResolveMediaResponse, Source, Task,
 };
 use serde::{Deserialize, Serialize};
 
@@ -152,6 +152,37 @@ pub struct JobView {
     /// retry could help, and the detail says what actually went wrong.
     #[serde(rename = "failureDetail")]
     pub failure_detail: String,
+    /// The recording the job ran over, or empty for a job not about one. A
+    /// project can hold several recordings, and which one an analysis belongs
+    /// to is the first thing a screen reading it needs to know.
+    #[serde(rename = "sourceId")]
+    pub source_id: String,
+    /// What an export job is delivering, off its own payload; absent for
+    /// every other kind. It is what lets the export screen find a document's
+    /// export again after it was left or the application relaunched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export: Option<ExportSummaryView>,
+}
+
+/// The identity of an export, as its job carries it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportSummaryView {
+    pub doc_id: String,
+    pub revision: u64,
+    pub ir_artifact_id: String,
+    pub destination_dir: String,
+}
+
+impl From<ExportSummaryV1> for ExportSummaryView {
+    fn from(summary: ExportSummaryV1) -> Self {
+        Self {
+            doc_id: summary.doc_id,
+            revision: summary.revision,
+            ir_artifact_id: summary.ir_artifact_id,
+            destination_dir: summary.destination_dir,
+        }
+    }
 }
 
 impl From<Job> for JobView {
@@ -167,6 +198,8 @@ impl From<Job> for JobView {
             output_artifact_ids: job.output_artifact_ids,
             failure_class: job.failure_class,
             failure_detail: job.failure_detail,
+            source_id: job.source_id,
+            export: job.export.map(Into::into),
         }
     }
 }
@@ -219,6 +252,18 @@ pub struct AnalyzeRequest {
     pub max_ticks: u64,
     /// Zero leaves the daemon's default, so a caller with no opinion needs none.
     pub count: u64,
+    #[serde(default, rename = "localEditorial")]
+    pub local_editorial: bool,
+    #[serde(default, rename = "cloudEditorial")]
+    pub cloud_editorial: Option<CloudEditorialRequest>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudEditorialRequest {
+    pub transcript_consent: bool,
+    pub budget_micro_usd: u64,
+    pub model: String,
 }
 
 impl AnalyzeRequest {
@@ -233,6 +278,14 @@ impl AnalyzeRequest {
             }),
             count: self.count,
             diversity_milli: 0,
+            local_editorial: self.local_editorial,
+            cloud_editorial: self.cloud_editorial.map(|c| {
+                clipmill_contracts::proto::ipc::v1::EditorialCloudV1 {
+                    transcript_consent: c.transcript_consent,
+                    budget_micro_usd: c.budget_micro_usd,
+                    model: c.model,
+                }
+            }),
         }
     }
 }
@@ -361,6 +414,17 @@ pub struct DirectClipInput {
     pub start_ticks: u64,
     #[serde(default)]
     pub end_ticks: u64,
+    /// Build a second document beside the one this candidate already has,
+    /// rather than reopening it.
+    #[serde(default)]
+    pub variation: bool,
+    /// Record the approval in the same write as the document.
+    #[serde(default)]
+    pub approve: bool,
+    /// The analysis run the candidate belongs to; every stage the director
+    /// reads is taken from it. Empty takes the newest run over the source.
+    #[serde(default)]
+    pub job_id: String,
 }
 
 impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipRequest {
@@ -377,6 +441,9 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             style_ref: input.style_ref,
             start_ticks: input.start_ticks,
             end_ticks: input.end_ticks,
+            variation: input.variation,
+            approve: input.approve,
+            job_id: input.job_id,
         }
     }
 }
@@ -386,6 +453,11 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
 #[serde(rename_all = "camelCase")]
 pub struct DirectedClipView {
     pub doc_id: String,
+    pub project_id: String,
+    pub source_id: String,
+    pub candidate_id: String,
+    /// The run the document was cut from; empty when it was not recorded.
+    pub job_id: String,
     pub revision: u64,
     pub document_json: String,
     /// Where the cut actually landed, which is not always where it was asked
@@ -394,6 +466,8 @@ pub struct DirectedClipView {
     pub end_ticks: u64,
     /// Why the director did what it did, in sentences.
     pub decisions: Vec<String>,
+    /// True when the document already existed and came back as it stands.
+    pub reopened: bool,
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::DirectClipResponse> for DirectedClipView {
@@ -401,11 +475,16 @@ impl From<clipmill_contracts::proto::ipc::v1::DirectClipResponse> for DirectedCl
         let doc = reply.doc.unwrap_or_default();
         Self {
             doc_id: doc.doc_id,
+            project_id: doc.project_id,
+            source_id: doc.source_id,
+            candidate_id: doc.candidate_id,
+            job_id: doc.job_id,
             revision: doc.revision,
             document_json: doc.document_json,
             start_ticks: reply.start_ticks,
             end_ticks: reply.end_ticks,
             decisions: reply.decisions,
+            reopened: reply.reopened,
         }
     }
 }
@@ -512,6 +591,50 @@ pub struct PreviewPlanView {
     pub gain: Vec<PreviewGainView>,
     pub width: i64,
     pub height: i64,
+    /// The program's segments, each mapped to its source: the numbers every
+    /// seek, scrub and trim go through.
+    pub segments: Vec<PreviewSegmentView>,
+    /// The sources the segments name, with the frame the crops are measured in.
+    pub sources: Vec<PreviewSourceView>,
+    /// The proxy for each source that has one.
+    pub proxies: Vec<PreviewProxyView>,
+    /// Which cue list `cues` came from: `burn_in` or `reading`.
+    pub presentation: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSegmentView {
+    pub segment_id: String,
+    pub source_fingerprint: String,
+    pub in_ticks: i64,
+    pub out_ticks: i64,
+    pub program_start_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSourceView {
+    pub source_fingerprint: String,
+    pub source_id: String,
+    pub display_width: i64,
+    pub display_height: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewProxyView {
+    pub source_fingerprint: String,
+    pub artifact_id: String,
+    pub file: String,
+    pub coverage_start_ticks: i64,
+    pub coverage_end_ticks: i64,
+    pub width: i64,
+    pub height: i64,
+    pub rate_num: u32,
+    pub rate_den: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -531,6 +654,9 @@ pub struct PreviewCueView {
 pub struct PreviewWordView {
     pub text: String,
     pub hold_centis: i64,
+    /// The word's identity across both presentations; empty for a word the
+    /// document never gave one.
+    pub word_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -574,6 +700,7 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                                 .map(|word| PreviewWordView {
                                     text: word.text,
                                     hold_centis: word.hold_centis,
+                                    word_id: word.word_id,
                                 })
                                 .collect()
                         })
@@ -590,6 +717,45 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 .collect(),
             width: reply.width,
             height: reply.height,
+            segments: reply
+                .segments
+                .into_iter()
+                .map(|segment| PreviewSegmentView {
+                    segment_id: segment.segment_id,
+                    source_fingerprint: segment.source_fingerprint,
+                    in_ticks: segment.in_ticks,
+                    out_ticks: segment.out_ticks,
+                    program_start_ticks: segment.program_start_ticks,
+                    first_frame: segment.first_frame,
+                    end_frame: segment.end_frame,
+                })
+                .collect(),
+            sources: reply
+                .sources
+                .into_iter()
+                .map(|source| PreviewSourceView {
+                    source_fingerprint: source.source_fingerprint,
+                    source_id: source.source_id,
+                    display_width: source.display_width,
+                    display_height: source.display_height,
+                })
+                .collect(),
+            proxies: reply
+                .proxies
+                .into_iter()
+                .map(|proxy| PreviewProxyView {
+                    source_fingerprint: proxy.source_fingerprint,
+                    artifact_id: proxy.artifact_id,
+                    file: proxy.file,
+                    coverage_start_ticks: proxy.coverage_start_ticks,
+                    coverage_end_ticks: proxy.coverage_end_ticks,
+                    width: proxy.width,
+                    height: proxy.height,
+                    rate_num: proxy.rate_num,
+                    rate_den: proxy.rate_den,
+                })
+                .collect(),
+            presentation: reply.presentation,
         }
     }
 }
@@ -600,6 +766,12 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
 pub struct EditDocView {
     pub doc_id: String,
     pub project_id: String,
+    /// The source it was cut from and the candidate it was built for; both
+    /// empty for a document that was handed in whole rather than directed.
+    pub source_id: String,
+    pub candidate_id: String,
+    /// The run it was cut from; empty when it was not recorded.
+    pub job_id: String,
     pub revision: u64,
     pub created_unix_millis: u64,
     pub updated_unix_millis: u64,
@@ -610,6 +782,9 @@ impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
         Self {
             doc_id: doc.doc_id,
             project_id: doc.project_id,
+            source_id: doc.source_id,
+            candidate_id: doc.candidate_id,
+            job_id: doc.job_id,
             revision: doc.revision,
             created_unix_millis: doc.created_unix_millis,
             updated_unix_millis: doc.updated_unix_millis,
@@ -654,6 +829,9 @@ pub struct ExportPlanView {
     /// as a full disk.
     #[serde(rename = "availableBytes", skip_serializing_if = "Option::is_none")]
     pub available_bytes: Option<u64>,
+    /// The revision this plan was computed over: what the person is reviewing,
+    /// and what the export must be of.
+    pub revision: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -693,6 +871,32 @@ impl From<PlanExportResponse> for ExportPlanView {
             file_names: plan.file_names,
             estimated_bytes: plan.estimated_bytes,
             available_bytes: plan.available_known.then_some(plan.available_bytes),
+            revision: plan.revision,
+        }
+    }
+}
+
+/// What an export froze when it was queued.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedExportView {
+    /// The job to watch: its two tasks are the render and the delivery.
+    pub job_id: String,
+    /// The revision rendered, and the immutable snapshot it was frozen as.
+    pub revision: u64,
+    pub ir_artifact_id: String,
+    /// The folder, resolved, the files land in; the delivered package names
+    /// its files relative to it.
+    pub destination_dir: String,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::ExportClipResponse> for QueuedExportView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::ExportClipResponse) -> Self {
+        Self {
+            job_id: reply.job_id,
+            revision: reply.revision,
+            ir_artifact_id: reply.ir_artifact_id,
+            destination_dir: reply.destination_dir,
         }
     }
 }
@@ -741,6 +945,81 @@ impl From<GetLocalLockResponse> for LocalLockView {
     }
 }
 
+/// Whether an analysis could run right now, stage by stage.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadinessView {
+    pub ready: bool,
+    pub decoder_present: bool,
+    pub decoder_path: String,
+    pub stages: Vec<StageReadinessView>,
+    pub workers: Vec<WorkerPresenceView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageReadinessView {
+    /// The task kind, e.g. `speech-asr`.
+    pub stage: String,
+    pub capability: String,
+    pub implementation: String,
+    pub model: String,
+    pub backend: String,
+    pub model_present: bool,
+    pub missing_files: Vec<String>,
+    pub worker_present: bool,
+    pub ready: bool,
+    /// What to do about it, when not ready.
+    pub remedy: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerPresenceView {
+    pub worker_id: String,
+    pub family: String,
+    pub capabilities: Vec<String>,
+    pub backend: String,
+    pub since_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::GetReadinessResponse> for ReadinessView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::GetReadinessResponse) -> Self {
+        Self {
+            ready: reply.ready,
+            decoder_present: reply.decoder_present,
+            decoder_path: reply.decoder_path,
+            stages: reply
+                .stages
+                .into_iter()
+                .map(|stage| StageReadinessView {
+                    stage: stage.stage,
+                    capability: stage.capability,
+                    implementation: stage.implementation,
+                    model: stage.model,
+                    backend: stage.backend,
+                    model_present: stage.model_present,
+                    missing_files: stage.missing_files,
+                    worker_present: stage.worker_present,
+                    ready: stage.ready,
+                    remedy: stage.remedy,
+                })
+                .collect(),
+            workers: reply
+                .workers
+                .into_iter()
+                .map(|worker| WorkerPresenceView {
+                    worker_id: worker.worker_id,
+                    family: worker.family,
+                    capabilities: worker.capabilities,
+                    backend: worker.backend,
+                    since_unix_millis: worker.since_unix_millis,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// What the Export screen asks for, in the shape the renderer sends it.
 ///
 /// A deserializable twin of the wire message rather than the wire message
@@ -766,6 +1045,10 @@ pub struct ExportRequestInput {
     pub date: String,
     #[serde(default)]
     pub title: String,
+    /// The revision the person reviewed; the daemon refuses to export any
+    /// other. Absent takes the current revision.
+    #[serde(default)]
+    pub expected_revision: Option<u64>,
 }
 
 impl From<ExportRequestInput> for ExportRequestV1 {
@@ -780,6 +1063,7 @@ impl From<ExportRequestInput> for ExportRequestV1 {
             index: input.index,
             date: input.date,
             title: input.title,
+            expected_revision: input.expected_revision,
         }
     }
 }

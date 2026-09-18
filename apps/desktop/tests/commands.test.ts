@@ -13,6 +13,7 @@ import type { PreviewPlan } from '../src/daemon/client.js';
 import {
   OneEuro,
   batch,
+  correctWord,
   editCaptionText,
   mergeCues,
   removeGainPoint,
@@ -25,9 +26,12 @@ import {
   ticksAt,
   trim,
 } from '../src/editor/commands.js';
+import { mapping } from './support/plan.js';
 
 function plan(): PreviewPlan {
+  const program = { frameCount: 60, rateNum: 30_000, rateDen: 1_001 };
   return {
+    ...mapping(program),
     revision: 1,
     rateNum: 30_000,
     rateDen: 1_001,
@@ -41,7 +45,7 @@ function plan(): PreviewPlan {
         region: 'lower_safe',
         karaoke: true,
         leadInCentis: 0,
-        lines: [[{ text: 'the', holdCentis: 20 }]],
+        lines: [[{ text: 'the', holdCentis: 20, wordId: 'w1' }]],
       },
       {
         cueId: 'hot_2',
@@ -50,7 +54,7 @@ function plan(): PreviewPlan {
         region: 'lower_safe',
         karaoke: true,
         leadInCentis: 0,
-        lines: [[{ text: 'point', holdCentis: 20 }]],
+        lines: [[{ text: 'point', holdCentis: 20, wordId: 'w2' }]],
       },
     ],
     gain: [],
@@ -84,6 +88,35 @@ describe('the commands an editor produces', () => {
       cue_id: 'hot_1',
       at_word_index: 2,
       new_cue_id: 'hot_1_b',
+    });
+  });
+
+  it('name the cue list a cue-scoped command means, and only when it is not the default', () => {
+    // Each list numbers its own cues, so `hot_1` in the burned-in list is not
+    // `hot_1` anywhere else; a command about it says which list. The reading
+    // list is what every command meant before, so it is written as it was.
+    expect(splitCue('hot_1', 2, 'hot_1_b', 'burn_in')).toMatchObject({ presentation: 'burn_in' });
+    expect(mergeCues('hot_1', 'hot_2', 'burn_in')).toMatchObject({ presentation: 'burn_in' });
+    expect(setCueLines('hot_1', [1, 1], 'burn_in')).toMatchObject({ presentation: 'burn_in' });
+    expect('presentation' in splitCue('cue_1', 1, 'cue_1_b', 'reading')).toBe(false);
+    expect('presentation' in mergeCues('cue_1', 'cue_2')).toBe(false);
+  });
+
+  it('correct a word by its identity, and by cue and index only when it has none', () => {
+    const cue = { cueId: 'hot_1' };
+    expect(correctWord(plan(), cue, 0, { wordId: 'w7' }, 'Sami')).toEqual({
+      op: 'set_word_text',
+      word_id: 'w7',
+      text: 'Sami',
+    });
+    // A document that predates ids: the one place the command can reach,
+    // which is the list on screen.
+    expect(correctWord(plan(), cue, 0, { wordId: '' }, 'Sami')).toEqual({
+      op: 'edit_caption_text',
+      cue_id: 'hot_1',
+      word_index: 0,
+      text: 'Sami',
+      presentation: 'burn_in',
     });
   });
 

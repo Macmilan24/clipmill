@@ -50,7 +50,7 @@ export interface ChosenSource {
 }
 
 export class ImportLoader {
-  constructor(private readonly api: ShellApi = daemonApi) {}
+  constructor(readonly api: ShellApi = daemonApi) {}
 
   /** The native dialog. `null` when it was closed without choosing. */
   choose(): Promise<string | null> {
@@ -83,6 +83,16 @@ export class ImportLoader {
       minTicks: secondsToTicks(settings.minSeconds),
       maxTicks: secondsToTicks(settings.maxSeconds),
       count: settings.count,
+      localEditorial: (settings.editorialRoute ?? 'local') === 'local',
+      ...(settings.editorialRoute === 'cloud'
+        ? {
+            cloudEditorial: {
+              transcriptConsent: settings.cloudConsent === true,
+              budgetMicroUsd: Math.round((settings.cloudBudgetUsd ?? 2) * 1_000_000),
+              model: 'claude-sonnet-4-6',
+            },
+          }
+        : {}),
     });
   }
 }

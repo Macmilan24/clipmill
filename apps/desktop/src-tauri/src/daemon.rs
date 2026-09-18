@@ -15,14 +15,15 @@ use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ApplyEditCommandResponse,
     ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1, DirectClipRequest,
     DirectClipResponse, EditDoc, ExportArchiveRequest, ExportArchiveResponse, ExportClipRequest,
-    ExportRequestV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetJobRequest,
-    GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
-    GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse, Job,
-    ListClipDecisionsRequest, ListEditDocsRequest, ListJobsRequest, ListProjectsRequest,
-    ListSourcesRequest, PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest,
-    ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
+    ExportClipResponse, ExportRequestV1, GetDeviceProfileRequest, GetDeviceProfileResponse,
+    GetJobRequest, GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest,
+    GetPreviewPlanResponse, GetReadinessRequest, GetReadinessResponse, GetStorageStatsRequest,
+    GetStorageStatsResponse, HealthRequest, HealthResponse, Job, ListClipDecisionsRequest,
+    ListEditDocsRequest, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest, ReadArtifactResponse,
+    RegisterSourceRequest, RegisterSourceResponse, Request, ResolveMediaRequest,
+    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
+    SolveCropPathRequest, SolveCropPathResponse, Source, SubmitJobRequest,
     SubscribeTaskEventsRequest, TaskEvent, request, response,
 };
 use prost::Message;
@@ -31,7 +32,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,
     process::{Child, Command},
-    sync::{Mutex, RwLock},
+    sync::{Mutex, RwLock, Semaphore},
     time::{sleep, timeout},
 };
 
@@ -42,8 +43,23 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long a freshly spawned daemon gets to open its socket.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(150);
+/// How many calls this process keeps open to the daemon at once.
+///
+/// Every call is its own connection, and the daemon accepts sixty-four in
+/// all — for this shell, its event subscription, the workers' side, and
+/// anything else on the socket. A screen that opens with a card per project
+/// asks for several documents and a thumbnail per card in one burst, and a
+/// burst past the limit was dropped at the door: cards blank, documents
+/// unread, nothing said. The burst now queues here instead, well under the
+/// daemon's ceiling, so nothing this process sends is refused for being
+/// sent together.
+const CALLS_IN_FLIGHT: usize = 16;
+/// The pause before a call is sent once more after the daemon closed the
+/// connection without answering.
+const RETRY_AFTER: Duration = Duration::from_millis(100);
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+static CALLS: Semaphore = Semaphore::const_new(CALLS_IN_FLIGHT);
 
 #[derive(Debug, thiserror::Error)]
 pub enum DaemonLinkError {
@@ -69,6 +85,20 @@ pub enum DaemonLinkError {
     Remote(String),
     #[error("cannot locate the clipmilld executable")]
     MissingBinary,
+}
+
+/// Whether the daemon hung up on a call rather than answering it: the
+/// connection was accepted and then closed, which reads as an end of stream
+/// or a broken pipe depending on which side got there first.
+fn dropped_by_daemon(error: &DaemonLinkError) -> bool {
+    match error {
+        DaemonLinkError::Closed => true,
+        DaemonLinkError::Io(io) => matches!(
+            io.kind(),
+            std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+        ),
+        _ => false,
+    }
 }
 
 fn encode_varint(mut value: u64, out: &mut Vec<u8>) {
@@ -205,12 +235,15 @@ impl DaemonClient {
     }
 
     /// Perform an export. Returns the job to watch, not the finished files.
-    pub async fn export_clip(&self, request: ExportRequestV1) -> Result<String, DaemonLinkError> {
+    pub async fn export_clip(
+        &self,
+        request: ExportRequestV1,
+    ) -> Result<ExportClipResponse, DaemonLinkError> {
         let export = ExportClipRequest {
             request: Some(request),
         };
         match self.call(request::Body::ExportClip(export)).await? {
-            response::Body::ExportClip(reply) => Ok(reply.job_id),
+            response::Body::ExportClip(reply) => Ok(reply),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }
@@ -232,6 +265,17 @@ impl DaemonClient {
     }
 
     /// Whether this installation is offline, with the evidence behind it.
+    /// Whether an analysis could run right now, and what each stage lacks.
+    pub async fn readiness(&self) -> Result<GetReadinessResponse, DaemonLinkError> {
+        match self
+            .call(request::Body::GetReadiness(GetReadinessRequest {}))
+            .await?
+        {
+            response::Body::GetReadiness(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub async fn local_lock(&self) -> Result<GetLocalLockResponse, DaemonLinkError> {
         match self
             .call(request::Body::GetLocalLock(GetLocalLockRequest {}))
@@ -298,19 +342,35 @@ impl DaemonClient {
             request_id: request_id.clone(),
             body: Some(body),
         };
+        let frame = envelope.encode_to_vec();
 
-        let exchange = async {
+        // Queued behind the calls already in flight rather than sent into a
+        // daemon that would drop it. The permit is held for the whole
+        // exchange, reply included.
+        let _permit = CALLS.acquire().await.map_err(|_| DaemonLinkError::Closed)?;
+        let exchange = || async {
             let mut stream = UnixStream::connect(&self.socket)
                 .await
                 .map_err(DaemonLinkError::Unavailable)?;
-            write_frame(&mut stream, &envelope.encode_to_vec()).await?;
+            write_frame(&mut stream, &frame).await?;
             let payload = read_frame(&mut stream).await?;
             Response::decode(payload.as_slice()).map_err(DaemonLinkError::from)
         };
-
-        let response = timeout(CALL_TIMEOUT, exchange)
+        let mut response = timeout(CALL_TIMEOUT, exchange())
             .await
-            .map_err(|_| DaemonLinkError::TimedOut)??;
+            .map_err(|_| DaemonLinkError::TimedOut)?;
+        if response.as_ref().is_err_and(dropped_by_daemon) {
+            // A connection closed before it answered is the daemon at its
+            // limit, or restarting under this call. The same envelope goes
+            // once more, under the same request id: every mutation the
+            // daemon accepts is stored under that id, so a retry of a lost
+            // reply is the same reply and never a second edit.
+            sleep(RETRY_AFTER).await;
+            response = timeout(CALL_TIMEOUT, exchange())
+                .await
+                .map_err(|_| DaemonLinkError::TimedOut)?;
+        }
+        let response = response?;
 
         if response.request_id != request_id {
             return Err(DaemonLinkError::Mismatched);

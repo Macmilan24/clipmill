@@ -43,7 +43,7 @@ import { useLibrary } from '../library/useLibrary.js';
 
 export interface LibraryProps {
   readonly state: ConnectionState;
-  readonly onNavigate: (sectionId: string) => void;
+  readonly onNavigate: (sectionId: string, projectId?: string) => void;
   /** Opens one run. Only ever called for a project that has one. */
   readonly onOpenAnalysis: (projectId: string, jobId: string) => void;
   readonly onReconnect: () => void;
@@ -156,7 +156,9 @@ export function Library({
       onOpenAnalysis(entry.project.projectId, entry.job.jobId);
       return;
     }
-    onNavigate('results');
+    // Named, so Results opens the recording that was clicked rather than the
+    // newest one the daemon happens to hold.
+    onNavigate('results', entry.project.projectId);
   };
 
   if (state.status !== 'connected') {
@@ -180,16 +182,16 @@ export function Library({
 
   return (
     <>
-      <div className="mb-4 flex h-12 items-center justify-between gap-4">
+      <div className="mb-6 flex min-h-12 flex-wrap items-center justify-between gap-4">
         <div className="flex items-baseline gap-3">
-          <h1 className="text-page-title font-(--cm-weight-heading) tracking-[-0.01em]">Library</h1>
+          <h1 className="workspace-title">Library</h1>
           <span className="text-meta text-[var(--cm-text-secondary)]">
             {projects.length === 1 ? '1 project' : `${projects.length} projects`}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="relative w-[280px]">
+          <div className="relative w-[240px]">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--cm-text-muted)]" />
             <Input
               value={query}
