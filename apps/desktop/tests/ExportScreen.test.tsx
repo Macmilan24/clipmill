@@ -11,7 +11,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ExportPlan, Job } from '../src/daemon/client.js';
-import { ExportScreen } from '../src/screens/ExportScreen.js';
+import { ExportScreen, effectivePattern } from '../src/screens/ExportScreen.js';
 import type { ClipRef } from '../src/shell/route.js';
 import {
   CANDIDATE,
@@ -220,6 +220,158 @@ describe('the export screen and the revision that was reviewed', () => {
       expect(world.exported.length).toBeGreaterThan(plansBefore);
     });
     expect(screen.queryByTestId('delivery')).toBeNull();
+  });
+});
+
+describe('the name pattern', () => {
+  /** The daemon's rule, as the fake enforces it: a name is a pattern, and a
+   * pattern must name each clip and close every brace it opens. */
+  function strictNaming(world: FakeWorld) {
+    const api = fakeApi(world);
+    return {
+      ...api,
+      planExport: (request: Parameters<typeof api.planExport>[0]) => {
+        const pattern = request.namingPattern ?? '';
+        if ((pattern.match(/\{/g) ?? []).length !== (pattern.match(/\}/g) ?? []).length) {
+          return Promise.reject(new Error('daemon error: a `{` in the pattern is never closed'));
+        }
+        return pattern.includes('{index}') || pattern.includes('{clip}')
+          ? api.planExport(request)
+          : Promise.reject(
+              new Error(
+                'daemon error: the name pattern needs {index} or {clip} in it, so each clip gets a name of its own; without one, every file in an export would collide',
+              ),
+            );
+      },
+    };
+  }
+
+  /**
+   * What most people type is a name. The daemon is right that a plain name
+   * would give every clip in an export the same file, so the clip's number is
+   * added to what was typed rather than the typing refused.
+   */
+  it('turns a plain name into a name per clip rather than refusing it', async () => {
+    const world = twoProjects({ exportPlan: passing(0) });
+    render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={strictNaming(world)} />);
+    await planned(world);
+    fireEvent.change(screen.getByLabelText(/name pattern/i), { target: { value: 'reacher' } });
+    await waitFor(() => {
+      expect(world.exported.at(-1)?.namingPattern).toBe('reacher-{index}');
+    });
+    expect(screen.queryByTestId('pattern-problem')).toBeNull();
+    await screen.findByRole('button', { name: /export revision r0/i });
+    // A pattern that already names each clip is sent as typed; an empty field
+    // takes the default.
+    expect(effectivePattern('{clip} by {project}')).toBe('{clip} by {project}');
+    expect(effectivePattern('  ')).toBe('{index}-{clip}');
+  });
+
+  /**
+   * A pattern the daemon cannot read at all is refused, and the refusal lands
+   * under the field it is about with the way back beside it — not in a red
+   * bar at the bottom that names nothing on screen.
+   */
+  it('says why a pattern was refused, under the field, with a way back', async () => {
+    const world = twoProjects({ exportPlan: passing(0) });
+    render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={strictNaming(world)} />);
+    await planned(world);
+    expect(screen.queryByTestId('pattern-problem')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/name pattern/i), {
+      target: { value: 'reacher-{index' },
+    });
+    const problem = await screen.findByTestId('pattern-problem');
+    expect(problem.textContent).toContain('never closed');
+    expect(screen.getByLabelText(/name pattern/i).getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getAllByText(/never closed/)).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /use \{index\}-\{clip\}/i }));
+    expect((screen.getByLabelText(/name pattern/i) as HTMLInputElement).value).toBe(
+      '{index}-{clip}',
+    );
+    await waitFor(() => {
+      expect(screen.queryByTestId('pattern-problem')).toBeNull();
+    });
+    await screen.findByRole('button', { name: /export revision r0/i });
+  });
+});
+
+describe('captions that run faster than a reader can follow', () => {
+  const HOT: ExportPlan = {
+    passes: false,
+    findings: [
+      {
+        code: 'captions.reading_rate',
+        severity: 'blocking',
+        detail: 'Sidecar caption: asks for 22.1 characters a second, and the profile allows 20.0',
+      },
+      {
+        code: 'captions.reading_rate',
+        severity: 'blocking',
+        detail: 'Sidecar caption: asks for 21.4 characters a second, and the profile allows 20.0',
+      },
+    ],
+    stem: '01-charging-less',
+    fileNames: ['01-charging-less.mp4', '01-charging-less.srt'],
+    estimatedBytes: 1_000,
+    revision: 0,
+  };
+
+  /**
+   * The speech is as fast as it is. The strip refuses a subtitle file a
+   * reader cannot keep up with until the person exporting says they know;
+   * the screen asks, sends the confirmation as a gate, and the export goes.
+   */
+  it('asks for a confirmation, sends it as a gate, and then exports', async () => {
+    const world = twoProjects({ exportPlan: HOT });
+    const api = fakeApi(world);
+    const gated = {
+      ...api,
+      planExport: (request: Parameters<typeof api.planExport>[0]) => {
+        if (!request.gatesPassed?.includes('captions_reading_rate')) {
+          return api.planExport(request);
+        }
+        world.exported.push(request);
+        return Promise.resolve({
+          ...HOT,
+          passes: true,
+          findings: HOT.findings.map((finding) => ({
+            ...finding,
+            severity: 'advisory' as const,
+            detail: `${finding.detail} — confirmed as read.`,
+          })),
+        });
+      },
+    };
+    render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={gated} />);
+    await planned(world);
+    const gate = await screen.findByTestId('hot-captions-gate');
+    expect(gate.textContent).toContain('2 captions');
+    expect(gate.textContent).toContain('up to 22.1 characters a second');
+    expect(screen.getByRole('button', { name: /export revision r0/i })).toHaveProperty(
+      'disabled',
+      true,
+    );
+
+    fireEvent.click(gate.querySelector('input[type="checkbox"]')!);
+    await waitFor(() => {
+      expect(world.exported.at(-1)?.gatesPassed).toContain('captions_reading_rate');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export revision r0/i })).toHaveProperty(
+        'disabled',
+        false,
+      );
+    });
+    // Confirmed, the captions are still named — as advisories, and the
+    // confirmation stays on screen rather than vanishing once given.
+    expect(screen.getByTestId('hot-captions-gate')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /export revision r0/i }));
+    await waitFor(() => {
+      const sent = world.exported.filter((request) => 'expectedRevision' in request);
+      expect(sent.at(-1)?.gatesPassed).toContain('captions_reading_rate');
+    });
   });
 });
 

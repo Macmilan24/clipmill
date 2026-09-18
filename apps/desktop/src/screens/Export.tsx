@@ -33,7 +33,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 
-import type { ExportPlan } from '../daemon/client.js';
+import type { ExportFinding, ExportPlan } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 import type { Delivery, DeliveryStage } from '../export/delivery.js';
 
@@ -44,6 +44,32 @@ import type { Delivery, DeliveryStage } from '../export/delivery.js';
  * otherwise would be a control that does nothing. They are shown because an
  * editor about to upload needs to know them, not because they are adjustable.
  */
+/** What a user gets before they have an opinion; the daemon's default too. */
+const DEFAULT_PATTERN = '{index}-{clip}';
+
+/** The fastest of the hot captions, as the daemon put it. */
+function hottestRate(findings: readonly ExportFinding[]): string {
+  const rates = findings
+    .map((finding) => /([\d.]+) characters a second/.exec(finding.detail)?.[1])
+    .filter((rate): rate is string => rate !== undefined)
+    .map(Number);
+  const top = Math.max(...rates);
+  return Number.isFinite(top) ? `up to ${top.toFixed(1)} characters a second` : 'too fast';
+}
+
+/**
+ * The daemon's refusal of the name pattern, when that is what the error is.
+ *
+ * The pattern is the one field a person can type something reasonable into
+ * and be refused for it — a plain name, with no `{index}` or `{clip}`, would
+ * give every clip in an export the same file. The refusal belongs under the
+ * field it is about, with the way back beside it, not in a red bar at the
+ * bottom that names nothing on screen.
+ */
+function patternProblemOf(error: string | null): string | null {
+  return error !== null && error.includes('pattern') ? error : null;
+}
+
 const DELIVERY: readonly (readonly [string, string])[] = [
   ['Picture', '1080 × 1920, H.264, CRF 18'],
   ['Sound', 'AAC, −14 LUFS integrated, −1.0 dBTP ceiling'],
@@ -63,6 +89,12 @@ export interface ExportProps {
   readonly attestation: string;
   readonly rightsGateNeeded: boolean;
   readonly rightsGatePassed: boolean;
+  /**
+   * Whether the sidecar captions run faster than the reading profile allows,
+   * and whether the person exporting has said they know.
+   */
+  readonly hotCaptions: readonly ExportFinding[];
+  readonly hotCaptionsConfirmed: boolean;
   readonly plan: ExportPlan | null;
   readonly planning: boolean;
   readonly busy: boolean;
@@ -74,6 +106,7 @@ export interface ExportProps {
   readonly onPatternChange: (value: string) => void;
   readonly onChooseFolder: () => void;
   readonly onRightsGateChange: (passed: boolean) => void;
+  readonly onHotCaptionsChange: (confirmed: boolean) => void;
   readonly onExport: () => void;
   readonly onArchive: () => void;
   /** Show a delivered file in the file manager. */
@@ -107,6 +140,7 @@ export function Export(props: ExportProps): JSX.Element {
   );
   const ready = props.plan?.passes === true && !props.busy;
   const delivering = props.delivery !== null && !props.delivery.settled;
+  const patternProblem = patternProblemOf(props.error);
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
@@ -149,12 +183,30 @@ export function Export(props: ExportProps): JSX.Element {
             <Input
               id="export-pattern"
               value={props.pattern}
-              placeholder="{index}-{clip}"
+              placeholder={DEFAULT_PATTERN}
+              aria-invalid={patternProblem !== null}
               onChange={(event) => props.onPatternChange(event.target.value)}
             />
-            <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
-              {'{project} {clip} {index} {duration} {date} {address}'}
-            </p>
+            {patternProblem === null ? (
+              <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
+                A plain name works; {'{index}'} is added to it so each clip gets its own. Fills:{' '}
+                {'{index} {clip} {project} {duration} {date} {address}'}.
+              </p>
+            ) : (
+              <p
+                className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--cm-danger-ink)]"
+                data-testid="pattern-problem"
+              >
+                <span>{patternProblem}</span>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => props.onPatternChange(DEFAULT_PATTERN)}
+                >
+                  Use {DEFAULT_PATTERN}
+                </Button>
+              </p>
+            )}
           </div>
 
           <NamePreview plan={props.plan} planning={props.planning} />
@@ -179,6 +231,32 @@ export function Export(props: ExportProps): JSX.Element {
                 for this use.{' '}
                 <span className="text-[var(--cm-ink-3)]">
                   Recorded verbatim in the delivered metadata as “{props.attestation}”.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {props.hotCaptions.length > 0 && (
+            <label
+              className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs"
+              data-testid="hot-captions-gate"
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={props.hotCaptionsConfirmed}
+                onChange={(event) => props.onHotCaptionsChange(event.target.checked)}
+              />
+              <span>
+                {props.hotCaptions.length === 1
+                  ? 'One caption'
+                  : `${props.hotCaptions.length} captions`}{' '}
+                in the subtitle file run faster than a reader can follow (
+                {hottestRate(props.hotCaptions)}; the profile allows 20 a second). The speech is
+                that fast, and slowing the captions would mean hiding words that were said. Export
+                them as they are.{' '}
+                <span className="text-[var(--cm-ink-3)]">
+                  Recorded in the delivered metadata as “captions_reading_rate”.
                 </span>
               </span>
             </label>
@@ -252,7 +330,7 @@ export function Export(props: ExportProps): JSX.Element {
         </CardContent>
       </Card>
 
-      {props.error !== null && (
+      {props.error !== null && patternProblem === null && (
         <Alert variant="destructive">
           <AlertTriangle />
           <AlertDescription>{props.error}</AlertDescription>

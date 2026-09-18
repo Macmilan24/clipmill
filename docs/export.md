@@ -9,13 +9,13 @@ so nothing leaves without four questions being answered. Each answer is a
 finding carrying its own reason, because "export failed" is not something
 anybody can act on.
 
-| Check                   | Blocks when                                                | Why it is not a warning                                                                                                          |
-| ----------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Rights present          | The attestation is blank                                   | An export carries a claim about the footage. A blank one is still a claim.                                                       |
-| Rights gate             | The clip runs past 60 s and the confirmation was not given | Sixty seconds is where platforms stop treating a clip as a short, which is where a rights position starts being worth something. |
-| Word-snapped boundaries | A cut lands strictly inside a caption word                 | The same rule the boundary optimizer follows upstream. A cut inside a word is a cut a viewer hears.                              |
-| Reading speed           | An accessibility cue exceeds the profile                   | These become the SRT and VTT that leave the building.                                                                            |
-| Disk headroom           | The estimate does not fit                                  | An export that starts and stops halfway is a folder of partial files.                                                            |
+| Check                   | Blocks when                                                      | Why it is not a warning                                                                                                          |
+| ----------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Rights present          | The attestation is blank                                         | An export carries a claim about the footage. A blank one is still a claim.                                                       |
+| Rights gate             | The clip runs past 60 s and the confirmation was not given       | Sixty seconds is where platforms stop treating a clip as a short, which is where a rights position starts being worth something. |
+| Word-snapped boundaries | A cut lands strictly inside a caption word                       | The same rule the boundary optimizer follows upstream. A cut inside a word is a cut a viewer hears.                              |
+| Reading speed           | An accessibility cue exceeds the profile and nobody confirmed it | These become the SRT and VTT that leave the building.                                                                            |
+| Disk headroom           | The estimate does not fit                                        | An export that starts and stops halfway is a folder of partial files.                                                            |
 
 Two severities, and the line between them is a design decision rather than a
 scale. **Blocking** means the delivered file would be wrong or would not fit;
@@ -25,6 +25,24 @@ The burn-in caption track is what makes that line real. It runs deliberately
 hot — a few words at a time, held briefly, is what the kinetic intent is _for_ —
 so a reading-rate finding against it is advice. The same finding against the
 accessibility cues blocks. One document, two intents, two answers.
+
+With one confirmation a person can give. Real dialogue is often faster than
+twenty characters a second, and a cue hemmed in by the next line, a cut, or
+the end of the clip cannot be held any longer without hiding words that were
+said — which would be worse. The first hand run of the product met exactly
+that: a drama's clip refused for two cues at 22 cps, and nothing in the editor
+that could change it. So the strip still refuses such a sidecar by default,
+the export screen names the cues and the rate and asks, and passing the
+`captions_reading_rate` gate turns those findings into advisories and is
+recorded in the delivered metadata beside the rights gate. Nobody ships
+captions a reader cannot keep up with without knowing; knowing is the gate.
+
+The name pattern has a rule of its own: it must contain `{index}`, `{clip}` or
+`{address}`, or every clip in an export would get the same file. What most
+people type is a plain name, so the export screen adds `-{index}` to one
+rather than sending it to be refused — `reacher` becomes `reacher-01` — and a
+pattern the daemon cannot read at all (a brace never closed) is refused under
+the field it is about, with the default one click away.
 
 Two limits are worth stating rather than discovering:
 
