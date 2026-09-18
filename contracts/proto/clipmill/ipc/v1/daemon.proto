@@ -346,6 +346,18 @@ message IndexStagePayloadV1 {
   reserved "transcript_artifact_id", "shots_artifact_id";
 }
 
+// What the editorial windows stage is asked to cut (plan, Milestone 2).
+//
+// Nothing but its own name: the index and the transcript arrive on the lease
+// as the outputs of the tasks it depends on, and the budget the cut is made
+// under is the daemon's, recorded in the recipe so that a re-cut under another
+// budget is a different artifact.
+message EditorialStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+}
+
 // Versioned payload for discovery (book ch. 15). The request names a source;
 // the daemon resolves it to the evidence index, the transcript behind it, and
 // the loudness envelope if ingest derived one.

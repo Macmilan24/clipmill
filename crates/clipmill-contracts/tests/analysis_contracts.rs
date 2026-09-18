@@ -82,6 +82,7 @@ fn a_complete_analysis_names_every_stage_in_order() {
             StageKind::SpeechTranscriptV1,
             StageKind::EvidenceShotsV1,
             StageKind::IndexTranscriptV1,
+            StageKind::EditorialWindowsV1,
             StageKind::DiscoveryCandidatesV1,
             StageKind::RankingSetV1,
         ]
@@ -116,13 +117,13 @@ fn a_skipped_stage_is_absent_from_the_stages_and_named_with_a_reason() {
     );
 }
 
-/// A source with no audio loses the four speech stages and the three that read a
-/// transcript. Seven absences, each with the same reason, and shot detection
+/// A source with no audio loses the four speech stages and the four that read a
+/// transcript. Eight absences, each with the same reason, and shot detection
 /// still ran — which is what makes this a partial analysis rather than a failure.
 #[test]
 fn a_silent_source_skips_everything_downstream_of_speech() {
     let manifest = roundtrip("silent_footage");
-    assert_eq!(manifest.skipped.len(), 7);
+    assert_eq!(manifest.skipped.len(), 8);
     assert!(
         manifest
             .stages

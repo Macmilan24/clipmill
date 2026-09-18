@@ -517,6 +517,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-editorial"
+version = "0.0.1"
+dependencies = [
+ "clipmill-contracts",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-evidence"
 version = "0.0.1"
 dependencies = [
@@ -591,6 +601,7 @@ dependencies = [
  "clipmill-director",
  "clipmill-discovery",
  "clipmill-edit-ir",
+ "clipmill-editorial",
  "clipmill-evidence",
  "clipmill-export",
  "clipmill-reframe",

@@ -27,6 +27,10 @@
       "reason": "no_audio"
     },
     {
+      "kind": "editorial.windows.v1",
+      "reason": "no_audio"
+    },
+    {
       "kind": "discovery.candidates.v1",
       "reason": "no_audio"
     },

@@ -429,6 +429,7 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"speech.transcript.v1\","]
 #[doc = "        \"evidence.shots.v1\","]
 #[doc = "        \"index.transcript.v1\","]
+#[doc = "        \"editorial.windows.v1\","]
 #[doc = "        \"discovery.candidates.v1\","]
 #[doc = "        \"ranking.set.v1\""]
 #[doc = "      ]"]
@@ -465,6 +466,7 @@ impl Stage {
 #[doc = "    \"speech.transcript.v1\","]
 #[doc = "    \"evidence.shots.v1\","]
 #[doc = "    \"index.transcript.v1\","]
+#[doc = "    \"editorial.windows.v1\","]
 #[doc = "    \"discovery.candidates.v1\","]
 #[doc = "    \"ranking.set.v1\""]
 #[doc = "  ]"]
@@ -500,6 +502,8 @@ pub enum StageKind {
     EvidenceShotsV1,
     #[serde(rename = "index.transcript.v1")]
     IndexTranscriptV1,
+    #[serde(rename = "editorial.windows.v1")]
+    EditorialWindowsV1,
     #[serde(rename = "discovery.candidates.v1")]
     DiscoveryCandidatesV1,
     #[serde(rename = "ranking.set.v1")]
@@ -516,6 +520,7 @@ impl ::std::fmt::Display for StageKind {
             Self::SpeechTranscriptV1 => f.write_str("speech.transcript.v1"),
             Self::EvidenceShotsV1 => f.write_str("evidence.shots.v1"),
             Self::IndexTranscriptV1 => f.write_str("index.transcript.v1"),
+            Self::EditorialWindowsV1 => f.write_str("editorial.windows.v1"),
             Self::DiscoveryCandidatesV1 => f.write_str("discovery.candidates.v1"),
             Self::RankingSetV1 => f.write_str("ranking.set.v1"),
         }
@@ -533,6 +538,7 @@ impl ::std::str::FromStr for StageKind {
             "speech.transcript.v1" => Ok(Self::SpeechTranscriptV1),
             "evidence.shots.v1" => Ok(Self::EvidenceShotsV1),
             "index.transcript.v1" => Ok(Self::IndexTranscriptV1),
+            "editorial.windows.v1" => Ok(Self::EditorialWindowsV1),
             "discovery.candidates.v1" => Ok(Self::DiscoveryCandidatesV1),
             "ranking.set.v1" => Ok(Self::RankingSetV1),
             _ => Err("invalid value".into()),

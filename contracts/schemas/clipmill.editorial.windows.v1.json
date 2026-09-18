@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.editorial.windows.v1.json",
+  "title": "EditorialWindows",
+  "description": "The transcript cut into the pieces an editorial model reads, one at a time, to propose moments (plan, Milestone 2). Windows are ranges into one sentence list rather than copies of it, so a proposal cites a sentence index that means the same thing in every window it appears in; they overlap so that a moment straddling a boundary is seen whole in at least one of them; and they never split a sentence. Every sentence is inside the core of at least one window — coverage is the property, not sampling. Context on either side of a window is offered to the model as context and is not proposable from that window. The outline is one line per topic, each citing the sentences it summarizes, and is context for a long recording, never a substitute for the words. Everything here is derived arithmetic over the index; no model has read anything yet.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "inputs",
+    "producer",
+    "language",
+    "budget",
+    "coverage",
+    "sentences",
+    "windows",
+    "outline",
+    "invalid_regions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.editorial.windows.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "inputs": {
+      "description": "The index this was cut from, and the transcript the index's word indexes are the authority for — carried so a consumer can walk a word index back to a word without opening the index first.",
+      "type": "object",
+      "required": ["index_artifact_id", "transcript_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "index_artifact_id": { "$ref": "#/$defs/sha256" },
+        "transcript_artifact_id": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "language": {
+      "description": "Echoed from the index, so the prompt can be written in the recording's language without opening it.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 16
+    },
+    "budget": {
+      "description": "The decision parameters, recorded so a later pass knows what to change rather than guessing. Part of the artifact key: a different budget is a different cut of the same transcript, not a correction of this one.",
+      "type": "object",
+      "required": ["target_words", "overlap_words", "context_sentences"],
+      "additionalProperties": false,
+      "properties": {
+        "target_words": {
+          "description": "How many words a window's core aims to hold. A single sentence longer than this still forms a window on its own; a sentence is never split.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "overlap_words": {
+          "description": "At least this many words of the previous window's tail begin the next window, so a moment on the seam is seen whole by one of them.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "context_sentences": {
+          "description": "How many sentences on each side of the core are offered as context.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "sentences": {
+      "description": "Every sentence of the index, once, in order, with the words behind it. A window is ranges into this list.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/sentence" }
+    },
+    "windows": {
+      "description": "In order, each beginning at or before the previous one ends, and together covering every sentence.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/window" }
+    },
+    "outline": {
+      "description": "One line per topic the index found, in order, each citing the sentences it stands for. Empty when the index found no topics.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/outline_line" }
+    },
+    "invalid_regions": {
+      "description": "Echoed from the index: where the timing under these sentences is a guess, so a consumer that cuts on a word there knows what the cut is worth.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalid_region" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coverage": {
+      "description": "The index's own analyzed range, echoed rather than recomputed.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" }
+      }
+    },
+    "sentence": {
+      "type": "object",
+      "required": [
+        "index",
+        "start_ticks",
+        "end_ticks",
+        "first_word_index",
+        "word_count",
+        "text",
+        "terminator"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "description": "The sentence's index in the index document, which is what a proposal cites.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "first_word_index": {
+          "description": "The transcript word index of the sentence's first word; word ids are `w` followed by this index, as the captions carry them.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "word_count": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "terminator": {
+          "description": "How the sentence ended, as the index decided it: a boundary the recognizer punctuated is stronger evidence than one where the speaker merely stopped.",
+          "type": "string",
+          "enum": ["punctuation", "utterance_end", "coverage_end"]
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "required": [
+        "index",
+        "first_sentence_index",
+        "sentence_count",
+        "context_before_sentences",
+        "context_after_sentences",
+        "start_ticks",
+        "end_ticks",
+        "word_count",
+        "topic_indexes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "first_sentence_index": {
+          "description": "The first sentence of the core: the sentences a proposal from this window may cite.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "sentence_count": { "type": "integer", "minimum": 1 },
+        "context_before_sentences": {
+          "description": "How many sentences before the core are offered as context, fewer than the budget only at the recording's start.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "context_after_sentences": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "start_ticks": {
+          "description": "Where the core begins and ends in the recording — the first sentence's start and the last sentence's end.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "word_count": {
+          "description": "Words in the core, so a consumer can size a prompt without summing.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "topic_indexes": {
+          "description": "The index's topics the core touches, in order — what the outline line for this window is.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "outline_line": {
+      "type": "object",
+      "required": [
+        "topic_index",
+        "first_sentence_index",
+        "sentence_count",
+        "start_ticks",
+        "end_ticks",
+        "keywords"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "topic_index": { "type": "integer", "minimum": 0 },
+        "first_sentence_index": { "type": "integer", "minimum": 0 },
+        "sentence_count": { "type": "integer", "minimum": 1 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "keywords": {
+          "description": "The topic's terms, most frequent first, as the index counted them. The line a model reads is these words; a sentence it wants to cite is in the range above.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "invalid_region": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "not_analyzed",
+            "no_audio",
+            "decode_failed",
+            "alignment_unavailable",
+            "timing_interpolated"
+          ]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

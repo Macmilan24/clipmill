@@ -9,6 +9,7 @@ mod daemon;
 mod db;
 mod device;
 mod discovery;
+mod editorial;
 mod error;
 mod evidence;
 mod export;

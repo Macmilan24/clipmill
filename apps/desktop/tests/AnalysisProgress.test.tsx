@@ -45,6 +45,7 @@ function running(): FakeWorld {
           task('speech.alignment.v1', TaskState.PLANNED),
           task('speech.transcript.v1', TaskState.PLANNED),
           task('index.transcript.v1', TaskState.PLANNED),
+          task('editorial.windows.v1', TaskState.PLANNED),
           task('discovery.candidates.v1', TaskState.PLANNED),
           task('ranking.set.v1', TaskState.PLANNED),
         ]),
@@ -77,7 +78,7 @@ describe('the Analysis Progress screen', () => {
   it('shows every stage of the pipeline, named for a reader', async () => {
     show();
     const pipeline = within(await screen.findByRole('list', { name: 'Pipeline stages' }));
-    expect(pipeline.getAllByRole('listitem')).toHaveLength(10);
+    expect(pipeline.getAllByRole('listitem')).toHaveLength(11);
     for (const label of [
       'Inspect source',
       'Ingest',
@@ -87,6 +88,7 @@ describe('the Analysis Progress screen', () => {
       'Assemble transcript',
       'Detect shots',
       'Index transcript',
+      'Cut windows',
       'Propose candidates',
       'Rank candidates',
     ]) {

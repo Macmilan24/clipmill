@@ -467,6 +467,20 @@ pub struct IndexStagePayloadV1 {
     #[prost(string, tag = "2")]
     pub stage: ::prost::alloc::string::String,
 }
+/// What the editorial windows stage is asked to cut (plan, Milestone 2).
+///
+/// Nothing but its own name: the index and the transcript arrive on the lease
+/// as the outputs of the tasks it depends on, and the budget the cut is made
+/// under is the daemon's, recorded in the recipe so that a re-cut under another
+/// budget is a different artifact.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EditorialStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+}
 /// Versioned payload for discovery (book ch. 15). The request names a source;
 /// the daemon resolves it to the evidence index, the transcript behind it, and
 /// the loudness envelope if ingest derived one.

@@ -268,6 +268,18 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
+    // The editorial windows (plan, Milestone 2). Builtin and modelless: the
+    // cut an editorial model reads, arithmetic over the index and keyed on
+    // the budget, so the model's own stages read a published artifact.
+    Recipe {
+        kind: "editorial-windows",
+        output_kind: "editorial.windows.v1",
+        semantic_version: "clipmill.editorial.windows.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
     // The W18 proposer mesh (book ch. 15). Builtin and modelless: it reads
     // three published documents and writes a fourth.
     Recipe {

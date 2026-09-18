@@ -40,6 +40,10 @@
       "kind": "index.transcript.v1"
     },
     {
+      "artifact_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "kind": "editorial.windows.v1"
+    },
+    {
       "artifact_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
       "kind": "discovery.candidates.v1"
     },
