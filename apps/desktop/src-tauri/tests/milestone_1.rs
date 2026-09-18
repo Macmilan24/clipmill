@@ -1044,6 +1044,14 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
         .map_or_else(|| directory.join("delivered"), PathBuf::from);
     let _ = fs::remove_dir_all(&destination);
     fs::create_dir_all(&destination).expect("destination");
+    // A folder a person already uses, with their own files in it. The first
+    // hand run delivered into one and failed at the thumbnail: its output
+    // budget was measured over the whole folder, clip and all, and refused.
+    fs::write(
+        destination.join("something-of-mine.bin"),
+        vec![0_u8; 48 * 1024 * 1024],
+    )
+    .expect("a file of the person's own");
     let request = ExportRequestV1 {
         doc_id: doc.doc_id.clone(),
         destination_dir: destination.to_str().unwrap().to_owned(),
