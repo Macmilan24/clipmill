@@ -223,6 +223,48 @@ describe('the export screen and the revision that was reviewed', () => {
   });
 });
 
+describe('the name pattern', () => {
+  /**
+   * The one field a person can type something reasonable into and be refused
+   * for it: a plain name gives every clip in an export the same file. The
+   * daemon's refusal lands under the field, with the way back beside it.
+   */
+  it('says what a pattern with no clip in it is missing, under the field, with a way back', async () => {
+    const world = twoProjects({ exportPlan: passing(0) });
+    const api = fakeApi(world);
+    const strict = {
+      ...api,
+      planExport: (request: Parameters<typeof api.planExport>[0]) =>
+        request.namingPattern.includes('{index}') || request.namingPattern.includes('{clip}')
+          ? api.planExport(request)
+          : Promise.reject(
+              new Error(
+                'daemon error: the name pattern needs {index} or {clip} in it, so each clip gets a name of its own; without one, every file in an export would collide',
+              ),
+            ),
+    };
+    render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={strict} />);
+    await planned(world);
+    expect(screen.queryByTestId('pattern-problem')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/name pattern/i), { target: { value: 'dogfood' } });
+    const problem = await screen.findByTestId('pattern-problem');
+    expect(problem.textContent).toContain('needs {index} or {clip}');
+    expect(screen.getByLabelText(/name pattern/i).getAttribute('aria-invalid')).toBe('true');
+    // Not repeated as a bar at the bottom that names nothing on screen.
+    expect(screen.getAllByText(/needs \{index\} or \{clip\}/)).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /use \{index\}-\{clip\}/i }));
+    expect((screen.getByLabelText(/name pattern/i) as HTMLInputElement).value).toBe(
+      '{index}-{clip}',
+    );
+    await waitFor(() => {
+      expect(screen.queryByTestId('pattern-problem')).toBeNull();
+    });
+    await screen.findByRole('button', { name: /export revision r0/i });
+  });
+});
+
 describe('following a queued export', () => {
   it('shows the render and the delivery as they happen', async () => {
     const base = twoProjects();
