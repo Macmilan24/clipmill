@@ -33,7 +33,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 
-import type { ExportPlan } from '../daemon/client.js';
+import type { ExportFinding, ExportPlan } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 import type { Delivery, DeliveryStage } from '../export/delivery.js';
 
@@ -47,6 +47,16 @@ import type { Delivery, DeliveryStage } from '../export/delivery.js';
 /** What a user gets before they have an opinion; the daemon's default too. */
 const DEFAULT_PATTERN = '{index}-{clip}';
 
+/** The fastest of the hot captions, as the daemon put it. */
+function hottestRate(findings: readonly ExportFinding[]): string {
+  const rates = findings
+    .map((finding) => /([\d.]+) characters a second/.exec(finding.detail)?.[1])
+    .filter((rate): rate is string => rate !== undefined)
+    .map(Number);
+  const top = Math.max(...rates);
+  return Number.isFinite(top) ? `up to ${top.toFixed(1)} characters a second` : 'too fast';
+}
+
 /**
  * The daemon's refusal of the name pattern, when that is what the error is.
  *
@@ -57,7 +67,7 @@ const DEFAULT_PATTERN = '{index}-{clip}';
  * bottom that names nothing on screen.
  */
 function patternProblemOf(error: string | null): string | null {
-  return error !== null && error.includes('name pattern') ? error : null;
+  return error !== null && error.includes('pattern') ? error : null;
 }
 
 const DELIVERY: readonly (readonly [string, string])[] = [
@@ -79,6 +89,12 @@ export interface ExportProps {
   readonly attestation: string;
   readonly rightsGateNeeded: boolean;
   readonly rightsGatePassed: boolean;
+  /**
+   * Whether the sidecar captions run faster than the reading profile allows,
+   * and whether the person exporting has said they know.
+   */
+  readonly hotCaptions: readonly ExportFinding[];
+  readonly hotCaptionsConfirmed: boolean;
   readonly plan: ExportPlan | null;
   readonly planning: boolean;
   readonly busy: boolean;
@@ -90,6 +106,7 @@ export interface ExportProps {
   readonly onPatternChange: (value: string) => void;
   readonly onChooseFolder: () => void;
   readonly onRightsGateChange: (passed: boolean) => void;
+  readonly onHotCaptionsChange: (confirmed: boolean) => void;
   readonly onExport: () => void;
   readonly onArchive: () => void;
   /** Show a delivered file in the file manager. */
@@ -172,8 +189,8 @@ export function Export(props: ExportProps): JSX.Element {
             />
             {patternProblem === null ? (
               <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
-                Keep {'{index}'} or {'{clip}'} so each clip gets its own name. Also:{' '}
-                {'{project} {duration} {date} {address}'}.
+                A plain name works; {'{index}'} is added to it so each clip gets its own. Fills:{' '}
+                {'{index} {clip} {project} {duration} {date} {address}'}.
               </p>
             ) : (
               <p
@@ -214,6 +231,32 @@ export function Export(props: ExportProps): JSX.Element {
                 for this use.{' '}
                 <span className="text-[var(--cm-ink-3)]">
                   Recorded verbatim in the delivered metadata as “{props.attestation}”.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {props.hotCaptions.length > 0 && (
+            <label
+              className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs"
+              data-testid="hot-captions-gate"
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={props.hotCaptionsConfirmed}
+                onChange={(event) => props.onHotCaptionsChange(event.target.checked)}
+              />
+              <span>
+                {props.hotCaptions.length === 1
+                  ? 'One caption'
+                  : `${props.hotCaptions.length} captions`}{' '}
+                in the subtitle file run faster than a reader can follow (
+                {hottestRate(props.hotCaptions)}; the profile allows 20 a second). The speech is
+                that fast, and slowing the captions would mean hiding words that were said. Export
+                them as they are.{' '}
+                <span className="text-[var(--cm-ink-3)]">
+                  Recorded in the delivered metadata as “captions_reading_rate”.
                 </span>
               </span>
             </label>

@@ -33,6 +33,17 @@ pub const DURATION_GATE: &str = "duration_60s";
 /// is where a rights claim starts being worth something to somebody.
 pub const RIGHTS_GATE_SECONDS: i64 = 60;
 
+/// The gate token a user passes to ship a sidecar that runs faster than the
+/// reading profile allows.
+///
+/// Real dialogue is often faster than twenty characters a second, and a cue
+/// hemmed in by the next line, a cut, or the end of the clip cannot be held
+/// any longer without hiding words that were said — which would be worse.
+/// The strip still refuses such a sidecar by default: nobody ships captions
+/// a reader cannot keep up with without knowing. Passing this gate is
+/// knowing, and the delivered metadata records that it was passed.
+pub const READING_RATE_GATE: &str = "captions_reading_rate";
+
 const TICKS_PER_SECOND: i64 = 90_000;
 
 /// Bytes a second of delivered video is assumed to want.
@@ -136,7 +147,7 @@ pub fn validate(document: &EditDocument, context: &Context<'_>) -> Report {
     let mut findings = Vec::new();
     check_rights(document, context, &mut findings);
     check_boundaries(document, &mut findings);
-    check_captions(document, &mut findings);
+    check_captions(document, context, &mut findings);
     check_headroom(context, &mut findings);
     Report { findings }
 }
@@ -196,14 +207,27 @@ fn check_boundaries(document: &EditDocument, findings: &mut Vec<Finding>) {
 }
 
 /// The sidecars have to be readable at the speed they run.
-fn check_captions(document: &EditDocument, findings: &mut Vec<Finding>) {
+fn check_captions(document: &EditDocument, context: &Context<'_>, findings: &mut Vec<Finding>) {
     // The accessibility track is what becomes SRT and VTT, so it is held to the
-    // profile without exception.
+    // profile without exception — with one confirmation a person can give.
+    // Speech is as fast as it is: a cue hemmed in by the next line, a cut, or
+    // the clip's end reads hot because the words were said that fast, and
+    // the only way to slow it is to drop words. That is refused until the
+    // person exporting says they know, and recorded when they do.
+    let hot_captions_confirmed = context
+        .gates_passed
+        .iter()
+        .any(|gate| gate == READING_RATE_GATE);
     for violation in run_profile(&document.captions.cues, Profile::ACCESSIBILITY_EN) {
-        findings.push(Finding::blocking(
-            &format!("captions.{}", code_of(&violation)),
-            format!("Sidecar caption: {}", violation.message()),
-        ));
+        let code = format!("captions.{}", code_of(&violation));
+        let detail = format!("Sidecar caption: {}", violation.message());
+        let confirmed =
+            hot_captions_confirmed && matches!(violation, Violation::ReadingRate { .. });
+        findings.push(if confirmed {
+            Finding::advisory(&code, format!("{detail} — confirmed as read."))
+        } else {
+            Finding::blocking(&code, detail)
+        });
     }
     // The burn-in track runs hot on purpose. A finding against it is worth
     // showing and is not worth refusing an export over — the alternative would
@@ -323,7 +347,9 @@ mod tests {
 
     use clipmill_edit_ir::EditDocument;
 
-    use super::{Context, DURATION_GATE, Report, Severity, estimate_bytes, validate};
+    use super::{
+        Context, DURATION_GATE, Report, Severity, TICKS_PER_SECOND, estimate_bytes, validate,
+    };
 
     fn document() -> EditDocument {
         let json = include_str!("../tests/fixtures/short.json");
@@ -449,6 +475,48 @@ mod tests {
 
         inverse.apply(&mut trimmed).expect("undo");
         assert_eq!(trimmed, before);
+    }
+
+    /// A sidecar cue that reads faster than the profile allows is refused
+    /// until the person exporting says they know, and then it is only said.
+    #[test]
+    fn a_hot_sidecar_cue_blocks_until_the_reading_rate_gate_is_passed() {
+        let mut hot = document();
+        // Squeeze the first cue's window to the profile's shortest allowed
+        // hold: the same words, said in less time than a reader has for
+        // them, but not so briefly that a different rule fires first.
+        let cue = &mut hot.captions.cues[0];
+        let duration = cue.end_ticks - cue.start_ticks;
+        let squeezed = TICKS_PER_SECOND * 5 / 6 + 1_000;
+        let scale = |offset: i64| offset * squeezed / duration;
+        cue.end_ticks = cue.start_ticks + squeezed;
+        for word in cue.lines.iter_mut().flat_map(|line| line.words.iter_mut()) {
+            let (start, end) = (word.start_ticks, word.end_ticks);
+            word.start_ticks = cue.start_ticks + scale(start - cue.start_ticks);
+            word.end_ticks =
+                (cue.start_ticks + scale(end - cue.start_ticks)).max(word.start_ticks + 1);
+        }
+        hot.validate().expect("still a valid document");
+
+        let gates = Vec::new();
+        let report = validate(&hot, &context(&gates));
+        assert!(!report.passes());
+        assert!(
+            codes(&report).contains(&"captions.reading_rate".to_owned()),
+            "{:?}",
+            report.findings
+        );
+
+        let confirmed = vec![super::READING_RATE_GATE.to_owned()];
+        let report = validate(&hot, &context(&confirmed));
+        assert!(report.passes(), "{:?}", report.findings);
+        let said = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == "captions.reading_rate")
+            .expect("the hot cue is still named");
+        assert_eq!(said.severity, Severity::Advisory);
+        assert!(said.detail.contains("confirmed"), "{}", said.detail);
     }
 
     #[test]
