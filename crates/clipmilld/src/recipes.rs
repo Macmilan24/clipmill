@@ -395,6 +395,19 @@ pub(crate) fn lookup(kind: &str) -> Option<&'static Recipe> {
     REGISTRY.iter().find(|recipe| recipe.kind == kind)
 }
 
+/// The stages the registry says the daemon runs itself.
+///
+/// Registration alone does not make a builtin run: the runner claims tasks by
+/// kind, and a stage registered here but never claimed is planned and then
+/// waits forever, with everything behind it. The runner's list is checked
+/// against this one so that gap cannot open quietly.
+pub(crate) fn builtin_stages() -> impl Iterator<Item = &'static str> {
+    REGISTRY
+        .iter()
+        .filter(|recipe| recipe.executor == Executor::Builtin)
+        .map(|recipe| recipe.kind)
+}
+
 /// How many stages this daemon will run, and how many of them may reach the
 /// network.
 ///

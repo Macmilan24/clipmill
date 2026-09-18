@@ -27,7 +27,10 @@ for (const kind of KINDS) {
   const fixtures = join(repo, 'contracts', 'fixtures', `editorial.${kind}`);
   const validate = ajv.compile(
     JSON.parse(
-      readFileSync(join(repo, 'contracts', 'schemas', `clipmill.editorial.${kind}.v1.json`), 'utf8'),
+      readFileSync(
+        join(repo, 'contracts', 'schemas', `clipmill.editorial.${kind}.v1.json`),
+        'utf8',
+      ),
     ) as Record<string, unknown>,
   );
 
@@ -37,9 +40,7 @@ for (const kind of KINDS) {
       expect(names.length).toBeGreaterThan(0);
       for (const name of names) {
         const raw = readFileSync(join(fixtures, 'valid', name), 'utf8');
-        expect(validate(JSON.parse(raw)), `${name}: ${ajv.errorsText(validate.errors)}`).toBe(
-          true,
-        );
+        expect(validate(JSON.parse(raw)), `${name}: ${ajv.errorsText(validate.errors)}`).toBe(true);
       }
     });
 

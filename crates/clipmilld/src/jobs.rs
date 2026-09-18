@@ -2568,17 +2568,16 @@ impl BuiltinExecutors {
 }
 
 /// Task kinds the daemon executes itself, rather than leasing to a worker.
+///
+/// The registry decides. A stage it marks builtin is claimed here by that
+/// fact, so a stage registered and wired into a plan but never claimed —
+/// planned, and then waiting forever with everything behind it — cannot
+/// happen by omission; the editorial windows sat that way in the Lock gate
+/// when this was a second list kept by hand.
 fn builtin_capabilities(builtin_fixture_executor: bool) -> Vec<String> {
-    let mut kinds = vec!["probe-source".to_owned(), "device-profile".to_owned()];
-    kinds.extend(media::INGEST_TASK_KINDS.map(str::to_owned));
-    kinds.push(render::KIND_RENDER_CLIP.to_owned());
-    kinds.push(crate::export::KIND_DELIVER_EXPORT.to_owned());
-    kinds.push(speech::KIND_TRANSCRIPT.to_owned());
-    kinds.push(evidence::KIND_INDEX.to_owned());
-    kinds.push(discovery::KIND_DISCOVER.to_owned());
-    kinds.push(ranking::KIND_RANK.to_owned());
-    kinds.push(captions::KIND_CAPTIONS.to_owned());
-    kinds.push(analysis::KIND_MANIFEST.to_owned());
+    let mut kinds: Vec<String> = crate::recipes::builtin_stages()
+        .map(str::to_owned)
+        .collect();
     if builtin_fixture_executor {
         kinds.extend(["demo-seed", "demo-left", "demo-right", "demo-join"].map(str::to_owned));
     }
@@ -2970,6 +2969,53 @@ pub(crate) fn is_terminal_job(state: i32) -> bool {
     state == JobState::Succeeded as i32
         || state == JobState::Failed as i32
         || state == JobState::Cancelled as i32
+}
+
+#[cfg(test)]
+mod builtin_tests {
+    use super::builtin_capabilities;
+    use crate::{
+        analysis, captions, discovery, editorial, evidence, export, media, ranking, render, speech,
+    };
+
+    /// Every stage this runner has an executor for is claimed, which is to
+    /// say the registry marks it builtin: a stage with an executor and no
+    /// claim is planned and never leased, with everything behind it.
+    #[test]
+    fn every_stage_the_runner_can_execute_is_claimed() {
+        let claimed = builtin_capabilities(false);
+        let mut executable = vec!["probe-source", "device-profile"];
+        executable.extend(media::INGEST_TASK_KINDS);
+        executable.extend([
+            render::KIND_RENDER_CLIP,
+            export::KIND_DELIVER_EXPORT,
+            speech::KIND_TRANSCRIPT,
+            evidence::KIND_INDEX,
+            editorial::KIND_WINDOWS,
+            discovery::KIND_DISCOVER,
+            ranking::KIND_RANK,
+            captions::KIND_CAPTIONS,
+            analysis::KIND_MANIFEST,
+        ]);
+        for kind in executable {
+            assert!(
+                claimed.iter().any(|claimed| claimed == kind),
+                "{kind} has an executor but the registry does not mark it builtin"
+            );
+        }
+        assert!(claimed.iter().all(|kind| !kind.starts_with("demo-")));
+    }
+
+    /// The fixture executor's demo stages are leased to workers in the
+    /// registry and claimed here only when the daemon is told to play the
+    /// worker itself.
+    #[test]
+    fn the_demo_stages_are_claimed_only_for_the_fixture_executor() {
+        let claimed = builtin_capabilities(true);
+        for kind in ["demo-seed", "demo-left", "demo-right", "demo-join"] {
+            assert!(claimed.iter().any(|claimed| claimed == kind), "{kind}");
+        }
+    }
 }
 
 #[cfg(test)]
