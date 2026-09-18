@@ -821,6 +821,7 @@
       "similarity": 1.0
     }
   ],
+  "content_profile": "interview",
   "coverage": {
     "analyzed": true,
     "end_ticks": 6426000,

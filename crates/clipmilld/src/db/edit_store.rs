@@ -447,7 +447,8 @@ fn direct_response(directed: &Directed) -> Result<DirectClipResponse, StoreError
         .video
         .segments
         .first()
-        .map(|segment| (segment.in_ticks, segment.out_ticks))
+        .zip(document.video.segments.last())
+        .map(|(first, last)| (first.in_ticks, last.out_ticks))
         .unwrap_or_default();
     Ok(DirectClipResponse {
         doc: Some(directed.record.clone().into()),

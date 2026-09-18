@@ -117,10 +117,19 @@ impl Violation {
                 measured_cps,
                 ceiling_cps,
                 ..
-            } => format!(
-                "asks for {measured_cps:.1} characters a second, and the profile allows \
-                 {ceiling_cps:.1}"
-            ),
+            } => {
+                let measured = format!("{measured_cps:.2}");
+                let ceiling = format!("{ceiling_cps:.2}");
+                if measured == ceiling && measured_cps > ceiling_cps {
+                    format!(
+                        "slightly exceeds the reading-speed limit of {ceiling} characters a second"
+                    )
+                } else {
+                    format!(
+                        "asks for {measured} characters a second, and the profile allows {ceiling}"
+                    )
+                }
+            }
             Self::LineTooWide {
                 characters,
                 ceiling,
@@ -314,6 +323,20 @@ mod tests {
         assert!((measured_cps - 42.0).abs() < 1e-9);
         assert!((ceiling_cps - 20.0).abs() < f64::EPSILON);
         assert!(found[0].message().contains("42.0"));
+    }
+
+    #[test]
+    fn a_small_reading_rate_excess_does_not_look_equal_to_the_limit() {
+        let violation = |measured_cps| Violation::ReadingRate {
+            cue_id: "cue_1".to_owned(),
+            measured_cps,
+            ceiling_cps: 20.0,
+        };
+        assert_eq!(
+            violation(20.04).message(),
+            "asks for 20.04 characters a second, and the profile allows 20.00"
+        );
+        assert!(violation(20.000_1).message().contains("slightly exceeds"));
     }
 
     #[test]

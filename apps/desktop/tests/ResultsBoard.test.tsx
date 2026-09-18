@@ -101,8 +101,10 @@ describe('the board', () => {
   });
 
   it('shows the shortfall rather than padding it away', () => {
-    board({ summary: { ...SUMMARY, selected: 3, shortfall: ['2 duplicate cuts refused'] } });
-    expect(screen.getByText(/2 duplicate cuts refused/)).toBeTruthy();
+    board({ summary: { ...SUMMARY, selected: 3, shortfall: ['2 duplicate cuts refused.'] } });
+    expect(screen.getByText(/2 duplicate cuts refused/).textContent).toBe(
+      '4 asked for, 3 recommended: 2 duplicate cuts refused.',
+    );
   });
 
   it('shows missing coverage when the requested count was met', () => {
@@ -137,6 +139,22 @@ describe('the board', () => {
       screen.getByText(/unassessed sections may still contain worthwhile moments/i),
     ).toBeTruthy();
     expect(screen.queryByText(/no suitable complete moments were found/i)).toBeNull();
+  });
+
+  it('offers source recovery for no nominations without empty filters or a dead detail rail', () => {
+    let opened = false;
+    board({
+      rows: [],
+      summary: { ...SUMMARY, selected: 0, cohort: 0 },
+      onManualClip: () => {
+        opened = true;
+      },
+    });
+    expect(screen.getByText('No clips are ready for review')).toBeTruthy();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByText(/select a clip to see why/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a source interval' }));
+    expect(opened).toBe(true);
   });
 
   it('narrows to what was searched for', () => {
@@ -210,6 +228,17 @@ describe('the board', () => {
     expect(within(second!).getByTitle('opens on an unresolved pronoun')).toBeTruthy();
   });
 
+  it('names editorial review without claiming that model-reviewed clips have no evidence', () => {
+    board({
+      rows: [
+        row({ review: { status: 'needs_review', route: 'local', reasons: ['Visual context'] } }),
+      ],
+    });
+    const [first] = rowsOnScreen();
+    expect(within(first!).getByText('Editorial review')).toBeTruthy();
+    expect(within(first!).queryByRole('group', { name: /no signals recorded/i })).toBeNull();
+  });
+
   it('opens a clip on double click, and only selects on a single one', () => {
     let opened: string | null = null;
     board({ onInspect: (id) => (opened = id) });
@@ -250,5 +279,57 @@ describe('reaching the inspector', () => {
     board({ onInspect: (id) => (opened = id) });
     fireEvent.click(screen.getByRole('button', { name: /open the freemium trap/i }));
     expect(opened).toBe('cand_2');
+  });
+});
+
+describe('the separate declined collection', () => {
+  it('shows a rejected-only run as inspectable declines with no bulk approval or recommendations', () => {
+    const inspected: string[] = [];
+    board({
+      rows: [
+        row({
+          candidateId: 'declined-1',
+          band: 'declined',
+          bandLabel: 'Declined by editorial review',
+          review: { status: 'rejected', route: 'local', reasons: ['The answer never finishes.'] },
+        }),
+      ],
+      summary: {
+        selected: 0,
+        cohort: 0,
+        requested: 5,
+        filtered: 1,
+        declined: 1,
+        contentProfile: 'scripted',
+        shortfall: [],
+      },
+      onInspect: (id) => inspected.push(id),
+    });
+    expect(screen.getByText('Declined by the model')).toBeTruthy();
+    expect(screen.getByText('The answer never finishes.')).toBeTruthy();
+    expect(screen.getByText(/TV \/ movie scenes/)).toBeTruthy();
+    expect(screen.queryByRole('listbox', { name: /clip candidates/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Inspect declined moment/ }));
+    expect(inspected).toEqual(['declined-1']);
+  });
+
+  it('keeps declines out of the suggested clip list and selection counts', () => {
+    board({
+      rows: [
+        row({ recommended: true }),
+        row({
+          candidateId: 'declined-1',
+          headline: 'A declined alternative',
+          review: { status: 'rejected', route: 'local', reasons: ['Incomplete'] },
+          band: 'declined',
+          bandLabel: 'Declined',
+        }),
+      ],
+    });
+    expect(rowsOnScreen()).toHaveLength(1);
+    expect(rowsOnScreen()[0]?.textContent).not.toContain('A declined alternative');
+    expect(screen.getByRole('heading', { name: '1 clip candidate' })).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Declined moments', hidden: true })).toBeTruthy();
   });
 });

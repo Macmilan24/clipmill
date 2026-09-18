@@ -9,7 +9,7 @@
   "stages": [
     {
       "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "kind": "vision.face_track.v1"
+      "kind": "vision.unknown.v1"
     }
   ]
 }

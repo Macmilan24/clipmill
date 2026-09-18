@@ -101,7 +101,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         portable: false,
     },
     Implementation {
-        name: "clipmill-worker-editorial@0.1.1/propose",
+        name: "clipmill-worker-editorial@0.2.0/propose",
         capability: "editorial",
         stage: "editorial-propose",
         model: "qwen3-5-editorial-mlx",
@@ -110,7 +110,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         portable: false,
     },
     Implementation {
-        name: "clipmill-worker-editorial@0.1.1/review",
+        name: "clipmill-worker-editorial@0.2.0/review",
         capability: "editorial",
         stage: "editorial-review",
         model: "qwen3-5-editorial-mlx",
@@ -119,7 +119,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         portable: false,
     },
     Implementation {
-        name: "clipmill-worker-editorial@0.1.1/look",
+        name: "clipmill-worker-editorial@0.2.0/look",
         capability: "editorial",
         stage: "editorial-look",
         model: "qwen3-5-editorial-mlx",
@@ -132,7 +132,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
     // accelerated variant would be a second implementation to keep honest for
     // no measurable gain.
     Implementation {
-        name: "clipmill-worker-faces@0.1.0",
+        name: crate::jobs::FACES_IMPLEMENTATION,
         capability: "detect-faces",
         stage: "detect-faces",
         model: "yunet-face",

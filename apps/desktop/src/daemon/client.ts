@@ -86,6 +86,7 @@ export interface Task {
 }
 
 export interface Job {
+  readonly contentProfile?: string;
   readonly jobId: string;
   readonly projectId: string;
   readonly kind: string;
@@ -335,6 +336,7 @@ export interface AnalyzeRequest {
   /** Zero leaves the daemon's default. */
   readonly count: number;
   readonly localEditorial?: boolean;
+  readonly contentProfile?: 'interview' | 'scripted';
   readonly cloudEditorial?: {
     readonly transcriptConsent: boolean;
     readonly budgetMicroUsd: number;
@@ -487,6 +489,8 @@ export interface DirectClipInput {
    * never approved without an edit to open or edited without being approved.
    */
   readonly approve?: boolean;
+  readonly allowDeclined?: boolean;
+  readonly manualSpan?: boolean;
   /**
    * The analysis run the candidate belongs to. The director reads every stage
    * from this run, as one snapshot; a re-analysis that renumbered the
@@ -622,6 +626,8 @@ export interface PreviewSegment {
   readonly inTicks: number;
   readonly outTicks: number;
   readonly programStartTicks: number;
+  readonly hasTwoUpPaths?: boolean;
+  readonly framingWarning?: string;
   /** Program frames the segment occupies, half-open. */
   readonly firstFrame: number;
   readonly endFrame: number;
@@ -672,13 +678,32 @@ export interface PreviewGain {
  * are already in centiseconds — because a preview that worked any of that out
  * for itself would be a second implementation of the render's arithmetic.
  */
+export interface PreviewCaptionStyle {
+  readonly styleRef: string;
+  readonly fontFamily: string;
+  readonly fontSize: number;
+  readonly spoken: string;
+  readonly unspoken: string;
+  readonly outline: string;
+  readonly shadow: string;
+  readonly outlineWidth: number;
+  readonly shadowDepth: number;
+  readonly bold: boolean;
+  readonly boxed: boolean;
+  readonly marginHorizontal: number;
+  readonly marginVertical: number;
+}
+
 export interface PreviewPlan {
+  readonly captionStyle?: PreviewCaptionStyle;
   readonly revision: number;
   readonly rateNum: number;
   readonly rateDen: number;
   readonly frameCount: number;
   /** `[x, y, width, height]` per frame, or null where the layout is fit. */
   readonly crops: readonly (readonly [number, number, number, number] | null)[];
+  /** Lower viewport of a two-person composition, indexed like crops. */
+  readonly secondaryCrops?: readonly (readonly [number, number, number, number] | null)[];
   readonly cues: readonly PreviewCue[];
   readonly gain: readonly PreviewGain[];
   readonly width: number;
@@ -946,4 +971,39 @@ export async function chooseExportFolder(): Promise<string | null> {
   }
   const { invoke } = await core();
   return invoke<string | null>('choose_export_folder');
+}
+
+/** Durable export intents; queued jobs retain their own execution state. */
+export interface ExportBatchItem {
+  readonly index: number;
+  readonly projectId: string;
+  readonly request: ExportRequest;
+  readonly state: 'pending' | 'queued' | 'failed' | 'cancelled';
+  readonly attempt: number;
+  readonly queued?: QueuedExport;
+  readonly error: string;
+}
+export interface ExportBatch {
+  readonly batchId: string;
+  readonly createdUnixMillis: number;
+  readonly items: readonly ExportBatchItem[];
+}
+export async function submitExportBatch(requests: readonly ExportRequest[]): Promise<ExportBatch> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<ExportBatch>('submit_export_batch', { requests });
+}
+export async function listExportBatches(): Promise<readonly ExportBatch[]> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<ExportBatch[]>('list_export_batches');
+}
+export async function updateExportBatchItem(
+  batchId: string,
+  index: number,
+  action: 'retry' | 'cancel',
+): Promise<ExportBatch> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<ExportBatch>('update_export_batch_item', { batchId, index, action });
 }

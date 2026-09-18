@@ -57,6 +57,7 @@ fn edit(name: &str, intent: Intent) -> EditDocument {
         in_ticks: 0,
         out_ticks: 900_000,
         layout: Layout {
+            secondary_crop_path: Vec::new(),
             state: LayoutState::Fit,
             crop_path: Vec::new(),
         },

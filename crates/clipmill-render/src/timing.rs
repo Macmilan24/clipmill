@@ -51,6 +51,11 @@ impl FrameRate {
         self.frame_ceil(ticks)
     }
 
+    /// Presentation time on the shared 90 kHz program clock.
+    pub fn frame_ticks(self, frame: i64) -> i64 {
+        self.frame_scaled(frame, TICKS_PER_SECOND)
+    }
+
     /// Presentation time of frame `frame`, floored to whole centiseconds.
     ///
     /// Flooring is what makes the ASS timestamp land on the intended frame:

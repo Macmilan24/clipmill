@@ -101,6 +101,15 @@ impl Decoding {
 #[doc = "        \"$ref\": \"#/$defs/judgment\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"content_profile\": {"]
+#[doc = "      \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "      \"default\": \"interview\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"interview\","]
+#[doc = "        \"scripted\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"inputs\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
@@ -136,6 +145,9 @@ impl Decoding {
 pub struct EditorialJudgments {
     #[doc = "One entry per candidate the review was asked about, in the candidates document's order."]
     pub candidates: ::std::vec::Vec<Judgment>,
+    #[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+    #[serde(default = "defaults::editorial_judgments_content_profile")]
+    pub content_profile: EditorialJudgmentsContentProfile,
     pub inputs: EditorialJudgmentsInputs,
     pub producer: ModelProducer,
     pub schema_version: ::serde_json::Value,
@@ -144,6 +156,85 @@ pub struct EditorialJudgments {
 impl EditorialJudgments {
     pub fn builder() -> builder::EditorialJudgments {
         Default::default()
+    }
+}
+#[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "  \"default\": \"interview\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"interview\","]
+#[doc = "    \"scripted\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditorialJudgmentsContentProfile {
+    #[serde(rename = "interview")]
+    Interview,
+    #[serde(rename = "scripted")]
+    Scripted,
+}
+impl ::std::fmt::Display for EditorialJudgmentsContentProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Interview => f.write_str("interview"),
+            Self::Scripted => f.write_str("scripted"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditorialJudgmentsContentProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "interview" => Ok(Self::Interview),
+            "scripted" => Ok(Self::Scripted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialJudgmentsContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialJudgmentsContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialJudgmentsContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for EditorialJudgmentsContentProfile {
+    fn default() -> Self {
+        EditorialJudgmentsContentProfile::Interview
     }
 }
 #[doc = "`EditorialJudgmentsInputs`"]
@@ -1364,7 +1455,8 @@ impl<'de> ::serde::Deserialize<'de> for ModelProvider {
 #[doc = "        \"irrelevant_intro\","]
 #[doc = "        \"misleading_omission\","]
 #[doc = "        \"visual_dependency\","]
-#[doc = "        \"other\""]
+#[doc = "        \"other\","]
+#[doc = "        \"transcript_uncertain\""]
 #[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"detail\": {"]
@@ -1402,7 +1494,8 @@ impl Reason {
 #[doc = "    \"irrelevant_intro\","]
 #[doc = "    \"misleading_omission\","]
 #[doc = "    \"visual_dependency\","]
-#[doc = "    \"other\""]
+#[doc = "    \"other\","]
+#[doc = "    \"transcript_uncertain\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -1436,6 +1529,8 @@ pub enum ReasonCode {
     VisualDependency,
     #[serde(rename = "other")]
     Other,
+    #[serde(rename = "transcript_uncertain")]
+    TranscriptUncertain,
 }
 impl ::std::fmt::Display for ReasonCode {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -1448,6 +1543,7 @@ impl ::std::fmt::Display for ReasonCode {
             Self::MisleadingOmission => f.write_str("misleading_omission"),
             Self::VisualDependency => f.write_str("visual_dependency"),
             Self::Other => f.write_str("other"),
+            Self::TranscriptUncertain => f.write_str("transcript_uncertain"),
         }
     }
 }
@@ -1463,6 +1559,7 @@ impl ::std::str::FromStr for ReasonCode {
             "misleading_omission" => Ok(Self::MisleadingOmission),
             "visual_dependency" => Ok(Self::VisualDependency),
             "other" => Ok(Self::Other),
+            "transcript_uncertain" => Ok(Self::TranscriptUncertain),
             _ => Err("invalid value".into()),
         }
     }
@@ -1712,6 +1809,8 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct EditorialJudgments {
         candidates: ::std::result::Result<::std::vec::Vec<super::Judgment>, ::std::string::String>,
+        content_profile:
+            ::std::result::Result<super::EditorialJudgmentsContentProfile, ::std::string::String>,
         inputs: ::std::result::Result<super::EditorialJudgmentsInputs, ::std::string::String>,
         producer: ::std::result::Result<super::ModelProducer, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
@@ -1721,6 +1820,7 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 candidates: Err("no value supplied for candidates".to_string()),
+                content_profile: Ok(super::defaults::editorial_judgments_content_profile()),
                 inputs: Err("no value supplied for inputs".to_string()),
                 producer: Err("no value supplied for producer".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
@@ -1737,6 +1837,16 @@ pub mod builder {
             self.candidates = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for candidates: {e}"));
+            self
+        }
+        pub fn content_profile<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialJudgmentsContentProfile>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content_profile = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content_profile: {e}"));
             self
         }
         pub fn inputs<T>(mut self, value: T) -> Self
@@ -1787,6 +1897,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 candidates: value.candidates?,
+                content_profile: value.content_profile?,
                 inputs: value.inputs?,
                 producer: value.producer?,
                 schema_version: value.schema_version?,
@@ -1798,6 +1909,7 @@ pub mod builder {
         fn from(value: super::EditorialJudgments) -> Self {
             Self {
                 candidates: Ok(value.candidates),
+                content_profile: Ok(value.content_profile),
                 inputs: Ok(value.inputs),
                 producer: Ok(value.producer),
                 schema_version: Ok(value.schema_version),
@@ -2348,5 +2460,11 @@ pub mod builder {
                 detail: Ok(value.detail),
             }
         }
+    }
+}
+#[doc = r" Generation of default values for serde."]
+pub mod defaults {
+    pub(super) fn editorial_judgments_content_profile() -> super::EditorialJudgmentsContentProfile {
+        super::EditorialJudgmentsContentProfile::Interview
     }
 }

@@ -528,6 +528,20 @@ impl ArtifactLease {
             .map(|file| file.bytes)
     }
 
+    /// Parse the validated manifest's payload sizes once for a whole inventory.
+    ///
+    /// Every record still passes path and digest validation. Callers resolving
+    /// many files can then check membership without reparsing every record for
+    /// each file. These are declared sizes; payload reads must remain verified.
+    pub fn declared_file_sizes(&self) -> Result<BTreeMap<ArtifactPath, u64>, ArtifactError> {
+        Ok(self
+            .manifest
+            .file_records()?
+            .into_iter()
+            .map(|file| (file.path, file.bytes))
+            .collect())
+    }
+
     /// Verify one payload file and return its on-disk path for sidecar
     /// processes that must read by filename. Committed payloads are immutable
     /// (mode 0400) so the verified bytes are the bytes the sidecar reads; the

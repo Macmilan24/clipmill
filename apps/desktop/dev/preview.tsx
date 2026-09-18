@@ -8,9 +8,16 @@ import { AppSidebar } from '../src/shell/Sidebar.js';
 import { TopBar } from '../src/shell/TopBar.js';
 import { Results } from '../src/screens/Results.js';
 import { ClipInspector } from '../src/screens/ClipInspector.js';
+import { ManualClip } from '../src/results/ManualClip.js';
+import type { ClipRow } from '../src/results/model.js';
 import { Editor } from '../src/screens/Editor.js';
 import { Export } from '../src/screens/Export.js';
+import { BatchExportScreen } from '../src/screens/BatchExportScreen.js';
+import { batchApi } from './batch-fixtures.js';
 import { Library } from '../src/screens/Library.js';
+import { Settings } from '../src/screens/Settings.js';
+import { ModelsDevice } from '../src/screens/ModelsDevice.js';
+import { device, readiness, storage, lock } from './settings-fixtures.js';
 import { NewProject } from '../src/screens/NewProject.js';
 import { LibraryLoader } from '../src/library/loader.js';
 import { ImportLoader } from '../src/import/loader.js';
@@ -19,6 +26,7 @@ import { connection, rows as fixtures, plan as previewPlan } from './fixtures.js
 import '../src/styles.css';
 
 const noAction = () => {};
+const modelApi = { ...daemonApi, fetchReadiness: async () => readiness };
 const project = {
   projectId: 'preview',
   name: 'The creative process · Episode 12',
@@ -61,9 +69,42 @@ function Preview() {
   const [theme, setTheme] = useState<'dark' | 'light'>(
     search.get('theme') === 'light' ? 'light' : 'dark',
   );
-  const [rows, setRows] = useState(fixtures);
+  const [rows, setRows] = useState<ClipRow[]>(() => {
+    const scenario = search.get('scenario');
+    if (scenario === 'empty') return [];
+    return fixtures.map((row, index) =>
+      scenario === 'declined' || (scenario === 'mixed' && index > 2)
+        ? {
+            ...row,
+            band: 'declined',
+            bandLabel: 'Declined by editorial review',
+            recommended: false,
+            decision: null,
+            docId: null,
+            review: {
+              status: 'rejected',
+              route: 'local',
+              reasons: [
+                'The exchange introduces a question but ends before the answer. Inspect the surrounding source before making an edit.',
+              ],
+            },
+          }
+        : row,
+    );
+  });
+  const [manualOpen, setManualOpen] = useState(false);
   const [candidate, setCandidate] = useState(fixtures[0]!.candidateId);
-  const [plan, setPlan] = useState(previewPlan);
+  const [plan, setPlan] = useState(() =>
+    search.get('layout') === 'two_up'
+      ? {
+          ...previewPlan,
+          crops: previewPlan.crops.map(() => [0, 140, 900, 800] as const),
+          secondaryCrops: previewPlan.crops.map(() => [1000, 140, 900, 800] as const),
+          segments: previewPlan.segments.map((segment) => ({ ...segment, hasTwoUpPaths: true })),
+          cues: previewPlan.cues.map((cue) => ({ ...cue, region: 'center' })),
+        }
+      : previewPlan,
+  );
   const [notice, setNotice] = useState<string | null>(null);
   const [destination, setDestination] = useState('/Users/demo/Movies/ClipMill');
   const [pattern, setPattern] = useState('{index}-{clip}');
@@ -115,7 +156,16 @@ function Preview() {
                 <Results
                   loading={false}
                   rows={rows}
-                  summary={{ selected: 4, requested: 5, cohort: 6, filtered: 0, shortfall: [] }}
+                  summary={{
+                    selected: rows.filter((row) => row.recommended).length,
+                    requested: 5,
+                    cohort: rows.filter((row) => row.review?.status !== 'rejected').length,
+                    declined: rows.filter((row) => row.review?.status === 'rejected').length,
+                    contentProfile:
+                      search.get('scenario') === 'declined' ? 'scripted' : 'interview',
+                    filtered: 0,
+                    shortfall: [],
+                  }}
                   problem={null}
                   sourceName={project.name}
                   run={{
@@ -140,6 +190,7 @@ function Preview() {
                     )
                   }
                   onReload={noAction}
+                  onManualClip={() => setManualOpen(true)}
                 />
               )}
               {page === 'inspector' && (
@@ -208,6 +259,13 @@ function Preview() {
                   onResolve={noAction}
                 />
               )}
+              {page === 'batch-export' && (
+                <BatchExportScreen
+                  api={batchApi}
+                  onBack={() => setPage('export')}
+                  onEdit={() => setPage('editor')}
+                />
+              )}
               {page === 'export' && (
                 <Export
                   onEdit={() => setPage('editor')}
@@ -264,15 +322,48 @@ function Preview() {
               {page === 'new-project' && (
                 <NewProject state={connection} loader={importLoader} onStarted={noAction} />
               )}
-              {['models', 'settings'].includes(page) && (
-                <p className="workspace-subtitle">
-                  Use the desktop app for device settings. This page previews the editing workflow.
-                </p>
+              {page === 'models' && (
+                <ModelsDevice
+                  api={modelApi}
+                  state={connection}
+                  profile={device}
+                  artifactId={`sha256:${'b'.repeat(64)}`}
+                  error={null}
+                  busy={false}
+                  onRescan={noAction}
+                  onReconnect={noAction}
+                />
+              )}
+              {page === 'settings' && (
+                <Settings
+                  storage={storage}
+                  lock={lock}
+                  loading={false}
+                  error={null}
+                  theme={theme}
+                  onThemeChange={setTheme}
+                  onRefresh={noAction}
+                />
               )}
             </main>
           </SidebarInset>
         </SidebarProvider>
       </div>
+      <ManualClip
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        sourceName={project.name}
+        sourceDurationTicks={90_000 * 720}
+        proxyUrl={media}
+        busy={false}
+        notice={notice}
+        onCreate={async () => {
+          setNotice(
+            'Development preview: the source selection was validated, but no edit was saved.',
+          );
+          return false;
+        }}
+      />
     </TooltipProvider>
   );
 }

@@ -146,10 +146,21 @@ impl Report {
 pub fn validate(document: &EditDocument, context: &Context<'_>) -> Report {
     let mut findings = Vec::new();
     check_rights(document, context, &mut findings);
+    check_framing(document, &mut findings);
     check_boundaries(document, &mut findings);
     check_captions(document, context, &mut findings);
     check_headroom(context, &mut findings);
     Report { findings }
+}
+
+fn check_framing(document: &EditDocument, findings: &mut Vec<Finding>) {
+    for (index, segment) in document.video.segments.iter().enumerate() {
+        if segment.layout.needs_crop_repair() {
+            findings.push(Finding::blocking("framing.missing_crop", format!(
+                "Shot {} requests a crop without its saved framing path. Open Reframe and choose Fit, or recalculate the crop before exporting.", index + 1
+            )));
+        }
+    }
 }
 
 /// Nobody can infer what footage is. Somebody has to have said.
@@ -185,8 +196,15 @@ fn check_rights(document: &EditDocument, context: &Context<'_>, findings: &mut V
 /// because a boundary can be dragged in the editor after the optimizer chose
 /// one — and the drag snaps, but a document can also arrive from elsewhere.
 fn check_boundaries(document: &EditDocument, findings: &mut Vec<Finding>) {
-    let mut boundaries: Vec<i64> = document.segment_program_starts();
-    boundaries.push(document.program_duration_ticks());
+    let mut boundaries = vec![0, document.program_duration_ticks()];
+    let starts = document.segment_program_starts();
+    for (index, pair) in document.video.segments.windows(2).enumerate() {
+        if pair[0].source_fingerprint != pair[1].source_fingerprint
+            || pair[0].out_ticks != pair[1].in_ticks
+        {
+            boundaries.push(starts[index + 1]);
+        }
+    }
     for boundary in boundaries {
         for cue in &document.captions.cues {
             for word in cue.words() {
@@ -381,6 +399,26 @@ mod tests {
     }
 
     #[test]
+    fn missing_crop_paths_are_actionable_preflight_failures() {
+        use clipmill_edit_ir::LayoutState;
+        let mut doc = document();
+        doc.video.segments[0].layout.state = LayoutState::SpeakerFill;
+        doc.video.segments[0].layout.crop_path.clear();
+        let report = validate(&doc, &context(&[]));
+        assert!(!report.passes());
+        assert!(
+            report
+                .blocking()
+                .any(|finding| finding.code == "framing.missing_crop"
+                    && finding.detail.contains("choose Fit"))
+        );
+        doc.video.segments[0].layout.state = LayoutState::Fit;
+        assert!(validate(&doc, &context(&[])).passes());
+        doc.video.segments[0].layout.state = LayoutState::TwoUp;
+        assert!(codes(&validate(&doc, &context(&[]))).contains(&"framing.missing_crop".to_owned()));
+    }
+
+    #[test]
     fn an_export_nobody_attested_is_blocked() {
         let gates = Vec::new();
         let mut without = context(&gates);
@@ -517,6 +555,33 @@ mod tests {
             .expect("the hot cue is still named");
         assert_eq!(said.severity, Severity::Advisory);
         assert!(said.detail.contains("confirmed"), "{}", said.detail);
+    }
+
+    #[test]
+    fn camera_changes_inside_continuous_speech_are_not_audio_edits() {
+        let mut continuous = document();
+        let first = continuous.video.segments[0].clone();
+        let word = continuous.captions.cues[0].lines[0].words[0].clone();
+        let inside = i64::midpoint(word.start_ticks, word.end_ticks);
+        let mut next = first.clone();
+        next.segment_id = "camera-cut".to_owned();
+        next.in_ticks = first.in_ticks + inside;
+        continuous.video.segments[0].out_ticks = next.in_ticks;
+        continuous.video.segments.insert(1, next);
+        let mut findings = Vec::new();
+        super::check_boundaries(&continuous, &mut findings);
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == "boundary.inside_word")
+        );
+        continuous.video.segments[1].in_ticks += 90_000;
+        super::check_boundaries(&continuous, &mut findings);
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == "boundary.inside_word")
+        );
     }
 
     #[test]

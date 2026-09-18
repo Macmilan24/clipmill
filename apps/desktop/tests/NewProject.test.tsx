@@ -9,7 +9,7 @@
  * rights gate — behave as facts rather than as decoration.
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { AnalyzeRequest, ConnectionState } from '../src/daemon/client.js';
 import { ImportLoader } from '../src/import/loader.js';
@@ -22,6 +22,20 @@ import {
   sourceMapDocument,
   stageReadiness,
 } from './support/library.js';
+
+// jsdom has no layout scrolling; Radix uses this browser method when opening a listbox.
+const scrollDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+beforeAll(() =>
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: vi.fn(),
+  }),
+);
+afterAll(() => {
+  if (scrollDescriptor)
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', scrollDescriptor);
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+});
 
 const CONNECTED: ConnectionState = {
   status: 'connected',
@@ -114,14 +128,17 @@ describe('the New Project screen', () => {
     await chooseFile();
     fireEvent.click(screen.getByRole('checkbox'));
     const route = screen.getByLabelText('Editorial analysis');
-    expect((route as HTMLSelectElement).value).toBe('local');
-    fireEvent.change(route, { target: { value: 'cloud' } });
+    expect(route.textContent).toContain('Local · Qwen 3.5');
+    fireEvent.keyDown(route, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('option', { name: /Cloud-assisted/ }));
     expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
       true,
     );
     fireEvent.click(screen.getByRole('checkbox', { name: /Allow transcript sharing/ }));
-    fireEvent.change(route, { target: { value: 'local' } });
-    fireEvent.change(route, { target: { value: 'cloud' } });
+    fireEvent.keyDown(route, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('option', { name: 'Local · Qwen 3.5' }));
+    fireEvent.keyDown(route, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('option', { name: /Cloud-assisted/ }));
     expect(
       screen.getByRole('checkbox', { name: /Allow transcript sharing/ }).getAttribute('data-state'),
     ).toBe('unchecked');
@@ -166,6 +183,7 @@ describe('the New Project screen', () => {
     expect(submitted[0]?.request).toEqual({
       sourceId: 'src_prj_pricing-mistakes-episode-41',
       localEditorial: true,
+      contentProfile: 'interview',
       language: '',
       minTicks: 60 * 90_000,
       maxTicks: 180 * 90_000,
@@ -334,5 +352,19 @@ describe('the New Project screen', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Browse files' }));
     expect(await screen.findByText('ffprobe found no streams')).toBeTruthy();
+  });
+  it('passes the explicitly chosen scripted-scene rubric with the analysis request', async () => {
+    const { submitted } = show();
+    await chooseFile();
+    const profile = screen.getByLabelText('Footage type');
+    fireEvent.keyDown(profile, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('option', { name: 'TV / movie scene' }));
+    expect(screen.getByText(/wider plot can stay unresolved/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /Analyze video/ }));
+    await waitFor(() => expect(submitted).toHaveLength(1));
+    expect(submitted[0]?.request.contentProfile).toBe('scripted');
+    expect(submitted[0]?.request.minTicks).toBe(20 * 90_000);
+    expect(submitted[0]?.request.maxTicks).toBe(90 * 90_000);
   });
 });

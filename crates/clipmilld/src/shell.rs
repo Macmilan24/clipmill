@@ -27,9 +27,12 @@
 /// Ordered by where a shell meets them: the source it imported, what ingest
 /// derived, the transcript, the structure over it, the nominations, the ranking,
 /// the analysis that roots them all, then the edit and its render.
-const DOCUMENTS: [(&str, &str); 12] = [
+const DOCUMENTS: [(&str, &str); 13] = [
     ("evidence.source_map.v1", "source-map.json"),
     ("media.ingest_manifest.v1", "ingest-manifest.json"),
+    // Results needs exact source ticks to choose the nearest thumbnail. Only
+    // this small descriptor crosses the document door; JPEGs remain media.
+    ("media.filmstrip.v1", "index.json"),
     // A waveform, and a document despite the `media.` prefix: its peaks are in
     // the JSON, not in a file beside it. A timeline reads it like any other
     // observation.
@@ -64,7 +67,8 @@ pub(crate) enum MediaLayout {
     /// Filmstrip tiles and analysis frames.
     Many { list: &'static str },
     /// An array at the named key, each element naming a file at `path`. A
-    /// render's outputs: the video and its sidecars.
+    /// render's outputs. Only supported media types are exposed: the render
+    /// also retains internal inputs such as ASS captions for reproducibility.
     Outputs { list: &'static str },
 }
 
@@ -150,7 +154,10 @@ pub(crate) fn media_files(descriptor: &serde_json::Value, layout: MediaLayout) -
             .map(|file| vec![file.to_owned()])
             .unwrap_or_default(),
         MediaLayout::Many { list } => collect(descriptor, list, "file"),
-        MediaLayout::Outputs { list } => collect(descriptor, list, "path"),
+        MediaLayout::Outputs { list } => collect(descriptor, list, "path")
+            .into_iter()
+            .filter(|path| media_type_for(path).is_some())
+            .collect(),
     }
 }
 
@@ -207,6 +214,7 @@ mod tests {
                 "export.package.v1",
                 "index.transcript.v1",
                 "media.audio_peaks.v1",
+                "media.filmstrip.v1",
                 "media.ingest_manifest.v1",
                 "ranking.set.v1",
                 "render.clip.v1",
@@ -289,10 +297,13 @@ mod tests {
         );
         assert_eq!(
             super::media_files(
-                &json!({"outputs": [{"path": "clip.mp4", "bytes": 1}, {"path": "clip.srt"}]}),
+                &json!({"outputs": [
+                    {"path": "clip.mp4", "bytes": 1}, {"path": "clip.ass"},
+                    {"path": "clip.srt"}, {"path": "clip.vtt"}, {"path": "notes.json"}
+                ]}),
                 MediaLayout::Outputs { list: "outputs" }
             ),
-            vec!["clip.mp4", "clip.srt"]
+            vec!["clip.mp4", "clip.srt", "clip.vtt"]
         );
         // Nothing named, and nothing invented: an entry missing its key is
         // skipped rather than turned into an empty path.
@@ -349,7 +360,8 @@ mod tests {
             assert!(document_for(kind).is_none(), "{kind} is readable");
         }
         // Media is a different door: a document kind is not streamable and a
-        // media kind is not a document, except the render that is honestly both.
+        // media kind is not a document, except renders and filmstrips whose
+        // descriptors the shell needs independently of their binary payloads.
         for kind in [
             "speech.transcript.v1",
             "ranking.set.v1",
@@ -359,7 +371,7 @@ mod tests {
         ] {
             assert!(media_descriptor_for(kind).is_none(), "{kind} is streamable");
         }
-        for kind in ["media.proxy.v1", "media.filmstrip.v1", "media.frames.v1"] {
+        for kind in ["media.proxy.v1", "media.frames.v1"] {
             assert!(document_for(kind).is_none(), "{kind} is a document");
         }
     }

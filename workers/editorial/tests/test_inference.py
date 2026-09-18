@@ -562,3 +562,129 @@ def test_cancellation_is_not_reported_as_a_failed_model():
     with pytest.raises(LeaseCancelled):
         call(Cancelled(), "review", {}, ReviewReply, 2048, IDENTITY, traces)
     assert traces[0]["outcome"] == "cancelled"
+
+
+@pytest.mark.parametrize("profile", ["interview", "scripted"])
+def test_content_profile_reaches_proposal_and_review_prompts(profile):
+    windows = {**window(), "content_profile": profile}
+    proposal_runtime = Runtime('{"proposals":[]}')
+    propose(
+        proposal_runtime,
+        windows,
+        SimpleNamespace(min_ticks=90000, max_ticks=900000),
+        2048,
+        IDENTITY,
+        [],
+        CancellationToken(),
+    )
+    reviewer = Runtime(
+        '{"status":"accepted","reasons":[],"visual_dependency":false,"summary":"Complete"}'
+    )
+    review(
+        reviewer,
+        windows,
+        {
+            "candidates": [
+                {
+                    "id": "cand_0000000000000001",
+                    "intervals": [{"start_ticks": 0, "end_ticks": 90000}],
+                }
+            ]
+        },
+        2048,
+        IDENTITY,
+        [],
+        CancellationToken(),
+    )
+    for runtime in (proposal_runtime, reviewer):
+        supplied = json.loads(runtime.prompts[0].split("\nInput data:\n")[1])
+        assert supplied["content_profile"] == profile
+        assert "SCRIPTED:" in runtime.prompts[0] and "INTERVIEW:" in runtime.prompts[0]
+
+
+def test_old_tasks_default_to_interview_and_unknown_profiles_are_refused():
+    from clipmill_worker_editorial import content_profile
+    from clipmill_worker_sdk import DeterministicTaskError
+
+    assert content_profile("") == "interview"
+    assert content_profile("scripted") == "scripted"
+    with pytest.raises(DeterministicTaskError, match="content profile"):
+        content_profile("guess-and-upload")
+
+
+@pytest.mark.parametrize(
+    "codes,expected",
+    [
+        (["visual_dependency"], "needs_review"),
+        (["transcript_uncertain"], "needs_review"),
+        (["visual_dependency", "transcript_uncertain"], "needs_review"),
+        (["visual_dependency", "incomplete_payoff"], "rejected"),
+        (["transcript_uncertain", "misleading_omission"], "rejected"),
+    ],
+)
+def test_uncertainty_is_reviewable_but_evidenced_bad_cuts_stay_declined(codes, expected):
+    runtime = Runtime(
+        json.dumps(
+            {
+                "status": "rejected",
+                "reasons": [
+                    {"code": code, "detail": "Specific evidence to inspect"} for code in codes
+                ],
+                "visual_dependency": False,
+                "summary": "Check the exchange",
+            }
+        )
+    )
+    candidates = {
+        "candidates": [
+            {"id": "cand_0000000000000001", "intervals": [{"start_ticks": 0, "end_ticks": 90000}]}
+        ]
+    }
+    traces = []
+    rows = review(runtime, window(), candidates, 2048, IDENTITY, traces, CancellationToken())
+    assert rows[0]["status"] == expected
+    assert json.loads(traces[0]["response_text"])["status"] == "rejected", (
+        "preserve original judgment for audit"
+    )
+
+
+@pytest.mark.parametrize("profile", ["interview", "scripted"])
+def test_visual_evidence_remains_available_for_a_declined_moment(profile):
+    from clipmill_worker_editorial.inference import look, prompt_digest
+
+    candidate = {
+        "id": "cand_0000000000000001",
+        "intervals": [{"start_ticks": 0, "end_ticks": 90000}],
+    }
+    runtime = Runtime('{"answer":"yes","detail":"The referenced item is visible"}')
+    runtime.close = lambda: None
+    judgment = {
+        "candidate_id": candidate["id"],
+        "outcome": "answered",
+        "status": "rejected",
+        "visual_dependency": True,
+        "reasons": [{"code": "incomplete_payoff", "detail": "The answer ends early"}],
+        "summary": "An incomplete visual explanation",
+    }
+    traces = []
+    checks = look(
+        lambda: runtime,
+        {"candidates": [candidate]},
+        {"content_profile": profile, "candidates": [judgment]},
+        {"frames": [{"t_ticks": 45000, "file": "frame.jpg"}]},
+        lambda path: path,
+        2048,
+        IDENTITY,
+        traces,
+        CancellationToken(),
+    )
+    assert len(checks) == 1
+    assert checks[0]["candidate_id"] == candidate["id"]
+    instruction, supplied = runtime.prompts[0].split("\nInput data:\n")
+    assert json.loads(supplied)["content_profile"] == profile
+    assert "SCRIPTED:" in instruction and "INTERVIEW:" in instruction
+    assert "Still frames cannot verify spoken dialogue" in instruction
+    assert "do not impose an interview format" in instruction
+    assert "A missing referent in sparse frames is not proof" in instruction
+    assert traces[0]["prompt_version"] == f"look.v1/{prompt_digest('look')}"
+    assert judgment["status"] == "rejected", "pictures must not override missing speech"

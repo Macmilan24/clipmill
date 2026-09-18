@@ -1571,7 +1571,8 @@ impl<'de> ::serde::Deserialize<'de> for ProducerStage {
 #[doc = "          \"type\": \"string\","]
 #[doc = "          \"enum\": ["]
 #[doc = "            \"accepted\","]
-#[doc = "            \"needs_review\""]
+#[doc = "            \"needs_review\","]
+#[doc = "            \"rejected\""]
 #[doc = "          ]"]
 #[doc = "        },"]
 #[doc = "        \"summary\": {"]
@@ -1727,7 +1728,8 @@ impl<'de> ::serde::Deserialize<'de> for RankedClusterId {
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"accepted\","]
-#[doc = "        \"needs_review\""]
+#[doc = "        \"needs_review\","]
+#[doc = "        \"rejected\""]
 #[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"summary\": {"]
@@ -1833,7 +1835,8 @@ impl ::std::convert::TryFrom<::std::string::String> for RankedReviewRoute {
 #[doc = "  \"type\": \"string\","]
 #[doc = "  \"enum\": ["]
 #[doc = "    \"accepted\","]
-#[doc = "    \"needs_review\""]
+#[doc = "    \"needs_review\","]
+#[doc = "    \"rejected\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -1855,12 +1858,15 @@ pub enum RankedReviewStatus {
     Accepted,
     #[serde(rename = "needs_review")]
     NeedsReview,
+    #[serde(rename = "rejected")]
+    Rejected,
 }
 impl ::std::fmt::Display for RankedReviewStatus {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Accepted => f.write_str("accepted"),
             Self::NeedsReview => f.write_str("needs_review"),
+            Self::Rejected => f.write_str("rejected"),
         }
     }
 }
@@ -1870,6 +1876,7 @@ impl ::std::str::FromStr for RankedReviewStatus {
         match value {
             "accepted" => Ok(Self::Accepted),
             "needs_review" => Ok(Self::NeedsReview),
+            "rejected" => Ok(Self::Rejected),
             _ => Err("invalid value".into()),
         }
     }
@@ -1998,6 +2005,23 @@ impl<'de> ::serde::Deserialize<'de> for RankedTitle {
 #[doc = "        \"$ref\": \"#/$defs/ranked\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"content_profile\": {"]
+#[doc = "      \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "      \"default\": \"interview\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"interview\","]
+#[doc = "        \"scripted\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"declined\": {"]
+#[doc = "      \"description\": \"Assessed nominations declined by the editorial reviewer. Inspectable for explicit manual recovery; never recommendations or selected clips.\","]
+#[doc = "      \"default\": [],"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/ranked\""]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"editorial\": {"]
 #[doc = "      \"description\": \"Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.\","]
 #[doc = "      \"$ref\": \"#/$defs/editorial_coverage\""]
@@ -2112,6 +2136,12 @@ impl<'de> ::serde::Deserialize<'de> for RankedTitle {
 pub struct RankingSet {
     #[doc = "Every candidate that survived the stage-one filters, scored and ordered. Percentiles are within this list, which is what makes the displayed number an editorial index rather than a probability."]
     pub cohort: ::std::vec::Vec<Ranked>,
+    #[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+    #[serde(default = "defaults::ranking_set_content_profile")]
+    pub content_profile: RankingSetContentProfile,
+    #[doc = "Assessed nominations declined by the editorial reviewer. Inspectable for explicit manual recovery; never recommendations or selected clips."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub declined: ::std::vec::Vec<Ranked>,
     #[doc = "Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists."]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub editorial: ::std::option::Option<EditorialCoverage>,
@@ -2132,6 +2162,85 @@ pub struct RankingSet {
 impl RankingSet {
     pub fn builder() -> builder::RankingSet {
         Default::default()
+    }
+}
+#[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "  \"default\": \"interview\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"interview\","]
+#[doc = "    \"scripted\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum RankingSetContentProfile {
+    #[serde(rename = "interview")]
+    Interview,
+    #[serde(rename = "scripted")]
+    Scripted,
+}
+impl ::std::fmt::Display for RankingSetContentProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Interview => f.write_str("interview"),
+            Self::Scripted => f.write_str("scripted"),
+        }
+    }
+}
+impl ::std::str::FromStr for RankingSetContentProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "interview" => Ok(Self::Interview),
+            "scripted" => Ok(Self::Scripted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for RankingSetContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RankingSetContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RankingSetContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for RankingSetContentProfile {
+    fn default() -> Self {
+        RankingSetContentProfile::Interview
     }
 }
 #[doc = "What was read. The candidate set is the authority for every candidate id below; the index and transcript are what the factors were measured against."]
@@ -4062,6 +4171,9 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct RankingSet {
         cohort: ::std::result::Result<::std::vec::Vec<super::Ranked>, ::std::string::String>,
+        content_profile:
+            ::std::result::Result<super::RankingSetContentProfile, ::std::string::String>,
+        declined: ::std::result::Result<::std::vec::Vec<super::Ranked>, ::std::string::String>,
         editorial: ::std::result::Result<
             ::std::option::Option<super::EditorialCoverage>,
             ::std::string::String,
@@ -4085,6 +4197,8 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 cohort: Err("no value supplied for cohort".to_string()),
+                content_profile: Ok(super::defaults::ranking_set_content_profile()),
+                declined: Ok(Default::default()),
                 editorial: Ok(Default::default()),
                 filtered: Ok(Default::default()),
                 inputs: Err("no value supplied for inputs".to_string()),
@@ -4107,6 +4221,26 @@ pub mod builder {
             self.cohort = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for cohort: {e}"));
+            self
+        }
+        pub fn content_profile<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RankingSetContentProfile>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content_profile = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content_profile: {e}"));
+            self
+        }
+        pub fn declined<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::Ranked>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.declined = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for declined: {e}"));
             self
         }
         pub fn editorial<T>(mut self, value: T) -> Self
@@ -4217,6 +4351,8 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 cohort: value.cohort?,
+                content_profile: value.content_profile?,
+                declined: value.declined?,
                 editorial: value.editorial?,
                 filtered: value.filtered?,
                 inputs: value.inputs?,
@@ -4234,6 +4370,8 @@ pub mod builder {
         fn from(value: super::RankingSet) -> Self {
             Self {
                 cohort: Ok(value.cohort),
+                content_profile: Ok(value.content_profile),
+                declined: Ok(value.declined),
                 editorial: Ok(value.editorial),
                 filtered: Ok(value.filtered),
                 inputs: Ok(value.inputs),
@@ -4597,5 +4735,11 @@ pub mod builder {
                 warnings: Ok(value.warnings),
             }
         }
+    }
+}
+#[doc = r" Generation of default values for serde."]
+pub mod defaults {
+    pub(super) fn ranking_set_content_profile() -> super::RankingSetContentProfile {
+        super::RankingSetContentProfile::Interview
     }
 }

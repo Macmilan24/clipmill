@@ -339,9 +339,42 @@ impl WorkerService {
                 });
             };
             self.policy.note_task_start(&task.resources.network_policy);
-            let recipe = recipes::worker_recipe(&task, &self.models)
-                .map_err(|error| WorkerError::Artifact(error.to_string()))?;
-            match prepare_worker_output(&self.artifacts, &task.task_id, recipe).await? {
+            let recipe = match recipes::worker_recipe(&task, &self.models) {
+                Ok(recipe) => recipe,
+                Err(error) => {
+                    let events = self
+                        .database
+                        .fail_task(
+                            task.lease_id.clone(),
+                            FailureClass::Deterministic as i32,
+                            format!("Cannot prepare {}: {error}", task.kind),
+                            now_millis(),
+                        )
+                        .await?;
+                    self.events.publish_all(events);
+                    self.scheduler.notify();
+                    continue;
+                }
+            };
+            let prepared = match prepare_worker_output(&self.artifacts, &task.task_id, recipe).await
+            {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    let events = self
+                        .database
+                        .fail_task(
+                            task.lease_id.clone(),
+                            FailureClass::Transient as i32,
+                            format!("Cannot prepare {} output: {error}", task.kind),
+                            now_millis(),
+                        )
+                        .await?;
+                    self.events.publish_all(events);
+                    self.scheduler.notify();
+                    continue;
+                }
+            };
+            match prepared {
                 PrepareOutcome::Hit(artifact) => {
                     self.complete_cache_hit(&task, artifact.artifact_id())
                         .await?;

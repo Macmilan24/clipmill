@@ -25,6 +25,11 @@ class Budget(BaseModel):
     spent_micro_usd: conint(ge=0)
 
 
+class ContentProfile(StrEnum):
+    interview = 'interview'
+    scripted = 'scripted'
+
+
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
@@ -120,3 +125,7 @@ class EditorialTrace(BaseModel):
         description='On the cloud route: the cap the run was given and what it spent, in millionths of a US dollar so the arithmetic is exact. Absent on the local route, which spends nothing.',
     )
     calls: list[Call]
+    content_profile: ContentProfile | None = Field(
+        'interview',
+        description='The editorial rubric selected for this run; older artifacts use interview.',
+    )

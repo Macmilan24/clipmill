@@ -77,6 +77,79 @@ fn commit_payload(
 }
 
 #[test]
+fn declared_inventory_keeps_exact_paths_sizes_and_verified_reads() {
+    let temp = TempDir::new().expect("tempdir");
+    let (mut store, _) = ArtifactStore::initialize(temp.path()).expect("store");
+    let staging = prepare_miss(&mut store, recipe(60));
+    let expected = BTreeMap::from([
+        ("tile_00001.jpg".parse::<ArtifactPath>().expect("path"), 1),
+        (
+            "tiles/tile_00002.jpg"
+                .parse::<ArtifactPath>()
+                .expect("path"),
+            7,
+        ),
+    ]);
+    for (path, length) in &expected {
+        staging
+            .create_file(path)
+            .expect("payload")
+            .write_all(&vec![42; usize::try_from(*length).expect("small payload")])
+            .expect("write");
+    }
+    let lease = store
+        .commit(
+            staging.id(),
+            expected.keys().cloned().collect(),
+            BTreeMap::new(),
+        )
+        .expect("commit");
+    let inventory = lease.declared_file_sizes().expect("validated inventory");
+    assert_eq!(inventory, expected);
+    assert!(!inventory.contains_key(&"tile_00002.jpg".parse().expect("absent path")));
+    let path: ArtifactPath = "tile_00001.jpg".parse().expect("path");
+    let disk_path = store
+        .paths()
+        .object_dir(lease.artifact_id())
+        .join(path.as_path());
+    make_writable(&disk_path);
+    fs::write(&disk_path, b"changed size").expect("tamper payload");
+    assert_eq!(
+        lease.declared_file_sizes().expect("declared sizes")[&path],
+        1
+    );
+    assert!(matches!(
+        lease.open_verified(&path),
+        Err(ArtifactError::PayloadSizeMismatch)
+    ));
+}
+
+#[test]
+fn declared_inventory_cannot_open_malformed_or_mismatched_manifests() {
+    for (field, invalid) in [
+        ("path", json!("../outside.jpg")),
+        ("sha256", json!("not-a-digest")),
+        ("bytes", json!(999)),
+    ] {
+        let temp = TempDir::new().expect("tempdir");
+        let (mut store, _) = ArtifactStore::initialize(temp.path()).expect("store");
+        let lease = commit_payload(&mut store, recipe(61), "tile.jpg", b"payload");
+        let id = lease.artifact_id();
+        drop(lease);
+        let path = store.paths().object_dir(id).join("manifest.json");
+        let mut manifest: Value =
+            serde_json::from_slice(&fs::read(&path).expect("manifest")).expect("manifest JSON");
+        manifest["files"][0][field] = invalid;
+        make_writable(&path);
+        fs::write(&path, serde_json::to_vec(&manifest).expect("encode")).expect("tamper manifest");
+        assert!(
+            store.open(id).is_err(),
+            "corrupt {field} must not produce an inventory"
+        );
+    }
+}
+
+#[test]
 fn deterministic_roundtrip_survives_reopen_and_response_loss() {
     let temp = TempDir::new().expect("tempdir");
     let root = temp.path().join("artifacts");

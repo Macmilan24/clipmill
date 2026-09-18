@@ -279,6 +279,7 @@ impl Daemon {
             decoder,
         );
 
+        service.resume_export_batches().await;
         Ok(Self {
             listener,
             worker_listener,

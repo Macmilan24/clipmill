@@ -191,8 +191,8 @@ export function ClipInspector({
       reasons.push({ label, quote });
     }
   };
-  add('Opens with', row.hook);
-  add('Pays off with', row.payoff);
+  add(row.review ? 'Opening excerpt' : 'Opens with', row.hook);
+  add(row.review ? 'Closing excerpt' : 'Pays off with', row.payoff);
   for (const axis of hero) {
     add(axis.label, axis.evidence[0]);
   }
@@ -320,7 +320,7 @@ export function ClipInspector({
                   {row.review ? (
                     <div className="min-w-0">
                       <span className="mb-3 inline-flex items-center gap-2 rounded-md bg-[var(--cm-recessed)] px-2.5 py-1.5 text-[12px] font-medium">
-                        {row.band === 'needs_review' ? (
+                        {row.band === 'needs_review' || row.band === 'declined' ? (
                           <TriangleAlert className="size-3.5 text-[var(--cm-warning-ink)]" />
                         ) : (
                           <Check className="size-3.5 text-[var(--cm-success-ink)]" />
@@ -438,7 +438,7 @@ export function ClipInspector({
                 {reasons.length > 0 && (
                   <div className="flex flex-col gap-3">
                     <h3 className="border-b border-[var(--cm-glass-border)] pb-1 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-                      Why selected
+                      {row.review ? 'Source excerpts' : 'Why selected'}
                     </h3>
                     {reasons.map((reason) => (
                       <QuoteCard
@@ -570,6 +570,12 @@ export function ClipInspector({
           </Tabs>
 
           <footer className="flex shrink-0 flex-col gap-2 border-t border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-4">
+            {row.review?.status === 'rejected' && (
+              <p className="text-[11px] leading-relaxed text-[var(--cm-warning-ink)]">
+                The model did not recommend this moment. You can inspect the evidence and create
+                your own edit; its original review is preserved.
+              </p>
+            )}
             {notice && (
               <p
                 className="flex items-start gap-2 text-[11px] text-[var(--cm-text-secondary)]"
@@ -584,7 +590,13 @@ export function ClipInspector({
               disabled={busy}
               onClick={() => onDecide('approved')}
             >
-              {busy ? 'Working…' : onEdit ? 'Approve and open the edit' : 'Approve for the editor'}
+              {busy
+                ? 'Working…'
+                : row.review?.status === 'rejected'
+                  ? 'Edit despite review'
+                  : onEdit
+                    ? 'Approve and open the edit'
+                    : 'Approve for the editor'}
             </Button>
             {onEdit && (
               <Button variant="outline" className="w-full justify-center gap-2" onClick={onEdit}>

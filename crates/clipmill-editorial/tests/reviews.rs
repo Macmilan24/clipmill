@@ -214,3 +214,124 @@ fn contradictory_accepted_verdicts_stay_needs_review() {
         review::apply_looks(result, &serde_json::from_value(looks).unwrap(), &judgments).unwrap();
     assert_eq!(result.editorial.as_ref().unwrap().failed_visual_checks, 1);
 }
+
+#[test]
+fn declines_preserve_the_exact_span_and_review_for_human_inspection() {
+    let (mut ranking, mut judgments) = fixture();
+    let original = ranking.cohort[0].clone();
+    ranking.cohort[0].title = Some("The unfinished explanation".parse().unwrap());
+    judgments["candidates"][0]["status"] = json!("rejected");
+    judgments["candidates"][0]["reasons"] =
+        json!([{"code":"incomplete_payoff","detail":"The next sentence contains the answer"}]);
+    let result = review::apply(
+        ranking,
+        &serde_json::from_value(judgments).unwrap(),
+        ID,
+        14,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(result.declined.len(), 1);
+    let declined = &result.declined[0];
+    assert_eq!(declined.candidate_id, original.candidate_id);
+    assert_eq!(
+        serde_json::to_value(&declined.boundary).unwrap(),
+        serde_json::to_value(&original.boundary).unwrap()
+    );
+    assert_eq!(
+        declined.title.as_ref().unwrap().as_str(),
+        "The unfinished explanation"
+    );
+    assert_eq!(
+        declined.review.as_ref().unwrap().status,
+        clipmill_contracts::schemas::ranking_set::RankedReviewStatus::Rejected
+    );
+    assert!(declined.review.as_ref().unwrap().reasons[0].contains("next sentence"));
+    assert!(
+        !result
+            .cohort
+            .iter()
+            .any(|row| row.candidate_id == original.candidate_id)
+    );
+    assert!(
+        !result
+            .selected
+            .iter()
+            .any(|id| id.as_str() == original.candidate_id.as_str())
+    );
+}
+
+#[test]
+fn uncertainty_alone_is_not_a_semantic_rejection() {
+    for code in ["visual_dependency", "transcript_uncertain"] {
+        let (ranking, mut judgments) = fixture();
+        judgments["candidates"][0]["status"] = json!("rejected");
+        judgments["candidates"][0]["reasons"] =
+            json!([{"code":code,"detail":"Evidence is not clear enough"}]);
+        let result = review::apply(
+            ranking,
+            &serde_json::from_value(judgments).unwrap(),
+            ID,
+            14,
+            &[],
+        )
+        .unwrap();
+        assert!(result.declined.is_empty());
+        assert_eq!(result.cohort.len(), 10);
+        assert!(
+            result
+                .cohort
+                .iter()
+                .any(|r| r.review.as_ref().unwrap().status
+                    == clipmill_contracts::schemas::ranking_set::RankedReviewStatus::NeedsReview)
+        );
+    }
+}
+
+#[test]
+fn a_review_for_another_content_profile_is_refused() {
+    let (ranking, mut judgments) = fixture();
+    judgments["content_profile"] = json!("scripted");
+    let error = review::apply(
+        ranking,
+        &serde_json::from_value(judgments).unwrap(),
+        ID,
+        14,
+        &[],
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("content profile"));
+}
+
+#[test]
+fn a_visual_answer_attaches_to_a_decline_without_overriding_missing_payoff() {
+    let (ranking, mut judgments) = fixture();
+    let candidate_id = ranking.cohort[0].candidate_id.to_string();
+    judgments["candidates"][0]["status"] = json!("rejected");
+    judgments["candidates"][0]["visual_dependency"] = json!(true);
+    judgments["candidates"][0]["reasons"] =
+        json!([{"code":"incomplete_payoff","detail":"The answer was cut off"}]);
+    let judgments: EditorialJudgments = serde_json::from_value(judgments).unwrap();
+    let ranking = review::apply(ranking, &judgments, ID, 14, &[]).unwrap();
+    let mut looks: Value = serde_json::from_str(include_str!(
+        "../../../contracts/fixtures/editorial.looks/valid/talk.json"
+    ))
+    .unwrap();
+    looks["source_fingerprint"] = json!(ranking.source_fingerprint.as_str());
+    looks["inputs"]["judgments_artifact_id"] = json!(ID);
+    looks["checks"] = json!([{"candidate_id":candidate_id,"outcome":"answered","answer":"yes","detail":"The diagram is visible","frames":[{"t_ticks":0}],"question":"Is the diagram visible?"}]);
+    let result =
+        review::apply_looks(ranking, &serde_json::from_value(looks).unwrap(), &judgments).unwrap();
+    assert_eq!(result.declined.len(), 1);
+    let review = result.declined[0].review.as_ref().unwrap();
+    assert_eq!(
+        review.status,
+        clipmill_contracts::schemas::ranking_set::RankedReviewStatus::Rejected
+    );
+    assert!(
+        review
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("diagram is visible"))
+    );
+}

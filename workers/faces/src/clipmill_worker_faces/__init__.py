@@ -58,7 +58,7 @@ from . import tracking
 from .frames import FRAMES_DESCRIPTOR, DecodeFailed, decode_frames, letterbox_for, read_frames
 from .yunet import IMPLEMENTATION, INPUT_SIZE, YuNet
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 #: The registered task kind, which is what the daemon routes by.
 CAPABILITIES = ("detect-faces",)
 OUTPUT_FILE = "faces.json"
@@ -107,12 +107,12 @@ def execute_faces(context: TaskContext) -> tuple[str, ...]:
     try:
         frames_input = require_input(context, FRAMES_KIND)
     except MissingInputError as error:
-        raise DeterministicTaskError(str(error)) from error
+        raise DeterministicTaskError(str(error), code="frames.input_invalid") from error
     try:
         artifact = frames_input.artifact
         sampled = read_frames(artifact, context.artifact_file(artifact, FRAMES_DESCRIPTOR))
     except ArtifactVerificationError as error:
-        raise DeterministicTaskError(str(error)) from error
+        raise DeterministicTaskError(str(error), code="frames.input_invalid") from error
 
     settings = _settings(payload)
     if not sampled.frames:
@@ -130,7 +130,8 @@ def execute_faces(context: TaskContext) -> tuple[str, ...]:
         width, height = frames_module.jpeg_size(first)
         box = letterbox_for(width, height, INPUT_SIZE)
     except (ArtifactVerificationError, DecodeFailed) as error:
-        raise DeterministicTaskError(str(error)) from error
+        code = error.code if isinstance(error, DecodeFailed) else "frames.input_invalid"
+        raise DeterministicTaskError(str(error), code=code) from error
 
     per_frame: list[tuple[int, list]] = []
     examined = 0
@@ -144,7 +145,8 @@ def execute_faces(context: TaskContext) -> tuple[str, ...]:
             # Frames that will not decode will not decode next time either.
             # Publishing "nobody was on screen" would be a lie with a content
             # address attached.
-            raise DeterministicTaskError(str(error)) from error
+            code = error.code if isinstance(error, DecodeFailed) else "frames.input_invalid"
+            raise DeterministicTaskError(str(error), code=code) from error
         for frame, image in zip(batch, pixels, strict=True):
             found = detector.detect(image, settings.score_threshold, settings.nms_iou)
             per_frame.append((frame.t_ticks, found))
