@@ -36,6 +36,30 @@ const PLAN_DEBOUNCE_MS = 250;
 /** Past this, the rights confirmation applies. The daemon holds the same rule. */
 const RIGHTS_GATE_SECONDS = 60;
 const DURATION_GATE = 'duration_60s';
+/** The confirmation that ships a subtitle file faster than the reading profile. */
+const READING_RATE_GATE = 'captions_reading_rate';
+const HOT_CAPTION_CODE = 'captions.reading_rate';
+/** The tokens that make each clip's name its own; the daemon insists on one. */
+const UNIQUE_TOKENS = ['{index}', '{clip}', '{address}'] as const;
+
+/**
+ * The pattern the daemon is asked to resolve.
+ *
+ * A plain name is what most people type, and the daemon is right that a
+ * plain name would give every clip in an export the same file. So the name
+ * is kept and the clip's number is added to it — `reacher` becomes
+ * `reacher-{index}`, which is `reacher-01` — rather than refusing what was
+ * typed. Nothing is added to a pattern that already names each clip, and
+ * an empty field takes the default.
+ */
+export function effectivePattern(typed: string): string {
+  const pattern = typed.trim();
+  if (pattern === '') {
+    return DEFAULT_PATTERN;
+  }
+  return UNIQUE_TOKENS.some((token) => pattern.includes(token)) ? pattern : `${pattern}-{index}`;
+}
+const DEFAULT_PATTERN = '{index}-{clip}';
 /**
  * What Phase 1 attests. One value, because the document is model-assisted and
  * hand-authored in exactly one way, and a picker offering positions nobody can
@@ -65,6 +89,7 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
   const [destination, setDestination] = useState('');
   const [pattern, setPattern] = useState('{index}-{clip}');
   const [gatePassed, setGatePassed] = useState(false);
+  const [hotCaptionsConfirmed, setHotCaptionsConfirmed] = useState(false);
   const [plan, setPlan] = useState<ExportPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -136,15 +161,26 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
     return {
       docId,
       destinationDir: destination,
-      namingPattern: pattern,
+      namingPattern: effectivePattern(pattern),
       sourceAttestation: ATTESTATION,
-      gatesPassed: gatePassed ? [DURATION_GATE] : [],
+      gatesPassed: [
+        ...(gatePassed ? [DURATION_GATE] : []),
+        ...(hotCaptionsConfirmed ? [READING_RATE_GATE] : []),
+      ],
       aiAssistance: [...AI_ASSISTANCE],
       index: 1,
       date: today(),
       title,
     };
-  }, [docId, destination, pattern, gatePassed, title]);
+  }, [docId, destination, pattern, gatePassed, hotCaptionsConfirmed, title]);
+
+  // The captions the strip named as too fast to read. Once confirmed they
+  // come back as advisories under the same code, so the confirmation stays
+  // on screen with its count rather than vanishing the moment it is given.
+  const hotCaptions = useMemo(
+    () => (plan?.findings ?? []).filter((finding) => finding.code === HOT_CAPTION_CODE),
+    [plan],
+  );
 
   useEffect(() => {
     if (request === null || destination.trim() === '') {
@@ -258,6 +294,9 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
       attestation={ATTESTATION}
       rightsGateNeeded={rightsGateNeeded}
       rightsGatePassed={gatePassed}
+      hotCaptions={hotCaptions}
+      hotCaptionsConfirmed={hotCaptionsConfirmed}
+      onHotCaptionsChange={setHotCaptionsConfirmed}
       plan={plan}
       planning={planning}
       busy={busy}
