@@ -14,7 +14,15 @@
  * approved would eventually not be the name they got. So every keystroke asks
  * the daemon, and what is drawn is the daemon's answer.
  */
-import { AlertTriangle, Eye, FolderOpen, Info, PackageCheck, Upload } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Eye,
+  FolderOpen,
+  Info,
+  PackageCheck,
+  Upload,
+} from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -71,13 +79,14 @@ function patternProblemOf(error: string | null): string | null {
 }
 
 const DELIVERY: readonly (readonly [string, string])[] = [
-  ['Picture', '1080 × 1920, H.264, CRF 18'],
-  ['Sound', 'AAC, −14 LUFS integrated, −1.0 dBTP ceiling'],
-  ['Captions', 'burned in, plus SRT and WebVTT sidecars'],
-  ['Also written', 'thumbnail, metadata JSON, render manifest, sha256 sums'],
+  ['Video', '1080 × 1920, H.264, CRF 18'],
+  ['Audio', 'AAC, −14 LUFS integrated, −1.0 dBTP ceiling'],
+  ['Captions', 'Burned in, with SRT and WebVTT files'],
+  ['Additional files', 'Thumbnail, metadata, render manifest and checksums'],
 ];
 
 export interface ExportProps {
+  readonly onEdit?: (() => void) | undefined;
   readonly docId: string | null;
   /** What the clip is called — the project and the clip — when the route knew. */
   readonly labels: { readonly project?: string; readonly clip?: string } | null;
@@ -138,197 +147,208 @@ export function Export(props: ExportProps): JSX.Element {
   const advisory = (props.plan?.findings ?? []).filter(
     (finding) => finding.severity === 'advisory',
   );
-  const ready = props.plan?.passes === true && !props.busy;
+  const ready = props.plan?.passes === true && !props.busy && !props.planning;
   const delivering = props.delivery !== null && !props.delivery.settled;
   const patternProblem = patternProblemOf(props.error);
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1" data-testid="export-clip">
-        <h1 className="text-sm font-semibold text-[var(--cm-ink-1)]">
-          {props.labels
-            ? [props.labels.project, props.labels.clip].filter(Boolean).join(' · ')
-            : 'This clip'}
-        </h1>
-        <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">{props.docId}</span>
+    <div className="export-page">
+      <header className="workspace-heading" data-testid="export-clip">
+        <div>
+          <h1 className="workspace-title">Export clip</h1>
+          <p className="workspace-subtitle mt-1">
+            {props.labels
+              ? [props.labels.project, props.labels.clip].filter(Boolean).join(' · ')
+              : 'Your edited clip'}
+          </p>
+        </div>
+        {props.onEdit && (
+          <Button variant="outline" size="sm" onClick={props.onEdit}>
+            <ArrowLeft className="size-4" />
+            Back to editor
+          </Button>
+        )}
       </header>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <FolderOpen className="size-4" /> Where it goes
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <Label htmlFor="export-destination">Folder</Label>
-              <Input
-                id="export-destination"
-                value={props.destination}
-                placeholder="Choose a local folder"
-                onChange={(event) => props.onDestinationChange(event.target.value)}
-              />
-            </div>
-            <Button variant="outline" onClick={props.onChooseFolder} disabled={props.busy}>
-              Browse
-            </Button>
-          </div>
-          <p className="text-xs text-[var(--cm-ink-3)]">
-            Local disks only. A transfer over a network share that drops leaves a file that looks
-            finished, and nothing here could tell you afterwards which one you had.
-          </p>
-
-          <div>
-            <Label htmlFor="export-pattern">Name pattern</Label>
-            <Input
-              id="export-pattern"
-              value={props.pattern}
-              placeholder={DEFAULT_PATTERN}
-              aria-invalid={patternProblem !== null}
-              onChange={(event) => props.onPatternChange(event.target.value)}
-            />
-            {patternProblem === null ? (
-              <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
-                A plain name works; {'{index}'} is added to it so each clip gets its own. Fills:{' '}
-                {'{index} {clip} {project} {duration} {date} {address}'}.
-              </p>
-            ) : (
-              <p
-                className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--cm-danger-ink)]"
-                data-testid="pattern-problem"
-              >
-                <span>{patternProblem}</span>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => props.onPatternChange(DEFAULT_PATTERN)}
-                >
-                  Use {DEFAULT_PATTERN}
+      <div className="export-grid">
+        <div className="export-column">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <FolderOpen className="size-4" /> Export location
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Label htmlFor="export-destination">Folder</Label>
+                  <Input
+                    id="export-destination"
+                    value={props.destination}
+                    placeholder="Choose a local folder"
+                    onChange={(event) => props.onDestinationChange(event.target.value)}
+                  />
+                </div>
+                <Button variant="outline" onClick={props.onChooseFolder} disabled={props.busy}>
+                  Browse
                 </Button>
-              </p>
-            )}
-          </div>
-
-          <NamePreview plan={props.plan} planning={props.planning} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Before it leaves</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {props.rightsGateNeeded && (
-            <label className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={props.rightsGatePassed}
-                onChange={(event) => props.onRightsGateChange(event.target.checked)}
-              />
-              <span>
-                This clip runs past a minute. I hold the rights to this footage, or it is licensed
-                for this use.{' '}
-                <span className="text-[var(--cm-ink-3)]">
-                  Recorded verbatim in the delivered metadata as “{props.attestation}”.
-                </span>
-              </span>
-            </label>
-          )}
-
-          {props.hotCaptions.length > 0 && (
-            <label
-              className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs"
-              data-testid="hot-captions-gate"
-            >
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={props.hotCaptionsConfirmed}
-                onChange={(event) => props.onHotCaptionsChange(event.target.checked)}
-              />
-              <span>
-                {props.hotCaptions.length === 1
-                  ? 'One caption'
-                  : `${props.hotCaptions.length} captions`}{' '}
-                in the subtitle file run faster than a reader can follow (
-                {hottestRate(props.hotCaptions)}; the profile allows 20 a second). The speech is
-                that fast, and slowing the captions would mean hiding words that were said. Export
-                them as they are.{' '}
-                <span className="text-[var(--cm-ink-3)]">
-                  Recorded in the delivered metadata as “captions_reading_rate”.
-                </span>
-              </span>
-            </label>
-          )}
-
-          {props.planning && (
-            <p className="flex items-center gap-2 text-xs text-[var(--cm-ink-2)]">
-              <Spinner className="size-3" /> Checking…
-            </p>
-          )}
-
-          {blocking.map((finding) => (
-            <Alert key={finding.code} variant="destructive">
-              <AlertTriangle />
-              <AlertDescription>
-                <span className="font-mono text-[10px] opacity-70">{finding.code}</span>{' '}
-                {finding.detail}
-              </AlertDescription>
-            </Alert>
-          ))}
-          {advisory.map((finding) => (
-            <Alert key={finding.code}>
-              <Info />
-              <AlertDescription>
-                <span className="font-mono text-[10px] opacity-70">{finding.code}</span>{' '}
-                {finding.detail}
-              </AlertDescription>
-            </Alert>
-          ))}
-          {props.plan !== null && !props.planning && props.plan.findings.length === 0 && (
-            <p className="flex items-center gap-2 text-xs text-[var(--cm-success-ink)]">
-              <PackageCheck className="size-4" /> Rights recorded, no cut inside a word, sidecars
-              readable at speed, room on the disk.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">What gets written</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <dl className="space-y-1 text-xs">
-            {DELIVERY.map(([label, value]) => (
-              <div key={label} className="flex justify-between gap-4">
-                <dt className="text-[var(--cm-ink-2)]">{label}</dt>
-                <dd className="text-right text-[var(--cm-ink-1)]">{value}</dd>
               </div>
-            ))}
-            <Separator className="my-2" />
-            <div className="flex justify-between gap-4">
-              <dt className="text-[var(--cm-ink-2)]">Estimated size</dt>
-              <dd className="font-mono text-[var(--cm-ink-1)]">
-                {props.plan === null ? '—' : formatBytes(props.plan.estimatedBytes)}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-[var(--cm-ink-2)]">Free where it lands</dt>
-              <dd className="font-mono text-[var(--cm-ink-1)]">
-                {props.plan?.availableBytes === undefined
-                  ? 'not readable'
-                  : formatBytes(props.plan.availableBytes)}
-              </dd>
-            </div>
-          </dl>
-          <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-            These are not settings. Phase 1 delivers one profile, and a control that let you change
-            it would be a control that changed nothing.
-          </p>
-        </CardContent>
-      </Card>
+              <p className="text-xs text-[var(--cm-ink-3)]">
+                Choose a folder on this device for the video and its accompanying files.
+              </p>
+
+              <div>
+                <Label htmlFor="export-pattern">Name pattern</Label>
+                <Input
+                  id="export-pattern"
+                  value={props.pattern}
+                  placeholder={DEFAULT_PATTERN}
+                  aria-invalid={patternProblem !== null}
+                  onChange={(event) => props.onPatternChange(event.target.value)}
+                />
+                {patternProblem === null ? (
+                  <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
+                    Enter a name or use {'{index}'}, {'{clip}'}, {'{project}'}, {'{duration}'},{' '}
+                    {'{date}'} or {'{address}'}. Plain names get a clip number automatically.
+                  </p>
+                ) : (
+                  <p
+                    className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--cm-danger-ink)]"
+                    data-testid="pattern-problem"
+                  >
+                    <span>{patternProblem}</span>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => props.onPatternChange(DEFAULT_PATTERN)}
+                    >
+                      Use {DEFAULT_PATTERN}
+                    </Button>
+                  </p>
+                )}
+              </div>
+
+              <NamePreview plan={props.plan} planning={props.planning} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Export checks</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {props.rightsGateNeeded && (
+                <label className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={props.rightsGatePassed}
+                    onChange={(event) => props.onRightsGateChange(event.target.checked)}
+                  />
+                  <span>
+                    This clip runs past a minute. I hold the rights to this footage, or it is
+                    licensed for this use.{' '}
+                    <span className="text-[var(--cm-ink-3)]">
+                      Recorded verbatim in the delivered metadata as “{props.attestation}”.
+                    </span>
+                  </span>
+                </label>
+              )}
+
+              {props.hotCaptions.length > 0 && (
+                <label
+                  className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs"
+                  data-testid="hot-captions-gate"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={props.hotCaptionsConfirmed}
+                    onChange={(event) => props.onHotCaptionsChange(event.target.checked)}
+                  />
+                  <span>
+                    {props.hotCaptions.length === 1
+                      ? 'One caption'
+                      : `${props.hotCaptions.length} captions`}{' '}
+                    in the subtitle file run faster than a reader can follow (
+                    {hottestRate(props.hotCaptions)}; the profile allows 20 a second). The speech is
+                    that fast, and slowing the captions would mean hiding words that were said.
+                    Export them as they are.{' '}
+                    <span className="text-[var(--cm-ink-3)]">
+                      Recorded in the delivered metadata as “captions_reading_rate”.
+                    </span>
+                  </span>
+                </label>
+              )}
+
+              {props.planning && (
+                <p className="flex items-center gap-2 text-xs text-[var(--cm-ink-2)]">
+                  <Spinner className="size-3" /> Checking…
+                </p>
+              )}
+
+              {blocking.map((finding) => (
+                <Alert key={finding.code} variant="destructive">
+                  <AlertTriangle />
+                  <AlertDescription>
+                    <span className="font-mono text-[10px] opacity-70">{finding.code}</span>{' '}
+                    {finding.detail}
+                  </AlertDescription>
+                </Alert>
+              ))}
+              {advisory.map((finding) => (
+                <Alert key={finding.code}>
+                  <Info />
+                  <AlertDescription>
+                    <span className="font-mono text-[10px] opacity-70">{finding.code}</span>{' '}
+                    {finding.detail}
+                  </AlertDescription>
+                </Alert>
+              ))}
+              {props.plan !== null && !props.planning && props.plan.findings.length === 0 && (
+                <p className="flex items-center gap-2 text-xs text-[var(--cm-success-ink)]">
+                  <PackageCheck className="size-4 shrink-0" /> All checks passed. Your clip is ready
+                  to export.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        <div className="export-column">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Delivery format</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-1 text-xs">
+                {DELIVERY.map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-4">
+                    <dt className="text-[var(--cm-ink-2)]">{label}</dt>
+                    <dd className="text-right text-[var(--cm-ink-1)]">{value}</dd>
+                  </div>
+                ))}
+                <Separator className="my-2" />
+                <div className="flex justify-between gap-4">
+                  <dt className="text-[var(--cm-ink-2)]">Estimated size</dt>
+                  <dd className="font-mono text-[var(--cm-ink-1)]">
+                    {props.plan === null ? '—' : formatBytes(props.plan.estimatedBytes)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-[var(--cm-ink-2)]">Free disk space</dt>
+                  <dd className="font-mono text-[var(--cm-ink-1)]">
+                    {props.plan?.availableBytes === undefined
+                      ? 'not readable'
+                      : formatBytes(props.plan.availableBytes)}
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
+                Vertical video with captions, ready for your final review before uploading.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {props.error !== null && patternProblem === null && (
         <Alert variant="destructive">
@@ -341,7 +361,7 @@ export function Export(props: ExportProps): JSX.Element {
         <DeliveryCard delivery={props.delivery} onReveal={props.onReveal} />
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="export-actions">
         <Button onClick={props.onExport} disabled={!ready || delivering}>
           {props.busy
             ? 'Working…'
@@ -350,7 +370,7 @@ export function Export(props: ExportProps): JSX.Element {
               : 'Export'}
         </Button>
         <Button variant="outline" onClick={props.onArchive} disabled={props.busy}>
-          Archive this project
+          Save project archive
         </Button>
         {props.archive !== null && (
           <span className="text-xs text-[var(--cm-ink-2)]">
@@ -360,10 +380,8 @@ export function Export(props: ExportProps): JSX.Element {
         )}
       </div>
       <p className="text-xs text-[var(--cm-ink-3)]">
-        An archive carries the project&rsquo;s state, its edit documents, their command logs, and
-        the render manifests, under a published schema. Your recordings are named in it rather than
-        copied — they are already on your disk, and an archive that duplicated them is one nobody
-        makes twice.
+        A project archive saves your edits and export records. Source recordings stay in their
+        original location.
       </p>
     </div>
   );
@@ -436,8 +454,8 @@ function DeliveryCard({
         </ul>
         {delivery.interruption !== null && (
           <p className="text-xs text-[var(--cm-ink-3)]" data-testid="delivery-interruption">
-            The export goes on in the daemon; the last look at it failed ({delivery.interruption}).
-            Asking again.
+            Export is still running in the background. Reconnecting to its progress… (
+            {delivery.interruption})
           </p>
         )}
         {delivery.failure !== null && (

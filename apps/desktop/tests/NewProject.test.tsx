@@ -109,12 +109,40 @@ describe('the New Project screen', () => {
     });
   });
 
-  /** The cloud toggle is a statement of what this build does, not a preference. */
-  it('leaves the cloud switch off and unswitchable', () => {
-    show();
-    const cloud = screen.getByRole('switch', { name: 'Use cloud models' });
-    expect(cloud.getAttribute('data-state')).toBe('unchecked');
-    expect(cloud.hasAttribute('disabled')).toBe(true);
+  it('defaults to local Qwen and requires fresh cloud consent after changing routes', async () => {
+    const { submitted } = show();
+    await chooseFile();
+    fireEvent.click(screen.getByRole('checkbox'));
+    const route = screen.getByLabelText('Editorial analysis');
+    expect((route as HTMLSelectElement).value).toBe('local');
+    fireEvent.change(route, { target: { value: 'cloud' } });
+    expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: /Allow transcript sharing/ }));
+    fireEvent.change(route, { target: { value: 'local' } });
+    fireEvent.change(route, { target: { value: 'cloud' } });
+    expect(
+      screen.getByRole('checkbox', { name: /Allow transcript sharing/ }).getAttribute('data-state'),
+    ).toBe('unchecked');
+    fireEvent.click(screen.getByRole('checkbox', { name: /Allow transcript sharing/ }));
+    fireEvent.change(screen.getByLabelText('Maximum spend for this run (USD)'), {
+      target: { value: '0' },
+    });
+    expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    fireEvent.change(screen.getByLabelText('Maximum spend for this run (USD)'), {
+      target: { value: '2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Analyze video/ }));
+    await waitFor(() => expect(submitted).toHaveLength(1));
+    expect(submitted[0]?.request.localEditorial).toBe(false);
+    expect(submitted[0]?.request.cloudEditorial).toEqual({
+      transcriptConsent: true,
+      budgetMicroUsd: 2000000,
+      model: 'claude-sonnet-4-6',
+    });
   });
 
   it('sends the preset, the count and the language the form was set to', async () => {
@@ -137,6 +165,7 @@ describe('the New Project screen', () => {
     // Ticks, at the contract's 1/90000, converted once on this side.
     expect(submitted[0]?.request).toEqual({
       sourceId: 'src_prj_pricing-mistakes-episode-41',
+      localEditorial: true,
       language: '',
       minTicks: 60 * 90_000,
       maxTicks: 180 * 90_000,

@@ -20,7 +20,9 @@ SUPPORTED_PROTOCOLS = ("1.2", "1.1")
 # because that is what a worker knows about itself; the daemon maps them to
 # accelerator classes. "metal" is the 1.1 spelling, kept so those workers
 # still register.
-BACKENDS = frozenset({"cpu", "onnx-cpu", "mlx", "coreml", "metal", "cuda"})
+# The optional cloud adapter consumes CPU/RAM for HTTP handling, with no local
+# accelerator; cloud permission is still declared and checked per task.
+BACKENDS = frozenset({"cpu", "cloud", "onnx-cpu", "mlx", "coreml", "metal", "cuda"})
 # Declared resources joined the signature in 1.2, so they cannot be widened
 # after signing.
 _RESOURCES_PROTOCOL = "1.2"

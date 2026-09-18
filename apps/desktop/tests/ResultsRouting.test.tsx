@@ -14,7 +14,7 @@
  * been analyzed, and has an edit of its own, and approving a clip in the older
  * one must name the older one's document, in full, to whatever opens next.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '../src/components/ui/tooltip.js';
@@ -24,6 +24,7 @@ import type { ClipRef } from '../src/shell/route.js';
 import {
   CANDIDATE,
   OLD,
+  OTHER_CANDIDATE,
   OLD_DOC,
   OLD_JOB,
   OLD_SOURCE,
@@ -213,4 +214,50 @@ describe('approving a clip in an older project', () => {
     expect(seen.directed[0]).toMatchObject({ cut: 'alternative', variation: true });
     expect(seen.directed[0]?.approve).not.toBe(true);
   });
+});
+
+it('does not substitute the newest project when the requested project is missing', async () => {
+  show('removed-project');
+  expect(await screen.findByText(/this project is no longer available/i)).toBeTruthy();
+  expect(screen.getByRole('combobox').textContent).toContain('Choose a project');
+});
+
+it('does not reopen a clip after the user leaves it during approval', async () => {
+  const shell = fakeApi(twoProjects());
+  const original = shell.directClip;
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const direct = vi.spyOn(shell, 'directClip').mockImplementation(async (request) => {
+    await pending;
+    return original(request);
+  });
+  const onEdit = vi.fn();
+  const at = (candidateId: string) => (
+    <TooltipProvider>
+      <ResultsScreen
+        candidateId={candidateId}
+        projectId={OLD}
+        sourceId={OLD_SOURCE}
+        jobId={OLD_JOB}
+        onInspect={() => {}}
+        onEdit={onEdit}
+        onBack={() => {}}
+        api={shell}
+      />
+    </TooltipProvider>
+  );
+  const view = render(at(CANDIDATE));
+  fireEvent.click(await screen.findByRole('button', { name: /approve for the editor/i }));
+  await waitFor(() => expect(direct).toHaveBeenCalledOnce());
+  view.rerender(at(OTHER_CANDIDATE));
+  await act(async () => finish());
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /approve for the editor/i })).toHaveProperty(
+      'disabled',
+      false,
+    ),
+  );
+  expect(onEdit).not.toHaveBeenCalled();
 });

@@ -15,6 +15,9 @@ ALLOWED = {
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    # Boost's notice-preserving grant, used by PyTorch's bundled sources:
+    # https://spdx.org/licenses/BSL-1.0.html
+    "BSL-1.0",
     "CC0-1.0",
     # Python 1.6's licence, and the one term here that is a judgement rather
     # than a formality. It reaches this project once, through `regex`, whose
@@ -29,6 +32,9 @@ ALLOWED = {
     "ISC",
     "MIT",
     "MIT-0",
+    # Pillow's notice + no-endorsement grant, distinct from SPDX MIT:
+    # https://spdx.org/licenses/MIT-CMU.html
+    "MIT-CMU",
     # File-level copyleft, and the line worth being explicit about. MPL-2.0
     # obliges whoever *modifies* an MPL file to share that modification; it
     # says nothing about the code it is distributed alongside and nothing at
@@ -51,6 +57,17 @@ ALIASES = {
     "MIT License": "MIT",
 }
 PACKAGE_OVERRIDES = {"annotated-types": "MIT"}
+# Exact releases whose installed LICENSE files disambiguate legacy metadata.
+# Do not alias bare "BSD" globally: it could also mean the advertising clause.
+# SymPy's notice additionally includes MIT-licensed latex2sympy sources.
+REVIEWED_DECLARATIONS = {
+    ("mpmath", "1.3.0", "BSD"): "BSD-3-Clause",
+    ("sympy", "1.14.0", "BSD"): "BSD-3-Clause AND MIT",
+    ("torchvision", "0.29.0", "BSD"): "BSD-3-Clause",
+}
+# This exception relaxes Apache obligations; it is not valid with any arbitrary
+# base license. https://spdx.org/licenses/LLVM-exception.html
+ALLOWED_EXCEPTIONS = {("Apache-2.0", "LLVM-exception")}
 CLASSIFIER_LICENSES = {
     "License :: OSI Approved :: Apache Software License": "Apache-2.0",
     "License :: OSI Approved :: BSD License": "BSD-3-Clause",
@@ -98,7 +115,9 @@ def check_current_environment() -> int:
             continue
         expression = distribution.metadata.get("License-Expression")
         raw_license = expression or distribution.metadata.get("License")
-        license_name = PACKAGE_OVERRIDES.get(name)
+        license_name = REVIEWED_DECLARATIONS.get((name, distribution.version, raw_license))
+        if not raw_license or raw_license == "UNKNOWN":
+            license_name = PACKAGE_OVERRIDES.get(name)
         if license_name is None and raw_license and raw_license != "UNKNOWN":
             license_name = ALIASES.get(raw_license, raw_license)
         # A `License` field is not required to hold an identifier, and some
@@ -114,7 +133,7 @@ def check_current_environment() -> int:
             matches = {
                 CLASSIFIER_LICENSES[value] for value in classifiers if value in CLASSIFIER_LICENSES
             }
-            if len(matches) == 1 and not _is_identifier(license_name):
+            if len(matches) == 1 and not expression and not _is_identifier(license_name):
                 license_name = matches.pop()
         checked += 1
         if not is_allowed(license_name):
@@ -130,34 +149,66 @@ def check_current_environment() -> int:
 
 
 def is_allowed(expression: str | None) -> bool:
-    """Whether an SPDX expression is entirely on the allowlist.
+    """Read SPDX AND/OR expressions, grouping, and explicitly reviewed WITH pairs.
 
-    Packages increasingly publish real expressions rather than a single
-    identifier — NumPy ships "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND
-    CC0-1.0" — and reading those literally rejects a package every term of
-    which is already permitted. That is a parsing gap, not a policy position,
-    and treating it as one by adding the whole string to the allowlist would
-    mean the next version's slightly different string fails again.
-
-    `AND` requires every term; `OR` accepts any. Anything with parentheses or
-    both operators is left to a literal match and otherwise refused, because
-    an expression this tool cannot read confidently is one a human should.
+    AND binds more tightly than OR. Every branch is parsed, including branches
+    that do not affect the result, so malformed text cannot hide after OR MIT.
+    Unknown licenses remain refused unless a valid OR offers an allowed choice.
     """
 
     if not expression:
         return False
     expression = ALIASES.get(expression, expression)
-    if expression in ALLOWED:
-        return True
-    if "(" in expression or ")" in expression:
+    tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9.+:-]*|[()]", expression)
+    if "".join(tokens) != re.sub(r"\s+", "", expression):
         return False
-    terms = [ALIASES.get(term, term) for term in re.split(r"\s+AND\s+", expression)]
-    if len(terms) > 1:
-        return all(is_allowed(term) for term in terms)
-    terms = [ALIASES.get(term, term) for term in re.split(r"\s+OR\s+", expression)]
-    if len(terms) > 1:
-        return any(term in ALLOWED for term in terms)
-    return False
+    position = 0
+
+    def take(token: str) -> bool:
+        nonlocal position
+        if position < len(tokens) and tokens[position] == token:
+            position += 1
+            return True
+        return False
+
+    def identifier() -> str:
+        nonlocal position
+        if position == len(tokens) or tokens[position] in {"(", ")", "AND", "OR", "WITH"}:
+            raise ValueError("expected SPDX identifier")
+        token = tokens[position]
+        position += 1
+        return token
+
+    def atom() -> bool:
+        if take("("):
+            result = disjunction()
+            if not take(")"):
+                raise ValueError("unclosed SPDX group")
+            return result
+        license_id = identifier()
+        if take("WITH"):
+            return (license_id, identifier()) in ALLOWED_EXCEPTIONS
+        return license_id in ALLOWED
+
+    def conjunction() -> bool:
+        result = atom()
+        while take("AND"):
+            term = atom()
+            result = result and term
+        return result
+
+    def disjunction() -> bool:
+        result = conjunction()
+        while take("OR"):
+            term = conjunction()
+            result = result or term
+        return result
+
+    try:
+        result = disjunction()
+        return position == len(tokens) and result
+    except (ValueError, RecursionError):
+        return False
 
 
 def _is_identifier(value: str | None) -> bool:
@@ -170,9 +221,13 @@ def _is_identifier(value: str | None) -> bool:
     tokens is a claim; a paragraph is not.
     """
 
-    if not value or "\n" in value or len(value) > 128:
+    if not value:
         return False
-    return " " not in value.replace(" AND ", "").replace(" OR ", "")
+    # Length does not make an explicit composite license declaration prose.
+    return (
+        re.fullmatch(r"[A-Za-z0-9.+:()\-]+(?:\s+(?:AND|OR|WITH)\s+[A-Za-z0-9.+:()\-]+)*", value)
+        is not None
+    )
 
 
 def _summarize(value: str | None) -> str | None:

@@ -69,6 +69,30 @@ def test_identity_signs_fresh_challenge_and_canonical_capabilities(tmp_path: Pat
         )
 
 
+def test_cloud_adapter_can_sign_its_separate_capabilities_and_resources(tmp_path: Path) -> None:
+    identity = identity_file(tmp_path / "cloud-identity.json")
+    challenge = worker_pb2.RegistrationChallenge(
+        nonce=b"c" * 32,
+        supported_protocol_versions=["1.2", "1.1"],
+    )
+    descriptor = identity.signed_descriptor(
+        challenge,
+        family="editorial",
+        capabilities=("editorial-propose-cloud", "editorial-review-cloud"),
+        protocol_version="1.2",
+        backend="cloud",
+        max_memory_bytes=128 * 1024**2,
+        cpu_threads=1,
+    )
+    assert descriptor.backend == "cloud"
+    assert list(descriptor.capabilities) == ["editorial-propose-cloud", "editorial-review-cloud"]
+    assert descriptor.vram_bytes == 0
+    identity.private_key.public_key().verify(
+        descriptor.signature,
+        registration_preimage(challenge, descriptor),
+    )
+
+
 def test_framing_handles_socket_fragmentation() -> None:
     sender, receiver = socket.socketpair()
     try:

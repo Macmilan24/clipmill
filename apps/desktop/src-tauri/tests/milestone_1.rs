@@ -147,6 +147,7 @@ struct Workers {
 impl Workers {
     fn enrol(directory: &Path) {
         let status = Command::new(repo_root().join("tools/run-workers.sh"))
+            .env("CLIPMILL_EDITORIAL", "0")
             .arg("--enrol-only")
             .arg("--data-dir")
             .arg(directory)
@@ -159,6 +160,8 @@ impl Workers {
 
     fn launch(directory: &Path) -> Self {
         let child = Command::new(repo_root().join("tools/run-workers.sh"))
+            .env("CLIPMILL_EDITORIAL", "0")
+            .env("CLIPMILL_SOCKET", directory.join("d.sock"))
             .arg("--data-dir")
             .arg(directory)
             .current_dir(repo_root())
@@ -195,7 +198,12 @@ async fn wait_for_readiness(client: &DaemonClient, timeout: Duration) -> GetRead
     let deadline = Instant::now() + timeout;
     loop {
         let report = client.readiness().await.expect("read readiness");
-        if report.ready {
+        if report
+            .stages
+            .iter()
+            .filter(|s| !s.stage.starts_with("editorial-"))
+            .all(|s| s.ready)
+        {
             return report;
         }
         assert!(
@@ -284,6 +292,8 @@ async fn analyse(client: &DaemonClient, name: &str, recording: &Path) -> Analyse
         .submit_analyze(
             &project_id,
             AnalyzeSourcePayloadV1 {
+                local_editorial: false,
+                cloud_editorial: None,
                 key_version: "clipmill.analyze-source.v1".to_owned(),
                 source_id: source.source_id.clone(),
                 language: String::new(),
@@ -584,7 +594,11 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     assert!(!before.ready, "nothing has connected yet");
     assert!(before.decoder_present, "the pinned decoder is installed");
     assert!(before.workers.is_empty());
-    for stage in &before.stages {
+    for stage in before
+        .stages
+        .iter()
+        .filter(|stage| !stage.stage.starts_with("editorial-"))
+    {
         assert!(stage.model_present, "{} has its weights here", stage.stage);
         assert!(!stage.worker_present);
         assert!(
@@ -600,8 +614,12 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     assert_eq!(ready.workers.len(), 5, "five families announced themselves");
 
     // ---- Two projects: the older one analysed first, then a newer one. ----
-    let older = analyse(&client, "older talk", &recording).await;
-    let newer = analyse(&client, "newer talk", &recording).await;
+    // The two projects deliberately analyze the same recording concurrently.
+    // Shared artifact work must wait for publication rather than exhaust retries.
+    let (older, newer) = tokio::join!(
+        analyse(&client, "older talk", &recording),
+        analyse(&client, "newer talk", &recording)
+    );
     assert_ne!(older.job.job_id, newer.job.job_id);
     let projects = client.list_projects().await.expect("projects");
     let position = |id: &str| projects.iter().position(|p| p.project_id == id).unwrap();

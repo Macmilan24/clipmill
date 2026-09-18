@@ -230,6 +230,6 @@ export function gainAt(plan: PreviewPlan, frame: number): number {
 export function timecode(plan: PreviewPlan, frame: number): string {
   const seconds = secondsAt(plan, frame);
   const whole = Math.floor(seconds);
-  const frames = Math.max(0, frame - frameAt(plan, whole));
+  const frames = Math.max(0, frame - Math.floor((whole * plan.rateNum) / plan.rateDen));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}.${String(frames).padStart(2, '0')}`;
 }

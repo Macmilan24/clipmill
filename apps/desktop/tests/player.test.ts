@@ -221,3 +221,10 @@ describe('mapping the program onto the recording', () => {
     ).toBeUndefined();
   });
 });
+
+describe('duration labels at the program boundary', () => {
+  it('does not clamp the end to the last playable frame', () => {
+    const program = { frameCount: 1260, rateNum: 30, rateDen: 1 } as PreviewPlan;
+    expect(timecode(program, 1260)).toBe('0:42.00');
+  });
+});

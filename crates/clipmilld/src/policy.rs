@@ -1,22 +1,15 @@
-//! The Local Lock, read rather than asserted.
+//! Local Lock reports task-policy activity in this daemon session.
 //!
-//! Health used to answer `local_lock: true` with a literal, which is the shape
-//! of every claim that is right until the day it quietly is not. The claim is
-//! worth something only if something could make it false, so it is derived from
-//! two things that change when the daemon changes:
+//! The registry declares available local and optional cloud capabilities.
+//! Registration grants no cloud run permission: explicit analysis consent,
+//! registry-matching task policy and a separately enabled cloud worker are
+//! required. `engaged` means no network-allowed task has started in this daemon
+//! session; it does not mean cloud recipes are absent or the OS denied sockets.
 //!
-//! - **The stage registry.** Every kind the daemon will run declares a network
-//!   policy, and the lock is engaged when none of them is network-allowed.
-//!   Adding a stage with network access turns the answer false without anybody
-//!   editing this file.
-//! - **A counter of what actually started.** Every task the scheduler begins is
-//!   offered here, and one declaring anything but the local lock is counted.
-//!
-//! The counter is expected to read zero forever in Phase 1, and a number that
-//! could only ever be zero would not be worth putting on a screen. It is here
-//! so that a non-zero reading is *possible* — which is what makes a zero one
-//! evidence rather than decoration. It counts since this process started,
-//! because a durable total would be state nobody could attribute to a run.
+//! The legacy IPC field `egress_attempts` counts network-allowed task starts,
+//! including cache hits, not requests or bytes. It stays nonzero until restart.
+//! See `docs/local-lock.md` for the independent offline namespace proof and the
+//! desktop enforcement limits.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -61,10 +54,9 @@ impl LocalLockPolicy {
         let (stages, network_allowed_stages) = recipes::network_census();
         let egress_attempts = self.egress_attempts.load(Ordering::Relaxed);
         LocalLockStatus {
-            // Both halves have to hold. A registry with no network-allowed
-            // stage still is not locked if something with network access has
-            // already run — the second condition is why the counter exists.
-            engaged: network_allowed_stages == 0 && egress_attempts == 0,
+            // Session status: available cloud adapters do not imply they ran.
+            // Once cloud work starts, remain disengaged for this daemon session.
+            engaged: egress_attempts == 0,
             stages,
             network_allowed_stages,
             egress_attempts,
@@ -81,7 +73,10 @@ mod tests {
         let policy = LocalLockPolicy::new();
         let status = policy.status();
         assert!(status.engaged);
-        assert_eq!(status.network_allowed_stages, 0);
+        assert_eq!(
+            status.network_allowed_stages,
+            crate::recipes::network_census().1
+        );
         assert_eq!(status.egress_attempts, 0);
         // The count is the registry's, so it is never zero — a lock over
         // nothing is not a lock.
@@ -106,7 +101,7 @@ mod tests {
         assert_eq!(status.egress_attempts, 1);
         assert!(
             !status.engaged,
-            "the lock cannot still read engaged after something reached out"
+            "the lock cannot still read engaged after cloud work started"
         );
     }
 

@@ -1,5 +1,9 @@
 # Desktop shell (W9/W10)
 
+This document records the original W9/W10 shell. For the current working
+screens, navigation, opaque surfaces, and responsive layouts, see
+[Desktop workspace refresh](frontend-workspace.md).
+
 The shell is the first thing a person sees, and Phase 0's rule for it is the
 same as everywhere else: show what is true, or say that it is not known. It
 renders one working screen and eight honest placeholders.

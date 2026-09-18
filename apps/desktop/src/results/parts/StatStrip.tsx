@@ -59,17 +59,15 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
 
   return (
     <section
-      className="glass flex flex-wrap items-center gap-x-8 gap-y-4 rounded-[var(--cm-radius-card)] px-6 py-4"
+      className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3 border-y border-[var(--cm-glass-border)] py-3"
       aria-label="Run summary"
     >
       {stats.map((stat, index) => (
-        <div key={stat.label} className="flex items-center gap-8">
-          {index > 0 && <span aria-hidden className="h-8 w-px bg-[var(--cm-glass-border)]" />}
-          <div className="flex flex-col gap-1" title={stat.title}>
-            <span className="text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-              {stat.label}
-            </span>
-            <span className="mono text-lg leading-none" style={{ color: stat.ink }}>
+        <div key={stat.label} className="flex items-center gap-6">
+          {index > 0 && <span aria-hidden className="h-4 w-px bg-[var(--cm-glass-border)]" />}
+          <div className="flex items-baseline gap-2" title={stat.title}>
+            <span className="text-[12px] text-[var(--cm-text-secondary)]">{stat.label}</span>
+            <span className="mono text-[13px] font-medium leading-none" style={{ color: stat.ink }}>
               {stat.value}
             </span>
           </div>
@@ -78,9 +76,7 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
 
       {bestScore !== null && (
         <div className="ml-auto flex flex-col items-end gap-1 border-l border-[var(--cm-glass-border)] pl-8">
-          <span className="text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-            Best score
-          </span>
+          <span className="text-[12px] text-[var(--cm-text-secondary)]">Best score</span>
           <span className="mono text-xl leading-none text-[var(--cm-text-primary)]">
             {bestScore}
           </span>
@@ -95,6 +91,22 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
             {summary.shortfall.join('; ')}.
           </span>
         </p>
+      )}
+
+      {(summary.warnings?.length ?? 0) > 0 && (
+        <div
+          role="status"
+          aria-label="Incomplete analysis"
+          className="flex w-full items-start gap-2 border-t border-[var(--cm-glass-border)] pt-3 text-[12px] text-[var(--cm-warning-ink)]"
+        >
+          <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
+          <div className="space-y-1">
+            <p className="font-medium">Some analysis is incomplete</p>
+            {summary.warnings?.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
+        </div>
       )}
     </section>
   );

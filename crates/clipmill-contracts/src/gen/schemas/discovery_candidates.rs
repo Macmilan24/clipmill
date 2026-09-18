@@ -112,6 +112,9 @@ impl BoundaryLattice {
 #[doc = "    \"cluster_id\": {"]
 #[doc = "      \"$ref\": \"#/$defs/cluster_id\""]
 #[doc = "    },"]
+#[doc = "    \"editorial\": {"]
+#[doc = "      \"$ref\": \"#/$defs/editorial_moment\""]
+#[doc = "    },"]
 #[doc = "    \"evidence\": {"]
 #[doc = "      \"description\": \"The index units this nomination rests on, ordered and distinct. Never empty: a candidate nobody can explain is a candidate ranking cannot defend.\","]
 #[doc = "      \"type\": \"array\","]
@@ -180,6 +183,8 @@ impl BoundaryLattice {
 pub struct Candidate {
     pub boundary_lattice: BoundaryLattice,
     pub cluster_id: ClusterId,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub editorial: ::std::option::Option<EditorialMoment>,
     #[doc = "The index units this nomination rests on, ordered and distinct. Never empty: a candidate nobody can explain is a candidate ranking cannot defend."]
     pub evidence: ::std::vec::Vec<EvidenceReference>,
     #[doc = "Reasons this candidate must not be published even if it ranks well."]
@@ -732,6 +737,10 @@ impl Coverage {
 #[doc = "      \"description\": \"The platform range candidates were expanded against, as ticks. Part of the artifact key: asking for a different length is a different search, not a filter over this one.\","]
 #[doc = "      \"$ref\": \"#/$defs/duration_range\""]
 #[doc = "    },"]
+#[doc = "    \"editorial\": {"]
+#[doc = "      \"description\": \"Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.\","]
+#[doc = "      \"$ref\": \"#/$defs/editorial_coverage\""]
+#[doc = "    },"]
 #[doc = "    \"inputs\": {"]
 #[doc = "      \"description\": \"What was read. The index is the authority for every evidence reference below and the transcript for every word boundary; the loudness envelope is optional because a source with no audio has none, and prosody then contributes nothing rather than contributing a default.\","]
 #[doc = "      \"type\": \"object\","]
@@ -783,6 +792,9 @@ pub struct DiscoveryCandidates {
     pub coverage: Coverage,
     #[doc = "The platform range candidates were expanded against, as ticks. Part of the artifact key: asking for a different length is a different search, not a filter over this one."]
     pub duration_target: DurationRange,
+    #[doc = "Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub editorial: ::std::option::Option<EditorialCoverage>,
     pub inputs: DiscoveryCandidatesInputs,
     pub producer: Producer,
     #[doc = "One entry per proposer that ran, whether or not it found anything. A proposer that nominated nothing is a fact about the recording; a proposer missing from this list is a fact about the build, and the two must not look alike."]
@@ -869,6 +881,735 @@ pub struct DurationRange {
 impl DurationRange {
     pub fn builder() -> builder::DurationRange {
         Default::default()
+    }
+}
+#[doc = "`EditorialCoverage`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"answered_windows\","]
+#[doc = "    \"failed_reviews\","]
+#[doc = "    \"failed_visual_checks\","]
+#[doc = "    \"failed_windows\","]
+#[doc = "    \"window_count\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"answered_windows\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"failed_reviews\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"failed_visual_checks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"failed_windows\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"detail\","]
+#[doc = "          \"index\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"detail\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"minLength\": 1"]
+#[doc = "          },"]
+#[doc = "          \"index\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"window_count\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditorialCoverage {
+    pub answered_windows: u64,
+    pub failed_reviews: u64,
+    pub failed_visual_checks: u64,
+    pub failed_windows: ::std::vec::Vec<EditorialCoverageFailedWindowsItem>,
+    pub window_count: u64,
+}
+impl EditorialCoverage {
+    pub fn builder() -> builder::EditorialCoverage {
+        Default::default()
+    }
+}
+#[doc = "`EditorialCoverageFailedWindowsItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"detail\","]
+#[doc = "    \"index\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"detail\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"index\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditorialCoverageFailedWindowsItem {
+    pub detail: EditorialCoverageFailedWindowsItemDetail,
+    pub index: u64,
+}
+impl EditorialCoverageFailedWindowsItem {
+    pub fn builder() -> builder::EditorialCoverageFailedWindowsItem {
+        Default::default()
+    }
+}
+#[doc = "`EditorialCoverageFailedWindowsItemDetail`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialCoverageFailedWindowsItemDetail(::std::string::String);
+impl ::std::ops::Deref for EditorialCoverageFailedWindowsItemDetail {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialCoverageFailedWindowsItemDetail> for ::std::string::String {
+    fn from(value: EditorialCoverageFailedWindowsItemDetail) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialCoverageFailedWindowsItemDetail {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialCoverageFailedWindowsItemDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialCoverageFailedWindowsItemDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialCoverageFailedWindowsItemDetail {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialCoverageFailedWindowsItemDetail {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditorialMoment`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"hook\","]
+#[doc = "    \"payoff\","]
+#[doc = "    \"proposal_ids\","]
+#[doc = "    \"reason\","]
+#[doc = "    \"setup\","]
+#[doc = "    \"title\","]
+#[doc = "    \"uncertainties\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"hook\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"payoff\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"proposal_ids\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"string\","]
+#[doc = "        \"minLength\": 1"]
+#[doc = "      },"]
+#[doc = "      \"minItems\": 1"]
+#[doc = "    },"]
+#[doc = "    \"reason\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"setup\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"title\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 120,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"uncertainties\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"string\","]
+#[doc = "        \"minLength\": 1"]
+#[doc = "      }"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditorialMoment {
+    pub hook: EditorialMomentHook,
+    pub payoff: EditorialMomentPayoff,
+    pub proposal_ids: ::std::vec::Vec<EditorialMomentProposalIdsItem>,
+    pub reason: EditorialMomentReason,
+    pub setup: EditorialMomentSetup,
+    pub title: EditorialMomentTitle,
+    pub uncertainties: ::std::vec::Vec<EditorialMomentUncertaintiesItem>,
+}
+impl EditorialMoment {
+    pub fn builder() -> builder::EditorialMoment {
+        Default::default()
+    }
+}
+#[doc = "`EditorialMomentHook`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialMomentHook(::std::string::String);
+impl ::std::ops::Deref for EditorialMomentHook {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialMomentHook> for ::std::string::String {
+    fn from(value: EditorialMomentHook) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialMomentHook {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialMomentHook {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialMomentHook {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialMomentHook {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialMomentHook {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditorialMomentPayoff`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialMomentPayoff(::std::string::String);
+impl ::std::ops::Deref for EditorialMomentPayoff {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialMomentPayoff> for ::std::string::String {
+    fn from(value: EditorialMomentPayoff) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialMomentPayoff {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialMomentPayoff {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialMomentPayoff {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialMomentPayoff {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialMomentPayoff {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditorialMomentProposalIdsItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialMomentProposalIdsItem(::std::string::String);
+impl ::std::ops::Deref for EditorialMomentProposalIdsItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialMomentProposalIdsItem> for ::std::string::String {
+    fn from(value: EditorialMomentProposalIdsItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialMomentProposalIdsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialMomentProposalIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialMomentProposalIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialMomentProposalIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialMomentProposalIdsItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditorialMomentReason`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialMomentReason(::std::string::String);
+impl ::std::ops::Deref for EditorialMomentReason {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialMomentReason> for ::std::string::String {
+    fn from(value: EditorialMomentReason) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialMomentReason {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialMomentReason {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialMomentReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialMomentReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialMomentReason {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditorialMomentSetup`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialMomentSetup(::std::string::String);
+impl ::std::ops::Deref for EditorialMomentSetup {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialMomentSetup> for ::std::string::String {
+    fn from(value: EditorialMomentSetup) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialMomentSetup {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialMomentSetup {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialMomentSetup {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialMomentSetup {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialMomentSetup {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditorialMomentTitle`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 120,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialMomentTitle(::std::string::String);
+impl ::std::ops::Deref for EditorialMomentTitle {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialMomentTitle> for ::std::string::String {
+    fn from(value: EditorialMomentTitle) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialMomentTitle {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 120usize {
+            return Err("longer than 120 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialMomentTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialMomentTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialMomentTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialMomentTitle {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditorialMomentUncertaintiesItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditorialMomentUncertaintiesItem(::std::string::String);
+impl ::std::ops::Deref for EditorialMomentUncertaintiesItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditorialMomentUncertaintiesItem> for ::std::string::String {
+    fn from(value: EditorialMomentUncertaintiesItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditorialMomentUncertaintiesItem {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialMomentUncertaintiesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialMomentUncertaintiesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialMomentUncertaintiesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditorialMomentUncertaintiesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "A unit of the evidence index, named by kind and position rather than by an opaque id. The index resolves each to a transcript word range, so a claim here is walkable to the words somebody measured (Rule 14.1). Opaque evidence ids belong with the Phase 2 interval tables; inventing them now would mean a registry nothing yet reads."]
@@ -1955,6 +2696,10 @@ pub mod builder {
     pub struct Candidate {
         boundary_lattice: ::std::result::Result<super::BoundaryLattice, ::std::string::String>,
         cluster_id: ::std::result::Result<super::ClusterId, ::std::string::String>,
+        editorial: ::std::result::Result<
+            ::std::option::Option<super::EditorialMoment>,
+            ::std::string::String,
+        >,
         evidence:
             ::std::result::Result<::std::vec::Vec<super::EvidenceReference>, ::std::string::String>,
         exclusions: ::std::result::Result<::std::vec::Vec<super::Exclusion>, ::std::string::String>,
@@ -1973,6 +2718,7 @@ pub mod builder {
             Self {
                 boundary_lattice: Err("no value supplied for boundary_lattice".to_string()),
                 cluster_id: Err("no value supplied for cluster_id".to_string()),
+                editorial: Ok(Default::default()),
                 evidence: Err("no value supplied for evidence".to_string()),
                 exclusions: Err("no value supplied for exclusions".to_string()),
                 id: Err("no value supplied for id".to_string()),
@@ -2003,6 +2749,16 @@ pub mod builder {
             self.cluster_id = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for cluster_id: {e}"));
+            self
+        }
+        pub fn editorial<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditorialMoment>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.editorial = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for editorial: {e}"));
             self
         }
         pub fn evidence<T>(mut self, value: T) -> Self
@@ -2094,6 +2850,7 @@ pub mod builder {
             Ok(Self {
                 boundary_lattice: value.boundary_lattice?,
                 cluster_id: value.cluster_id?,
+                editorial: value.editorial?,
                 evidence: value.evidence?,
                 exclusions: value.exclusions?,
                 id: value.id?,
@@ -2110,6 +2867,7 @@ pub mod builder {
             Self {
                 boundary_lattice: Ok(value.boundary_lattice),
                 cluster_id: Ok(value.cluster_id),
+                editorial: Ok(value.editorial),
                 evidence: Ok(value.evidence),
                 exclusions: Ok(value.exclusions),
                 id: Ok(value.id),
@@ -2336,6 +3094,10 @@ pub mod builder {
         clusters: ::std::result::Result<::std::vec::Vec<super::Cluster>, ::std::string::String>,
         coverage: ::std::result::Result<super::Coverage, ::std::string::String>,
         duration_target: ::std::result::Result<super::DurationRange, ::std::string::String>,
+        editorial: ::std::result::Result<
+            ::std::option::Option<super::EditorialCoverage>,
+            ::std::string::String,
+        >,
         inputs: ::std::result::Result<super::DiscoveryCandidatesInputs, ::std::string::String>,
         producer: ::std::result::Result<super::Producer, ::std::string::String>,
         proposers:
@@ -2350,6 +3112,7 @@ pub mod builder {
                 clusters: Err("no value supplied for clusters".to_string()),
                 coverage: Err("no value supplied for coverage".to_string()),
                 duration_target: Err("no value supplied for duration_target".to_string()),
+                editorial: Ok(Default::default()),
                 inputs: Err("no value supplied for inputs".to_string()),
                 producer: Err("no value supplied for producer".to_string()),
                 proposers: Err("no value supplied for proposers".to_string()),
@@ -2397,6 +3160,16 @@ pub mod builder {
             self.duration_target = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for duration_target: {e}"));
+            self
+        }
+        pub fn editorial<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditorialCoverage>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.editorial = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for editorial: {e}"));
             self
         }
         pub fn inputs<T>(mut self, value: T) -> Self
@@ -2460,6 +3233,7 @@ pub mod builder {
                 clusters: value.clusters?,
                 coverage: value.coverage?,
                 duration_target: value.duration_target?,
+                editorial: value.editorial?,
                 inputs: value.inputs?,
                 producer: value.producer?,
                 proposers: value.proposers?,
@@ -2475,6 +3249,7 @@ pub mod builder {
                 clusters: Ok(value.clusters),
                 coverage: Ok(value.coverage),
                 duration_target: Ok(value.duration_target),
+                editorial: Ok(value.editorial),
                 inputs: Ok(value.inputs),
                 producer: Ok(value.producer),
                 proposers: Ok(value.proposers),
@@ -2605,6 +3380,296 @@ pub mod builder {
             Self {
                 max_ticks: Ok(value.max_ticks),
                 min_ticks: Ok(value.min_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditorialCoverage {
+        answered_windows: ::std::result::Result<u64, ::std::string::String>,
+        failed_reviews: ::std::result::Result<u64, ::std::string::String>,
+        failed_visual_checks: ::std::result::Result<u64, ::std::string::String>,
+        failed_windows: ::std::result::Result<
+            ::std::vec::Vec<super::EditorialCoverageFailedWindowsItem>,
+            ::std::string::String,
+        >,
+        window_count: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditorialCoverage {
+        fn default() -> Self {
+            Self {
+                answered_windows: Err("no value supplied for answered_windows".to_string()),
+                failed_reviews: Err("no value supplied for failed_reviews".to_string()),
+                failed_visual_checks: Err("no value supplied for failed_visual_checks".to_string()),
+                failed_windows: Err("no value supplied for failed_windows".to_string()),
+                window_count: Err("no value supplied for window_count".to_string()),
+            }
+        }
+    }
+    impl EditorialCoverage {
+        pub fn answered_windows<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.answered_windows = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for answered_windows: {e}"));
+            self
+        }
+        pub fn failed_reviews<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.failed_reviews = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for failed_reviews: {e}"));
+            self
+        }
+        pub fn failed_visual_checks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.failed_visual_checks = value.try_into().map_err(|e| {
+                format!("error converting supplied value for failed_visual_checks: {e}")
+            });
+            self
+        }
+        pub fn failed_windows<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::EditorialCoverageFailedWindowsItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.failed_windows = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for failed_windows: {e}"));
+            self
+        }
+        pub fn window_count<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.window_count = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for window_count: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditorialCoverage> for super::EditorialCoverage {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditorialCoverage,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                answered_windows: value.answered_windows?,
+                failed_reviews: value.failed_reviews?,
+                failed_visual_checks: value.failed_visual_checks?,
+                failed_windows: value.failed_windows?,
+                window_count: value.window_count?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditorialCoverage> for EditorialCoverage {
+        fn from(value: super::EditorialCoverage) -> Self {
+            Self {
+                answered_windows: Ok(value.answered_windows),
+                failed_reviews: Ok(value.failed_reviews),
+                failed_visual_checks: Ok(value.failed_visual_checks),
+                failed_windows: Ok(value.failed_windows),
+                window_count: Ok(value.window_count),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditorialCoverageFailedWindowsItem {
+        detail: ::std::result::Result<
+            super::EditorialCoverageFailedWindowsItemDetail,
+            ::std::string::String,
+        >,
+        index: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditorialCoverageFailedWindowsItem {
+        fn default() -> Self {
+            Self {
+                detail: Err("no value supplied for detail".to_string()),
+                index: Err("no value supplied for index".to_string()),
+            }
+        }
+    }
+    impl EditorialCoverageFailedWindowsItem {
+        pub fn detail<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialCoverageFailedWindowsItemDetail>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.detail = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for detail: {e}"));
+            self
+        }
+        pub fn index<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.index = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for index: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditorialCoverageFailedWindowsItem>
+        for super::EditorialCoverageFailedWindowsItem
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditorialCoverageFailedWindowsItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                detail: value.detail?,
+                index: value.index?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditorialCoverageFailedWindowsItem>
+        for EditorialCoverageFailedWindowsItem
+    {
+        fn from(value: super::EditorialCoverageFailedWindowsItem) -> Self {
+            Self {
+                detail: Ok(value.detail),
+                index: Ok(value.index),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditorialMoment {
+        hook: ::std::result::Result<super::EditorialMomentHook, ::std::string::String>,
+        payoff: ::std::result::Result<super::EditorialMomentPayoff, ::std::string::String>,
+        proposal_ids: ::std::result::Result<
+            ::std::vec::Vec<super::EditorialMomentProposalIdsItem>,
+            ::std::string::String,
+        >,
+        reason: ::std::result::Result<super::EditorialMomentReason, ::std::string::String>,
+        setup: ::std::result::Result<super::EditorialMomentSetup, ::std::string::String>,
+        title: ::std::result::Result<super::EditorialMomentTitle, ::std::string::String>,
+        uncertainties: ::std::result::Result<
+            ::std::vec::Vec<super::EditorialMomentUncertaintiesItem>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for EditorialMoment {
+        fn default() -> Self {
+            Self {
+                hook: Err("no value supplied for hook".to_string()),
+                payoff: Err("no value supplied for payoff".to_string()),
+                proposal_ids: Err("no value supplied for proposal_ids".to_string()),
+                reason: Err("no value supplied for reason".to_string()),
+                setup: Err("no value supplied for setup".to_string()),
+                title: Err("no value supplied for title".to_string()),
+                uncertainties: Err("no value supplied for uncertainties".to_string()),
+            }
+        }
+    }
+    impl EditorialMoment {
+        pub fn hook<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialMomentHook>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.hook = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for hook: {e}"));
+            self
+        }
+        pub fn payoff<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialMomentPayoff>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.payoff = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for payoff: {e}"));
+            self
+        }
+        pub fn proposal_ids<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::EditorialMomentProposalIdsItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.proposal_ids = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for proposal_ids: {e}"));
+            self
+        }
+        pub fn reason<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialMomentReason>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.reason = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for reason: {e}"));
+            self
+        }
+        pub fn setup<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialMomentSetup>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.setup = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for setup: {e}"));
+            self
+        }
+        pub fn title<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialMomentTitle>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.title = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for title: {e}"));
+            self
+        }
+        pub fn uncertainties<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::EditorialMomentUncertaintiesItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.uncertainties = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for uncertainties: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditorialMoment> for super::EditorialMoment {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditorialMoment,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                hook: value.hook?,
+                payoff: value.payoff?,
+                proposal_ids: value.proposal_ids?,
+                reason: value.reason?,
+                setup: value.setup?,
+                title: value.title?,
+                uncertainties: value.uncertainties?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditorialMoment> for EditorialMoment {
+        fn from(value: super::EditorialMoment) -> Self {
+            Self {
+                hook: Ok(value.hook),
+                payoff: Ok(value.payoff),
+                proposal_ids: Ok(value.proposal_ids),
+                reason: Ok(value.reason),
+                setup: Ok(value.setup),
+                title: Ok(value.title),
+                uncertainties: Ok(value.uncertainties),
             }
         }
     }

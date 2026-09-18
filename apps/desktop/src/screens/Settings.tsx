@@ -49,7 +49,11 @@ export interface SettingsProps {
 
 export function Settings({ storage, lock, loading, error }: SettingsProps): JSX.Element {
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+    <div className="mx-auto flex w-full max-w-[1040px] flex-col gap-5">
+      <header>
+        <h1 className="workspace-title">Settings &amp; privacy</h1>
+        <p className="workspace-subtitle mt-1">Storage and processing on this device.</p>
+      </header>
       {error !== null && (
         <Alert variant="destructive">
           <TriangleAlert />
@@ -105,9 +109,8 @@ export function Settings({ storage, lock, loading, error }: SettingsProps): JSX.
                 <Row label="Retention" value={describeGrace(storage.retentionGraceSeconds)} />
               </dl>
               <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-                Retention is how long an artifact nothing refers to is kept before collection may
-                take it. Shown rather than adjustable: the number is real, and a control that moved
-                it would need a collection policy Phase 1 has not written.
+                Unused generated files become eligible for cleanup after this retention period. Your
+                source recordings and saved edits are kept.
               </p>
             </>
           )}
@@ -138,8 +141,8 @@ export function Settings({ storage, lock, loading, error }: SettingsProps): JSX.
                 </Badge>
                 <span className="text-xs text-[var(--cm-ink-2)]">
                   {lock.engaged
-                    ? 'Nothing this daemon runs may reach the network.'
-                    : 'Something here can reach the network, or already has.'}
+                    ? 'No cloud processing has started in this daemon session.'
+                    : 'Cloud processing has started in this daemon session.'}
                 </span>
               </div>
               <dl className="space-y-1 text-xs">
@@ -148,13 +151,12 @@ export function Settings({ storage, lock, loading, error }: SettingsProps): JSX.
                   label="Stages allowed to use the network"
                   value={String(lock.networkAllowedStages)}
                 />
-                <Row label="Egress attempts this run" value={String(lock.egressAttempts)} />
+                <Row label="Cloud tasks started this session" value={String(lock.egressAttempts)} />
               </dl>
               <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-                These are counts, not a switch. The first two come from the table of every stage the
-                daemon will run, so a stage added with network access turns this card red without
-                anyone remembering to change it; the third counts what has actually started. A claim
-                with no way to come out false would not be worth showing.
+                Cloud-capable stages are installed but require explicit consent for each analysis.
+                The badge changes when a cloud task starts. These counts describe task policy and
+                execution; they are not a measurement of network bytes.
               </p>
             </>
           )}
@@ -162,9 +164,7 @@ export function Settings({ storage, lock, loading, error }: SettingsProps): JSX.
       </Card>
 
       <p className="text-xs text-[var(--cm-ink-3)]">
-        <Badge variant="outline">Phase 2</Badge> Moving the storage location, editing the retention
-        window, and per-project privacy rules are not built. What is here is what can be told
-        truthfully today.
+        Storage locations and retention are managed by the local engine.
       </p>
     </div>
   );

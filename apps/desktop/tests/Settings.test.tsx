@@ -87,8 +87,10 @@ describe('the settings screen', () => {
     expect(screen.getByText('Engaged')).toBeTruthy();
   });
 
-  it('names the phase for what is not built rather than showing dead controls', () => {
+  it('explains where storage settings are managed', () => {
     show();
-    expect(screen.getByText('Phase 2')).toBeTruthy();
+    expect(
+      screen.getByText('Storage locations and retention are managed by the local engine.'),
+    ).toBeTruthy();
   });
 });

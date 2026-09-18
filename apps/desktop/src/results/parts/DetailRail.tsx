@@ -18,6 +18,7 @@
  * ordering is by weighted contribution, so the reasons given are the reasons the
  * number is what it is.
  */
+import { MediaStill } from '../../components/MediaStill.js';
 import {
   ArrowRight,
   CheckCheck,
@@ -74,7 +75,7 @@ export function DetailRail({
 }: DetailRailProps) {
   if (!row) {
     return (
-      <aside className="glass hidden min-h-0 flex-col items-center justify-center gap-2 rounded-[var(--cm-radius-card)] p-8 text-center xl:flex">
+      <aside className="glass flex min-h-0 flex-col items-center justify-center gap-2 rounded-[var(--cm-radius-card)] p-8 text-center">
         <p className="text-[13px] text-[var(--cm-text-secondary)]">
           Select a clip to see why it ranked where it did.
         </p>
@@ -82,129 +83,136 @@ export function DetailRail({
     );
   }
 
-  const factors = topFactors(row);
+  const factors = row.review ? [] : topFactors(row);
   const still = tileUrl(row.startTicks);
   const state = stateOf(row);
 
   return (
-    <aside
-      className="hidden min-h-0 flex-col gap-4 overflow-y-auto xl:flex"
-      aria-label="Selected clip"
-    >
-      <div className="glass shrink-0 overflow-hidden rounded-[var(--cm-radius-card)]">
-        <div className="relative aspect-video w-full bg-[var(--cm-recessed)]">
-          {still ? (
-            <img src={still} alt="" className="size-full object-cover" />
-          ) : (
-            <p className="grid size-full place-items-center px-4 text-center text-[11px] text-[var(--cm-text-muted)]">
-              This run published no filmstrip, so there is no frame to show.
-            </p>
-          )}
-          {still && (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0"
-              style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72), transparent 60%)' }}
-            />
-          )}
-          <span
-            className="absolute top-3 left-3 rounded px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase"
-            style={{ color: 'white', background: TONE_INK[state.tone] }}
-          >
-            {state.label}
-          </span>
-          <span
-            className="mono absolute right-3 bottom-3 rounded px-2 py-1 text-[11px]"
-            style={
-              still
-                ? { background: 'rgba(0,0,0,0.6)', color: 'white' }
-                : { background: 'var(--cm-glass-elevated)', color: 'var(--cm-text-secondary)' }
-            }
-          >
-            {duration(row.durationSeconds)}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-4 p-4">
-          <div className="flex items-start gap-3">
-            <ScoreRing score={row.displayScore} band={row.band} size="md" />
-            <div className="flex min-w-0 flex-col gap-1">
-              <h3 className="line-clamp-3 text-[13px] leading-snug font-semibold text-[var(--cm-text-primary)]">
-                {row.headline || 'No opening line indexed'}
-              </h3>
-              <span className="mono truncate text-[10px] text-[var(--cm-text-muted)]">
-                {row.candidateId}
-                {row.proposer && <span className="font-sans"> · {row.proposer}</span>}
-              </span>
-            </div>
+    <aside className="results-detail" aria-label="Selected clip">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+        <div className="glass shrink-0 overflow-hidden rounded-[var(--cm-radius-card)]">
+          <div className="relative aspect-video w-full bg-[var(--cm-recessed)]">
+            <MediaStill src={still} />
+            {still && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72), transparent 60%)' }}
+              />
+            )}
+            <span
+              className="absolute top-3 left-3 rounded px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase"
+              style={{
+                color: 'white',
+                background: state.tone === 'accent' ? 'var(--cm-accent)' : TONE_INK[state.tone],
+              }}
+            >
+              {state.label}
+            </span>
+            <span
+              className="mono absolute right-3 bottom-3 rounded px-2 py-1 text-[11px]"
+              style={
+                still
+                  ? { background: 'rgba(0,0,0,0.6)', color: 'white' }
+                  : { background: 'var(--cm-glass-elevated)', color: 'var(--cm-text-secondary)' }
+              }
+            >
+              {duration(row.durationSeconds)}
+            </span>
           </div>
 
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-3 border-t border-[var(--cm-glass-border)] pt-4">
-            <Fact label="Score" value={`${row.displayScore}`} ink={TONE_INK.success} />
-            <Fact label="Confidence" value={row.bandLabel} />
-            <Fact
-              label="Risk"
-              value={
-                row.warnings.length + row.penalties.length === 0
-                  ? 'None recorded'
-                  : `${row.warnings.length + row.penalties.length} noted`
-              }
-              ink={row.flagged ? TONE_INK.warning : undefined}
-            />
-            <Fact label="Window" value={`${clock(row.startTicks)} – ${clock(row.endTicks)}`} />
-          </dl>
-        </div>
-      </div>
-
-      {factors.length > 0 && (
-        <div className="glass flex shrink-0 flex-col gap-3 rounded-[var(--cm-radius-card)] p-4">
-          <h4 className="text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-            Why it ranked {row.rank === 1 ? 'first' : `#${row.rank}`}
-          </h4>
-          {factors.map((factor, index) => {
-            const Icon = AXIS_ICON[factor.axis];
-            const evidence = factor.evidence[0];
-            return (
-              <div
-                key={factor.axis}
-                className={`flex gap-3 ${index > 0 ? 'border-t border-[var(--cm-glass-border)] pt-3' : ''}`}
-              >
-                <Icon
-                  className="mt-0.5 size-4 shrink-0"
-                  aria-hidden
-                  style={{ color: index === 0 ? TONE_INK.success : TONE_INK.accent }}
-                />
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[12px] font-medium text-[var(--cm-text-primary)]">
-                      {factor.label}
-                    </span>
-                    <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
-                      {Math.round((factor.value ?? 0) * 100)}
-                    </span>
-                  </div>
-                  {evidence ? (
-                    <p className="text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-                      <span className="line-clamp-2 italic">“{evidence.text}”</span>
-                      {evidence.atTicks !== null && (
-                        <span className="mono mt-0.5 block text-[10px] text-[var(--cm-accent)]">
-                          {clock(evidence.atTicks)}
-                        </span>
-                      )}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-[var(--cm-text-muted)]">
-                      Measured over the whole clip.
-                    </p>
-                  )}
-                </div>
+          <div className="flex flex-col gap-4 p-4">
+            <div className="flex items-start gap-3">
+              {!row.review && <ScoreRing score={row.displayScore} band={row.band} size="md" />}
+              <div className="flex min-w-0 flex-col gap-1">
+                <h3 className="line-clamp-3 text-[13px] leading-snug font-semibold text-[var(--cm-text-primary)]">
+                  {row.headline || 'No opening line indexed'}
+                </h3>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
 
-      <div className="glass-elevated mt-auto flex shrink-0 flex-col gap-3 rounded-[var(--cm-radius-card)] p-4">
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-3 border-t border-[var(--cm-glass-border)] pt-4">
+              <Fact label="Review" value={row.bandLabel} />
+              <Fact label="Length" value={duration(row.durationSeconds)} />
+              <Fact
+                label="Risk"
+                value={
+                  row.warnings.length + row.penalties.length === 0
+                    ? 'None recorded'
+                    : `${row.warnings.length + row.penalties.length} noted`
+                }
+                ink={row.flagged ? TONE_INK.warning : undefined}
+              />
+              <Fact label="Window" value={`${clock(row.startTicks)} – ${clock(row.endTicks)}`} />
+            </dl>
+          </div>
+        </div>
+
+        {row.review && (
+          <section className="px-1">
+            <h4 className="mb-2 text-[12px] font-medium">Why this moment</h4>
+            <p className="text-[12px] leading-relaxed text-[var(--cm-text-secondary)]">
+              {row.review.summary ||
+                row.review.reasons[0] ||
+                'Watch this moment to decide whether it belongs in your edit.'}
+            </p>
+            {row.warnings.length > 0 && (
+              <p className="mt-3 border-l-2 border-[var(--cm-warning-ink)] pl-3 text-[11px] leading-relaxed text-[var(--cm-warning-ink)]">
+                {row.warnings[0]}
+              </p>
+            )}
+          </section>
+        )}
+
+        {factors.length > 0 && (
+          <div className="glass flex shrink-0 flex-col gap-3 rounded-[var(--cm-radius-card)] p-4">
+            <h4 className="text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
+              Why it ranked {row.rank === 1 ? 'first' : `#${row.rank}`}
+            </h4>
+            {factors.map((factor, index) => {
+              const Icon = AXIS_ICON[factor.axis];
+              const evidence = factor.evidence[0];
+              return (
+                <div
+                  key={factor.axis}
+                  className={`flex gap-3 ${index > 0 ? 'border-t border-[var(--cm-glass-border)] pt-3' : ''}`}
+                >
+                  <Icon
+                    className="mt-0.5 size-4 shrink-0"
+                    aria-hidden
+                    style={{ color: index === 0 ? TONE_INK.success : TONE_INK.accent }}
+                  />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[12px] font-medium text-[var(--cm-text-primary)]">
+                        {factor.label}
+                      </span>
+                      <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
+                        {Math.round((factor.value ?? 0) * 100)}
+                      </span>
+                    </div>
+                    {evidence ? (
+                      <p className="text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
+                        <span className="line-clamp-2 italic">“{evidence.text}”</span>
+                        {evidence.atTicks !== null && (
+                          <span className="mono mt-0.5 block text-[10px] text-[var(--cm-accent-ink)]">
+                            {clock(evidence.atTicks)}
+                          </span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-[var(--cm-text-muted)]">
+                        Measured over the whole clip.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div className="glass-elevated flex shrink-0 flex-col gap-3 rounded-[var(--cm-radius-card)] p-4">
         <div className="flex items-center justify-between text-[12px]">
           <span className="text-[var(--cm-text-primary)]">
             Selected{' '}
@@ -231,6 +239,7 @@ export function DetailRail({
             {row.docId !== null && (
               <Button
                 className="w-full justify-center gap-2"
+                disabled={busy}
                 onClick={() => onEdit(row.candidateId)}
               >
                 <Scissors className="size-4" aria-hidden />
@@ -240,6 +249,7 @@ export function DetailRail({
             <Button
               variant="outline"
               className="w-full justify-center gap-2"
+              disabled={busy}
               onClick={() => onOpen(row.candidateId)}
             >
               Open in the inspector

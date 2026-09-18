@@ -17,7 +17,7 @@ export type Tone = 'success' | 'accent' | 'warning' | 'danger' | 'muted';
 
 export const TONE_INK: Readonly<Record<Tone, string>> = {
   success: 'var(--cm-success-ink)',
-  accent: 'var(--cm-accent)',
+  accent: 'var(--cm-accent-ink)',
   warning: 'var(--cm-warning-ink)',
   danger: 'var(--cm-danger-ink)',
   muted: 'var(--cm-text-muted)',
@@ -33,6 +33,13 @@ export interface Signal {
 const NOTABLE = 0.75;
 
 export function signalsFor(row: ClipRow): readonly Signal[] {
+  if (row.review) {
+    return row.review.reasons.map((reason, index) => ({
+      key: `review:${index}`,
+      label: reason,
+      tone: row.review?.status === 'accepted' ? 'success' : 'warning',
+    }));
+  }
   const found: Signal[] = [];
   for (const axis of row.axes) {
     if (axis.value !== null && axis.value >= NOTABLE && axis.axis !== 'feasibility') {

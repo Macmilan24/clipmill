@@ -3972,6 +3972,139 @@ mod tests {
     }
 
     #[test]
+    fn identical_recordings_wait_without_spending_an_attempt() {
+        let temp = TempDir::new().unwrap();
+        let (_, mut connection) = database(&temp);
+        for (offset, suffix) in ["V", "W"].into_iter().enumerate() {
+            let p = project(
+                &format!("prj_01ARZ3NDEKTSV4RRFFQ69G5FA{suffix}"),
+                "concurrent",
+                10,
+            );
+            create_project(&mut connection, &format!("p{suffix}"), &[1; 32], &p).unwrap();
+            let source = format!("src_01ARZ3NDEKTSV4RRFFQ69G5FA{suffix}");
+            connection.execute("INSERT INTO sources(source_id, project_id, source_fingerprint, source_map_json, created_unix_millis) VALUES (?1,?2,?3,X'7b7d',1)",
+                rusqlite::params![source,p.project_id,format!("sha256:{}","11".repeat(32))]).unwrap();
+            let mut plan = JobPlan::demo(
+                &p.project_id.parse().unwrap(),
+                b"identical".to_vec(),
+                20 + offset as u64,
+            );
+            plan.source_id = Some(source);
+            job_store::submit_job(&mut connection, &format!("job{suffix}"), &[2; 32], &plan)
+                .unwrap();
+        }
+        let first = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            30,
+            15030,
+            ResourceCapacity::w4_builtin(),
+        )
+        .unwrap()
+        .task
+        .unwrap();
+        let other = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            31,
+            15031,
+            ResourceCapacity::w4_builtin(),
+        )
+        .unwrap();
+        assert!(other.task.is_none(), "identical in-flight stage must wait");
+        job_store::cancel_job(&mut connection, "cancel", &[3; 32], &first.job_id, 32).unwrap();
+        let next = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            33,
+            15033,
+            ResourceCapacity::w4_builtin(),
+        )
+        .unwrap()
+        .task
+        .unwrap();
+        assert_ne!(first.job_id, next.job_id);
+        assert_eq!(next.attempt, 1, "waiting is not a failed execution");
+    }
+
+    #[test]
+    fn only_registered_cloud_stages_can_lease_network_allowed_work() {
+        for cloud_kind in crate::recipes::stages_with_network_policy(
+            clipmill_artifacts::NetworkPolicy::NetworkAllowed,
+        ) {
+            let temp = TempDir::new().unwrap();
+            let (_, mut connection) = database(&temp);
+            let p = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "cloud admission", 10);
+            create_project(&mut connection, "p", &[1; 32], &p).unwrap();
+            let mut plan = JobPlan::demo(&p.project_id.parse().unwrap(), b"cloud".to_vec(), 20);
+            plan.tasks.truncate(1);
+            plan.tasks[0].is_final = true;
+            plan.tasks[0].resources.network_policy = "network-allowed".into();
+            assert!(job_store::submit_job(&mut connection, "invalid", &[3; 32], &plan).is_err());
+            plan.tasks[0].resources.network_policy = "local-lock".into();
+            job_store::submit_job(&mut connection, "job", &[2; 32], &plan).unwrap();
+            let request = crate::jobs::LeaseRequest {
+                lease_id: LeaseId::new().to_string(),
+                daemon_epoch: "01ARZ3NDEKTSV4RRFFQ69G5FAV".into(),
+                now_unix_millis: 31,
+                expires_unix_millis: 15031,
+                capacity: ResourceCapacity::w4_builtin(),
+                worker_id: "test-cloud".into(),
+                capabilities: vec![
+                    cloud_kind.into(),
+                    "demo-seed".into(),
+                    "propose-cloud".into(),
+                ],
+            };
+            // Even an older or corrupted persisted task cannot lease with a
+            // false policy, or with a partial match of a registered kind.
+            for (kind, policy) in [
+                ("demo-seed", "network-allowed"),
+                (cloud_kind, "local-lock"),
+                ("propose-cloud", "network-allowed"),
+            ] {
+                connection
+                    .execute(
+                        "UPDATE tasks SET kind=?1, network_policy=?2",
+                        rusqlite::params![kind, policy],
+                    )
+                    .unwrap();
+                assert!(
+                    job_store::lease_next_task_for_worker(&mut connection, &request)
+                        .unwrap()
+                        .task
+                        .is_none(),
+                    "{kind} must not lease as {policy}"
+                );
+            }
+            connection
+                .execute(
+                    "UPDATE tasks SET kind=?1, network_policy='network-allowed'",
+                    [cloud_kind],
+                )
+                .unwrap();
+            let mut local_worker = request.clone();
+            local_worker.capabilities = vec!["demo-seed".into()];
+            assert!(
+                job_store::lease_next_task_for_worker(&mut connection, &local_worker)
+                    .unwrap()
+                    .task
+                    .is_none()
+            );
+            let selection =
+                job_store::lease_next_task_for_worker(&mut connection, &request).unwrap();
+            assert_eq!(
+                selection.task.unwrap().resources.network_policy,
+                "network-allowed"
+            );
+        }
+    }
+
+    #[test]
     fn lease_heartbeats_extend_ttl_and_stale_heartbeats_are_rejected() {
         let temp = TempDir::new().expect("tempdir");
         let (_path, mut connection) = database(&temp);

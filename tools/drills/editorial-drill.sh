@@ -51,7 +51,8 @@ fingerprint() {
 goldens_before="$(fingerprint contracts/fixtures/editorial.windows)"
 
 echo "==> the cut, without a recording"
-cargo test -p clipmill-editorial --lib -- --nocapture
+cargo test -p clipmill-editorial --lib --test validation --test reviews -- --nocapture
+workers/editorial/.venv/bin/python -m pytest workers/editorial/tests -q
 
 # A filter that matches nothing still exits zero, so each of these is checked
 # for having actually selected tests rather than for merely not failing.

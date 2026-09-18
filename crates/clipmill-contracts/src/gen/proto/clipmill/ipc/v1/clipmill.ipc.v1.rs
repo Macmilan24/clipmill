@@ -480,6 +480,15 @@ pub struct EditorialStagePayloadV1 {
     /// The registered task kind this payload belongs to.
     #[prost(string, tag = "2")]
     pub stage: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub duration: ::core::option::Option<ClipDurationV1>,
+    /// Prompt content digest and decoding policy are part of the recipe key.
+    #[prost(string, tag = "4")]
+    pub prompt_digest: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "5")]
+    pub max_output_tokens: u32,
+    #[prost(message, optional, tag = "6")]
+    pub cloud: ::core::option::Option<EditorialCloudV1>,
 }
 /// Versioned payload for discovery (book ch. 15). The request names a source;
 /// the daemon resolves it to the evidence index, the transcript behind it, and
@@ -613,6 +622,22 @@ pub struct AnalyzeSourcePayloadV1 {
     pub count: u64,
     #[prost(uint64, tag = "6")]
     pub diversity_milli: u64,
+    /// Explicit local editorial selection; absent keeps legacy heuristic jobs readable.
+    #[prost(bool, tag = "7")]
+    pub local_editorial: bool,
+    #[prost(message, optional, tag = "8")]
+    pub cloud_editorial: ::core::option::Option<EditorialCloudV1>,
+}
+/// Explicit consent applies only to this run. Credentials never enter the request.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EditorialCloudV1 {
+    #[prost(bool, tag = "1")]
+    pub transcript_consent: bool,
+    #[prost(uint64, tag = "2")]
+    pub budget_micro_usd: u64,
+    /// Fixed, versioned adapter policy; unsupported identifiers are rejected.
+    #[prost(string, tag = "3")]
+    pub model: ::prost::alloc::string::String,
 }
 /// What the fan-in at the end of an analysis is asked to write.
 ///

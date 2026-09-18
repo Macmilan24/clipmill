@@ -199,6 +199,8 @@ fn the_job_payloads_name_only_a_source_and_what_was_asked_for() {
         ranking
     );
     let analyze = AnalyzeSourcePayloadV1 {
+        local_editorial: false,
+        cloud_editorial: None,
         key_version: "clipmill.analyze-source.v1".to_owned(),
         source_id: "src_0123456789abcdef".to_owned(),
         language: String::new(),

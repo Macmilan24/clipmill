@@ -100,6 +100,33 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
     },
+    Implementation {
+        name: "clipmill-worker-editorial@0.1.1/propose",
+        capability: "editorial",
+        stage: "editorial-propose",
+        model: "qwen3-5-editorial-mlx",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.1.1/review",
+        capability: "editorial",
+        stage: "editorial-review",
+        model: "qwen3-5-editorial-mlx",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.1.1/look",
+        capability: "editorial",
+        stage: "editorial-look",
+        model: "qwen3-5-editorial-mlx",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+    },
     // The face detector. One candidate and no accelerated sibling: YuNet is a
     // 230 kB CPU graph whose whole appeal is having no runtime tail, and an
     // accelerated variant would be a second implementation to keep honest for
@@ -155,6 +182,7 @@ pub(crate) fn portable_for_stage(stage: &str) -> Option<&'static Implementation>
 pub(crate) fn candidates_for_capability_names() -> BTreeSet<&'static str> {
     IMPLEMENTATIONS
         .iter()
+        .filter(|implementation| implementation.capability != "editorial")
         .map(|implementation| implementation.capability)
         .collect()
 }
@@ -190,6 +218,7 @@ mod tests {
     fn every_capability_has_exactly_one_portable_candidate() {
         for capability in IMPLEMENTATIONS
             .iter()
+            .filter(|implementation| implementation.capability != "editorial")
             .map(|implementation| implementation.capability)
             .collect::<BTreeSet<_>>()
         {
@@ -231,6 +260,9 @@ mod tests {
     #[test]
     fn a_capability_is_served_by_one_stage() {
         for implementation in IMPLEMENTATIONS {
+            if implementation.capability == "editorial" {
+                continue;
+            } // one chosen model serves three operations
             let stages = candidates_for_capability(implementation.capability)
                 .map(|candidate| candidate.stage)
                 .collect::<BTreeSet<_>>();

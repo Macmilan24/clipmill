@@ -72,6 +72,7 @@ export interface ResultsProps {
   readonly onEdit: (candidateId: string) => void;
   readonly onApproveMany: (candidateIds: readonly string[]) => void;
   readonly onReload: () => void;
+  readonly notice?: string | null;
 }
 
 /** The job's state as the design's badge, from the job rather than assumed. */
@@ -111,16 +112,13 @@ export function Results({
   onEdit,
   onApproveMany,
   onReload,
+  notice,
 }: ResultsProps) {
   const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, query: '' });
   const [sort, setSort] = useState<SortKey>('rank');
   const [view, setView] = useState<BoardView>('list');
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
-
-  useEffect(() => {
-    onReload();
-  }, [onReload]);
 
   // A new set of rows is a new board; a tick made against the old one would be
   // a tick against a clip that may no longer be on screen.
@@ -151,11 +149,16 @@ export function Results({
     () => rows.filter((row) => checked.has(row.candidateId)),
     [rows, checked],
   );
-  const badge = runBadge(run);
+  const incomplete = (summary?.warnings?.length ?? 0) > 0;
+  const badge =
+    incomplete && run?.state === JobState.SUCCEEDED
+      ? { label: 'Partial results', tone: 'warning' as const }
+      : runBadge(run);
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-4 p-6">
+      <div className="workspace-page" role="status" aria-busy="true">
+        <p className="text-xs text-[var(--cm-text-secondary)]">Loading results…</p>
         <Skeleton className="h-[92px] w-full rounded-[var(--cm-radius-card)]" />
         <Skeleton className="h-[var(--cm-control-standard)] w-full rounded-[var(--cm-radius-control)]" />
         <Skeleton className="h-[420px] w-full rounded-[var(--cm-radius-card)]" />
@@ -164,7 +167,7 @@ export function Results({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+    <div className="workspace-page">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-3">
@@ -188,8 +191,10 @@ export function Results({
               <>
                 <span aria-hidden>·</span>
                 <span className="mono text-[11px] text-[var(--cm-text-muted)]">
-                  {run.jobId.replace(/^job_/, 'run_').slice(0, 12)} · completed{' '}
-                  {completedAt(run.completedUnixMillis)}
+                  {run.state === JobState.SUCCEEDED
+                    ? `Completed ${completedAt(run.completedUnixMillis)}`
+                    : badge?.label}
+                  <span className="sr-only">{run.jobId.replace(/^job_/, 'run_').slice(0, 12)}</span>
                 </span>
               </>
             )}
@@ -197,13 +202,13 @@ export function Results({
         </div>
 
         <div className="flex items-center gap-2">
-          {projects.length > 1 && activeProjectId && (
-            <Select value={activeProjectId} onValueChange={onChooseProject}>
+          {(projects.length > 1 || (projects.length > 0 && !activeProjectId)) && (
+            <Select value={activeProjectId ?? ''} onValueChange={onChooseProject} disabled={busy}>
               <SelectTrigger
                 aria-label="Which project's results to show"
                 className="glass h-[var(--cm-control-primary)] w-[220px] text-[12px]"
               >
-                <SelectValue />
+                <SelectValue placeholder="Choose a project" />
               </SelectTrigger>
               <SelectContent>
                 {projects.map((project) => (
@@ -217,26 +222,34 @@ export function Results({
           {!problem && (
             <Button
               className="h-[var(--cm-control-primary)] gap-2"
-              disabled={checkedRows.length === 0}
+              disabled={busy || focused === null}
               onClick={() => {
-                const first = checkedRows[0];
+                const first = checkedRows[0] ?? focused;
                 if (first) {
                   onInspect(first.candidateId);
                 }
               }}
               title={
                 checkedRows.length === 0
-                  ? 'Tick one or more clips to review them'
+                  ? 'Open the selected clip for review'
                   : `Open the first of ${checkedRows.length} selected in the inspector`
               }
             >
-              Review selected
+              {checkedRows.length ? 'Review selected' : 'Review clips'}
               <ArrowRight className="size-4" aria-hidden />
             </Button>
           )}
         </div>
       </header>
 
+      {notice && (
+        <p
+          role="status"
+          className="workspace-panel px-4 py-3 text-xs text-[var(--cm-text-secondary)]"
+        >
+          {notice}
+        </p>
+      )}
       {problem && (
         <Empty className="glass rounded-[var(--cm-radius-card)]">
           <EmptyHeader>
@@ -254,6 +267,9 @@ export function Results({
                 : 'Results appear once an analysis finishes and publishes a ranked set. Another recording can be chosen above.'}
             </EmptyDescription>
           </EmptyHeader>
+          <Button variant="outline" size="sm" onClick={onReload}>
+            Try again
+          </Button>
         </Empty>
       )}
 
@@ -261,13 +277,18 @@ export function Results({
         <StatStrip
           summary={summary}
           tallies={tallies}
-          bestScore={rows.length > 0 ? Math.max(...rows.map((row) => row.displayScore)) : null}
+          bestScore={
+            rows.length > 0 && !rows.some((row) => row.review)
+              ? Math.max(...rows.map((row) => row.displayScore))
+              : null
+          }
         />
       )}
 
       {!problem && (
         <>
           <Toolbar
+            editorial={rows.some((row) => row.review !== undefined)}
             filters={filters}
             sort={sort}
             view={view}
@@ -278,11 +299,15 @@ export function Results({
             onView={setView}
           />
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
+          <div className="results-layout">
             {shown.length === 0 ? (
               <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
                 <p className="text-[13px] text-[var(--cm-text-secondary)]">
-                  No clip matches those filters.
+                  {rows.length === 0
+                    ? incomplete
+                      ? 'No clips are ready from this partial analysis. Unassessed sections may still contain worthwhile moments.'
+                      : 'No suitable complete moments were found in this recording.'
+                    : 'No clip matches those filters.'}
                 </p>
               </div>
             ) : view === 'list' ? (

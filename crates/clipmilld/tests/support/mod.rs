@@ -301,6 +301,8 @@ pub async fn submit_analyze(
     source_id: &str,
 ) -> Result<Job, String> {
     let payload = AnalyzeSourcePayloadV1 {
+        local_editorial: false,
+        cloud_editorial: None,
         key_version: "clipmill.analyze-source.v1".to_owned(),
         source_id: source_id.to_owned(),
         language: "en".to_owned(),

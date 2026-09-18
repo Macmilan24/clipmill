@@ -334,6 +334,12 @@ export interface AnalyzeRequest {
   readonly maxTicks: number;
   /** Zero leaves the daemon's default. */
   readonly count: number;
+  readonly localEditorial?: boolean;
+  readonly cloudEditorial?: {
+    readonly transcriptConsent: boolean;
+    readonly budgetMicroUsd: number;
+    readonly model: string;
+  };
 }
 
 /**

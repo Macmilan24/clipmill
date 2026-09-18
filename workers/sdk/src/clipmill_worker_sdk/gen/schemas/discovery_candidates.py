@@ -162,6 +162,42 @@ class Coverage(BaseModel):
     analyzed: bool
 
 
+class FailedWindow(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    index: conint(ge=0)
+    detail: constr(min_length=1)
+
+
+class EditorialCoverage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    window_count: conint(ge=0)
+    answered_windows: conint(ge=0)
+    failed_windows: list[FailedWindow]
+    failed_reviews: conint(ge=0)
+    failed_visual_checks: conint(ge=0)
+
+
+class ProposalId(RootModel[constr(min_length=1)]):
+    root: constr(min_length=1)
+
+
+class EditorialMoment(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    title: constr(min_length=1, max_length=120)
+    hook: constr(min_length=1)
+    setup: constr(min_length=1)
+    payoff: constr(min_length=1)
+    reason: constr(min_length=1)
+    proposal_ids: list[ProposalId] = Field(..., min_length=1)
+    uncertainties: list[constr(min_length=1)]
+
+
 class Inputs(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -224,6 +260,7 @@ class Candidate(BaseModel):
         ...,
         description='Reasons this candidate must not be published even if it ranks well.',
     )
+    editorial: EditorialMoment | None = None
 
 
 class DiscoveryCandidates(BaseModel):
@@ -253,4 +290,8 @@ class DiscoveryCandidates(BaseModel):
     clusters: list[Cluster] = Field(
         ...,
         description="Near-duplicate groupings. Every candidate belongs to exactly one cluster, including the ones that duplicate nothing. Ranking sends a cluster's representative forward and can still offer the alternatives, so a diversity decision is shown rather than silent.",
+    )
+    editorial: EditorialCoverage | None = Field(
+        None,
+        description='Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.',
     )

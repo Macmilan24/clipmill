@@ -74,8 +74,9 @@ describe('the editor, handed a clip in an older project', () => {
 
   it('names the clip it is editing', async () => {
     show(OLDER_CLIP);
-    expect((await screen.findByTestId('clip-name')).textContent).toBe('CUDA kernels · Clip 01');
-    expect(screen.getByText(OLD_DOC)).toBeTruthy();
+    expect((await screen.findByTestId('clip-name')).textContent).toBe('Clip 01');
+    expect(screen.getByText(/CUDA kernels/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Export this clip' })).toBeTruthy();
   });
 
   it('takes the same clip, unchanged, to the export screen', async () => {

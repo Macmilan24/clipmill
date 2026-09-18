@@ -337,6 +337,24 @@ pub(crate) fn measure(
             bindings.push(entry);
         }
     }
+    // The user's fixed editorial model still has to execute successfully on
+    // this device before its Metal worker is admitted. This is runtime proof,
+    // deliberately separate from speech-model ranking and editorial quality.
+    let receipt = benchmark_path.with_file_name("editorial-runtime.json");
+    if let Ok(bytes) = fs::read(receipt)
+        && let Ok(proof) = serde_json::from_slice::<Value>(&bytes)
+        && proof["schema_version"] == "clipmill.editorial.runtime.v1"
+        && proof["runtime"] == "mlx-vlm@0.7.1/clipmill-json-v2"
+        && proof["hardware_fingerprint"] == hardware_fingerprint
+        && proof["validated"] == true
+        && proof["elapsed_millis"].as_u64().is_some_and(|n| n > 0)
+        && proof["peak_resident_bytes"].as_u64().is_some_and(|n| n > 0)
+        && models
+            .get("qwen3-5-editorial-mlx")
+            .is_some_and(|m| proof["model_digest"] == format!("sha256:{}", m.digest()))
+    {
+        proven_accelerators.insert("metal");
+    }
     Selection {
         value: json!({ "bindings": bindings, "candidates": candidates }),
         proven_accelerators,
@@ -447,6 +465,46 @@ mod tests {
             .iter()
             .find(|entry| entry["implementation"] == implementation)
             .expect("a candidate for the implementation")
+    }
+
+    #[test]
+    fn editorial_runtime_proof_is_bound_to_this_device_and_pinned_model() {
+        let temp = TempDir::new().unwrap();
+        let models = registry();
+        let path = temp.path().join("speech-benchmark.json");
+        let receipt = path.with_file_name("editorial-runtime.json");
+        let proof = json!({"schema_version":"clipmill.editorial.runtime.v1",
+            "runtime":"mlx-vlm@0.7.1/clipmill-json-v2",
+            "hardware_fingerprint":FINGERPRINT,"model_digest":digest_of(&models,"qwen3-5-editorial-mlx"),
+            "validated":true,"elapsed_millis":1,"peak_resident_bytes":1024});
+        std::fs::write(&receipt, serde_json::to_vec(&proof).unwrap()).unwrap();
+        assert!(
+            measure(&path, FINGERPRINT, &models)
+                .proven_accelerators
+                .contains("metal")
+        );
+        assert!(
+            !measure(&path, "another-device", &models)
+                .proven_accelerators
+                .contains("metal")
+        );
+        for (field, wrong) in [
+            ("validated", json!(false)),
+            ("model_digest", json!("old-model")),
+            ("runtime", json!("old-runtime")),
+            ("elapsed_millis", json!(0)),
+            ("peak_resident_bytes", json!(0)),
+        ] {
+            let mut changed = proof.clone();
+            changed[field] = wrong;
+            std::fs::write(&receipt, serde_json::to_vec(&changed).unwrap()).unwrap();
+            assert!(
+                !measure(&path, FINGERPRINT, &models)
+                    .proven_accelerators
+                    .contains("metal"),
+                "{field}"
+            );
+        }
     }
 
     /// The state of a machine nobody has benchmarked. Every capability still

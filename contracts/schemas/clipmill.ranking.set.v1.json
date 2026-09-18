@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clipmill.dev/schemas/clipmill.ranking.set.v1.json",
   "title": "RankingSet",
-  "description": "Which nominated clips are worth showing, in what order, and cut where (book ch. 16). Three decisions live here that discovery deliberately left open: what each candidate is worth, where its boundaries should actually fall, and which subset of a cohort a user should see. Every one of them is shown rather than asserted — the score is decomposed into named factors with the evidence behind them, the chosen boundary is published beside the runner-up it beat, and a set smaller than the one requested says why instead of padding itself.",
+  "description": "Which nominated clips are worth showing, in what order, and cut where (book ch. 16). Three decisions live here that discovery deliberately left open: what each candidate is worth, where its boundaries should actually fall, and which subset of a cohort a user should see. Every one of them is shown rather than asserted \u2014 the score is decomposed into named factors with the evidence behind them, the chosen boundary is published beside the runner-up it beat, and a set smaller than the one requested says why instead of padding itself.",
   "type": "object",
   "required": [
     "schema_version",
@@ -20,28 +20,50 @@
     "schema_version": {
       "const": "clipmill.ranking.set.v1"
     },
-    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
     "inputs": {
       "description": "What was read. The candidate set is the authority for every candidate id below; the index and transcript are what the factors were measured against.",
       "type": "object",
       "required": ["candidates_artifact_id", "index_artifact_id", "transcript_artifact_id"],
       "additionalProperties": false,
       "properties": {
-        "candidates_artifact_id": { "$ref": "#/$defs/sha256" },
-        "index_artifact_id": { "$ref": "#/$defs/sha256" },
-        "transcript_artifact_id": { "$ref": "#/$defs/sha256" }
+        "candidates_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "index_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "transcript_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "judgments_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
-    "producer": { "$ref": "#/$defs/producer" },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
     "rubric": {
       "description": "Which scoring rules produced these numbers. Hand-set weights calibrated against nothing yet, and named as such: the design calibrates them per genre against human labels, and until that has happened a version string is the only honest way to say which arithmetic ran. Part of the artifact key.",
       "type": "object",
       "required": ["scorer", "boundary", "selector"],
       "additionalProperties": false,
       "properties": {
-        "scorer": { "type": "string", "minLength": 1 },
-        "boundary": { "type": "string", "minLength": 1 },
-        "selector": { "type": "string", "minLength": 1 }
+        "scorer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "boundary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "requested": {
@@ -50,7 +72,10 @@
       "required": ["count", "diversity"],
       "additionalProperties": false,
       "properties": {
-        "count": { "type": "integer", "minimum": 1 },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
         "diversity": {
           "description": "The lambda in maximal marginal relevance: one takes the best clips whatever their overlap, zero takes the most different ones whatever their quality.",
           "type": "number",
@@ -62,7 +87,9 @@
     "cohort": {
       "description": "Every candidate that survived the stage-one filters, scored and ordered. Percentiles are within this list, which is what makes the displayed number an editorial index rather than a probability.",
       "type": "array",
-      "items": { "$ref": "#/$defs/ranked" }
+      "items": {
+        "$ref": "#/$defs/ranked"
+      }
     },
     "selected": {
       "description": "The clips to show, in order. A subset of the cohort chosen for quality and difference together, so a user is not handed five versions of one moment.",
@@ -75,12 +102,20 @@
     "shortfall": {
       "description": "Why fewer clips were selected than requested. Empty when the request was met. Never padded: a recording that holds three good moments should return three and say so, because the fourth would be a clip the system does not believe in.",
       "type": "array",
-      "items": { "$ref": "#/$defs/shortfall_reason" }
+      "items": {
+        "$ref": "#/$defs/shortfall_reason"
+      }
     },
     "filtered": {
       "description": "Candidates the stage-one filters removed before scoring, with the reason. Kept so the interface can answer 'what happened to that one?' rather than the candidate simply vanishing between two documents.",
       "type": "array",
-      "items": { "$ref": "#/$defs/filtered_candidate" }
+      "items": {
+        "$ref": "#/$defs/filtered_candidate"
+      }
+    },
+    "editorial": {
+      "description": "Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.",
+      "$ref": "#/$defs/editorial_coverage"
     }
   },
   "$defs": {
@@ -97,8 +132,14 @@
       "required": ["start_ticks", "end_ticks"],
       "additionalProperties": false,
       "properties": {
-        "start_ticks": { "type": "integer", "minimum": 0 },
-        "end_ticks": { "type": "integer", "minimum": 0 }
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "evidence_reference": {
@@ -110,7 +151,10 @@
           "type": "string",
           "enum": ["utterance", "sentence", "topic"]
         },
-        "index": { "type": "integer", "minimum": 0 }
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "ranked": {
@@ -128,7 +172,9 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "candidate_id": { "$ref": "#/$defs/candidate_id" },
+        "candidate_id": {
+          "$ref": "#/$defs/candidate_id"
+        },
         "rank": {
           "description": "Position in the cohort, from one. Ties are broken by candidate id, so the order does not depend on which proposer ran first.",
           "type": "integer",
@@ -148,23 +194,61 @@
           "description": "The score card, decomposed. Each factor names itself, so a card that grew a factor and a card that lost one are distinguishable documents.",
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/factor" }
+          "items": {
+            "$ref": "#/$defs/factor"
+          }
         },
-        "uncertainty": { "$ref": "#/$defs/uncertainty" },
+        "uncertainty": {
+          "$ref": "#/$defs/uncertainty"
+        },
         "penalties": {
           "type": "array",
-          "items": { "$ref": "#/$defs/penalty" }
+          "items": {
+            "$ref": "#/$defs/penalty"
+          }
         },
-        "boundary": { "$ref": "#/$defs/boundary" },
+        "boundary": {
+          "$ref": "#/$defs/boundary"
+        },
         "cluster_id": {
           "description": "Echoed from discovery, so the interface can offer the cluster's alternatives without opening the candidate set.",
           "type": "string",
           "pattern": "^cl_[0-9a-f]{16}$"
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reasons", "route"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["accepted", "needs_review"]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "route": {
+              "type": "string",
+              "enum": ["local", "cloud"]
+            },
+            "summary": {
+              "type": "string"
+            }
+          }
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "The editorial proposal's concise title, separate from the review summary."
         }
       }
     },
     "factor": {
-      "description": "One axis of the score card. A factor this phase cannot measure is reported `available: false` with a stated reason and contributes nothing to the score — not zero, which would read as a measurement of badness, and not a neutral default, which would read as a measurement at all.",
+      "description": "One axis of the score card. A factor this phase cannot measure is reported `available: false` with a stated reason and contributes nothing to the score \u2014 not zero, which would read as a measurement of badness, and not a neutral default, which would read as a measurement at all.",
       "type": "object",
       "required": ["name", "available"],
       "additionalProperties": false,
@@ -182,7 +266,9 @@
             "feasibility"
           ]
         },
-        "available": { "type": "boolean" },
+        "available": {
+          "type": "boolean"
+        },
         "value": {
           "description": "Present when available. Zero to one before weighting.",
           "type": "number",
@@ -202,7 +288,9 @@
         "evidence": {
           "description": "What the factor was read from, so a user asking 'why is the hook strong?' gets the sentence rather than the number again.",
           "type": "array",
-          "items": { "$ref": "#/$defs/evidence_reference" }
+          "items": {
+            "$ref": "#/$defs/evidence_reference"
+          }
         }
       }
     },
@@ -212,7 +300,11 @@
       "required": ["value", "band"],
       "additionalProperties": false,
       "properties": {
-        "value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "band": {
           "type": "string",
           "enum": ["strong", "promising", "needs_review"]
@@ -220,7 +312,10 @@
         "warnings": {
           "description": "Factor-specific cautions, e.g. 'word timing here was interpolated rather than measured'.",
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -230,12 +325,18 @@
       "additionalProperties": false,
       "properties": {
         "reason": {
-          "description": "'repetition' is overlap with a candidate already ranked above this one. 'context_debt' is a clip that opens on something the viewer has not been told. 'rights_risk' cannot fire at this phase — there is no rights ledger — and is listed so the shape does not change when there is one.",
+          "description": "'repetition' is overlap with a candidate already ranked above this one. 'context_debt' is a clip that opens on something the viewer has not been told. 'rights_risk' cannot fire at this phase \u2014 there is no rights ledger \u2014 and is listed so the shape does not change when there is one.",
           "type": "string",
           "enum": ["repetition", "context_debt", "rights_risk"]
         },
-        "value": { "type": "number", "exclusiveMinimum": 0 },
-        "detail": { "type": "string", "minLength": 1 }
+        "value": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "boundary": {
@@ -244,13 +345,19 @@
       "required": ["chosen", "score", "terms"],
       "additionalProperties": false,
       "properties": {
-        "chosen": { "$ref": "#/$defs/interval" },
-        "score": { "type": "number" },
+        "chosen": {
+          "$ref": "#/$defs/interval"
+        },
+        "score": {
+          "type": "number"
+        },
         "terms": {
           "description": "The seven weighted terms behind the choice, so a boundary a user disagrees with can be argued with.",
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/boundary_term" }
+          "items": {
+            "$ref": "#/$defs/boundary_term"
+          }
         },
         "alternative": {
           "description": "The runner-up, absent only when the lattice offered exactly one legal pair.",
@@ -258,8 +365,12 @@
           "required": ["interval", "score"],
           "additionalProperties": false,
           "properties": {
-            "interval": { "$ref": "#/$defs/interval" },
-            "score": { "type": "number" }
+            "interval": {
+              "$ref": "#/$defs/interval"
+            },
+            "score": {
+              "type": "number"
+            }
           }
         },
         "considered": {
@@ -286,7 +397,11 @@
             "context_debt"
           ]
         },
-        "value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "weight": {
           "description": "Signed: the first four terms reward and the last three penalise, and carrying the sign here means a reader does not have to know which is which.",
           "type": "number"
@@ -307,7 +422,10 @@
           "type": "integer",
           "minimum": 1
         },
-        "detail": { "type": "string", "minLength": 1 }
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "filtered_candidate": {
@@ -315,12 +433,17 @@
       "required": ["candidate_id", "reason"],
       "additionalProperties": false,
       "properties": {
-        "candidate_id": { "$ref": "#/$defs/candidate_id" },
+        "candidate_id": {
+          "$ref": "#/$defs/candidate_id"
+        },
         "reason": {
           "type": "string",
           "enum": ["excluded_by_discovery", "no_legal_boundary", "below_floor"]
         },
-        "detail": { "type": "string", "minLength": 1 }
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "producer": {
@@ -328,8 +451,61 @@
       "required": ["stage", "implementation"],
       "additionalProperties": false,
       "properties": {
-        "stage": { "type": "string", "minLength": 1 },
-        "implementation": { "type": "string", "minLength": 1 }
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "editorial_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "window_count",
+        "answered_windows",
+        "failed_windows",
+        "failed_reviews",
+        "failed_visual_checks"
+      ],
+      "properties": {
+        "window_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "answered_windows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["index", "detail"],
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "detail": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "failed_reviews": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_visual_checks": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     }
   }

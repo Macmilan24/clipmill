@@ -146,3 +146,11 @@ describe('the export screen', () => {
     expect(screen.queryByRole('button', { name: /^export/i })).toBeNull();
   });
 });
+
+it('keeps export disabled while a changed destination or filename is being validated', () => {
+  show({ planning: true });
+  expect(screen.getByRole('button', { name: /^export revision r4$/i })).toHaveProperty(
+    'disabled',
+    true,
+  );
+});

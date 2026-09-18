@@ -178,7 +178,10 @@ impl ResourceCapacity {
                 && resources.vram_bytes <= self.vram_bytes
         };
         if accelerator_available
-            && resources.network_policy == "local-lock"
+            && matches!(
+                resources.network_policy.as_str(),
+                "local-lock" | "network-allowed"
+            )
             && resources.cpu_threads <= self.cpu_threads
             && resources.ram_bytes <= self.ram_bytes
             && resources.disk_bytes <= self.disk_bytes
@@ -761,6 +764,7 @@ struct IngestHandles {
     proxy: Option<DerivativeHandle>,
     audio_16k: Option<DerivativeHandle>,
     loudness: Option<DerivativeHandle>,
+    frames: Option<DerivativeHandle>,
 }
 
 /// The W11 fan-out itself, shared by the ingest job and the analyze DAG.
@@ -831,6 +835,7 @@ fn ingest_fan_out(
                 std::slice::from_ref(audio_16k),
             );
         }
+        let mut frames = None;
         if let Some(proxy) = &proxy {
             builder.derivative(
                 media::KIND_FILMSTRIP,
@@ -839,18 +844,19 @@ fn ingest_fan_out(
                 ingest_resources(1, 128, 128),
                 std::slice::from_ref(proxy),
             );
-            builder.derivative(
+            frames = Some(builder.derivative(
                 media::KIND_FRAMES,
                 "media.frames.v1",
                 "ffmpeg-8.1.2+clipmill-frames-v1",
                 ingest_resources(1, 128, 256),
                 std::slice::from_ref(proxy),
-            );
+            ));
         }
         Ok(IngestHandles {
             proxy,
             audio_16k,
             loudness,
+            frames,
         })
     }
 }
@@ -1351,6 +1357,16 @@ impl JobPlan {
         decoder_bom: &str,
         now: u64,
     ) -> Result<Self, &'static str> {
+        if let Some(cloud) = &request.cloud_editorial
+            && (request.local_editorial
+                || !cloud.transcript_consent
+                || cloud.model != "claude-sonnet-4-6"
+                || !(10_000..=100_000_000).contains(&cloud.budget_micro_usd))
+        {
+            return Err(
+                "Choose one route. Cloud requires explicit transcript-only consent, Claude Sonnet 4.6, and a $0.01–$100 run budget",
+            );
+        }
         let mut tasks = Vec::new();
         // Every stage that publishes something, named by the artifact kind it
         // publishes, so the fan-in can depend on all of them and say what each
@@ -1540,46 +1556,133 @@ impl JobPlan {
                         payload: EditorialStagePayloadV1 {
                             key_version: EDITORIAL_STAGE_KEY_VERSION.to_owned(),
                             stage: editorial::KIND_WINDOWS.to_owned(),
+                            ..Default::default()
                         }
                         .encode_to_vec(),
                         ram_mib: 256,
                     },
                 ));
-                stages.push(("editorial.windows.v1".to_owned(), windows));
+                stages.push(("editorial.windows.v1".to_owned(), windows.clone()));
 
-                let discover = TaskId::new().to_string();
-                let mut discover_dependencies = vec![index.clone(), transcript.clone()];
-                let mut discover_kinds = vec![
-                    "index.transcript.v1".to_owned(),
-                    "speech.transcript.v1".to_owned(),
-                ];
-                if let Some(loudness) = &handles.loudness {
-                    discover_dependencies.push(loudness.task_id.clone());
-                    discover_kinds.push("media.loudness_envelope.v1".to_owned());
-                }
-                tasks.push(builtin_task(
-                    discover.clone(),
-                    Builtin {
-                        kind: discovery::KIND_DISCOVER,
-                        output_kind: "discovery.candidates.v1",
-                        implementation: discovery::IMPLEMENTATION,
-                        input_kinds: discover_kinds,
-                        dependencies: discover_dependencies,
-                        payload: DiscoverStagePayloadV1 {
-                            key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
-                            stage: discovery::KIND_DISCOVER.to_owned(),
-                            duration: request.duration.or(Some(ClipDurationV1 {
-                                min_ticks: 0,
-                                max_ticks: 0,
-                            })),
-                            exploration_floor: 0,
+                let (discover, judgments, looks) =
+                    if request.local_editorial || request.cloud_editorial.is_some() {
+                        let propose = editorial_worker_task(
+                            "propose",
+                            vec![windows.clone()],
+                            vec!["editorial.windows.v1".into()],
+                            request,
+                            models,
+                        )?;
+                        let propose_id = propose.task_id.clone();
+                        stages.push((propose.output_kind.clone(), propose_id.clone()));
+                        tasks.push(propose);
+                        let validate = TaskId::new().to_string();
+                        tasks.push(builtin_task(
+                            validate.clone(),
+                            Builtin {
+                                kind: editorial::KIND_VALIDATE,
+                                output_kind: "discovery.candidates.v1",
+                                implementation: "clipmill-editorial-validate@1.0.0",
+                                input_kinds: vec![
+                                    "editorial.windows.v1".into(),
+                                    "editorial.proposals.v1".into(),
+                                    "speech.transcript.v1".into(),
+                                ],
+                                dependencies: vec![windows.clone(), propose_id, transcript.clone()],
+                                payload: EditorialStagePayloadV1 {
+                                    key_version: EDITORIAL_STAGE_KEY_VERSION.into(),
+                                    stage: editorial::KIND_VALIDATE.into(),
+                                    duration: Some(editorial_duration(request)),
+                                    ..Default::default()
+                                }
+                                .encode_to_vec(),
+                                ram_mib: 256,
+                            },
+                        ));
+                        stages.push(("discovery.candidates.v1".into(), validate.clone()));
+                        let review = editorial_worker_task(
+                            "review",
+                            vec![validate.clone(), windows.clone()],
+                            vec![
+                                "discovery.candidates.v1".into(),
+                                "editorial.windows.v1".into(),
+                            ],
+                            request,
+                            models,
+                        )?;
+                        let review_id = review.task_id.clone();
+                        stages.push((review.output_kind.clone(), review_id.clone()));
+                        tasks.push(review);
+                        let looks = if let Some(frames) = &handles.frames {
+                            let look = editorial_worker_task(
+                                "look",
+                                vec![review_id.clone(), validate.clone(), frames.task_id.clone()],
+                                vec![
+                                    "editorial.judgments.v1".into(),
+                                    "discovery.candidates.v1".into(),
+                                    "media.frames.v1".into(),
+                                ],
+                                request,
+                                models,
+                            )?;
+                            let id = look.task_id.clone();
+                            stages.push((look.output_kind.clone(), id.clone()));
+                            tasks.push(look);
+                            Some(id)
+                        } else {
+                            None
+                        };
+                        (validate, Some(review_id), looks)
+                    } else {
+                        let discover = TaskId::new().to_string();
+                        let mut discover_dependencies = vec![index.clone(), transcript.clone()];
+                        let mut discover_kinds = vec![
+                            "index.transcript.v1".to_owned(),
+                            "speech.transcript.v1".to_owned(),
+                        ];
+                        if let Some(loudness) = &handles.loudness {
+                            discover_dependencies.push(loudness.task_id.clone());
+                            discover_kinds.push("media.loudness_envelope.v1".to_owned());
                         }
-                        .encode_to_vec(),
-                        ram_mib: 512,
-                    },
-                ));
-                stages.push(("discovery.candidates.v1".to_owned(), discover.clone()));
+                        tasks.push(builtin_task(
+                            discover.clone(),
+                            Builtin {
+                                kind: discovery::KIND_DISCOVER,
+                                output_kind: "discovery.candidates.v1",
+                                implementation: discovery::IMPLEMENTATION,
+                                input_kinds: discover_kinds,
+                                dependencies: discover_dependencies,
+                                payload: DiscoverStagePayloadV1 {
+                                    key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
+                                    stage: discovery::KIND_DISCOVER.to_owned(),
+                                    duration: request.duration.or(Some(ClipDurationV1 {
+                                        min_ticks: 0,
+                                        max_ticks: 0,
+                                    })),
+                                    exploration_floor: 0,
+                                }
+                                .encode_to_vec(),
+                                ram_mib: 512,
+                            },
+                        ));
+                        stages.push(("discovery.candidates.v1".to_owned(), discover.clone()));
 
+                        (discover, None, None)
+                    };
+                let mut rank_kinds = vec![
+                    "discovery.candidates.v1".into(),
+                    "index.transcript.v1".into(),
+                    "speech.transcript.v1".into(),
+                ];
+                let mut rank_dependencies = vec![discover, index, transcript.clone()];
+                if let Some(judgments) = judgments {
+                    rank_kinds.push("editorial.judgments.v1".into());
+                    rank_dependencies.push(judgments);
+                }
+                if let Some(looks) = looks {
+                    rank_kinds.push("editorial.looks.v1".into());
+                    rank_dependencies.push(looks);
+                }
                 let rank = TaskId::new().to_string();
                 tasks.push(builtin_task(
                     rank.clone(),
@@ -1587,12 +1690,8 @@ impl JobPlan {
                         kind: ranking::KIND_RANK,
                         output_kind: "ranking.set.v1",
                         implementation: ranking::IMPLEMENTATION,
-                        input_kinds: vec![
-                            "discovery.candidates.v1".to_owned(),
-                            "index.transcript.v1".to_owned(),
-                            "speech.transcript.v1".to_owned(),
-                        ],
-                        dependencies: vec![discover, index, transcript.clone()],
+                        input_kinds: rank_kinds,
+                        dependencies: rank_dependencies,
                         payload: RankStagePayloadV1 {
                             key_version: RANK_STAGE_KEY_VERSION.to_owned(),
                             stage: ranking::KIND_RANK.to_owned(),
@@ -1824,6 +1923,95 @@ fn speech_implementation(
         .and_then(|binding| crate::implementations::lookup(&binding.implementation))
         .or_else(|| crate::implementations::portable_for_stage(kind))
         .unwrap_or_else(|| unreachable!("{kind} is planned without a registered implementation"))
+}
+
+fn editorial_duration(request: &AnalyzeSourcePayloadV1) -> ClipDurationV1 {
+    let range = request.duration.unwrap_or_default();
+    ClipDurationV1 {
+        min_ticks: if range.min_ticks == 0 {
+            20 * 90_000
+        } else {
+            range.min_ticks
+        },
+        max_ticks: if range.max_ticks == 0 {
+            90 * 90_000
+        } else {
+            range.max_ticks
+        },
+    }
+}
+
+fn editorial_worker_task(
+    operation: &str,
+    dependencies: Vec<String>,
+    input_kinds: Vec<String>,
+    request: &AnalyzeSourcePayloadV1,
+    models: &crate::models::ModelRegistry,
+) -> Result<TaskSpec, &'static str> {
+    use sha2::{Digest, Sha256};
+    let cloud = if operation == "look" {
+        None
+    } else {
+        request.cloud_editorial.clone()
+    };
+    let kind = format!(
+        "editorial-{operation}{}",
+        if cloud.is_some() { "-cloud" } else { "" }
+    );
+    let implementation =
+        crate::implementations::candidates_for_stage(&format!("editorial-{operation}"))
+            .next()
+            .ok_or("editorial implementation missing")?;
+    let prompt = match operation {
+        "propose" => include_str!(
+            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/propose.v1.txt"
+        ),
+        "review" => include_str!(
+            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/review.v1.txt"
+        ),
+        "look" => include_str!(
+            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/look.v1.txt"
+        ),
+        _ => return Err("unknown editorial operation"),
+    };
+    let output_kind = match operation {
+        "propose" => "editorial.proposals.v1",
+        "look" => "editorial.looks.v1",
+        _ => "editorial.judgments.v1",
+    };
+    Ok(TaskSpec {
+        task_id: TaskId::new().to_string(),
+        ordinal: 0,
+        kind: kind.clone(),
+        input_kinds,
+        output_kind: output_kind.into(),
+        payload: EditorialStagePayloadV1 {
+            key_version: EDITORIAL_STAGE_KEY_VERSION.into(),
+            stage: kind,
+            duration: Some(editorial_duration(request)),
+            prompt_digest: format!("sha256:{}", hex::encode(Sha256::digest(prompt.as_bytes()))),
+            max_output_tokens: 2048,
+            cloud: cloud.clone(),
+        }
+        .encode_to_vec(),
+        dependencies,
+        input_artifact_ids: vec![],
+        resources: if cloud.is_some() {
+            ResourceDeclaration {
+                network_policy: "network-allowed".into(),
+                ..ingest_resources(1, 128, 32)
+            }
+        } else {
+            speech_resources(implementation, models, 1)
+        },
+        implementation: if cloud.is_some() {
+            format!("clipmill-worker-editorial@0.1.1/{operation}-cloud")
+        } else {
+            implementation.name.into()
+        },
+        max_attempts: if cloud.is_some() { 1 } else { 3 },
+        is_final: false,
+    })
 }
 
 /// What a stage costs, taken from the model it was actually bound to.
@@ -2209,7 +2397,10 @@ pub(crate) struct Scheduler {
 pub(crate) struct SchedulerHandle {
     notify: Arc<Notify>,
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
-    capacity_limit: ResourceCapacity,
+    verified_capacity: Arc<Mutex<Option<ResourceCapacity>>>,
+    /// Startup resource observations, not user-configured RAM limits.
+    /// Free memory is replaced by each verified profile; CPU/disk stay bounded.
+    startup_capacity: ResourceCapacity,
     /// Which implementation each speech stage is bound to, as last verified
     /// (D19). Read when a job is planned, never when a task is leased: a
     /// re-measurement that arrives mid-job must not change what a task already
@@ -2228,21 +2419,26 @@ impl SchedulerHandle {
         let measured = ResourceCapacity::measured(
             profile.logical_cores,
             profile.available_memory_bytes,
-            self.capacity_limit.disk_bytes,
+            self.startup_capacity.disk_bytes,
         )
         .with_available_backends(&profile.available_backends);
         let capacity = ResourceCapacity {
             cpu_threads: measured
                 .cpu_threads
-                .min(self.capacity_limit.cpu_threads)
+                .min(self.startup_capacity.cpu_threads)
                 .max(1),
-            ram_bytes: measured.ram_bytes.min(self.capacity_limit.ram_bytes),
-            disk_bytes: measured.disk_bytes.min(self.capacity_limit.disk_bytes),
+            // Free memory is a fresh observation, not a permanent boot-time
+            // ceiling. A new profile may observe memory released since startup.
+            ram_bytes: measured.ram_bytes,
+            disk_bytes: measured.disk_bytes.min(self.startup_capacity.disk_bytes),
             accelerator_mask: measured.accelerator_mask,
             vram_bytes: measured.vram_bytes,
         };
         if let Ok(mut pending) = self.capacity_update.lock() {
             *pending = Some(capacity);
+        }
+        if let Ok(mut verified) = self.verified_capacity.lock() {
+            *verified = Some(capacity);
         }
         // A profile predating selection carries no bindings. Keeping the
         // portable defaults is the only safe reading of that: it is a profile
@@ -2275,14 +2471,14 @@ impl SchedulerHandle {
     }
 
     /// What this machine actually has, as last verified. Falls back to the
-    /// boot-time limit until a device profile has been verified, so admission
+    /// startup observation until a device profile has been verified, so admission
     /// is never checked against nothing.
     pub(crate) fn machine_capacity(&self) -> ResourceCapacity {
-        self.capacity_update
+        self.verified_capacity
             .lock()
             .ok()
             .and_then(|pending| *pending)
-            .unwrap_or(self.capacity_limit)
+            .unwrap_or(self.startup_capacity)
     }
 
     /// The bindings a new plan should be built against.
@@ -2316,7 +2512,8 @@ impl Scheduler {
         let handle = SchedulerHandle {
             notify: Arc::clone(&notify),
             capacity_update: Arc::clone(&capacity_update),
-            capacity_limit: capacity,
+            verified_capacity: Arc::new(Mutex::new(None)),
+            startup_capacity: capacity,
             // Until a profile is verified, every stage takes the candidate
             // that runs anywhere — the honest default for a device nobody has
             // measured.
@@ -2521,6 +2718,9 @@ impl BuiltinExecutors {
             }
             evidence::KIND_INDEX => {
                 evidence::execute_index_task(&self.artifacts, task, progress).await
+            }
+            editorial::KIND_VALIDATE => {
+                editorial::execute_validate_task(&self.artifacts, task, progress).await
             }
             editorial::KIND_WINDOWS => {
                 editorial::execute_windows_task(&self.artifacts, task, progress).await
@@ -2992,6 +3192,7 @@ mod builtin_tests {
             speech::KIND_TRANSCRIPT,
             evidence::KIND_INDEX,
             editorial::KIND_WINDOWS,
+            editorial::KIND_VALIDATE,
             discovery::KIND_DISCOVER,
             ranking::KIND_RANK,
             captions::KIND_CAPTIONS,
@@ -3150,8 +3351,62 @@ mod ingest_plan_tests {
 #[cfg(test)]
 mod resource_tests {
     use std::collections::BTreeSet;
+    use std::sync::{Arc, Mutex};
 
     use super::{ResourceCapacity, ResourceDeclaration};
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn consuming_scheduler_update_keeps_worker_gpu_admission() {
+        let handle = super::SchedulerHandle {
+            notify: Arc::new(tokio::sync::Notify::new()),
+            capacity_update: Arc::new(Mutex::new(None)),
+            verified_capacity: Arc::new(Mutex::new(None)),
+            startup_capacity: ResourceCapacity::measured(4, 16 << 30, 10 << 30),
+            bindings: Arc::new(Mutex::new(crate::selection::Bindings::portable())),
+        };
+        handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
+            hardware_fingerprint: String::new(),
+            measurement_generation: 1,
+            logical_cores: 4,
+            available_memory_bytes: 16 << 30,
+            available_backends: BTreeSet::from(["metal".to_owned()]),
+            bindings: crate::selection::Bindings::portable(),
+        });
+        handle
+            .capacity_update
+            .lock()
+            .expect("capacity update")
+            .take();
+        assert_ne!(handle.machine_capacity().accelerator_mask, 0);
+        assert_eq!(handle.machine_capacity().ram_bytes, 12 << 30);
+    }
+
+    #[test]
+    fn verified_memory_refresh_can_grow_and_shrink_after_startup() {
+        let handle = super::SchedulerHandle {
+            notify: Arc::new(tokio::sync::Notify::new()),
+            capacity_update: Arc::new(Mutex::new(None)),
+            verified_capacity: Arc::new(Mutex::new(None)),
+            startup_capacity: ResourceCapacity::measured(4, 4 << 30, 10 << 30),
+            bindings: Arc::new(Mutex::new(crate::selection::Bindings::portable())),
+        };
+        assert_eq!(handle.machine_capacity().ram_bytes, 3 << 30);
+        for free_gib in [16, 2] {
+            handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
+                hardware_fingerprint: String::new(),
+                measurement_generation: free_gib,
+                logical_cores: 64,
+                available_memory_bytes: free_gib << 30,
+                available_backends: BTreeSet::new(),
+                bindings: crate::selection::Bindings::portable(),
+            });
+            let measured = handle.machine_capacity();
+            assert_eq!(measured.ram_bytes, (free_gib << 30) * 3 / 4);
+            assert_eq!(measured.cpu_threads, 4);
+            assert_eq!(measured.disk_bytes, 10 << 30);
+        }
+    }
 
     #[test]
     fn measured_backend_availability_controls_accelerator_admission() {
@@ -3563,6 +3818,8 @@ mod analyze_tests {
 
     fn request() -> AnalyzeSourcePayloadV1 {
         AnalyzeSourcePayloadV1 {
+            local_editorial: false,
+            cloud_editorial: None,
             key_version: "clipmill.analyze-source.v1".to_owned(),
             source_id: SOURCE.to_owned(),
             language: "en".to_owned(),
@@ -3595,6 +3852,82 @@ mod analyze_tests {
             .iter()
             .find(|task| task.kind == kind)
             .unwrap_or_else(|| panic!("no {kind} task"))
+    }
+
+    fn editorial_plan(request: &AnalyzeSourcePayloadV1) -> Result<JobPlan, &'static str> {
+        JobPlan::analyze_source(
+            &ProjectId::new(),
+            AnalyzeSource {
+                source_id: SOURCE,
+                source_fingerprint: FINGERPRINT,
+                has_video: true,
+                has_audio: true,
+            },
+            request,
+            &models(),
+            &crate::selection::Bindings::portable(),
+            BOM,
+            7,
+        )
+    }
+
+    #[test]
+    fn editorial_route_is_explicit_and_uses_the_fixed_model() {
+        use prost::Message;
+        let plan = editorial_plan(&AnalyzeSourcePayloadV1 {
+            local_editorial: true,
+            ..request()
+        })
+        .unwrap();
+        assert!(
+            !plan
+                .tasks
+                .iter()
+                .any(|t| t.kind.ends_with("-cloud") || t.kind == "discover-candidates")
+        );
+        for operation in ["propose", "review", "look"] {
+            let task = task(&plan, &format!("editorial-{operation}"));
+            let payload = clipmill_contracts::proto::ipc::v1::EditorialStagePayloadV1::decode(
+                task.payload.as_slice(),
+            )
+            .unwrap();
+            assert!(payload.cloud.is_none());
+            assert!(payload.prompt_digest.starts_with("sha256:"));
+            assert_eq!(payload.duration.unwrap().min_ticks, 20 * 90_000);
+        }
+        let validate = task(&plan, "editorial-validate");
+        assert!(!validate.dependencies.is_empty());
+        assert!(
+            task(&plan, "rank-candidates")
+                .input_kinds
+                .iter()
+                .any(|kind| kind == "editorial.judgments.v1")
+        );
+    }
+
+    #[test]
+    fn cloud_requires_consent_and_a_bounded_budget_and_keeps_frames_local() {
+        let cloud = clipmill_contracts::proto::ipc::v1::EditorialCloudV1 {
+            transcript_consent: true,
+            budget_micro_usd: 2_000_000,
+            model: "claude-sonnet-4-6".into(),
+        };
+        let mut request = AnalyzeSourcePayloadV1 {
+            cloud_editorial: Some(cloud),
+            ..request()
+        };
+        let plan = editorial_plan(&request).unwrap();
+        task(&plan, "editorial-propose-cloud");
+        task(&plan, "editorial-review-cloud");
+        task(&plan, "editorial-look");
+        request.cloud_editorial.as_mut().unwrap().transcript_consent = false;
+        assert!(editorial_plan(&request).is_err());
+        request.cloud_editorial.as_mut().unwrap().transcript_consent = true;
+        request.local_editorial = true;
+        assert!(editorial_plan(&request).is_err());
+        request.local_editorial = false;
+        request.cloud_editorial.as_mut().unwrap().budget_micro_usd = 0;
+        assert!(editorial_plan(&request).is_err());
     }
 
     /// Every stage from the probe to the ranked set, in one job with one root.

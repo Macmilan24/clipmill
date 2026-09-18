@@ -252,6 +252,18 @@ pub struct AnalyzeRequest {
     pub max_ticks: u64,
     /// Zero leaves the daemon's default, so a caller with no opinion needs none.
     pub count: u64,
+    #[serde(default, rename = "localEditorial")]
+    pub local_editorial: bool,
+    #[serde(default, rename = "cloudEditorial")]
+    pub cloud_editorial: Option<CloudEditorialRequest>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudEditorialRequest {
+    pub transcript_consent: bool,
+    pub budget_micro_usd: u64,
+    pub model: String,
 }
 
 impl AnalyzeRequest {
@@ -266,6 +278,14 @@ impl AnalyzeRequest {
             }),
             count: self.count,
             diversity_milli: 0,
+            local_editorial: self.local_editorial,
+            cloud_editorial: self.cloud_editorial.map(|c| {
+                clipmill_contracts::proto::ipc::v1::EditorialCloudV1 {
+                    transcript_consent: c.transcript_consent,
+                    budget_micro_usd: c.budget_micro_usd,
+                    model: c.model,
+                }
+            }),
         }
     }
 }

@@ -62,7 +62,7 @@ export class AnalysisLoader {
       this.api.listProjects().catch(() => []),
       this.api.listSources(projectId).catch(() => []),
     ]);
-    const source = sources[0] ?? null;
+    const source = sources.find((entry) => entry.sourceId === job.sourceId) ?? null;
     const [sourceMap, thumbnail] = await Promise.all([
       this.library.readSourceMap(projectId, source),
       this.library.readThumbnail(projectId, job),

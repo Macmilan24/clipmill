@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use clipmill_artifacts::NetworkPolicy;
 use clipmill_contracts::proto::{
     ipc::v1::{
         CancelJobResponse, ExportClipPayloadV1, ExportSummaryV1, JobState, Response,
@@ -619,6 +620,19 @@ pub(super) fn lease_next_task_for_worker(
     request: &LeaseRequest,
 ) -> Result<LeaseSelection, StoreError> {
     let capability_filter = format!(",{},", request.capabilities.join(","));
+    // Bind data, never interpolate task names into SQL. Exact comma-delimited
+    // membership follows the registry for both policies; a cloud stage cannot
+    // gain admission by falsely declaring itself local.
+    let policy_kinds = |network| {
+        format!(
+            ",{},",
+            crate::recipes::stages_with_network_policy(network)
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
+    let network_allowed_filter = policy_kinds(NetworkPolicy::NetworkAllowed);
+    let local_lock_filter = policy_kinds(NetworkPolicy::LocalLock);
     let now = request.now_unix_millis;
     let expires = request.expires_unix_millis;
     let capacity = request.capacity;
@@ -647,6 +661,17 @@ pub(super) fn lease_next_task_for_worker(
                     WHERE c.stage = t.kind AND c.implementation = t.implementation
                       AND c.input_key = t.input_key AND c.open = 1
                )
+               -- Serialize a stage over identical recording content, including
+               -- across projects. Waiting here consumes no failed attempts and
+               -- lets the next run attach the first run's published cache hit.
+               AND NOT EXISTS (
+                    SELECT 1 FROM tasks active
+                    JOIN jobs active_job ON active_job.job_id = active.job_id
+                    JOIN sources active_source ON active_source.source_id = active_job.source_id
+                    JOIN sources this_source ON this_source.source_id = j.source_id
+                    WHERE active.state = ?18 AND active.kind = t.kind
+                      AND active_source.source_fingerprint = this_source.source_fingerprint
+               )
                AND t.cpu_threads <= ?7
                AND t.ram_bytes <= ?8
                AND t.disk_bytes <= ?9
@@ -664,7 +689,10 @@ pub(super) fn lease_next_task_for_worker(
                         )
                     )
                )
-               AND t.network_policy = 'local-lock'
+               AND ((t.network_policy = 'local-lock' AND instr(?20, ',' || t.kind || ',') > 0) OR (
+                    t.network_policy = 'network-allowed'
+                    AND instr(?19, ',' || t.kind || ',') > 0
+               ))
                AND instr(?17, ',' || t.kind || ',') > 0
              ORDER BY j.created_unix_millis, j.job_id, t.ordinal
              LIMIT 1",
@@ -686,6 +714,9 @@ pub(super) fn lease_next_task_for_worker(
                 i64::from(accelerator_bit("vulkan").unwrap_or(0)),
                 i64::from(accelerator_bit("metal").unwrap_or(0)),
                 capability_filter,
+                TaskState::Running as i32,
+                network_allowed_filter,
+                local_lock_filter,
             ],
             |row| {
                 Ok(SelectedTaskRow {
@@ -1788,6 +1819,16 @@ fn validate_plan(plan: &JobPlan) -> Result<(), StoreError> {
             ));
         }
         let resources = &task.resources;
+        let registered_policy =
+            crate::recipes::lookup(&task.kind).map(|recipe| match recipe.network {
+                NetworkPolicy::LocalLock => "local-lock",
+                NetworkPolicy::NetworkAllowed => "network-allowed",
+            });
+        if registered_policy != Some(resources.network_policy.as_str()) {
+            return Err(StoreError::InvalidData(
+                "task network policy does not match its registered stage",
+            ));
+        }
         if resources.cpu_threads == 0
             || !matches!(
                 resources.network_policy.as_str(),

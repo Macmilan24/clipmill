@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clipmill.dev/schemas/clipmill.discovery.candidates.v1.json",
   "title": "DiscoveryCandidates",
-  "description": "Spans of a recording worth considering as clips, nominated by a mesh of independent proposers (book ch. 15). Discovery does not decide which clip is good — ranking does — and it does not decide where a clip starts, because boundary optimization searches the lattice each candidate carries. What discovery guarantees is that the lattice is legal and wide, that every nomination can be walked back to the evidence behind it, and that near-duplicates are grouped rather than silently dropped. A proposer names the approximation it is making in its rubric string, because at this phase every one of them is an approximation and a consumer must be able to tell which.",
+  "description": "Spans of a recording worth considering as clips, nominated by a mesh of independent proposers (book ch. 15). Discovery does not decide which clip is good \u2014 ranking does \u2014 and it does not decide where a clip starts, because boundary optimization searches the lattice each candidate carries. What discovery guarantees is that the lattice is legal and wide, that every nomination can be walked back to the evidence behind it, and that near-duplicates are grouped rather than silently dropped. A proposer names the approximation it is making in its rubric string, because at this phase every one of them is an approximation and a consumer must be able to tell which.",
   "type": "object",
   "required": [
     "schema_version",
@@ -20,20 +20,32 @@
     "schema_version": {
       "const": "clipmill.discovery.candidates.v1"
     },
-    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
     "inputs": {
       "description": "What was read. The index is the authority for every evidence reference below and the transcript for every word boundary; the loudness envelope is optional because a source with no audio has none, and prosody then contributes nothing rather than contributing a default.",
       "type": "object",
       "required": ["index_artifact_id", "transcript_artifact_id"],
       "additionalProperties": false,
       "properties": {
-        "index_artifact_id": { "$ref": "#/$defs/sha256" },
-        "transcript_artifact_id": { "$ref": "#/$defs/sha256" },
-        "loudness_artifact_id": { "$ref": "#/$defs/sha256" }
+        "index_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "transcript_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "loudness_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
-    "producer": { "$ref": "#/$defs/producer" },
-    "coverage": { "$ref": "#/$defs/coverage" },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "coverage": {
+      "$ref": "#/$defs/coverage"
+    },
     "duration_target": {
       "description": "The platform range candidates were expanded against, as ticks. Part of the artifact key: asking for a different length is a different search, not a filter over this one.",
       "$ref": "#/$defs/duration_range"
@@ -41,17 +53,27 @@
     "proposers": {
       "description": "One entry per proposer that ran, whether or not it found anything. A proposer that nominated nothing is a fact about the recording; a proposer missing from this list is a fact about the build, and the two must not look alike.",
       "type": "array",
-      "items": { "$ref": "#/$defs/proposer_run" }
+      "items": {
+        "$ref": "#/$defs/proposer_run"
+      }
     },
     "candidates": {
       "description": "Ordered by first interval start, then by candidate id, so the document does not depend on which proposer happened to run first.",
       "type": "array",
-      "items": { "$ref": "#/$defs/candidate" }
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
     },
     "clusters": {
       "description": "Near-duplicate groupings. Every candidate belongs to exactly one cluster, including the ones that duplicate nothing. Ranking sends a cluster's representative forward and can still offer the alternatives, so a diversity decision is shown rather than silent.",
       "type": "array",
-      "items": { "$ref": "#/$defs/cluster" }
+      "items": {
+        "$ref": "#/$defs/cluster"
+      }
+    },
+    "editorial": {
+      "description": "Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.",
+      "$ref": "#/$defs/editorial_coverage"
     }
   },
   "$defs": {
@@ -64,8 +86,14 @@
       "required": ["start_ticks", "end_ticks"],
       "additionalProperties": false,
       "properties": {
-        "start_ticks": { "type": "integer", "minimum": 0 },
-        "end_ticks": { "type": "integer", "minimum": 0 }
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "duration_range": {
@@ -73,8 +101,14 @@
       "required": ["min_ticks", "max_ticks"],
       "additionalProperties": false,
       "properties": {
-        "min_ticks": { "type": "integer", "minimum": 1 },
-        "max_ticks": { "type": "integer", "minimum": 1 }
+        "min_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_ticks": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "evidence_reference": {
@@ -87,7 +121,10 @@
           "type": "string",
           "enum": ["utterance", "sentence", "topic"]
         },
-        "index": { "type": "integer", "minimum": 0 }
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "proposer": {
@@ -95,13 +132,19 @@
       "required": ["name", "rubric", "version"],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
         "rubric": {
           "description": "What this proposer actually looked at, named so the approximation is legible: 'topic-span-open-close.v1' is not a narrative model, and calling it one in a field nobody reads is how a downstream stage comes to trust it as one. Changing the rubric changes the artifact key.",
           "type": "string",
           "minLength": 1
         },
-        "version": { "type": "string", "minLength": 1 }
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "proposer_run": {
@@ -109,7 +152,9 @@
       "required": ["proposer", "seeds", "candidates"],
       "additionalProperties": false,
       "properties": {
-        "proposer": { "$ref": "#/$defs/proposer" },
+        "proposer": {
+          "$ref": "#/$defs/proposer"
+        },
         "seeds": {
           "description": "Moments this proposer nominated before expansion.",
           "type": "integer",
@@ -152,31 +197,48 @@
           "description": "One for a contiguous clip; more than one for a compilation. Ordered and non-overlapping.",
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/interval" }
+          "items": {
+            "$ref": "#/$defs/interval"
+          }
         },
-        "proposer": { "$ref": "#/$defs/proposer" },
+        "proposer": {
+          "$ref": "#/$defs/proposer"
+        },
         "evidence": {
           "description": "The index units this nomination rests on, ordered and distinct. Never empty: a candidate nobody can explain is a candidate ranking cannot defend.",
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/evidence_reference" }
+          "items": {
+            "$ref": "#/$defs/evidence_reference"
+          }
         },
         "roles": {
           "description": "Which evidence opens the clip and which pays it off. Both are optional because not every nomination has both, and guessing one would put a narrative claim into a document that made no narrative measurement.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "hook": { "$ref": "#/$defs/evidence_reference" },
-            "payoff": { "$ref": "#/$defs/evidence_reference" }
+            "hook": {
+              "$ref": "#/$defs/evidence_reference"
+            },
+            "payoff": {
+              "$ref": "#/$defs/evidence_reference"
+            }
           }
         },
-        "boundary_lattice": { "$ref": "#/$defs/boundary_lattice" },
+        "boundary_lattice": {
+          "$ref": "#/$defs/boundary_lattice"
+        },
         "layout_requirements": {
           "description": "Layout capabilities a renderer must have for this candidate. Empty at this phase, and empty on purpose: the fit layout is always legal, so no nomination can be layout-infeasible yet. The field exists now so that adding speaker-fill or screen-share layouts later does not change the contract.",
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "cluster_id": { "$ref": "#/$defs/cluster_id" },
+        "cluster_id": {
+          "$ref": "#/$defs/cluster_id"
+        },
         "prelim_score": {
           "description": "The proposer's own confidence, comparable only within a proposer. Ranking computes the score that is comparable across them; this one exists so a cluster can pick a representative before ranking runs.",
           "type": "number",
@@ -186,7 +248,12 @@
         "exclusions": {
           "description": "Reasons this candidate must not be published even if it ranks well.",
           "type": "array",
-          "items": { "$ref": "#/$defs/exclusion" }
+          "items": {
+            "$ref": "#/$defs/exclusion"
+          }
+        },
+        "editorial": {
+          "$ref": "#/$defs/editorial_moment"
         }
       }
     },
@@ -200,17 +267,25 @@
           "description": "Ascending, distinct, and already structurally legal: a tick that falls inside a word never appears here.",
           "type": "array",
           "minItems": 1,
-          "items": { "type": "integer", "minimum": 0 }
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
         "ends": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "integer", "minimum": 0 }
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
         "phi_rejects": {
           "description": "What the legality predicate removed, counted by reason rather than enumerated. The pairs are the product of starts and ends, so listing every rejection would make the artifact quadratic in the recording's length to record something a consumer can recompute from the bounds above.",
           "type": "array",
-          "items": { "$ref": "#/$defs/phi_reject" }
+          "items": {
+            "$ref": "#/$defs/phi_reject"
+          }
         }
       }
     },
@@ -224,7 +299,10 @@
           "type": "string",
           "enum": ["mid_word", "too_short", "too_long", "outside_coverage"]
         },
-        "count": { "type": "integer", "minimum": 1 }
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "cluster_id": {
@@ -236,7 +314,9 @@
       "required": ["id", "representative", "members", "similarity"],
       "additionalProperties": false,
       "properties": {
-        "id": { "$ref": "#/$defs/cluster_id" },
+        "id": {
+          "$ref": "#/$defs/cluster_id"
+        },
         "representative": {
           "description": "The member with the highest preliminary score, ties broken by candidate id so the choice does not depend on iteration order.",
           "type": "string",
@@ -267,7 +347,10 @@
           "type": "string",
           "enum": ["invalid_region", "below_coverage", "rights_excluded"]
         },
-        "detail": { "type": "string", "minLength": 1 }
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "producer": {
@@ -275,19 +358,123 @@
       "required": ["stage", "implementation"],
       "additionalProperties": false,
       "properties": {
-        "stage": { "type": "string", "minLength": 1 },
-        "implementation": { "type": "string", "minLength": 1 }
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "coverage": {
-      "description": "The index's analyzed range, echoed. A recording nobody indexed produces no candidates and says `analyzed` false — not an empty list that reads like a recording with nothing worth clipping in it.",
+      "description": "The index's analyzed range, echoed. A recording nobody indexed produces no candidates and says `analyzed` false \u2014 not an empty list that reads like a recording with nothing worth clipping in it.",
       "type": "object",
       "required": ["start_ticks", "end_ticks", "analyzed"],
       "additionalProperties": false,
       "properties": {
-        "start_ticks": { "type": "integer", "minimum": 0 },
-        "end_ticks": { "type": "integer", "minimum": 0 },
-        "analyzed": { "type": "boolean" }
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "analyzed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "editorial_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "window_count",
+        "answered_windows",
+        "failed_windows",
+        "failed_reviews",
+        "failed_visual_checks"
+      ],
+      "properties": {
+        "window_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "answered_windows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["index", "detail"],
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "detail": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "failed_reviews": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_visual_checks": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "editorial_moment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "hook", "setup", "payoff", "reason", "proposal_ids", "uncertainties"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "hook": {
+          "type": "string",
+          "minLength": 1
+        },
+        "setup": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payoff": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proposal_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     }
   }
