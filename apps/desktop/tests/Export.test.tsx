@@ -170,7 +170,7 @@ describe('the export screen', () => {
     // the key is left off rather than set to undefined.
     const { availableBytes: _unread, ...unknown } = plan();
     show({ plan: unknown });
-    expect(screen.getByText('not readable')).toBeTruthy();
+    expect(screen.getByText('Free disk space').nextElementSibling?.textContent).toBe('Unavailable');
   });
 
   it('says no clip is chosen rather than showing an empty form', () => {
