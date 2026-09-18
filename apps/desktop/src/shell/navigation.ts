@@ -29,8 +29,8 @@ export interface NavSection {
 }
 
 /**
- * Order, labels, and icons are fixed by the design and must not be regrouped,
- * renamed, or reordered.
+ * Registered destinations. The sidebar exposes live workspace and utility screens;
+ * planned destinations remain addressable for old remembered routes.
  */
 export const NAV_SECTIONS: readonly NavSection[] = [
   {
@@ -106,7 +106,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   },
 ];
 
-export const DEFAULT_SECTION_ID = 'models';
+export const DEFAULT_SECTION_ID = 'library';
 
 export function findSection(id: string): NavSection {
   return NAV_SECTIONS.find((section) => section.id === id) ?? NAV_SECTIONS[6]!;

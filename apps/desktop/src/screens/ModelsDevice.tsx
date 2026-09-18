@@ -29,6 +29,7 @@ import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
+import { ModelReadiness } from './ModelReadiness.js';
 import type { ConnectionState } from '../daemon/client.js';
 import {
   EM_DASH,
@@ -151,7 +152,7 @@ function DecodeCard({ profile }: { readonly profile: DeviceProfile }): JSX.Eleme
   const bars = decodeBars(profile);
 
   return (
-    <Card className="glass rounded-2xl">
+    <Card className="glass rounded-xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-1.5 text-section-title">
           <Zap className="size-4" /> Decode throughput
@@ -290,7 +291,7 @@ function CapabilitiesCard({ profile }: { readonly profile: DeviceProfile }): JSX
   const ready = rows.filter((row) => row.available).length;
 
   return (
-    <Card className="glass rounded-2xl">
+    <Card className="glass rounded-xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-1.5 text-section-title">
           <Gauge className="size-4" /> Measured capabilities
@@ -334,7 +335,7 @@ function LocalLockCard({
   const locked = connected && state.localLock;
 
   return (
-    <Card className="glass rounded-2xl">
+    <Card className="glass rounded-xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-1.5 text-section-title">
           {locked ? <ShieldCheck className="size-4" /> : <ShieldOff className="size-4" />} Local
@@ -374,7 +375,7 @@ function RuntimesCard({ profile }: { readonly profile: DeviceProfile }): JSX.Ele
   const roundtrip = profile.phase0?.hardware_roundtrip;
 
   return (
-    <Card className="glass rounded-2xl">
+    <Card className="glass rounded-xl">
       <CardHeader>
         <CardTitle className="text-section-title">Runtimes</CardTitle>
         <span className={cn('mono text-technical', SECONDARY)}>{runtimes.length}</span>
@@ -488,13 +489,13 @@ export function ModelsDevice({
             />
             <Stat
               icon={<ShieldCheck />}
-              label="Session egress"
-              value={connected && state.localLock ? '0 B' : EM_DASH}
+              label="Cloud processing"
+              value={connected ? (state.localLock ? 'Unused' : 'Used') : EM_DASH}
               detail={
                 connected
                   ? state.localLock
-                    ? 'Local Lock enforced'
-                    : 'egress is permitted'
+                    ? 'No cloud tasks this session'
+                    : 'Cloud used this session'
                   : 'daemon not connected'
               }
             />
@@ -514,19 +515,8 @@ export function ModelsDevice({
             </div>
             <div className="flex flex-col gap-4">
               <LocalLockCard state={state} profile={profile} />
-              <Card className="glass rounded-2xl">
-                <CardHeader>
-                  <CardTitle className="text-section-title">Local models</CardTitle>
-                  <StatusBadge tone="neutral">0 installed</StatusBadge>
-                </CardHeader>
-                <CardContent>
-                  <p className={cn('text-meta', SECONDARY)}>
-                    Weights are pinned by the bill of materials and fetched on demand. Nothing is
-                    installed on this machine yet; Phase 1 is what puts them here.
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className="glass rounded-2xl">
+              {connected && <ModelReadiness />}
+              <Card className="glass rounded-xl">
                 <CardHeader>
                   <CardTitle className="text-section-title">Shared memory</CardTitle>
                 </CardHeader>

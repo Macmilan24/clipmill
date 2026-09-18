@@ -10,22 +10,23 @@ use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ClipCutV1, ClipDecisionRecordV1,
     ClipDecisionV1, CreateEditDocRequest, CreateProjectRequest, CropKeyframeV1, CropWeightsV1,
     DeliverExportPayloadV1, DemoDagPayloadV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1,
-    DetectShotsPayloadV1, DirectClipRequest, DirectClipResponse, DiscoverCandidatesPayloadV1,
-    Error, ErrorCode, ExportArchiveRequest, ExportArchiveResponse, ExportClipPayloadV1,
-    ExportClipRequest, ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity,
-    ExportValidationV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
-    GetJobResponse, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
-    GetProjectResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
+    DetectShotsPayloadV1, DirectClipRequest, DiscoverCandidatesPayloadV1, Error, ErrorCode,
+    ExportArchiveRequest, ExportArchiveResponse, ExportClipPayloadV1, ExportClipRequest,
+    ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity, ExportValidationV1,
+    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
+    GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse,
+    GetReadinessResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
     IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
     ListClipDecisionsResponse, ListEditDocsResponse, ListJobsResponse, ListProjectsResponse,
     ListSourcesResponse, LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest,
-    PlanExportResponse, PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewWordV1,
-    ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse,
-    RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse,
-    Response, SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse,
-    SolveCropPathRequest, SolveCropPathResponse, StorageCategoryV1, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1, request,
-    response,
+    PlanExportResponse, PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1,
+    PreviewSegmentV1, PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1,
+    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
+    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
+    SolveCropPathResponse, StageReadinessV1, StorageCategoryV1, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1,
+    WorkerPresenceV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -82,6 +83,10 @@ pub(crate) struct Service {
     retention_grace: std::time::Duration,
     /// The Local Lock, which Health and Settings both read rather than assert.
     policy: std::sync::Arc<crate::policy::LocalLockPolicy>,
+    /// Who is connected to the worker plane right now, for readiness.
+    roster: crate::worker::WorkerRoster,
+    /// The pinned decoder every media stage runs, for the same question.
+    decoder: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -138,6 +143,8 @@ impl Service {
             storage: None,
             retention_grace: std::time::Duration::ZERO,
             policy: std::sync::Arc::default(),
+            roster: crate::worker::new_roster(),
+            decoder: None,
         }
     }
 
@@ -154,6 +161,8 @@ impl Service {
         storage: crate::storage::StorageDirs,
         retention_grace: std::time::Duration,
         policy: std::sync::Arc<crate::policy::LocalLockPolicy>,
+        roster: crate::worker::WorkerRoster,
+        decoder: std::path::PathBuf,
     ) -> Self {
         Self {
             database,
@@ -167,6 +176,8 @@ impl Service {
             storage: Some(storage),
             retention_grace,
             policy,
+            roster,
+            decoder: Some(decoder),
         }
     }
 
@@ -415,6 +426,7 @@ impl Service {
                 self.export_archive(request_id, &archive).await
             }
             request::Body::GetLocalLock(_) => self.get_local_lock(request_id),
+            request::Body::GetReadiness(_) => self.get_readiness(request_id),
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -1481,6 +1493,18 @@ impl Service {
     /// Assembling and creating in one call rather than two: a caller that
     /// assembled, then created, would have a window where a clip is half
     /// approved, and nothing downstream could tell that state from a crash.
+    ///
+    /// Directing a clip that already has a document hands that document back
+    /// as it stands — the trims and corrections somebody made to it are why it
+    /// is the answer — and the reply says so. That is asked of the store
+    /// *before* any evidence is read: a saved edit is reopenable whether or
+    /// not the analysis it was cut from can still be loaded, and a re-analysis
+    /// that renumbered the candidates must not lock a person out of the edit
+    /// they made. Only a clip with no document, or a variation asked for by
+    /// name, needs the director — and it reads the run the request names, as
+    /// one snapshot. An approval, when requested, lands in the same
+    /// transaction as the document either way, so "approved but nothing to
+    /// open" is not a state the store can be left in.
     async fn direct_clip(
         &self,
         request_id: String,
@@ -1511,81 +1535,108 @@ impl Service {
                 "source does not belong to the requested project",
             );
         }
-
-        let evidence = match crate::inspector::load(
-            &self.database,
-            artifacts,
-            &source_id.to_string(),
-            &source.source_map_json,
-        )
-        .await
-        {
-            Ok(evidence) => evidence,
-            Err(error) => {
-                return error_reply(request_id, ErrorCode::Conflict, error.message());
-            }
-        };
-
-        let document = match assemble(&evidence, direct) {
-            Ok(document) => document,
-            Err(message) => return error_reply(request_id, ErrorCode::InvalidArgument, message),
-        };
-
-        let Some(segment) = document.video.segments.first() else {
-            return error_reply(
-                request_id,
-                ErrorCode::Internal,
-                "the director produced a document with no segment",
-            );
-        };
-        let (start_ticks, end_ticks) = (segment.in_ticks, segment.out_ticks);
-        let decisions = document
-            .rationale
-            .as_ref()
-            .map(|rationale| rationale.decisions.clone())
-            .unwrap_or_default();
-        let Ok(document_json) = serde_json::to_string(&document) else {
-            return error_reply(
-                request_id,
-                ErrorCode::Internal,
-                "the directed document did not serialize",
-            );
-        };
-
+        if direct.candidate_id.is_empty() {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no candidate named");
+        }
         let now = match unix_millis() {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
-        let encoded = match self
+        let identity = crate::db::ClipIdentity {
+            project: project_id.to_string(),
+            source: source_id.to_string(),
+            candidate: direct.candidate_id.clone(),
+            run: (!direct.job_id.is_empty()).then(|| direct.job_id.clone()),
+        };
+
+        if !direct.variation {
+            match self
+                .database
+                .reopen_edit_doc(
+                    request_id.clone(),
+                    request_hash,
+                    identity.clone(),
+                    direct.approve,
+                    now,
+                )
+                .await
+            {
+                Ok(Some(bytes)) => {
+                    return Reply {
+                        bytes,
+                        outcome: Outcome::Success,
+                    };
+                }
+                Ok(None) => {}
+                Err(error) => return store_error_reply(request_id, &error),
+            }
+        }
+
+        let document_json = match self
+            .assemble_clip(artifacts, &source.source_map_json, identity.clone(), direct)
+            .await
+        {
+            Ok(json) => json,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        match self
             .database
-            .create_edit_doc(
+            .direct_edit_doc(
                 request_id.clone(),
                 request_hash,
-                project_id.to_string(),
+                identity,
                 document_json,
+                crate::db::DirectOptions {
+                    variation: direct.variation,
+                    approve: direct.approve,
+                },
                 now,
             )
             .await
         {
-            Ok(encoded) => encoded,
-            Err(error) => return store_error_reply(request_id, &error),
-        };
-        let Some(doc) = created_edit_doc(&encoded) else {
-            return error_reply(
-                request_id,
-                ErrorCode::Internal,
-                "the stored document did not decode",
-            );
-        };
-        response_reply(
-            request_id,
-            response::Body::DirectClip(DirectClipResponse {
-                doc: Some(doc),
-                start_ticks: u64::try_from(start_ticks).unwrap_or(0),
-                end_ticks: u64::try_from(end_ticks).unwrap_or(0),
-                decisions,
-            }),
+            // The store encoded the whole reply — the document, where its
+            // segment stands, and whether it was reopened — because for a
+            // reopened document those answers come from the stored copy, not
+            // from the one assembled above.
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    /// Read the clip's run and build the document the director proposes.
+    async fn assemble_clip(
+        &self,
+        artifacts: &ArtifactHandle,
+        source_map_json: &[u8],
+        identity: crate::db::ClipIdentity,
+        direct: &DirectClipRequest,
+    ) -> Result<String, (ErrorCode, String)> {
+        let evidence = crate::inspector::load(
+            &self.database,
+            artifacts,
+            &identity.source,
+            source_map_json,
+            identity.run.as_deref(),
         )
+        .await
+        .map_err(|error| (ErrorCode::Conflict, error.message()))?;
+        let document =
+            assemble(&evidence, direct).map_err(|message| (ErrorCode::InvalidArgument, message))?;
+        if document.video.segments.is_empty() {
+            return Err((
+                ErrorCode::Internal,
+                "the director produced a document with no segment".to_owned(),
+            ));
+        }
+        serde_json::to_string(&document).map_err(|_| {
+            (
+                ErrorCode::Internal,
+                "the directed document did not serialize".to_owned(),
+            )
+        })
     }
 
     async fn set_clip_decision(
@@ -2185,6 +2236,7 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
+        let name = |value: &str| (!value.is_empty()).then(|| value.to_owned());
         match self
             .database
             .create_edit_doc(
@@ -2192,6 +2244,11 @@ impl Service {
                 request_hash,
                 project_id.to_string(),
                 create.document_json.clone(),
+                crate::db::DocumentOrigin {
+                    source: name(&create.source_id),
+                    candidate: name(&create.candidate_id),
+                    run: name(&create.job_id),
+                },
                 now,
             )
             .await
@@ -2283,13 +2340,96 @@ impl Service {
                 "the stored document did not parse",
             );
         };
-        match clipmill_render::preview_plan(&document, &clipmill_render::RenderProfile::default()) {
-            Ok(plan) => response_reply(
-                request_id,
-                response::Body::GetPreviewPlan(preview_response(record.revision, &plan)),
-            ),
-            Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
+        let plan = match clipmill_render::preview_plan(
+            &document,
+            &clipmill_render::RenderProfile::default(),
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let (sources, proxies) = self.preview_media(&project_id, &document).await;
+        let mut reply = preview_response(record.revision, &plan);
+        reply.sources = sources;
+        reply.proxies = proxies;
+        response_reply(request_id, response::Body::GetPreviewPlan(reply))
+    }
+
+    /// The sources a document draws from and the proxy each is previewed on.
+    ///
+    /// Resolved here, beside the plan, rather than left to the shell: the
+    /// shell used to take whichever proxy the project published last, which
+    /// is the wrong recording as soon as a project holds two. A source is
+    /// matched by the fingerprint the segment names, the frame the crops are
+    /// measured in comes from its probe, and the proxy is the newest one
+    /// published over it. A source with no proxy is listed without one; the
+    /// player then says there is nothing to play rather than playing
+    /// something else.
+    async fn preview_media(
+        &self,
+        project_id: &ProjectId,
+        document: &clipmill_edit_ir::EditDocument,
+    ) -> (Vec<PreviewSourceV1>, Vec<PreviewProxyV1>) {
+        let mut sources = Vec::new();
+        let mut proxies = Vec::new();
+        let Ok(registered) = self.database.list_sources(project_id.to_string()).await else {
+            return (sources, proxies);
+        };
+        let mut seen: Vec<&str> = Vec::new();
+        for segment in &document.video.segments {
+            let fingerprint = segment.source_fingerprint.as_str();
+            if seen.contains(&fingerprint) {
+                continue;
+            }
+            seen.push(fingerprint);
+            let Some(source) = registered
+                .iter()
+                .find(|source| source.source_fingerprint == fingerprint)
+            else {
+                continue;
+            };
+            let frame = crate::inspector::frame_of(&source.source_map_json);
+            sources.push(PreviewSourceV1 {
+                source_fingerprint: fingerprint.to_owned(),
+                source_id: source.source_id.clone(),
+                display_width: frame.map_or(0, |frame| frame.width),
+                display_height: frame.map_or(0, |frame| frame.height),
+            });
+            if let Some(proxy) = self.proxy_of(&source.source_id).await {
+                proxies.push(PreviewProxyV1 {
+                    source_fingerprint: fingerprint.to_owned(),
+                    ..proxy
+                });
+            }
         }
+        (sources, proxies)
+    }
+
+    /// The newest proxy published over a source, as the player needs it.
+    async fn proxy_of(&self, source_id: &str) -> Option<PreviewProxyV1> {
+        let artifacts = self.artifacts.as_ref()?;
+        let address = self
+            .database
+            .latest_source_task_artifact(source_id.to_owned(), crate::media::KIND_PROXY.to_owned())
+            .await
+            .ok()
+            .flatten()?;
+        let artifact_id = address.parse::<clipmill_core::ArtifactId>().ok()?;
+        let lease = artifacts.open(artifact_id).await.ok()?;
+        let descriptor: clipmill_contracts::schemas::media_proxy::MediaProxy =
+            crate::media::read_artifact_document(&lease, "proxy.json").ok()?;
+        Some(PreviewProxyV1 {
+            source_fingerprint: String::new(),
+            artifact_id: address,
+            file: descriptor.file.to_string(),
+            coverage_start_ticks: i64::try_from(descriptor.coverage.start_ticks).unwrap_or(0),
+            coverage_end_ticks: i64::try_from(descriptor.coverage.end_ticks).unwrap_or(i64::MAX),
+            width: descriptor.video.width,
+            height: descriptor.video.height,
+            rate_num: u32::try_from(descriptor.video.frame_rate.num.get()).unwrap_or(0),
+            rate_den: u32::try_from(descriptor.video.frame_rate.den.get()).unwrap_or(0),
+        })
     }
 
     /// Every document a project holds, oldest first.
@@ -2771,6 +2911,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ExportClip(_)) => "export_clip",
         Some(request::Body::ExportArchive(_)) => "export_archive",
         Some(request::Body::GetLocalLock(_)) => "get_local_lock",
+        Some(request::Body::GetReadiness(_)) => "get_readiness",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",
@@ -2791,26 +2932,6 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         None => "missing_body",
-    }
-}
-
-/// The document out of a stored `create_edit_doc` reply.
-///
-/// The store hands every caller a whole `Response` envelope, because all of
-/// them forward those bytes as the reply unchanged. Directing is the exception:
-/// it needs the document *inside* a response of its own, so it has to unwrap
-/// the envelope rather than decode it as the payload. Decoding the envelope
-/// straight to `EditDoc` does not fail — Protobuf reinterprets one message as
-/// another permissively — it just puts the request id where the document id
-/// goes and leaves the document empty, which is what `direct_clip` returned to
-/// every caller until this existed.
-fn created_edit_doc(encoded: &[u8]) -> Option<clipmill_contracts::proto::ipc::v1::EditDoc> {
-    match Response::decode(encoded) {
-        Ok(Response {
-            body: Some(response::Body::CreateEditDoc(created)),
-            ..
-        }) => created.doc,
-        _ => None,
     }
 }
 
@@ -2851,6 +2972,9 @@ fn store_error_reply(request_id: String, error: &StoreError) -> Reply {
         StoreError::Conflict => error_reply(request_id, ErrorCode::Conflict, error.to_string()),
         StoreError::NotFound => error_reply(request_id, ErrorCode::NotFound, error.to_string()),
         StoreError::Database(_) | StoreError::InvalidData(_) | StoreError::Stopped => {
+            // The caller is told only that the store failed; the reason is
+            // for the log, where a store that refuses a document says why.
+            tracing::warn!(%request_id, error = %error, "store request failed");
             error_reply(request_id, ErrorCode::Internal, "internal database error")
         }
     }
@@ -2963,6 +3087,7 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                             .map(|word| PreviewWordV1 {
                                 text: word.text.clone(),
                                 hold_centis: word.hold_centis,
+                                word_id: word.word_id.clone().unwrap_or_default(),
                             })
                             .collect(),
                     })
@@ -2979,6 +3104,23 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
             .collect(),
         width: plan.width,
         height: plan.height,
+        segments: plan
+            .segments
+            .iter()
+            .map(|segment| PreviewSegmentV1 {
+                segment_id: segment.segment_id.clone(),
+                source_fingerprint: segment.source_fingerprint.clone(),
+                in_ticks: segment.in_ticks,
+                out_ticks: segment.out_ticks,
+                program_start_ticks: segment.program_start_ticks,
+                first_frame: segment.first_frame,
+                end_frame: segment.end_frame,
+            })
+            .collect(),
+        // Resolved by the handler, which is the one with a database.
+        sources: Vec::new(),
+        proxies: Vec::new(),
+        presentation: plan.presentation.as_str().to_owned(),
     }
 }
 
@@ -3089,7 +3231,7 @@ impl Service {
                 "an export request is required",
             );
         };
-        let (document, _record) = match self.export_document(&request_id, &asked.doc_id).await {
+        let (document, record) = match self.export_document(&request_id, &asked.doc_id).await {
             Ok(loaded) => loaded,
             Err(reply) => return reply,
         };
@@ -3144,6 +3286,7 @@ impl Service {
                 estimated_bytes: estimated,
                 available_bytes: available.unwrap_or(0),
                 available_known: available.is_some(),
+                revision: record.revision,
             }),
         )
     }
@@ -3173,21 +3316,8 @@ impl Service {
             Ok(loaded) => loaded,
             Err(reply) => return reply,
         };
-        if crate::export::naming_pattern(&asked.naming_pattern).is_err() {
-            return error_reply(
-                request_id,
-                ErrorCode::InvalidArgument,
-                "the naming pattern cannot be resolved",
-            );
-        }
-        for token in &asked.ai_assistance {
-            if !crate::render::ai_assistance_is_known(token) {
-                return error_reply(
-                    request_id,
-                    ErrorCode::InvalidArgument,
-                    "an export declared a disclosure token nobody recognises",
-                );
-            }
+        if let Err((code, message)) = admit_export(asked, record.revision) {
+            return error_reply(request_id, code, message);
         }
         // Checked before the destination is created, so a refused export leaves
         // no empty folder behind explaining nothing.
@@ -3248,12 +3378,17 @@ impl Service {
         // may point somewhere else by the time it runs.
         let mut resolved = asked.clone();
         resolved.destination_dir = destination.to_string_lossy().into_owned();
+        // The revision rendered is written into the job's own record of the
+        // request, whether or not the caller named one, so the job can say
+        // afterwards which revision it delivered.
+        resolved.expected_revision = Some(record.revision);
         self.submit_export(
             request_id,
             request_hash,
             &project_id,
             resolved,
             ir_artifact_id,
+            record.revision,
         )
         .await
     }
@@ -3266,6 +3401,7 @@ impl Service {
         project_id: &ProjectId,
         resolved: ExportRequestV1,
         ir_artifact_id: clipmill_core::ArtifactId,
+        revision: u64,
     ) -> Reply {
         let render_payload = RenderClipPayloadV1 {
             key_version: RENDER_CLIP_KEY_VERSION.to_owned(),
@@ -3281,6 +3417,7 @@ impl Service {
             request: Some(resolved.clone()),
         }
         .encode_to_vec();
+        let destination_dir = resolved.destination_dir.clone();
         let job_payload = ExportClipPayloadV1 {
             key_version: EXPORT_CLIP_KEY_VERSION.to_owned(),
             request: Some(resolved),
@@ -3311,7 +3448,12 @@ impl Service {
                 }
                 response_reply(
                     request_id,
-                    response::Body::ExportClip(ExportClipResponse { job_id }),
+                    response::Body::ExportClip(ExportClipResponse {
+                        job_id,
+                        revision,
+                        ir_artifact_id: ir_artifact_id.to_string(),
+                        destination_dir,
+                    }),
                 )
             }
             Err(error) => store_error_reply(request_id, &error),
@@ -3433,6 +3575,143 @@ impl Service {
         )
     }
 
+    /// Whether an analysis could run right now, stage by stage.
+    ///
+    /// Answered from what the planner would bind — the same bindings a job
+    /// is planned with — against what is on disk and who is connected. A
+    /// stage is ready when its model's pinned files are present at the sizes
+    /// the registry pins and a worker that serves the stage is on the roster.
+    /// The remedy names the command, because a status that says "not ready"
+    /// and nothing else is a spinner with a label.
+    fn get_readiness(&self, request_id: String) -> Reply {
+        let bindings = self
+            .scheduler
+            .as_ref()
+            .map(crate::jobs::SchedulerHandle::bindings)
+            .unwrap_or_default();
+        let roster = self
+            .roster
+            .lock()
+            .map(|workers| workers.clone())
+            .unwrap_or_default();
+        let weights = self.storage.as_ref().map(|dirs| dirs.weights.clone());
+        let mut stages = Vec::new();
+        for binding in bindings.iter() {
+            let (present, missing) = weights.as_deref().map_or_else(
+                || (false, vec![binding.model.clone()]),
+                |root| self.model_files_present(&binding.model, root),
+            );
+            stages.push(stage_readiness(
+                &binding.stage,
+                &binding.capability,
+                &binding.implementation,
+                &binding.model,
+                &binding.backend,
+                present,
+                missing,
+                roster.values().any(|worker| worker.serves(&binding.stage)),
+            ));
+        }
+        // Editorial is a user-selected Qwen model, independent of speech benchmarks.
+        for kind in ["editorial-propose", "editorial-review", "editorial-look"] {
+            if let Some(implementation) = crate::implementations::candidates_for_stage(kind).next()
+            {
+                let (present, missing) = weights.as_deref().map_or_else(
+                    || (false, vec![implementation.model.to_owned()]),
+                    |root| self.model_files_present(implementation.model, root),
+                );
+                let mut readiness = stage_readiness(
+                    kind,
+                    "editorial",
+                    implementation.name,
+                    implementation.model,
+                    implementation.backend,
+                    present,
+                    missing,
+                    roster.values().any(|worker| worker.serves(kind)),
+                );
+                check_editorial_capacity(
+                    &mut readiness,
+                    self.scheduler
+                        .as_ref()
+                        .map(crate::jobs::SchedulerHandle::machine_capacity),
+                    self.models
+                        .get(implementation.model)
+                        .map(|model| model.memory.resident_bytes()),
+                );
+                stages.push(readiness);
+            }
+        }
+        // These stages need a connected worker but no local model files.
+        for kind in crate::recipes::stages_with_network_policy(NetworkPolicy::NetworkAllowed)
+            .chain(crate::recipes::modelless_worker_stages())
+        {
+            stages.push(stage_readiness(
+                kind,
+                "",
+                "",
+                "",
+                "",
+                true,
+                Vec::new(),
+                roster.values().any(|worker| worker.serves(kind)),
+            ));
+        }
+        stages.sort_by(|left, right| left.stage.cmp(&right.stage));
+        let decoder_path = self
+            .decoder
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let decoder_present = self.decoder.as_ref().is_some_and(|path| path.is_file());
+        // Optional cloud workers never gate the default local analysis route.
+        // A cloud analysis checks its selected stages before submission.
+        let ready = decoder_present && local_analysis_stages_ready(&stages);
+        response_reply(
+            request_id,
+            response::Body::GetReadiness(GetReadinessResponse {
+                workers: roster
+                    .into_iter()
+                    .map(|(worker_id, presence)| WorkerPresenceV1 {
+                        worker_id,
+                        family: presence.family,
+                        capabilities: presence.capabilities,
+                        backend: presence.backend,
+                        since_unix_millis: presence.since_unix_millis,
+                    })
+                    .collect(),
+                stages,
+                decoder_present,
+                decoder_path,
+                ready,
+            }),
+        )
+    }
+
+    /// Whether every pinned file of a model is where the worker will look,
+    /// at the size the registry pins. Sizes rather than digests: a truncated
+    /// download is the common failure, and the worker hashes before loading.
+    fn model_files_present(
+        &self,
+        model: &str,
+        weights_root: &std::path::Path,
+    ) -> (bool, Vec<String>) {
+        let Some(manifest) = self.models.get(model) else {
+            return (false, vec![format!("{model} (not in the registry)")]);
+        };
+        let missing: Vec<String> = manifest
+            .files
+            .iter()
+            .filter(|file| {
+                let path = weights_root.join(model).join(&file.path);
+                !std::fs::metadata(&path)
+                    .is_ok_and(|meta| meta.is_file() && meta.len() == file.bytes)
+            })
+            .map(|file| format!("{model}/{}", file.path))
+            .collect();
+        (missing.is_empty(), missing)
+    }
+
     /// The document an export names, parsed, with the row it came from.
     async fn export_document(
         &self,
@@ -3465,6 +3744,126 @@ impl Service {
             }
         }
     }
+}
+
+fn local_analysis_stages_ready(stages: &[StageReadinessV1]) -> bool {
+    stages
+        .iter()
+        .filter(|stage| {
+            crate::recipes::lookup(&stage.stage)
+                .is_none_or(|recipe| recipe.network == NetworkPolicy::LocalLock)
+        })
+        .all(|stage| stage.ready)
+}
+
+fn check_editorial_capacity(
+    readiness: &mut StageReadinessV1,
+    capacity: Option<crate::jobs::ResourceCapacity>,
+    required: Option<u64>,
+) {
+    if !readiness.ready {
+        return;
+    }
+    let (Some(capacity), Some(required)) = (capacity, required) else {
+        return;
+    };
+    if capacity.accelerator_mask & crate::jobs::accelerator_bit("metal").unwrap_or(0) == 0 {
+        readiness.ready = false;
+        "Qwen has not passed its local runtime check. Restart `just workers` to run the check, then refresh readiness.".clone_into(&mut readiness.remedy);
+    } else if capacity.ram_bytes < required {
+        readiness.ready = false;
+        readiness.remedy = format!(
+            "Qwen needs {} MiB of schedulable memory; {} MiB is available. Close memory-heavy applications, rescan in Models, then refresh readiness.",
+            required.div_ceil(1024 * 1024),
+            capacity.ram_bytes / (1024 * 1024)
+        );
+    }
+}
+
+/// One stage's readiness row, with the sentence that says what to do.
+#[allow(clippy::too_many_arguments)]
+fn stage_readiness(
+    stage: &str,
+    capability: &str,
+    implementation: &str,
+    model: &str,
+    backend: &str,
+    model_present: bool,
+    missing_files: Vec<String>,
+    worker_present: bool,
+) -> StageReadinessV1 {
+    let remedy = match (model_present, worker_present) {
+        (true, true) => String::new(),
+        (false, _) => format!(
+            "The model {model} is not installed: run `tools/fetch-models.sh {model}` to fetch the \
+             pinned weights ({} file(s) missing).",
+            missing_files.len()
+        ),
+        (true, false)
+            if crate::recipes::lookup(stage)
+                .is_some_and(|recipe| recipe.network == NetworkPolicy::NetworkAllowed) =>
+        {
+            format!(
+                "Optional cloud worker for {stage} is not running. To enable it, use `./tools/run-workers.sh --cloud-editorial`; each analysis still needs explicit cloud consent."
+            )
+        }
+        (true, false) if stage.starts_with("editorial-") => format!(
+            "No worker is connected that runs {stage}: install it with `uv sync --project workers/editorial`, \
+             restart `just app` to enroll it, then run `just workers`."
+        ),
+        (true, false) => format!(
+            "No worker is connected that runs {stage}: start the workers with `just workers`."
+        ),
+    };
+    StageReadinessV1 {
+        stage: stage.to_owned(),
+        capability: capability.to_owned(),
+        implementation: implementation.to_owned(),
+        model: model.to_owned(),
+        backend: backend.to_owned(),
+        model_present,
+        missing_files,
+        worker_present,
+        ready: model_present && worker_present,
+        remedy,
+    }
+}
+
+/// The refusals an export request earns before anything is read or written.
+///
+/// The revision the person reviewed is the one that may leave. An edit that
+/// landed between the review and this request — another window, a late
+/// command — would otherwise be delivered unseen; the caller re-plans against
+/// what the document is now and asks again.
+fn admit_export(asked: &ExportRequestV1, revision: u64) -> Result<(), (ErrorCode, String)> {
+    if let Some(expected) = asked.expected_revision
+        && expected != revision
+    {
+        return Err((
+            ErrorCode::Conflict,
+            format!(
+                "the document moved since it was reviewed: revision {expected} was approved, \
+                 it is now at revision {revision}"
+            ),
+        ));
+    }
+    if crate::export::naming_pattern(&asked.naming_pattern).is_err() {
+        return Err((
+            ErrorCode::InvalidArgument,
+            "the naming pattern cannot be resolved".to_owned(),
+        ));
+    }
+    if let Some(token) = asked
+        .ai_assistance
+        .iter()
+        .find(|token| !crate::render::ai_assistance_is_known(token))
+    {
+        return Err((
+            ErrorCode::InvalidArgument,
+            format!("an export declared a disclosure token nobody recognises: {token}"),
+        ));
+    }
+    Ok(())
 }
 
 /// Free space where an export would land, or on the nearest folder above it
@@ -3526,6 +3925,78 @@ mod tests {
 
     use super::{Service, validate_project_name, validate_request_id};
     use crate::db::DbActor;
+
+    #[test]
+    fn editorial_readiness_requires_verified_gpu_and_enough_memory() {
+        let ready = || {
+            super::stage_readiness(
+                "editorial-propose",
+                "editorial",
+                "worker",
+                "qwen",
+                "mlx",
+                true,
+                vec![],
+                true,
+            )
+        };
+        let mut capacity = crate::jobs::ResourceCapacity::measured(4, 16 << 30, 10 << 30);
+        let mut stage = ready();
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        assert!(!stage.ready);
+        assert!(stage.remedy.contains("runtime check"));
+        capacity.accelerator_mask = crate::jobs::accelerator_bit("metal").unwrap();
+        capacity.ram_bytes = 4 << 30;
+        let mut stage = ready();
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        assert!(!stage.ready);
+        assert!(stage.remedy.contains("8192 MiB"));
+        capacity.ram_bytes = 10 << 30;
+        let mut stage = ready();
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        assert!(stage.ready);
+    }
+
+    #[test]
+    fn optional_cloud_workers_do_not_block_local_analysis_readiness() {
+        let mut stages = vec![
+            super::stage_readiness(
+                "speech-asr",
+                "speech",
+                "asr",
+                "model",
+                "cpu",
+                true,
+                vec![],
+                true,
+            ),
+            super::stage_readiness(
+                "editorial-propose-cloud",
+                "",
+                "",
+                "",
+                "",
+                true,
+                vec![],
+                false,
+            ),
+            super::stage_readiness(
+                "editorial-review-cloud",
+                "",
+                "",
+                "",
+                "",
+                true,
+                vec![],
+                false,
+            ),
+        ];
+        assert!(super::local_analysis_stages_ready(&stages));
+        assert!(stages[1].remedy.contains("--cloud-editorial"));
+        assert!(stages[2].remedy.contains("explicit cloud consent"));
+        stages[0].ready = false;
+        assert!(!super::local_analysis_stages_ready(&stages));
+    }
 
     #[test]
     fn validates_and_trims_project_names() {

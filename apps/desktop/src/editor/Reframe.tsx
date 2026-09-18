@@ -7,18 +7,15 @@
  * nothing else. A crop nudged here that never became a command would look
  * right in the player and be absent from the file.
  *
- * The drag is smoothed with a One-Euro filter and **the smoothed value is what
- * commits**. Committing the raw pointer instead would mean the preview showed
- * one crop while the document recorded another, which is the divergence the
- * whole workstream is built to prevent.
+ * Nudges are explicit keyframes; every change goes through the edit command log.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback } from 'react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, RotateCcw } from 'lucide-react';
 
-import { Badge } from '../components/ui/badge.js';
 import { Button } from '../components/ui/button.js';
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
-import { OneEuro, removeCropKeyframe, setCropKeyframe, setLayout, ticksAt } from './commands.js';
-import { cropAt } from './player.js';
+import { removeCropKeyframe, segmentTicksAt, setCropKeyframe, setLayout } from './commands.js';
+import { cropAt, segmentAt, sourceOf } from './player.js';
 
 export interface ReframeProps {
   readonly plan: PreviewPlan;
@@ -48,29 +45,36 @@ export function Reframe({
   resolveRefusal,
 }: ReframeProps) {
   const crop = cropAt(plan, frame);
-  const [dragging, setDragging] = useState(false);
-  const filter = useRef(new OneEuro());
-  const [live, setLive] = useState<{ x: number; y: number } | null>(null);
-
-  const shown = live ?? (crop ? { x: crop.x, y: crop.y } : null);
+  // The crop lives in the source frame, and so does the keyframe's clock: a
+  // keyframe is at segment-local ticks, so the segment the playhead is in is
+  // what a nudge is addressed to.
+  const segment = segmentAt(plan, frame);
+  const source = segment ? sourceOf(plan, segment) : null;
+  const at = segmentTicksAt(plan, frame);
 
   const nudge = useCallback(
     (dx: number, dy: number) => {
       if (!crop) {
         return;
       }
-      const x = clamp(crop.x + dx, 0, Math.max(0, plan.width * 2 - crop.width));
-      const y = clamp(crop.y + dy, 0, Math.max(0, plan.height * 2 - crop.height));
+      const frameWidth = source?.displayWidth ?? plan.width * 2;
+      const frameHeight = source?.displayHeight ?? plan.height * 2;
+      const x = clamp(crop.x + dx, 0, Math.max(0, frameWidth - crop.width));
+      const y = clamp(crop.y + dy, 0, Math.max(0, frameHeight - crop.height));
       onApply(
-        setCropKeyframe(ticksAt(plan, frame), {
-          x,
-          y,
-          width: crop.width,
-          height: crop.height,
-        }),
+        setCropKeyframe(
+          at.tTicks,
+          {
+            x,
+            y,
+            width: crop.width,
+            height: crop.height,
+          },
+          at.segmentId,
+        ),
       );
     },
-    [crop, frame, onApply, plan],
+    [at.segmentId, at.tTicks, crop, onApply, plan, source],
   );
 
   return (
@@ -81,8 +85,11 @@ export function Reframe({
           <Button
             size="sm"
             variant={crop ? 'default' : 'outline'}
-            disabled={busy}
-            onClick={() => onApply(setLayout('speaker_fill'))}
+            disabled={busy || resolving || (!crop && resolveRefusal !== null)}
+            aria-pressed={crop !== null}
+            onClick={() => {
+              if (!crop) onResolve();
+            }}
           >
             Speaker-follow
           </Button>
@@ -90,15 +97,16 @@ export function Reframe({
             size="sm"
             variant={crop ? 'outline' : 'default'}
             disabled={busy}
-            onClick={() => onApply(setLayout('fit'))}
+            aria-pressed={crop === null}
+            onClick={() => {
+              if (crop) onApply(setLayout('fit', at.segmentId));
+            }}
           >
             Fit
           </Button>
         </div>
         <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-          Centre is not a separate mode here: a centred crop is a speaker-follow path whose
-          keyframes do not move, and calling it a mode would be a third state meaning the same
-          thing.
+          Follow the speaker to fill the vertical frame, or fit the entire source picture.
         </p>
       </section>
 
@@ -107,51 +115,63 @@ export function Reframe({
           <section>
             <p className="mb-2 text-xs text-[var(--cm-ink-2)]">Crop at this frame</p>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs">
-              <Field label="x" value={shown?.x ?? crop.x} />
-              <Field label="y" value={shown?.y ?? crop.y} />
+              <Field label="x" value={crop.x} />
+              <Field label="y" value={crop.y} />
               <Field label="w" value={crop.width} />
               <Field label="h" value={crop.height} />
             </dl>
-            <div
-              className="mt-3 grid grid-cols-3 gap-1"
-              role="group"
-              aria-label="Nudge the crop"
-              onPointerDown={() => {
-                filter.current.reset();
-                setDragging(true);
-              }}
-              onPointerUp={() => {
-                setDragging(false);
-                setLive(null);
-              }}
-            >
+            <div className="mt-3 grid grid-cols-3 gap-1" role="group" aria-label="Nudge the crop">
               <span />
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => nudge(0, -16)}>
-                ↑
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                aria-label="Move crop up"
+                onClick={() => nudge(0, -16)}
+              >
+                <ArrowUp className="size-4" />
               </Button>
               <span />
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => nudge(-16, 0)}>
-                ←
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                aria-label="Move crop left"
+                onClick={() => nudge(-16, 0)}
+              >
+                <ArrowLeft className="size-4" />
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 disabled={busy}
-                onClick={() => onApply(removeCropKeyframe(ticksAt(plan, frame)))}
+                onClick={() => onApply(removeCropKeyframe(at.tTicks, at.segmentId))}
                 title="Remove the keyframe at this frame"
+                aria-label="Remove crop keyframe"
               >
-                ⌫
+                <RotateCcw className="size-4" />
               </Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => nudge(16, 0)}>
-                →
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                aria-label="Move crop right"
+                onClick={() => nudge(16, 0)}
+              >
+                <ArrowRight className="size-4" />
               </Button>
               <span />
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => nudge(0, 16)}>
-                ↓
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                aria-label="Move crop down"
+                onClick={() => nudge(0, 16)}
+              >
+                <ArrowDown className="size-4" />
               </Button>
               <span />
             </div>
-            {dragging && <p className="mt-1 text-xs text-[var(--cm-ink-3)]">smoothing…</p>}
           </section>
 
           <section>
@@ -159,7 +179,13 @@ export function Reframe({
             <dl className="space-y-1 text-xs">
               <Guardrail
                 label="Inside the frame"
-                ok={crop.x >= 0 && crop.y >= 0}
+                ok={
+                  source !== null &&
+                  crop.x >= 0 &&
+                  crop.y >= 0 &&
+                  crop.x + crop.width <= source.displayWidth &&
+                  crop.y + crop.height <= source.displayHeight
+                }
                 detail="a crop that leaves the picture renders black"
               />
               <Guardrail
@@ -172,9 +198,9 @@ export function Reframe({
         </>
       ) : (
         <p className="text-xs text-[var(--cm-ink-2)]">
-          This clip is fitted, so there is no crop to move. Switching to speaker-follow without a
-          solved path would give the renderer an empty one, which it refuses —{' '}
-          {resolveRefusal ? 'and there is nothing to solve from yet.' : 'so ask the solver first.'}
+          {resolveRefusal
+            ? 'The whole frame is shown. Speaker-follow is unavailable until a face track is ready.'
+            : 'Choose Speaker-follow to calculate a crop for this clip.'}
         </p>
       )}
 
@@ -193,9 +219,7 @@ export function Reframe({
           </p>
         ) : (
           <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-            The solver is asked again over this clip&rsquo;s span and its keyframes are written as
-            one undoable step. Tracking weights are the solver&rsquo;s defaults;{' '}
-            <Badge variant="outline">per-clip weights</Badge> are a Phase 2 surface.
+            Recalculate framing for this clip. You can undo this change.
           </p>
         )}
       </section>

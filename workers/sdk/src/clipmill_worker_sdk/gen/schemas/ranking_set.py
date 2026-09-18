@@ -68,6 +68,26 @@ class EvidenceReference(BaseModel):
     index: conint(ge=0)
 
 
+class Status(StrEnum):
+    accepted = 'accepted'
+    needs_review = 'needs_review'
+
+
+class Route(StrEnum):
+    local = 'local'
+    cloud = 'cloud'
+
+
+class Review(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    status: Status
+    reasons: list[str]
+    route: Route
+    summary: str | None = None
+
+
 class Name(StrEnum):
     hook = 'hook'
     flow = 'flow'
@@ -208,6 +228,25 @@ class Producer(BaseModel):
     implementation: constr(min_length=1)
 
 
+class FailedWindow(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    index: conint(ge=0)
+    detail: constr(min_length=1)
+
+
+class EditorialCoverage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    window_count: conint(ge=0)
+    answered_windows: conint(ge=0)
+    failed_windows: list[FailedWindow]
+    failed_reviews: conint(ge=0)
+    failed_visual_checks: conint(ge=0)
+
+
 class Inputs(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -215,6 +254,7 @@ class Inputs(BaseModel):
     candidates_artifact_id: Sha256
     index_artifact_id: Sha256
     transcript_artifact_id: Sha256
+    judgments_artifact_id: Sha256 | None = None
 
 
 class Boundary(BaseModel):
@@ -267,6 +307,11 @@ class Ranked(BaseModel):
         ...,
         description="Echoed from discovery, so the interface can offer the cluster's alternatives without opening the candidate set.",
     )
+    review: Review | None = None
+    title: constr(min_length=1, max_length=120) | None = Field(
+        None,
+        description="The editorial proposal's concise title, separate from the review summary.",
+    )
 
 
 class RankingSet(BaseModel):
@@ -303,4 +348,8 @@ class RankingSet(BaseModel):
     filtered: list[FilteredCandidate] | None = Field(
         None,
         description="Candidates the stage-one filters removed before scoring, with the reason. Kept so the interface can answer 'what happened to that one?' rather than the candidate simply vanishing between two documents.",
+    )
+    editorial: EditorialCoverage | None = Field(
+        None,
+        description='Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.',
     )

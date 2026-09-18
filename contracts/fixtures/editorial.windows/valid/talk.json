@@ -1,0 +1,209 @@
+{
+  "budget": {
+    "context_sentences": 2,
+    "overlap_words": 10,
+    "target_words": 40
+  },
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 3354000,
+    "start_ticks": 0
+  },
+  "inputs": {
+    "index_artifact_id": "sha256:1d0e000000000000000000000000000000000000000000000000000000000021",
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "invalid_regions": [
+    {
+      "detail": "word timing was spread; the aligner placed nothing here",
+      "end_ticks": 1368000,
+      "reason": "timing_interpolated",
+      "start_ticks": 1218000
+    }
+  ],
+  "language": "en",
+  "outline": [
+    {
+      "end_ticks": 1665000,
+      "first_sentence_index": 0,
+      "keywords": [
+        "microphone",
+        "room",
+        "sound"
+      ],
+      "sentence_count": 6,
+      "start_ticks": 90000,
+      "topic_index": 0
+    },
+    {
+      "end_ticks": 3237000,
+      "first_sentence_index": 6,
+      "keywords": [
+        "gain",
+        "number",
+        "physics"
+      ],
+      "sentence_count": 6,
+      "start_ticks": 1692000,
+      "topic_index": 1
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-editorial-windows@1.0.0",
+    "stage": "editorial-windows"
+  },
+  "schema_version": "clipmill.editorial.windows.v1",
+  "sentences": [
+    {
+      "end_ticks": 240000,
+      "first_word_index": 0,
+      "index": 0,
+      "start_ticks": 90000,
+      "terminator": "punctuation",
+      "text": "Welcome back to the workshop.",
+      "word_count": 5
+    },
+    {
+      "end_ticks": 537000,
+      "first_word_index": 5,
+      "index": 1,
+      "start_ticks": 267000,
+      "terminator": "punctuation",
+      "text": "Today I am talking with Priya Natarajan about sound.",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 894000,
+      "first_word_index": 14,
+      "index": 2,
+      "start_ticks": 564000,
+      "terminator": "punctuation",
+      "text": "Why does my recording sound thin even with the expensive microphone?",
+      "word_count": 11
+    },
+    {
+      "end_ticks": 1191000,
+      "first_word_index": 25,
+      "index": 3,
+      "start_ticks": 921000,
+      "terminator": "punctuation",
+      "text": "The answer was not about the microphone at all.",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 1368000,
+      "first_word_index": 34,
+      "index": 4,
+      "start_ticks": 1218000,
+      "terminator": "punctuation",
+      "text": "It was about the room.",
+      "word_count": 5
+    },
+    {
+      "end_ticks": 1665000,
+      "first_word_index": 39,
+      "index": 5,
+      "start_ticks": 1395000,
+      "terminator": "punctuation",
+      "text": "A microphone hears the room before it hears you.",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 1902000,
+      "first_word_index": 48,
+      "index": 6,
+      "start_ticks": 1692000,
+      "terminator": "punctuation",
+      "text": "Here is a number that surprised me.",
+      "word_count": 7
+    },
+    {
+      "end_ticks": 2319000,
+      "first_word_index": 55,
+      "index": 7,
+      "start_ticks": 1929000,
+      "terminator": "punctuation",
+      "text": "Sixty three percent stopped in the first ninety seconds because of the sound.",
+      "word_count": 13
+    },
+    {
+      "end_ticks": 2586000,
+      "first_word_index": 68,
+      "index": 8,
+      "start_ticks": 2346000,
+      "terminator": "punctuation",
+      "text": "Get the microphone close and the walls far.",
+      "word_count": 8
+    },
+    {
+      "end_ticks": 2883000,
+      "first_word_index": 76,
+      "index": 9,
+      "start_ticks": 2613000,
+      "terminator": "punctuation",
+      "text": "Turn the gain down until nothing touches the top.",
+      "word_count": 9
+    },
+    {
+      "end_ticks": 3060000,
+      "first_word_index": 85,
+      "index": 10,
+      "start_ticks": 2910000,
+      "terminator": "punctuation",
+      "text": "Everything after that is taste.",
+      "word_count": 5
+    },
+    {
+      "end_ticks": 3237000,
+      "first_word_index": 90,
+      "index": 11,
+      "start_ticks": 3087000,
+      "terminator": "punctuation",
+      "text": "Everything before it is physics.",
+      "word_count": 5
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "windows": [
+    {
+      "context_after_sentences": 2,
+      "context_before_sentences": 0,
+      "end_ticks": 1368000,
+      "first_sentence_index": 0,
+      "index": 0,
+      "sentence_count": 5,
+      "start_ticks": 90000,
+      "topic_indexes": [
+        0
+      ],
+      "word_count": 39
+    },
+    {
+      "context_after_sentences": 2,
+      "context_before_sentences": 2,
+      "end_ticks": 2319000,
+      "first_sentence_index": 4,
+      "index": 1,
+      "sentence_count": 4,
+      "start_ticks": 1218000,
+      "topic_indexes": [
+        0,
+        1
+      ],
+      "word_count": 34
+    },
+    {
+      "context_after_sentences": 0,
+      "context_before_sentences": 2,
+      "end_ticks": 3237000,
+      "first_sentence_index": 7,
+      "index": 2,
+      "sentence_count": 5,
+      "start_ticks": 1929000,
+      "topic_indexes": [
+        1
+      ],
+      "word_count": 40
+    }
+  ]
+}

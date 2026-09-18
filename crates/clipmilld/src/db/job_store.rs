@@ -1,7 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use clipmill_artifacts::NetworkPolicy;
 use clipmill_contracts::proto::{
-    ipc::v1::{CancelJobResponse, JobState, Response, SubmitJobResponse, TaskState, response},
+    ipc::v1::{
+        CancelJobResponse, ExportClipPayloadV1, ExportSummaryV1, JobState, Response,
+        SubmitJobResponse, TaskState, response,
+    },
     worker::v1::FailureClass,
 };
 use clipmill_core::{ArtifactId, JobId, ProjectId, TaskId};
@@ -616,6 +620,19 @@ pub(super) fn lease_next_task_for_worker(
     request: &LeaseRequest,
 ) -> Result<LeaseSelection, StoreError> {
     let capability_filter = format!(",{},", request.capabilities.join(","));
+    // Bind data, never interpolate task names into SQL. Exact comma-delimited
+    // membership follows the registry for both policies; a cloud stage cannot
+    // gain admission by falsely declaring itself local.
+    let policy_kinds = |network| {
+        format!(
+            ",{},",
+            crate::recipes::stages_with_network_policy(network)
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
+    let network_allowed_filter = policy_kinds(NetworkPolicy::NetworkAllowed);
+    let local_lock_filter = policy_kinds(NetworkPolicy::LocalLock);
     let now = request.now_unix_millis;
     let expires = request.expires_unix_millis;
     let capacity = request.capacity;
@@ -644,6 +661,17 @@ pub(super) fn lease_next_task_for_worker(
                     WHERE c.stage = t.kind AND c.implementation = t.implementation
                       AND c.input_key = t.input_key AND c.open = 1
                )
+               -- Serialize a stage over identical recording content, including
+               -- across projects. Waiting here consumes no failed attempts and
+               -- lets the next run attach the first run's published cache hit.
+               AND NOT EXISTS (
+                    SELECT 1 FROM tasks active
+                    JOIN jobs active_job ON active_job.job_id = active.job_id
+                    JOIN sources active_source ON active_source.source_id = active_job.source_id
+                    JOIN sources this_source ON this_source.source_id = j.source_id
+                    WHERE active.state = ?18 AND active.kind = t.kind
+                      AND active_source.source_fingerprint = this_source.source_fingerprint
+               )
                AND t.cpu_threads <= ?7
                AND t.ram_bytes <= ?8
                AND t.disk_bytes <= ?9
@@ -661,7 +689,10 @@ pub(super) fn lease_next_task_for_worker(
                         )
                     )
                )
-               AND t.network_policy = 'local-lock'
+               AND ((t.network_policy = 'local-lock' AND instr(?20, ',' || t.kind || ',') > 0) OR (
+                    t.network_policy = 'network-allowed'
+                    AND instr(?19, ',' || t.kind || ',') > 0
+               ))
                AND instr(?17, ',' || t.kind || ',') > 0
              ORDER BY j.created_unix_millis, j.job_id, t.ordinal
              LIMIT 1",
@@ -683,6 +714,9 @@ pub(super) fn lease_next_task_for_worker(
                 i64::from(accelerator_bit("vulkan").unwrap_or(0)),
                 i64::from(accelerator_bit("metal").unwrap_or(0)),
                 capability_filter,
+                TaskState::Running as i32,
+                network_allowed_filter,
+                local_lock_filter,
             ],
             |row| {
                 Ok(SelectedTaskRow {
@@ -1478,6 +1512,53 @@ pub(super) fn latest_source_job_artifact(
     Ok(artifact_id)
 }
 
+/// What one run published: the source it ran over and, per stage kind, the
+/// artifact its succeeded task wrote.
+///
+/// Every stage of one job, as one lookup, is what lets a clip be directed
+/// from the run its candidate came out of rather than from whichever run
+/// published each stage last. A stage the run has not published yet is absent
+/// here, which the caller reports as such rather than filling from another
+/// run — a half-published re-analysis mixed into an older clip is the failure
+/// this exists to make impossible.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct RunArtifacts {
+    pub source_id: Option<String>,
+    pub by_task_kind: BTreeMap<String, String>,
+}
+
+pub(super) fn run_task_artifacts(
+    connection: &Connection,
+    job_id: &str,
+) -> Result<RunArtifacts, StoreError> {
+    let source_id: Option<String> = connection
+        .query_row(
+            "SELECT j.source_id FROM jobs j JOIN projects p ON p.project_id = j.project_id
+             WHERE j.job_id = ?1 AND p.is_system = 0",
+            [job_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or(StoreError::NotFound)?;
+    let mut statement = connection.prepare(
+        "SELECT kind, output_artifact_id FROM tasks
+         WHERE job_id = ?1 AND state = ?2 AND output_artifact_id IS NOT NULL
+         ORDER BY ordinal",
+    )?;
+    let rows = statement.query_map(params![job_id, TaskState::Succeeded as i32], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut by_task_kind = BTreeMap::new();
+    for row in rows {
+        let (kind, artifact_id) = row?;
+        by_task_kind.insert(kind, artifact_id);
+    }
+    Ok(RunArtifacts {
+        source_id,
+        by_task_kind,
+    })
+}
+
 /// The newest artifact a *stage* published for a source, whatever job ran it.
 ///
 /// Distinct from [`latest_source_job_artifact`], which matches the job's own
@@ -1738,6 +1819,16 @@ fn validate_plan(plan: &JobPlan) -> Result<(), StoreError> {
             ));
         }
         let resources = &task.resources;
+        let registered_policy =
+            crate::recipes::lookup(&task.kind).map(|recipe| match recipe.network {
+                NetworkPolicy::LocalLock => "local-lock",
+                NetworkPolicy::NetworkAllowed => "network-allowed",
+            });
+        if registered_policy != Some(resources.network_policy.as_str()) {
+            return Err(StoreError::InvalidData(
+                "task network policy does not match its registered stage",
+            ));
+        }
         if resources.cpu_threads == 0
             || !matches!(
                 resources.network_policy.as_str(),
@@ -1790,15 +1881,13 @@ fn valid_label(value: &str, maximum: usize) -> bool {
     count > 0 && count <= maximum && !value.chars().any(char::is_control)
 }
 
+const JOB_HEADER_SQL: &str = "SELECT job_id, project_id, kind, state, created_unix_millis,
+            updated_unix_millis, failure_class, failure_detail, source_id, payload
+     FROM jobs WHERE job_id = ?1";
+
 fn get_job_from(connection: &Connection, job_id: &str) -> Result<JobRecord, StoreError> {
     let header = connection
-        .query_row(
-            "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail
-             FROM jobs WHERE job_id = ?1",
-            [job_id],
-            job_header_from_row,
-        )
+        .query_row(JOB_HEADER_SQL, [job_id], job_header_from_row)
         .optional()?
         .ok_or(StoreError::NotFound)?;
     complete_job_record(connection, header)
@@ -1806,13 +1895,7 @@ fn get_job_from(connection: &Connection, job_id: &str) -> Result<JobRecord, Stor
 
 fn get_job_tx(transaction: &Transaction<'_>, job_id: &str) -> Result<JobRecord, StoreError> {
     let header = transaction
-        .query_row(
-            "SELECT job_id, project_id, kind, state, created_unix_millis,
-                    updated_unix_millis, failure_class, failure_detail
-             FROM jobs WHERE job_id = ?1",
-            [job_id],
-            job_header_from_row,
-        )
+        .query_row(JOB_HEADER_SQL, [job_id], job_header_from_row)
         .optional()?
         .ok_or(StoreError::NotFound)?;
     complete_job_record(transaction, header)
@@ -1847,9 +1930,25 @@ fn complete_job_record(
                 .and_then(|is_final| is_final.then_some(task.output_artifact_id.clone()))
         })
         .collect();
+    // An export job says what it is delivering, off its own payload. The
+    // payload is the durable record of the request; a screen that reopens a
+    // document finds its export here rather than in state a remount lost.
+    let export = (header.kind == crate::jobs::KIND_EXPORT_CLIP)
+        .then(|| ExportClipPayloadV1::decode(header.payload.as_slice()).ok())
+        .flatten()
+        .and_then(|payload| {
+            let request = payload.request?;
+            Some(ExportSummaryV1 {
+                doc_id: request.doc_id,
+                revision: request.expected_revision.unwrap_or_default(),
+                ir_artifact_id: payload.ir_artifact_id,
+                destination_dir: request.destination_dir,
+            })
+        });
     Ok(JobRecord {
         job_id: header.job_id,
         project_id: header.project_id,
+        source_id: header.source_id,
         kind: header.kind,
         state: header.state,
         created_unix_millis: header.created_unix_millis,
@@ -1858,18 +1957,21 @@ fn complete_job_record(
         output_artifact_ids,
         failure_class: header.failure_class,
         failure_detail: header.failure_detail,
+        export,
     })
 }
 
 struct JobHeader {
     job_id: String,
     project_id: String,
+    source_id: Option<String>,
     kind: String,
     state: i32,
     created_unix_millis: u64,
     updated_unix_millis: u64,
     failure_class: i32,
     failure_detail: String,
+    payload: Vec<u8>,
 }
 
 fn job_header_from_row(row: &Row<'_>) -> rusqlite::Result<JobHeader> {
@@ -1882,6 +1984,8 @@ fn job_header_from_row(row: &Row<'_>) -> rusqlite::Result<JobHeader> {
         updated_unix_millis: sql_u64(row, 5)?,
         failure_class: row.get(6)?,
         failure_detail: row.get(7)?,
+        source_id: row.get(8)?,
+        payload: row.get(9)?,
     })
 }
 

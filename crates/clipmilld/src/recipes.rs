@@ -268,6 +268,72 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
+    // The editorial windows (plan, Milestone 2). Builtin and modelless: the
+    // cut an editorial model reads, arithmetic over the index and keyed on
+    // the budget, so the model's own stages read a published artifact.
+    Recipe {
+        kind: "editorial-windows",
+        output_kind: "editorial.windows.v1",
+        semantic_version: "clipmill.editorial.windows.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-propose",
+        output_kind: "editorial.proposals.v1",
+        semantic_version: "clipmill.editorial.proposals.v1",
+        executor: Executor::Worker,
+        capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-review",
+        output_kind: "editorial.judgments.v1",
+        semantic_version: "clipmill.editorial.judgments.v1",
+        executor: Executor::Worker,
+        capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-look",
+        output_kind: "editorial.looks.v1",
+        semantic_version: "clipmill.editorial.looks.v1",
+        executor: Executor::Worker,
+        capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-validate",
+        output_kind: "discovery.candidates.v1",
+        semantic_version: "clipmill.editorial.validate.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-propose-cloud",
+        output_kind: "editorial.proposals.v1",
+        semantic_version: "clipmill.editorial.proposals.v1",
+        executor: Executor::Worker,
+        capability: None,
+        network: NetworkPolicy::NetworkAllowed,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-review-cloud",
+        output_kind: "editorial.judgments.v1",
+        semantic_version: "clipmill.editorial.judgments.v1",
+        executor: Executor::Worker,
+        capability: None,
+        network: NetworkPolicy::NetworkAllowed,
+        tools: &[],
+    },
     // The W18 proposer mesh (book ch. 15). Builtin and modelless: it reads
     // three published documents and writes a fourth.
     Recipe {
@@ -383,13 +449,35 @@ pub(crate) fn lookup(kind: &str) -> Option<&'static Recipe> {
     REGISTRY.iter().find(|recipe| recipe.kind == kind)
 }
 
+/// The stages the registry says the daemon runs itself.
+///
+/// Registration alone does not make a builtin run: the runner claims tasks by
+/// kind, and a stage registered here but never claimed is planned and then
+/// waits forever, with everything behind it. The runner's list is checked
+/// against this one so that gap cannot open quietly.
+pub(crate) fn builtin_stages() -> impl Iterator<Item = &'static str> {
+    REGISTRY
+        .iter()
+        .filter(|recipe| recipe.executor == Executor::Builtin)
+        .map(|recipe| recipe.kind)
+}
+
+/// Task kinds with this policy, from the same registry used to key artifacts.
+/// Scheduler admission and optional-worker readiness must not keep their own lists.
+pub(crate) fn stages_with_network_policy(
+    network: NetworkPolicy,
+) -> impl Iterator<Item = &'static str> {
+    REGISTRY
+        .iter()
+        .filter(move |recipe| recipe.network == network)
+        .map(|recipe| recipe.kind)
+}
+
 /// How many stages this daemon will run, and how many of them may reach the
 /// network.
 ///
-/// The Local Lock's claim, reduced to two numbers a screen can show. The second
-/// one is what makes the first checkable: "engaged" on its own is a boolean
-/// somebody typed, while "twenty-eight stages, none network-allowed" is a
-/// count of the table that decides.
+/// This describes available capabilities, not whether cloud work has started.
+/// Session activity is reported separately by `LocalLockPolicy`.
 pub(crate) fn network_census() -> (u32, u32) {
     let total = u32::try_from(REGISTRY.len()).unwrap_or(u32::MAX);
     let allowed = REGISTRY
@@ -479,6 +567,19 @@ pub(crate) fn worker_recipe(
 /// device profile nor the model registry is consulted here: re-measuring a
 /// device changes what the next plan chooses and never what an existing task
 /// means.
+/// The stages a worker runs without a model: leased, but with nothing to bind.
+///
+/// Readiness asks about these separately, because no binding names them and
+/// a worker fleet with no shot detector is a stage that waits forever.
+pub(crate) fn modelless_worker_stages() -> impl Iterator<Item = &'static str> {
+    REGISTRY
+        .iter()
+        .filter(|recipe| recipe.executor == Executor::Worker && recipe.capability.is_none())
+        .filter(|recipe| !recipe.kind.starts_with("demo-"))
+        .filter(|recipe| !recipe.kind.ends_with("-cloud"))
+        .map(|recipe| recipe.kind)
+}
+
 pub(crate) fn model_for(
     stage: &str,
     capability: &'static str,
@@ -551,7 +652,7 @@ mod tests {
     /// Two stages sharing an artifact kind would collide on one content
     /// address whenever their other inputs happened to match.
     #[test]
-    fn no_two_stages_publish_the_same_artifact_kind() {
+    fn only_the_named_editorial_alternative_shares_an_artifact_kind() {
         let mut outputs = REGISTRY
             .iter()
             .map(|recipe| recipe.output_kind)
@@ -559,7 +660,19 @@ mod tests {
         let total = outputs.len();
         outputs.sort_unstable();
         outputs.dedup();
-        assert_eq!(outputs.len(), total, "two stages publish the same kind");
+        assert_eq!(
+            outputs.len(),
+            total - 3,
+            "only the two discovery routes may share a kind"
+        );
+        assert_eq!(
+            REGISTRY
+                .iter()
+                .filter(|r| r.output_kind == "discovery.candidates.v1")
+                .map(|r| r.kind)
+                .collect::<Vec<_>>(),
+            vec!["editorial-validate", "discover-candidates"]
+        );
     }
 
     #[test]

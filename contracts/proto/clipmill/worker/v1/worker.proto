@@ -80,6 +80,8 @@ message TaskLease {
   // key. What identifies the tool — its BOM string — reaches the key through
   // the stage payload instead.
   repeated ToolBinding tools = 15;
+  // For durable per-run cloud budget accounting; never part of the artifact key.
+  string job_id = 16;
 }
 
 // Where one pinned executable is, and which build it is.

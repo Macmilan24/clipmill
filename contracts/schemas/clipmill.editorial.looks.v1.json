@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.editorial.looks.v1.json",
+  "title": "EditorialLooks",
+  "description": "What a visual model saw when the review said the picture mattered (plan, Milestone 2). One check per flagged candidate over a bounded set of frames from its span, one question, a short answer — is what is being talked about visible? — and the frames it was answered from, so the answer can be walked back to pictures. Not a frame-by-frame viewer: a candidate nobody flagged has no entry here, and a candidate the model could not look at says so rather than answering.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "inputs", "producer", "checks"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.editorial.looks.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "inputs": {
+      "type": "object",
+      "required": ["judgments_artifact_id", "frames_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "judgments_artifact_id": { "$ref": "#/$defs/sha256" },
+        "frames_artifact_id": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "producer": { "$ref": "#/$defs/model_producer" },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "model_producer": {
+      "type": "object",
+      "required": ["stage", "implementation", "route", "model", "prompt_version", "decoding"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "route": { "type": "string", "enum": ["local", "cloud"] },
+        "model": { "$ref": "#/$defs/model" },
+        "prompt_version": { "type": "string", "minLength": 1 },
+        "decoding": { "$ref": "#/$defs/decoding" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/sha256" },
+        "provider": { "type": "string", "minLength": 1 }
+      }
+    },
+    "decoding": {
+      "type": "object",
+      "required": ["temperature_milli", "seed", "max_output_tokens", "constrained"],
+      "additionalProperties": false,
+      "properties": {
+        "temperature_milli": { "type": "integer", "minimum": 0 },
+        "seed": { "type": "integer", "minimum": 0 },
+        "max_output_tokens": { "type": "integer", "minimum": 1 },
+        "constrained": { "type": "boolean" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": ["candidate_id", "outcome", "frames", "question"],
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["answered", "malformed", "failed"]
+        },
+        "failure": {
+          "type": "object",
+          "required": ["failure_class", "detail"],
+          "additionalProperties": false,
+          "properties": {
+            "failure_class": {
+              "type": "string",
+              "enum": ["deterministic", "transient", "cancelled", "budget"]
+            },
+            "detail": { "type": "string", "minLength": 1 }
+          }
+        },
+        "frames": {
+          "description": "The frames shown, by their position in the recording, so the answer can be walked back to a picture.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["t_ticks"],
+            "additionalProperties": false,
+            "properties": {
+              "t_ticks": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "question": {
+          "description": "What the model was asked about these frames, verbatim, so an answer is never read against a question nobody can see.",
+          "type": "string",
+          "minLength": 1
+        },
+        "answer": {
+          "description": "'yes' the thing referred to is visible; 'no' it is not; 'unclear' the frames do not settle it.",
+          "type": "string",
+          "enum": ["yes", "no", "unclear"]
+        },
+        "detail": {
+          "description": "The model's one-sentence account of what it saw.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

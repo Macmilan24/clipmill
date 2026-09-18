@@ -24,6 +24,12 @@ pub struct CueFacts<'a> {
     pub cue_id: &'a str,
     pub start_ticks: i64,
     pub end_ticks: i64,
+    /// When the cue's last word ends. A cue may be held past this so it can
+    /// be read; it may not be blamed for crowding the next cue when the
+    /// speech itself left no blank and the cue left the screen with its
+    /// words. `None` when nothing is known about the words — the cue is then
+    /// held to the gap without exception.
+    pub speech_end_ticks: Option<i64>,
     /// The rendered width of every line, in order.
     pub lines: &'a [usize],
 }
@@ -239,7 +245,16 @@ pub fn validate(cues: &[CueFacts<'_>], profile: Profile, shot_cuts: &[i64]) -> V
                 });
             } else {
                 let gap = facts.start_ticks - before.end_ticks;
-                if gap < profile.min_gap_ticks {
+                // A cue that stayed no longer than its own words, followed by
+                // a word said before the blank could have passed, is not
+                // crowding anything: the speech is. The only way to make the
+                // blank would be to hide a word while it is said, and the
+                // segmenter has already given up what it could of the last
+                // word to leave the blank when the word was long enough.
+                let forced_by_speech = before
+                    .speech_end_ticks
+                    .is_some_and(|spoken_until| before.end_ticks <= spoken_until);
+                if gap < profile.min_gap_ticks && !forced_by_speech {
                     found.push(Violation::Crowds {
                         cue_id,
                         previous_cue_id: before.cue_id.to_owned(),
@@ -268,6 +283,7 @@ mod tests {
     fn facts<'a>(cue_id: &'a str, from: f64, to: f64, lines: &'a [usize]) -> CueFacts<'a> {
         #[allow(clippy::cast_possible_truncation)]
         CueFacts {
+            speech_end_ticks: None,
             cue_id,
             start_ticks: (from * TICKS_PER_SECOND as f64) as i64,
             end_ticks: (to * TICKS_PER_SECOND as f64) as i64,
@@ -350,6 +366,32 @@ mod tests {
             panic!("expected a crowding violation, got {found:?}");
         };
         assert_eq!(previous_cue_id, "cue_1");
+    }
+
+    /// The speech left no blank: the first cue's last word ends where the
+    /// next cue's first word begins, and the cue left with its word. That is
+    /// the recording's doing, and the only way to make a blank would be to
+    /// hide a word while it is said.
+    #[test]
+    fn a_crowd_the_speech_itself_forces_is_not_a_violation() {
+        let mut one = facts("cue_1", 0.0, 3.0, &[20]);
+        one.speech_end_ticks = Some(3 * TICKS_PER_SECOND);
+        let two = facts("cue_2", 3.0, 6.0, &[20]);
+        assert!(validate(&[one, two], Profile::ACCESSIBILITY_EN, &[]).is_empty());
+    }
+
+    /// The speech left a blank and the cue lingered into it: that is the
+    /// cue's doing, and it is named.
+    #[test]
+    fn a_cue_held_into_the_blank_before_the_next_still_crowds_it() {
+        let mut one = facts("cue_1", 0.0, 3.0, &[20]);
+        one.speech_end_ticks = Some(2 * TICKS_PER_SECOND);
+        let two = facts("cue_2", 3.0, 6.0, &[20]);
+        let found = validate(&[one, two], Profile::ACCESSIBILITY_EN, &[]);
+        assert!(
+            matches!(found.as_slice(), [Violation::Crowds { .. }]),
+            "{found:?}"
+        );
     }
 
     #[test]

@@ -29,6 +29,26 @@ pub mod discovery_candidates;
 pub mod edit_ir;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/editorial_judgments.rs"]
+pub mod editorial_judgments;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/editorial_looks.rs"]
+pub mod editorial_looks;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/editorial_proposals.rs"]
+pub mod editorial_proposals;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/editorial_trace.rs"]
+pub mod editorial_trace;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/editorial_windows.rs"]
+pub mod editorial_windows;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/eval_annotation.rs"]
 pub mod eval_annotation;
 

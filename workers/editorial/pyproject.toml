@@ -1,0 +1,23 @@
+[project]
+name = "clipmill-worker-editorial"
+version = "0.1.1"
+description = "Qwen 3.5 proposal, review and targeted visual checks"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+  "clipmill-worker-sdk",
+  "mlx-vlm==0.7.1 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+  "torchvision>=0.21,<1 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+]
+[project.scripts]
+clipmill-worker-editorial = "clipmill_worker_editorial:main"
+clipmill-worker-editorial-cloud = "clipmill_worker_editorial.cloud_worker:main"
+[dependency-groups]
+dev = ["pytest>=8"]
+[tool.uv.sources]
+clipmill-worker-sdk = { path = "../sdk", editable = true }
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+[tool.hatch.build.targets.wheel]
+packages = ["src/clipmill_worker_editorial"]

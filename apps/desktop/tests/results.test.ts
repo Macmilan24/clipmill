@@ -8,9 +8,23 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { DiscoveryCandidates, RankingSet } from '@clipmill/contracts';
+import type { DiscoveryCandidates, IndexTranscript, RankingSet } from '@clipmill/contracts';
 
-import { AXES, applyFilters, clipRows, clock, summarize } from '../src/results/model.js';
+import type { EditDocSummary } from '../src/daemon/client.js';
+import {
+  AXES,
+  applyFilters,
+  clipRows,
+  clock,
+  duration,
+  newestDocumentPerCandidate,
+  sortRows,
+  summarize,
+  tally,
+  topFactors,
+} from '../src/results/model.js';
+
+import { signalsFor } from '../src/results/parts/state.js';
 
 const FINGERPRINT = `sha256:${'11'.repeat(32)}`;
 
@@ -139,6 +153,61 @@ describe('the ranked rows', () => {
     expect(rows[0]?.bandLabel).toBe('Strong');
     expect(rows[1]?.bandLabel).toBe('Promising');
   });
+
+  it('attach the edit document a clip has, apart from whether it was approved', () => {
+    // Approved, and yet no document: the creation failed after the decision.
+    // A board that inferred one from the other would send the editor to open
+    // nothing.
+    const rows = clipRows(
+      ranking(),
+      candidates(),
+      null,
+      [{ candidateId: 'cand_0000000000000001', decision: 'approved', decidedUnixMillis: 0 }],
+      [edit('edt_a', 'cand_0000000000000002', 10)],
+    );
+    expect(rows[0]?.decision).toBe('approved');
+    expect(rows[0]?.docId).toBeNull();
+    expect(rows[1]?.decision).toBeNull();
+    expect(rows[1]?.docId).toBe('edt_a');
+  });
+});
+
+function edit(docId: string, candidateId: string, createdUnixMillis: number): EditDocSummary {
+  return {
+    docId,
+    projectId: 'p1',
+    sourceId: 'src_p1',
+    candidateId,
+    jobId: '',
+    revision: 0,
+    createdUnixMillis,
+    updatedUnixMillis: createdUnixMillis,
+  };
+}
+
+describe('the document a clip has', () => {
+  it('is the newest of several, which is the one the daemon reopens', () => {
+    const newest = newestDocumentPerCandidate([
+      edit('edt_first', 'cand_1', 10),
+      edit('edt_variation', 'cand_1', 20),
+      edit('edt_other', 'cand_2', 15),
+    ]);
+    expect(newest.get('cand_1')?.docId).toBe('edt_variation');
+    expect(newest.get('cand_2')?.docId).toBe('edt_other');
+  });
+
+  it('breaks a tie the way the daemon does, by the later id', () => {
+    const newest = newestDocumentPerCandidate([
+      edit('edt_b', 'cand_1', 10),
+      edit('edt_a', 'cand_1', 10),
+    ]);
+    expect(newest.get('cand_1')?.docId).toBe('edt_b');
+  });
+
+  it('leaves out a document that names no candidate', () => {
+    const newest = newestDocumentPerCandidate([edit('edt_hand', '', 10)]);
+    expect(newest.size).toBe(0);
+  });
 });
 
 describe('the summary', () => {
@@ -147,6 +216,47 @@ describe('the summary', () => {
     expect(summary.selected).toBe(1);
     expect(summary.requested).toBe(4);
     expect(summary.shortfall).toEqual(['only one moment cleared the bar']);
+  });
+
+  it('reports incomplete coverage even when the requested number of clips was found', () => {
+    const summary = summarize({
+      ...ranking(),
+      requested: { count: 1, diversity: 0.3 },
+      shortfall: [],
+      editorial: {
+        window_count: 10,
+        answered_windows: 8,
+        failed_windows: [
+          { index: 3, detail: 'Timed out' },
+          { index: 7, detail: 'Malformed reply' },
+        ],
+        failed_reviews: 1,
+        failed_visual_checks: 2,
+      },
+    });
+    expect(summary.selected).toBe(summary.requested);
+    expect(summary.shortfall).toEqual([]);
+    expect(summary.warnings).toEqual([
+      '2 of 10 windows could not be assessed.',
+      '1 candidate could not be reviewed.',
+      'Visual checks were unavailable for 2 candidates.',
+    ]);
+  });
+
+  it('does not label completed or older analysis as incomplete', () => {
+    expect(summarize(ranking()).warnings).toEqual([]);
+    expect(
+      summarize({
+        ...ranking(),
+        editorial: {
+          window_count: 10,
+          answered_windows: 10,
+          failed_windows: [],
+          failed_reviews: 0,
+          failed_visual_checks: 0,
+        },
+      }).warnings,
+    ).toEqual([]);
   });
 });
 
@@ -172,5 +282,166 @@ describe('the clock', () => {
   it('reads a tick position the way a person reads a timeline', () => {
     expect(clock(0)).toBe('0:00');
     expect(clock(90_000 * 65)).toBe('1:05');
+  });
+});
+
+describe('searching the board', () => {
+  it('matches the line a person can actually read on the row', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const withQuery = (query: string) =>
+      applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 0, query });
+
+    // Whatever the fixture's opening lines are, a query drawn from one of them
+    // finds that row and a query drawn from nothing finds none.
+    const headline = rows[0]?.headline ?? '';
+    if (headline !== '') {
+      expect(withQuery(headline.slice(0, 6)).length).toBeGreaterThan(0);
+    }
+    expect(withQuery('zzzzz-no-such-clip')).toHaveLength(0);
+  });
+
+  it('treats an absent or blank query as no filter at all', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    expect(applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 0 })).toHaveLength(
+      rows.length,
+    );
+    expect(
+      applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 0, query: '   ' }),
+    ).toHaveLength(rows.length);
+  });
+});
+
+describe('ordering the board', () => {
+  it('never adds or drops a row, whatever the order', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    for (const key of ['rank', 'score', 'longest', 'shortest', 'earliest'] as const) {
+      expect(sortRows(rows, key)).toHaveLength(rows.length);
+    }
+  });
+
+  it("leaves the snapshot's own array untouched", () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const before = rows.map((row) => row.candidateId);
+    sortRows(rows, 'score');
+    expect(rows.map((row) => row.candidateId)).toEqual(before);
+  });
+
+  it('puts the highest score first when asked for score', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const scores = sortRows(rows, 'score').map((row) => row.displayScore);
+    expect(scores).toEqual([...scores].sort((left, right) => right - left));
+  });
+});
+
+describe('the tallies behind the filter chips', () => {
+  it('count what pressing the chip would leave', () => {
+    const rows = clipRows(ranking(), candidates(), null, [
+      { candidateId: 'cand_0000000000000001', decision: 'approved', decidedUnixMillis: 0 },
+    ]);
+    const counts = tally(rows);
+    expect(counts.all).toBe(rows.length);
+    expect(counts.approved).toBe(1);
+    expect(counts.undecided).toBe(rows.length - 1);
+    // A chip's number has to equal what the filter actually returns, or the
+    // chip is advertising a result nobody gets.
+    expect(applyFilters(rows, { band: 'any', decision: 'approved', minimumScore: 0 })).toHaveLength(
+      counts.approved,
+    );
+    expect(applyFilters(rows, { band: 'strong', decision: 'any', minimumScore: 0 })).toHaveLength(
+      counts.strong,
+    );
+  });
+});
+
+describe('why a clip ranked where it did', () => {
+  it('orders by weighted contribution rather than by raw value', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    const row = rows.find((candidate) => candidate.rank === 2);
+    expect(row).toBeDefined();
+    const factors = topFactors(row!);
+    const contribution = factors.map((axis) => (axis.value ?? 0) * (axis.weight ?? 0));
+    expect(contribution).toEqual([...contribution].sort((left, right) => right - left));
+  });
+
+  it('never offers an axis nobody measured as an explanation', () => {
+    const rows = clipRows(ranking(), candidates(), null, []);
+    for (const row of rows) {
+      expect(topFactors(row).every((axis) => axis.value !== null)).toBe(true);
+    }
+  });
+});
+
+describe('the duration column', () => {
+  it('reads as a length rather than a position', () => {
+    expect(duration(8)).toBe('0:08');
+    expect(duration(75)).toBe('1:15');
+  });
+});
+
+describe('editorial review presentation', () => {
+  it('uses verdicts and source-grounded reasons without promoting heuristic scores', () => {
+    const base = ranking();
+    const reviewed: RankingSet = {
+      ...base,
+      cohort: base.cohort.map((row) => ({
+        ...row,
+        display_score: row.rank === 1 ? 1 : 99,
+        review: {
+          status: row.rank === 1 ? 'accepted' : 'needs_review',
+          route: 'local',
+          summary: 'A complete answer about the room',
+          reasons: ['Check the reference to the diagram'],
+        },
+      })),
+    };
+    const rows = clipRows(reviewed, candidates(), null, []);
+    expect(rows[0]?.bandLabel).toBe('Ready to review');
+    expect(rows[1]?.bandLabel).toBe('Needs review');
+    expect(rows[0]?.headline).toBe('');
+    expect(rows[0]?.review?.summary).toBe('A complete answer about the room');
+    expect(sortRows(rows, 'score')[0]?.rank).toBe(1);
+    expect(applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 99 })).toHaveLength(2);
+    expect(signalsFor(rows[0]!)).toEqual([
+      { key: 'review:0', label: 'Check the reference to the diagram', tone: 'success' },
+    ]);
+  });
+
+  it('uses the proposal title ahead of the opening quote and keeps review prose separate', () => {
+    const base = ranking();
+    const index = {
+      sentences: [
+        {
+          index: 0,
+          text: 'This is what the speaker actually said.',
+          start_ticks: 0,
+          end_ticks: 900_000,
+        },
+      ],
+    } as unknown as IndexTranscript;
+    const reviewed: RankingSet = {
+      ...base,
+      cohort: base.cohort.map((ranked) => ({
+        ...ranked,
+        ...(ranked.rank === 1 ? { title: 'A concise proposal title' } : {}),
+        review: {
+          status: 'accepted',
+          route: 'local',
+          summary:
+            'This paragraph explains why the moment is complete and carries the necessary context.',
+          reasons: [],
+        },
+      })),
+    };
+    expect(clipRows(reviewed, candidates(), index, [])[0]?.headline).toBe(
+      'A concise proposal title',
+    );
+    const withoutTitle = {
+      ...reviewed,
+      cohort: reviewed.cohort.map(({ title: _title, ...ranked }) => ranked),
+    };
+    expect(clipRows(withoutTitle, candidates(), index, [])[0]?.headline).toBe(
+      'This is what the speaker actually said.',
+    );
+    expect(clipRows(withoutTitle, candidates(), null, [])[0]?.headline).toBe('');
   });
 });

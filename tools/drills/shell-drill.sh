@@ -41,6 +41,8 @@ cargo build -p clipmilld
 echo "==> shell data plane ($ITERATIONS iterations)"
 for iteration in $(seq 1 "$ITERATIONS"); do
   echo "shell-drill: iteration $iteration/$ITERATIONS"
-  cargo test -p clipmill-shell -- --ignored --nocapture
+  # The link tests by name: the milestone scenario beside them is ignored
+  # too, and needs the worker fleet this drill does not start.
+  cargo test -p clipmill-shell --test daemon_link -- --ignored --nocapture
 done
 echo "shell-drill: OK ($ITERATIONS iterations; import, probe, transitions, documents, ranged media, four refusals)"

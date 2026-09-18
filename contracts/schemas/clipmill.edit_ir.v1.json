@@ -255,6 +255,11 @@
                     "end_ticks": {
                       "type": "integer",
                       "minimum": 1
+                    },
+                    "word_id": {
+                      "description": "Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.",
+                      "type": "string",
+                      "minLength": 1
                     }
                   }
                 }

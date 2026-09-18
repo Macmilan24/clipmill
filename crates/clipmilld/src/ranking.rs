@@ -59,6 +59,8 @@ pub(crate) async fn execute_rank_task(
             Wanted::required("discovery.candidates.v1"),
             Wanted::required("index.transcript.v1"),
             Wanted::required("speech.transcript.v1"),
+            Wanted::optional("editorial.judgments.v1"),
+            Wanted::optional("editorial.looks.v1"),
         ],
     )
     .await?;
@@ -82,6 +84,50 @@ pub(crate) async fn execute_rank_task(
         IMPLEMENTATION,
     )
     .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    let judgments = resolved
+        .read_optional::<clipmill_contracts::schemas::editorial_judgments::EditorialJudgments>(
+            "editorial.judgments.v1",
+            "judgments.json",
+        )?;
+    let mut document = if let Some(judgments) = &judgments {
+        use clipmill_contracts::schemas::index_transcript::InvalidRegionReason;
+        clipmill_editorial::review::apply(
+            document,
+            judgments,
+            &resolved.address("editorial.judgments.v1")?,
+            index.sentences.len(),
+            &index
+                .invalid_regions
+                .iter()
+                .filter(|region| {
+                    matches!(
+                        region.reason,
+                        InvalidRegionReason::TimingInterpolated
+                            | InvalidRegionReason::AlignmentUnavailable
+                    )
+                })
+                .map(|region| (region.start_ticks, region.end_ticks))
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?
+    } else {
+        document
+    };
+    if let Some(looks) = resolved
+        .read_optional::<clipmill_contracts::schemas::editorial_looks::EditorialLooks>(
+            "editorial.looks.v1",
+            "looks.json",
+        )?
+    {
+        document = clipmill_editorial::review::apply_looks(
+            document,
+            &looks,
+            judgments.as_ref().ok_or_else(|| {
+                TaskExecutionError::deterministic("visual checks have no semantic review")
+            })?,
+        )
+        .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?;
+    }
     // Checked before publication rather than trusted: a set whose selected ids
     // are not in its own cohort would be given a content address by a store
     // that has no way to notice.
@@ -100,6 +146,9 @@ pub(crate) async fn execute_rank_task(
         .map_err(|_| TaskExecutionError::deterministic("the index carries no fingerprint"))?;
     let mut config = Map::new();
     config.insert("algorithm".to_owned(), json!("clipmill.ranking.set.v1"));
+    if judgments.is_some() {
+        config.insert("editorial_review_version".to_owned(), json!(2));
+    }
     // Everything the ranking was told, by name. Asking for a different number
     // of clips, or a different diversity trade-off, is a different answer
     // rather than a filter over this one — and re-tuning any of the three

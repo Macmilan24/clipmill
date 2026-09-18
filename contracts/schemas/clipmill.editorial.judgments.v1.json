@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.editorial.judgments.v1.json",
+  "title": "EditorialJudgments",
+  "description": "What the editorial model made of each candidate once it saw it with the context around it (plan, Milestone 2): whether the moment stands on its own, and if not, why — an unresolved reference, a question that was never asked, a payoff that is not there, an ad read, an irrelevant introduction, an omission that changes the meaning — and whether understanding it depends on what is on screen. The answer is a status a person can act on and reasons a person can read, in place of a number nobody calibrated. A malformed reply or a model failure is recorded as exactly that, distinct from a rejection: the ranking treats an unjudged candidate as unjudged, not as bad.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "inputs", "producer", "candidates"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.editorial.judgments.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["candidates_artifact_id", "windows_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "candidates_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "windows_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "producer": {
+      "$ref": "#/$defs/model_producer"
+    },
+    "candidates": {
+      "description": "One entry per candidate the review was asked about, in the candidates document's order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judgment"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "model_producer": {
+      "type": "object",
+      "required": ["stage", "implementation", "route", "model", "prompt_version", "decoding"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": "string",
+          "enum": ["local", "cloud"]
+        },
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decoding": {
+          "$ref": "#/$defs/decoding"
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "decoding": {
+      "type": "object",
+      "required": ["temperature_milli", "seed", "max_output_tokens", "constrained"],
+      "additionalProperties": false,
+      "properties": {
+        "temperature_milli": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "constrained": {
+          "type": "boolean"
+        }
+      }
+    },
+    "judgment": {
+      "type": "object",
+      "required": ["candidate_id", "outcome", "context", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "outcome": {
+          "description": "Whether the model answered at all. Only 'answered' carries a status; the other two are run problems to show as such.",
+          "type": "string",
+          "enum": ["answered", "malformed", "failed"]
+        },
+        "failure": {
+          "type": "object",
+          "required": ["failure_class", "detail"],
+          "additionalProperties": false,
+          "properties": {
+            "failure_class": {
+              "type": "string",
+              "enum": ["deterministic", "transient", "cancelled", "budget"]
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "context": {
+          "description": "The sentences the candidate was judged with: its own and the neighbours around it.",
+          "type": "object",
+          "required": ["first_sentence_index", "sentence_count"],
+          "additionalProperties": false,
+          "properties": {
+            "first_sentence_index": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sentence_count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "status": {
+          "description": "'accepted' stands on its own; 'needs_review' has a reason a person should look at before it ships; 'rejected' should not be offered.",
+          "type": "string",
+          "enum": ["accepted", "needs_review", "rejected"]
+        },
+        "reasons": {
+          "description": "Why, each with a code a screen can key off and a sentence a person can read. Empty for an acceptance with nothing to say, and for a judgment that was never made.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reason"
+          }
+        },
+        "visual_dependency": {
+          "description": "Whether understanding the moment depends on what is on screen — the flag that sends it to the visual check.",
+          "type": "boolean"
+        },
+        "summary": {
+          "description": "The model's one-sentence account of the moment, for the board.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "required": ["code", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "unresolved_reference",
+            "missing_question",
+            "incomplete_payoff",
+            "ad_read",
+            "irrelevant_intro",
+            "misleading_omission",
+            "visual_dependency",
+            "other"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

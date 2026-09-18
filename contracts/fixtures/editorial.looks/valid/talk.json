@@ -1,0 +1,58 @@
+{
+  "checks": [
+    {
+      "answer": "yes",
+      "candidate_id": "cand_00000000000000b2",
+      "detail": "A meter sits on the desk in front of the guest in every frame.",
+      "frames": [
+        {
+          "t_ticks": 31500000
+        },
+        {
+          "t_ticks": 31770000
+        },
+        {
+          "t_ticks": 32040000
+        }
+      ],
+      "outcome": "answered",
+      "question": "Is a level meter, or a screen showing one, visible in these frames?"
+    },
+    {
+      "candidate_id": "cand_00000000000000e5",
+      "failure": {
+        "detail": "the frames artifact holds no frame near 450s",
+        "failure_class": "deterministic"
+      },
+      "frames": [
+        {
+          "t_ticks": 40500000
+        }
+      ],
+      "outcome": "failed",
+      "question": "Is a level meter, or a screen showing one, visible in these frames?"
+    }
+  ],
+  "inputs": {
+    "frames_artifact_id": "sha256:f4a3000000000000000000000000000000000000000000000000000000000066",
+    "judgments_artifact_id": "sha256:9d6e000000000000000000000000000000000000000000000000000000000055"
+  },
+  "producer": {
+    "decoding": {
+      "constrained": true,
+      "max_output_tokens": 1024,
+      "seed": 7,
+      "temperature_milli": 0
+    },
+    "implementation": "clipmill-worker-editorial@0.1.0",
+    "model": {
+      "digest": "sha256:9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45",
+      "name": "qwen3.5-9b-mlx"
+    },
+    "prompt_version": "look.v1",
+    "route": "local",
+    "stage": "editorial-look"
+  },
+  "schema_version": "clipmill.editorial.looks.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007"
+}

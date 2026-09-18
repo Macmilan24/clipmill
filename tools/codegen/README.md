@@ -17,6 +17,12 @@ are reproducible without the codegen toolchain, and contract changes show up
 as reviewable diffs. CI regenerates and fails on drift, so `contracts/` and
 the generated code can never disagree on `main`.
 
-Prerequisites: `buf`, `cargo install cargo-typify`, `uv`, `pnpm install`.
-Note `buf generate` uses remote plugins (network required at codegen time
-only — never at build or run time).
+Prerequisites: `buf`, `cargo install cargo-typify --version 0.7.0 --locked`,
+`uv`, `pnpm install`. Note `buf generate` uses remote plugins (network required
+at codegen time only — never at build or run time).
+
+Every generator is pinned to the version the committed tree was produced with:
+`cargo-typify` in `.github/workflows/ci.yml`, the buf remote plugins in
+`buf.gen.yaml`. A drift check against generators that move on their own fails
+for changes nobody made, so upgrading one is a deliberate change: bump the pin,
+regenerate, and commit the result together.

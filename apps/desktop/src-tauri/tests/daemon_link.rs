@@ -176,6 +176,54 @@ async fn shell_reads_measured_hardware_and_notices_a_killed_daemon() {
 /// that cursor so a shell that was away does not show a finished stage as still
 /// running. The demo DAG stands in for the analyze DAG here — it is four tasks
 /// with real transitions, and it needs no media or models.
+/// A screen that opens with a card per project asks for several things per
+/// card at once. The daemon accepts sixty-four connections in all and drops
+/// the rest at the door, which the Library met as blank cards and unread
+/// documents the day it had enough projects. The shell now queues its own
+/// calls under that ceiling and sends once more a call the daemon closed on,
+/// so a burst well past the limit is answered in full.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires `cargo build --workspace` and `./tools/fetch-ffmpeg.sh`"]
+async fn a_burst_of_calls_past_the_daemons_limit_is_answered_in_full() {
+    let directory = PathBuf::from(format!("/tmp/cm-burst-{}", std::process::id()));
+    fs::create_dir_all(&directory).expect("test directory");
+    let socket = directory.join("d.sock");
+    let _daemon = DaemonUnderTest::start(&socket, &directory);
+    let client = Arc::new(DaemonClient::new(socket.clone()));
+    assert!(
+        wait_for_health(&client, Duration::from_secs(30)).await,
+        "daemon never opened its socket"
+    );
+    let project = client.create_project("burst").await.expect("a project");
+
+    // Three times the daemon's whole ceiling, in flight together.
+    let calls: Vec<_> = (0..192)
+        .map(|index| {
+            let client = Arc::clone(&client);
+            let project = project.clone();
+            tokio::spawn(async move {
+                if index % 2 == 0 {
+                    client.list_projects().await.map(|_| ())
+                } else {
+                    client.list_sources(&project).await.map(|_| ())
+                }
+            })
+        })
+        .collect();
+    let mut failures = Vec::new();
+    for call in calls {
+        if let Err(error) = call.await.expect("the call task joins") {
+            failures.push(error.to_string());
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of 192 calls were refused: {:?}",
+        failures.len(),
+        &failures[..failures.len().min(3)]
+    );
+}
+
 #[tokio::test]
 #[ignore = "requires `cargo build --workspace` and `./tools/fetch-ffmpeg.sh`"]
 async fn task_events_stream_live_and_replay_from_a_cursor() {
@@ -494,6 +542,8 @@ async fn a_run_is_started_watched_read_and_streamed() {
         .submit_analyze(
             &project,
             clipmill_contracts::proto::ipc::v1::AnalyzeSourcePayloadV1 {
+                local_editorial: false,
+                cloud_editorial: None,
                 key_version: "clipmill.analyze-source.v1".to_owned(),
                 source_id: source.source_id.clone(),
                 language: String::new(),

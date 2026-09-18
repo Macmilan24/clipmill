@@ -96,6 +96,32 @@ export interface Job {
   readonly outputArtifactIds: readonly string[];
   readonly failureClass: FailureClass;
   readonly failureDetail: string;
+  /**
+   * The recording the job ran over, or empty for a job not about one.
+   *
+   * A project holds any number of recordings, and an analysis is of exactly
+   * one; a screen that could not tell which fell back to the newest job and
+   * showed one recording's clips under another's name.
+   */
+  readonly sourceId: string;
+  /**
+   * What an export job is delivering, off its own payload; absent for every
+   * other kind. An export is durable daemon state, and this is how the export
+   * screen finds a document's export again after it was left or the
+   * application relaunched — rather than in renderer state a remount lost.
+   */
+  readonly export?: ExportSummary;
+}
+
+/** The identity of an export, as its job carries it. */
+export interface ExportSummary {
+  readonly docId: string;
+  /** The revision that was rendered. */
+  readonly revision: number;
+  /** The immutable edit.ir.v1 snapshot it was frozen as. */
+  readonly irArtifactId: string;
+  /** The folder, resolved, the files land in. */
+  readonly destinationDir: string;
 }
 
 /** One transition, as it happened. */
@@ -308,6 +334,12 @@ export interface AnalyzeRequest {
   readonly maxTicks: number;
   /** Zero leaves the daemon's default. */
   readonly count: number;
+  readonly localEditorial?: boolean;
+  readonly cloudEditorial?: {
+    readonly transcriptConsent: boolean;
+    readonly budgetMicroUsd: number;
+    readonly model: string;
+  };
 }
 
 /**
@@ -442,19 +474,47 @@ export interface DirectClipInput {
   /** Read only for `exact`, and snapped to the lattice by the daemon. */
   readonly startTicks?: number;
   readonly endTicks?: number;
+  /**
+   * Build a second document beside the one this candidate already has.
+   *
+   * Left off, the daemon reopens the existing document — edits and all —
+   * which is what approving a clip twice should mean. Taking a different cut
+   * of a clip that already has an edit is a variation, and says so.
+   */
+  readonly variation?: boolean;
+  /**
+   * Record the approval in the same write as the document, so a clip is
+   * never approved without an edit to open or edited without being approved.
+   */
+  readonly approve?: boolean;
+  /**
+   * The analysis run the candidate belongs to. The director reads every stage
+   * from this run, as one snapshot; a re-analysis that renumbered the
+   * candidates, or one still half published, cannot be mixed into a clip
+   * chosen from another. Left off, the newest run over the source.
+   */
+  readonly jobId?: string;
 }
 
 export interface DirectedClip {
   readonly docId: string;
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly candidateId: string;
+  /** The run the document was cut from; empty when it was not recorded. */
+  readonly jobId: string;
   readonly revision: number;
   readonly documentJson: string;
   /**
    * Where the cut landed, which is not always where it was asked for: a
    * hand-set boundary is moved onto the lattice before anything is built.
+   * For a reopened document, where its segment stands now, trims included.
    */
   readonly startTicks: number;
   readonly endTicks: number;
   readonly decisions: readonly string[];
+  /** True when the document already existed and came back as it stands. */
+  readonly reopened: boolean;
 }
 
 export async function directClip(request: DirectClipInput): Promise<DirectedClip> {
@@ -539,6 +599,53 @@ export async function solveCropPath(
 export interface PreviewWord {
   readonly text: string;
   readonly holdCentis: number;
+  /**
+   * The word's identity, shared with the same word in the reading cues. A
+   * correction is addressed to this, so it lands in both presentations.
+   * Empty only for a document that predates word identities.
+   */
+  readonly wordId: string;
+}
+
+/**
+ * One segment of the program, and where in the source it plays.
+ *
+ * The numbers every seek, scrub and trim go through. A clip cut from ten
+ * minutes into a recording starts at program frame zero and source tick
+ * 54,000,000; a player that handed the media element program seconds seeked
+ * to the recording's opening instead.
+ */
+export interface PreviewSegment {
+  readonly segmentId: string;
+  readonly sourceFingerprint: string;
+  /** Source ticks the segment plays, half-open. */
+  readonly inTicks: number;
+  readonly outTicks: number;
+  readonly programStartTicks: number;
+  /** Program frames the segment occupies, half-open. */
+  readonly firstFrame: number;
+  readonly endFrame: number;
+}
+
+/** A source the program draws from: the frame the crops are measured in. */
+export interface PreviewSource {
+  readonly sourceFingerprint: string;
+  readonly sourceId: string;
+  readonly displayWidth: number;
+  readonly displayHeight: number;
+}
+
+/** The proxy a source is previewed from. Proxy second zero is `coverageStartTicks`. */
+export interface PreviewProxy {
+  readonly sourceFingerprint: string;
+  readonly artifactId: string;
+  readonly file: string;
+  readonly coverageStartTicks: number;
+  readonly coverageEndTicks: number;
+  readonly width: number;
+  readonly height: number;
+  readonly rateNum: number;
+  readonly rateDen: number;
 }
 
 export interface PreviewCue {
@@ -576,6 +683,17 @@ export interface PreviewPlan {
   readonly gain: readonly PreviewGain[];
   readonly width: number;
   readonly height: number;
+  /** The program's segments, in order, each mapped to its source. */
+  readonly segments: readonly PreviewSegment[];
+  /** Every source the segments name. */
+  readonly sources: readonly PreviewSource[];
+  /** The proxy for each source that has one. */
+  readonly proxies: readonly PreviewProxy[];
+  /**
+   * Which of the document's cue lists `cues` came from. A cue-scoped command
+   * names the list it means, because each list numbers its own cues.
+   */
+  readonly presentation: 'reading' | 'burn_in';
 }
 
 export async function previewPlan(projectId: string, docId: string): Promise<PreviewPlan> {
@@ -590,6 +708,14 @@ export async function previewPlan(projectId: string, docId: string): Promise<Pre
 export interface EditDocSummary {
   readonly docId: string;
   readonly projectId: string;
+  /**
+   * The source it was cut from and the candidate it was built for. Both empty
+   * for a document handed in whole rather than directed from a clip.
+   */
+  readonly sourceId: string;
+  readonly candidateId: string;
+  /** The run it was cut from; empty when it was not recorded. */
+  readonly jobId: string;
   readonly revision: number;
   readonly createdUnixMillis: number;
   readonly updatedUnixMillis: number;
@@ -653,6 +779,13 @@ export interface ExportRequest {
   /** YYYY-MM-DD. Supplied here because the daemon's naming reads no clock. */
   readonly date?: string;
   readonly title?: string;
+  /**
+   * The revision the person reviewed. The daemon refuses to export any
+   * other, so an edit that landed between the review and the click — another
+   * window, a late command — is a conflict to re-check rather than a clip
+   * nobody looked at.
+   */
+  readonly expectedRevision?: number;
 }
 
 export interface ExportFinding {
@@ -670,6 +803,19 @@ export interface ExportPlan {
   readonly fileNames: readonly string[];
   readonly estimatedBytes: number;
   readonly availableBytes?: number;
+  /** The revision this plan was computed over — what is being reviewed. */
+  readonly revision: number;
+}
+
+/** What an export froze when it was queued. */
+export interface QueuedExport {
+  /** The job to watch: its two tasks are the render and the delivery. */
+  readonly jobId: string;
+  /** The revision rendered, and the immutable snapshot it was frozen as. */
+  readonly revision: number;
+  readonly irArtifactId: string;
+  /** The folder, resolved, the files land in. */
+  readonly destinationDir: string;
 }
 
 export interface ArchiveResult {
@@ -677,6 +823,53 @@ export interface ArchiveResult {
   readonly sha256: string;
   readonly bytes: number;
   readonly entryCount: number;
+}
+
+/** One stage an analysis plans, and whether what it needs is here. */
+export interface StageReadiness {
+  /** The task kind, e.g. `speech-asr`; what a job's task calls itself. */
+  readonly stage: string;
+  readonly capability: string;
+  readonly implementation: string;
+  readonly model: string;
+  readonly backend: string;
+  readonly modelPresent: boolean;
+  readonly missingFiles: readonly string[];
+  readonly workerPresent: boolean;
+  readonly ready: boolean;
+  /** What to do about it, when not ready: one sentence naming the command. */
+  readonly remedy: string;
+}
+
+export interface WorkerPresence {
+  readonly workerId: string;
+  readonly family: string;
+  readonly capabilities: readonly string[];
+  readonly backend: string;
+  readonly sinceUnixMillis: number;
+}
+
+/**
+ * Whether an analysis could run right now.
+ *
+ * Asked before a run is submitted and again while a stage waits, because a
+ * missing weight file or a worker fleet nobody started used to show as a
+ * stage sitting planned forever with nothing to say.
+ */
+export interface Readiness {
+  readonly ready: boolean;
+  readonly decoderPresent: boolean;
+  readonly decoderPath: string;
+  readonly stages: readonly StageReadiness[];
+  readonly workers: readonly WorkerPresence[];
+}
+
+export async function fetchReadiness(): Promise<Readiness> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<Readiness>('readiness');
 }
 
 /** Whether this installation is offline, and the evidence for it. */
@@ -704,12 +897,26 @@ export async function planExport(request: ExportRequest): Promise<ExportPlan> {
 }
 
 /** Perform an export. Answers with the job to watch, not the finished files. */
-export async function exportClip(request: ExportRequest): Promise<string> {
+export async function exportClip(request: ExportRequest): Promise<QueuedExport> {
   if (!isTauri()) {
     throw new Error(NOT_IN_SHELL.reason);
   }
   const { invoke } = await core();
-  return invoke<string>('export_clip', { request });
+  return invoke<QueuedExport>('export_clip', { request });
+}
+
+/**
+ * Show a delivered file in the operating system's file manager.
+ *
+ * The host checks the path names an existing file before anything is
+ * spawned; nothing here can read, write or run it.
+ */
+export async function revealPath(path: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  await invoke<void>('reveal_path', { path });
 }
 
 /** Pack a project's work into a zip that outlives this application. */
