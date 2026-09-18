@@ -110,7 +110,15 @@ enum Stages {
 impl Stages {
     async fn address(&self, database: &DbHandle, task_kind: &str) -> Option<String> {
         match self {
-            Self::Run(run) => run.by_task_kind.get(task_kind).cloned(),
+            Self::Run(run) => run
+                .by_task_kind
+                .get(task_kind)
+                .or_else(|| {
+                    (task_kind == "discover-candidates")
+                        .then(|| run.by_task_kind.get("editorial-validate"))
+                        .flatten()
+                })
+                .cloned(),
             Self::Newest { source_id } => database
                 .latest_source_task_artifact(source_id.clone(), task_kind.to_owned())
                 .await

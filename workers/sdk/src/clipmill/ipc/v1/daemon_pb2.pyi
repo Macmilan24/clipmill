@@ -472,12 +472,20 @@ class IndexStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
 
 class EditorialStagePayloadV1(_message.Message):
-    __slots__ = ("key_version", "stage")
+    __slots__ = ("key_version", "stage", "duration", "prompt_digest", "max_output_tokens", "cloud")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
+    DURATION_FIELD_NUMBER: _ClassVar[int]
+    PROMPT_DIGEST_FIELD_NUMBER: _ClassVar[int]
+    MAX_OUTPUT_TOKENS_FIELD_NUMBER: _ClassVar[int]
+    CLOUD_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     stage: str
-    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
+    duration: ClipDurationV1
+    prompt_digest: str
+    max_output_tokens: int
+    cloud: EditorialCloudV1
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ..., cloud: _Optional[_Union[EditorialCloudV1, _Mapping]] = ...) -> None: ...
 
 class DiscoverCandidatesPayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "duration")
@@ -558,20 +566,34 @@ class CaptionsStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., span_start_ticks: _Optional[int] = ..., span_end_ticks: _Optional[int] = ...) -> None: ...
 
 class AnalyzeSourcePayloadV1(_message.Message):
-    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli")
+    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli", "local_editorial", "cloud_editorial")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     DURATION_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     DIVERSITY_MILLI_FIELD_NUMBER: _ClassVar[int]
+    LOCAL_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
+    CLOUD_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     source_id: str
     language: str
     duration: ClipDurationV1
     count: int
     diversity_milli: int
-    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ...) -> None: ...
+    local_editorial: bool
+    cloud_editorial: EditorialCloudV1
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., cloud_editorial: _Optional[_Union[EditorialCloudV1, _Mapping]] = ...) -> None: ...
+
+class EditorialCloudV1(_message.Message):
+    __slots__ = ("transcript_consent", "budget_micro_usd", "model")
+    TRANSCRIPT_CONSENT_FIELD_NUMBER: _ClassVar[int]
+    BUDGET_MICRO_USD_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    transcript_consent: bool
+    budget_micro_usd: int
+    model: str
+    def __init__(self, transcript_consent: _Optional[bool] = ..., budget_micro_usd: _Optional[int] = ..., model: _Optional[str] = ...) -> None: ...
 
 class AnalysisStagePayloadV1(_message.Message):
     __slots__ = ("key_version", "stage", "source_fingerprint", "skipped")

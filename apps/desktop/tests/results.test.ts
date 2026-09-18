@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { DiscoveryCandidates, RankingSet } from '@clipmill/contracts';
+import type { DiscoveryCandidates, IndexTranscript, RankingSet } from '@clipmill/contracts';
 
 import type { EditDocSummary } from '../src/daemon/client.js';
 import {
@@ -23,6 +23,8 @@ import {
   tally,
   topFactors,
 } from '../src/results/model.js';
+
+import { signalsFor } from '../src/results/parts/state.js';
 
 const FINGERPRINT = `sha256:${'11'.repeat(32)}`;
 
@@ -215,6 +217,47 @@ describe('the summary', () => {
     expect(summary.requested).toBe(4);
     expect(summary.shortfall).toEqual(['only one moment cleared the bar']);
   });
+
+  it('reports incomplete coverage even when the requested number of clips was found', () => {
+    const summary = summarize({
+      ...ranking(),
+      requested: { count: 1, diversity: 0.3 },
+      shortfall: [],
+      editorial: {
+        window_count: 10,
+        answered_windows: 8,
+        failed_windows: [
+          { index: 3, detail: 'Timed out' },
+          { index: 7, detail: 'Malformed reply' },
+        ],
+        failed_reviews: 1,
+        failed_visual_checks: 2,
+      },
+    });
+    expect(summary.selected).toBe(summary.requested);
+    expect(summary.shortfall).toEqual([]);
+    expect(summary.warnings).toEqual([
+      '2 of 10 windows could not be assessed.',
+      '1 candidate could not be reviewed.',
+      'Visual checks were unavailable for 2 candidates.',
+    ]);
+  });
+
+  it('does not label completed or older analysis as incomplete', () => {
+    expect(summarize(ranking()).warnings).toEqual([]);
+    expect(
+      summarize({
+        ...ranking(),
+        editorial: {
+          window_count: 10,
+          answered_windows: 10,
+          failed_windows: [],
+          failed_reviews: 0,
+          failed_visual_checks: 0,
+        },
+      }).warnings,
+    ).toEqual([]);
+  });
 });
 
 describe('the filters', () => {
@@ -332,5 +375,73 @@ describe('the duration column', () => {
   it('reads as a length rather than a position', () => {
     expect(duration(8)).toBe('0:08');
     expect(duration(75)).toBe('1:15');
+  });
+});
+
+describe('editorial review presentation', () => {
+  it('uses verdicts and source-grounded reasons without promoting heuristic scores', () => {
+    const base = ranking();
+    const reviewed: RankingSet = {
+      ...base,
+      cohort: base.cohort.map((row) => ({
+        ...row,
+        display_score: row.rank === 1 ? 1 : 99,
+        review: {
+          status: row.rank === 1 ? 'accepted' : 'needs_review',
+          route: 'local',
+          summary: 'A complete answer about the room',
+          reasons: ['Check the reference to the diagram'],
+        },
+      })),
+    };
+    const rows = clipRows(reviewed, candidates(), null, []);
+    expect(rows[0]?.bandLabel).toBe('Ready to review');
+    expect(rows[1]?.bandLabel).toBe('Needs review');
+    expect(rows[0]?.headline).toBe('');
+    expect(rows[0]?.review?.summary).toBe('A complete answer about the room');
+    expect(sortRows(rows, 'score')[0]?.rank).toBe(1);
+    expect(applyFilters(rows, { band: 'any', decision: 'any', minimumScore: 99 })).toHaveLength(2);
+    expect(signalsFor(rows[0]!)).toEqual([
+      { key: 'review:0', label: 'Check the reference to the diagram', tone: 'success' },
+    ]);
+  });
+
+  it('uses the proposal title ahead of the opening quote and keeps review prose separate', () => {
+    const base = ranking();
+    const index = {
+      sentences: [
+        {
+          index: 0,
+          text: 'This is what the speaker actually said.',
+          start_ticks: 0,
+          end_ticks: 900_000,
+        },
+      ],
+    } as unknown as IndexTranscript;
+    const reviewed: RankingSet = {
+      ...base,
+      cohort: base.cohort.map((ranked) => ({
+        ...ranked,
+        ...(ranked.rank === 1 ? { title: 'A concise proposal title' } : {}),
+        review: {
+          status: 'accepted',
+          route: 'local',
+          summary:
+            'This paragraph explains why the moment is complete and carries the necessary context.',
+          reasons: [],
+        },
+      })),
+    };
+    expect(clipRows(reviewed, candidates(), index, [])[0]?.headline).toBe(
+      'A concise proposal title',
+    );
+    const withoutTitle = {
+      ...reviewed,
+      cohort: reviewed.cohort.map(({ title: _title, ...ranked }) => ranked),
+    };
+    expect(clipRows(withoutTitle, candidates(), index, [])[0]?.headline).toBe(
+      'This is what the speaker actually said.',
+    );
+    expect(clipRows(withoutTitle, candidates(), null, [])[0]?.headline).toBe('');
   });
 });

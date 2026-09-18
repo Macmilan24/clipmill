@@ -10,6 +10,7 @@
  * module, so switching layouts changes how the board looks and never what it
  * says.
  */
+import { MediaStill } from '../../components/MediaStill.js';
 import { Checkbox } from '../../components/ui/checkbox.js';
 import { type ClipRow, clock, duration } from '../model.js';
 import { ScoreRing } from './ScoreRing.js';
@@ -38,10 +39,9 @@ export function CandidateGrid({
     <div
       role="listbox"
       aria-label="Clip candidates"
-      aria-multiselectable
       className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 overflow-y-auto pr-1"
     >
-      {rows.map((row, index) => {
+      {rows.map((row) => {
         const focused = row.candidateId === focusedId;
         const ticked = checked.has(row.candidateId);
         const state = stateOf(row);
@@ -52,19 +52,27 @@ export function CandidateGrid({
             role="option"
             aria-selected={focused}
             aria-checked={ticked}
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                onOpen(row.candidateId);
+              }
+              if (event.key === ' ') {
+                event.preventDefault();
+                onToggle(row.candidateId);
+              }
+            }}
+            onFocus={(event) => {
+              if (event.target === event.currentTarget) onFocus(row.candidateId);
+            }}
             onClick={() => onFocus(row.candidateId)}
             onDoubleClick={() => onOpen(row.candidateId)}
-            style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
-            className={`glass animate-in fade-in zoom-in-95 group flex cursor-pointer flex-col overflow-hidden rounded-[var(--cm-radius-card)] duration-300 [animation-fill-mode:backwards] transition-shadow ${focused ? 'ring-2 ring-[var(--cm-accent)]' : ''}`}
+            className={`glass group flex cursor-pointer flex-col overflow-hidden rounded-[var(--cm-radius-card)] duration-150 transition-shadow ${focused ? 'ring-2 ring-[var(--cm-accent)]' : ''}`}
           >
             <div className="relative aspect-video w-full bg-[var(--cm-recessed)]">
-              {still ? (
-                <img src={still} alt="" className="size-full object-cover" />
-              ) : (
-                <p className="grid size-full place-items-center px-4 text-center text-[10px] text-[var(--cm-text-muted)]">
-                  No filmstrip published
-                </p>
-              )}
+              <MediaStill src={still} />
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0"
@@ -82,7 +90,10 @@ export function CandidateGrid({
               </span>
               <span
                 className="absolute top-2 right-2 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase"
-                style={{ color: 'white', background: TONE_INK[state.tone] }}
+                style={{
+                  color: 'white',
+                  background: state.tone === 'accent' ? 'var(--cm-accent)' : TONE_INK[state.tone],
+                }}
               >
                 {state.label}
               </span>
@@ -90,7 +101,16 @@ export function CandidateGrid({
                 {duration(row.durationSeconds)}
               </span>
               <span className="absolute bottom-2 left-2">
-                <ScoreRing score={row.displayScore} band={row.band} size="sm" />
+                {row.review ? (
+                  <span
+                    title={row.review.reasons.join('; ')}
+                    className="rounded bg-black/70 px-2 py-1 text-[10px] text-white"
+                  >
+                    {row.bandLabel}
+                  </span>
+                ) : (
+                  <ScoreRing score={row.displayScore} band={row.band} size="sm" />
+                )}
               </span>
             </div>
             <div className="flex flex-col gap-1.5 p-3">
@@ -102,16 +122,14 @@ export function CandidateGrid({
                   #{row.rank} · {clock(row.startTicks)}
                 </span>
                 <span className="flex gap-1">
-                  {signalsFor(row)
-                    .slice(0, 4)
-                    .map((signal) => (
-                      <span
-                        key={signal.key}
-                        title={signal.label}
-                        className="size-1.5 rounded-full"
-                        style={{ background: TONE_INK[signal.tone] }}
-                      />
-                    ))}
+                  {(row.review ? [] : signalsFor(row)).slice(0, 4).map((signal) => (
+                    <span
+                      key={signal.key}
+                      title={signal.label}
+                      className="size-1.5 rounded-full"
+                      style={{ background: TONE_INK[signal.tone] }}
+                    />
+                  ))}
                 </span>
               </div>
             </div>

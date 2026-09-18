@@ -8,7 +8,7 @@
  * rather than sampled, and a log that says it begins when the screen opens.
  */
 import { JobState, TaskState } from '@clipmill/contracts';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AnalysisLoader } from '../src/analysis/useAnalysis.js';
@@ -75,10 +75,37 @@ function show(scene = running(), overrides: Record<string, unknown> = {}) {
 }
 
 describe('the Analysis Progress screen', () => {
+  it('retries the selected run source locally even when another recording is listed first', async () => {
+    const selected = source('p1');
+    const scene = {
+      ...running(),
+      sources: {
+        p1: [{ ...selected, sourceId: 'src_wrong', absolutePath: '/wrong.mp4' }, selected],
+      },
+      jobs: { p1: [job('p1', JobState.FAILED)] },
+    };
+    const api = fakeApi(scene);
+    const submitAnalyze = vi.fn(api.submitAnalyze);
+    const onRestarted = vi.fn();
+    show(scene, { loader: new AnalysisLoader({ ...api, submitAnalyze }), onRestarted });
+    fireEvent.click(await screen.findByRole('button', { name: 'Analyze again locally' }));
+    await waitFor(() =>
+      expect(submitAnalyze).toHaveBeenCalledWith('p1', {
+        sourceId: selected.sourceId,
+        language: 'en',
+        minTicks: 20 * 90000,
+        maxTicks: 90 * 90000,
+        count: 5,
+        localEditorial: true,
+      }),
+    );
+    await waitFor(() => expect(onRestarted).toHaveBeenCalledWith('p1', 'job-p1'));
+  });
+
   it('shows every stage of the pipeline, named for a reader', async () => {
     show();
     const pipeline = within(await screen.findByRole('list', { name: 'Pipeline stages' }));
-    expect(pipeline.getAllByRole('listitem')).toHaveLength(11);
+    expect(pipeline.getAllByRole('listitem')).toHaveLength(14);
     for (const label of [
       'Inspect source',
       'Ingest',
@@ -89,7 +116,7 @@ describe('the Analysis Progress screen', () => {
       'Detect shots',
       'Index transcript',
       'Cut windows',
-      'Propose candidates',
+      'Validate candidates',
       'Rank candidates',
     ]) {
       expect(pipeline.getByText(label)).toBeTruthy();

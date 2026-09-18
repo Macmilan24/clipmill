@@ -259,6 +259,7 @@ pub fn discover(
     });
 
     Ok(contract::DiscoveryCandidates {
+        editorial: None,
         schema_version: serde_json::json!("clipmill.discovery.candidates.v1"),
         source_fingerprint: parse(index.source_fingerprint.as_str(), "source_fingerprint")?,
         inputs: contract::DiscoveryCandidatesInputs {
@@ -327,6 +328,7 @@ fn build(
         ],
     );
     contract::Candidate {
+        editorial: None,
         id: literal(id.as_str()),
         intervals: vec![contract::Interval {
             start_ticks: start,

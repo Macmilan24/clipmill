@@ -26,6 +26,7 @@ import { type Filters, SORT_LABELS, type SortKey, type Tallies } from '../model.
 export type BoardView = 'list' | 'grid';
 
 export interface ToolbarProps {
+  readonly editorial?: boolean;
   readonly filters: Filters;
   readonly sort: SortKey;
   readonly view: BoardView;
@@ -45,6 +46,7 @@ interface Chip {
 }
 
 export function Toolbar({
+  editorial = false,
   filters,
   sort,
   view,
@@ -99,7 +101,7 @@ export function Toolbar({
     filters.band !== 'any' || filters.decision !== 'any' || (filters.query ?? '') !== '';
 
   return (
-    <div className="flex flex-wrap items-center gap-3" role="search">
+    <div className="flex shrink-0 flex-wrap items-center gap-3" role="search">
       <label className="relative">
         <span className="sr-only">Search clips by their opening line or timecode</span>
         <Search
@@ -111,7 +113,7 @@ export function Toolbar({
           value={filters.query ?? ''}
           onChange={(event) => onFilters({ ...filters, query: event.target.value })}
           placeholder="Search clips…"
-          className="glass h-[var(--cm-control-standard)] w-52 rounded-[var(--cm-radius-control)] pr-8 pl-9 text-[13px] text-[var(--cm-text-primary)] transition-colors placeholder:text-[var(--cm-text-muted)] focus:border-[var(--cm-accent)]"
+          className="glass h-[var(--cm-control-standard)] w-44 rounded-[var(--cm-radius-control)] pr-8 pl-9 text-[13px] text-[var(--cm-text-primary)] transition-colors placeholder:text-[var(--cm-text-muted)] focus:border-[var(--cm-accent)]"
         />
         {(filters.query ?? '') !== '' && (
           <button
@@ -137,7 +139,7 @@ export function Toolbar({
             onClick={chip.apply}
             aria-pressed={chip.active}
             disabled={chip.count === 0 && !chip.active}
-            className="flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] whitespace-nowrap transition-all duration-150 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-[4px] px-2 py-1 text-[12px] whitespace-nowrap transition-all duration-150 disabled:opacity-40"
             style={
               chip.active
                 ? {
@@ -154,24 +156,29 @@ export function Toolbar({
         ))}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-2">
         <span className="mono mr-1 text-[11px] text-[var(--cm-text-muted)]" aria-live="polite">
           {shown} of {tallies.all}
         </span>
 
-        <Select value={sort} onValueChange={(next) => onSort(next as SortKey)}>
+        <Select
+          value={editorial && sort === 'score' ? 'rank' : sort}
+          onValueChange={(next) => onSort(next as SortKey)}
+        >
           <SelectTrigger
             aria-label="Order the board"
-            className="glass h-[var(--cm-control-standard)] w-[190px] text-[12px]"
+            className="glass h-[var(--cm-control-standard)] w-[160px] text-[12px]"
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(SORT_LABELS).map(([key, label]) => (
-              <SelectItem key={key} value={key}>
-                {label}
-              </SelectItem>
-            ))}
+            {Object.entries(SORT_LABELS)
+              .filter(([key]) => !editorial || key !== 'score')
+              .map(([key, label]) => (
+                <SelectItem key={key} value={key}>
+                  {label}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
 

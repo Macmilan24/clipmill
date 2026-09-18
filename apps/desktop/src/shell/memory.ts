@@ -75,9 +75,13 @@ function routeOf(value: unknown): Route | null {
       if (!isText(value['sectionId'])) {
         return null;
       }
-      return isText(value['projectId'])
-        ? { kind: 'section', sectionId: value['sectionId'], projectId: value['projectId'] }
-        : { kind: 'section', sectionId: value['sectionId'] };
+      return {
+        kind: 'section',
+        sectionId: value['sectionId'],
+        ...(isText(value['projectId']) ? { projectId: value['projectId'] } : {}),
+        ...(isText(value['sourceId']) ? { sourceId: value['sourceId'] } : {}),
+        ...(isText(value['jobId']) ? { jobId: value['jobId'] } : {}),
+      };
     }
     case 'analysis': {
       if (!isText(value['projectId']) || !isText(value['jobId']) || !isText(value['from'])) {

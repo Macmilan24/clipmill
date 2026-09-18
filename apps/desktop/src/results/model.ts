@@ -101,13 +101,21 @@ export interface ClipRow {
   readonly candidateId: string;
   readonly rank: number;
   readonly displayScore: number;
+  readonly review?:
+    | {
+        readonly status: string;
+        readonly reasons: readonly string[];
+        readonly route: string;
+        readonly summary?: string;
+      }
+    | undefined;
   readonly band: string;
   readonly bandLabel: string;
   readonly warnings: readonly string[];
   readonly startTicks: number;
   readonly endTicks: number;
   readonly durationSeconds: number;
-  /** The clip's own first sentence, which is what a person recognises it by. */
+  /** The proposal's concise title, falling back to the clip's own opening sentence. */
   readonly headline: string;
   readonly axes: readonly AxisReading[];
   readonly penalties: readonly { readonly reason: string; readonly value: number }[];
@@ -221,13 +229,22 @@ export function clipRows(
         candidateId: ranked.candidate_id,
         rank: ranked.rank,
         displayScore: ranked.display_score,
-        band: ranked.uncertainty.band,
-        bandLabel: BAND_LABELS[ranked.uncertainty.band] ?? ranked.uncertainty.band,
-        warnings: ranked.uncertainty.warnings ?? [],
+        review: ranked.review,
+        band: ranked.review
+          ? ranked.review.status === 'accepted'
+            ? 'strong'
+            : 'needs_review'
+          : ranked.uncertainty.band,
+        bandLabel: ranked.review
+          ? ranked.review.status === 'accepted'
+            ? 'Ready to review'
+            : 'Needs review'
+          : (BAND_LABELS[ranked.uncertainty.band] ?? ranked.uncertainty.band),
+        warnings: [...(ranked.review?.reasons ?? []), ...(ranked.uncertainty.warnings ?? [])],
         startTicks: chosen.start_ticks,
         endTicks: chosen.end_ticks,
         durationSeconds: (chosen.end_ticks - chosen.start_ticks) / TICKS_PER_SECOND,
-        headline: headlineFor(index, chosen.start_ticks, chosen.end_ticks),
+        headline: ranked.title?.trim() || headlineFor(index, chosen.start_ticks, chosen.end_ticks),
         axes: AXES.map((axis) => {
           const factor = factors.get(axis);
           return {
@@ -309,10 +326,31 @@ export interface Summary {
   readonly requested: number;
   /** Why fewer clips came back than were asked for. Never padded away. */
   readonly shortfall: readonly string[];
+  /** Missing analysis is independent of whether the requested clip count was met. */
+  readonly warnings?: readonly string[];
   readonly filtered: number;
 }
 
 export function summarize(ranking: RankingSet): Summary {
+  const coverage = ranking.editorial;
+  const warnings: string[] = [];
+  if (coverage) {
+    if (coverage.failed_windows.length > 0) {
+      warnings.push(
+        `${coverage.failed_windows.length} of ${coverage.window_count} windows could not be assessed.`,
+      );
+    }
+    if (coverage.failed_reviews > 0) {
+      warnings.push(
+        `${coverage.failed_reviews} ${coverage.failed_reviews === 1 ? 'candidate' : 'candidates'} could not be reviewed.`,
+      );
+    }
+    if (coverage.failed_visual_checks > 0) {
+      warnings.push(
+        `Visual checks were unavailable for ${coverage.failed_visual_checks} ${coverage.failed_visual_checks === 1 ? 'candidate' : 'candidates'}.`,
+      );
+    }
+  }
   return {
     selected: ranking.selected.length,
     cohort: ranking.cohort.length,
@@ -320,6 +358,7 @@ export function summarize(ranking: RankingSet): Summary {
     shortfall: (ranking.shortfall ?? []).map(
       (reason) => reason.detail ?? `${reason.count} ${reason.reason.replaceAll('_', ' ')}`,
     ),
+    warnings,
     filtered: (ranking.filtered ?? []).length,
   };
 }
@@ -373,7 +412,7 @@ export function applyFilters(rows: readonly ClipRow[], filters: Filters): readon
     if (!matchesQuery(row, filters.query)) {
       return false;
     }
-    return row.displayScore >= filters.minimumScore;
+    return row.review !== undefined || row.displayScore >= filters.minimumScore;
   });
 }
 
@@ -479,7 +518,11 @@ export const SORT_LABELS: Readonly<Record<SortKey, string>> = {
 export function sortRows(rows: readonly ClipRow[], key: SortKey): readonly ClipRow[] {
   switch (key) {
     case 'score':
-      return rows.toSorted((left, right) => right.displayScore - left.displayScore);
+      return rows.toSorted((left, right) =>
+        left.review || right.review
+          ? left.rank - right.rank
+          : right.displayScore - left.displayScore,
+      );
     case 'longest':
       return rows.toSorted((left, right) => right.durationSeconds - left.durationSeconds);
     case 'shortest':

@@ -11,8 +11,8 @@
  * screen says why. A disabled button with no sentence is the same failure
  * wearing a different face.
  */
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { PreviewPlan } from '../src/daemon/client.js';
 import { Reframe } from '../src/editor/Reframe.js';
@@ -103,12 +103,21 @@ describe('asking the solver again', () => {
 describe('a fitted clip', () => {
   it('sends an editor to the solver when one can be asked', () => {
     show({ plan: fitted() });
-    expect(screen.getByText(/so ask the solver first/i)).toBeTruthy();
+    expect(screen.getByText(/choose speaker-follow to calculate/i)).toBeTruthy();
   });
 
   it('does not send them to a solver that cannot be asked', () => {
     show({ plan: fitted(), resolveRefusal: NO_FACES });
-    expect(screen.queryByText(/so ask the solver first/i)).toBeNull();
-    expect(screen.getByText(/nothing to solve from yet/i)).toBeTruthy();
+    expect(screen.queryByText(/choose speaker-follow to calculate/i)).toBeNull();
+    expect(screen.getByText(/speaker-follow is unavailable/i)).toBeTruthy();
   });
+});
+
+it('calculates a path before switching a fitted clip into speaker-follow', () => {
+  const onResolve = vi.fn();
+  const onApply = vi.fn();
+  show({ plan: fitted(), onResolve, onApply });
+  fireEvent.click(screen.getByRole('button', { name: /^speaker-follow$/i }));
+  expect(onResolve).toHaveBeenCalledOnce();
+  expect(onApply).not.toHaveBeenCalled();
 });

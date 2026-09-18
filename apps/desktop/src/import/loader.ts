@@ -83,6 +83,16 @@ export class ImportLoader {
       minTicks: secondsToTicks(settings.minSeconds),
       maxTicks: secondsToTicks(settings.maxSeconds),
       count: settings.count,
+      localEditorial: (settings.editorialRoute ?? 'local') === 'local',
+      ...(settings.editorialRoute === 'cloud'
+        ? {
+            cloudEditorial: {
+              transcriptConsent: settings.cloudConsent === true,
+              budgetMicroUsd: Math.round((settings.cloudBudgetUsd ?? 2) * 1_000_000),
+              model: 'claude-sonnet-4-6',
+            },
+          }
+        : {}),
     });
   }
 }

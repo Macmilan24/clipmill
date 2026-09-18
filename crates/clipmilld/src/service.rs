@@ -3612,8 +3612,40 @@ impl Service {
                 roster.values().any(|worker| worker.serves(&binding.stage)),
             ));
         }
-        // The stages that run no model but still need a worker.
-        for kind in crate::recipes::modelless_worker_stages() {
+        // Editorial is a user-selected Qwen model, independent of speech benchmarks.
+        for kind in ["editorial-propose", "editorial-review", "editorial-look"] {
+            if let Some(implementation) = crate::implementations::candidates_for_stage(kind).next()
+            {
+                let (present, missing) = weights.as_deref().map_or_else(
+                    || (false, vec![implementation.model.to_owned()]),
+                    |root| self.model_files_present(implementation.model, root),
+                );
+                let mut readiness = stage_readiness(
+                    kind,
+                    "editorial",
+                    implementation.name,
+                    implementation.model,
+                    implementation.backend,
+                    present,
+                    missing,
+                    roster.values().any(|worker| worker.serves(kind)),
+                );
+                check_editorial_capacity(
+                    &mut readiness,
+                    self.scheduler
+                        .as_ref()
+                        .map(crate::jobs::SchedulerHandle::machine_capacity),
+                    self.models
+                        .get(implementation.model)
+                        .map(|model| model.memory.resident_bytes()),
+                );
+                stages.push(readiness);
+            }
+        }
+        // These stages need a connected worker but no local model files.
+        for kind in crate::recipes::stages_with_network_policy(NetworkPolicy::NetworkAllowed)
+            .chain(crate::recipes::modelless_worker_stages())
+        {
             stages.push(stage_readiness(
                 kind,
                 "",
@@ -3632,7 +3664,9 @@ impl Service {
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
         let decoder_present = self.decoder.as_ref().is_some_and(|path| path.is_file());
-        let ready = decoder_present && stages.iter().all(|stage| stage.ready);
+        // Optional cloud workers never gate the default local analysis route.
+        // A cloud analysis checks its selected stages before submission.
+        let ready = decoder_present && local_analysis_stages_ready(&stages);
         response_reply(
             request_id,
             response::Body::GetReadiness(GetReadinessResponse {
@@ -3712,6 +3746,40 @@ impl Service {
     }
 }
 
+fn local_analysis_stages_ready(stages: &[StageReadinessV1]) -> bool {
+    stages
+        .iter()
+        .filter(|stage| {
+            crate::recipes::lookup(&stage.stage)
+                .is_none_or(|recipe| recipe.network == NetworkPolicy::LocalLock)
+        })
+        .all(|stage| stage.ready)
+}
+
+fn check_editorial_capacity(
+    readiness: &mut StageReadinessV1,
+    capacity: Option<crate::jobs::ResourceCapacity>,
+    required: Option<u64>,
+) {
+    if !readiness.ready {
+        return;
+    }
+    let (Some(capacity), Some(required)) = (capacity, required) else {
+        return;
+    };
+    if capacity.accelerator_mask & crate::jobs::accelerator_bit("metal").unwrap_or(0) == 0 {
+        readiness.ready = false;
+        "Qwen has not passed its local runtime check. Restart `just workers` to run the check, then refresh readiness.".clone_into(&mut readiness.remedy);
+    } else if capacity.ram_bytes < required {
+        readiness.ready = false;
+        readiness.remedy = format!(
+            "Qwen needs {} MiB of schedulable memory; {} MiB is available. Close memory-heavy applications, rescan in Models, then refresh readiness.",
+            required.div_ceil(1024 * 1024),
+            capacity.ram_bytes / (1024 * 1024)
+        );
+    }
+}
+
 /// One stage's readiness row, with the sentence that says what to do.
 #[allow(clippy::too_many_arguments)]
 fn stage_readiness(
@@ -3727,9 +3795,21 @@ fn stage_readiness(
     let remedy = match (model_present, worker_present) {
         (true, true) => String::new(),
         (false, _) => format!(
-            "The model {model} is not installed: run `tools/fetch-models.sh` to fetch the \
+            "The model {model} is not installed: run `tools/fetch-models.sh {model}` to fetch the \
              pinned weights ({} file(s) missing).",
             missing_files.len()
+        ),
+        (true, false)
+            if crate::recipes::lookup(stage)
+                .is_some_and(|recipe| recipe.network == NetworkPolicy::NetworkAllowed) =>
+        {
+            format!(
+                "Optional cloud worker for {stage} is not running. To enable it, use `./tools/run-workers.sh --cloud-editorial`; each analysis still needs explicit cloud consent."
+            )
+        }
+        (true, false) if stage.starts_with("editorial-") => format!(
+            "No worker is connected that runs {stage}: install it with `uv sync --project workers/editorial`, \
+             restart `just app` to enroll it, then run `just workers`."
         ),
         (true, false) => format!(
             "No worker is connected that runs {stage}: start the workers with `just workers`."
@@ -3845,6 +3925,78 @@ mod tests {
 
     use super::{Service, validate_project_name, validate_request_id};
     use crate::db::DbActor;
+
+    #[test]
+    fn editorial_readiness_requires_verified_gpu_and_enough_memory() {
+        let ready = || {
+            super::stage_readiness(
+                "editorial-propose",
+                "editorial",
+                "worker",
+                "qwen",
+                "mlx",
+                true,
+                vec![],
+                true,
+            )
+        };
+        let mut capacity = crate::jobs::ResourceCapacity::measured(4, 16 << 30, 10 << 30);
+        let mut stage = ready();
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        assert!(!stage.ready);
+        assert!(stage.remedy.contains("runtime check"));
+        capacity.accelerator_mask = crate::jobs::accelerator_bit("metal").unwrap();
+        capacity.ram_bytes = 4 << 30;
+        let mut stage = ready();
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        assert!(!stage.ready);
+        assert!(stage.remedy.contains("8192 MiB"));
+        capacity.ram_bytes = 10 << 30;
+        let mut stage = ready();
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        assert!(stage.ready);
+    }
+
+    #[test]
+    fn optional_cloud_workers_do_not_block_local_analysis_readiness() {
+        let mut stages = vec![
+            super::stage_readiness(
+                "speech-asr",
+                "speech",
+                "asr",
+                "model",
+                "cpu",
+                true,
+                vec![],
+                true,
+            ),
+            super::stage_readiness(
+                "editorial-propose-cloud",
+                "",
+                "",
+                "",
+                "",
+                true,
+                vec![],
+                false,
+            ),
+            super::stage_readiness(
+                "editorial-review-cloud",
+                "",
+                "",
+                "",
+                "",
+                true,
+                vec![],
+                false,
+            ),
+        ];
+        assert!(super::local_analysis_stages_ready(&stages));
+        assert!(stages[1].remedy.contains("--cloud-editorial"));
+        assert!(stages[2].remedy.contains("explicit cloud consent"));
+        stages[0].ready = false;
+        assert!(!super::local_analysis_stages_ready(&stages));
+    }
 
     #[test]
     fn validates_and_trims_project_names() {

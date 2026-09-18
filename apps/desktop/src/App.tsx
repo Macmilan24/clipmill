@@ -25,6 +25,7 @@ import {
   inspectorRoute,
   placementOf,
   sectionRoute,
+  resultsRouteFor,
 } from './shell/route.js';
 
 /**
@@ -160,15 +161,13 @@ export function App(): JSX.Element {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="ambient" aria-hidden="true" />
       <SidebarProvider
-        // The shell is fixed at the design's width and never collapses; the
-        // provider is here for the menu primitives, not for responsiveness.
+        // The sidebar becomes an icon rail in compact desktop windows.
         style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
-        className="relative z-1 h-full min-h-0"
+        className="studio-shell relative h-full min-h-0"
       >
         <AppSidebar activeId={section.id} onSelect={navigate} state={state} />
-        <SidebarInset className="min-w-0 bg-transparent">
+        <SidebarInset className="min-h-0 min-w-0 bg-transparent">
           <TopBar
             trail={trail}
             theme={theme}
@@ -176,7 +175,9 @@ export function App(): JSX.Element {
             state={state}
             profile={profile}
           />
-          <main className="min-h-0 flex-1 overflow-y-auto p-6">
+          <main
+            className={`studio-main ${['results', 'editor'].includes(section.id) ? 'studio-main-workspace' : 'studio-main-page'}`}
+          >
             {renderScreen({
               route,
               library: {
@@ -195,6 +196,7 @@ export function App(): JSX.Element {
               },
               analysis: {
                 profile,
+                onRestarted: (projectId, jobId) => openAnalysis(projectId, jobId, 'library'),
                 onBack: () => {
                   navigate(route.kind === 'analysis' ? route.from : 'library');
                 },
@@ -208,12 +210,12 @@ export function App(): JSX.Element {
                   openClip(next, 'editor');
                 },
                 onBack: () => {
-                  navigate('results');
+                  setRoute(resultsRouteFor(route));
                 },
               },
               editor: {
                 onOpenResults: () => {
-                  navigate('results');
+                  setRoute(resultsRouteFor(route));
                 },
                 onOpen: (next) => {
                   openClip(next, 'editor');
@@ -223,6 +225,7 @@ export function App(): JSX.Element {
                 },
               },
               export: {
+                onEdit: (next) => openClip(next, 'editor'),
                 onOpen: (next) => {
                   openClip(next, 'export');
                 },

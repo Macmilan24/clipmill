@@ -17,7 +17,16 @@
  * duration, its own scrub bar — and the proxy is an hour long while the clip is
  * forty seconds of it. The transport here is about the clip.
  */
-import { ChevronFirst, ChevronLast, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
+import {
+  ChevronFirst,
+  ChevronLast,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../components/ui/button.js';
@@ -95,6 +104,8 @@ export function Player({
 }: PlayerProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   // An external seek — a scrub, a handle drag, a different clip — moves the
   // picture. Keyed on the nonce rather than on the position so the player's own
@@ -116,7 +127,7 @@ export function Player({
 
   if (!src) {
     return (
-      <div className="grid aspect-[9/16] w-full max-w-[300px] place-items-center rounded-[var(--cm-radius-panel)] border border-dashed border-[var(--cm-recessed-border)] p-6 text-center">
+      <div className="grid min-h-0 w-full flex-1 place-items-center rounded-[var(--cm-radius-panel)] border border-dashed border-[var(--cm-recessed-border)] p-6 text-center">
         <p className="text-[12px] text-[var(--cm-text-muted)]">
           This project published no proxy, so there is nothing to preview.
         </p>
@@ -148,7 +159,8 @@ export function Player({
       if (positionTicks >= endTicks - FRAME_TICKS) {
         element.currentTime = startTicks / TICKS_PER_SECOND;
       }
-      void element.play();
+      setProblem(null);
+      void element.play().catch(() => setProblem('Playback could not start. Try again.'));
     } else {
       element.pause();
     }
@@ -166,27 +178,27 @@ export function Player({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center gap-3">
-      <div className="relative flex min-h-0 flex-1 items-center justify-center">
-        <div className="relative aspect-[9/16] h-full max-h-full overflow-hidden rounded-[var(--cm-radius-panel)] bg-black ring-1 ring-white/10">
-          <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={
-              fitted
-                ? undefined
-                : {
-                    transform: `scale(${zoom}) translate(${(0.5 - at.x) * 100}%, ${(0.5 - at.y) * 100}%)`,
-                    transformOrigin: 'center',
-                  }
-            }
-          >
+    <div className="inspector-player">
+      <div className="inspector-stage-wrap">
+        <div className="video-stage">
+          <div className="absolute inset-0 flex items-center justify-center">
             {/* eslint-disable-next-line jsx-a11y/media-has-caption -- the cues are
                 drawn below from the document rather than as a text track. */}
             <video
               ref={video}
               src={src}
               className={fitted ? 'max-h-full max-w-full' : 'h-full w-auto max-w-none'}
-              muted
+              muted={muted}
+              style={
+                fitted
+                  ? undefined
+                  : {
+                      transform: `scale(${zoom}) translate(${(0.5 - at.x) * 100}%, ${(0.5 - at.y) * 100}%)`,
+                    }
+              }
+              onError={() =>
+                setProblem('The preview could not be loaded. Reopen this clip to try again.')
+              }
               playsInline
               onLoadedMetadata={(event) => {
                 // The first seek that can actually land. Without it the element
@@ -262,8 +274,21 @@ export function Player({
           positionTicks + TICKS_PER_SECOND,
         )}
         {step('Jump to the out point', 'Out point', <ChevronLast className="size-4" />, endTicks)}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setMuted(!muted)}
+          aria-label={muted ? 'Unmute preview' : 'Mute preview'}
+        >
+          {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+        </Button>
       </div>
 
+      {problem && (
+        <p role="alert" className="text-xs text-[var(--cm-danger-ink)]">
+          {problem}
+        </p>
+      )}
       <p className="shrink-0 text-[11px] text-[var(--cm-text-muted)]">
         {fitted
           ? `Fitted${crop?.fitReason ? ` — ${crop.fitReason}` : ''}`

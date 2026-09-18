@@ -35,7 +35,11 @@ Use a 1080×1920 SDR MP4 delivery preset with H.264 video, AAC-LC audio at 48 kH
 | Evaluation harness                                                        | Reuse; add human usefulness/repair labels, end-to-end UI checks, and a real encoding benchmark                                   |
 | Large evidence graph, many judges/proposers, new runtime/platform breadth | Defer until a measured failure justifies them; do not delete working infrastructure merely to simplify the diagram               |
 
-**Milestone 0 — Put real footage and a baseline beside development**
+**Milestone 0 — Deferred by the user on 18 September 2026**
+
+The user explicitly chose Qwen3.5 and asked to skip M0. The following corpus proposal is retained as future quality work, not a prerequisite for M2. Functional gates still run; no measured editorial superiority is claimed.
+
+Original proposal:
 
 Assemble roughly 20 representative recordings, split by recording into development and untouched evaluation sets. Cover clean and difficult speech, proper names, quiet delivery, interruptions, nonzero clip starts, long answers, camera cuts, one/two-speaker layouts, and a few recordings with no useful moments. Choose acceptable moments and alternate boundaries with a human editor. Start with a smaller subset immediately rather than waiting for all annotations.
 
@@ -74,7 +78,9 @@ Cache using the source/transcript, provider/model, prompt/rubric, and decoding c
 
 Main locations: a new editorial worker family, narrow cloud adapter, model registry entry, candidate/judgment contracts, and the existing recipe/planning/analysis pipeline; update analysis setup and Results so controls, explanations, and actions represent the new output. Preserve accepted edits when reanalysis proposes a new result set.
 
-**Exit:** the new pipeline produces watchable clips through the Milestone 1 UI and measurably improves human acceptance over the heuristic baseline on development footage. Incorrect references and unsupported output are rejected. Failure reasons are visible, and a poor recording can produce zero suggestions.
+**Functional verification:** the selected Qwen3.5 pipeline produces reviewable, exportable clips through the existing workflow, demonstrated by a real local model/daemon/worker/export run. This is implementation evidence, not the original quality exit. Incorrect references and unsupported output are rejected, incomplete analysis is visible, and a fully assessed recording can produce zero suggestions.
+
+**Quality exit (unverified):** human keep/reject decisions and repair effort on development footage show whether the editorial route improves over the heuristic baseline. The dedicated M0 corpus and model-comparison project are deferred at the user's request; no measured acceptance gain is currently claimed.
 
 **Milestone 3 — Finish the clips to a consistent visual and audio standard**
 
@@ -113,6 +119,6 @@ These are ambitious initial targets, not statistical guarantees from a small sam
 
 Work in reviewable changes, normally in this order: explicit clip/run routing and atomic/retry-safe opening; preview source mapping; canonical caption corrections and migrations; trim retiming plus end-to-end export revision checks; editorial worker and discovery integration; semantic review and selection; face integration and tested layouts; final caption/audio presentation and rendered approval preview; batch delivery and readiness evaluation. Tests that protect a feature land with that feature.
 
-Milestone 0 begins immediately and continues alongside repair. Start testing semantic proposals as soon as the repaired single-clip route produces a watchable file; do not wait for the entire editor to be polished. Prioritize the failure that prevents a better clip, rather than completing every infrastructure subsection in the old book. Set time estimates after the first repair batch and model benchmark reveal the real integration and performance costs.
+Milestone 0 is deferred at the user’s request. Start testing semantic proposals as soon as the repaired single-clip route produces a watchable file; do not wait for the entire editor to be polished. Prioritize the failure that prevents a better clip, rather than completing every infrastructure subsection in the old book. Set time estimates after the first repair batch and model benchmark reveal the real integration and performance costs.
 
 **First implementation batch:** preserve the exact selected project/source/analysis/candidate/document from Results through Editor and Export, reopen the existing document on repeat approval, and add the older-project/multiple-clip regression scenario. Its deliverable is a working route to the intended clip; subsequent batches repair what the clip displays and renders.

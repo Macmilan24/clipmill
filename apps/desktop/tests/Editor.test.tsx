@@ -134,3 +134,56 @@ describe('the player and the recording’s clock', () => {
     expect(screen.getByText(/no proxy/i)).toBeTruthy();
   });
 });
+
+describe('editor interaction boundaries', () => {
+  it('leaves arrow keys in caption fields and native scrubbers alone', () => {
+    const { video } = show({ ...program(900, 600), cues: plan().cues });
+    fireEvent.click(screen.getByRole('button', { name: 'Charging' }));
+    const field = screen.getByRole('textbox', { name: /correct this word/i });
+    fireEvent.keyDown(field, { key: 'ArrowRight' });
+    expect(video().currentTime).toBe(600);
+    fireEvent.keyDown(screen.getByRole('slider', { name: /scrub/i }), { key: 'ArrowRight' });
+    expect(video().currentTime).toBe(600);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(video().currentTime).toBeCloseTo(600 + 1 / 30, 6);
+  });
+
+  it('reports playback rejection without claiming the video is playing', async () => {
+    const { video } = show(program(900, 600));
+    const play = vi.spyOn(video(), 'play').mockRejectedValue(new Error('decode failed'));
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Playback could not start');
+    expect(screen.getByRole('button', { name: /^play$/i })).toBeTruthy();
+    play.mockRestore();
+  });
+
+  it('shows an edit failure regardless of the active properties tab', () => {
+    const initial = program(900, 600);
+    const view = render(
+      <TooltipProvider>
+        <Editor
+          plan={initial}
+          proxyUrls={new Map()}
+          docId="edit"
+          labels={null}
+          loading={false}
+          problem="Could not save the edit"
+          busy={false}
+          canUndo={false}
+          canRedo={false}
+          resolving={false}
+          resolveRefusal={null}
+          picker={null}
+          onOpenResults={() => {}}
+          onExport={null}
+          onApply={() => {}}
+          onUndo={() => {}}
+          onRedo={() => {}}
+          onResolve={() => {}}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole('alert').textContent).toContain('Could not save the edit');
+    view.unmount();
+  });
+});

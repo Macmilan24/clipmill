@@ -24,11 +24,10 @@
 import { Check, Scissors, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { Badge } from '../components/ui/badge.js';
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
-import { ScrollArea } from '../components/ui/scroll-area.js';
 import type { EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
+import { timecode } from './player.js';
 import { correctWord, mergeCues, setCueLines, splitCue } from './commands.js';
 
 /**
@@ -56,13 +55,20 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
     : null;
 
   return (
-    <div className="flex h-full flex-col gap-3 p-4 text-sm">
-      <ScrollArea className="h-[320px] pr-2">
+    <div className="flex min-h-0 flex-col gap-4 p-4 text-sm">
+      <p className="text-[12px] leading-relaxed text-[var(--cm-text-secondary)]">
+        Select a word to correct your captions. Changes also appear in the subtitle files.
+      </p>
+      {plan.cues.length === 0 && (
+        <p className="py-4 text-xs text-[var(--cm-text-muted)]">No captions in this clip.</p>
+      )}
+      <div className="max-h-[32vh] min-h-20 overflow-y-auto pr-1">
         <ul className="flex flex-col gap-2">
           {plan.cues.map((candidate, position) => (
             <li key={candidate.cueId}>
               <Phrase
                 cue={candidate}
+                label={timecode(plan, candidate.firstFrame)}
                 live={frame >= candidate.firstFrame && frame < candidate.endFrame}
                 selected={selected?.cueId === candidate.cueId ? selected.wordIndex : -1}
                 onSelectWord={(wordIndex) => setSelected({ cueId: candidate.cueId, wordIndex })}
@@ -83,7 +89,7 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
             </li>
           ))}
         </ul>
-      </ScrollArea>
+      </div>
 
       {cue && selected ? (
         <WordActions
@@ -99,18 +105,13 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
           Select a word to correct it, split the cue there, re-break its lines, or drop it.
         </p>
       )}
-
-      <p className="mt-auto text-xs text-[var(--cm-ink-3)]">
-        <Badge variant="outline">Phase 2</Badge> Re-transcribing a selection with a stronger model
-        is not built. Corrections made here are an overlay, so when it is built it will propose
-        without erasing them.
-      </p>
     </div>
   );
 }
 
 function Phrase({
   cue,
+  label,
   live,
   selected,
   onSelectWord,
@@ -118,6 +119,7 @@ function Phrase({
   busy,
 }: {
   readonly cue: PreviewCue;
+  readonly label: string;
   readonly live: boolean;
   readonly selected: number;
   readonly onSelectWord: (wordIndex: number) => void;
@@ -127,16 +129,20 @@ function Phrase({
   let index = 0;
   return (
     <div
-      className={`rounded-lg border p-2 ${
-        live
-          ? 'border-[var(--cm-accent)] bg-[var(--cm-surface-2)]'
-          : 'border-[var(--cm-line-1)] bg-[var(--cm-surface-1)]'
+      className={`group border-l-2 px-3 py-2 ${
+        live ? 'border-[var(--cm-accent)] bg-[var(--cm-accent-selected)]' : 'border-transparent'
       }`}
     >
       <div className="mb-1 flex items-center justify-between">
-        <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">{cue.cueId}</span>
+        <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">{label}</span>
         {onMergeWithNext && (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={onMergeWithNext}>
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={busy}
+            onClick={onMergeWithNext}
+            className="text-[10px] text-[var(--cm-text-secondary)]"
+          >
             Merge with next
           </Button>
         )}

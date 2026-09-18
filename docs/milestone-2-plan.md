@@ -1,312 +1,163 @@
-# Milestone 2 — the system finds complete, worthwhile moments
+# Milestone 2 — complete moments from the selected Qwen model
 
-The plan (`upload-ready-v1-plan.md`) says what Milestone 2 must do. This is how
-it is built on this codebase: which stages, which contracts, which worker,
-which models, in what order, and what "done" is measured against. Written
-after Milestone 1 landed (PR #67, #68), so it names the mechanisms that now
-exist rather than ones that would have to be invented.
+Revised 18 September 2026. The user selected Qwen3.5, asked to skip M0,
+and asked not to focus this implementation pass on benchmarking. We proceeded
+with functional delivery using the propose → validate → review pipeline.
+Editorial quality remains unverified: the original acceptance-gain objective
+is retained, not attributed to an explicit waiver by the user.
 
-## What changes, in one paragraph
+## Scope and finish line
 
-One editorial model per run does two bounded jobs over the transcript —
-**propose** complete moments and **review** them — behind the same
-task/worker layer that runs speech today. Its proposals become candidates in
-the schema the director and the ranking already read, so the lattice, the
-boundary optimizer, the Inspector and the editor keep working unchanged. The
-review's verdicts replace the uncalibrated "99" with a status and a reason.
-A visual model is asked only when the review says the picture matters. Local
-by default; a narrow cloud route is opt-in per run, transcript-only first,
-with the provider, the data scope and a hard budget on screen before it runs.
+English podcasts/interviews, including two speakers, on the current
+Apple-silicon desktop. Reuse Milestone 1's selected-run editor and immutable
+export. Milestone 3 still owns improvements to framing, caption styling,
+and audio polish; a semantic review does not certify the entire final video.
 
-## What exists and is reused
+Functional completion means a real pinned Qwen generation works, a real
+analysis reaches reviewable candidates, and one selected candidate goes
+through document creation and decodable MP4/SRT/VTT export. Invalid references,
+malformed output, cancellations, and failed calls cannot masquerade as
+"no suitable moments." Returning fewer clips, including zero, is valid.
+A synthetic talk is suitable for exercising this path. It does not establish
+editorial superiority on real interviews. The quality exit remains open: human
+keep/reject decisions and repair effort on development footage must show
+whether this route improves on the heuristic baseline.
 
-| Need                    | Already here                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Isolation and leasing   | Worker families in their own `uv` environments, Ed25519 identity, leased tasks, deterministic-vs-transient failure classes, bounded retries |
-| Pinned models           | `models/registry/*.toml` with per-file digests, licence class, `[memory]` for admission; `tools/fetch-models.sh`; `GetReadiness`            |
-| Per-device choice       | The measured-binding mechanism (D19): a benchmark decides which implementation serves a capability on this machine                          |
-| Offline by construction | `NetworkPolicy` per stage; the Local Lock derived from the registry and a counter of what actually started                                  |
-| Caching and provenance  | Content-addressed artifacts keyed by recipe (inputs + model digest + implementation); producers recorded in every document                  |
-| Stable references       | Word ids on every transcript word (Milestone 1), sentence and utterance indexes in `index.transcript.v1`                                    |
-| Boundary arithmetic     | The lattice and boundary optimizer in `clipmill-discovery`; the director reads `discovery.candidates.v1` + `ranking.set.v1`                 |
-| Human decisions         | `clip_decisions` (kept / rejected / approved) per project, source and candidate — the raw material of an acceptance measurement             |
-| Evaluation harness      | `eval/harness` with a daemon client, recall scoring, signed reports                                                                         |
+## Pipeline
 
-## Stages
+| Stage    | Work                                                                                                                                  | Output                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Windows  | Deterministic overlapping sentence windows, adjacent context, cited outline                                                           | `editorial.windows.v1`                           |
+| Propose  | Qwen chooses duration-valid full-sentence spans; includes title, hook/setup/payoff, reason and uncertainty                            | `editorial.proposals.v1`                         |
+| Validate | Rust checks source, window identity, references, duration, boundary timing and duplicate overlap; derives exact word-based cuts       | `discovery.candidates.v1` and validation reasons |
+| Review   | Qwen checks each candidate with neighboring transcript sentences for missing context, incomplete payoff, ads and misleading omissions | `editorial.judgments.v1`                         |
+| Look     | Only visually dependent candidates: at most four frames from inside the cut, one bounded question                                     | `editorial.looks.v1`                             |
+| Rank     | Exclude rejected clips, put accepted first, suppress substantially overlapping selections, allow shortfall                            | `ranking.set.v1` with review status/reasons      |
 
-New recipes in `crates/clipmilld/src/recipes.rs`, in the analysis DAG after
-`index-transcript`. Every stage below the editorial ones consumes the same
-kinds it does today.
+The validator retains the proposed semantic span. It may add at most 150 ms
+of padding in a word-free gap, subject to the requested duration. Padding is clamped before any unavailable region, and minimum duration is
+checked on the spoken span before padding. Its single
+legal boundary pair stops the heuristic optimizer from changing a span after
+review. The local/cloud proposal decoder enumerates legal sentence spans for the requested duration, presents compact allowed-end ranges, and maps the model’s chosen span back to the shared proposal contract. It never lengthens a too-short quote automatically. Longer answers can yield a self-contained part. Invalid
+references and unavailable speech are recorded with reasons; an entirely invalid nonempty response
+fails analysis rather than being described as a recording with no moments. Interpolated timing at a cut boundary is rejected. Interpolated words and short alignment-unavailable regions strictly inside a complete span remain usable, but deterministically mark the result Needs review with a caption-timing warning, regardless of the semantic verdict.
 
-| Stage                | Executor | Capability          | Reads                                         | Publishes                   |
-| -------------------- | -------- | ------------------- | --------------------------------------------- | --------------------------- |
-| `editorial-windows`  | builtin  | —                   | `speech.transcript.v1`, `index.transcript.v1` | `editorial.windows.v1`      |
-| `editorial-propose`  | worker   | `editorial-propose` | `editorial.windows.v1`                        | `editorial.proposals.v1`    |
-| `editorial-validate` | builtin  | —                   | proposals, transcript, index, `speech.vad.v1` | `discovery.candidates.v1`   |
-| `editorial-review`   | worker   | `editorial-review`  | candidates, windows, transcript               | `editorial.judgments.v1`    |
-| `editorial-look`     | worker   | `editorial-look`    | judgments (visual flags), `media.frames.v1`   | `editorial.looks.v1`        |
-| `rank-candidates`    | builtin  | —                   | candidates **+ judgments (+ looks)**          | `ranking.set.v1` (extended) |
+Repeated nominations with at least 85% interval overlap are merged while
+retaining proposal IDs and uncertainties. The candidate keeps its title,
+hook, setup, payoff and rationale; ranking carries the title to Results.
 
-Notes on each:
+The heuristic route remains an explicitly named, separately selectable
+baseline. It is not silently mixed into an editorial result or invoked when
+the model fails. Old jobs without the new route fields keep their original
+behavior. Existing accepted edit documents remain bound to their original run.
 
-- **Windows** are deterministic and cheap: overlapping spans that keep
-  sentence boundaries, a sentence or two of context on either side, and the
-  word and sentence ids of everything inside. A topic boundary the index
-  found near the end of a window closes it there, because a topic is where a
-  moment is likeliest to close. Every document also carries a short outline,
-  one line per topic, each line citing its sentence range — context for the
-  model, never a substitute for the words. This is Rust, in
-  `clipmill-editorial` (the crate the validator and the review checks join
-  later), with goldens over the published indexes; the budget reaches the
-  artifact key, so a re-cut is a different reading rather than a correction.
-- **Propose** is the model's first job. Per window it answers in ids: which
-  sentences (or words, at the edges) make a moment with a hook, the setup it
-  needs, and a payoff; a title; a one-sentence source-grounded reason; what it
-  is unsure of. It may answer "none". Long answers are marked as splittable
-  into subspans rather than thrown away for length. Timestamps are never
-  asked for.
-- **Validate** is Rust and refuses before it trusts: every id must exist,
-  every span must fall inside the window, duplicates across overlapping
-  windows are merged, durations are checked against the run's target, and
-  endpoints are snapped to word timings and nearby silence with the existing
-  boundary lattice. What survives is written as `discovery.candidates.v1`
-  with proposer `editorial` — the same schema the heuristic proposers write,
-  so nothing downstream changes shape. The heuristic proposers keep running
-  beside it during this milestone, marked as such, until the measurement in
-  the exit says they can go.
-- **Review** is the model's second job, over each candidate with its
-  neighbouring context: unresolved references, a question that was never
-  asked, a payoff that is not there, an ad read, an irrelevant intro, an
-  omission that changes the meaning, and whether understanding it depends on
-  what is on screen. The answer is a status — `accepted`, `needs_review`,
-  `rejected` — with reasons a person can read. A malformed reply or a model
-  failure is recorded as exactly that, distinct from "no good moment".
-- **Look** runs only for candidates the review flagged as visual-dependent:
-  a bounded number of frames from the candidate's span, one question per
-  frame set ("is what is being talked about visible?"), answered by a local
-  visual model. Not a frame-by-frame viewer.
-- **Rank** consumes the judgments: only accepted and needs-review candidates
-  are ranked; diversity still applies; fewer are published when the review
-  says so. `display_score` is replaced by `review.status` and `review.reasons`.
-  Any number that remains is characterized in the document (what it measures,
-  how it was validated) or it is not shown.
+## Local runtime and provenance
 
-## Contracts
+`workers/editorial` uses `mlx-vlm==0.7.1`, locked torchvision/PyTorch image
+preprocessing dependencies, and the registry-pinned
+`mlx-community/Qwen3.5-9B-4bit` revision
+`8b2b98c00a6b4d291155e4890773ca8f769aee53`. All files have recorded SHA-256 and
+size pins. The weights are Apache-2.0; they are not included in video exports.
+There is no second model server or duplicate model store.
 
-New schemas in `contracts/schemas/`, generated into all three languages as
-every contract is. Each carries `source_fingerprint`, `inputs` (artifact ids
-it read), and a `producer` with the implementation, the model digest, the
-route, the prompt version and the decoding configuration.
+One selected model serves proposal, review and visual checks. Temperature is
+zero, seed zero, output is capped at 2,048 tokens, and JSON-schema constraints
+are applied during decoding. Long-recording outlines are capped at 32 cited entries, mixing nearby and global topics. Input text is bounded to 12,000 tokens and each
+call has a ten-minute token-loop deadline. Visual inputs are resized to a
+bounded resolution. These settings, the model digest, prompt digest, source
+and input artifacts participate in reproducible recipes. This does not promise
+byte-identical inference across devices.
 
-- `editorial.windows.v1` — windows with sentence ranges, word id ranges,
-  context ranges, the optional outline with its citations.
-- `editorial.proposals.v1` — per window: the model's proposals in ids,
-  titles, reasons, uncertainties, splittability; per window a status
-  (`answered`, `none`, `malformed`, `failed`) with the failure class.
-- `editorial.judgments.v1` — per candidate: status, reasons, visual
-  dependency, the context window it was judged in.
-- `editorial.looks.v1` — per visual check: frames examined, the answer, the
-  confidence the model reported.
-- `editorial.trace.v1` — the raw request and response text of every model
-  call, credentials redacted, stored locally for diagnosis and **not on the
-  shell's readable list**. Route, model, prompt digest and token counts are
-  here too; this is where the cloud cost is accounted.
-- `ranking.set.v1` — extended, compatibly: `review` per ranked entry, and a
-  `route` on the producer. The renderer's `results/model.ts` and the board
-  read the status instead of the score.
+The worker releases model state after a stage, checks cancellation during
+generation, and uses existing scheduler memory admission. A successful tiny
+real generation writes `state/editorial-runtime.json`, bound to this hardware
+and model digest plus the pinned runtime version. The inference subprocess exits before available memory is measured, and the scheduler retains the verified GPU capacity after consuming its update. Readiness also checks the model’s memory reservation. This establishes runtime readiness for Metal admission; it
+is neither M0 nor an automatic model-selection benchmark. Other platforms and
+GGUF runtimes are deferred until required; this change does not claim they work.
 
-The proposal and judgment shapes are validated deterministically (ids exist,
-enums are known, spans lie inside windows) before anything semantic is
-judged; the semantic judgement is the review stage's, and the evaluation's.
+Calls retain private traces with prompt, response, route, model, token usage
+and timing. A failed or malformed window does not stop later windows. Mixed
+passes publish explicit per-window/per-candidate failures alongside usable
+answers; no answered windows or no usable candidate reviews still fail the
+stage. Missing answers are never interpreted as an editorial “none.” Failed
+semantic reviews are excluded; unavailable visual checks remain Needs review.
 
-## The worker family
+Partial artifacts remain durable evidence, but are not reusable as complete
+cache hits. A retry uses an artifact- and task-bound recovery recipe without
+changing old artifacts. Successful earlier stages can still be reused. The
+shared partial cache key remains partial, so subsequent runs can require
+additional inference even after another run recovered; this is a conservative
+cost tradeoff, not a promise of per-window cache reuse.
 
-`workers/editorial`, one family, three capabilities (`editorial-propose`,
-`editorial-review`, `editorial-look`), the runtime inside the worker like
-every family today — no separate model server, no Ollama (a separate daemon
-with its own model store and TCP port would break digest pinning, the Lock,
-and reproducible recipe keys).
+## Optional cloud route
 
-- **Runtimes.** On Apple silicon, `mlx-lm` for the text model and `mlx-vlm`
-  for the visual one, the way `speech-mlx` runs Qwen3 ASR today. On Linux and
-  Windows, `llama-cpp-python` over GGUF weights, the way `asr-whispercpp`
-  runs whisper. Both are registry-pinned by digest.
-- **Determinism.** Temperature zero, a fixed seed, and a JSON schema
-  enforced at decode time (grammar-constrained sampling) so the reply is
-  structurally valid or the stage says `malformed` — never a parse of prose.
-  The recipe key includes the prompt version and the decoding configuration,
-  so a changed prompt is a different result and an unchanged one is a cache
-  hit. Cross-device byte identity is not claimed and not required; the
-  quality claim is made by the evaluation, not by hashing.
-- **Prompts** are versioned files inside the worker package, one per job
-  (propose, review, look), each with a rubric the reply must follow. The
-  rubric's digest is part of the producer record.
-- **Cancellation and budget.** Every model call checks the lease's
-  cancellation first; the cloud implementation also checks the run's spend
-  against its budget before each request and stops with a named reason.
-- **Memory.** The registry's `[memory]` declarations drive admission: an
-  8B model at 4-bit is ~5 GB resident plus overhead, and admission will not
-  lease it beside the aligner on a 16 GB machine; the stages run in turn.
-  This is the existing rule, exercised by a bigger model.
+The user must choose Cloud-assisted and consent to transcript sharing for
+that run. Changing routes clears consent. Video, audio and sampled frames
+remain local. The sole adapter is Anthropic `claude-sonnet-4-6`; proposal and
+review use it, while any visual check stays with local Qwen. No automatic
+cloud fallback exists. The default worker exposes only local capabilities.
+Cloud processing uses a separate worker entry point, explicitly started with
+`./tools/run-workers.sh --cloud-editorial` after trust-key enrollment; launching
+that worker does not substitute for the per-analysis consent.
 
-**Models to benchmark**, chosen by the measured-binding mechanism rather than
-by preference, on the development recordings and the synthesized talk. The
-floor that matters is memory: the model runs beside the aligner and the
-recogniser, admission adds their `[memory]` declarations, and the development
-machine has 24 GB. Sizes below are the 4-bit MLX builds as published in
-September 2026.
+Credentials are read inside the worker from macOS Keychain, service
+`dev.clipmill.anthropic`, account `clipmill`. They never enter renderer state,
+job payloads, artifact recipes or traces. Add the password through Keychain
+Access. Missing credentials produce a recovery message, not a hidden prompt
+or a secret in a command argument.
 
-| Job                   | Candidate                                                               | 4-bit resident | Fits 24 GB beside speech | Notes                                                                                                         |
-| --------------------- | ----------------------------------------------------------------------- | -------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| all three jobs        | **Qwen3.5-9B** (natively multimodal; `mlx-community` 4-bit via mlx-vlm) | ~5–6 GB        | yes                      | The first candidate on this machine: one model for propose, review and look, 25–35 tok/s, room to spare       |
-| propose/review        | **Gemma 4 12B** (`mlx-community`, Apache-2.0)                           | ~8 GB          | yes                      | The head-to-head for the text jobs: dense, structured output                                                  |
-| propose/review        | Gemma 4 26B-A4B (MoE, 3.8B active)                                      | ~18 GB         | tight                    | Fast per token; admission decides whether it can sit beside the speech models                                 |
-| propose/review + look | **Qwen3.8-27B** (dense, natively multimodal, Apache-2.0)                | ~15–18 GB      | no, not beside speech    | The strongest local model and one model for all three jobs — on 32 GB+ machines, or run after speech finishes |
-| look                  | Qwen3.5-9B (same model), or Qwen3.8-27B where it fits                   | —              | —                        | Frame sets, short answers; Qwen3.5-4B as the small-machine fallback                                           |
+The setup screen names the provider, scope, cost example, and a $0.01–$100
+run cap. Rates are $3 per million input tokens and $15 per million output
+tokens ([provider documentation](https://platform.claude.com/docs/en/models/sonnet-4-6/overview)).
+The exact transcript/token count is not known before transcription, so the
+screen does not invent a recording-specific price estimate. A durable,
+locked per-run ledger reserves a conservative request bound before sending,
+refunds the difference after verified usage, and keeps uncertain calls fully
+reserved. There are no automatic provider retries. Errors offer explicit
+reanalysis locally. Tests use a fake provider; a live paid request requires
+explicit cloud enablement by the user.
 
-GLM-5.3-Flash (320B-A18B) and DeepSeek V4.1-Flash (~100B MoE) are not
-laptop-local — the community MLX ports need 48 GB with SSD streaming or a
-256–512 GB Mac Studio — so they belong to the cloud route or a workstation
-tier, not to this milestone's default. No 4B–14B Qwen3.8 exists; a smaller
-Qwen means an earlier generation, which is why Gemma 4 leads the local list.
+The session's Local Lock disengages when a network-allowed task starts, including
+a conservative cache hit, not merely because its implementation is installed.
+It reports task admission rather than an OS-level proof of zero egress; see
+[Local Lock](local-lock.md) and the [threat model](threat-model.md). Settings reports task-policy
+counts; neither Settings nor progress claims to measure network bytes.
 
-The registry's licence class is enforced per model; every candidate above is
-Apache-2.0, and the class rule is extended in this milestone to say that an
-editorial model's weights never ship inside an export — a decision to record,
-not to assume.
+## UI contract
 
-## The cloud route
+Local Qwen is the default for a new analysis. Readiness is filtered to the
+chosen route; missing weights/workers have a recovery command. Results and
+Inspector display **Ready to review** or **Needs review**, a summary, reasons,
+and the route. They do not present the heuristic diagnostic score as an
+editorial-quality percentage. Visual dependency stays visibly marked for
+human inspection even if a sparse frame check answers positively.
 
-One more implementation of the same two capabilities, not a platform:
-`editorial-cloud`, a worker that speaks to one provider's API (Anthropic
-first — the structured-output and long-context needs fit, and one adapter is
-the plan's whole ask). It lives behind the existing network policy:
+An analysis failure is shown as a run failure with its reason and a local
+reanalysis action. A fully assessed empty ranking says no suitable complete
+moments were found. Partial runs show failed window/review/visual-check counts
+even when the requested clip count was met. Empty partial results explicitly
+say that some material was not assessed. Results → Inspector → Editor → Export continue to carry
+the selected project, source, run, candidate, document and revision.
 
-- The stage variants that reach the network are `NetworkPolicy::NetworkAllowed`.
-  The Local Lock is then _disengaged for that run_ and the health badge and
-  Settings say so, by the mechanism that already counts network-allowed
-  stages — no new claim, the existing one made false honestly.
-- **Credentials** live in the OS keychain (macOS Keychain via the host;
-  `keyring` on the others). The daemon reads the key at task start and hands
-  it to the worker inside the lease over the authenticated socket. It is never
-  in the payload (which is hashed into the recipe), the trace, a log, a
-  document, or the renderer.
-- **Scope switches**, per run, in the analysis setup: transcript only
-  (default for cloud); frames or short audiovisual samples are a second
-  switch that is off and says what leaves the machine when turned on.
-- **Budget**: an estimated cost is shown before the run from the transcript's
-  token count and the provider's published prices; a hard cap per run stops
-  the stage with a named reason when reached, and the trace carries the
-  actual spend.
-- **Failure**: an unavailable provider is a distinct failure class; the run
-  offers retry or the local fallback, and never silently substitutes one
-  route's result for the other's. Both routes' reports are kept apart.
+## Developer checks
 
-## Screens
+Install the worker and pinned weights:
 
-- **Analysis setup** (New Project): a Local / Cloud-assisted choice, local
-  default. Cloud names the provider, the scope, the estimated cost and the
-  budget; the readiness card lists the editorial model like every other
-  stage, with the fetch command when the weights are missing.
-- **Analysis progress**: the editorial stages appear as stages, with the wait
-  reasons the readiness mechanism already writes.
-- **Results**: the score badge becomes a status (`Ready`, `Needs review`,
-  with reasons on hover and in the Inspector); the model's hook/setup/payoff
-  reading is shown as the "why"; a recording with no worthwhile moment says
-  so rather than padding; a malformed or failed model reply is shown as a run
-  problem, not as an empty result. Accepted edits survive a re-analysis that
-  proposes a new set: documents are keyed by candidate and run already
-  (Milestone 1), and the board shows which candidates of an older run carry
-  an edit.
+```sh
+uv sync --project workers/editorial
+./tools/fetch-models.sh qwen3-5-editorial-mlx
+```
 
-## Evaluation and the exit
+`just workers` performs the local runtime readiness check before enrolling
+its capabilities with the running daemon (development trust keys must already
+be enrolled before daemon startup). `just app` performs enrollment first.
 
-The exit is a measurement, so the measurement is built first with the stage
-that produces it, not last.
+`just gate-editorial` checks windows, contracts, invalid references, review
+selection, worker failure/cancellation behavior, cloud consent/budget tests,
+and the real local model-to-export smoke. `just gate-editorial-unit` runs the
+checks that need no weights. `just gate-milestone-1` exercises the earlier
+selected-clip workflow independently of optional editorial models.
 
-- **Acceptance protocol.** For the development recordings (the dogfood
-  episode and the ones already analysed here, plus the synthesized talk as a
-  smoke), both routes' top-K are laid out in the Results board; a person
-  marks each kept or rejected with the existing decisions. The harness gains
-  `acceptance`: it reads the decisions per candidate and per producer and
-  reports acceptance rate, counts, and the failure cases, per route,
-  heuristic baseline beside editorial. Counts are reported with the
-  percentages; a route with too few items says so.
-- **Rejection tests.** Contract tests over fixtures: a proposal naming a
-  sentence that does not exist, a span outside its window, a duration past
-  the target, a duplicate across windows, a malformed reply — each is
-  rejected with its reason, never silently dropped.
-- **Zero is an answer.** A recording built to have no complete moment (the
-  synthesized talk cut mid-sentence throughout) returns none, and the board
-  says so.
-- **Gate.** `just gate-editorial`: the window goldens, the validator's
-  refusals, a real propose/review over the synthesized talk with the pinned
-  local model (local-only, like `gate-milestone-1`), and the acceptance
-  report over whatever development decisions exist.
-
-**Exit, as the plan states it:** the new pipeline produces watchable clips
-through the Milestone 1 UI and measurably improves human acceptance over the
-heuristic baseline on development footage; incorrect references and
-unsupported output are rejected; failure reasons are visible; a poor
-recording can produce zero suggestions.
-
-## Order of work
-
-Each step lands as a reviewable change with its tests, and the pipeline stays
-runnable end to end after every one.
-
-1. **Windows and contracts.** `editorial.windows.v1`, the builtin stage, the
-   schema set for proposals/judgments/looks/trace; goldens on the talk.
-2. **The worker, local propose.** `workers/editorial` with the MLX and
-   llama.cpp runtimes, two registry entries (one text model per runtime),
-   prompts v1, constrained decoding, the trace artifact, readiness. Propose
-   runs over the talk and the dogfood episode.
-3. **Validate into candidates.** The Rust validator writing
-   `discovery.candidates.v1`; the whole existing pipeline — ranking,
-   director, Inspector, editor, export — runs on editorial candidates with no
-   other change. This is the first watchable clip from the model.
-4. **Review, and the ranking that reads it.** Judgments, the extended
-   ranking, Results and Inspector showing status and reasons, the
-   zero-result and failed-reply states.
-5. **The measurement.** The harness's `acceptance`, the decisions recorded on
-   the development recordings for both routes, the first report — and the
-   model benchmark that picks the local model per device.
-6. **Look.** The visual model for flagged candidates, registry entry, gate
-   coverage.
-7. **The cloud route.** Keychain, budget, scope switches, the setup screen,
-   the Lock's honest badge, the provider-unavailable path, the same
-   acceptance report for the cloud route kept apart from the local one.
-8. **Retire what the measurement retires.** If the editorial route beats the
-   heuristic proposers on the development set, the heuristic proposers become
-   a fallback that is named as one; if it does not, the milestone is not done
-   and the failure category is fixed before more footage is added.
-
-## Decisions to take before step 2
-
-- **Which local model to start with.** Decided as R59: Qwen3.5-9B, one
-  multimodal model meant to serve all three jobs, changed only by
-  measurement. Step 5's benchmark still runs it against Gemma 4 12B on this
-  machine (and Gemma 4 26B-A4B if admission allows it; Qwen3.8-27B on a
-  machine that holds it) for structured-output reliability, latency per
-  window, resident memory beside the speech models, and whether one model
-  serving three jobs beats two; the numbers are recorded against R59 and the
-  registry entry follows whichever wins, by digest, licence verified at that
-  point.
-- **Licence class for editorial weights.** Extend the class rule
-  (editorial weights never ship in an export) or restrict to permissive
-  models; decide and record.
-- **Where the heuristic proposers stand during the milestone.** Proposed:
-  they keep running beside the editorial one, labelled, until step 8.
-- **Cloud provider for the narrow adapter.** Proposed: Anthropic first, one
-  adapter, no abstraction layer until a second provider is actually wanted.
-  DeepSeek V4.1-Flash and GLM-5.3-Flash are the obvious second and third,
-  as API routes, once the adapter has earned a second one.
-
-## What this milestone does not do
-
-Stated so it is not discovered: no general connector platform; no fleet of
-judges (one model, two jobs); no frame-by-frame visual controller (Milestone
-3's layout work uses a visual model to classify, never to steer); no cloud
-audio or frames until the scope switch exists and is off by default; no
-numeric quality score on the board until one has been characterized and
-validated against human acceptance.
+The local smoke leaves its MP4, captions, ranking, result JSON and logs in the
+reported temporary directory. It uses the shell/daemon contracts, not a
+hand-clicked Tauri window. A native-window check must be reported separately.

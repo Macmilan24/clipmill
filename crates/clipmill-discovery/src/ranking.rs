@@ -215,6 +215,11 @@ pub fn rank(
         .iter()
         .enumerate()
         .map(|(position, (candidate, choice, card))| contract::Ranked {
+            title: candidate
+                .editorial
+                .as_ref()
+                .and_then(|moment| moment.title.as_str().parse().ok()),
+            review: None,
             candidate_id: crate::literal(candidate.id.as_str()),
             rank: std::num::NonZeroU64::new(crate::as_u64(position + 1))
                 .unwrap_or(std::num::NonZeroU64::MIN),
@@ -248,9 +253,27 @@ pub fn rank(
     let (selected, shortfall) = select(&cohort, &scored, request, count);
 
     Ok(contract::RankingSet {
+        editorial: candidates
+            .editorial
+            .as_ref()
+            .map(|coverage| contract::EditorialCoverage {
+                window_count: coverage.window_count,
+                answered_windows: coverage.answered_windows,
+                failed_reviews: coverage.failed_reviews,
+                failed_visual_checks: coverage.failed_visual_checks,
+                failed_windows: coverage
+                    .failed_windows
+                    .iter()
+                    .map(|window| contract::EditorialCoverageFailedWindowsItem {
+                        index: window.index,
+                        detail: crate::literal(window.detail.as_str()),
+                    })
+                    .collect(),
+            }),
         schema_version: serde_json::json!("clipmill.ranking.set.v1"),
         source_fingerprint: parse(candidates.source_fingerprint.as_str(), "source_fingerprint")?,
         inputs: contract::RankingSetInputs {
+            judgments_artifact_id: None,
             candidates_artifact_id: parse(inputs.candidates, "candidates_artifact_id")?,
             index_artifact_id: parse(inputs.index, "index_artifact_id")?,
             transcript_artifact_id: parse(inputs.transcript, "transcript_artifact_id")?,

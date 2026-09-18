@@ -60,7 +60,7 @@ describe('the export screen, handed a clip in an older project', () => {
       'CUDA kernels · Clip 01',
     );
     expect(world.planned).toEqual([[OLD, OLD_DOC]]);
-    expect(screen.getByText(OLD_DOC)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Export clip' })).toBeTruthy();
   });
 
   it('plans and queues the export of that document, not the newest', async () => {
@@ -103,7 +103,7 @@ describe('the export screen, handed a clip in an older project', () => {
     fireEvent.change(screen.getByLabelText(/folder/i), {
       target: { value: '/Users/sami/Movies/clips' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /archive this project/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save project archive/i }));
     await waitFor(() => {
       expect(world.archived).toHaveLength(1);
     });

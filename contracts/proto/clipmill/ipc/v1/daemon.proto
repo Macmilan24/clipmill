@@ -356,6 +356,11 @@ message EditorialStagePayloadV1 {
   string key_version = 1;
   // The registered task kind this payload belongs to.
   string stage = 2;
+  ClipDurationV1 duration = 3;
+  // Prompt content digest and decoding policy are part of the recipe key.
+  string prompt_digest = 4;
+  uint32 max_output_tokens = 5;
+  EditorialCloudV1 cloud = 6;
 }
 
 // Versioned payload for discovery (book ch. 15). The request names a source;
@@ -467,6 +472,17 @@ message AnalyzeSourcePayloadV1 {
   ClipDurationV1 duration = 4;
   uint64 count = 5;
   uint64 diversity_milli = 6;
+  // Explicit local editorial selection; absent keeps legacy heuristic jobs readable.
+  bool local_editorial = 7;
+  EditorialCloudV1 cloud_editorial = 8;
+}
+
+// Explicit consent applies only to this run. Credentials never enter the request.
+message EditorialCloudV1 {
+  bool transcript_consent = 1;
+  uint64 budget_micro_usd = 2;
+  // Fixed, versioned adapter policy; unsupported identifiers are rejected.
+  string model = 3;
 }
 
 // What the fan-in at the end of an analysis is asked to write.

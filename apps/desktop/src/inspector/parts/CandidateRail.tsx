@@ -9,7 +9,6 @@
  */
 import type { ClipDecision } from '../../daemon/client.js';
 import { type ClipRow, duration } from '../../results/model.js';
-import { bandInk } from '../../results/parts/ScoreRing.js';
 
 const DECISION_MARK: Readonly<Record<ClipDecision, { label: string; ink: string }>> = {
   approved: { label: 'Approved', ink: 'var(--cm-success-ink)' },
@@ -20,13 +19,14 @@ const DECISION_MARK: Readonly<Record<ClipDecision, { label: string; ink: string 
 export interface CandidateRailProps {
   readonly rows: readonly ClipRow[];
   readonly candidateId: string;
+  readonly busy?: boolean;
   readonly onSelect: (candidateId: string) => void;
 }
 
-export function CandidateRail({ rows, candidateId, onSelect }: CandidateRailProps) {
+export function CandidateRail({ rows, candidateId, onSelect, busy = false }: CandidateRailProps) {
   return (
     <nav
-      className="glass flex w-[212px] shrink-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]"
+      className="inspector-candidates glass flex shrink-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]"
       aria-label="Candidates"
     >
       <h2 className="shrink-0 border-b border-[var(--cm-glass-border)] px-3 py-2.5 text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
@@ -40,6 +40,7 @@ export function CandidateRail({ rows, candidateId, onSelect }: CandidateRailProp
             <li key={row.candidateId}>
               <button
                 type="button"
+                disabled={busy}
                 onClick={() => onSelect(row.candidateId)}
                 aria-current={active}
                 className="relative flex w-full flex-col gap-1 rounded-[var(--cm-radius-control)] px-3 py-2.5 text-left transition-colors duration-150 hover:bg-[var(--cm-glass-elevated)]"
@@ -54,24 +55,18 @@ export function CandidateRail({ rows, candidateId, onSelect }: CandidateRailProp
                 )}
                 <span className="flex items-start justify-between gap-2">
                   <span
-                    className="truncate text-[12px] font-medium"
+                    className="line-clamp-2 text-[12px] leading-relaxed font-medium"
                     style={{
                       color: active ? 'var(--cm-text-primary)' : 'var(--cm-text-secondary)',
                     }}
                   >
                     {row.headline || 'Untitled clip'}
                   </span>
-                  <span
-                    className="mono shrink-0 text-[11px]"
-                    style={{ color: active ? bandInk(row.band) : 'var(--cm-text-muted)' }}
-                  >
-                    {row.displayScore}
-                  </span>
                 </span>
                 <span className="flex items-center gap-1.5 text-[10px] text-[var(--cm-text-muted)]">
                   <span className="mono">{duration(row.durationSeconds)}</span>
                   <span aria-hidden>•</span>
-                  <span className="truncate">{row.proposer ?? row.bandLabel}</span>
+                  <span className="truncate">{row.bandLabel}</span>
                   {mark && (
                     <>
                       <span aria-hidden>·</span>

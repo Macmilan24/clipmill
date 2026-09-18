@@ -31,8 +31,114 @@ use crate::{
 
 /// The task kind this module executes.
 pub(crate) const KIND_WINDOWS: &str = clipmill_editorial::STAGE;
+pub(crate) const KIND_VALIDATE: &str = "editorial-validate";
 pub(crate) const IMPLEMENTATION: &str = "clipmill-editorial-windows@1.0.0";
 const OUTPUT_FILE: &str = "windows.json";
+
+pub(crate) async fn execute_validate_task(
+    artifacts: &ArtifactHandle,
+    task: &LeasedTask,
+    progress: &ProgressSlot,
+) -> Result<ArtifactId, TaskExecutionError> {
+    use clipmill_contracts::schemas::{
+        editorial_proposals::EditorialProposals, editorial_windows::EditorialWindows,
+        speech_transcript::SpeechTranscript,
+    };
+    let payload = EditorialStagePayloadV1::decode(task.payload.as_slice())
+        .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?;
+    if payload.key_version != EDITORIAL_STAGE_KEY_VERSION || payload.stage != KIND_VALIDATE {
+        return Err(TaskExecutionError::deterministic(
+            "invalid editorial validation payload",
+        ));
+    }
+    let inputs = inputs::resolve(
+        artifacts,
+        task,
+        &[
+            Wanted::required("editorial.windows.v1"),
+            Wanted::required("editorial.proposals.v1"),
+            Wanted::required("speech.transcript.v1"),
+        ],
+    )
+    .await?;
+    let windows: EditorialWindows = inputs.read("editorial.windows.v1", "windows.json")?;
+    let proposals: EditorialProposals = inputs.read("editorial.proposals.v1", "proposals.json")?;
+    let transcript: SpeechTranscript = inputs.read("speech.transcript.v1", "transcript.json")?;
+    let duration = payload
+        .duration
+        .unwrap_or(clipmill_contracts::proto::ipc::v1::ClipDurationV1 {
+            min_ticks: 20 * 90_000,
+            max_ticks: 90 * 90_000,
+        });
+    let validated = clipmill_editorial::validate::proposals(
+        &windows,
+        &transcript,
+        &proposals,
+        &inputs.address("editorial.windows.v1")?,
+        duration.min_ticks,
+        duration.max_ticks,
+    )
+    .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?;
+    if validated.candidates.candidates.is_empty()
+        && let Some(first) = validated.report["rejected"]
+            .as_array()
+            .and_then(|r| r.first())
+    {
+        return Err(TaskExecutionError::deterministic(format!(
+            "All editorial proposals were refused: {}. Analysis failed validation; this is not a successful result with no worthwhile moments.",
+            first["reason"].as_str().unwrap_or("invalid reference")
+        )));
+    }
+    let recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
+        kind: "discovery.candidates.v1".into(),
+        source_fingerprint: windows
+            .source_fingerprint
+            .as_str()
+            .trim_start_matches("sha256:")
+            .parse()
+            .map_err(|_| TaskExecutionError::deterministic("bad fingerprint"))?,
+        timebase: Timebase {
+            num: 1,
+            den: 90_000,
+        },
+        producer: Producer {
+            stage: KIND_VALIDATE.into(),
+            implementation: "clipmill-editorial-validate@1.1.0".into(),
+            model_digest: None,
+        },
+        inputs: inputs.addresses(),
+        policy: NetworkPolicy::LocalLock,
+        config: serde_json::from_value(
+            json!({"min_ticks":duration.min_ticks,"max_ticks":duration.max_ticks}),
+        )
+        .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?,
+        semantic_version: "clipmill.editorial.validate.v2".into(),
+    })
+    .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?;
+    let staging = match media::prepare_or_hit(artifacts, recipe).await? {
+        media::Prepared::Hit(id) => return Ok(id),
+        media::Prepared::Staged(s) => s,
+    };
+    let id = staging.id().clone();
+    let result = async {
+        let path = media::artifact_path("candidates.json")?;
+        let report = media::artifact_path("validation.json")?;
+        media::write_canonical_json(
+            &staging,
+            &path,
+            &serde_json::to_value(validated.candidates)
+                .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?,
+        )?;
+        media::write_canonical_json(&staging, &report, &validated.report)?;
+        media::commit_staging(artifacts, id.clone(), vec![path, report]).await
+    }
+    .await;
+    if result.is_err() {
+        media::abandon_staging(artifacts, id).await;
+    }
+    progress.set("stages", 1, 1);
+    result
+}
 
 /// Read the index and the transcript it was built over, and publish the
 /// windows cut from them.
@@ -160,6 +266,7 @@ mod tests {
         EditorialStagePayloadV1 {
             key_version: EDITORIAL_STAGE_KEY_VERSION.to_owned(),
             stage: KIND_WINDOWS.to_owned(),
+            ..Default::default()
         }
     }
 

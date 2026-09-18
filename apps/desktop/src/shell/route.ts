@@ -50,7 +50,13 @@ export type Route =
    * a recording was shown a different recording. A section id has nowhere to
    * put that, so it goes here.
    */
-  | { readonly kind: 'section'; readonly sectionId: string; readonly projectId?: string }
+  | {
+      readonly kind: 'section';
+      readonly sectionId: string;
+      readonly projectId?: string;
+      readonly sourceId?: string;
+      readonly jobId?: string;
+    }
   /**
    * One analysis run, watched.
    *
@@ -104,7 +110,7 @@ export type Route =
   | { readonly kind: 'editor'; readonly clip: ClipRef }
   | { readonly kind: 'export'; readonly clip: ClipRef };
 
-export const DEFAULT_ROUTE: Route = { kind: 'section', sectionId: 'models' };
+export const DEFAULT_ROUTE: Route = { kind: 'section', sectionId: 'library' };
 
 export function sectionRoute(sectionId: string, projectId?: string): Route {
   return projectId === undefined
@@ -177,4 +183,16 @@ export function exportRoute(clip: ClipRef): Route {
 /** The clip a route is about, when it is about one. */
 export function clipOf(route: Route): ClipRef | null {
   return route.kind === 'editor' || route.kind === 'export' ? route.clip : null;
+}
+
+/** Return to the same recording and analysis, even when a newer run exists. */
+export function resultsRouteFor(route: Route): Route {
+  const selection = route.kind === 'editor' || route.kind === 'export' ? route.clip : route;
+  return {
+    kind: 'section',
+    sectionId: 'results',
+    ...('projectId' in selection && selection.projectId ? { projectId: selection.projectId } : {}),
+    ...('sourceId' in selection && selection.sourceId ? { sourceId: selection.sourceId } : {}),
+    ...('jobId' in selection && selection.jobId ? { jobId: selection.jobId } : {}),
+  };
 }

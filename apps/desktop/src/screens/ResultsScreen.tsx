@@ -17,7 +17,7 @@
  * or reopened if the clip already had one — is named in full to the editor:
  * project, source, run, candidate, document. Nothing downstream has to find it.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
@@ -27,6 +27,7 @@ import { useResults } from '../results/useResults.js';
 import type { ClipRef } from '../shell/route.js';
 import { ClipInspector } from './ClipInspector.js';
 import { Results } from './Results.js';
+import { Skeleton } from '../components/ui/skeleton.js';
 
 export interface ResultsScreenProps {
   /** Set when the route is the Inspector, null on the board. */
@@ -62,22 +63,56 @@ export function ResultsScreen({
 }: ResultsScreenProps) {
   const [projects, setProjects] = useState<readonly Project[]>([]);
   /** A pick made in the header, which outranks the route until the route moves. */
+  const [projectReload, setProjectReload] = useState(0);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsProblem, setProjectsProblem] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
+    setProjectsLoading(true);
     void api
       .listProjects()
-      .then(setProjects)
-      .catch(() => setProjects([]));
-  }, [api]);
+      .then((next) => {
+        if (active) {
+          setProjects(next);
+          setProjectsProblem(null);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setProjects([]);
+          setProjectsProblem(cause instanceof Error ? cause.message : String(cause));
+        }
+      })
+      .finally(() => {
+        if (active) setProjectsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, projectReload]);
 
   // A new route is a new intent, so it clears a pick made under the old one.
   useEffect(() => {
     setPicked(null);
   }, [projectId]);
 
+  const intent = `${projectId ?? ''}/${sourceId ?? ''}/${jobId ?? ''}/${candidateId ?? ''}/${picked ?? ''}`;
+  const intentRef = useRef(intent);
+  intentRef.current = intent;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const wanted = picked ?? projectId;
-  const project = projects.find((candidate) => candidate.projectId === wanted) ?? newest(projects);
+  const project = wanted
+    ? projects.find((candidate) => candidate.projectId === wanted)
+    : newest(projects);
   // A pick from the header is a different recording, so the source and run the
   // route named belong to the project it named and not to the one picked.
   const routed = picked === null || picked === projectId;
@@ -118,11 +153,11 @@ export function ResultsScreen({
    * edit was cut from the run that minted its candidate, which may not be
    * the run the board is showing — and the board's otherwise.
    */
-  const clipFor = (row: ClipRow, docId: string, jobId?: string): ClipRef | null => {
+  const clipFor = (row: ClipRow, docId: string, documentJobId?: string): ClipRef | null => {
     if (!project || !snapshot.source) {
       return null;
     }
-    const run = jobId || snapshot.run?.jobId;
+    const run = documentJobId || snapshot.run?.jobId;
     return {
       projectId: project.projectId,
       docId,
@@ -133,9 +168,9 @@ export function ResultsScreen({
     };
   };
 
-  const edit = (row: ClipRow, docId: string, jobId?: string) => {
-    const clip = clipFor(row, docId, jobId);
-    if (clip) {
+  const edit = (row: ClipRow, docId: string, documentJobId?: string) => {
+    const clip = clipFor(row, docId, documentJobId);
+    if (clip && mounted.current && intentRef.current === intent) {
       onEdit(clip);
     }
   };
@@ -156,6 +191,14 @@ export function ResultsScreen({
       solveFor(candidateId);
     }
   }, [candidateId, solveFor]);
+
+  if (candidateId && (projectsLoading || results.loading))
+    return (
+      <div className="workspace-page" aria-label="Loading clip" aria-busy="true">
+        <Skeleton className="h-10 w-2/3" />
+        <Skeleton className="min-h-0 flex-1" />
+      </div>
+    );
 
   if (candidateId) {
     const opened = snapshot.rows.find((row) => row.candidateId === candidateId);
@@ -179,10 +222,14 @@ export function ResultsScreen({
           }
         }}
         onUseAlternative={() => {
-          void results.direct(candidateId, 'alternative');
+          void results.direct(candidateId, 'alternative').then((directed) => {
+            if (directed && opened) edit(opened, directed.docId, directed.jobId);
+          });
         }}
         onTakeCut={(startTicks, endTicks) => {
-          void results.direct(candidateId, 'exact', { startTicks, endTicks });
+          void results.direct(candidateId, 'exact', { startTicks, endTicks }).then((directed) => {
+            if (directed && opened) edit(opened, directed.docId, directed.jobId);
+          });
         }}
         onEdit={
           opened?.docId
@@ -203,10 +250,20 @@ export function ResultsScreen({
 
   return (
     <Results
-      loading={results.loading}
+      loading={results.loading || projectsLoading}
+      notice={results.notice}
       rows={snapshot.rows}
       summary={snapshot.summary}
-      problem={snapshot.problem}
+      problem={
+        projectsProblem
+          ? { kind: 'unreadable', detail: projectsProblem }
+          : wanted && !project
+            ? {
+                kind: 'unreadable',
+                detail: 'This project is no longer available. Choose another project to continue.',
+              }
+            : snapshot.problem
+      }
       sourceName={sourceName}
       run={snapshot.run}
       tileUrl={results.tileUrl}
@@ -217,7 +274,10 @@ export function ResultsScreen({
       onApproveMany={(ids) => {
         void results.approveMany(ids);
       }}
-      onReload={results.reload}
+      onReload={() => {
+        if (projectsProblem || (wanted && !project)) setProjectReload((value) => value + 1);
+        else results.reload();
+      }}
       onInspect={inspect}
       onEdit={(id) => {
         const row = snapshot.rows.find((candidate) => candidate.candidateId === id);

@@ -78,10 +78,11 @@ export interface ExportScreenProps {
   readonly clip: ClipRef | null;
   /** Open a different clip here — from the list this screen offers. */
   readonly onOpen: (clip: ClipRef) => void;
+  readonly onEdit?: (clip: ClipRef) => void;
   readonly api?: ShellApi;
 }
 
-export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProps) {
+export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportScreenProps) {
   const projectId = clip?.projectId ?? null;
   const docId = clip?.docId ?? null;
   const [durationTicks, setDurationTicks] = useState(0);
@@ -285,6 +286,7 @@ export function ExportScreen({ clip, onOpen, api = daemonApi }: ExportScreenProp
 
   return (
     <Export
+      onEdit={clip && onEdit ? () => onEdit(clip) : undefined}
       docId={docId}
       labels={clip?.labels ?? null}
       picker={clip === null ? <ClipList onOpen={onOpen} api={api} /> : null}

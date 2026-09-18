@@ -83,7 +83,7 @@ export function ProjectCard({
       // The design's restrained hover: lifted 2px, the surface a step brighter,
       // the shadow a step deeper. Every value comes from a token, so a change to
       // the glass scale moves the resting and hovered states together.
-      className="glass block rounded-[var(--cm-radius-card)] p-3 text-left transition-[transform,background-color,box-shadow] hover:-translate-y-0.5 hover:bg-[var(--cm-glass-elevated)] hover:shadow-[0_18px_48px_rgba(0,0,0,0.28)] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      className="glass block rounded-[var(--cm-radius-card)] p-3 text-left transition-[transform,background-color,box-shadow] hover:bg-[var(--cm-glass-elevated)] hover:border-[var(--cm-text-muted)] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       <div className="relative">
         <Thumbnail src={entry.thumbnail} duration={formatDuration(entry.sourceMap)} />

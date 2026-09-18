@@ -7,7 +7,7 @@
  * a screen shows is always what the store holds rather than what the screen
  * hoped it wrote.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { ClipCut, ClipDecision, CropPath, DirectedClip } from '../daemon/client.js';
@@ -78,18 +78,50 @@ export function useResults(
   const [crop, setCrop] = useState<CropPath | null>(null);
   const [cues, setCues] = useState<readonly OverlayCue[]>([]);
 
+  const loadSequence = useRef(0);
+  const cropSequence = useRef(0);
+  const contextSequence = useRef(0);
   const reload = useCallback(() => {
+    const sequence = ++loadSequence.current;
     if (!projectId) {
+      setSnapshot(EMPTY_SNAPSHOT);
+      setLoading(false);
       return;
     }
     setLoading(true);
     void loader
       .load(projectId, sourceId, jobId)
-      .then(setSnapshot)
-      .finally(() => setLoading(false));
+      .then((next) => {
+        if (sequence === loadSequence.current) setSnapshot(next);
+      })
+      .catch((cause: unknown) => {
+        if (sequence === loadSequence.current)
+          setSnapshot({
+            ...EMPTY_SNAPSHOT,
+            problem: {
+              kind: 'unreadable',
+              detail: cause instanceof Error ? cause.message : String(cause),
+            },
+          });
+      })
+      .finally(() => {
+        if (sequence === loadSequence.current) setLoading(false);
+      });
   }, [loader, projectId, sourceId, jobId]);
 
-  useEffect(reload, [reload]);
+  useEffect(() => {
+    setSnapshot(EMPTY_SNAPSHOT);
+    setCrop(null);
+    setCues([]);
+    setNotice(null);
+    setBusy(false);
+    reload();
+    return () => {
+      loadSequence.current++;
+      cropSequence.current++;
+      contextSequence.current++;
+    };
+  }, [reload]);
 
   const proxyUrl = useMemo(() => {
     if (!projectId || !snapshot.proxyArtifactId) {
@@ -124,6 +156,9 @@ export function useResults(
    */
   const solveFor = useCallback(
     (candidateId: string) => {
+      const sequence = ++cropSequence.current;
+      setCrop(null);
+      setCues([]);
       const row = snapshot.rows.find((candidate) => candidate.candidateId === candidateId);
       const faceTrack = snapshot.faceTrackArtifactId;
       if (!projectId || !row || !faceTrack) {
@@ -132,8 +167,12 @@ export function useResults(
       }
       void api
         .solveCropPath(projectId, faceTrack, row.startTicks, row.endTicks)
-        .then(setCrop)
-        .catch(() => setCrop(null));
+        .then((next) => {
+          if (sequence === cropSequence.current) setCrop(next);
+        })
+        .catch(() => {
+          if (sequence === cropSequence.current) setCrop(null);
+        });
     },
     [api, projectId, snapshot],
   );
@@ -161,6 +200,7 @@ export function useResults(
       if (!projectId || !snapshot.source) {
         return null;
       }
+      const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
       try {
@@ -176,17 +216,18 @@ export function useResults(
           variation: true,
           ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
         });
+        if (context !== contextSequence.current) return null;
         took(directed);
         reload();
         return directed;
       } catch (error) {
-        setNotice((error as Error).message);
+        if (context === contextSequence.current) setNotice((error as Error).message);
         return null;
       } finally {
-        setBusy(false);
+        if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, took],
+    [api, projectId, reload, snapshot.source, snapshot.run, took],
   );
 
   const decide = useCallback(
@@ -194,6 +235,7 @@ export function useResults(
       if (!projectId || !snapshot.source) {
         return null;
       }
+      const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
       try {
@@ -213,21 +255,23 @@ export function useResults(
             // its transcript — not whichever run published each stage last.
             ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
           });
+          if (context !== contextSequence.current) return null;
           took(directed);
         } else {
           await api.setClipDecision(projectId, snapshot.source.sourceId, candidateId, decision);
+          if (context !== contextSequence.current) return null;
           setNotice(decision === 'kept' ? 'Kept for later.' : 'Rejected.');
         }
         reload();
         return directed;
       } catch (error) {
-        setNotice((error as Error).message);
+        if (context === contextSequence.current) setNotice((error as Error).message);
         return null;
       } finally {
-        setBusy(false);
+        if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, took],
+    [api, projectId, reload, snapshot.source, snapshot.run, took],
   );
 
   const approveMany = useCallback(
@@ -235,6 +279,7 @@ export function useResults(
       if (!projectId || !snapshot.source || candidateIds.length === 0) {
         return;
       }
+      const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
       const failures: string[] = [];
@@ -258,6 +303,9 @@ export function useResults(
             failures.push((error as Error).message);
           }
         }
+        // The requested batch may complete in the background, but its result
+        // belongs to that recording and must not reload a different project.
+        if (context !== contextSequence.current) return;
         const done = candidateIds.length - failures.length;
         setNotice(
           failures.length === 0
@@ -266,10 +314,10 @@ export function useResults(
         );
         reload();
       } finally {
-        setBusy(false);
+        if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source],
+    [api, projectId, reload, snapshot.source, snapshot.run],
   );
 
   return {

@@ -8,7 +8,13 @@ setup:
     ./tools/fetch-ffmpeg.sh
     cd workers/sdk && uv sync
     cd workers/echo && uv sync
+    cd workers/vad && uv sync
+    cd workers/asr-whispercpp && uv sync
+    cd workers/align && uv sync
+    cd workers/speech-mlx && uv sync
     cd workers/shots && uv sync
+    cd workers/faces && uv sync
+    cd workers/editorial && uv sync
     cd eval/harness && uv sync
     pnpm install
 
@@ -30,6 +36,7 @@ lint:
 # Every test suite, matching CI.
 test:
     cargo test --workspace
+    python3 -m unittest discover -s tools/security/tests
     cd workers/sdk && uv run pytest
     cd workers/echo && uv run pytest
     cd workers/vad && uv run pytest
@@ -37,6 +44,8 @@ test:
     cd workers/align && uv run pytest
     cd workers/speech-mlx && uv run pytest
     cd workers/shots && uv run pytest
+    cd workers/faces && uv run pytest
+    cd workers/editorial && uv run pytest
     cd eval/harness && uv run pytest
     pnpm typecheck
     pnpm test
@@ -138,15 +147,16 @@ gate-evidence iterations="1":
 gate-discovery iterations="1":
     ./tools/drills/discovery-drill.sh {{iterations}}
 
-# Milestone 2 coverage, step 1: the windows an editorial model reads and the
-# contracts everything it will say is held to. The cut against word counts
-# written by hand — a sentence longer than the target, an overlap wider than a
-# window, a topic too early to close on — then every committed index cut
-# against a reviewed golden, the guarantees a proposer relies on, the five
-# editorial contracts in three languages, and the stage's registration, input
-# checks, and keying in the daemon.
+# Editorial contracts and failure cases; needs no model weights.
+gate-editorial-unit iterations="1":
+    ./tools/drills/editorial-drill.sh {{iterations}}
+
+# Real pinned Qwen, daemon, workers, review, and immutable MP4/SRT/VTT export.
+# Uses the existing synthesized talk (created by gate-milestone-1), not a benchmark.
 gate-editorial iterations="1":
     ./tools/drills/editorial-drill.sh {{iterations}}
+    cargo build -p clipmilld --bin clipmilld
+    workers/editorial/.venv/bin/python tools/drills/editorial-live.py
 
 # W19 coverage: what a clip is worth, where it is cut, which to show, and the
 # one job that produces all of it. The score card against cards written by hand

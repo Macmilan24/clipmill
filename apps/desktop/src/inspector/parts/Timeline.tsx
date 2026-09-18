@@ -17,7 +17,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import type { Peaks } from '../../results/loader.js';
 import { TICKS_PER_SECOND } from '../../results/model.js';
-import { timecode } from './Player.js';
+import { FRAME_TICKS, timecode } from './Player.js';
 
 export type Handle = 'in' | 'out';
 
@@ -252,39 +252,62 @@ export function Timeline({
               onPointerCancel={release}
               onKeyDown={nudge(edge)}
               aria-label={`${edge === 'in' ? 'In' : 'Out'} point at ${timecode(ticks)}. Arrow keys move it to the next legal edge.`}
-              className="absolute inset-y-0 w-2.5 cursor-col-resize touch-none transition-[width,background] hover:w-3.5"
+              className="absolute inset-y-0 z-10 w-6 cursor-col-resize touch-none"
               style={{
                 left: at(ticks),
-                marginLeft: edge === 'out' ? '-0.625rem' : 0,
-                background: 'var(--cm-accent)',
-                borderRadius: edge === 'in' ? '3px 0 0 3px' : '0 3px 3px 0',
+                marginLeft: edge === 'out' ? '-1.5rem' : 0,
               }}
             >
-              <span aria-hidden className="mx-auto block h-4 w-px bg-white/60" />
+              <span
+                aria-hidden
+                className={`absolute inset-y-0 flex w-2.5 items-center justify-center rounded-sm bg-[var(--cm-accent)] ${edge === 'in' ? 'left-0' : 'right-0'}`}
+              >
+                <span className="h-4 w-px bg-white/70" />
+              </span>
             </button>
           );
         })}
 
-        <span
+        <button
+          type="button"
+          role="slider"
+          aria-label="Preview playhead"
+          aria-valuemin={startTicks}
+          aria-valuemax={endTicks}
+          aria-valuenow={positionTicks}
+          aria-valuetext={timecode(positionTicks)}
           onPointerDown={grab('playhead')}
-          className="absolute inset-y-0 z-10 w-0.5 cursor-col-resize"
-          style={{
-            left: at(positionTicks),
-            background: 'var(--cm-warning-ink)',
-            boxShadow: '0 0 8px color-mix(in srgb, var(--cm-warning-ink) 70%, transparent)',
+          onPointerMove={onPointerMove}
+          onPointerUp={release}
+          onPointerCancel={release}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+              event.preventDefault();
+              onScrub(
+                Math.max(
+                  startTicks,
+                  Math.min(
+                    endTicks,
+                    positionTicks + (event.key === 'ArrowLeft' ? -FRAME_TICKS : FRAME_TICKS),
+                  ),
+                ),
+              );
+            } else if (event.key === 'Home' || event.key === 'End') {
+              event.preventDefault();
+              onScrub(event.key === 'Home' ? startTicks : endTicks);
+            }
           }}
-        />
+          className="absolute inset-y-0 z-20 w-3 -translate-x-1/2 cursor-col-resize touch-none"
+          style={{ left: at(positionTicks) }}
+        >
+          <span className="absolute inset-y-0 left-1/2 w-px bg-[var(--cm-warning-ink)]" />
+        </button>
       </div>
 
       <figcaption className="mono flex items-center justify-between text-[10px] text-[var(--cm-text-muted)]">
         <span>IN {timecode(startTicks)}</span>
         <span className="text-[var(--cm-warning-ink)]">
           {((endTicks - startTicks) / TICKS_PER_SECOND).toFixed(2)}s
-          {latticeStarts.length > 0 && (
-            <span className="ml-2 text-[var(--cm-text-muted)]">
-              {latticeStarts.length}×{latticeEnds.length} legal pairs
-            </span>
-          )}
         </span>
         <span>OUT {timecode(endTicks)}</span>
       </figcaption>

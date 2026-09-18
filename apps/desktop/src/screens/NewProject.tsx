@@ -3,7 +3,6 @@ import {
   Check,
   FileVideo,
   Folder,
-  Globe,
   Minus,
   Plus,
   ShieldCheck,
@@ -28,7 +27,6 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
-import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 import { shortenPath } from '../analysis/model.js';
@@ -211,9 +209,33 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
   // not installed blocks the button, and a worker that is not connected is
   // said out loud, since the run would sit on that stage until one is.
   const { readiness, problem: readinessProblem, refresh } = useReadiness(connected, importer.api);
+  const route = settings.editorialRoute ?? 'local';
+  const routeReadiness = readiness
+    ? {
+        ...readiness,
+        stages: readiness.stages.filter(
+          (s) =>
+            !s.stage.startsWith('editorial-') ||
+            (route === 'local'
+              ? !s.stage.endsWith('-cloud')
+              : route === 'cloud'
+                ? s.stage.endsWith('-cloud') || s.stage === 'editorial-look'
+                : false),
+        ),
+      }
+    : null;
+  const cloudBlocker =
+    route === 'cloud' &&
+    (!settings.cloudConsent ||
+      !Number.isFinite(settings.cloudBudgetUsd ?? 2) ||
+      (settings.cloudBudgetUsd ?? 2) < 0.01 ||
+      (settings.cloudBudgetUsd ?? 2) > 100)
+      ? 'Confirm transcript sharing and set a run budget between $0.01 and $100.'
+      : null;
   const blocked =
+    cloudBlocker ??
     blockingReason(settings, chosen !== null, busy) ??
-    (connected ? submissionBlocker(readiness) : null);
+    (connected ? submissionBlocker(routeReadiness) : null);
 
   const choose = async (): Promise<void> => {
     setBusy(true);
@@ -255,7 +277,7 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
             New Project
           </h1>
           <p className={cn('mt-1 text-meta', SECONDARY)}>
-            Import one long-form recording and say what a strong clip means for this run.
+            Find complete moments in an English podcast or interview with local Qwen 3.5.
           </p>
         </div>
       </div>
@@ -267,23 +289,26 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
         </Alert>
       )}
 
-      <div className="grid grid-cols-[minmax(0,744fr)_minmax(0,400fr)] items-start gap-4">
-        <Card className="glass rounded-2xl">
+      <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-5">
+        <Card className="glass rounded-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5 text-section-title">
               <FileVideo className="size-4" /> Source footage
             </CardTitle>
             <StatusBadge tone="success">
               <ShieldCheck className="size-3.5" />
-              Stays on this device
+              {route === 'cloud'
+                ? 'Transcript sharing enabled for this run'
+                : 'Stays on this device'}
             </StatusBadge>
           </CardHeader>
           <CardContent>
-            <div className="rounded-[var(--cm-radius-panel)] border border-dashed border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-4 py-6 text-center">
+            <div className="rounded-[var(--cm-radius-panel)] border border-dashed border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-5 py-10 text-center">
               <FileVideo className={cn('mx-auto size-7', MUTED)} />
               <p className="mt-2 text-body font-(--cm-weight-label)">Choose a local file</p>
               <p className={cn('mt-0.5 text-meta', SECONDARY)}>
-                It is read where it sits and never copied off this machine.
+                Video and audio are processed on this device. Cloud-assisted mode sends transcript
+                text only.
               </p>
               <Button
                 variant="outline"
@@ -334,11 +359,73 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
         </Card>
 
         <div className="flex flex-col gap-4">
-          <Card className="glass rounded-2xl">
+          <Card className="glass rounded-xl">
             <CardHeader>
               <CardTitle className="text-section-title">Analysis setup</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 space-y-3">
+                <Label htmlFor="editorial-route">Editorial analysis</Label>
+                <select
+                  id="editorial-route"
+                  value={route}
+                  disabled={busy}
+                  className="w-full rounded border p-2"
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      editorialRoute: event.target.value as 'local' | 'cloud' | 'heuristic',
+                      cloudConsent: false,
+                    }))
+                  }
+                >
+                  <option value="local">Local · Qwen 3.5</option>
+                  <option value="cloud">Cloud-assisted · Anthropic Claude Sonnet 4.6</option>
+                  <option value="heuristic">Heuristic baseline · no editorial model</option>
+                </select>
+                {route === 'cloud' && (
+                  <div className="space-y-2 text-sm">
+                    <p>
+                      Only transcript text and clip references go to Anthropic. Video, audio, and
+                      sampled frames stay local.
+                    </p>
+                    <p>
+                      Cost example: a call with 10,000 input tokens and 2,000 output tokens costs
+                      about $0.06. Each transcript window and candidate needs a call, so the total
+                      depends on the recording. The run stops before a call would exceed your
+                      budget.
+                    </p>
+                    <Label htmlFor="cloud-budget">Maximum spend for this run (USD)</Label>
+                    <Input
+                      id="cloud-budget"
+                      type="number"
+                      min="0.01"
+                      max="100"
+                      step="0.25"
+                      value={settings.cloudBudgetUsd ?? 2}
+                      onChange={(event) =>
+                        setSettings((current) => ({
+                          ...current,
+                          cloudBudgetUsd: Number(event.target.value),
+                        }))
+                      }
+                    />
+                    <Label>
+                      <Checkbox
+                        checked={settings.cloudConsent ?? false}
+                        onCheckedChange={(checked) =>
+                          setSettings((current) => ({ ...current, cloudConsent: checked === true }))
+                        }
+                      />
+                      Allow transcript sharing with Anthropic for this run
+                    </Label>
+                    <p className="text-xs">
+                      Store your API key in macOS Keychain Access: service dev.clipmill.anthropic,
+                      account clipmill. No key is stored in this screen.
+                    </p>
+                  </div>
+                )}
+              </div>
               <RadioGroup
                 value={settings.presetId}
                 onValueChange={(presetId) => {
@@ -438,25 +525,10 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
               </div>
 
               <Separator className="my-3 bg-[var(--cm-glass-border)]" />
-
-              {/* Off and not switchable: a statement of what this build does,
-                  not a preference. There is no network broker to turn on. */}
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2">
-                  <Globe className="size-4 shrink-0 text-[var(--color-outbound)]" />
-                  <span className="min-w-0">
-                    <span className="block text-body">Use cloud models</span>
-                    <span className={cn('block text-meta', SECONDARY)}>
-                      Nothing leaves this device. No cloud path exists to enable.
-                    </span>
-                  </span>
-                </span>
-                <Switch checked={false} disabled aria-label="Use cloud models" />
-              </div>
             </CardContent>
           </Card>
 
-          <Card className="glass rounded-2xl">
+          <Card className="glass rounded-xl">
             <CardHeader>
               <CardTitle className="text-section-title">Rights &amp; run</CardTitle>
             </CardHeader>
@@ -512,7 +584,11 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
           </Card>
 
           {connected && (
-            <ReadinessCard readiness={readiness} problem={readinessProblem} onRefresh={refresh} />
+            <ReadinessCard
+              readiness={routeReadiness}
+              problem={readinessProblem}
+              onRefresh={refresh}
+            />
           )}
         </div>
       </div>

@@ -34,8 +34,8 @@ export const PRESETS: readonly Preset[] = [
     id: 'short',
     label: 'Short',
     detail: 'Fast hooks with one clear payoff',
-    minSeconds: 15,
-    maxSeconds: 60,
+    minSeconds: 20,
+    maxSeconds: 90,
   },
   {
     id: 'extended',
@@ -96,6 +96,9 @@ export interface ImportSettings {
   readonly minSeconds: number;
   readonly maxSeconds: number;
   readonly count: number;
+  readonly editorialRoute?: 'local' | 'cloud' | 'heuristic';
+  readonly cloudBudgetUsd?: number;
+  readonly cloudConsent?: boolean;
   readonly language: string;
   readonly rightsAttested: boolean;
 }

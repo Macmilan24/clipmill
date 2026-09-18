@@ -137,11 +137,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1 libglib2.0-0t64
-      - name: pytest (all projects)
+      # Editorial MLX/Torch dependencies are already marked macOS arm64 in
+      # its pyproject; model-free contract/recovery tests also run on Linux.
+      - name: Python license policy regressions
+        run: python3 -m unittest discover -s tools/security/tests
+      - name: pytest and installed license policy (all projects)
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial eval/harness; do
             echo "==> $project"
-            (cd "$project" && uv sync --quiet && uv run pytest)
+            uv sync --frozen --quiet --project "$project"
+            (cd "$project" && uv run --frozen pytest)
+            uv run --frozen --project "$project" python tools/security/check-python-licenses.py --child
           done
 
   kill-drill:
@@ -775,7 +781,7 @@ jobs:
           enable-cache: true
       - name: Sync every frozen Python environment
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Audit every Python lockfile
@@ -814,7 +820,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate

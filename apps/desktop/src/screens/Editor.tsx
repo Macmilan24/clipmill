@@ -13,11 +13,20 @@
  * from the same plan, so a playhead is in the same place on all four by
  * construction rather than by four pieces of code agreeing.
  */
-import { ChevronLeft, ChevronRight, Pause, Play, Redo2, Undo2, Upload } from 'lucide-react';
-import type { JSX, ReactNode } from 'react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
+  Redo2,
+  Undo2,
+  Upload,
+} from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Badge } from '../components/ui/badge.js';
 import { Button } from '../components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
@@ -99,6 +108,7 @@ export function Editor({
   const video = useRef<HTMLVideoElement>(null);
   const [playhead, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [playbackProblem, setPlaybackProblem] = useState<string | null>(null);
   // What is drawn is always a frame the program has. A trim can shorten the
   // program under a playhead that did not move, and between that render and
   // the effect below that moves it back, a frame past the end would find no
@@ -110,6 +120,7 @@ export function Editor({
   useEffect(() => {
     setFrame(0);
     setPlaying(false);
+    setPlaybackProblem(null);
   }, [docId]);
 
   /**
@@ -151,19 +162,49 @@ export function Editor({
 
   const step = useCallback((by: number) => seek(frame + by), [frame, seek]);
 
-  // Arrow keys step a frame at a time, which is the transport an editor
-  // reaches for when a cut is one frame wrong.
+  const togglePlayback = useCallback(() => {
+    const element = video.current;
+    if (!element || !plan) return;
+    setPlaybackProblem(null);
+    if (!element.paused) {
+      element.pause();
+    } else {
+      if (frame >= plan.frameCount - 1) seek(0);
+      void element.play().catch(() => {
+        setPlaying(false);
+        setPlaybackProblem('Playback could not start. Try playing the clip again.');
+      });
+    }
+  }, [frame, plan, seek]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowLeft') {
-        step(-1);
-      } else if (event.key === 'ArrowRight') {
-        step(1);
+      const target = event.target;
+      // Text, range inputs and Radix controls own their keyboard interactions.
+      if (
+        target instanceof Element &&
+        target.closest(
+          'input, textarea, select, button, [role="tab"], [role="slider"], [contenteditable="true"]',
+        )
+      )
+        return;
+      if (event.defaultPrevented || event.altKey || !plan) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (!busy && (event.shiftKey ? canRedo : canUndo)) (event.shiftKey ? onRedo : onUndo)();
+      } else if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        ['ArrowLeft', 'ArrowRight', ' '].includes(event.key)
+      ) {
+        event.preventDefault();
+        if (event.key === ' ') togglePlayback();
+        else step((event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 10 : 1));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [step]);
+  }, [step, plan, togglePlayback, busy, canRedo, canUndo, onRedo, onUndo]);
 
   const cue = useMemo(() => (plan ? cueAt(plan, frame) : null), [plan, frame]);
   const highlighted = useMemo(
@@ -206,6 +247,19 @@ export function Editor({
     [plan, segment, seek],
   );
 
+  // Keep the playhead and captions in step with decoded video, not the browser's
+  // coarse timeupdate event (usually only a few events each second).
+  useEffect(() => {
+    if (!playing) return;
+    let request = 0;
+    const tick = () => {
+      if (video.current) onProxyTime(video.current.currentTime);
+      request = requestAnimationFrame(tick);
+    };
+    request = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(request);
+  }, [playing, onProxyTime]);
+
   if (loading) {
     return <div className="p-8 text-sm text-[var(--cm-ink-2)]">Fetching the preview plan…</div>;
   }
@@ -238,63 +292,115 @@ export function Editor({
   const proxyUrl = segment ? (proxyUrls.get(segment.sourceFingerprint) ?? null) : null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-6">
-      <div className="flex min-h-0 flex-1 items-start justify-center gap-6">
-        <Stage
-          proxyUrl={proxyUrl}
-          videoRef={video}
-          crop={crop}
-          source={source}
-          lines={cue ? cueLines(cue) : []}
-          cue={cue}
-          highlighted={highlighted}
-          startSeconds={proxySecondsAt(plan, frame)}
-          onProxyTime={onProxyTime}
-          onEnded={() => setPlaying(false)}
-        />
-        <aside className="flex w-[340px] shrink-0 flex-col rounded-xl border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)]">
-          <div className="flex items-center justify-between border-b border-[var(--cm-line-1)] p-3">
-            <span className="flex min-w-0 flex-col gap-0.5">
-              {labels && (
-                <span className="truncate text-xs text-[var(--cm-ink-1)]" data-testid="clip-name">
-                  {[labels.project, labels.clip].filter(Boolean).join(' · ')}
-                </span>
-              )}
-              <span className="flex items-center gap-2">
-                <Badge variant="outline">r{plan.revision}</Badge>
-                <span className="truncate font-mono text-[10px] text-[var(--cm-ink-3)]">
-                  {docId}
-                </span>
-              </span>
-            </span>
-            <span className="flex gap-1">
-              {onExport && (
-                <Button size="sm" variant="ghost" onClick={onExport} aria-label="Export this clip">
-                  <Upload className="size-4" />
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!canUndo || busy}
-                onClick={onUndo}
-                aria-label="Undo"
-              >
-                <Undo2 className="size-4" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!canRedo || busy}
-                onClick={onRedo}
-                aria-label="Redo"
-              >
-                <Redo2 className="size-4" />
-              </Button>
+    <div className="editor-workspace">
+      <header className="workspace-heading editor-heading">
+        <div className="flex min-w-0 items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onOpenResults}
+            aria-label="Back to results"
+            title="Back to results"
+          >
+            <ArrowLeft />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="truncate text-[15px] font-semibold" data-testid="clip-name">
+              {labels?.clip ?? 'Clip editor'}
+            </h1>
+            <p className="workspace-subtitle truncate">
+              {labels?.project ?? 'Your edit'} <span aria-hidden>·</span>{' '}
+              {timecode(plan, plan.frameCount)}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span
+            role="status"
+            className="flex items-center gap-1.5 text-[11px] text-[var(--cm-text-secondary)]"
+          >
+            {!busy && <Check className="size-3.5" />}{' '}
+            {busy ? 'Saving…' : `Saved · r${plan.revision}`}
+          </span>
+          <div className="flex border-x border-[var(--cm-glass-border)] px-2">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              disabled={!canUndo || busy}
+              onClick={onUndo}
+              aria-label="Undo"
+              title="Undo (⌘/Ctrl Z)"
+            >
+              <Undo2 />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              disabled={!canRedo || busy}
+              onClick={onRedo}
+              aria-label="Redo"
+              title="Redo (⌘/Ctrl Shift Z)"
+            >
+              <Redo2 />
+            </Button>
+          </div>
+          {onExport && (
+            <Button size="sm" onClick={onExport} disabled={busy} aria-label="Export this clip">
+              <Upload className="size-4" />
+              Export clip
+            </Button>
+          )}
+        </div>
+      </header>
+      {(problem || playbackProblem) && (
+        <p
+          role="alert"
+          className="border-b border-[var(--cm-glass-border)] bg-[var(--cm-glass)] px-6 py-2 text-xs text-[var(--cm-danger-ink)]"
+        >
+          {problem || playbackProblem}
+        </p>
+      )}
+      <div className="editor-body">
+        <section className="editor-viewer" aria-label="Clip preview">
+          <div className="flex items-center justify-between text-[11px] text-[var(--cm-text-muted)]">
+            <span>Preview</span>
+            <span className="mono">
+              {plan.width} × {plan.height} · {(plan.rateNum / plan.rateDen).toFixed(2)} fps
             </span>
           </div>
-          <Tabs defaultValue="reframe" className="min-h-0 flex-1">
-            <TabsList className="m-3 w-[calc(100%-1.5rem)]">
+          <div className="editor-stage-wrap">
+            <Stage
+              proxyUrl={proxyUrl}
+              videoRef={video}
+              crop={crop}
+              source={source}
+              lines={cue ? cueLines(cue) : []}
+              cue={cue}
+              highlighted={highlighted}
+              startSeconds={proxySecondsAt(plan, frame)}
+              onProxyTime={onProxyTime}
+              onPlaying={setPlaying}
+              onError={() => {
+                setPlaying(false);
+                setPlaybackProblem(
+                  'The preview could not be loaded. Reopen the clip to try again.',
+                );
+              }}
+            />
+          </div>
+          <Transport
+            plan={plan}
+            frame={frame}
+            playing={playing}
+            disabled={!proxyUrl}
+            onStep={step}
+            onSeek={seek}
+            onToggle={togglePlayback}
+          />
+        </section>
+        <aside className="editor-properties" aria-label="Edit controls">
+          <Tabs defaultValue="captions" className="flex min-h-0 flex-1 flex-col">
+            <TabsList className="m-3 w-[calc(100%-1.5rem)] shrink-0">
               <TabsTrigger value="reframe">Reframe</TabsTrigger>
               <TabsTrigger value="captions">Captions</TabsTrigger>
               <TabsTrigger value="audio">Audio</TabsTrigger>
@@ -364,39 +470,21 @@ export function Editor({
                     Trim end here
                   </Button>
                 </div>
-                {problem && <p className="text-xs text-[var(--cm-danger-ink)]">{problem}</p>}
               </div>
             </TabsContent>
           </Tabs>
         </aside>
       </div>
 
-      <Transport
-        plan={plan}
-        frame={frame}
-        playing={playing}
-        onStep={step}
-        onSeek={seek}
-        onToggle={() => {
-          const element = video.current;
-          if (!element) {
-            return;
-          }
-          if (playing) {
-            element.pause();
-          } else {
-            // Playing from the program's end starts it over rather than
-            // running into the recording past the clip.
-            if (frame >= plan.frameCount - 1) {
-              seek(0);
-            }
-            void element.play();
-          }
-          setPlaying(!playing);
-        }}
-      />
-
-      <Lanes plan={plan} frame={frame} />
+      <div className="editor-timeline">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-[12px] font-medium">Timeline</h2>
+          <span className="text-[10px] text-[var(--cm-text-muted)]">
+            Space to play · ← → step · Shift to step 10 frames
+          </span>
+        </div>
+        <Lanes plan={plan} frame={frame} onSeek={seek} />
+      </div>
     </div>
   );
 }
@@ -432,7 +520,8 @@ function Stage({
   highlighted,
   startSeconds,
   onProxyTime,
-  onEnded,
+  onPlaying,
+  onError,
 }: {
   readonly proxyUrl: string | null;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -445,7 +534,8 @@ function Stage({
   /** Where in the proxy the current frame is, to land on when the media loads. */
   readonly startSeconds: number | null;
   readonly onProxyTime: (seconds: number) => void;
-  readonly onEnded: () => void;
+  readonly onPlaying: (playing: boolean) => void;
+  readonly onError: () => void;
 }) {
   // The crop is expressed against the source frame, and the element on stage
   // is the source scaled to the stage's height — so the transform is built
@@ -458,10 +548,7 @@ function Stage({
 
   let index = 0;
   return (
-    <div
-      className="relative aspect-[9/16] h-full max-h-[520px] overflow-hidden rounded-xl bg-black"
-      data-testid="stage"
-    >
+    <div className="video-stage" data-testid="stage">
       {proxyUrl ? (
         <div className="absolute inset-0 flex items-center justify-center">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- the cues are
@@ -482,7 +569,10 @@ function Stage({
               }
             }}
             onTimeUpdate={(event) => onProxyTime(event.currentTarget.currentTime)}
-            onEnded={onEnded}
+            onPlay={() => onPlaying(true)}
+            onPause={() => onPlaying(false)}
+            onEnded={() => onPlaying(false)}
+            onError={onError}
           />
         </div>
       ) : (
@@ -490,7 +580,7 @@ function Stage({
           This recording has no proxy, so there is nothing to play.
         </p>
       )}
-      {lines.length > 0 && (
+      {proxyUrl && lines.length > 0 && (
         <p
           className="pointer-events-none absolute inset-x-4 bottom-16 text-center text-lg leading-tight font-semibold drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]"
           data-testid="caption"
@@ -523,6 +613,7 @@ function Transport({
   plan,
   frame,
   playing,
+  disabled,
   onStep,
   onSeek,
   onToggle,
@@ -530,6 +621,7 @@ function Transport({
   readonly plan: PreviewPlan;
   readonly frame: number;
   readonly playing: boolean;
+  readonly disabled: boolean;
   readonly onStep: (by: number) => void;
   readonly onSeek: (frame: number) => void;
   readonly onToggle: () => void;
@@ -544,110 +636,194 @@ function Transport({
         step={1}
         value={frame}
         onChange={(event) => onSeek(Number(event.target.value))}
-        className="w-full accent-[var(--cm-accent)]"
+        className="studio-range"
       />
       <div className="flex items-center justify-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => onStep(-1)} aria-label="Previous frame">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onStep(-1)}
+          aria-label="Previous frame"
+          disabled={disabled || frame === 0}
+        >
           <ChevronLeft className="size-4" />
         </Button>
-        <Button size="sm" onClick={onToggle} aria-label={playing ? 'Pause' : 'Play'}>
+        <Button
+          size="icon-sm"
+          disabled={disabled}
+          onClick={onToggle}
+          aria-label={playing ? 'Pause' : 'Play'}
+        >
           {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => onStep(1)} aria-label="Next frame">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onStep(1)}
+          aria-label="Next frame"
+          disabled={disabled || frame >= plan.frameCount - 1}
+        >
           <ChevronRight className="size-4" />
         </Button>
         <span className="ml-3 font-mono text-xs text-[var(--cm-ink-2)]" data-testid="timecode">
-          {timecode(plan, frame)} · frame {frame} of {plan.frameCount}
+          {timecode(plan, frame)}{' '}
+          <span className="text-[var(--cm-text-muted)]">/ {timecode(plan, plan.frameCount)}</span>
+          <span className="sr-only">
+            {' '}
+            · frame {frame} of {plan.frameCount}
+          </span>
         </span>
       </div>
     </div>
   );
 }
 
-/** The four lanes an edit is made of, all drawn from the one plan. */
-function Lanes({ plan, frame }: { readonly plan: PreviewPlan; readonly frame: number }) {
+/** Each track uses the same width, so the playhead aligns at every window size. */
+function Lanes({
+  plan,
+  frame,
+  onSeek,
+}: {
+  readonly plan: PreviewPlan;
+  readonly frame: number;
+  readonly onSeek: (frame: number) => void;
+}) {
+  const cropRuns = useMemo(() => {
+    const runs: { first: number; end: number; following: boolean }[] = [];
+    for (let at = 0; at < plan.crops.length; at++) {
+      const following = plan.crops[at] != null;
+      const previous = runs.at(-1);
+      if (previous && previous.following === following) previous.end = at + 1;
+      else runs.push({ first: at, end: at + 1, following });
+    }
+    return runs;
+  }, [plan.crops]);
   const playhead = lanePosition(plan, frame);
-  const lanes: readonly {
-    readonly id: string;
-    readonly label: string;
-    readonly body: JSX.Element;
-  }[] = [
+  const span = (first: number, end: number) => ({
+    left: `${lanePosition(plan, first)}%`,
+    width: `${Math.max(0.1, lanePosition(plan, end) - lanePosition(plan, first))}%`,
+  });
+  const lanes = [
     {
       id: 'video',
-      label: 'V1',
-      body: <div className="h-full rounded bg-[var(--cm-surface-2)]" />,
+      label: 'Video',
+      body: (
+        <span className="absolute inset-0 flex items-center rounded-sm bg-[var(--cm-accent-selected)] px-2 text-[10px] text-[var(--cm-text-secondary)]">
+          Source footage
+        </span>
+      ),
     },
     {
       id: 'reframe',
-      label: 'R1',
-      body: (
-        <div className="flex h-full items-stretch gap-px">
-          {plan.crops.map((crop, at) => (
-            <span
-              // eslint-disable-next-line react/no-array-index-key -- a frame's
-              // index is its identity.
-              key={at}
-              className={
-                crop ? 'flex-1 bg-[var(--cm-accent)]/50' : 'flex-1 bg-[var(--cm-surface-2)]'
-              }
-            />
-          ))}
-        </div>
-      ),
+      label: 'Framing',
+      body: cropRuns.map((run) => (
+        <span
+          key={run.first}
+          className="absolute inset-y-0 flex items-center overflow-hidden rounded-sm border border-[var(--cm-glass-border)] px-2 text-[10px] text-[var(--cm-text-secondary)]"
+          style={span(run.first, run.end)}
+        >
+          {run.following ? 'Speaker-follow' : 'Fit'}
+        </span>
+      )),
     },
     {
       id: 'captions',
-      label: 'C1',
-      body: (
-        <div className="relative h-full rounded bg-[var(--cm-surface-2)]">
-          {plan.cues.map((cue) => (
-            <span
-              key={cue.cueId}
-              title={cueLines(cue).join(' ')}
-              className="absolute inset-y-0 rounded bg-[var(--cm-accent)]/60"
-              style={{
-                left: `${lanePosition(plan, cue.firstFrame)}%`,
-                width: `${Math.max(0.4, lanePosition(plan, cue.endFrame) - lanePosition(plan, cue.firstFrame))}%`,
-              }}
-            />
-          ))}
-        </div>
-      ),
+      label: 'Captions',
+      body: plan.cues.map((cue) => (
+        <span
+          key={cue.cueId}
+          title={cueLines(cue).join(' ')}
+          className="absolute inset-y-0 truncate rounded-sm border-r border-[var(--cm-glass)] bg-[var(--cm-accent-selected)] px-1.5 py-1 text-[10px] text-[var(--cm-text-secondary)]"
+          style={span(cue.firstFrame, cue.endFrame)}
+        >
+          {cueLines(cue).join(' ')}
+        </span>
+      )),
     },
     {
       id: 'audio',
-      label: 'A1',
+      label: 'Audio',
       body: (
-        <div className="relative h-full rounded bg-[var(--cm-surface-2)]">
+        <>
+          <span className="absolute inset-x-0 top-1/2 h-px bg-[var(--cm-text-muted)]/40" />
           {plan.gain.map((point) => (
             <span
               key={point.frame}
               title={`${point.gainDb.toFixed(1)} dB`}
-              className="absolute inset-y-0 w-0.5 bg-[var(--cm-ink-3)]"
+              className="absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-[var(--cm-text-muted)]"
               style={{ left: `${lanePosition(plan, point.frame)}%` }}
             />
           ))}
-          <span className="absolute inset-x-0 top-1/2 h-px bg-[var(--cm-ink-3)]/40" />
-        </div>
+        </>
       ),
     },
   ];
-
   return (
-    <section className="relative flex flex-col gap-2" aria-label="Timeline">
+    <section className="timeline-grid" aria-label="Timeline">
+      <span />
+      <div className="flex justify-between font-mono text-[10px] text-[var(--cm-text-muted)]">
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
+          <span key={ratio}>{timecode(plan, Math.floor(plan.frameCount * ratio))}</span>
+        ))}
+      </div>
       {lanes.map((lane) => (
-        <div key={lane.id} className="flex items-center gap-3">
-          <span className="w-6 shrink-0 font-mono text-[10px] text-[var(--cm-ink-3)]">
-            {lane.label}
-          </span>
-          <div className="h-8 flex-1 overflow-hidden rounded">{lane.body}</div>
-        </div>
+        <Track
+          key={lane.id}
+          label={lane.label}
+          playhead={playhead}
+          frame={frame}
+          frameCount={plan.frameCount}
+          onSeek={onSeek}
+        >
+          {lane.body}
+        </Track>
       ))}
-      <span
-        className="pointer-events-none absolute inset-y-0 w-px bg-[var(--cm-accent)]"
-        style={{ left: `calc(2.25rem + ${playhead}% * 0.94)` }}
-        data-testid="playhead"
-      />
     </section>
+  );
+}
+
+function Track({
+  label,
+  playhead,
+  frame,
+  frameCount,
+  onSeek,
+  children,
+}: {
+  readonly label: string;
+  readonly playhead: number;
+  readonly frame: number;
+  readonly frameCount: number;
+  readonly onSeek: (frame: number) => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <>
+      <span className="timeline-label">{label}</span>
+      <button
+        type="button"
+        className="timeline-track text-left"
+        aria-label={`Seek in ${label.toLowerCase()} track`}
+        onClick={(event) => {
+          if (!event.detail) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (rect.width > 0)
+            onSeek(Math.round(((event.clientX - rect.left) / rect.width) * (frameCount - 1)));
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            onSeek(frame + (event.key === 'ArrowLeft' ? -1 : 1));
+          }
+        }}
+      >
+        {children}
+        <span
+          className="timeline-needle"
+          style={{ left: `${playhead}%` }}
+          data-testid={label === 'Video' ? 'playhead' : undefined}
+        />
+      </button>
+    </>
   );
 }

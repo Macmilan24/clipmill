@@ -1,3 +1,7 @@
+> Historical audit of `57d6dd4`. The implementation has since changed. See
+> [the 18 September verification](milestone-2-verification-2026-09-18.md) for the
+> current M1 gate, the concurrency fix, and the remaining verification limits.
+
 **Milestone 1 completion recheck — revision `57d6dd4`**
 
 This update is substantially better than the previous audit. The three previously reproduced UI failures are fixed, the standard frontend checks pass, and I independently ran the real daemon/worker gate successfully. However, four reproducible defects remain in behavior the milestone promises. I would describe this as implemented with acceptance fixes remaining, rather than every bullet complete.

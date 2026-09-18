@@ -43,7 +43,10 @@ export interface Stage {
     | "evidence.shots.v1"
     | "index.transcript.v1"
     | "editorial.windows.v1"
+    | "editorial.proposals.v1"
     | "discovery.candidates.v1"
+    | "editorial.judgments.v1"
+    | "editorial.looks.v1"
     | "ranking.set.v1";
   artifact_id: Sha256;
 }

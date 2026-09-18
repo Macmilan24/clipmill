@@ -14,7 +14,16 @@
  * Where a value is missing the panel says which and why, because an axis nobody
  * measured is a different fact from an axis that scored nothing.
  */
-import { ArrowLeft, Check, Clock, RotateCcw, Scissors, TriangleAlert } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  RotateCcw,
+  Scissors,
+  TriangleAlert,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
@@ -126,7 +135,7 @@ export function ClipInspector({
     setPositionTicks(row?.startTicks ?? 0);
     setSeekNonce((nonce) => nonce + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the clip is the signal
-  }, [candidateId]);
+  }, [candidateId, row?.startTicks]);
 
   const cut = draft ?? { startTicks: row?.startTicks ?? 0, endTicks: row?.endTicks ?? 0 };
   const moved =
@@ -166,8 +175,8 @@ export function ClipInspector({
     );
   }
 
-  const measured = row.axes.filter((axis) => axis.value !== null);
-  const hero = topFactors(row, 3);
+  const measured = (row.review ? [] : row.axes).filter((axis) => axis.value !== null);
+  const hero = row.review ? [] : topFactors(row, 3);
   const heroKeys = new Set(hero.map((axis) => axis.axis));
   const detail = row.axes.filter((axis) => !heroKeys.has(axis.axis));
   const state = stateOf(row);
@@ -189,11 +198,11 @@ export function ClipInspector({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
+    <div className="workspace-page">
       <header className="flex shrink-0 items-center gap-3">
         <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
           <ArrowLeft className="size-4" aria-hidden />
-          Board
+          Results
         </Button>
         <h1 className="truncate text-[length:var(--cm-type-card-title)] font-semibold text-[var(--cm-text-primary)]">
           {row.headline || 'Untitled clip'}
@@ -204,20 +213,36 @@ export function ClipInspector({
         >
           {state.label}
         </span>
-        <span className="mono ml-auto shrink-0 text-[11px] text-[var(--cm-text-muted)]">
-          Rank {row.rank} of {rows.length}
-          {row.proposer && <span className="font-sans"> · {row.proposer}</span>}
-        </span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Previous clip"
+            disabled={rows.indexOf(row) === 0 || busy}
+            onClick={() => onSelect(rows[rows.indexOf(row) - 1]!.candidateId)}
+          >
+            <ChevronLeft />
+          </Button>
+          <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
+            {rows.indexOf(row) + 1} / {rows.length}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Next clip"
+            disabled={rows.indexOf(row) === rows.length - 1 || busy}
+            onClick={() => onSelect(rows[rows.indexOf(row) + 1]!.candidateId)}
+          >
+            <ChevronRight />
+          </Button>
+        </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-3">
-        <CandidateRail rows={rows} candidateId={candidateId} onSelect={onSelect} />
+      <div className="inspector-layout">
+        <CandidateRail rows={rows} candidateId={candidateId} onSelect={onSelect} busy={busy} />
 
-        <section
-          className="glass flex min-h-0 min-w-0 flex-1 flex-col gap-3 rounded-[var(--cm-radius-card)] p-4"
-          aria-label="The clip"
-        >
-          <div className="flex min-h-0 flex-1 flex-col rounded-[var(--cm-radius-panel)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4" aria-label="The clip">
+          <div className="workspace-panel flex min-h-0 flex-1 flex-col p-4">
             <Player
               src={proxyUrl}
               startTicks={cut.startTicks}
@@ -249,7 +274,7 @@ export function ClipInspector({
                 <span className="mono text-[var(--cm-text-primary)]">
                   {timecode(cut.startTicks)} – {timecode(cut.endTicks)}
                 </span>
-                . The daemon snaps a cut to the lattice, so it may land nearby.
+                . The cut snaps to a nearby speech boundary.
               </p>
               <Button
                 size="sm"
@@ -276,27 +301,63 @@ export function ClipInspector({
         </section>
 
         <section
-          className="glass flex w-[372px] shrink-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]"
+          className="inspector-review workspace-panel flex min-h-0 shrink-0 flex-col overflow-hidden"
           aria-label="Why this clip"
         >
-          <Tabs defaultValue="score" className="flex min-h-0 flex-1 flex-col">
+          <Tabs key={candidateId} defaultValue="score" className="flex min-h-0 flex-1 flex-col">
             <TabsList className="mx-3 mt-3 shrink-0">
-              <TabsTrigger value="score">Score</TabsTrigger>
+              <TabsTrigger value="score">{row.review ? 'Review' : 'Heuristic score'}</TabsTrigger>
               <TabsTrigger value="evidence">Evidence</TabsTrigger>
               <TabsTrigger value="boundary">Boundary</TabsTrigger>
-              <TabsTrigger value="risk">Risk</TabsTrigger>
+              <TabsTrigger value="risk">
+                Checks{row.warnings.length > 0 ? ` (${row.warnings.length})` : ''}
+              </TabsTrigger>
             </TabsList>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <TabsContent value="score" className="mt-0 flex flex-col gap-6">
                 <div className="flex items-center gap-5">
-                  <ScoreRing
-                    score={row.displayScore}
-                    band={row.band}
-                    size="lg"
-                    caption={row.bandLabel}
-                  />
-                  <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                  {row.review ? (
+                    <div className="min-w-0">
+                      <span className="mb-3 inline-flex items-center gap-2 rounded-md bg-[var(--cm-recessed)] px-2.5 py-1.5 text-[12px] font-medium">
+                        {row.band === 'needs_review' ? (
+                          <TriangleAlert className="size-3.5 text-[var(--cm-warning-ink)]" />
+                        ) : (
+                          <Check className="size-3.5 text-[var(--cm-success-ink)]" />
+                        )}
+                        {row.bandLabel}
+                      </span>
+                      {row.review.summary && (
+                        <p className="text-[13px] leading-relaxed text-[var(--cm-text-primary)]">
+                          {row.review.summary}
+                        </p>
+                      )}
+                      <ul className="mt-4 flex flex-col gap-3">
+                        {row.review.reasons.map((reason, i) => (
+                          <li
+                            key={i}
+                            className="border-l-2 border-[var(--cm-glass-border)] pl-3 text-[12px] leading-relaxed text-[var(--cm-text-secondary)]"
+                          >
+                            {reason}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-5 text-[11px] text-[var(--cm-text-muted)]">
+                        {row.review.route === 'cloud'
+                          ? 'Cloud-assisted review'
+                          : 'Reviewed locally with Qwen'}{' '}
+                        · Your decision is final.
+                      </p>
+                    </div>
+                  ) : (
+                    <ScoreRing
+                      score={row.displayScore}
+                      band={row.band}
+                      size="lg"
+                      caption={row.bandLabel}
+                    />
+                  )}
+                  <div className={row.review ? 'hidden' : 'flex min-w-0 flex-1 flex-col gap-2.5'}>
                     {hero.map((axis, index) => (
                       <div key={axis.axis} className="flex flex-col gap-1">
                         <div className="flex items-baseline justify-between">
@@ -329,7 +390,7 @@ export function ClipInspector({
                         </div>
                       </div>
                     ))}
-                    {hero.length === 0 && (
+                    {!row.review && hero.length === 0 && (
                       <p className="text-[11px] text-[var(--cm-text-muted)]">
                         No axis was measured for this clip.
                       </p>
@@ -337,40 +398,42 @@ export function ClipInspector({
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-3">
-                  <h3 className="border-b border-[var(--cm-glass-border)] pb-1 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-                    Detailed axis scores · {measured.length} of {row.axes.length} measured
-                  </h3>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    {detail.map((axis) => (
-                      <div key={axis.axis} className="flex flex-col gap-1">
-                        <div className="flex items-baseline justify-between">
-                          <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
-                            {axis.label}
-                          </span>
-                          <span className="mono text-[11px] text-[var(--cm-text-primary)]">
-                            {axis.value === null ? '—' : Math.round(axis.value * 100)}
-                          </span>
-                        </div>
-                        {axis.value === null ? (
-                          <p
-                            className="truncate text-[10px] text-[var(--cm-text-muted)]"
-                            title={axis.unavailableReason ?? 'not measured'}
-                          >
-                            {axis.unavailableReason ?? 'not measured'}
-                          </p>
-                        ) : (
-                          <div className="h-0.5 bg-[var(--cm-recessed)]">
-                            <div
-                              className="h-full bg-[var(--cm-text-secondary)]"
-                              style={{ width: `${Math.round(axis.value * 100)}%` }}
-                            />
+                {!row.review && (
+                  <div className="flex flex-col gap-3">
+                    <h3 className="border-b border-[var(--cm-glass-border)] pb-1 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
+                      Detailed axis scores · {measured.length} of {row.axes.length} measured
+                    </h3>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                      {detail.map((axis) => (
+                        <div key={axis.axis} className="flex flex-col gap-1">
+                          <div className="flex items-baseline justify-between">
+                            <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
+                              {axis.label}
+                            </span>
+                            <span className="mono text-[11px] text-[var(--cm-text-primary)]">
+                              {axis.value === null ? '—' : Math.round(axis.value * 100)}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          {axis.value === null ? (
+                            <p
+                              className="truncate text-[10px] text-[var(--cm-text-muted)]"
+                              title={axis.unavailableReason ?? 'not measured'}
+                            >
+                              {axis.unavailableReason ?? 'not measured'}
+                            </p>
+                          ) : (
+                            <div className="h-0.5 bg-[var(--cm-recessed)]">
+                              <div
+                                className="h-full bg-[var(--cm-text-secondary)]"
+                                style={{ width: `${Math.round(axis.value * 100)}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {reasons.length > 0 && (
                   <div className="flex flex-col gap-3">
@@ -413,7 +476,7 @@ export function ClipInspector({
                 {row.boundary ? (
                   <>
                     <ul className="flex flex-col gap-2">
-                      {row.boundary.terms.map((term) => (
+                      {(row.review ? [] : row.boundary.terms).map((term) => (
                         <li key={term.name} className="flex items-baseline justify-between gap-3">
                           <span className="text-[12px] text-[var(--cm-text-secondary)]">
                             {term.name.replaceAll('_', ' ')}

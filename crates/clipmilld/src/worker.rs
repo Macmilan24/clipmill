@@ -9,7 +9,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use clipmill_artifacts::{ArtifactPath, PrepareOutcome};
+use clipmill_artifacts::{ArtifactLease, ArtifactPath, ArtifactRecipe, PrepareOutcome, RecipeSpec};
 use clipmill_contracts::proto::worker::v1::{
     CapabilityDescriptor, Complete, CompletionAck, Decline, FailureClass, Heartbeat, HeartbeatAck,
     LeaseAcceptance, NoWork, ProtocolError, RegisterWorker, RegistrationAck, RegistrationChallenge,
@@ -52,8 +52,11 @@ const PREVIOUS_PROTOCOL: &str = "1.1";
 /// actually knows about itself. Mapping to an accelerator class is the
 /// daemon's job, and doing it in one place is what stops "mlx" and "metal"
 /// from drifting into two different meanings.
-const BACKENDS: [(&str, BackendRequirement); 6] = [
+const BACKENDS: [(&str, BackendRequirement); 7] = [
     ("cpu", BackendRequirement::CpuOnly),
+    // Explicitly launched cloud adapters use local CPU/RAM for request handling,
+    // not a local accelerator. Consent remains a per-task policy check.
+    ("cloud", BackendRequirement::CpuOnly),
     ("onnx-cpu", BackendRequirement::CpuOnly),
     ("mlx", BackendRequirement::Accelerator("metal")),
     ("coreml", BackendRequirement::Accelerator("metal")),
@@ -338,7 +341,7 @@ impl WorkerService {
             self.policy.note_task_start(&task.resources.network_policy);
             let recipe = recipes::worker_recipe(&task, &self.models)
                 .map_err(|error| WorkerError::Artifact(error.to_string()))?;
-            match self.artifacts.prepare(recipe).await? {
+            match prepare_worker_output(&self.artifacts, &task.task_id, recipe).await? {
                 PrepareOutcome::Hit(artifact) => {
                     self.complete_cache_hit(&task, artifact.artifact_id())
                         .await?;
@@ -376,6 +379,7 @@ impl WorkerService {
                         }
                     };
                     let lease = TaskLease {
+                        job_id: task.job_id.clone(),
                         task_id: task.task_id.clone(),
                         lease_id: task.lease_id.clone(),
                         kind: task.kind.clone(),
@@ -772,6 +776,105 @@ impl Drop for ActiveWorker {
         if let Ok(mut active) = self.workers.lock() {
             active.remove(&self.worker_id);
         }
+    }
+}
+
+/// Partial editorial outputs are durable evidence for their run, but cannot
+/// answer a later request as a complete cache hit. Keep the immutable output
+/// and key recovery by the partial artifact and the requesting task. A later
+/// analysis reruns inference if the shared base key still contains a partial
+/// result; there is no silent replacement of history or provider call on a hit.
+async fn prepare_worker_output(
+    artifacts: &ArtifactHandle,
+    task_id: &str,
+    mut recipe: ArtifactRecipe,
+) -> Result<PrepareOutcome, WorkerError> {
+    // A response lost between publication and task completion can leave a
+    // partial recovery too. Follow a bounded chain instead of reusing it.
+    for _ in 0..8 {
+        let outcome = artifacts.prepare(recipe.clone()).await?;
+        let PrepareOutcome::Hit(hit) = &outcome else {
+            return Ok(outcome);
+        };
+        if editorial_cache_is_complete(hit)? {
+            return Ok(outcome);
+        }
+        let mut config = recipe.config().clone();
+        config.insert(
+            "partial_result_recovery".into(),
+            serde_json::json!({"artifact_id": hit.artifact_id().to_string(), "task_id": task_id}),
+        );
+        recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
+            kind: recipe.kind().to_owned(),
+            source_fingerprint: recipe.source_fingerprint(),
+            timebase: recipe.timebase(),
+            producer: recipe.producer().clone(),
+            inputs: recipe.inputs().to_vec(),
+            policy: recipe.policy(),
+            config,
+            semantic_version: recipe.semantic_version().to_owned(),
+        })
+        .map_err(|error| WorkerError::Artifact(error.to_string()))?;
+    }
+    Err(WorkerError::Artifact(
+        "editorial cache recovery exceeded its bounded retry chain".into(),
+    ))
+}
+
+fn editorial_cache_is_complete(artifact: &ArtifactLease) -> Result<bool, WorkerError> {
+    const MAX_EDITORIAL_DOCUMENT_BYTES: u64 = 16 * 1024 * 1024;
+    let file = match artifact.kind() {
+        "editorial.proposals.v1" => "proposals.json",
+        "editorial.judgments.v1" => "judgments.json",
+        "editorial.looks.v1" => "looks.json",
+        _ => return Ok(true),
+    };
+    let path: ArtifactPath = file.parse()?;
+    // Bound both verification and parsing of worker-owned cached metadata.
+    if artifact
+        .declared_bytes(&path)
+        .is_none_or(|bytes| bytes > MAX_EDITORIAL_DOCUMENT_BYTES)
+    {
+        return Ok(false);
+    }
+    let reader = artifact
+        .open_verified(&path)
+        .map_err(|error| WorkerError::Artifact(error.to_string()))?;
+    Ok(editorial_document_is_complete(artifact.kind(), reader))
+}
+
+fn editorial_document_is_complete(kind: &str, reader: impl Read) -> bool {
+    use clipmill_contracts::schemas::{
+        editorial_judgments::{EditorialJudgments, JudgmentOutcome},
+        editorial_looks::{CheckOutcome, EditorialLooks},
+        editorial_proposals::{EditorialProposals, WindowAnswerStatus},
+    };
+    match kind {
+        "editorial.proposals.v1" => serde_json::from_reader::<_, EditorialProposals>(reader)
+            .is_ok_and(|document| {
+                document.windows.iter().all(|window| {
+                    matches!(
+                        window.status,
+                        WindowAnswerStatus::Answered | WindowAnswerStatus::None
+                    )
+                })
+            }),
+        "editorial.judgments.v1" => serde_json::from_reader::<_, EditorialJudgments>(reader)
+            .is_ok_and(|document| {
+                document
+                    .candidates
+                    .iter()
+                    .all(|judgment| judgment.outcome == JudgmentOutcome::Answered)
+            }),
+        "editorial.looks.v1" => {
+            serde_json::from_reader::<_, EditorialLooks>(reader).is_ok_and(|document| {
+                document
+                    .checks
+                    .iter()
+                    .all(|check| check.outcome == CheckOutcome::Answered)
+            })
+        }
+        _ => true,
     }
 }
 
@@ -1310,6 +1413,17 @@ mod tests {
     }
 
     #[test]
+    fn opted_in_cloud_adapter_requires_only_its_declared_local_resources() {
+        let admitted = admit_capacity(
+            &declaring("cloud", 1, 128 << 20, 0),
+            machine(2, 512 << 20, 0, 0),
+        )
+        .expect("cloud adapter needs no local accelerator");
+        assert_eq!(admitted.accelerator_mask, 0);
+        assert_eq!(admitted.ram_bytes, 128 << 20);
+    }
+
+    #[test]
     fn over_declared_resources_are_refused_rather_than_clamped() {
         let small = machine(2, 4 << 30, 0, 0);
         assert!(admit_capacity(&declaring("cpu", 8, 1 << 30, 0), small).is_err());
@@ -1506,5 +1620,171 @@ mod tests {
         }
         encoded.push(u8::try_from(value).expect("final varint byte"));
         encoded
+    }
+}
+
+#[cfg(test)]
+mod editorial_cache_tests {
+    #![allow(clippy::expect_used)]
+
+    use std::{collections::BTreeMap, io::Write};
+
+    use clipmill_artifacts::{
+        ArtifactPath, ArtifactRecipe, NetworkPolicy, PrepareOutcome, Producer, RecipeSpec, Timebase,
+    };
+    use clipmill_core::{Sha256Digest, TaskId};
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    use crate::artifacts::{ArtifactActor, ArtifactHandle};
+
+    use super::{
+        editorial_cache_is_complete, editorial_document_is_complete, prepare_worker_output,
+    };
+
+    const PROPOSALS: &str =
+        include_str!("../../../contracts/fixtures/editorial.proposals/valid/talk.json");
+    const JUDGMENTS: &str =
+        include_str!("../../../contracts/fixtures/editorial.judgments/valid/talk.json");
+    const LOOKS: &str = include_str!("../../../contracts/fixtures/editorial.looks/valid/talk.json");
+
+    #[test]
+    fn only_fully_answered_or_honestly_empty_editorial_documents_are_reusable() {
+        for (kind, fixture, rows, status) in [
+            ("editorial.proposals.v1", PROPOSALS, "windows", "status"),
+            ("editorial.judgments.v1", JUDGMENTS, "candidates", "outcome"),
+            ("editorial.looks.v1", LOOKS, "checks", "outcome"),
+        ] {
+            assert!(!editorial_document_is_complete(kind, fixture.as_bytes()));
+            let mut complete: Value = serde_json::from_str(fixture).expect("fixture");
+            complete[rows]
+                .as_array_mut()
+                .expect("rows")
+                .retain(|row| matches!(row[status].as_str(), Some("answered" | "none")));
+            assert!(editorial_document_is_complete(
+                kind,
+                serde_json::to_vec(&complete).expect("json").as_slice()
+            ));
+            complete[rows][0][status] = "unknown".into();
+            assert!(!editorial_document_is_complete(
+                kind,
+                serde_json::to_vec(&complete).expect("json").as_slice()
+            ));
+            complete[rows] = serde_json::json!([]);
+            assert!(editorial_document_is_complete(
+                kind,
+                serde_json::to_vec(&complete).expect("json").as_slice()
+            ));
+            assert!(!editorial_document_is_complete(
+                kind,
+                b"not JSON".as_slice()
+            ));
+        }
+    }
+
+    fn recipe() -> ArtifactRecipe {
+        ArtifactRecipe::try_from_spec(RecipeSpec {
+            kind: "editorial.proposals.v1".into(),
+            source_fingerprint: Sha256Digest::from_bytes([1; 32]),
+            timebase: Timebase {
+                num: 1,
+                den: 90_000,
+            },
+            producer: Producer {
+                stage: "editorial-propose".into(),
+                implementation: "cache-test@1".into(),
+                model_digest: Some(Sha256Digest::from_bytes([2; 32])),
+            },
+            inputs: Vec::new(),
+            policy: NetworkPolicy::LocalLock,
+            config: serde_json::Map::new(),
+            semantic_version: "1".into(),
+        })
+        .expect("recipe")
+    }
+
+    async fn publish(
+        artifacts: &ArtifactHandle,
+        staging: clipmill_artifacts::StagingArea,
+        text: &str,
+    ) -> clipmill_artifacts::ArtifactLease {
+        let path: ArtifactPath = "proposals.json".parse().expect("path");
+        let mut file = staging.create_file(&path).expect("file");
+        file.write_all(text.as_bytes()).expect("write");
+        file.sync_all().expect("sync");
+        drop(file);
+        artifacts
+            .commit(staging.id().clone(), vec![path], BTreeMap::new())
+            .await
+            .expect("publish")
+    }
+
+    #[tokio::test]
+    async fn partial_cache_is_preserved_and_recovery_survives_response_loss() {
+        let temp = TempDir::new().expect("tempdir");
+        let (actor, _) = ArtifactActor::start(temp.path()).expect("artifact actor");
+        let artifacts = actor.handle();
+        let base = recipe();
+        let PrepareOutcome::Miss(staging) =
+            artifacts.prepare(base.clone()).await.expect("prepare base")
+        else {
+            unreachable!("new store");
+        };
+        let partial = publish(&artifacts, staging, PROPOSALS).await;
+        let task = TaskId::new().to_string();
+        let PrepareOutcome::Miss(first_recovery) =
+            prepare_worker_output(&artifacts, &task, base.clone())
+                .await
+                .expect("retry partial")
+        else {
+            unreachable!("partial must cause new work");
+        };
+        let partial_recovery = publish(&artifacts, first_recovery, PROPOSALS).await;
+        assert_ne!(partial.artifact_id(), partial_recovery.artifact_id());
+        // Losing completion after publishing another partial must not turn it
+        // into an accepted hit on the task's next lease.
+        let PrepareOutcome::Miss(second_recovery) =
+            prepare_worker_output(&artifacts, &task, base.clone())
+                .await
+                .expect("retry partial recovery")
+        else {
+            unreachable!("partial recovery must cause new work");
+        };
+        let mut full: Value = serde_json::from_str(PROPOSALS).expect("fixture");
+        for row in full["windows"].as_array_mut().expect("windows") {
+            if !matches!(row["status"].as_str(), Some("answered" | "none")) {
+                row["status"] = "none".into();
+                row["proposals"] = serde_json::json!([]);
+                row.as_object_mut().expect("window").remove("failure");
+            }
+        }
+        let full = publish(
+            &artifacts,
+            second_recovery,
+            &serde_json::to_string(&full).expect("json"),
+        )
+        .await;
+        let PrepareOutcome::Hit(hit) = prepare_worker_output(&artifacts, &task, base.clone())
+            .await
+            .expect("recover published completion")
+        else {
+            unreachable!("fully answered recovery can replay");
+        };
+        assert_eq!(hit.artifact_id(), full.artifact_id());
+        assert!(!editorial_cache_is_complete(&partial).expect("original remains readable"));
+        // A different analysis gets a fresh recovery identity while the base
+        // remains partial. This intentionally trades warm-cache reuse for retry.
+        let PrepareOutcome::Miss(next_run) =
+            prepare_worker_output(&artifacts, &TaskId::new().to_string(), base)
+                .await
+                .expect("next run")
+        else {
+            unreachable!("new analysis retries the partial base");
+        };
+        artifacts
+            .abandon(next_run.id().clone())
+            .await
+            .expect("abandon test staging");
+        actor.shutdown().await.expect("shutdown");
     }
 }

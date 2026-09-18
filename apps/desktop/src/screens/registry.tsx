@@ -20,13 +20,16 @@
  * a clip when the route names one and a list of clips when it does not; the
  * route decides which, and the screen never has to guess at "the newest".
  */
-import type { JSX } from 'react';
+import { lazy, Suspense, type JSX } from 'react';
 
 import type { Route } from '../shell/route.js';
 import { clipOf, placementOf } from '../shell/route.js';
 import { AnalysisProgress } from './AnalysisProgress.js';
 import { Library } from './Library.js';
-import { ModelsDevice } from './ModelsDevice.js';
+// Hardware charts are loaded only when their screen is opened.
+const ModelsDevice = lazy(() =>
+  import('./ModelsDevice.js').then((module) => ({ default: module.ModelsDevice })),
+);
 import { NewProject } from './NewProject.js';
 import { PhasePlaceholder } from './PhasePlaceholder.js';
 import { EditorScreen } from './EditorScreen.js';
@@ -65,14 +68,24 @@ type Screen = (context: ScreenContext) => JSX.Element;
 const SCREENS: Readonly<Record<string, Screen>> = {
   library: ({ library }) => <Library {...library} />,
   'new-project': ({ newProject }) => <NewProject {...newProject} />,
-  models: ({ models }) => <ModelsDevice {...models} />,
+  models: ({ models }) => (
+    <Suspense
+      fallback={
+        <p role="status" className="text-xs text-[var(--cm-text-secondary)]">
+          Loading Models &amp; Device…
+        </p>
+      }
+    >
+      <ModelsDevice {...models} />
+    </Suspense>
+  ),
   results: ({ results, route }) => (
     <ResultsScreen
       {...results}
       candidateId={null}
       projectId={route.kind === 'section' ? (route.projectId ?? null) : null}
-      sourceId={null}
-      jobId={null}
+      sourceId={route.kind === 'section' ? (route.sourceId ?? null) : null}
+      jobId={route.kind === 'section' ? (route.jobId ?? null) : null}
     />
   ),
   editor: ({ editor, route }) => <EditorScreen {...editor} clip={clipOf(route)} />,

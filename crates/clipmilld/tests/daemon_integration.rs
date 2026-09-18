@@ -528,14 +528,19 @@ async fn readiness_names_every_stage_an_analysis_needs_and_what_each_is_missing(
         .iter()
         .map(|stage| stage.stage.as_str())
         .collect();
-    // Every stage the planner binds a model for, and the modelless worker
-    // stage beside them.
+    // Every local stage, plus the optional cloud stages. Cloud routes need
+    // an explicitly enabled worker, not local model weights.
     for expected in [
         "speech-vad",
         "speech-asr",
         "speech-align",
         "detect-faces",
         "detect-shots",
+        "editorial-propose",
+        "editorial-review",
+        "editorial-look",
+        "editorial-propose-cloud",
+        "editorial-review-cloud",
     ] {
         assert!(
             stages.contains(&expected),
@@ -549,10 +554,20 @@ async fn readiness_names_every_stage_an_analysis_needs_and_what_each_is_missing(
             stage.stage
         );
         assert!(!stage.worker_present);
-        if stage.stage == "detect-shots" {
-            // Modelless: nothing to install, only a worker to start.
+        if stage.model.is_empty() {
+            // Modelless: nothing to install, only a worker to start/enable.
             assert!(stage.model_present);
-            assert!(stage.remedy.contains("just workers"), "{}", stage.remedy);
+            assert!(stage.missing_files.is_empty());
+            if stage.stage.ends_with("-cloud") {
+                assert!(
+                    stage.remedy.contains("--cloud-editorial"),
+                    "{}",
+                    stage.remedy
+                );
+                assert!(stage.remedy.contains("explicit cloud consent"));
+            } else {
+                assert!(stage.remedy.contains("just workers"), "{}", stage.remedy);
+            }
         } else {
             assert!(!stage.model_present, "{} has no weights here", stage.stage);
             assert!(!stage.missing_files.is_empty());

@@ -18,6 +18,7 @@ import {
   inspectorRoute,
   placementOf,
   sectionRoute,
+  resultsRouteFor,
 } from '../src/shell/route.js';
 
 const CLIP: ClipRef = {
@@ -147,5 +148,27 @@ describe('what the shell remembers', () => {
       },
     };
     expect(() => remember(refusing, { route: DEFAULT_ROUTE, clip: null })).not.toThrow();
+  });
+});
+
+describe('returning to the board', () => {
+  it('preserves the project, recording and run through inspection, editing, export and relaunch', () => {
+    for (const route of [
+      inspectorRoute(CLIP.projectId, CLIP.sourceId, CLIP.candidateId!, CLIP.labels, CLIP.jobId),
+      editorRoute(CLIP),
+      exportRoute(CLIP),
+    ]) {
+      const back = resultsRouteFor(route);
+      expect(back).toEqual({
+        kind: 'section',
+        sectionId: 'results',
+        projectId: CLIP.projectId,
+        sourceId: CLIP.sourceId,
+        jobId: CLIP.jobId,
+      });
+      const memory = store();
+      remember(memory, { route: back, clip: CLIP });
+      expect(recall(memory).route).toEqual(back);
+    }
   });
 });

@@ -105,6 +105,40 @@ describe('the board', () => {
     expect(screen.getByText(/2 duplicate cuts refused/)).toBeTruthy();
   });
 
+  it('shows missing coverage when the requested count was met', () => {
+    board({
+      summary: {
+        ...SUMMARY,
+        selected: 4,
+        warnings: ['2 of 10 windows could not be assessed.', '1 candidate could not be reviewed.'],
+      },
+      run: { jobId: 'job_PARTIAL', state: 3, completedUnixMillis: 0 },
+    });
+    const notice = screen.getByRole('status', { name: 'Incomplete analysis' });
+    expect(within(notice).getByText('2 of 10 windows could not be assessed.')).toBeTruthy();
+    expect(within(notice).getByText('1 candidate could not be reviewed.')).toBeTruthy();
+    expect(screen.getByText('Partial results')).toBeTruthy();
+    expect(screen.queryByText('Analyzed')).toBeNull();
+  });
+
+  it('does not call an empty partial analysis evidence that no moments exist', () => {
+    board({
+      rows: [],
+      summary: {
+        ...SUMMARY,
+        selected: 0,
+        cohort: 0,
+        warnings: ['Visual checks were unavailable for 1 candidate.'],
+      },
+      run: { jobId: 'job_PARTIAL', state: 3, completedUnixMillis: 0 },
+    });
+    expect(screen.getByRole('status', { name: 'Incomplete analysis' })).toBeTruthy();
+    expect(
+      screen.getByText(/unassessed sections may still contain worthwhile moments/i),
+    ).toBeTruthy();
+    expect(screen.queryByText(/no suitable complete moments were found/i)).toBeNull();
+  });
+
   it('narrows to what was searched for', () => {
     board();
     expect(rowsOnScreen()).toHaveLength(2);

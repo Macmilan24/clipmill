@@ -193,13 +193,13 @@ describe('the boundary panel', () => {
 describe('the risk panel', () => {
   it('says nothing was recorded rather than implying a clean bill', () => {
     show();
-    openTab(/risk/i);
+    openTab(/checks/i);
     expect(screen.getByText(/recorded nothing against this clip/i)).toBeTruthy();
   });
 
   it('shows each penalty with the score it cost', () => {
     show({ rows: [row({ penalties: [{ reason: 'repetition', value: 7 }] })] });
-    openTab(/risk/i);
+    openTab(/checks/i);
     expect(screen.getByText('repetition')).toBeTruthy();
     expect(screen.getByText('−7')).toBeTruthy();
   });
@@ -275,7 +275,7 @@ describe('the timeline', () => {
   it('says the daemon may move the cut, rather than implying it is final', () => {
     show();
     fireEvent.keyDown(screen.getByRole('button', { name: /^in point at/i }), { key: 'ArrowLeft' });
-    expect(screen.getByText(/snaps a cut to the lattice/i)).toBeTruthy();
+    expect(screen.getByText(/snaps to a nearby speech boundary/i)).toBeTruthy();
   });
 
   it('puts a moved boundary back where the ranker had it', () => {

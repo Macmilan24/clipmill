@@ -9,6 +9,8 @@
 //! No model runs in this crate, and nothing here does I/O; the daemon reads
 //! the documents in and publishes the documents out.
 
+pub mod review;
+pub mod validate;
 pub mod windows;
 
 pub use windows::{Budget, Inputs, WindowsError, windows};

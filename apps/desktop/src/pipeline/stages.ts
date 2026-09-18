@@ -88,14 +88,29 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'The transcript in overlapping pieces an editorial model reads',
   },
   {
+    kind: 'editorial.proposals.v1',
+    label: 'Find complete moments',
+    detail: 'Find hooks, setup, and payoff from the transcript',
+  },
+  {
     kind: 'discovery.candidates.v1',
-    label: 'Propose candidates',
-    detail: 'Moments nominated, each with evidence',
+    label: 'Validate candidates',
+    detail: 'Check references, boundaries, and duplicate moments',
+  },
+  {
+    kind: 'editorial.judgments.v1',
+    label: 'Review meaning',
+    detail: 'Check completeness, context, and misleading omissions',
+  },
+  {
+    kind: 'editorial.looks.v1',
+    label: 'Check visual references',
+    detail: 'Inspect a few frames only when the meaning depends on the picture',
   },
   {
     kind: 'ranking.set.v1',
     label: 'Rank candidates',
-    detail: 'Scored and ordered against the rubric',
+    detail: 'Order distinct moments for your review',
   },
 ];
 
