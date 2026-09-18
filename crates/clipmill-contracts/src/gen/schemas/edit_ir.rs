@@ -1228,10 +1228,32 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "            \"additionalProperties\": false"]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"secondary_crop_path\": {"]
+#[doc = "          \"description\": \"Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"type\": \"object\","]
+#[doc = "            \"required\": ["]
+#[doc = "              \"rect\","]
+#[doc = "              \"t_ticks\""]
+#[doc = "            ],"]
+#[doc = "            \"properties\": {"]
+#[doc = "              \"rect\": {"]
+#[doc = "                \"$ref\": \"#/$defs/cropRect\""]
+#[doc = "              },"]
+#[doc = "              \"t_ticks\": {"]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"minimum\": 0.0"]
+#[doc = "              }"]
+#[doc = "            },"]
+#[doc = "            \"additionalProperties\": false"]
+#[doc = "          }"]
+#[doc = "        },"]
 #[doc = "        \"state\": {"]
 #[doc = "          \"enum\": ["]
 #[doc = "            \"speaker_fill\","]
-#[doc = "            \"fit\""]
+#[doc = "            \"fit\","]
+#[doc = "            \"two_up\""]
 #[doc = "          ]"]
 #[doc = "        }"]
 #[doc = "      },"]
@@ -1299,10 +1321,32 @@ impl VideoSegment {
 #[doc = "        \"additionalProperties\": false"]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"secondary_crop_path\": {"]
+#[doc = "      \"description\": \"Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"rect\","]
+#[doc = "          \"t_ticks\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"rect\": {"]
+#[doc = "            \"$ref\": \"#/$defs/cropRect\""]
+#[doc = "          },"]
+#[doc = "          \"t_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"state\": {"]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"speaker_fill\","]
-#[doc = "        \"fit\""]
+#[doc = "        \"fit\","]
+#[doc = "        \"two_up\""]
 #[doc = "      ]"]
 #[doc = "    }"]
 #[doc = "  },"]
@@ -1316,6 +1360,9 @@ pub struct VideoSegmentLayout {
     #[doc = "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub crop_path: ::std::vec::Vec<VideoSegmentLayoutCropPathItem>,
+    #[doc = "Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub secondary_crop_path: ::std::vec::Vec<VideoSegmentLayoutSecondaryCropPathItem>,
     pub state: VideoSegmentLayoutState,
 }
 impl VideoSegmentLayout {
@@ -1358,6 +1405,41 @@ impl VideoSegmentLayoutCropPathItem {
         Default::default()
     }
 }
+#[doc = "`VideoSegmentLayoutSecondaryCropPathItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"rect\","]
+#[doc = "    \"t_ticks\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"rect\": {"]
+#[doc = "      \"$ref\": \"#/$defs/cropRect\""]
+#[doc = "    },"]
+#[doc = "    \"t_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VideoSegmentLayoutSecondaryCropPathItem {
+    pub rect: CropRect,
+    pub t_ticks: u64,
+}
+impl VideoSegmentLayoutSecondaryCropPathItem {
+    pub fn builder() -> builder::VideoSegmentLayoutSecondaryCropPathItem {
+        Default::default()
+    }
+}
 #[doc = "`VideoSegmentLayoutState`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1366,7 +1448,8 @@ impl VideoSegmentLayoutCropPathItem {
 #[doc = "{"]
 #[doc = "  \"enum\": ["]
 #[doc = "    \"speaker_fill\","]
-#[doc = "    \"fit\""]
+#[doc = "    \"fit\","]
+#[doc = "    \"two_up\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -1388,12 +1471,15 @@ pub enum VideoSegmentLayoutState {
     SpeakerFill,
     #[serde(rename = "fit")]
     Fit,
+    #[serde(rename = "two_up")]
+    TwoUp,
 }
 impl ::std::fmt::Display for VideoSegmentLayoutState {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::SpeakerFill => f.write_str("speaker_fill"),
             Self::Fit => f.write_str("fit"),
+            Self::TwoUp => f.write_str("two_up"),
         }
     }
 }
@@ -1403,6 +1489,7 @@ impl ::std::str::FromStr for VideoSegmentLayoutState {
         match value {
             "speaker_fill" => Ok(Self::SpeakerFill),
             "fit" => Ok(Self::Fit),
+            "two_up" => Ok(Self::TwoUp),
             _ => Err("invalid value".into()),
         }
     }
@@ -2450,12 +2537,17 @@ pub mod builder {
             ::std::vec::Vec<super::VideoSegmentLayoutCropPathItem>,
             ::std::string::String,
         >,
+        secondary_crop_path: ::std::result::Result<
+            ::std::vec::Vec<super::VideoSegmentLayoutSecondaryCropPathItem>,
+            ::std::string::String,
+        >,
         state: ::std::result::Result<super::VideoSegmentLayoutState, ::std::string::String>,
     }
     impl ::std::default::Default for VideoSegmentLayout {
         fn default() -> Self {
             Self {
                 crop_path: Ok(Default::default()),
+                secondary_crop_path: Ok(Default::default()),
                 state: Err("no value supplied for state".to_string()),
             }
         }
@@ -2469,6 +2561,18 @@ pub mod builder {
             self.crop_path = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for crop_path: {e}"));
+            self
+        }
+        pub fn secondary_crop_path<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::vec::Vec<super::VideoSegmentLayoutSecondaryCropPathItem>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.secondary_crop_path = value.try_into().map_err(|e| {
+                format!("error converting supplied value for secondary_crop_path: {e}")
+            });
             self
         }
         pub fn state<T>(mut self, value: T) -> Self
@@ -2489,6 +2593,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 crop_path: value.crop_path?,
+                secondary_crop_path: value.secondary_crop_path?,
                 state: value.state?,
             })
         }
@@ -2497,6 +2602,7 @@ pub mod builder {
         fn from(value: super::VideoSegmentLayout) -> Self {
             Self {
                 crop_path: Ok(value.crop_path),
+                secondary_crop_path: Ok(value.secondary_crop_path),
                 state: Ok(value.state),
             }
         }
@@ -2553,6 +2659,64 @@ pub mod builder {
         for VideoSegmentLayoutCropPathItem
     {
         fn from(value: super::VideoSegmentLayoutCropPathItem) -> Self {
+            Self {
+                rect: Ok(value.rect),
+                t_ticks: Ok(value.t_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct VideoSegmentLayoutSecondaryCropPathItem {
+        rect: ::std::result::Result<super::CropRect, ::std::string::String>,
+        t_ticks: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for VideoSegmentLayoutSecondaryCropPathItem {
+        fn default() -> Self {
+            Self {
+                rect: Err("no value supplied for rect".to_string()),
+                t_ticks: Err("no value supplied for t_ticks".to_string()),
+            }
+        }
+    }
+    impl VideoSegmentLayoutSecondaryCropPathItem {
+        pub fn rect<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::CropRect>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.rect = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for rect: {e}"));
+            self
+        }
+        pub fn t_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.t_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for t_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<VideoSegmentLayoutSecondaryCropPathItem>
+        for super::VideoSegmentLayoutSecondaryCropPathItem
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: VideoSegmentLayoutSecondaryCropPathItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                rect: value.rect?,
+                t_ticks: value.t_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::VideoSegmentLayoutSecondaryCropPathItem>
+        for VideoSegmentLayoutSecondaryCropPathItem
+    {
+        fn from(value: super::VideoSegmentLayoutSecondaryCropPathItem) -> Self {
             Self {
                 rect: Ok(value.rect),
                 t_ticks: Ok(value.t_ticks),

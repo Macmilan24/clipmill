@@ -222,6 +222,54 @@ pub fn resolve(document: &VisionFaceTrack, start: u64, end: u64, gate: FocusGate
     }
 }
 
+/// Two consistently visible people can share the frame without claiming which
+/// one is speaking. A third sustained face, weak detections, or alternating
+/// appearances refuse this composition. Order is spatial and stable.
+pub fn resolve_pair(document: &VisionFaceTrack, start: u64, end: u64) -> Option<[u64; 2]> {
+    if !document.coverage.analyzed || end <= start {
+        return None;
+    }
+    let total = frames_in_span(document, start, end);
+    let visible: Vec<_> = document
+        .tracks
+        .iter()
+        .filter_map(|track| {
+            let (presence, score) = presence_in_span(track, start, end, total);
+            (presence >= 0.15).then_some((track, presence, score))
+        })
+        .collect();
+    if visible.len() != 2
+        || visible
+            .iter()
+            .any(|(_, presence, score)| *presence < 0.8 || *score < 0.7)
+    {
+        return None;
+    }
+    let mean_x = |track: &Track| {
+        let centers: Vec<f64> = track
+            .boxes
+            .iter()
+            .filter(|b| b.t_ticks >= start && b.t_ticks < end && b.interpolated != Some(true))
+            .map(|b| b.x + b.w / 2.0)
+            .collect();
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "sample count is bounded by recording length"
+        )]
+        (centers.iter().sum::<f64>() / centers.len().max(1) as f64)
+    };
+    let left = mean_x(visible[0].0);
+    let right = mean_x(visible[1].0);
+    if (left - right).abs() < 0.12 {
+        return None;
+    }
+    if left <= right {
+        Some([visible[0].0.track_id, visible[1].0.track_id])
+    } else {
+        Some([visible[1].0.track_id, visible[0].0.track_id])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]

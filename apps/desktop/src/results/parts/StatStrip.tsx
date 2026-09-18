@@ -35,7 +35,7 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
       label: 'Candidates',
       value: summary.cohort,
       ink: 'var(--cm-text-primary)',
-      title: 'Every candidate the ranker scored.',
+      title: 'Candidates available for review; model declines are listed separately.',
     },
     {
       label: 'Recommended',
@@ -74,6 +74,15 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
         </div>
       ))}
 
+      {(summary.declined ?? 0) > 0 && (
+        <div
+          className="flex items-baseline gap-2"
+          title="Model-declined moments remain inspectable, but are not recommendations."
+        >
+          <span className="text-[12px] text-[var(--cm-text-secondary)]">Declined</span>
+          <span className="mono text-[13px] text-[var(--cm-warning-ink)]">{summary.declined}</span>
+        </div>
+      )}
       {bestScore !== null && (
         <div className="ml-auto flex flex-col items-end gap-1 border-l border-[var(--cm-glass-border)] pl-8">
           <span className="text-[12px] text-[var(--cm-text-secondary)]">Best score</span>
@@ -88,7 +97,7 @@ export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
           <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
           <span>
             {summary.requested} asked for, {summary.selected} recommended:{' '}
-            {summary.shortfall.join('; ')}.
+            {summary.shortfall.join('; ')}
           </span>
         </p>
       )}

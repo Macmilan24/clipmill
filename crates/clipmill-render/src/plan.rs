@@ -240,21 +240,50 @@ impl RenderPlan {
     /// The plan's graph with the measured loudness substituted into its slot.
     fn encode_graph(&self, measurement: LoudnessMeasurement) -> FilterGraph {
         let loudness = &self.profile.loudness;
-        let loudnorm = format!(
-            "loudnorm=I={target}:TP={peak}:LRA={range}:measured_I={input_i:.6}:\
-             measured_TP={input_tp:.6}:measured_LRA={input_lra:.6}:\
-             measured_thresh={input_thresh:.6}:offset={offset:.6}:linear=true:print_format=summary,\
+        // Silence (and audio shorter than the integrated measurement window)
+        // has no finite integrated loudness. FFmpeg reports -inf/inf for it;
+        // feeding those back as measured_I/offset is an invalid filter option.
+        // Preserve measured digital silence directly; even a one-pass
+        // loudnorm may multiply it by an infinite target gain. For a short
+        // audible signal, keep the target filter without unavailable hints.
+        let silent = measurement.input_lufs == f64::NEG_INFINITY
+            && measurement.input_true_peak_dbtp == f64::NEG_INFINITY;
+        let measured = if [
+            measurement.input_lufs,
+            measurement.input_true_peak_dbtp,
+            measurement.input_range_lu,
+            measurement.input_threshold_lufs,
+            measurement.target_offset_lu,
+        ]
+        .iter()
+        .all(|value| value.is_finite())
+        {
+            format!(
+                ":measured_I={:.6}:measured_TP={:.6}:measured_LRA={:.6}:measured_thresh={:.6}:offset={:.6}:linear=true",
+                measurement.input_lufs,
+                measurement.input_true_peak_dbtp,
+                measurement.input_range_lu,
+                measurement.input_threshold_lufs,
+                measurement.target_offset_lu,
+            )
+        } else {
+            String::new()
+        };
+        let loudnorm = if silent {
+            format!(
+                "anull,aformat=sample_fmts=fltp:sample_rates={}:channel_layouts=stereo",
+                self.profile.audio_sample_rate
+            )
+        } else {
+            format!(
+                "loudnorm=I={target}:TP={peak}:LRA={range}{measured}:print_format=summary,\
              aformat=sample_fmts=fltp:sample_rates={rate_hz}:channel_layouts=stereo",
-            target = loudness.integrated_lufs,
-            peak = loudness.true_peak_dbtp,
-            range = loudness.range_lu,
-            input_i = measurement.input_lufs,
-            input_tp = measurement.input_true_peak_dbtp,
-            input_lra = measurement.input_range_lu,
-            input_thresh = measurement.input_threshold_lufs,
-            offset = measurement.target_offset_lu,
-            rate_hz = self.profile.audio_sample_rate,
-        );
+                target = loudness.integrated_lufs,
+                peak = loudness.true_peak_dbtp,
+                range = loudness.range_lu,
+                rate_hz = self.profile.audio_sample_rate,
+            )
+        };
         let mut graph = self.graph.clone();
         graph.graph = graph.graph.replace(graph::LOUDNORM_SLOT, &loudnorm);
         graph
@@ -324,6 +353,7 @@ pub fn compile(
     let mut spans = Vec::with_capacity(document.video.segments.len());
     let mut segments = Vec::with_capacity(document.video.segments.len());
     let mut paths = BTreeMap::new();
+    let mut program_start = 0;
     for segment in &document.video.segments {
         let source = sources
             .iter()
@@ -336,6 +366,10 @@ pub fn compile(
                 segment.segment_id.clone(),
             ));
         }
+        let program_end = program_start + segment.duration_ticks();
+        let frame_count = rate.frame_ceil(program_end) - rate.frame_ceil(program_start);
+        let video_offset_ticks = rate.frame_ticks(rate.frame_ceil(program_start)) - program_start;
+        program_start = program_end;
         let seek_ticks = source.seek_target(segment.in_ticks);
         spans.push(DecodeSpan {
             segment_id: segment.segment_id.clone(),
@@ -343,8 +377,9 @@ pub fn compile(
             seek_ticks,
             trim_start_ticks: segment.in_ticks - seek_ticks,
             trim_end_ticks: segment.out_ticks - seek_ticks,
+            video_offset_ticks,
             has_audio: source.has_audio,
-            frame_count: rate.frame_count(segment.duration_ticks()),
+            frame_count,
         });
         segments.push(SegmentReport {
             segment_id: segment.segment_id.clone(),
@@ -354,9 +389,10 @@ pub fn compile(
             layout: match segment.layout.state {
                 LayoutState::Fit => "fit",
                 LayoutState::SpeakerFill => "speaker_fill",
+                LayoutState::TwoUp => "two_up",
             }
             .to_owned(),
-            frame_count: rate.frame_count(segment.duration_ticks()),
+            frame_count,
         });
         paths.insert(segment.source_fingerprint.clone(), source.path.clone());
     }

@@ -1,6 +1,7 @@
 {
   "candidates": [],
   "clusters": [],
+  "content_profile": "interview",
   "coverage": {
     "analyzed": true,
     "end_ticks": 900000,

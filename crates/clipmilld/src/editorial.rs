@@ -32,7 +32,7 @@ use crate::{
 /// The task kind this module executes.
 pub(crate) const KIND_WINDOWS: &str = clipmill_editorial::STAGE;
 pub(crate) const KIND_VALIDATE: &str = "editorial-validate";
-pub(crate) const IMPLEMENTATION: &str = "clipmill-editorial-windows@1.0.0";
+pub(crate) const IMPLEMENTATION: &str = "clipmill-editorial-windows@1.1.0";
 const OUTPUT_FILE: &str = "windows.json";
 
 pub(crate) async fn execute_validate_task(
@@ -103,7 +103,7 @@ pub(crate) async fn execute_validate_task(
         },
         producer: Producer {
             stage: KIND_VALIDATE.into(),
-            implementation: "clipmill-editorial-validate@1.1.0".into(),
+            implementation: "clipmill-editorial-validate@1.2.0".into(),
             model_digest: None,
         },
         inputs: inputs.addresses(),
@@ -112,7 +112,7 @@ pub(crate) async fn execute_validate_task(
             json!({"min_ticks":duration.min_ticks,"max_ticks":duration.max_ticks}),
         )
         .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?,
-        semantic_version: "clipmill.editorial.validate.v2".into(),
+        semantic_version: "clipmill.editorial.validate.v3".into(),
     })
     .map_err(|e| TaskExecutionError::deterministic(e.to_string()))?;
     let staging = match media::prepare_or_hit(artifacts, recipe).await? {
@@ -142,6 +142,10 @@ pub(crate) async fn execute_validate_task(
 
 /// Read the index and the transcript it was built over, and publish the
 /// windows cut from them.
+#[allow(
+    clippy::too_many_lines,
+    reason = "input validation, provenance and publication form one ordered stage"
+)]
 pub(crate) async fn execute_windows_task(
     artifacts: &ArtifactHandle,
     task: &LeasedTask,
@@ -175,8 +179,13 @@ pub(crate) async fn execute_windows_task(
     }
     progress.set("stages", 1, 3);
 
-    let budget = Budget::DEFAULT;
-    let document = clipmill_editorial::windows(
+    let budget = Budget {
+        max_clip_ticks: payload
+            .duration
+            .map_or(90 * 90_000, |duration| duration.max_ticks),
+        ..Budget::DEFAULT
+    };
+    let mut document = clipmill_editorial::windows(
         &index,
         Inputs {
             index: &index_id,
@@ -186,6 +195,13 @@ pub(crate) async fn execute_windows_task(
         IMPLEMENTATION,
     )
     .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    document.content_profile = match payload.content_profile.as_str() {
+        "" | "interview" => "interview",
+        "scripted" => "scripted",
+        _ => return Err(TaskExecutionError::deterministic("unknown content profile")),
+    }
+    .parse()
+    .map_err(|_| TaskExecutionError::deterministic("invalid content profile"))?;
     progress.set("stages", 2, 3);
 
     let fingerprint: Sha256Digest = index
@@ -195,6 +211,11 @@ pub(crate) async fn execute_windows_task(
         .parse()
         .map_err(|_| TaskExecutionError::deterministic("the index carries no fingerprint"))?;
     let mut config = Map::new();
+    config.insert(
+        "content_profile".to_owned(),
+        json!(document.content_profile),
+    );
+    config.insert("max_clip_ticks".to_owned(), json!(budget.max_clip_ticks));
     config.insert(
         "algorithm".to_owned(),
         json!("clipmill.editorial.windows.v1"),

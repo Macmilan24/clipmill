@@ -1,6 +1,6 @@
 [project]
 name = "clipmill-worker-editorial"
-version = "0.1.1"
+version = "0.2.0"
 description = "Qwen 3.5 proposal, review and targeted visual checks"
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"

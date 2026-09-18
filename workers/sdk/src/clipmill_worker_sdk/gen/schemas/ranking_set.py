@@ -38,6 +38,11 @@ class Requested(BaseModel):
     )
 
 
+class ContentProfile(StrEnum):
+    interview = 'interview'
+    scripted = 'scripted'
+
+
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
@@ -71,6 +76,7 @@ class EvidenceReference(BaseModel):
 class Status(StrEnum):
     accepted = 'accepted'
     needs_review = 'needs_review'
+    rejected = 'rejected'
 
 
 class Route(StrEnum):
@@ -352,4 +358,13 @@ class RankingSet(BaseModel):
     editorial: EditorialCoverage | None = Field(
         None,
         description='Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.',
+    )
+    content_profile: ContentProfile | None = Field(
+        'interview',
+        description='The editorial rubric selected for this run; older artifacts use interview.',
+    )
+    declined: list[Ranked] | None = Field(
+        [],
+        description='Assessed nominations declined by the editorial reviewer. Inspectable for explicit manual recovery; never recommendations or selected clips.',
+        validate_default=True,
     )

@@ -23,7 +23,7 @@ import { secondsAt, segmentAt, sourceTicksAt } from './player.js';
 export const SEGMENT = 'seg_1';
 
 /** Which way the camera is framed. Three modes, exactly as the plan names them. */
-export type LayoutMode = 'speaker_fill' | 'fit';
+export type LayoutMode = 'speaker_fill' | 'fit' | 'two_up';
 
 export function setLayout(mode: LayoutMode, segmentId = SEGMENT): EditCommandJson {
   return { op: 'set_layout', segment_id: segmentId, state: mode };
@@ -33,12 +33,26 @@ export function setCropKeyframe(
   tTicks: number,
   rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
   segmentId = SEGMENT,
+  secondary = false,
 ): EditCommandJson {
-  return { op: 'set_crop_keyframe', segment_id: segmentId, t_ticks: tTicks, rect };
+  return {
+    op: secondary ? 'set_secondary_crop_keyframe' : 'set_crop_keyframe',
+    segment_id: segmentId,
+    t_ticks: tTicks,
+    rect,
+  };
 }
 
-export function removeCropKeyframe(tTicks: number, segmentId = SEGMENT): EditCommandJson {
-  return { op: 'remove_crop_keyframe', segment_id: segmentId, t_ticks: tTicks };
+export function removeCropKeyframe(
+  tTicks: number,
+  segmentId = SEGMENT,
+  secondary = false,
+): EditCommandJson {
+  return {
+    op: secondary ? 'remove_secondary_crop_keyframe' : 'remove_crop_keyframe',
+    segment_id: segmentId,
+    t_ticks: tTicks,
+  };
 }
 
 export function trim(inTicks: number, outTicks: number, segmentId = SEGMENT): EditCommandJson {
@@ -81,7 +95,7 @@ export function setWordText(wordId: string, text: string): EditCommandJson {
 }
 
 /**
- * Trim the segment a frame is in so it begins there.
+ * Begin the program at this frame, removing all earlier shots too.
  *
  * `Trim` speaks source ticks — the segment's own window into the recording —
  * so the frame is mapped through the plan's segments rather than sent as
@@ -94,16 +108,30 @@ export function trimStartAt(plan: PreviewPlan, frame: number): EditCommandJson |
   if (!segment || ticks === null || ticks >= segment.outTicks) {
     return null;
   }
+  if (plan.segments.length > 1) {
+    const end = segment.programStartTicks + ticks - segment.inTicks;
+    return end > 0
+      ? { op: 'ripple_delete', start_ticks: 0, end_ticks: end, reflow_edges: true }
+      : null;
+  }
   return trim(ticks, segment.outTicks, segment.segmentId);
 }
 
-/** Trim the segment a frame is in so it ends there. */
+/** End the program at this frame, removing all later shots too. */
 export function trimEndAt(plan: PreviewPlan, frame: number): EditCommandJson | null {
   const segment = segmentAt(plan, frame);
   const ticks = sourceTicksAt(plan, frame);
-  if (!segment || ticks === null || ticks <= segment.inTicks) {
+  if (!segment || ticks === null) {
     return null;
   }
+  if (plan.segments.length > 1) {
+    const start = segment.programStartTicks + ticks - segment.inTicks;
+    const end = plan.segments.reduce((total, item) => total + item.outTicks - item.inTicks, 0);
+    return start > 0 && start < end
+      ? { op: 'ripple_delete', start_ticks: start, end_ticks: end, reflow_edges: true }
+      : null;
+  }
+  if (ticks <= segment.inTicks) return null;
   return trim(segment.inTicks, ticks, segment.segmentId);
 }
 
@@ -133,9 +161,14 @@ export function solvedKeyframe(
   const frameWidth = source.displayWidth;
   const frameHeight = source.displayHeight;
   let height = clamp(Math.round(keyframe.scale * frameHeight), 2, frameHeight);
-  let width = clamp(Math.floor((height * aspect.width) / aspect.height), 2, frameWidth);
   height -= height % 2;
-  width -= width % 2;
+  let width = 2 * Math.round((height * aspect.width) / aspect.height / 2);
+  if (width > frameWidth) {
+    width = frameWidth - (frameWidth % 2);
+    height = Math.round((width * aspect.height) / aspect.width);
+  }
+  width = Math.max(2, width);
+  height = Math.max(2, height);
   const x = Math.round(keyframe.centerX * frameWidth) - Math.floor(width / 2);
   const y = Math.round(keyframe.centerY * frameHeight) - Math.floor(height / 2);
   return {
@@ -173,7 +206,10 @@ export function segmentTicksAt(
   if (!segment) {
     return { segmentId: SEGMENT, tTicks: ticksAt(plan, frame) };
   }
-  return { segmentId: segment.segmentId, tTicks: ticksAt(plan, frame - segment.firstFrame) };
+  return {
+    segmentId: segment.segmentId,
+    tTicks: Math.max(0, ticksAt(plan, frame) - segment.programStartTicks),
+  };
 }
 
 export function setCueLines(

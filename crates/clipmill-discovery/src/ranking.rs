@@ -253,6 +253,12 @@ pub fn rank(
     let (selected, shortfall) = select(&cohort, &scored, request, count);
 
     Ok(contract::RankingSet {
+        content_profile: if candidates.content_profile.to_string() == "scripted" {
+            contract::RankingSetContentProfile::Scripted
+        } else {
+            contract::RankingSetContentProfile::Interview
+        },
+        declined: Vec::new(),
         editorial: candidates
             .editorial
             .as_ref()

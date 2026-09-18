@@ -12,13 +12,13 @@
  * hook resolves those beside the proxy, from the same job, for the same reason
  * the proxy is: the media for a clip is the media of the run that produced it.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import { batch, setCropKeyframe, setLayout, solvedKeyframe } from '../editor/commands.js';
+import { batch, setLayout, solvedKeyframe } from '../editor/commands.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
-import { sourceOf } from '../editor/player.js';
+import { segmentAt, sourceOf } from '../editor/player.js';
 import { useEditor } from '../editor/useEditor.js';
 import type { ClipRef } from '../shell/route.js';
 import { Editor } from './Editor.js';
@@ -43,6 +43,13 @@ export function EditorScreen({
 }: EditorScreenProps) {
   const editor = useEditor(clip, api);
   const [resolving, setResolving] = useState(false);
+  const [resolveProblem, setResolveProblem] = useState<string | null>(null);
+  const resolveVersion = useRef(0);
+  useEffect(() => {
+    resolveVersion.current += 1;
+    setResolveProblem(null);
+    setResolving(false);
+  }, [clip?.docId, editor.plan?.revision]);
 
   /**
    * Why the solver cannot be asked, or `null` when it can.
@@ -54,8 +61,7 @@ export function EditorScreen({
    */
   const resolveRefusal = editor.faceTrack
     ? null
-    : 'Nothing has detected faces in this recording, so there is no track to follow. ' +
-      'An analysis does not schedule a face pass yet, which is why every clip is fitted.';
+    : 'This analysis has no face evidence. Reanalyze the recording to add automatic framing.';
 
   /**
    * Ask the solver again and write what it says as one undoable step.
@@ -63,45 +69,60 @@ export function EditorScreen({
    * The solve itself writes nothing — it is a proposal — so turning it into
    * keyframes is the editor's decision and is recorded as such.
    */
-  const onResolve = useCallback(async () => {
-    const plan = editor.plan;
-    const faceTrack = editor.faceTrack;
-    // The span the solver is asked about is the segment's own window into the
-    // source — the face tracks are in source time — and the answer comes back
-    // in shares of the source frame, which the plan names. Asked from zero to
-    // the clip's duration and converted against the output's dimensions, as
-    // this was, the path followed faces from the recording's opening.
-    const segment = plan?.segments[0];
-    const source = plan && segment ? sourceOf(plan, segment) : null;
-    if (!faceTrack || !plan || !segment || !source) {
-      return;
-    }
-    setResolving(true);
-    try {
-      const solved = await api.solveCropPath(
-        faceTrack.projectId,
-        faceTrack.artifactId,
-        segment.inTicks,
-        segment.outTicks,
-      );
-      if (solved.fit || solved.keyframes.length === 0) {
-        await editor.apply(setLayout('fit', segment.segmentId));
+  const onResolve = useCallback(
+    async (frame: number) => {
+      const plan = editor.plan;
+      const faceTrack = editor.faceTrack;
+      // The span the solver is asked about is the segment's own window into the
+      // source — the face tracks are in source time — and the answer comes back
+      // in shares of the source frame, which the plan names. Asked from zero to
+      // the clip's duration and converted against the output's dimensions, as
+      // this was, the path followed faces from the recording's opening.
+      const segment = plan ? segmentAt(plan, frame) : null;
+      const source = plan && segment ? sourceOf(plan, segment) : null;
+      if (!faceTrack || !plan || !segment || !source) {
         return;
       }
-      const aspect = { width: plan.width, height: plan.height };
-      await editor.apply(
-        batch([
-          setLayout('speaker_fill', segment.segmentId),
-          ...solved.keyframes.map((keyframe) => {
-            const converted = solvedKeyframe(keyframe, segment, source, aspect);
-            return setCropKeyframe(converted.tTicks, converted.rect, segment.segmentId);
-          }),
-        ]),
-      );
-    } finally {
-      setResolving(false);
-    }
-  }, [api, editor]);
+      const version = ++resolveVersion.current;
+      setResolving(true);
+      setResolveProblem(null);
+      try {
+        const solved = await api.solveCropPath(
+          faceTrack.projectId,
+          faceTrack.artifactId,
+          segment.inTicks,
+          segment.outTicks,
+        );
+        if (version !== resolveVersion.current) return;
+        if (solved.fit || solved.keyframes.length === 0) {
+          await editor.apply(setLayout('fit', segment.segmentId));
+          return;
+        }
+        const aspect = { width: plan.width, height: plan.height };
+        await editor.apply(
+          batch([
+            setLayout('speaker_fill', segment.segmentId),
+            {
+              op: 'replace_crop_path',
+              segment_id: segment.segmentId,
+              path: solved.keyframes.map((keyframe) => {
+                const converted = solvedKeyframe(keyframe, segment, source, aspect);
+                return { t_ticks: converted.tTicks, rect: converted.rect };
+              }),
+            },
+          ]),
+        );
+      } catch (error) {
+        if (version !== resolveVersion.current) return;
+        setResolveProblem(
+          error instanceof Error ? error.message : 'Framing could not be recalculated. Try again.',
+        );
+      } finally {
+        if (version === resolveVersion.current) setResolving(false);
+      }
+    },
+    [api, editor],
+  );
 
   return (
     <Editor
@@ -110,7 +131,7 @@ export function EditorScreen({
       docId={editor.docId}
       labels={clip?.labels ?? null}
       loading={editor.loading}
-      problem={editor.problem}
+      problem={editor.problem ?? resolveProblem}
       busy={editor.busy}
       canUndo={editor.canUndo}
       canRedo={editor.canRedo}
@@ -128,8 +149,8 @@ export function EditorScreen({
       onRedo={() => {
         void editor.redo();
       }}
-      onResolve={() => {
-        void onResolve();
+      onResolve={(frame) => {
+        void onResolve(frame);
       }}
     />
   );

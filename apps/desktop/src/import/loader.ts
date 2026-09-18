@@ -83,6 +83,7 @@ export class ImportLoader {
       minTicks: secondsToTicks(settings.minSeconds),
       maxTicks: secondsToTicks(settings.maxSeconds),
       count: settings.count,
+      contentProfile: settings.contentProfile ?? 'interview',
       localEditorial: (settings.editorialRoute ?? 'local') === 'local',
       ...(settings.editorialRoute === 'cloud'
         ? {

@@ -81,6 +81,7 @@ class Reason(BaseModel):
         "irrelevant_intro",
         "misleading_omission",
         "visual_dependency",
+        "transcript_uncertain",
         "other",
     ]
     detail: str = Field(min_length=1, max_length=500)
@@ -210,6 +211,7 @@ def propose(
             if context_start <= s["index"] < context_end
         ]
         data = {
+            "content_profile": windows.get("content_profile", "interview"),
             "window": window,
             "sentences": sentences,
             "outline": bounded_outline(windows.get("outline", []), first, end),
@@ -289,6 +291,7 @@ def review(
         b = min(len(sentences), max(positions) + 3)
         context = {"first_sentence_index": sentences[a]["index"], "sentence_count": b - a}
         data = {
+            "content_profile": windows.get("content_profile", "interview"),
             "candidate": candidate,
             "sentences": sentences[a:b],
             "clip_sentence_indexes": [sentences[i]["index"] for i in positions],
@@ -315,6 +318,17 @@ def review(
             # omission or unresolved visual reference as ready without review.
             if any(reason["code"] == "visual_dependency" for reason in answer["reasons"]):
                 answer["visual_dependency"] = True
+            # Uncertainty is not evidence of a bad cut. Preserve hard rejects
+            # when any specific completeness/meaning problem is also present.
+            if (
+                answer["status"] == "rejected"
+                and answer["reasons"]
+                and all(
+                    reason["code"] in ("visual_dependency", "transcript_uncertain")
+                    for reason in answer["reasons"]
+                )
+            ):
+                answer["status"] = "needs_review"
             if answer["status"] == "accepted" and any(
                 reason["code"] != "other" for reason in answer["reasons"]
             ):
@@ -359,13 +373,9 @@ def look(
     runtime = LazyVisualRuntime(runtime_factory)
     try:
         for verdict in judgments.get("candidates", []):
-            if (
-                verdict.get("outcome") != "answered"
-                or not (
-                    verdict.get("visual_dependency")
-                    or any(r["code"] == "visual_dependency" for r in verdict["reasons"])
-                )
-                or verdict.get("status") == "rejected"
+            if verdict.get("outcome") != "answered" or not (
+                verdict.get("visual_dependency")
+                or any(r["code"] == "visual_dependency" for r in verdict["reasons"])
             ):
                 continue
             cancellation.raise_if_cancelled()
@@ -389,7 +399,11 @@ def look(
             answer, failure = call(
                 runtime,
                 "look",
-                {"question": question, "frames": [{"t_ticks": f["t_ticks"]} for f in selected]},
+                {
+                    "content_profile": judgments.get("content_profile", "interview"),
+                    "question": question,
+                    "frames": [{"t_ticks": f["t_ticks"]} for f in selected],
+                },
                 LookReply,
                 max_tokens,
                 {

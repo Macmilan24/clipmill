@@ -428,6 +428,7 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"speech.alignment.v1\","]
 #[doc = "        \"speech.transcript.v1\","]
 #[doc = "        \"evidence.shots.v1\","]
+#[doc = "        \"vision.face_track.v1\","]
 #[doc = "        \"index.transcript.v1\","]
 #[doc = "        \"editorial.windows.v1\","]
 #[doc = "        \"editorial.proposals.v1\","]
@@ -468,6 +469,7 @@ impl Stage {
 #[doc = "    \"speech.alignment.v1\","]
 #[doc = "    \"speech.transcript.v1\","]
 #[doc = "    \"evidence.shots.v1\","]
+#[doc = "    \"vision.face_track.v1\","]
 #[doc = "    \"index.transcript.v1\","]
 #[doc = "    \"editorial.windows.v1\","]
 #[doc = "    \"editorial.proposals.v1\","]
@@ -506,6 +508,8 @@ pub enum StageKind {
     SpeechTranscriptV1,
     #[serde(rename = "evidence.shots.v1")]
     EvidenceShotsV1,
+    #[serde(rename = "vision.face_track.v1")]
+    VisionFaceTrackV1,
     #[serde(rename = "index.transcript.v1")]
     IndexTranscriptV1,
     #[serde(rename = "editorial.windows.v1")]
@@ -531,6 +535,7 @@ impl ::std::fmt::Display for StageKind {
             Self::SpeechAlignmentV1 => f.write_str("speech.alignment.v1"),
             Self::SpeechTranscriptV1 => f.write_str("speech.transcript.v1"),
             Self::EvidenceShotsV1 => f.write_str("evidence.shots.v1"),
+            Self::VisionFaceTrackV1 => f.write_str("vision.face_track.v1"),
             Self::IndexTranscriptV1 => f.write_str("index.transcript.v1"),
             Self::EditorialWindowsV1 => f.write_str("editorial.windows.v1"),
             Self::EditorialProposalsV1 => f.write_str("editorial.proposals.v1"),
@@ -552,6 +557,7 @@ impl ::std::str::FromStr for StageKind {
             "speech.alignment.v1" => Ok(Self::SpeechAlignmentV1),
             "speech.transcript.v1" => Ok(Self::SpeechTranscriptV1),
             "evidence.shots.v1" => Ok(Self::EvidenceShotsV1),
+            "vision.face_track.v1" => Ok(Self::VisionFaceTrackV1),
             "index.transcript.v1" => Ok(Self::IndexTranscriptV1),
             "editorial.windows.v1" => Ok(Self::EditorialWindowsV1),
             "editorial.proposals.v1" => Ok(Self::EditorialProposalsV1),

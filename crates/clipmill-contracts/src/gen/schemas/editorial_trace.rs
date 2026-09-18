@@ -946,6 +946,15 @@ impl CallTokens {
 #[doc = "        \"$ref\": \"#/$defs/call\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"content_profile\": {"]
+#[doc = "      \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "      \"default\": \"interview\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"interview\","]
+#[doc = "        \"scripted\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"producer\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
@@ -981,6 +990,9 @@ pub struct EditorialTrace {
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub budget: ::std::option::Option<EditorialTraceBudget>,
     pub calls: ::std::vec::Vec<Call>,
+    #[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+    #[serde(default = "defaults::editorial_trace_content_profile")]
+    pub content_profile: EditorialTraceContentProfile,
     pub producer: EditorialTraceProducer,
     pub schema_version: ::serde_json::Value,
     pub source_fingerprint: Sha256,
@@ -1025,6 +1037,85 @@ pub struct EditorialTraceBudget {
 impl EditorialTraceBudget {
     pub fn builder() -> builder::EditorialTraceBudget {
         Default::default()
+    }
+}
+#[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "  \"default\": \"interview\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"interview\","]
+#[doc = "    \"scripted\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditorialTraceContentProfile {
+    #[serde(rename = "interview")]
+    Interview,
+    #[serde(rename = "scripted")]
+    Scripted,
+}
+impl ::std::fmt::Display for EditorialTraceContentProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Interview => f.write_str("interview"),
+            Self::Scripted => f.write_str("scripted"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditorialTraceContentProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "interview" => Ok(Self::Interview),
+            "scripted" => Ok(Self::Scripted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialTraceContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialTraceContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialTraceContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for EditorialTraceContentProfile {
+    fn default() -> Self {
+        EditorialTraceContentProfile::Interview
     }
 }
 #[doc = "`EditorialTraceProducer`"]
@@ -1699,6 +1790,8 @@ pub mod builder {
             ::std::string::String,
         >,
         calls: ::std::result::Result<::std::vec::Vec<super::Call>, ::std::string::String>,
+        content_profile:
+            ::std::result::Result<super::EditorialTraceContentProfile, ::std::string::String>,
         producer: ::std::result::Result<super::EditorialTraceProducer, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
@@ -1708,6 +1801,7 @@ pub mod builder {
             Self {
                 budget: Ok(Default::default()),
                 calls: Err("no value supplied for calls".to_string()),
+                content_profile: Ok(super::defaults::editorial_trace_content_profile()),
                 producer: Err("no value supplied for producer".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
@@ -1733,6 +1827,16 @@ pub mod builder {
             self.calls = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for calls: {e}"));
+            self
+        }
+        pub fn content_profile<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialTraceContentProfile>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content_profile = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content_profile: {e}"));
             self
         }
         pub fn producer<T>(mut self, value: T) -> Self
@@ -1774,6 +1878,7 @@ pub mod builder {
             Ok(Self {
                 budget: value.budget?,
                 calls: value.calls?,
+                content_profile: value.content_profile?,
                 producer: value.producer?,
                 schema_version: value.schema_version?,
                 source_fingerprint: value.source_fingerprint?,
@@ -1785,6 +1890,7 @@ pub mod builder {
             Self {
                 budget: Ok(value.budget),
                 calls: Ok(value.calls),
+                content_profile: Ok(value.content_profile),
                 producer: Ok(value.producer),
                 schema_version: Ok(value.schema_version),
                 source_fingerprint: Ok(value.source_fingerprint),
@@ -1901,5 +2007,11 @@ pub mod builder {
                 stage: Ok(value.stage),
             }
         }
+    }
+}
+#[doc = r" Generation of default values for serde."]
+pub mod defaults {
+    pub(super) fn editorial_trace_content_profile() -> super::EditorialTraceContentProfile {
+        super::EditorialTraceContentProfile::Interview
     }
 }

@@ -46,6 +46,9 @@ message Request {
     ExportArchiveRequest export_archive = 40;
     GetLocalLockRequest get_local_lock = 41;
     GetReadinessRequest get_readiness = 42;
+    SubmitExportBatchRequest submit_export_batch = 43;
+    ListExportBatchesRequest list_export_batches = 44;
+    UpdateExportBatchItemRequest update_export_batch_item = 45;
   }
 }
 
@@ -89,6 +92,8 @@ message Response {
     ExportArchiveResponse export_archive = 41;
     GetLocalLockResponse get_local_lock = 42;
     GetReadinessResponse get_readiness = 43;
+    ExportBatchResponse export_batch = 44;
+    ListExportBatchesResponse list_export_batches = 45;
   }
 }
 
@@ -361,6 +366,8 @@ message EditorialStagePayloadV1 {
   string prompt_digest = 4;
   uint32 max_output_tokens = 5;
   EditorialCloudV1 cloud = 6;
+  // interview or scripted; empty reads as interview for older runs.
+  string content_profile = 7;
 }
 
 // Versioned payload for discovery (book ch. 15). The request names a source;
@@ -475,6 +482,8 @@ message AnalyzeSourcePayloadV1 {
   // Explicit local editorial selection; absent keeps legacy heuristic jobs readable.
   bool local_editorial = 7;
   EditorialCloudV1 cloud_editorial = 8;
+  // Persisted editorial rubric; interview (default) or scripted.
+  string content_profile = 9;
 }
 
 // Explicit consent applies only to this run. Credentials never enter the request.
@@ -586,6 +595,8 @@ message Job {
   // was left or the application relaunched, rather than remembering it in
   // renderer state that a remount starts without.
   ExportSummaryV1 export = 12;
+  // Selected rubric read from this analysis job's persisted payload.
+  string content_profile = 13;
 }
 
 // The identity of an export, as its job carries it.
@@ -1112,6 +1123,11 @@ message DirectClipRequest {
   // published, must not be mixed into a clip chosen from another. Empty takes
   // the newest run over the source, checked for coherence the same way.
   string job_id = 10;
+  // Explicit human override for a declined nomination; never implied by bulk approval.
+  bool allow_declined = 11;
+  // Explicit user-selected source interval, without an editorial recommendation.
+  // Requires a named run and start/end ticks; candidate_id is ignored.
+  bool manual_span = 12;
 }
 
 message DirectClipResponse {
@@ -1202,6 +1218,9 @@ message PreviewSegmentV1 {
   int64 program_start_ticks = 5;
   int64 first_frame = 6;
   int64 end_frame = 7;
+  // Both saved viewport paths remain available even when displaying Fit.
+  bool has_two_up_paths = 8;
+  string framing_warning = 9;
 }
 
 // A source the program draws from, as the crops are measured against it.
@@ -1230,6 +1249,23 @@ message PreviewProxyV1 {
   uint32 rate_den = 9;
 }
 
+// Resolved export preset. Colours are CSS #RRGGBBAA, dimensions in output pixels.
+message PreviewCaptionStyleV1 {
+  string style_ref = 1;
+  string font_family = 2;
+  uint32 font_size = 3;
+  string spoken = 4;
+  string unspoken = 5;
+  string outline = 6;
+  string shadow = 7;
+  uint32 outline_width = 8;
+  uint32 shadow_depth = 9;
+  bool bold = 10;
+  bool boxed = 11;
+  uint32 margin_horizontal = 12;
+  uint32 margin_vertical = 13;
+}
+
 message GetPreviewPlanResponse {
   // The revision this plan describes. A caller holding a document at a
   // different revision is looking at a stale picture and can tell.
@@ -1256,6 +1292,10 @@ message GetPreviewPlanResponse {
   // are what gets burned in. A cue-scoped command — split, merge, re-break —
   // must name the list it means, because each list numbers its own cues.
   string presentation = 13;
+  // Lower viewport, one per frame. Absent outside a two-person composition.
+  // The primary crop fills the top half, this crop fills the bottom half.
+  repeated PreviewCropV1 secondary_crops = 14;
+  PreviewCaptionStyleV1 caption_style = 15;
 }
 
 // The edit documents a project holds, oldest first.
@@ -1496,3 +1536,31 @@ message GetReadinessResponse {
 message GetLocalLockResponse {
   LocalLockStatusV1 status = 1;
 }
+
+// A durable explicit selection. Every item retains the exact approved request.
+message SubmitExportBatchRequest { repeated ExportRequestV1 requests = 1; }
+message ListExportBatchesRequest {}
+message UpdateExportBatchItemRequest {
+  string batch_id = 1;
+  uint32 index = 2;
+  // retry or cancel. Retry never advances the approved revision.
+  string action = 3;
+}
+message ExportBatchItemV1 {
+  // Derived from the saved edit document; available even during recovery.
+  string project_id = 7;
+  uint32 index = 1;
+  ExportRequestV1 request = 2;
+  // pending, queued, failed, or cancelled. Queued jobs have their own lifecycle.
+  string state = 3;
+  uint32 attempt = 4;
+  ExportClipResponse queued = 5;
+  string error = 6;
+}
+message ExportBatchV1 {
+  string batch_id = 1;
+  uint64 created_unix_millis = 2;
+  repeated ExportBatchItemV1 items = 3;
+}
+message ExportBatchResponse { ExportBatchV1 batch = 1; }
+message ListExportBatchesResponse { repeated ExportBatchV1 batches = 1; }

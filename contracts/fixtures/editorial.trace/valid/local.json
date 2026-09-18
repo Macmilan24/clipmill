@@ -42,6 +42,7 @@
       "window_index": 3
     }
   ],
+  "content_profile": "interview",
   "producer": {
     "implementation": "clipmill-worker-editorial@0.1.0",
     "stage": "editorial-propose"

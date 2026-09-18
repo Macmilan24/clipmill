@@ -53,6 +53,11 @@ pub fn proposals(
     {
         return Err(Error("source or windows artifact mismatch".into()));
     }
+    if windows.content_profile.to_string() != proposed.content_profile.to_string() {
+        return Err(Error(
+            "source context and proposals use different content profiles".into(),
+        ));
+    }
     let mut seen_windows = BTreeSet::new();
     let mut seen_ids = BTreeSet::new();
     let mut accepted: BTreeMap<(u64, u64), candidate::Candidate> = BTreeMap::new();
@@ -264,6 +269,7 @@ pub fn proposals(
     let report = json!({"rejected":refused,"merged":merged,"editorial":coverage});
     Ok(Validated {
         candidates: DiscoveryCandidates {
+            content_profile: parsed(&windows.content_profile.to_string())?,
             schema_version: json!("clipmill.discovery.candidates.v1"),
             source_fingerprint: parsed(windows.source_fingerprint.as_str())?,
             inputs: candidate::DiscoveryCandidatesInputs {
@@ -273,7 +279,7 @@ pub fn proposals(
             },
             producer: candidate::Producer {
                 stage: parsed("editorial-validate")?,
-                implementation: parsed("clipmill-editorial-validate@1.1.0")?,
+                implementation: parsed("clipmill-editorial-validate@1.2.0")?,
             },
             coverage: candidate::Coverage {
                 start_ticks: windows.coverage.start_ticks,

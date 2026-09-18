@@ -445,3 +445,47 @@ describe('editorial review presentation', () => {
     expect(clipRows(withoutTitle, candidates(), null, [])[0]?.headline).toBe('');
   });
 });
+
+describe('inspectable editorial declines', () => {
+  it('preserves declined titles, boundaries and reasons without marking a recommendation', () => {
+    const base = ranking();
+    const declined = {
+      ...base.cohort[0]!,
+      title: 'An unfinished answer',
+      review: {
+        status: 'rejected' as const,
+        route: 'local' as const,
+        reasons: ['The answer continues after the cut.'],
+        summary: 'Missing the local payoff.',
+      },
+    };
+    const rows = clipRows(
+      {
+        ...base,
+        cohort: [],
+        declined: [declined],
+        selected: [declined.candidate_id],
+        content_profile: 'scripted',
+      },
+      candidates(),
+      null,
+      [],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.headline).toBe('An unfinished answer');
+    expect(rows[0]?.startTicks).toBe(declined.boundary.chosen.start_ticks);
+    expect(rows[0]?.band).toBe('declined');
+    expect(rows[0]?.bandLabel).toBe('Declined by editorial review');
+    expect(rows[0]?.recommended).toBe(false);
+    expect(rows[0]?.review?.reasons).toEqual(['The answer continues after the cut.']);
+    expect(
+      summarize({
+        ...base,
+        cohort: [],
+        declined: [declined],
+        selected: [],
+        content_profile: 'scripted',
+      }),
+    ).toMatchObject({ declined: 1, cohort: 0, selected: 0, contentProfile: 'scripted' });
+  });
+});

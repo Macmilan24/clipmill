@@ -31,6 +31,8 @@ import { Button } from '../components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
 import { Audio } from '../editor/Audio.js';
+import { CompositionCanvas } from '../editor/CompositionCanvas.js';
+import { useDraftAudio } from '../editor/useDraftAudio.js';
 import { Captions } from '../editor/Captions.js';
 import { Reframe } from '../editor/Reframe.js';
 import { snapToWord, trimEndAt, trimStartAt } from '../editor/commands.js';
@@ -47,7 +49,6 @@ import {
   proxySecondsAt,
   segmentAt,
   sourceOf,
-  stageTransform,
   timecode,
 } from '../editor/player.js';
 
@@ -82,7 +83,7 @@ export interface EditorProps {
   readonly onApply: (command: EditCommandJson) => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
-  readonly onResolve: () => void;
+  readonly onResolve: (frame: number) => void;
 }
 
 export function Editor({
@@ -114,6 +115,7 @@ export function Editor({
   // the effect below that moves it back, a frame past the end would find no
   // segment — and no segment would take the picture down with it.
   const frame = plan ? Math.max(0, Math.min(playhead, plan.frameCount - 1)) : playhead;
+  const draftAudio = useDraftAudio(video, plan ? gainAt(plan, frame) : 0);
 
   // A different document is a different program; a playhead left where the
   // last one was would seek the new proxy to a frame it may not have.
@@ -170,12 +172,13 @@ export function Editor({
       element.pause();
     } else {
       if (frame >= plan.frameCount - 1) seek(0);
+      draftAudio.connect();
       void element.play().catch(() => {
         setPlaying(false);
         setPlaybackProblem('Playback could not start. Try playing the clip again.');
       });
     }
-  }, [frame, plan, seek]);
+  }, [frame, plan, seek, draftAudio.connect]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -212,6 +215,7 @@ export function Editor({
     [plan, cue, frame],
   );
   const crop = useMemo(() => (plan ? cropAt(plan, frame) : null), [plan, frame]);
+  const secondaryCrop = useMemo(() => (plan ? cropAt(plan, frame, true) : null), [plan, frame]);
   const segment = useMemo(() => (plan ? segmentAt(plan, frame) : null), [plan, frame]);
 
   /**
@@ -352,18 +356,18 @@ export function Editor({
           )}
         </div>
       </header>
-      {(problem || playbackProblem) && (
+      {(problem || playbackProblem || draftAudio.problem || segment?.framingWarning) && (
         <p
           role="alert"
           className="border-b border-[var(--cm-glass-border)] bg-[var(--cm-glass)] px-6 py-2 text-xs text-[var(--cm-danger-ink)]"
         >
-          {problem || playbackProblem}
+          {problem || playbackProblem || draftAudio.problem || segment?.framingWarning}
         </p>
       )}
       <div className="editor-body">
         <section className="editor-viewer" aria-label="Clip preview">
           <div className="flex items-center justify-between text-[11px] text-[var(--cm-text-muted)]">
-            <span>Preview</span>
+            <span>Draft preview · r{plan.revision}</span>
             <span className="mono">
               {plan.width} × {plan.height} · {(plan.rateNum / plan.rateDen).toFixed(2)} fps
             </span>
@@ -373,6 +377,8 @@ export function Editor({
               proxyUrl={proxyUrl}
               videoRef={video}
               crop={crop}
+              secondaryCrop={secondaryCrop}
+              plan={plan}
               source={source}
               lines={cue ? cueLines(cue) : []}
               cue={cue}
@@ -388,6 +394,20 @@ export function Editor({
               }}
             />
           </div>
+          <p className="text-center text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
+            Fast proxy preview with your gain edits.{' '}
+            {onExport ? (
+              <button
+                type="button"
+                onClick={onExport}
+                className="text-[var(--cm-accent)] underline underline-offset-2"
+              >
+                Render r{plan.revision} for final picture and mastered audio.
+              </button>
+            ) : (
+              'Review the rendered file for final picture and mastered audio.'
+            )}
+          </p>
           <Transport
             plan={plan}
             frame={frame}
@@ -412,7 +432,7 @@ export function Editor({
                 frame={frame}
                 busy={busy}
                 onApply={onApply}
-                onResolve={onResolve}
+                onResolve={() => onResolve(frame)}
                 resolving={resolving}
                 resolveRefusal={resolveRefusal}
               />
@@ -429,7 +449,10 @@ export function Editor({
                   <Row label="Output" value={`${plan.width}×${plan.height}`} />
                   <Row label="Rate" value={`${(plan.rateNum / plan.rateDen).toFixed(3)} fps`} />
                   <Row label="Frames" value={String(plan.frameCount)} />
-                  <Row label="Layout" value={crop ? 'Speaker-follow' : 'Fit'} />
+                  <Row
+                    label="Layout"
+                    value={secondaryCrop ? 'Two portraits' : crop ? 'Face crop' : 'Fit'}
+                  />
                   <Row label="Gain here" value={`${gainAt(plan, frame).toFixed(1)} dB`} />
                   {segment && (
                     <Row
@@ -514,6 +537,8 @@ function Stage({
   proxyUrl,
   videoRef,
   crop,
+  secondaryCrop,
+  plan,
   source,
   lines,
   cue,
@@ -526,6 +551,8 @@ function Stage({
   readonly proxyUrl: string | null;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly crop: ReturnType<typeof cropAt>;
+  readonly secondaryCrop: ReturnType<typeof cropAt>;
+  readonly plan: PreviewPlan;
   /** The frame the crop is measured in. Null when the plan does not know it. */
   readonly source: { readonly displayWidth: number; readonly displayHeight: number } | null;
   readonly lines: readonly string[];
@@ -537,18 +564,18 @@ function Stage({
   readonly onPlaying: (playing: boolean) => void;
   readonly onError: () => void;
 }) {
-  // The crop is expressed against the source frame, and the element on stage
-  // is the source scaled to the stage's height — so the transform is built
-  // against the source's dimensions, from the plan, not against the output's,
-  // and it is applied to the video element itself: a percentage translate is
-  // a share of the transformed element's own box, and the stage-sized wrapper
-  // this used to sit on is narrower than a landscape source, so off-centre
-  // crops moved too little.
-  const transform = crop && source ? stageTransform(crop, source) : undefined;
-
+  const style = plan.captionStyle;
+  const relative = (pixels: number) => `${(pixels / plan.width) * 100}cqw`;
+  const verticalMargin = ((style?.marginVertical ?? 260) / plan.height) * 100;
+  const position =
+    cue?.region === 'upper_safe'
+      ? { top: `${verticalMargin}%` }
+      : cue?.region === 'center'
+        ? { top: '50%', transform: 'translateY(-50%)' }
+        : { bottom: `${verticalMargin}%` };
   let index = 0;
   return (
-    <div className="video-stage" data-testid="stage">
+    <div className="video-stage" data-testid="stage" style={{ containerType: 'inline-size' }}>
       {proxyUrl ? (
         <div className="absolute inset-0 flex items-center justify-center">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- the cues are
@@ -556,8 +583,8 @@ function Stage({
           <video
             ref={videoRef}
             src={proxyUrl}
-            className={crop ? 'h-full w-auto max-w-none' : 'max-h-full max-w-full'}
-            style={{ transform }}
+            className="pointer-events-none absolute h-full w-full opacity-0"
+            crossOrigin="anonymous"
             playsInline
             data-testid="proxy"
             data-start-seconds={startSeconds ?? undefined}
@@ -574,6 +601,14 @@ function Stage({
             onEnded={() => onPlaying(false)}
             onError={onError}
           />
+          <CompositionCanvas
+            video={videoRef}
+            crop={crop}
+            secondary={secondaryCrop}
+            source={source}
+            width={plan.width}
+            height={plan.height}
+          />
         </div>
       ) : (
         <p className="grid h-full place-items-center p-6 text-center text-sm text-[var(--cm-ink-2)]">
@@ -582,25 +617,58 @@ function Stage({
       )}
       {proxyUrl && lines.length > 0 && (
         <p
-          className="pointer-events-none absolute inset-x-4 bottom-16 text-center text-lg leading-tight font-semibold drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]"
+          className="pointer-events-none absolute text-center leading-tight"
+          style={{
+            ...position,
+            left: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
+            right: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
+            fontFamily:
+              !style || style.fontFamily === 'Inter' ? 'ClipMill Caption Inter' : style.fontFamily,
+            fontSize: relative(style?.fontSize ?? 84),
+            fontWeight: style?.bold === false ? 400 : 700,
+            WebkitTextStroke: style?.boxed
+              ? undefined
+              : `${relative(style?.outlineWidth ?? 5)} ${style?.outline ?? '#000000'}`,
+            paintOrder: 'stroke fill',
+            textShadow: style?.boxed
+              ? undefined
+              : `${relative(style?.shadowDepth ?? 2)} ${relative(style?.shadowDepth ?? 2)} 0 ${style?.shadow ?? '#000000'}`,
+          }}
           data-testid="caption"
         >
           {cue?.lines.map((line, lineIndex) => (
             // eslint-disable-next-line react/no-array-index-key -- lines have no
             // identity of their own; their position is what they are.
-            <span key={lineIndex} className="block">
-              {line.map((word) => {
-                const mine = index;
-                index += 1;
-                return (
-                  <span
-                    key={`${word.text}-${mine}`}
-                    className={mine <= highlighted ? 'text-[var(--cm-accent)]' : 'text-white'}
-                  >
-                    {word.text}{' '}
-                  </span>
-                );
-              })}
+            <span key={lineIndex} className="block whitespace-nowrap">
+              <span
+                style={
+                  style?.boxed
+                    ? {
+                        background: style.outline,
+                        padding: `${relative(style.outlineWidth)} ${relative(style.outlineWidth * 2)}`,
+                        boxDecorationBreak: 'clone',
+                      }
+                    : undefined
+                }
+              >
+                {line.map((word) => {
+                  const mine = index;
+                  index += 1;
+                  return (
+                    <span
+                      key={`${word.text}-${mine}`}
+                      style={{
+                        color:
+                          !cue.karaoke || mine <= highlighted
+                            ? (style?.spoken ?? '#ffd65c')
+                            : (style?.unspoken ?? '#ffffff'),
+                      }}
+                    >
+                      {word.text}{' '}
+                    </span>
+                  );
+                })}
+              </span>
             </span>
           ))}
         </p>
@@ -689,15 +757,20 @@ function Lanes({
   readonly onSeek: (frame: number) => void;
 }) {
   const cropRuns = useMemo(() => {
-    const runs: { first: number; end: number; following: boolean }[] = [];
+    const runs: { first: number; end: number; mode: 'Fit' | 'Face crop' | 'Two portraits' }[] = [];
     for (let at = 0; at < plan.crops.length; at++) {
-      const following = plan.crops[at] != null;
+      const mode =
+        plan.secondaryCrops?.[at] != null
+          ? 'Two portraits'
+          : plan.crops[at] != null
+            ? 'Face crop'
+            : 'Fit';
       const previous = runs.at(-1);
-      if (previous && previous.following === following) previous.end = at + 1;
-      else runs.push({ first: at, end: at + 1, following });
+      if (previous && previous.mode === mode) previous.end = at + 1;
+      else runs.push({ first: at, end: at + 1, mode });
     }
     return runs;
-  }, [plan.crops]);
+  }, [plan.crops, plan.secondaryCrops]);
   const playhead = lanePosition(plan, frame);
   const span = (first: number, end: number) => ({
     left: `${lanePosition(plan, first)}%`,
@@ -722,7 +795,7 @@ function Lanes({
           className="absolute inset-y-0 flex items-center overflow-hidden rounded-sm border border-[var(--cm-glass-border)] px-2 text-[10px] text-[var(--cm-text-secondary)]"
           style={span(run.first, run.end)}
         >
-          {run.following ? 'Speaker-follow' : 'Fit'}
+          {run.mode}
         </span>
       )),
     },

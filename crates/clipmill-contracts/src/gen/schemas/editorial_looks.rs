@@ -798,6 +798,15 @@ impl Decoding {
 #[doc = "        \"$ref\": \"#/$defs/check\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"content_profile\": {"]
+#[doc = "      \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "      \"default\": \"interview\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"interview\","]
+#[doc = "        \"scripted\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"inputs\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
@@ -832,6 +841,9 @@ impl Decoding {
 #[serde(deny_unknown_fields)]
 pub struct EditorialLooks {
     pub checks: ::std::vec::Vec<Check>,
+    #[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+    #[serde(default = "defaults::editorial_looks_content_profile")]
+    pub content_profile: EditorialLooksContentProfile,
     pub inputs: EditorialLooksInputs,
     pub producer: ModelProducer,
     pub schema_version: ::serde_json::Value,
@@ -840,6 +852,85 @@ pub struct EditorialLooks {
 impl EditorialLooks {
     pub fn builder() -> builder::EditorialLooks {
         Default::default()
+    }
+}
+#[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "  \"default\": \"interview\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"interview\","]
+#[doc = "    \"scripted\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditorialLooksContentProfile {
+    #[serde(rename = "interview")]
+    Interview,
+    #[serde(rename = "scripted")]
+    Scripted,
+}
+impl ::std::fmt::Display for EditorialLooksContentProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Interview => f.write_str("interview"),
+            Self::Scripted => f.write_str("scripted"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditorialLooksContentProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "interview" => Ok(Self::Interview),
+            "scripted" => Ok(Self::Scripted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialLooksContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialLooksContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialLooksContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for EditorialLooksContentProfile {
+    fn default() -> Self {
+        EditorialLooksContentProfile::Interview
     }
 }
 #[doc = "`EditorialLooksInputs`"]
@@ -1768,6 +1859,8 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct EditorialLooks {
         checks: ::std::result::Result<::std::vec::Vec<super::Check>, ::std::string::String>,
+        content_profile:
+            ::std::result::Result<super::EditorialLooksContentProfile, ::std::string::String>,
         inputs: ::std::result::Result<super::EditorialLooksInputs, ::std::string::String>,
         producer: ::std::result::Result<super::ModelProducer, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
@@ -1777,6 +1870,7 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 checks: Err("no value supplied for checks".to_string()),
+                content_profile: Ok(super::defaults::editorial_looks_content_profile()),
                 inputs: Err("no value supplied for inputs".to_string()),
                 producer: Err("no value supplied for producer".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
@@ -1793,6 +1887,16 @@ pub mod builder {
             self.checks = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for checks: {e}"));
+            self
+        }
+        pub fn content_profile<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialLooksContentProfile>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content_profile = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content_profile: {e}"));
             self
         }
         pub fn inputs<T>(mut self, value: T) -> Self
@@ -1843,6 +1947,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 checks: value.checks?,
+                content_profile: value.content_profile?,
                 inputs: value.inputs?,
                 producer: value.producer?,
                 schema_version: value.schema_version?,
@@ -1854,6 +1959,7 @@ pub mod builder {
         fn from(value: super::EditorialLooks) -> Self {
             Self {
                 checks: Ok(value.checks),
+                content_profile: Ok(value.content_profile),
                 inputs: Ok(value.inputs),
                 producer: Ok(value.producer),
                 schema_version: Ok(value.schema_version),
@@ -2097,5 +2203,11 @@ pub mod builder {
                 stage: Ok(value.stage),
             }
         }
+    }
+}
+#[doc = r" Generation of default values for serde."]
+pub mod defaults {
+    pub(super) fn editorial_looks_content_profile() -> super::EditorialLooksContentProfile {
+        super::EditorialLooksContentProfile::Interview
     }
 }

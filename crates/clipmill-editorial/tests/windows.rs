@@ -146,6 +146,7 @@ fn every_cut_holds_the_guarantees_a_proposer_relies_on() {
         target_words: 40,
         overlap_words: 10,
         context_sentences: 2,
+        max_clip_ticks: 0,
     };
     for (name, index) in indexes() {
         for budget in [Budget::DEFAULT, small] {
@@ -324,6 +325,7 @@ fn a_small_budget_cuts_the_interview_where_the_arithmetic_says() {
             target_words: 40,
             overlap_words: 10,
             context_sentences: 2,
+            max_clip_ticks: 0,
         },
     );
     let shape = |first, count, words, topics: &[u64], before, after| Shape {

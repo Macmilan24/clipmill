@@ -7,10 +7,14 @@
  * sends must name that document, and the archive must be of that project.
  */
 import { JobState, TaskState } from '@clipmill/contracts';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ExportPlan, Job } from '../src/daemon/client.js';
+// jsdom has no viewport scrolling; Radix uses this after keyboard selection.
+Element.prototype.scrollIntoView ??= () => {};
+
+import type { ExportPlan, Job, QueuedExport } from '../src/daemon/client.js';
+import { useDelivery } from '../src/export/delivery.js';
 import { ExportScreen, effectivePattern } from '../src/screens/ExportScreen.js';
 import type { ClipRef } from '../src/shell/route.js';
 import {
@@ -78,6 +82,7 @@ describe('the export screen, handed a clip in an older project', () => {
       }),
     );
     await screen.findByTestId('export-clip');
+    await chooseRights();
     fireEvent.change(screen.getByLabelText(/folder/i), {
       target: { value: '/Users/sami/Movies/clips' },
     });
@@ -100,6 +105,7 @@ describe('the export screen, handed a clip in an older project', () => {
   it('archives the clip’s project', async () => {
     const { world } = show(OLDER_CLIP);
     await screen.findByTestId('export-clip');
+    await chooseRights();
     fireEvent.change(screen.getByLabelText(/folder/i), {
       target: { value: '/Users/sami/Movies/clips' },
     });
@@ -142,9 +148,15 @@ function passing(revision = 0): ExportPlan {
   };
 }
 
+async function chooseRights() {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Source rights' }));
+  fireEvent.click(await screen.findByRole('option', { name: 'I own this footage' }));
+}
+
 /** Choose a folder and wait for the plan the daemon answers with. */
 async function planned(world: FakeWorld) {
   await screen.findByTestId('export-clip');
+  await chooseRights();
   fireEvent.change(screen.getByLabelText(/folder/i), {
     target: { value: '/Users/sami/Movies/clips' },
   });
@@ -475,6 +487,7 @@ describe('following a queued export', () => {
 
     render(<ExportScreen clip={OLDER_CLIP} onOpen={onOpen} api={api} />);
     await screen.findByTestId('export-clip');
+    await chooseRights();
     const card = await screen.findByTestId('delivery');
     expect(card.textContent).toContain('Delivering revision r0');
     await waitFor(() => {
@@ -618,5 +631,83 @@ describe('following a queued export', () => {
         false,
       );
     });
+  });
+});
+
+describe('export responses remain bound to their selection', () => {
+  it('ignores a delayed export acknowledgement after navigating to a different edit', async () => {
+    const world = twoProjects({ exportPlan: passing() });
+    const base = fakeApi(world);
+    let answer: ((value: QueuedExport) => void) | undefined;
+    const api = {
+      ...base,
+      exportClip: vi.fn(
+        () =>
+          new Promise<QueuedExport>((resolve) => {
+            answer = resolve;
+          }),
+      ),
+    };
+    const onOpen = vi.fn();
+    const view = render(<ExportScreen clip={OLDER_CLIP} onOpen={onOpen} api={api} />);
+    await planned(world);
+    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    await waitFor(() => expect(api.exportClip).toHaveBeenCalledTimes(1));
+    view.rerender(
+      <ExportScreen
+        clip={{ ...OLDER_CLIP, projectId: NEW, docId: NEW_DOC }}
+        onOpen={onOpen}
+        api={api}
+      />,
+    );
+    await act(async () => {
+      answer!({
+        jobId: 'late-export',
+        revision: 0,
+        irArtifactId: 'old-ir',
+        destinationDir: '/old',
+      });
+    });
+    expect(screen.queryByTestId('delivery')).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Source rights' }).textContent).not.toContain(
+      'I own this footage',
+    );
+  });
+
+  it('does not show a prior delivery under a replacement queued revision', async () => {
+    const rendered = {
+      ...task('render.clip.v1', TaskState.SUCCEEDED),
+      outputKind: 'render.clip.v1',
+      outputArtifactId: 'render-old',
+      state: TaskState.SUCCEEDED,
+    };
+    const delivered = {
+      ...task('export.package.v1', TaskState.SUCCEEDED),
+      outputKind: 'export.package.v1',
+      outputArtifactId: 'sha256:package',
+      state: TaskState.SUCCEEDED,
+    };
+    const old = exportJob(JobState.SUCCEEDED, [rendered, delivered]);
+    const base = fakeApi(twoProjects({ documents: { 'sha256:package': PACKAGE } }));
+    const api = {
+      ...base,
+      fetchJob: (id: string) =>
+        id === old.jobId ? Promise.resolve(old) : new Promise<Job>(() => {}),
+    };
+    const queued: QueuedExport = {
+      jobId: old.jobId,
+      revision: 0,
+      irArtifactId: 'old-ir',
+      destinationDir: '/clips',
+    };
+    const view = renderHook(({ value }) => useDelivery(OLD, value, api), {
+      initialProps: { value: queued },
+    });
+    await waitFor(() => expect(view.result.current?.files?.[0]?.name).toBe('01-charging-less.mp4'));
+    view.rerender({ value: { ...queued, jobId: 'replacement-job', revision: 1 } });
+    expect(view.result.current?.revision).toBe(1);
+    expect(view.result.current?.files).toBeNull();
+    expect(view.result.current?.renderArtifactId).toBeUndefined();
+    expect(view.result.current?.settled).toBe(false);
   });
 });

@@ -180,10 +180,28 @@
           "additionalProperties": false,
           "properties": {
             "state": {
-              "enum": ["speaker_fill", "fit"]
+              "enum": ["speaker_fill", "fit", "two_up"]
             },
             "crop_path": {
               "description": "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["t_ticks", "rect"],
+                "additionalProperties": false,
+                "properties": {
+                  "t_ticks": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "rect": {
+                    "$ref": "#/$defs/cropRect"
+                  }
+                }
+              }
+            },
+            "secondary_crop_path": {
+              "description": "Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.",
               "type": "array",
               "items": {
                 "type": "object",

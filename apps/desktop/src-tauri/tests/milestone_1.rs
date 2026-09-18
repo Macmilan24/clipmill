@@ -292,6 +292,7 @@ async fn analyse(client: &DaemonClient, name: &str, recording: &Path) -> Analyse
         .submit_analyze(
             &project_id,
             AnalyzeSourcePayloadV1 {
+                content_profile: "interview".to_owned(),
                 local_editorial: false,
                 cloud_editorial: None,
                 key_version: "clipmill.analyze-source.v1".to_owned(),
@@ -393,12 +394,21 @@ fn words_of(doc: &Value, presentation: &str) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-fn segment_of(doc: &Value) -> (String, i64, i64) {
-    let segment = &doc["video"]["segments"][0];
+/// This fixture selects contiguous shots from one source. Check the complete
+/// source interval, and reject accidental gaps or duplicated footage at cuts.
+fn source_span(doc: &Value) -> (i64, i64) {
+    let segments = doc["video"]["segments"].as_array().expect("video segments");
+    assert!(!segments.is_empty());
+    for pair in segments.windows(2) {
+        assert_eq!(
+            pair[0]["out_ticks"], pair[1]["in_ticks"],
+            "contiguous shots"
+        );
+        assert_eq!(pair[0]["source_fingerprint"], pair[1]["source_fingerprint"]);
+    }
     (
-        segment["segment_id"].as_str().unwrap().to_owned(),
-        segment["in_ticks"].as_i64().unwrap(),
-        segment["out_ticks"].as_i64().unwrap(),
+        segments.first().unwrap()["in_ticks"].as_i64().unwrap(),
+        segments.last().unwrap()["out_ticks"].as_i64().unwrap(),
     )
 }
 
@@ -632,6 +642,8 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     let (candidate_id, chosen_start, chosen_end) = candidate_minutes_in(&client, &older).await;
     let directed = client
         .direct_clip(DirectClipRequest {
+            allow_declined: false,
+            manual_span: false,
             project_id: older.project_id.clone(),
             source_id: older.source_id.clone(),
             candidate_id: candidate_id.clone(),
@@ -653,7 +665,9 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     assert_eq!(doc.job_id, older.job.job_id);
     assert_eq!(directed.start_ticks as i64, chosen_start);
     assert_eq!(directed.end_ticks as i64, chosen_end);
-    let (segment_id, in_ticks, out_ticks) = segment_of(&document(&doc));
+    let initial = document(&doc);
+    let original_segments = initial["video"]["segments"].as_array().unwrap().clone();
+    let (in_ticks, out_ticks) = source_span(&initial);
     assert_eq!((in_ticks, out_ticks), (chosen_start, chosen_end));
     assert!(
         in_ticks >= SEVERAL_MINUTES,
@@ -664,6 +678,8 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     // Approving it again reopens it; the newer project has no document.
     let again = client
         .direct_clip(DirectClipRequest {
+            allow_declined: false,
+            manual_span: false,
             project_id: older.project_id.clone(),
             source_id: older.source_id.clone(),
             candidate_id: candidate_id.clone(),
@@ -701,12 +717,18 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
         .await
         .expect("the preview plan");
     assert_eq!(plan.revision, doc.revision);
-    assert_eq!(plan.segments.len(), 1);
-    let planned = &plan.segments[0];
-    assert_eq!(planned.segment_id, segment_id);
-    assert_eq!((planned.in_ticks, planned.out_ticks), (in_ticks, out_ticks));
-    assert_eq!(planned.first_frame, 0);
-    assert_eq!(planned.end_frame, plan.frame_count);
+    assert_eq!(plan.segments.len(), original_segments.len());
+    for (planned, saved) in plan.segments.iter().zip(&original_segments) {
+        assert_eq!(planned.segment_id, saved["segment_id"].as_str().unwrap());
+        assert_eq!(planned.in_ticks, saved["in_ticks"].as_i64().unwrap());
+        assert_eq!(planned.out_ticks, saved["out_ticks"].as_i64().unwrap());
+    }
+    assert_eq!(plan.segments.first().unwrap().first_frame, 0);
+    assert_eq!(plan.segments.last().unwrap().end_frame, plan.frame_count);
+    for pair in plan.segments.windows(2) {
+        assert_eq!(pair[0].end_frame, pair[1].first_frame);
+        assert_eq!(pair[0].out_ticks, pair[1].in_ticks);
+    }
     let source = plan
         .sources
         .iter()
@@ -815,26 +837,29 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     // keyframe at zero, and advancing the head past it used to leave a
     // speaker_fill segment with no crop at all, which the renderer refused.
     let program_ticks = out_ticks - in_ticks;
-    let (doc, _) = apply(
-        &client,
-        &doc,
-        json!({"op": "set_layout", "segment_id": segment_id, "state": "speaker_fill"}),
-    )
-    .await;
-    let (doc, _) = apply(
-        &client,
-        &doc,
-        json!({"op": "set_crop_keyframe", "segment_id": segment_id, "t_ticks": 0,
-               "rect": {"x": 100, "y": 0, "width": 404, "height": 720}}),
-    )
-    .await;
-    let (doc, _) = apply(
-        &client,
-        &doc,
-        json!({"op": "set_crop_keyframe", "segment_id": segment_id, "t_ticks": program_ticks,
-               "rect": {"x": 700, "y": 0, "width": 404, "height": 720}}),
-    )
-    .await;
+    let mut doc = doc;
+    for segment in &original_segments {
+        let segment_id = segment["segment_id"].as_str().unwrap();
+        let start = segment["in_ticks"].as_i64().unwrap();
+        let end = segment["out_ticks"].as_i64().unwrap();
+        (doc, _) = apply(
+            &client,
+            &doc,
+            json!({"op": "set_layout", "segment_id": segment_id, "state": "speaker_fill"}),
+        )
+        .await;
+        for (local_ticks, source_ticks) in [(0, start), (end - start, end)] {
+            let x = 100 + 600 * (source_ticks - in_ticks) / program_ticks;
+            (doc, _) = apply(
+                &client,
+                &doc,
+                json!({"op": "set_crop_keyframe", "segment_id": segment_id,
+                       "t_ticks": local_ticks,
+                       "rect": {"x": x, "y": 0, "width": 404, "height": 720}}),
+            )
+            .await;
+        }
+    }
     let (doc, _) = apply(
         &client,
         &doc,
@@ -896,19 +921,17 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     let (doc, _) = apply(
         &client,
         &doc,
-        json!({"op": "trim", "segment_id": segment_id, "in_ticks": trimmed_in, "out_ticks": out_ticks}),
+        json!({"op": "ripple_delete", "start_ticks": 0, "end_ticks": head_cut, "reflow_edges": true}),
     )
     .await;
     let (doc, undo_tail) = apply(
         &client,
         &doc,
-        json!({"op": "trim", "segment_id": segment_id, "in_ticks": trimmed_in, "out_ticks": trimmed_out}),
+        json!({"op": "ripple_delete", "start_ticks": keep_until - head_cut,
+               "end_ticks": program_ticks - head_cut, "reflow_edges": true}),
     )
     .await;
-    assert_eq!(
-        segment_of(&document(&doc)),
-        (segment_id.clone(), trimmed_in, trimmed_out)
-    );
+    assert_eq!(source_span(&document(&doc)), (trimmed_in, trimmed_out));
     let trimmed = document(&doc);
     // Every word said in what remains is still captioned, in order: the
     // one word left of the first sentence, folded into the sentence after
@@ -959,21 +982,25 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     // The camera and the gain came through the trim: the crop at the new
     // head is where the move had reached, the path still ends at the new
     // tail, and the ramp opens at the level it had at the cut.
-    let path = trimmed["video"]["segments"][0]["layout"]["crop_path"]
-        .as_array()
-        .expect("a crop path");
-    assert_eq!(
-        trimmed["video"]["segments"][0]["layout"]["state"],
-        "speaker_fill"
-    );
-    assert_eq!(path.first().unwrap()["t_ticks"], 0);
-    assert_eq!(path.last().unwrap()["t_ticks"], trimmed_out - trimmed_in);
-    let expected_x = 100 + (600 * head_cut) / program_ticks;
-    let x_at_head = path[0]["rect"]["x"].as_i64().unwrap();
-    assert!(
-        (x_at_head - expected_x).abs() <= 1,
-        "the crop at the new head is {x_at_head}, the move had reached {expected_x}"
-    );
+    for segment in trimmed["video"]["segments"].as_array().unwrap() {
+        let path = segment["layout"]["crop_path"]
+            .as_array()
+            .expect("a crop path");
+        let start = segment["in_ticks"].as_i64().unwrap();
+        let end = segment["out_ticks"].as_i64().unwrap();
+        assert_eq!(segment["layout"]["state"], "speaker_fill");
+        assert_eq!(path.first().unwrap()["t_ticks"], 0);
+        assert_eq!(path.last().unwrap()["t_ticks"], end - start);
+        for point in path {
+            let source_ticks = start + point["t_ticks"].as_i64().unwrap();
+            let expected_x = 100 + 600 * (source_ticks - in_ticks) / program_ticks;
+            let x = point["rect"]["x"].as_i64().unwrap();
+            assert!(
+                (x - expected_x).abs() <= 2,
+                "crop at {source_ticks}: {x} != {expected_x}"
+            );
+        }
+    }
     let gain = trimmed["audio"]["gain_curve"]
         .as_array()
         .expect("a gain curve");
@@ -988,20 +1015,21 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     // ---- Undo the tail trim, then redo it. ----
     let (doc, redo_tail) = apply(&client, &doc, undo_tail).await;
     assert_eq!(
-        segment_of(&document(&doc)),
-        (segment_id.clone(), trimmed_in, out_ticks),
+        source_span(&document(&doc)),
+        (trimmed_in, out_ticks),
         "undo restores the tail"
     );
     let (doc, _) = apply(&client, &doc, redo_tail).await;
     assert_eq!(
-        segment_of(&document(&doc)),
-        (segment_id.clone(), trimmed_in, trimmed_out),
+        source_span(&document(&doc)),
+        (trimmed_in, trimmed_out),
         "redo cuts it again"
     );
     let reviewed_revision = doc.revision;
     assert_eq!(
-        reviewed_revision, 10,
-        "correction, layout, two keyframes, two gain points, two trims, undo, redo"
+        reviewed_revision,
+        7 + 3 * original_segments.len() as u64,
+        "correction, each shot layout and path, two gain points, two trims, undo, redo"
     );
 
     // ---- Restart. ----
@@ -1020,8 +1048,8 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     assert_eq!(restored[0].doc_id, doc.doc_id);
     assert_eq!(restored[0].revision, reviewed_revision);
     assert_eq!(
-        segment_of(&document(&restored[0])),
-        (segment_id.clone(), trimmed_in, trimmed_out)
+        source_span(&document(&restored[0])),
+        (trimmed_in, trimmed_out)
     );
     let jobs = client
         .list_jobs(&older.project_id)
@@ -1034,6 +1062,8 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     );
     let reopened = client
         .direct_clip(DirectClipRequest {
+            allow_declined: false,
+            manual_span: false,
             project_id: older.project_id.clone(),
             source_id: older.source_id.clone(),
             candidate_id: candidate_id.clone(),
@@ -1051,7 +1081,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     assert_eq!(
         (reopened.start_ticks as i64, reopened.end_ticks as i64),
         (trimmed_in, trimmed_out),
-        "a reopened clip reports where its segment stands now"
+        "a reopened clip reports the complete retained source interval"
     );
 
     // ---- Export the reviewed revision. ----
@@ -1147,13 +1177,19 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     let manifest: Value =
         serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
     assert_eq!(manifest["ir_artifact_id"], queued.ir_artifact_id);
-    let rendered_segment = &manifest["program"]["segments"][0];
-    assert_eq!(rendered_segment["segment_id"], segment_id);
-    assert_eq!(rendered_segment["in_ticks"], trimmed_in);
-    assert_eq!(rendered_segment["out_ticks"], trimmed_out);
+    let rendered_segments = manifest["program"]["segments"].as_array().unwrap();
+    let saved = document(&doc);
+    let saved_segments = saved["video"]["segments"].as_array().unwrap();
+    assert_eq!(rendered_segments.len(), saved_segments.len());
+    for (rendered, saved) in rendered_segments.iter().zip(saved_segments) {
+        assert_eq!(rendered["segment_id"], saved["segment_id"]);
+        assert_eq!(rendered["in_ticks"], saved["in_ticks"]);
+        assert_eq!(rendered["out_ticks"], saved["out_ticks"]);
+        assert_eq!(rendered["source_fingerprint"], older.source_fingerprint);
+    }
     assert_eq!(
-        rendered_segment["source_fingerprint"],
-        older.source_fingerprint
+        manifest["program"]["duration_ticks"],
+        trimmed_out - trimmed_in
     );
     assert_eq!(
         client.list_edit_docs(&older.project_id).await.unwrap()[0].revision,

@@ -33,6 +33,7 @@
       "question": "Is a level meter, or a screen showing one, visible in these frames?"
     }
   ],
+  "content_profile": "interview",
   "inputs": {
     "frames_artifact_id": "sha256:f4a3000000000000000000000000000000000000000000000000000000000066",
     "judgments_artifact_id": "sha256:9d6e000000000000000000000000000000000000000000000000000000000055"

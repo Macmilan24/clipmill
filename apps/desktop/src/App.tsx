@@ -233,7 +233,7 @@ export function App(): JSX.Element {
               // Reads the daemon directly and takes nothing from the shell, so
               // the entry exists to satisfy the registry rather than to carry
               // anything.
-              settings: {},
+              settings: { theme, onThemeChange: setTheme },
               models: {
                 state,
                 profile,

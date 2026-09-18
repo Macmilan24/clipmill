@@ -46,6 +46,7 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
         or payload.stage != context.lease.kind
     ):
         raise DeterministicTaskError("invalid editorial lease")
+    profile = content_profile(getattr(payload, "content_profile", ""))
     operation = payload.stage.removeprefix("editorial-").removesuffix("-cloud")
     cloud = payload.stage.endswith("-cloud")
     if cloud != payload.HasField("cloud"):
@@ -62,6 +63,8 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
         return execute_look(context, inputs, model, payload)
     windows_input = inputs.require("editorial.windows.v1")
     windows = json.loads(context.artifact_file(windows_input.artifact, "windows.json").read_text())
+    if content_profile(windows.get("content_profile", "")) != profile:
+        raise DeterministicTaskError("editorial context and task use different content profiles")
     identity = (
         {"route": "cloud", "model": {"name": payload.cloud.model, "provider": "anthropic"}}
         if cloud
@@ -82,7 +85,7 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
 
     producer = {
         "stage": payload.stage,
-        "implementation": f"clipmill-worker-editorial@0.1.1/{operation}{'-cloud' if cloud else ''}",
+        "implementation": f"clipmill-worker-editorial@0.2.0/{operation}{'-cloud' if cloud else ''}",
         **identity,
         "prompt_version": f"{operation}.v1/{payload.prompt_digest}",
         "decoding": {
@@ -95,6 +98,7 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
     document_kind = "proposals" if operation == "propose" else "judgments"
     document = {
         "schema_version": f"clipmill.editorial.{document_kind}.v1",
+        "content_profile": profile,
         "source_fingerprint": windows["source_fingerprint"],
         "producer": producer,
         "inputs": {"windows_artifact_id": windows_input.artifact_id},
@@ -124,6 +128,10 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
             )
             if candidates["source_fingerprint"] != windows["source_fingerprint"]:
                 raise DeterministicTaskError("candidates and context describe different sources")
+            if content_profile(candidates.get("content_profile", "")) != profile:
+                raise DeterministicTaskError(
+                    "candidates and context use different content profiles"
+                )
             document["inputs"]["candidates_artifact_id"] = candidates_input.artifact_id
             if candidates.get("candidates", []):
                 runtime = make_runtime()
@@ -140,6 +148,7 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
             output = "judgments.json"
         trace = {
             "schema_version": "clipmill.editorial.trace.v1",
+            "content_profile": profile,
             "source_fingerprint": windows["source_fingerprint"],
             "producer": {"stage": payload.stage, "implementation": producer["implementation"]},
             "calls": traces,
@@ -158,6 +167,13 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
     finally:
         if runtime is not None:
             runtime.close()
+
+
+def content_profile(value):
+    profile = value or "interview"
+    if profile not in ("interview", "scripted"):
+        raise DeterministicTaskError("unsupported editorial content profile")
+    return profile
 
 
 def fail_with_trace(context, answers, trace, *, allow_all_failed=False):
@@ -204,10 +220,16 @@ def execute_look(context, inputs, model, payload):
         or judgments["inputs"]["candidates_artifact_id"] != ci.artifact_id
     ):
         raise DeterministicTaskError("visual check inputs describe different sources or candidates")
+    profile = content_profile(getattr(payload, "content_profile", ""))
+    if any(
+        content_profile(document.get("content_profile", "")) != profile
+        for document in (candidates, judgments)
+    ):
+        raise DeterministicTaskError("visual check inputs use different content profiles")
     identity = {"route": "local", "model": {"name": model.name, "digest": model.digest}}
     producer = {
         "stage": payload.stage,
-        "implementation": "clipmill-worker-editorial@0.1.1/look",
+        "implementation": "clipmill-worker-editorial@0.2.0/look",
         **identity,
         "prompt_version": f"look.v1/{payload.prompt_digest}",
         "decoding": {
@@ -232,6 +254,7 @@ def execute_look(context, inputs, model, payload):
     )
     document = {
         "schema_version": "clipmill.editorial.looks.v1",
+        "content_profile": profile,
         "source_fingerprint": candidates["source_fingerprint"],
         "inputs": {"judgments_artifact_id": ji.artifact_id, "frames_artifact_id": fi.artifact_id},
         "producer": producer,
@@ -239,6 +262,7 @@ def execute_look(context, inputs, model, payload):
     }
     trace = {
         "schema_version": "clipmill.editorial.trace.v1",
+        "content_profile": profile,
         "source_fingerprint": candidates["source_fingerprint"],
         "producer": {"stage": payload.stage, "implementation": producer["implementation"]},
         "calls": traces,

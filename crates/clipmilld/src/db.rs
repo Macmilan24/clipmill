@@ -23,6 +23,8 @@ use crate::jobs::{
     EventFilter, JobPlan, JobRecord, LeaseRequest, LeaseSelection, TaskCompletion, TaskEventRecord,
 };
 
+mod batch_store;
+pub(crate) use batch_store::BatchCommand;
 mod job_store;
 pub(crate) use job_store::{MutationResult, RunArtifacts};
 mod source_store;
@@ -37,7 +39,7 @@ mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 11;
+const SCHEMA_VERSION: i64 = 12;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -99,6 +101,18 @@ impl DbActor {
                         let _result = ready_sender.send(Ok(()));
                         while let Some(command) = receiver.blocking_recv() {
                             match command {
+                                Command::Batch { command, reply } => {
+                                    let _result =
+                                        reply.send(batch_store::execute(&mut connection, command));
+                                }
+                                Command::ReplayRequest {
+                                    request_id,
+                                    request_hash,
+                                    reply,
+                                } => {
+                                    let _result =
+                                        reply.send(replay(&connection, &request_id, &request_hash));
+                                }
                                 Command::Create {
                                     request_id,
                                     request_hash,
@@ -633,6 +647,35 @@ impl DbActor {
 }
 
 impl DbHandle {
+    pub(crate) async fn export_batches(
+        &self,
+        command: BatchCommand,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::ExportBatchV1>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Batch { command, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn replay_request(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ReplayRequest {
+                request_id,
+                request_hash,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn create_project(
         &self,
         request_id: String,
@@ -1384,6 +1427,17 @@ impl DbHandle {
 
 #[derive(Debug)]
 enum Command {
+    Batch {
+        command: BatchCommand,
+        reply: oneshot::Sender<
+            Result<Vec<clipmill_contracts::proto::ipc::v1::ExportBatchV1>, StoreError>,
+        >,
+    },
+    ReplayRequest {
+        request_id: String,
+        request_hash: [u8; 32],
+        reply: oneshot::Sender<Result<Option<Vec<u8>>, StoreError>>,
+    },
     CreateEditDoc {
         request_id: String,
         request_hash: [u8; 32],
@@ -1770,8 +1824,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(decision_store::CREATE_V9_TABLES)?;
         transaction.execute_batch(edit_store::CREATE_V10_TABLES)?;
         transaction.execute_batch(edit_store::CREATE_V11_TABLES)?;
+        transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 11;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 12;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1813,7 +1868,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
                 },
             })?;
         }
-        transaction.execute_batch("PRAGMA user_version = 11;")?;
+        if version < 12 {
+            transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 12;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -1970,7 +2028,7 @@ fn delete_project(
 }
 
 fn replay(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     request_id: &str,
     request_hash: &[u8; 32],
 ) -> Result<Option<Vec<u8>>, StoreError> {
@@ -2844,13 +2902,27 @@ mod tests {
             approve: false,
         };
 
+        // A directed clip may span camera cuts; its response must describe
+        // the complete source interval, including after the head is edited.
+        let mut multi: serde_json::Value =
+            serde_json::from_str(&sample_edit_document()).expect("sample document");
+        let mut tail = multi["video"]["segments"][0].clone();
+        multi["video"]["segments"][0]["out_ticks"] = serde_json::json!(450_000);
+        tail["segment_id"] = serde_json::json!("seg_b");
+        tail["in_ticks"] = serde_json::json!(450_000);
+        multi["video"]["segments"]
+            .as_array_mut()
+            .expect("segments")
+            .push(tail);
+        let multi = serde_json::to_string(&multi).expect("two-shot document");
+
         let first = directed(
             &edit_store::direct_edit_doc(
                 &mut connection,
                 "direct-1",
                 &[2; 32],
                 &identity,
-                &sample_edit_document(),
+                &multi,
                 plain,
                 10,
             )
@@ -2864,7 +2936,7 @@ mod tests {
 
         // An edit lands on it: the segment is trimmed.
         let trim = serde_json::json!({
-            "op": "trim", "segment_id": "seg_a", "in_ticks": 90_000, "out_ticks": 900_000,
+            "op": "trim", "segment_id": "seg_a", "in_ticks": 90_000, "out_ticks": 450_000,
         })
         .to_string();
         edit_store::apply_edit_command(
@@ -4666,5 +4738,137 @@ mod tests {
                 & 0o777;
             assert_eq!(mode, 0o600);
         }
+    }
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one crash and replay sequence over a reopened durable database"
+    )]
+    fn batch_intents_are_atomic_and_replayed_updates_cannot_create_another_attempt() {
+        use super::batch_store::{self, BatchCommand};
+        use clipmill_contracts::proto::ipc::v1::{
+            ExportBatchItemV1, ExportBatchV1, ExportRequestV1,
+        };
+        let temp = TempDir::new().expect("tempdir");
+        let (path, mut connection) = database(&temp);
+        let project_id = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV";
+        create_project(
+            &mut connection,
+            "project",
+            &[1; 32],
+            &project(project_id, "Batch", 1),
+        )
+        .expect("project");
+        let doc_id = created_doc_id(
+            &edit_store::create_edit_doc(
+                &mut connection,
+                "doc",
+                &[2; 32],
+                project_id,
+                &sample_edit_document(),
+                &edit_store::DocumentOrigin::default(),
+                2,
+            )
+            .expect("doc"),
+        );
+        let item = ExportBatchItemV1 {
+            index: 1,
+            request: Some(ExportRequestV1 {
+                doc_id: doc_id.clone(),
+                expected_revision: Some(0),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let batch = ExportBatchV1 {
+            batch_id: "batch_test".to_owned(),
+            created_unix_millis: 3,
+            items: vec![item.clone()],
+        };
+        let create = |batch| BatchCommand::Create {
+            request_id: "batch-create".to_owned(),
+            request_hash: [3; 32],
+            batch,
+        };
+        let mut broken = batch.clone();
+        let mut missing = item;
+        missing.index = 2;
+        missing.request.as_mut().expect("request").doc_id = "missing".to_owned();
+        broken.items.push(missing);
+        assert!(batch_store::execute(&mut connection, create(broken)).is_err());
+        assert!(
+            batch_store::execute(&mut connection, BatchCommand::List)
+                .expect("list")
+                .is_empty(),
+            "one missing document must roll back all intents"
+        );
+        let created = batch_store::execute(&mut connection, create(batch.clone())).expect("create");
+        assert_eq!(created[0].items[0].project_id, project_id);
+        drop(connection);
+        connection = open_database(&path, &temp.path().join("backups")).expect("reopen");
+        assert_eq!(
+            batch_store::execute(&mut connection, create(batch.clone())).expect("replay"),
+            created
+        );
+        assert!(matches!(
+            batch_store::execute(
+                &mut connection,
+                BatchCommand::Create {
+                    request_id: "batch-create".to_owned(),
+                    request_hash: [4; 32],
+                    batch
+                }
+            ),
+            Err(StoreError::Conflict)
+        ));
+        let update = |action: &str, hash| BatchCommand::Update {
+            request_id: format!("batch-{action}"),
+            request_hash: [hash; 32],
+            completed_unix_millis: 4,
+            batch_id: "batch_test".to_owned(),
+            index: 1,
+            action: action.to_owned(),
+        };
+        let cancelled = batch_store::execute(&mut connection, update("cancel", 5)).expect("cancel");
+        // Late admission cannot revive a cancelled item.
+        batch_store::execute(
+            &mut connection,
+            BatchCommand::Link {
+                batch_id: "batch_test".to_owned(),
+                index: 1,
+                attempt: 0,
+                queued: None,
+                error: "late".to_owned(),
+            },
+        )
+        .expect("late link");
+        assert_eq!(
+            batch_store::execute(&mut connection, update("cancel", 5)).expect("cancel replay"),
+            cancelled
+        );
+        let retried = batch_store::execute(&mut connection, update("retry", 6)).expect("retry");
+        assert_eq!(retried[0].items[0].attempt, 1);
+        // The actual attempt fails before a lost update response is replayed.
+        batch_store::execute(
+            &mut connection,
+            BatchCommand::Link {
+                batch_id: "batch_test".to_owned(),
+                index: 1,
+                attempt: 1,
+                queued: None,
+                error: "disk full".to_owned(),
+            },
+        )
+        .expect("failed admission");
+        assert_eq!(
+            batch_store::execute(&mut connection, update("retry", 6)).expect("retry replay"),
+            retried
+        );
+        let stored = batch_store::execute(&mut connection, BatchCommand::List).expect("list");
+        assert_eq!(
+            stored[0].items[0].attempt, 1,
+            "lost acknowledgement must not start attempt two"
+        );
+        assert_eq!(stored[0].items[0].state, "failed");
     }
 }

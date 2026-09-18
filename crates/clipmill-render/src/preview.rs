@@ -26,7 +26,7 @@ use clipmill_edit_ir::{
 use crate::{
     graph::crop_rect_at,
     plan::RenderError,
-    profile::RenderProfile,
+    profile::{CaptionStyle, RenderProfile},
     subtitles::{Sweep, sweep},
     timing::FrameRate,
 };
@@ -69,6 +69,10 @@ pub struct PreviewSegment {
     pub program_start_ticks: i64,
     pub first_frame: i64,
     pub end_frame: i64,
+    pub has_two_up_paths: bool,
+    /// Empty when the stored framing can render. A legacy missing crop stays
+    /// playable as a draft so the user can repair it with Fit or a new solve.
+    pub framing_warning: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -112,6 +116,9 @@ pub struct PreviewPlan {
     /// the whole picture is shown — which is a different statement from a crop
     /// that happens to cover everything.
     pub crops: Vec<Option<PreviewCrop>>,
+    /// Lower viewports in two-person compositions, indexed exactly like crops.
+    pub secondary_crops: Vec<Option<PreviewCrop>>,
+    pub caption_style: CaptionStyle,
     pub cues: Vec<PreviewCue>,
     pub gain: Vec<PreviewGain>,
     /// The output frame the crops are fitted into.
@@ -148,10 +155,22 @@ pub fn preview_plan(
     }
     let frame_count = rate.frame_count(duration);
 
+    let caption_style = clipmill_captions::preset(&document.captions.style_ref)
+        .map(CaptionStyle::from_preset)
+        .or_else(|| {
+            document
+                .captions
+                .cues
+                .is_empty()
+                .then(|| profile.caption_style.clone())
+        })
+        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
     Ok(PreviewPlan {
+        caption_style,
         rate,
         frame_count,
-        crops: crops(document, rate, frame_count),
+        crops: crops(document, rate, frame_count, false),
+        secondary_crops: crops(document, rate, frame_count, true),
         cues: cues(document, rate),
         segments: segments(document, rate),
         presentation: document.captions.burned_presentation(),
@@ -173,16 +192,14 @@ pub fn preview_plan(
 /// use — so the frame a segment starts on is the frame its first crop is at.
 fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
     let starts = document.segment_program_starts();
-    let mut at = 0_i64;
     document
         .video
         .segments
         .iter()
         .zip(starts)
         .map(|(segment, program_start_ticks)| {
-            let frames = rate.frame_count(segment.duration_ticks());
-            let first_frame = at;
-            at += frames;
+            let first_frame = rate.frame_ceil(program_start_ticks);
+            let end_frame = rate.frame_ceil(program_start_ticks + segment.duration_ticks());
             PreviewSegment {
                 segment_id: segment.segment_id.clone(),
                 source_fingerprint: segment.source_fingerprint.clone(),
@@ -190,7 +207,12 @@ fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
                 out_ticks: segment.out_ticks,
                 program_start_ticks,
                 first_frame,
-                end_frame: at,
+                end_frame,
+                has_two_up_paths: !segment.layout.crop_path.is_empty()
+                    && !segment.layout.secondary_crop_path.is_empty(),
+                framing_warning: if segment.layout.needs_crop_repair() {
+                    "This shot has no saved crop path. Open Reframe and choose Fit or recalculate the crop before exporting.".to_owned()
+                } else { String::new() },
             }
         })
         .collect()
@@ -201,13 +223,18 @@ fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
 /// Segments are laid end to end by their position in the list, so a program
 /// frame is found by walking the segments — and the crop path inside one is
 /// segment-local, which is why the offset is subtracted before asking.
-fn crops(document: &EditDocument, rate: FrameRate, frame_count: i64) -> Vec<Option<PreviewCrop>> {
+fn crops(
+    document: &EditDocument,
+    rate: FrameRate,
+    frame_count: i64,
+    secondary: bool,
+) -> Vec<Option<PreviewCrop>> {
     let mut boundaries = Vec::with_capacity(document.video.segments.len());
     let mut at = 0_i64;
     for segment in &document.video.segments {
-        let frames = rate.frame_count(segment.duration_ticks());
-        boundaries.push((at, at + frames, segment));
-        at += frames;
+        let end = at + segment.duration_ticks();
+        boundaries.push((rate.frame_ceil(at), rate.frame_ceil(end), segment));
+        at = end;
     }
 
     (0..frame_count)
@@ -219,7 +246,15 @@ fn crops(document: &EditDocument, rate: FrameRate, frame_count: i64) -> Vec<Opti
             if matches!(segment.layout.state, LayoutState::Fit) {
                 return None;
             }
-            crop_rect_at(&segment.layout.crop_path, rate, frame - start).map(|rect| PreviewCrop {
+            let path = if secondary {
+                if segment.layout.state != LayoutState::TwoUp {
+                    return None;
+                }
+                &segment.layout.secondary_crop_path
+            } else {
+                &segment.layout.crop_path
+            };
+            crop_rect_at(path, rate, frame - start).map(|rect| PreviewCrop {
                 x: rect.x,
                 y: rect.y,
                 width: rect.width,

@@ -371,6 +371,280 @@ fn a_fragment_too_brief_to_read_at_the_tail_is_folded_into_the_cue_before() {
     document.validate().expect("valid after the fold");
 }
 
+/// A camera-cut document whose edge cue can be reduced to the exact 8,700-tick
+/// one-word fragment seen by the native whole-program trim gate.
+fn edge_ripple_fixture() -> EditDocument {
+    let mut document = fixture();
+    let model = document.captions.cues[0].clone();
+    document.captions.cues = [
+        (
+            "opening",
+            0,
+            108_700,
+            vec![
+                ("one", 0, 45_000),
+                ("two", 45_000, 90_000),
+                ("and", 100_000, 108_700),
+            ],
+        ),
+        (
+            "next",
+            108_700,
+            270_000,
+            vec![
+                ("that", 108_700, 150_000),
+                ("is", 150_000, 180_000),
+                ("enough", 180_000, 240_000),
+            ],
+        ),
+        (
+            "keep",
+            280_000,
+            405_000,
+            vec![("Keep", 280_000, 310_000), ("this.", 310_000, 350_000)],
+        ),
+        (
+            "closing",
+            405_000,
+            540_000,
+            vec![
+                ("and", 405_000, 413_700),
+                ("final", 450_000, 490_000),
+                ("words", 490_000, 530_000),
+            ],
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(cue_id, start_ticks, end_ticks, tokens)| clipmill_edit_ir::CaptionCue {
+            cue_id: cue_id.to_owned(),
+            start_ticks,
+            end_ticks,
+            lines: vec![clipmill_edit_ir::CaptionLine {
+                words: tokens
+                    .into_iter()
+                    .map(
+                        |(text, start_ticks, end_ticks)| clipmill_edit_ir::CaptionWord {
+                            text: text.to_owned(),
+                            start_ticks,
+                            end_ticks,
+                            word_id: Some(format!("w@{start_ticks}")),
+                        },
+                    )
+                    .collect(),
+            }],
+            ..model.clone()
+        },
+    )
+    .collect();
+    document
+        .captions
+        .burn_in
+        .clone_from(&document.captions.cues);
+    let first = document.video.segments[0].clone();
+    let shots = [(0, 50_000), (50_000, 100_000), (100_000, 360_000)]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (start, end))| {
+            let mut shot = first.clone();
+            shot.segment_id = format!("shot_{index}");
+            shot.in_ticks = first.in_ticks + start;
+            shot.out_ticks = first.in_ticks + end;
+            shot.layout.state = clipmill_edit_ir::LayoutState::Fit;
+            shot.layout.crop_path.clear();
+            shot.layout.secondary_crop_path.clear();
+            shot
+        });
+    document.video.segments.splice(0..1, shots);
+    document.validate().expect("multi-shot fragment fixture");
+    document
+}
+
+fn assert_readable_edge(edge: &clipmill_edit_ir::CaptionCue, presentation: Presentation) {
+    let profile = match presentation {
+        Presentation::Reading => clipmill_captions::Profile::ACCESSIBILITY_EN,
+        Presentation::BurnIn => clipmill_captions::Profile::BURN_IN_EN,
+    };
+    assert!(edge.end_ticks - edge.start_ticks >= profile.min_duration_ticks);
+    let widths: Vec<_> = edge
+        .lines
+        .iter()
+        .map(|line| {
+            line.words
+                .iter()
+                .map(|word| word.text.chars().count())
+                .sum::<usize>()
+                + line.words.len().saturating_sub(1)
+        })
+        .collect();
+    let violations = clipmill_captions::validate(
+        &[clipmill_captions::CueFacts {
+            cue_id: &edge.cue_id,
+            start_ticks: edge.start_ticks,
+            end_ticks: edge.end_ticks,
+            speech_end_ticks: edge.words().map(|word| word.end_ticks).max(),
+            lines: &widths,
+        }],
+        profile,
+        &[],
+    );
+    assert!(
+        !violations.iter().any(|violation| matches!(
+            violation,
+            clipmill_captions::Violation::TooBrief { .. }
+                | clipmill_captions::Violation::ReadingRate { .. }
+        )),
+        "{presentation:?}: edge remains unreadable: {violations:?}"
+    );
+}
+
+#[test]
+fn edge_ripple_repairs_both_caption_presentations_and_undo_redo_is_exact() {
+    for (start_ticks, end_ticks, edge_id, untouched_id) in [
+        (0, 100_000, "opening", "keep"),
+        (413_700, 540_000, "closing", "opening"),
+    ] {
+        let original = edge_ripple_fixture();
+        let mut document = original.clone();
+        let command = EditCommand::RippleDelete {
+            start_ticks,
+            end_ticks,
+            reflow_edges: true,
+        };
+        let inverse = command.apply(&mut document).expect("edge ripple");
+        for presentation in [Presentation::Reading, Presentation::BurnIn] {
+            let before = original.captions.list(presentation);
+            let after = document.captions.list(presentation);
+            let edge = if start_ticks == 0 {
+                after.first()
+            } else {
+                after.last()
+            }
+            .unwrap();
+            assert!(
+                edge.word_count() > 1,
+                "{presentation:?}: the 0.0967s fragment must join its neighbour"
+            );
+            assert_readable_edge(edge, presentation);
+            assert!(
+                after
+                    .iter()
+                    .flat_map(clipmill_edit_ir::CaptionCue::words)
+                    .all(|word| word.word_id.is_some())
+            );
+            let mut untouched = before
+                .iter()
+                .find(|cue| cue.cue_id == untouched_id)
+                .unwrap()
+                .clone();
+            if start_ticks == 0 {
+                untouched.start_ticks -= end_ticks;
+                untouched.end_ticks -= end_ticks;
+                for word in untouched.lines.iter_mut().flat_map(|line| &mut line.words) {
+                    word.start_ticks -= end_ticks;
+                    word.end_ticks -= end_ticks;
+                }
+            }
+            assert_eq!(
+                after.iter().find(|cue| cue.cue_id == untouched_id),
+                Some(&untouched),
+                "{edge_id}: unrelated user grouping is preserved"
+            );
+            let expected_words: Vec<_> = before
+                .iter()
+                .flat_map(clipmill_edit_ir::CaptionCue::words)
+                .filter(|word| word.end_ticks <= start_ticks || word.start_ticks >= end_ticks)
+                .map(|word| (&word.text, &word.word_id))
+                .collect();
+            let kept_words: Vec<_> = after
+                .iter()
+                .flat_map(clipmill_edit_ir::CaptionCue::words)
+                .map(|word| (&word.text, &word.word_id))
+                .collect();
+            assert_eq!(
+                kept_words, expected_words,
+                "repair keeps every remaining word in order"
+            );
+        }
+        document.validate().expect("valid repaired document");
+        let repaired = document.clone();
+        let redo = inverse.apply(&mut document).expect("undo edge ripple");
+        assert_eq!(document, original);
+        redo.apply(&mut document).expect("redo edge ripple");
+        assert_eq!(document, repaired);
+    }
+}
+
+#[test]
+fn deleting_a_whole_edge_cue_preserves_the_next_grouping_even_if_brief() {
+    let mut document = edge_ripple_fixture();
+    // An intentionally short hand-grouped cue is not a fragment of this cut.
+    for presentation in [Presentation::Reading, Presentation::BurnIn] {
+        let cues = document.captions.list_mut(presentation);
+        cues[1].lines[0].words.truncate(1);
+        cues[1].end_ticks = 150_000;
+    }
+    let before = document.clone();
+    EditCommand::RippleDelete {
+        start_ticks: 0,
+        end_ticks: 108_700,
+        reflow_edges: true,
+    }
+    .apply(&mut document)
+    .expect("remove entire opening cue");
+    for presentation in [Presentation::Reading, Presentation::BurnIn] {
+        let after = document.captions.list(presentation);
+        assert_eq!(after.len(), before.captions.list(presentation).len() - 1);
+        assert_eq!(after[0].cue_id, "next");
+        assert_eq!(
+            after[0].word_count(),
+            1,
+            "an unchanged cue is not automatically regrouped"
+        );
+    }
+}
+
+#[test]
+fn legacy_ripple_json_preserves_its_shape_and_does_not_reflow_fragments() {
+    for (start_ticks, end_ticks, head) in [(0, 100_000, true), (413_700, 540_000, false)] {
+        let stored = serde_json::json!({
+            "op": "ripple_delete",
+            "start_ticks": start_ticks,
+            "end_ticks": end_ticks,
+        });
+        let legacy: EditCommand = serde_json::from_value(stored.clone()).expect("old log command");
+        assert_eq!(
+            serde_json::to_value(&legacy).unwrap(),
+            stored,
+            "legacy command identity is unchanged"
+        );
+        let mut document = edge_ripple_fixture();
+        let original = document.clone();
+        let undo = legacy.apply(&mut document).expect("legacy replay");
+        for presentation in [Presentation::Reading, Presentation::BurnIn] {
+            let cues = document.captions.list(presentation);
+            let edge = if head { cues.first() } else { cues.last() }.unwrap();
+            assert_eq!(edge.word_count(), 1, "old ripple did not regroup captions");
+            assert_eq!(edge.words().next().unwrap().text, "and");
+            assert_eq!(edge.end_ticks - edge.start_ticks, 8_700);
+        }
+        let mut explicit_false = stored.clone();
+        explicit_false["reflow_edges"] = serde_json::json!(false);
+        let explicit: EditCommand = serde_json::from_value(explicit_false).unwrap();
+        assert_eq!(serde_json::to_value(&explicit).unwrap(), stored);
+        let mut replayed = original.clone();
+        explicit
+            .apply(&mut replayed)
+            .expect("explicit legacy behavior");
+        assert_eq!(
+            replayed.to_canonical_json().unwrap(),
+            document.to_canonical_json().unwrap()
+        );
+        undo.apply(&mut document).expect("undo legacy ripple");
+        assert_eq!(document, original);
+    }
+}
+
 #[test]
 fn trimming_the_tail_removes_the_closing_words_from_both_presentations() {
     // The second segment plays source 10s–12s, program 4s–6s, holding "so

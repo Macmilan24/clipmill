@@ -103,21 +103,78 @@ describe('asking the solver again', () => {
 describe('a fitted clip', () => {
   it('sends an editor to the solver when one can be asked', () => {
     show({ plan: fitted() });
-    expect(screen.getByText(/choose speaker-follow to calculate/i)).toBeTruthy();
+    expect(screen.getByText(/choose face crop to calculate/i)).toBeTruthy();
   });
 
   it('does not send them to a solver that cannot be asked', () => {
     show({ plan: fitted(), resolveRefusal: NO_FACES });
-    expect(screen.queryByText(/choose speaker-follow to calculate/i)).toBeNull();
-    expect(screen.getByText(/speaker-follow is unavailable/i)).toBeTruthy();
+    expect(screen.queryByText(/choose face crop to calculate/i)).toBeNull();
+    expect(screen.getByText(/face crop is unavailable/i)).toBeTruthy();
   });
 });
 
-it('calculates a path before switching a fitted clip into speaker-follow', () => {
+it('calculates a path before switching a fitted clip into face crop', () => {
   const onResolve = vi.fn();
   const onApply = vi.fn();
   show({ plan: fitted(), onResolve, onApply });
-  fireEvent.click(screen.getByRole('button', { name: /^speaker-follow$/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^face crop$/i }));
   expect(onResolve).toHaveBeenCalledOnce();
   expect(onApply).not.toHaveBeenCalled();
+});
+
+it('can restore stored portraits after fitting the frame without another solve', () => {
+  const fittedPlan = fitted();
+  const onApply = vi.fn();
+  const onResolve = vi.fn();
+  show({
+    plan: {
+      ...fittedPlan,
+      segments: fittedPlan.segments.map((segment) => ({ ...segment, hasTwoUpPaths: true })),
+    },
+    onApply,
+    onResolve,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Restore two portraits' }));
+  expect(onApply).toHaveBeenCalledWith({
+    op: 'set_layout',
+    segment_id: fittedPlan.segments[0]!.segmentId,
+    state: 'two_up',
+  });
+  expect(onResolve).not.toHaveBeenCalled();
+});
+
+it('checks a two-person crop against its half-height viewport', () => {
+  const base = solved();
+  show({
+    plan: {
+      ...base,
+      crops: base.crops.map(() => [0, 140, 900, 800] as const),
+      secondaryCrops: base.crops.map(() => [1000, 140, 900, 800] as const),
+    },
+  });
+  expect(screen.queryByText('check')).toBeNull();
+  expect(screen.getAllByText('ok')).toHaveLength(2);
+});
+
+it('writes Fit to repair a legacy missing crop instead of treating the draft fallback as saved', () => {
+  const base = fitted();
+  const onApply = vi.fn();
+  show({
+    plan: {
+      ...base,
+      segments: base.segments.map((segment) => ({
+        ...segment,
+        framingWarning: 'Missing crop path. Choose Fit.',
+      })),
+    },
+    onApply,
+  });
+  const fit = screen.getByRole('button', { name: 'Fit' });
+  expect(fit.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(fit);
+  expect(onApply).toHaveBeenCalledWith({
+    op: 'set_layout',
+    segment_id: base.segments[0]!.segmentId,
+    state: 'fit',
+  });
 });

@@ -25,6 +25,10 @@ export interface EditorialTrace {
     spent_micro_usd: number;
   };
   calls: Call[];
+  /**
+   * The editorial rubric selected for this run; older artifacts use interview.
+   */
+  content_profile?: "interview" | "scripted";
 }
 export interface Call {
   index: number;

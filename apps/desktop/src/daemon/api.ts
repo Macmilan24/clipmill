@@ -30,6 +30,7 @@ import {
   type StorageStats,
   type ArchiveResult,
   type ExportPlan,
+  type ExportBatch,
   type ExportRequest,
   type QueuedExport,
   type LocalLock,
@@ -56,6 +57,9 @@ import {
   submitAnalyze,
   planExport,
   exportClip,
+  submitExportBatch,
+  listExportBatches,
+  updateExportBatchItem,
   exportArchive,
   fetchLocalLock,
   fetchReadiness,
@@ -99,6 +103,13 @@ export interface ShellApi {
   listClipDecisions(projectId: string, sourceId: string): Promise<readonly ClipDecisionRecord[]>;
   planExport(request: ExportRequest): Promise<ExportPlan>;
   exportClip(request: ExportRequest): Promise<QueuedExport>;
+  submitExportBatch(requests: readonly ExportRequest[]): Promise<ExportBatch>;
+  listExportBatches(): Promise<readonly ExportBatch[]>;
+  updateExportBatchItem(
+    batchId: string,
+    index: number,
+    action: 'retry' | 'cancel',
+  ): Promise<ExportBatch>;
   /** Show a delivered file in the file manager. Host-side, checked there. */
   revealPath(path: string): Promise<void>;
   exportArchive(projectId: string, destinationDir: string): Promise<ArchiveResult>;
@@ -130,6 +141,9 @@ export const daemonApi: ShellApi = {
   listClipDecisions,
   planExport,
   exportClip,
+  submitExportBatch,
+  listExportBatches,
+  updateExportBatchItem,
   exportArchive,
   fetchLocalLock,
   fetchReadiness,

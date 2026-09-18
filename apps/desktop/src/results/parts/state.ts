@@ -86,6 +86,7 @@ export function stateOf(row: ClipRow): RowState {
   if (row.decision) {
     return DECIDED[row.decision];
   }
+  if (row.review?.status === 'rejected') return { label: 'Declined', tone: 'warning' };
   if (row.recommended) {
     return { label: 'Recommended', tone: 'accent' };
   }

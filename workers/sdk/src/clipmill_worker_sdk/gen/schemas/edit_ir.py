@@ -62,9 +62,18 @@ class CropRect(BaseModel):
 class State(Enum):
     speaker_fill = 'speaker_fill'
     fit = 'fit'
+    two_up = 'two_up'
 
 
 class CropPathItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    t_ticks: conint(ge=0)
+    rect: CropRect
+
+
+class SecondaryCropPathItem(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -80,6 +89,10 @@ class Layout(BaseModel):
     crop_path: list[CropPathItem] | None = Field(
         None,
         description='Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.',
+    )
+    secondary_crop_path: list[SecondaryCropPathItem] | None = Field(
+        None,
+        description='Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.',
     )
 
 

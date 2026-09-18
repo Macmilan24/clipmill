@@ -330,3 +330,75 @@ fn the_keyframes_reproduce_the_path_they_were_reduced_from() {
         assert!(pair[1].t_ticks > pair[0].t_ticks);
     }
 }
+
+#[test]
+fn source_geometry_controls_crop_containment_for_square_and_portrait_recordings() {
+    for (width, height) in [(1080, 1080), (1080, 1920), (1920, 1080)] {
+        let doc = document(vec![drifting(0, 0, 10, 0.1, 0.9)]);
+        let path = clipmill_reframe::solve_in_frame(
+            &doc,
+            0,
+            10 * SECOND,
+            clipmill_reframe::FrameGeometry {
+                source_width: width,
+                source_height: height,
+                output_width: 9,
+                output_height: 16,
+            },
+            Weights::default(),
+            FocusGate::default(),
+        )
+        .expect("geometry-aware solve");
+        assert!(!path.fit);
+        for key in &path.keyframes {
+            let half_width =
+                key.scale * (9.0 / 16.0) / (f64::from(width) / f64::from(height)) / 2.0;
+            assert!(key.center_x - half_width >= -1e-6);
+            assert!(key.center_x + half_width <= 1.0 + 1e-6);
+        }
+    }
+}
+
+#[test]
+fn changing_face_size_never_creates_an_unrenderable_zoom() {
+    let mut face = still(0, 0, 8, 0.5, 0.4);
+    for (index, box_) in face.boxes.iter_mut().enumerate() {
+        box_.h = if index % 2 == 0 { 0.1 } else { 0.18 };
+    }
+    let path = solve(
+        &document(vec![face]),
+        0,
+        8 * SECOND,
+        9,
+        16,
+        Weights::default(),
+        FocusGate::default(),
+    )
+    .expect("solve");
+    assert!(!path.fit);
+    assert!(
+        path.keyframes
+            .iter()
+            .all(|key| key.scale.to_bits() == path.keyframes[0].scale.to_bits())
+    );
+}
+
+#[test]
+fn two_people_share_the_frame_but_alternating_or_three_faces_do_not() {
+    let pair = document(vec![still(8, 0, 8, 0.75, 0.4), still(3, 0, 8, 0.25, 0.4)]);
+    assert_eq!(
+        clipmill_reframe::resolve_pair(&pair, 0, 8 * SECOND),
+        Some([3, 8])
+    );
+    let alternating = document(vec![still(1, 0, 4, 0.25, 0.4), still(2, 4, 8, 0.75, 0.4)]);
+    assert_eq!(
+        clipmill_reframe::resolve_pair(&alternating, 0, 8 * SECOND),
+        None
+    );
+    let group = document(vec![
+        still(1, 0, 8, 0.25, 0.4),
+        still(2, 0, 8, 0.75, 0.4),
+        still(3, 0, 8, 0.5, 0.4),
+    ]);
+    assert_eq!(clipmill_reframe::resolve_pair(&group, 0, 8 * SECOND), None);
+}
