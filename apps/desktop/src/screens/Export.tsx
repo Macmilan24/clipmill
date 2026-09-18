@@ -44,6 +44,22 @@ import type { Delivery, DeliveryStage } from '../export/delivery.js';
  * otherwise would be a control that does nothing. They are shown because an
  * editor about to upload needs to know them, not because they are adjustable.
  */
+/** What a user gets before they have an opinion; the daemon's default too. */
+const DEFAULT_PATTERN = '{index}-{clip}';
+
+/**
+ * The daemon's refusal of the name pattern, when that is what the error is.
+ *
+ * The pattern is the one field a person can type something reasonable into
+ * and be refused for it — a plain name, with no `{index}` or `{clip}`, would
+ * give every clip in an export the same file. The refusal belongs under the
+ * field it is about, with the way back beside it, not in a red bar at the
+ * bottom that names nothing on screen.
+ */
+function patternProblemOf(error: string | null): string | null {
+  return error !== null && error.includes('name pattern') ? error : null;
+}
+
 const DELIVERY: readonly (readonly [string, string])[] = [
   ['Picture', '1080 × 1920, H.264, CRF 18'],
   ['Sound', 'AAC, −14 LUFS integrated, −1.0 dBTP ceiling'],
@@ -107,6 +123,7 @@ export function Export(props: ExportProps): JSX.Element {
   );
   const ready = props.plan?.passes === true && !props.busy;
   const delivering = props.delivery !== null && !props.delivery.settled;
+  const patternProblem = patternProblemOf(props.error);
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
@@ -149,12 +166,30 @@ export function Export(props: ExportProps): JSX.Element {
             <Input
               id="export-pattern"
               value={props.pattern}
-              placeholder="{index}-{clip}"
+              placeholder={DEFAULT_PATTERN}
+              aria-invalid={patternProblem !== null}
               onChange={(event) => props.onPatternChange(event.target.value)}
             />
-            <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
-              {'{project} {clip} {index} {duration} {date} {address}'}
-            </p>
+            {patternProblem === null ? (
+              <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
+                Keep {'{index}'} or {'{clip}'} so each clip gets its own name. Also:{' '}
+                {'{project} {duration} {date} {address}'}.
+              </p>
+            ) : (
+              <p
+                className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--cm-danger-ink)]"
+                data-testid="pattern-problem"
+              >
+                <span>{patternProblem}</span>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => props.onPatternChange(DEFAULT_PATTERN)}
+                >
+                  Use {DEFAULT_PATTERN}
+                </Button>
+              </p>
+            )}
           </div>
 
           <NamePreview plan={props.plan} planning={props.planning} />
@@ -252,7 +287,7 @@ export function Export(props: ExportProps): JSX.Element {
         </CardContent>
       </Card>
 
-      {props.error !== null && (
+      {props.error !== null && patternProblem === null && (
         <Alert variant="destructive">
           <AlertTriangle />
           <AlertDescription>{props.error}</AlertDescription>

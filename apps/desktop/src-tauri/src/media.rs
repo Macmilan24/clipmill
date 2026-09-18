@@ -230,22 +230,62 @@ struct Target {
 impl Target {
     fn parse(path: &str) -> Option<Self> {
         let mut parts = path.trim_start_matches('/').splitn(3, '/');
-        let project_id = parts.next().filter(|part| !part.is_empty())?;
-        let artifact_id = parts.next().filter(|part| !part.is_empty())?;
-        let file = parts.next().filter(|part| !part.is_empty())?;
+        // The renderer builds these URLs with each segment percent-encoded —
+        // an artifact address carries a colon, and `sha256%3A…` is what the
+        // WebView sends. Decoded here, segment by segment, before anything is
+        // matched: taken as written, every address failed to parse at the
+        // daemon and every proxy and thumbnail was a 403 in the window.
+        let project_id = percent_decode(parts.next().filter(|part| !part.is_empty())?)?;
+        let artifact_id = percent_decode(parts.next().filter(|part| !part.is_empty())?)?;
+        let file = parts
+            .next()
+            .filter(|part| !part.is_empty())?
+            .split('/')
+            .map(|segment| {
+                // A slash that was encoded to hide inside one segment is a
+                // segment nobody named, not a directory.
+                percent_decode(segment).filter(|decoded| !decoded.contains('/'))
+            })
+            .collect::<Option<Vec<_>>>()?
+            .join("/");
         // Refused rather than normalised. A file name is matched against the
         // inventory further down, so traversal could not escape anyway — but a
         // path that tries is a request nobody should have made, and answering it
         // at all would make the inventory the only thing standing in the way.
-        if file.contains("..") || file.contains('\\') || file.starts_with('/') {
+        if project_id.contains('/')
+            || artifact_id.contains('/')
+            || file.is_empty()
+            || file.contains("..")
+            || file.contains('\\')
+            || file.starts_with('/')
+        {
             return None;
         }
         Some(Self {
-            project_id: project_id.to_owned(),
-            artifact_id: artifact_id.to_owned(),
-            file: file.to_owned(),
+            project_id,
+            artifact_id,
+            file,
         })
     }
+}
+
+/// One path segment with its `%XX` escapes resolved; none for a malformed
+/// escape or bytes that are not UTF-8.
+fn percent_decode(segment: &str) -> Option<String> {
+    let bytes = segment.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(index + 1..index + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
 }
 
 /// An inclusive byte span, resolved against a known length.
@@ -314,6 +354,35 @@ mod tests {
         assert_eq!(target.project_id, "prj_01");
         assert_eq!(target.artifact_id, "sha256:aa");
         assert_eq!(target.file, "proxy.mp4");
+    }
+
+    /// The URL as the renderer actually builds it: every segment through
+    /// `encodeURIComponent`, so the address arrives as `sha256%3Aaa`. That
+    /// is the proxy behind every black player and the thumbnail behind every
+    /// blank card until this decoded it.
+    #[test]
+    fn a_media_url_arrives_percent_encoded_and_is_decoded_segment_by_segment() {
+        let target = Target::parse("/prj_01/sha256%3Aaa/proxy.mp4").expect("a target");
+        assert_eq!(target.artifact_id, "sha256:aa");
+        assert_eq!(target.file, "proxy.mp4");
+        // An encoded slash inside a segment is not a directory: no segment is
+        // named "tiles/000.jpg", and the request is refused rather than read
+        // as tiles/000.jpg.
+        assert!(Target::parse("/prj_01/sha256%3Aaa/tiles%2F000.jpg").is_none());
+        let nested = Target::parse("/prj_01/sha256%3Aaa/tiles/000.jpg").expect("a target");
+        assert_eq!(nested.file, "tiles/000.jpg");
+        let spaced = Target::parse("/prj_01/sha256%3Aaa/proxy%20final.mp4").expect("a target");
+        assert_eq!(spaced.file, "proxy final.mp4");
+        for malformed in [
+            "/prj/sha256%3/proxy.mp4",
+            "/prj/sha256%zz/proxy.mp4",
+            "/prj/%ff/x",
+        ] {
+            assert!(
+                Target::parse(malformed).is_none(),
+                "{malformed} was accepted"
+            );
+        }
     }
 
     /// Traversal is refused at the door even though the inventory would catch it
