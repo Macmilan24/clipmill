@@ -11,7 +11,7 @@
 
 use clipmill_edit_ir::{
     CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionWord, CropKeyframe, CropRect,
-    EditDocument, GainPoint, Layout, LayoutState, VideoSegment,
+    EditCommand, EditDocument, GainPoint, Layout, LayoutState, VideoSegment,
 };
 use clipmill_render::{
     CLIP_FILE, LOUDNORM_SLOT, LoudnessMeasurement, RenderError, RenderProfile, SourceInput,
@@ -415,6 +415,77 @@ fn emitted_crop_expressions_mean_what_rust_computes() {
                 expected.y,
                 "y diverged on frame {frame}"
             );
+        }
+    }
+}
+
+/// A trim keeps the crop, and what it keeps is what the renderer draws.
+///
+/// The reproduction: a static crop is one keyframe at zero, and advancing
+/// the head past it left a `speaker_fill` segment with no path, which the
+/// renderer refused. Now the trimmed segment compiles, and — for a moving
+/// path as well — the emitted expression at every remaining frame is the
+/// crop the untrimmed path held at that source frame: exactly for a static
+/// crop, and within one frame of motion for a moving one, since the
+/// keyframe written at the new edge is an integer rectangle at a tick the
+/// renderer rounds to a frame, and the path it stands in for passed that
+/// edge between two frames.
+#[test]
+fn a_trimmed_speaker_fill_segment_still_compiles_to_the_crop_it_had() {
+    let profile = RenderProfile::default();
+    let rate = profile.rate();
+    let paths = vec![
+        vec![keyframe(0, 656, 0)],
+        vec![keyframe(0, 100, 0), keyframe(59, 500, 0)],
+        vec![
+            keyframe(0, 100, 0),
+            keyframe(7, 100, 0),
+            keyframe(31, 400, 0),
+            keyframe(59, 400, 0),
+        ],
+    ];
+    for path in paths {
+        let untrimmed = crop_document(path.clone());
+        let mut document = untrimmed.clone();
+        // Ten frames off the head, ten off the tail.
+        let head = 10 * FRAME_TICKS;
+        EditCommand::Trim {
+            segment_id: "seg_1".to_owned(),
+            in_ticks: head,
+            out_ticks: 180_000 - head,
+        }
+        .apply(&mut document)
+        .expect("the trim applies");
+        assert!(
+            !document.video.segments[0].layout.crop_path.is_empty(),
+            "the crop survived the trim"
+        );
+
+        let plan = compile(&document, &[source()], &profile)
+            .unwrap_or_else(|error| panic!("a trimmed segment renders: {error}"));
+        let (x_expression, y_expression) = crop_expressions(&plan.graph.graph);
+        // The fastest the untrimmed camera moved, per frame, plus the pixel
+        // the edge rectangle rounded away.
+        let tolerance = path
+            .windows(2)
+            .map(|pair| {
+                let frames = ((pair[1].t_ticks - pair[0].t_ticks) / FRAME_TICKS).max(1);
+                ((pair[1].rect.x - pair[0].rect.x).abs() + frames - 1) / frames
+            })
+            .max()
+            .unwrap_or(0)
+            + i64::from(path.len() > 1);
+        for frame in 0..40 {
+            let expected = crop_rect_at(&path, rate, frame + 10).expect("a rect");
+            let drawn_x = evaluate(&x_expression, frame);
+            assert!(
+                (drawn_x - expected.x).abs() <= tolerance,
+                "x drifted to {drawn_x} from {} on trimmed frame {frame} (source frame {}) for \
+                 {x_expression}",
+                expected.x,
+                frame + 10
+            );
+            assert_eq!(evaluate(&y_expression, frame), expected.y);
         }
     }
 }

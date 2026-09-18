@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::document::{
-    CaptionCue, CropKeyframe, CropRect, DocumentError, EditDocument, GainPoint, LayoutState,
-    Presentation, VideoSegment,
+use crate::{
+    document::{
+        CaptionCue, CropKeyframe, CropRect, DocumentError, EditDocument, GainPoint, LayoutState,
+        Presentation, VideoSegment,
+    },
+    reflow,
 };
 
 /// One typed, serializable edit. Applying a command returns the command that
@@ -383,10 +386,39 @@ impl EditCommand {
         in_ticks: i64,
         out_ticks: i64,
     ) -> Result<Self, CommandError> {
+        let prior = Self::capture(document);
+        let (old_in, old_out) = Self::trim_in_place(document, segment_id, in_ticks, out_ticks)?;
+        // The narrow inverse — the old window — is the log's preferred undo,
+        // but it is only an undo if trimming back reproduces the arrangement
+        // exactly. Cutting keeps the crop and the gain the material had at
+        // the new edges as points of their own, and words a cut removed do
+        // not come back with the window, so the inverse is checked rather
+        // than assumed: the narrow one where it restores every byte, the
+        // whole prior arrangement where it would not.
+        let mut check = document.clone();
+        let narrow_restores = Self::trim_in_place(&mut check, segment_id, old_in, old_out).is_ok()
+            && Self::capture(&check) == prior;
+        if narrow_restores {
+            Ok(Self::Trim {
+                segment_id: segment_id.to_owned(),
+                in_ticks: old_in,
+                out_ticks: old_out,
+            })
+        } else {
+            Ok(prior)
+        }
+    }
+
+    /// Move the window and everything anchored to it; the old window back.
+    fn trim_in_place(
+        document: &mut EditDocument,
+        segment_id: &str,
+        in_ticks: i64,
+        out_ticks: i64,
+    ) -> Result<(i64, i64), CommandError> {
         if out_ticks <= in_ticks || in_ticks < 0 {
             return Err(CommandError::EmptyRange);
         }
-        let prior = Self::capture(document);
         let index = document.segment_index(segment_id)?;
         let starts = document.segment_program_starts();
         let program_start = *starts
@@ -401,7 +433,6 @@ impl EditCommand {
         let old_out = segment.out_ticks;
         let old_duration = segment.duration_ticks();
         let new_duration = out_ticks.saturating_sub(in_ticks);
-        let keyframes_before = segment.layout.crop_path.len();
         segment.in_ticks = in_ticks;
         segment.out_ticks = out_ticks;
         segment.layout.crop_path = EditDocument::retime_crop_path(
@@ -410,39 +441,66 @@ impl EditCommand {
             in_ticks,
             new_duration,
         );
-        let keyframes_lost = segment.layout.crop_path.len() != keyframes_before;
+        // How many words each cue had, so a cue the cut fell inside can be
+        // told from one it merely moved.
+        let word_counts: Vec<(Presentation, String, usize)> =
+            [Presentation::Reading, Presentation::BurnIn]
+                .into_iter()
+                .flat_map(|presentation| {
+                    document
+                        .captions
+                        .list(presentation)
+                        .iter()
+                        .map(move |cue| (presentation, cue.cue_id.clone(), cue.word_count()))
+                })
+                .collect();
 
         // The tail first, in the old program coordinates, so the head's
         // shift does not move the tail before it is cut.
         let old_end = program_start.saturating_add(old_duration);
+        // Where the whole program ended before this trim, in the coordinates
+        // each splice works in: the segments after this one still follow.
+        let program_end = document.program_duration_ticks() - new_duration + old_duration;
         let tail_delta = out_ticks.saturating_sub(old_out);
-        let mut content_lost = match tail_delta.signum() {
+        match tail_delta.signum() {
             -1 => {
                 let cut_from = old_end.saturating_add(tail_delta);
-                document.splice_program_content(cut_from, -tail_delta, 0)
+                document.splice_program_content(cut_from, -tail_delta, 0, program_end);
             }
-            1 => document.splice_program_content(old_end, 0, tail_delta),
-            _ => false,
-        };
-        let head_delta = in_ticks.saturating_sub(old_in);
-        match head_delta.signum() {
-            1 => content_lost |= document.splice_program_content(program_start, head_delta, 0),
-            -1 => content_lost |= document.splice_program_content(program_start, 0, -head_delta),
+            1 => {
+                document.splice_program_content(old_end, 0, tail_delta, program_end);
+            }
             _ => {}
         }
-        if keyframes_lost || content_lost {
-            // Shortening a segment can strand captions in the tail it gave up
-            // and push crop keyframes outside the new window. Restoring the
-            // whole prior arrangement is the only exact undo once material is
-            // gone; the narrow `Trim` inverse is kept for the common case
-            // where nothing was lost.
-            return Ok(prior);
+        let head_delta = in_ticks.saturating_sub(old_in);
+        let program_end = program_end.saturating_add(tail_delta);
+        match head_delta.signum() {
+            1 => {
+                document.splice_program_content(program_start, head_delta, 0, program_end);
+            }
+            -1 => {
+                document.splice_program_content(program_start, 0, -head_delta, program_end);
+            }
+            _ => {}
         }
-        Ok(Self::Trim {
-            segment_id: segment_id.to_owned(),
-            in_ticks: old_in,
-            out_ticks: old_out,
-        })
+        // A cue the cut fell inside keeps its remaining words; if what
+        // remains cannot be read on its own, it is folded into the cue
+        // beside it and the pair is broken again — see `reflow`.
+        for presentation in [Presentation::Reading, Presentation::BurnIn] {
+            let was = |cue: &CaptionCue| {
+                word_counts.iter().any(|(list, id, count)| {
+                    *list == presentation && *id == cue.cue_id && *count > cue.word_count()
+                })
+            };
+            let cues = document.captions.list_mut(presentation);
+            if head_delta > 0 && cues.first().is_some_and(was) {
+                reflow::reflow_fragment(cues, presentation, reflow::Edge::Head);
+            }
+            if tail_delta < 0 && cues.last().is_some_and(was) {
+                reflow::reflow_fragment(cues, presentation, reflow::Edge::Tail);
+            }
+        }
+        Ok((old_in, old_out))
     }
 
     fn apply_ripple_delete(
@@ -519,8 +577,9 @@ impl EditCommand {
             );
             kept.push(trimmed);
         }
+        let program_end = document.program_duration_ticks();
         document.video.segments = kept;
-        document.splice_program_content(start_ticks, span, 0);
+        document.splice_program_content(start_ticks, span, 0, program_end);
         Ok(inverse)
     }
 

@@ -131,3 +131,38 @@ Two consequences worth stating:
 - **Every apply re-fetches the plan.** Patching it incrementally is the named
   optimization and is not done; a patched plan that drifted from the document
   would be exactly the divergence this document exists to prevent.
+
+## What a trim keeps
+
+A trim moves a segment's window, and everything anchored to the window moves
+with it. Three things are kept at the new edges rather than dropped there:
+
+- **The crop.** A keyframe before the new in point decided where the camera
+  stood at that boundary — a static crop is one keyframe at zero, and
+  advancing the head past it used to leave a `speaker_fill` segment with no
+  path, which the preview drew as fit and the renderer refused. The crop the
+  path held at each new edge is evaluated, by the same arithmetic the
+  renderer draws with (`clipmill_edit_ir::crop_along`, which `crop_rect_at`
+  now calls), and written as a keyframe there. For a moving path the edge
+  keyframe is an integer rectangle at a tick the renderer rounds to a frame,
+  so the picture at the edge is within one frame of motion of what it was;
+  for a static crop it is exact.
+- **The gain.** The renderer holds the first point backwards and the last
+  forwards and ramps between neighbours, so removing the points inside a cut
+  is not removing the cut: a ramp that crossed the boundary started from a
+  different point. The value the curve held at each edge is written as a
+  point of its own before the points inside are removed, and the kept audio
+  sounds as it did.
+- **The caption the cut fell inside.** Its remaining words keep the window
+  they had on the side that was not cut. If what remains cannot be read on
+  its own — too brief, or faster than the profile allows — it is folded into
+  the cue beside it and the pair is broken again by the caption engine's own
+  segmenter, over exactly those two cues. The words are still said, so they
+  are never dropped; every other cue, and every grouping a person chose
+  elsewhere, is left as it stands. Both presentations get the same treatment
+  under their own profiles.
+
+The narrow inverse of a trim — the old window — is used only when trimming
+back reproduces the arrangement byte for byte; a trim that kept a crop, a
+gain value or a folded caption undoes through the whole prior arrangement
+instead, and the undo is exact either way.

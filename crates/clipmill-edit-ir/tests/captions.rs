@@ -234,11 +234,18 @@ fn trimming_the_head_removes_the_opening_words_from_both_presentations() {
             .all(|cue| cue.end_ticks <= program),
         "no burned cue runs past the program's end"
     );
-    // Gain automation moved with the words: the point at 0s was in the cut
-    // second and is gone; the point at 3s is now at 2s.
+    // Gain automation moved with the words, and the envelope the kept audio
+    // had is the envelope it keeps: the ramp from 0 dB at 0s to 2 dB at 3s
+    // stood at two thirds of a decibel one second in, so that is what the
+    // new opening carries, rising to 2 dB at 2s. The point at 0s is gone with
+    // the second it was in.
     assert_eq!(before_gain.len(), 2);
-    assert_eq!(document.audio.gain_curve.len(), 1);
-    assert_eq!(document.audio.gain_curve[0].t_ticks, 270_000 - second);
+    let curve = &document.audio.gain_curve;
+    assert_eq!(curve.len(), 2, "{curve:?}");
+    assert_eq!(curve[0].t_ticks, 0);
+    assert!((curve[0].gain_db - 2.0 / 3.0).abs() < 1e-9, "{curve:?}");
+    assert_eq!(curve[1].t_ticks, 270_000 - second);
+    assert!((curve[1].gain_db - 2.0).abs() < 1e-9);
 
     // Material was lost, so the inverse is the whole prior arrangement,
     // burned-in cues included — and it restores the fixture exactly.
@@ -258,17 +265,53 @@ fn trimming_the_head_removes_the_opening_words_from_both_presentations() {
 /// The reading cues are held past their words so they can be read. A head
 /// trim that lands inside a cue used to shrink what remained to its words'
 /// own bounds — a caption that appeared a beat after the picture and left
-/// the moment its last word ended, too brief to read and refused at export.
-/// Now the cut side moves to the cut and the other side stays where it was.
+/// the moment its last word ended. Now the cut side moves to the cut and
+/// the other side stays where it was.
 #[test]
 fn a_cue_cut_through_keeps_its_hold_on_the_side_that_was_not_cut() {
     let second = TICKS_PER_SECOND;
-    // Head: the first segment now begins at source 2.6s, program 0.6s. "the"
-    // and "first" are gone; "slice" (0.8675s–1.2012s) remains, and cue_1
-    // starts with the picture and ends where it always did, a second's
-    // worth of program earlier.
+    // The first segment now begins at source 2.3s, program 0.3s. "the" is
+    // gone; "first slice" (0.5338s–1.2012s) remains, readable in the window
+    // it keeps: cue_1 starts with the picture and ends where it always did,
+    // three tenths of program earlier.
     let mut document = fixture();
     EditCommand::Trim {
+        segment_id: "seg_open".to_owned(),
+        in_ticks: 2 * second + second * 3 / 10,
+        out_ticks: 6 * second,
+    }
+    .apply(&mut document)
+    .expect("the head trim applies");
+    let first = &document.captions.cues[0];
+    assert_eq!(first.cue_id, "cue_1");
+    assert_eq!(
+        first
+            .words()
+            .map(|word| word.text.as_str())
+            .collect::<Vec<_>>(),
+        ["first", "slice"]
+    );
+    assert_eq!(first.start_ticks, 0, "the cut cue starts with the picture");
+    assert_eq!(first.end_ticks, 108_108 - second * 3 / 10);
+    assert_eq!(
+        document.captions.cues.len(),
+        6,
+        "nothing was folded together"
+    );
+    document.validate().expect("valid after the head trim");
+}
+
+/// A cue the cut leaves too brief to read is folded into the cue beside it
+/// and the pair is broken again, by the caption engine's own segmenter.
+///
+/// "slice" alone, on screen for six tenths of a second, is a caption no
+/// profile calls readable and the export strip refuses for the sidecar.
+/// The word is still said, so it is not dropped; it joins the next cue.
+#[test]
+fn a_fragment_too_brief_to_read_is_folded_into_the_next_cue() {
+    let second = TICKS_PER_SECOND;
+    let mut document = fixture();
+    let inverse = EditCommand::Trim {
         segment_id: "seg_open".to_owned(),
         in_ticks: 2 * second + second * 6 / 10,
         out_ticks: 6 * second,
@@ -282,15 +325,31 @@ fn a_cue_cut_through_keeps_its_hold_on_the_side_that_was_not_cut() {
             .words()
             .map(|word| word.text.as_str())
             .collect::<Vec<_>>(),
-        ["slice"]
+        ["slice", "renders", "from", "the", "edit", "document"],
+        "the fragment and its neighbour are one cue"
     );
-    assert_eq!(first.start_ticks, 0, "the cut cue starts with the picture");
-    assert_eq!(first.end_ticks, 108_108 - second * 6 / 10);
-    document.validate().expect("valid after the head trim");
+    // As every cue the engine makes, it begins with its first word.
+    assert_eq!(first.start_ticks, first.words().next().unwrap().start_ticks);
+    assert!(first.end_ticks > 108_108 - second * 6 / 10);
+    assert_eq!(document.captions.cues.len(), 5, "one cue fewer");
+    assert_eq!(document.captions.cues[1].cue_id, "cue_3");
+    assert!(
+        first.words().all(|word| word.word_id.is_some()),
+        "every word keeps its identity"
+    );
+    document.validate().expect("valid after the fold");
 
-    // Tail: the second segment now ends at source 11.5s, program 5.5s.
-    // "preview" onward is gone; "so" remains, and cue_6 is held to the end
-    // of the program rather than leaving the moment "so" ends.
+    // The fold is part of the trim, so the undo is the whole arrangement
+    // and it is exact.
+    inverse.apply(&mut document).expect("undo");
+    assert_eq!(document, fixture());
+}
+
+/// The same at the tail: "so" alone for three tenths of a second joins the
+/// cue before it.
+#[test]
+fn a_fragment_too_brief_to_read_at_the_tail_is_folded_into_the_cue_before() {
+    let second = TICKS_PER_SECOND;
     let mut document = fixture();
     EditCommand::Trim {
         segment_id: "seg_close".to_owned(),
@@ -300,21 +359,16 @@ fn a_cue_cut_through_keeps_its_hold_on_the_side_that_was_not_cut() {
     .apply(&mut document)
     .expect("the tail trim applies");
     let last = document.captions.cues.last().expect("cues remain");
-    assert_eq!(last.cue_id, "cue_6");
     assert_eq!(
         last.words()
             .map(|word| word.text.as_str())
             .collect::<Vec<_>>(),
-        ["so"]
+        ["and", "stored", "here", "so"]
     );
-    assert_eq!(last.start_ticks, 468_468, "the start was not touched");
-    assert_eq!(
-        last.end_ticks,
-        5 * second + second / 2,
-        "held to the program's end"
-    );
-    assert_eq!(document.program_duration_ticks(), last.end_ticks);
-    document.validate().expect("valid after the tail trim");
+    assert_eq!(last.cue_id, "cue_5");
+    assert!(last.end_ticks <= 5 * second + second / 2);
+    assert_eq!(document.captions.cues.len(), 5);
+    document.validate().expect("valid after the fold");
 }
 
 #[test]

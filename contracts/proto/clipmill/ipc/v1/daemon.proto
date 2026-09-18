@@ -552,6 +552,23 @@ message Job {
   // was and fell back to the newest. Which recording is the one thing a reader
   // of an analysis needs to know first.
   string source_id = 11;
+  // What an export job is delivering, read off its own payload; absent for
+  // every other kind of job. An export is durable daemon state, and this is
+  // what lets a screen find the export of a document again after the screen
+  // was left or the application relaunched, rather than remembering it in
+  // renderer state that a remount starts without.
+  ExportSummaryV1 export = 12;
+}
+
+// The identity of an export, as its job carries it.
+message ExportSummaryV1 {
+  string doc_id = 1;
+  // The revision that was rendered.
+  uint64 revision = 2;
+  // The immutable edit.ir.v1 snapshot it was frozen as.
+  string ir_artifact_id = 3;
+  // The folder, resolved, the files land in.
+  string destination_dir = 4;
 }
 
 message Task {

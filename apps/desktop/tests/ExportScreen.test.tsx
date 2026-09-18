@@ -155,7 +155,19 @@ async function planned(world: FakeWorld) {
 
 /** The export job in a state, with the package artifact when delivered. */
 function exportJob(state: JobState, tasks: readonly ReturnType<typeof task>[]): Job {
-  return { ...job(OLD, state, tasks), jobId: 'job_export', kind: 'export-clip' };
+  return {
+    ...job(OLD, state, tasks),
+    jobId: 'job_export',
+    kind: 'export-clip',
+    // What the daemon's job says it is delivering: how the export is found
+    // again by a screen that did not queue it.
+    export: {
+      docId: OLD_DOC,
+      revision: 0,
+      irArtifactId: 'sha256:ir-snapshot',
+      destinationDir: '/Users/sami/Movies/clips',
+    },
+  };
 }
 
 const PACKAGE = {
@@ -273,6 +285,154 @@ describe('following a queued export', () => {
     expect(screen.getByTestId('delivery').textContent).toContain('Delivered revision r0');
     fireEvent.click(screen.getByRole('button', { name: /reveal 01-charging-less\.mp4/i }));
     expect(world.revealed).toEqual(['/Users/sami/Movies/clips/01-charging-less.mp4']);
+  });
+
+  /**
+   * The reproduction: an export was queued, the screen was left and reopened
+   * on the same clip, and the delivery panel was gone — the job id lived only
+   * in the screen's state. The export is the daemon's; a fresh mount finds it
+   * there.
+   */
+  it('finds an in-flight export again when the clip is reopened', async () => {
+    const base = twoProjects();
+    const world = twoProjects({
+      exportPlan: passing(0),
+      jobs: {
+        ...base.jobs,
+        [OLD]: [
+          ...base.jobs[OLD]!,
+          exportJob(JobState.RUNNING, [
+            task('render.clip.v1', TaskState.RUNNING, {
+              progress: { unit: 'frames', done: 12, total: 90 },
+            }),
+            task('export.package.v1', TaskState.PLANNED),
+          ]),
+        ],
+      },
+    });
+    const api = fakeApi(world);
+    const onOpen = vi.fn<(clip: ClipRef) => void>();
+    const first = render(<ExportScreen clip={OLDER_CLIP} onOpen={onOpen} api={api} />);
+    await planned(world);
+    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    await screen.findByTestId('delivery');
+    await waitFor(() => {
+      expect(screen.getByTestId('stage-render').textContent).toBe('12 of 90 frames');
+    });
+    first.unmount();
+
+    render(<ExportScreen clip={OLDER_CLIP} onOpen={onOpen} api={api} />);
+    await screen.findByTestId('export-clip');
+    const card = await screen.findByTestId('delivery');
+    expect(card.textContent).toContain('Delivering revision r0');
+    await waitFor(() => {
+      expect(screen.getByTestId('stage-render').textContent).toBe('12 of 90 frames');
+    });
+    // And nothing can be exported on top of it while it runs.
+    expect(screen.getByRole('button', { name: /^export$/i })).toHaveProperty('disabled', true);
+  });
+
+  /** After a relaunch nothing was ever queued from this screen; the daemon still knows. */
+  it('shows a delivered export on a fresh start, from the daemon alone', async () => {
+    const base = twoProjects();
+    const world = twoProjects({
+      exportPlan: passing(0),
+      jobs: {
+        ...base.jobs,
+        [OLD]: [
+          ...base.jobs[OLD]!,
+          exportJob(JobState.SUCCEEDED, [
+            task('render.clip.v1', TaskState.SUCCEEDED),
+            task('export.package.v1', TaskState.SUCCEEDED, {
+              outputArtifactId: PACKAGE.artifactId,
+            }),
+          ]),
+        ],
+      },
+      documents: { ...base.documents, [PACKAGE.artifactId]: PACKAGE },
+    });
+    show(OLDER_CLIP, world);
+    const files = await screen.findByRole('list', { name: /delivered files/i });
+    expect(files.textContent).toContain('/Users/sami/Movies/clips/01-charging-less.mp4');
+    expect(screen.getByTestId('delivery').textContent).toContain('Delivered revision r0');
+    // Nothing was asked of the daemon that it had not already done.
+    expect(world.exported.filter((request) => 'expectedRevision' in request)).toHaveLength(0);
+  });
+
+  it('follows the newest export of the document, not another document\u2019s', async () => {
+    const base = twoProjects();
+    const other = {
+      ...exportJob(JobState.SUCCEEDED, [task('render.clip.v1', TaskState.SUCCEEDED)]),
+      jobId: 'job_export_other',
+      createdUnixMillis: 9_999_999_999_999,
+      export: {
+        docId: NEW_DOC,
+        revision: 4,
+        irArtifactId: 'sha256:other',
+        destinationDir: '/elsewhere',
+      },
+    };
+    const world = twoProjects({
+      exportPlan: passing(0),
+      jobs: {
+        ...base.jobs,
+        [OLD]: [
+          ...base.jobs[OLD]!,
+          other,
+          exportJob(JobState.RUNNING, [
+            task('render.clip.v1', TaskState.RUNNING),
+            task('export.package.v1', TaskState.PLANNED),
+          ]),
+        ],
+      },
+    });
+    show(OLDER_CLIP, world);
+    const card = await screen.findByTestId('delivery');
+    expect(card.textContent).toContain('Delivering revision r0');
+    expect(card.textContent).toContain('/Users/sami/Movies/clips');
+    expect(card.textContent).not.toContain('/elsewhere');
+  });
+
+  /** A read that fails is not an outcome; the job goes on and so does the asking. */
+  it('keeps following an export across a lost read rather than calling it settled', async () => {
+    const base = twoProjects();
+    const running = exportJob(JobState.RUNNING, [
+      task('render.clip.v1', TaskState.RUNNING, {
+        progress: { unit: 'frames', done: 30, total: 90 },
+      }),
+      task('export.package.v1', TaskState.PLANNED),
+    ]);
+    const world = twoProjects({
+      exportPlan: passing(0),
+      jobs: { ...base.jobs, [OLD]: [...base.jobs[OLD]!, running] },
+    });
+    const api = fakeApi(world);
+    let reads = 0;
+    const flaky = {
+      ...api,
+      fetchJob: (jobId: string) => {
+        reads += 1;
+        return reads === 2
+          ? Promise.reject(new Error('the daemon is restarting'))
+          : api.fetchJob(jobId);
+      },
+    };
+    render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={flaky} />);
+    await planned(world);
+    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    const card = await screen.findByTestId('delivery');
+    expect(await screen.findByTestId('delivery-interruption')).toBeTruthy();
+    expect(card.textContent).toContain('the daemon is restarting');
+    expect(card.textContent).not.toContain('was not delivered');
+    // The next read gets through, and the interruption is gone with it.
+    await waitFor(
+      () => {
+        expect(reads).toBeGreaterThanOrEqual(3);
+        expect(screen.queryByTestId('delivery-interruption')).toBeNull();
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByTestId('stage-render').textContent).toBe('30 of 90 frames');
   });
 
   it('says why an export failed, in the daemon\u2019s words', async () => {

@@ -3378,6 +3378,10 @@ impl Service {
         // may point somewhere else by the time it runs.
         let mut resolved = asked.clone();
         resolved.destination_dir = destination.to_string_lossy().into_owned();
+        // The revision rendered is written into the job's own record of the
+        // request, whether or not the caller named one, so the job can say
+        // afterwards which revision it delivered.
+        resolved.expected_revision = Some(record.revision);
         self.submit_export(
             request_id,
             request_hash,
