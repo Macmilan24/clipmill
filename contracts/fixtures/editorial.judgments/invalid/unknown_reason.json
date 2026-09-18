@@ -1,0 +1,84 @@
+{
+  "candidates": [
+    {
+      "candidate_id": "cand_00000000000000a1",
+      "context": {
+        "first_sentence_index": 0,
+        "sentence_count": 8
+      },
+      "outcome": "answered",
+      "reasons": [],
+      "status": "accepted",
+      "summary": "The host asks why a recording sounds thin and the guest answers with the room.",
+      "visual_dependency": false
+    },
+    {
+      "candidate_id": "cand_00000000000000b2",
+      "context": {
+        "first_sentence_index": 5,
+        "sentence_count": 7
+      },
+      "outcome": "answered",
+      "reasons": [
+        {
+          "code": "vibes",
+          "detail": "She points at a meter that is not described in words."
+        }
+      ],
+      "status": "needs_review",
+      "summary": "A number and the rule that follows from it.",
+      "visual_dependency": true
+    },
+    {
+      "candidate_id": "cand_00000000000000c3",
+      "context": {
+        "first_sentence_index": 0,
+        "sentence_count": 4
+      },
+      "outcome": "answered",
+      "reasons": [
+        {
+          "code": "irrelevant_intro",
+          "detail": "It is the welcome, not a moment."
+        }
+      ],
+      "status": "rejected",
+      "visual_dependency": false
+    },
+    {
+      "candidate_id": "cand_00000000000000d4",
+      "context": {
+        "first_sentence_index": 6,
+        "sentence_count": 6
+      },
+      "failure": {
+        "detail": "the model ran out of memory beside the aligner",
+        "failure_class": "transient"
+      },
+      "outcome": "failed",
+      "reasons": []
+    }
+  ],
+  "inputs": {
+    "candidates_artifact_id": "sha256:ca7d000000000000000000000000000000000000000000000000000000000044",
+    "windows_artifact_id": "sha256:e01a000000000000000000000000000000000000000000000000000000000031"
+  },
+  "producer": {
+    "decoding": {
+      "constrained": true,
+      "max_output_tokens": 1024,
+      "seed": 7,
+      "temperature_milli": 0
+    },
+    "implementation": "clipmill-worker-editorial@0.1.0",
+    "model": {
+      "digest": "sha256:9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45",
+      "name": "qwen3.5-9b-mlx"
+    },
+    "prompt_version": "review.v1",
+    "route": "local",
+    "stage": "editorial-review"
+  },
+  "schema_version": "clipmill.editorial.judgments.v1",
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007"
+}

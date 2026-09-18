@@ -471,6 +471,14 @@ class IndexStagePayloadV1(_message.Message):
     stage: str
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
 
+class EditorialStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
+
 class DiscoverCandidatesPayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "duration")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

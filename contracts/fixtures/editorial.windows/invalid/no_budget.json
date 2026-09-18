@@ -1,0 +1,70 @@
+{
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 900000,
+    "start_ticks": 0
+  },
+  "inputs": {
+    "index_artifact_id": "sha256:1d0e000000000000000000000000000000000000000000000000000000000021",
+    "transcript_artifact_id": "sha256:7a11000000000000000000000000000000000000000000000000000000000042"
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "outline": [
+    {
+      "end_ticks": 631800,
+      "first_sentence_index": 0,
+      "keywords": [
+        "every",
+        "first",
+        "integer",
+        "renders",
+        "slice"
+      ],
+      "sentence_count": 2,
+      "start_ticks": 45000,
+      "topic_index": 0
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-editorial-windows@1.0.0",
+    "stage": "editorial-windows"
+  },
+  "schema_version": "clipmill.editorial.windows.v1",
+  "sentences": [
+    {
+      "end_ticks": 160200,
+      "first_word_index": 0,
+      "index": 0,
+      "start_ticks": 45000,
+      "terminator": "punctuation",
+      "text": "The first slice renders",
+      "word_count": 4
+    },
+    {
+      "end_ticks": 631800,
+      "first_word_index": 4,
+      "index": 1,
+      "start_ticks": 396000,
+      "terminator": "punctuation",
+      "text": "Every timestamp is an integer tick",
+      "word_count": 6
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "windows": [
+    {
+      "context_after_sentences": 0,
+      "context_before_sentences": 0,
+      "end_ticks": 631800,
+      "first_sentence_index": 0,
+      "index": 0,
+      "sentence_count": 2,
+      "start_ticks": 45000,
+      "topic_indexes": [
+        0
+      ],
+      "word_count": 10
+    }
+  ]
+}

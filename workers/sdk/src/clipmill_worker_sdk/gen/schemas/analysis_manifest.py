@@ -31,6 +31,7 @@ class Kind(StrEnum):
     speech_transcript_v1 = 'speech.transcript.v1'
     evidence_shots_v1 = 'evidence.shots.v1'
     index_transcript_v1 = 'index.transcript.v1'
+    editorial_windows_v1 = 'editorial.windows.v1'
     discovery_candidates_v1 = 'discovery.candidates.v1'
     ranking_set_v1 = 'ranking.set.v1'
 

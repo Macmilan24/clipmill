@@ -53,7 +53,7 @@ describe('the analysis, as the shell reads it', () => {
 
   it('hands a project view every artifact address in one read', () => {
     const analysis = load('interview.json');
-    expect(analysis.stages.length).toBe(10);
+    expect(analysis.stages.length).toBe(11);
     const byKind = new Map(analysis.stages.map((stage) => [stage.kind, stage.artifact_id]));
     // The two a results board opens first.
     expect(byKind.get('ranking.set.v1')).toMatch(/^sha256:[0-9a-f]{64}$/);
@@ -80,7 +80,7 @@ describe('the analysis, as the shell reads it', () => {
     // error would hide work that did succeed.
     expect(analysis.stages.map((stage) => stage.kind)).toContain('evidence.shots.v1');
     const skipped = analysis.skipped ?? [];
-    expect(skipped.length).toBe(7);
+    expect(skipped.length).toBe(8);
     expect(new Set(skipped.map((stage) => stage.reason))).toEqual(new Set(['no_audio']));
   });
 

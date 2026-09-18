@@ -42,6 +42,7 @@ export interface Stage {
     | "speech.transcript.v1"
     | "evidence.shots.v1"
     | "index.transcript.v1"
+    | "editorial.windows.v1"
     | "discovery.candidates.v1"
     | "ranking.set.v1";
   artifact_id: Sha256;

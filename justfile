@@ -49,7 +49,7 @@ gate-contracts:
     git diff --exit-code -- crates/clipmill-contracts/src/gen packages/contracts/src/gen workers/sdk/src/clipmill workers/sdk/src/clipmill_worker_sdk/gen
     python3 tools/schema-lint/check.py contracts/schemas/*.json
     cargo test -p clipmill-contracts
-    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py tests/test_ranking_contracts.py
+    cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py tests/test_ranking_contracts.py tests/test_editorial_contracts.py
     pnpm --filter @clipmill/contracts test
 
 # W2 coverage: acknowledged project mutations survive forced termination.
@@ -137,6 +137,16 @@ gate-evidence iterations="1":
 # producing the same bytes.
 gate-discovery iterations="1":
     ./tools/drills/discovery-drill.sh {{iterations}}
+
+# Milestone 2 coverage, step 1: the windows an editorial model reads and the
+# contracts everything it will say is held to. The cut against word counts
+# written by hand — a sentence longer than the target, an overlap wider than a
+# window, a topic too early to close on — then every committed index cut
+# against a reviewed golden, the guarantees a proposer relies on, the five
+# editorial contracts in three languages, and the stage's registration, input
+# checks, and keying in the daemon.
+gate-editorial iterations="1":
+    ./tools/drills/editorial-drill.sh {{iterations}}
 
 # W19 coverage: what a clip is worth, where it is cut, which to show, and the
 # one job that produces all of it. The score card against cards written by hand

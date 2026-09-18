@@ -50,11 +50,15 @@ kinds it does today.
 Notes on each:
 
 - **Windows** are deterministic and cheap: overlapping spans that keep
-  sentence boundaries, a paragraph of context on either side, and the word
-  and sentence ids of everything inside. A recording past a threshold also
-  gets a short outline, one line per topic, each line citing its sentence
-  range — context for the model, never a substitute for the words. This is
-  Rust, in `clipmill-discovery`, with goldens on the synthesized talk.
+  sentence boundaries, a sentence or two of context on either side, and the
+  word and sentence ids of everything inside. A topic boundary the index
+  found near the end of a window closes it there, because a topic is where a
+  moment is likeliest to close. Every document also carries a short outline,
+  one line per topic, each line citing its sentence range — context for the
+  model, never a substitute for the words. This is Rust, in
+  `clipmill-editorial` (the crate the validator and the review checks join
+  later), with goldens over the published indexes; the budget reaches the
+  artifact key, so a re-cut is a different reading rather than a correction.
 - **Propose** is the model's first job. Per window it answers in ids: which
   sentences (or words, at the edges) make a moment with a hook, the setup it
   needs, and a payoff; a title; a one-sentence source-grounded reason; what it
@@ -279,13 +283,15 @@ runnable end to end after every one.
 
 ## Decisions to take before step 2
 
-- **Which local model to start with.** Benchmark Qwen3.5-9B against Gemma 4
-  12B on this machine (and Gemma 4 26B-A4B if admission allows it; Qwen3.8-27B
-  on a machine that holds it) for structured-output reliability, latency per
-  window, resident memory beside the speech models, and — for Qwen3.5-9B —
-  whether one model serving all three jobs beats two; record the choice as a
-  decision with the numbers. The registry entry is written for whichever
-  wins, by digest, licence verified at that point.
+- **Which local model to start with.** Decided as R59: Qwen3.5-9B, one
+  multimodal model meant to serve all three jobs, changed only by
+  measurement. Step 5's benchmark still runs it against Gemma 4 12B on this
+  machine (and Gemma 4 26B-A4B if admission allows it; Qwen3.8-27B on a
+  machine that holds it) for structured-output reliability, latency per
+  window, resident memory beside the speech models, and whether one model
+  serving three jobs beats two; the numbers are recorded against R59 and the
+  registry entry follows whichever wins, by digest, licence verified at that
+  point.
 - **Licence class for editorial weights.** Extend the class rule
   (editorial weights never ship in an export) or restrict to permissive
   models; decide and record.

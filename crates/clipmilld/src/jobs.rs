@@ -14,10 +14,11 @@ use clipmill_contracts::proto::{
         self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, CaptionsStagePayloadV1,
         ClipDurationV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
         DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1,
-        FacesStagePayloadV1, IndexStagePayloadV1, IndexTranscriptPayloadV1, IngestSourcePayloadV1,
-        JobState, ProbeSourcePayloadV1, RankCandidatesPayloadV1, RankStagePayloadV1,
-        ShotsStagePayloadV1, SkippedStageV1, SpeechAlignmentV1, SpeechDetectionV1,
-        SpeechRecognitionV1, SpeechStagePayloadV1, TranscribeSourcePayloadV1,
+        EditorialStagePayloadV1, FacesStagePayloadV1, IndexStagePayloadV1,
+        IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1,
+        RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1,
+        SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1,
+        TranscribeSourcePayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -37,7 +38,7 @@ use crate::{
     captions,
     db::{DbHandle, StoreError},
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
-    discovery, evidence,
+    discovery, editorial, evidence,
     media::{self, MediaRunner, ProgressSlot},
     ranking,
     render::{self, RenderContext},
@@ -54,6 +55,9 @@ pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
 
 /// Key version the evidence-index stage payload carries.
 pub(crate) const INDEX_STAGE_KEY_VERSION: &str = "clipmill.index-stage.v1";
+
+/// Key version the editorial stage payloads carry.
+pub(crate) const EDITORIAL_STAGE_KEY_VERSION: &str = "clipmill.editorial-stage.v1";
 
 /// Key version the discovery stage payload carries.
 pub(crate) const DISCOVER_STAGE_KEY_VERSION: &str = "clipmill.discover-stage.v1";
@@ -1483,6 +1487,7 @@ impl JobPlan {
             None => {
                 for kind in [
                     "index.transcript.v1",
+                    "editorial.windows.v1",
                     "discovery.candidates.v1",
                     "ranking.set.v1",
                 ] {
@@ -1515,6 +1520,32 @@ impl JobPlan {
                     },
                 ));
                 stages.push(("index.transcript.v1".to_owned(), index.clone()));
+
+                // The windows an editorial model reads (plan, Milestone 2).
+                // Cut here so the model's stages, when they arrive, read a
+                // published artifact rather than recomputing one; nothing
+                // downstream reads them yet.
+                let windows = TaskId::new().to_string();
+                tasks.push(builtin_task(
+                    windows.clone(),
+                    Builtin {
+                        kind: editorial::KIND_WINDOWS,
+                        output_kind: "editorial.windows.v1",
+                        implementation: editorial::IMPLEMENTATION,
+                        input_kinds: vec![
+                            "index.transcript.v1".to_owned(),
+                            "speech.transcript.v1".to_owned(),
+                        ],
+                        dependencies: vec![index.clone(), transcript.clone()],
+                        payload: EditorialStagePayloadV1 {
+                            key_version: EDITORIAL_STAGE_KEY_VERSION.to_owned(),
+                            stage: editorial::KIND_WINDOWS.to_owned(),
+                        }
+                        .encode_to_vec(),
+                        ram_mib: 256,
+                    },
+                ));
+                stages.push(("editorial.windows.v1".to_owned(), windows));
 
                 let discover = TaskId::new().to_string();
                 let mut discover_dependencies = vec![index.clone(), transcript.clone()];
@@ -2490,6 +2521,9 @@ impl BuiltinExecutors {
             }
             evidence::KIND_INDEX => {
                 evidence::execute_index_task(&self.artifacts, task, progress).await
+            }
+            editorial::KIND_WINDOWS => {
+                editorial::execute_windows_task(&self.artifacts, task, progress).await
             }
             discovery::KIND_DISCOVER => {
                 discovery::execute_discover_task(&self.artifacts, task, progress).await
@@ -3538,6 +3572,7 @@ mod analyze_tests {
             "speech-transcript",
             "detect-shots",
             "index-transcript",
+            "editorial-windows",
             "discover-candidates",
             "rank-candidates",
             analysis::KIND_MANIFEST,
@@ -3559,7 +3594,7 @@ mod analyze_tests {
     fn the_fan_in_depends_on_every_stage_that_published_something() {
         let plan = plan(true, true);
         let manifest = task(&plan, analysis::KIND_MANIFEST);
-        assert_eq!(manifest.dependencies.len(), 10);
+        assert_eq!(manifest.dependencies.len(), 11);
         assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
         // Nothing declared: every input is a task in this plan.
         assert!(manifest.input_artifact_ids.is_empty());
@@ -3572,6 +3607,7 @@ mod analyze_tests {
             "speech.transcript.v1",
             "evidence.shots.v1",
             "index.transcript.v1",
+            "editorial.windows.v1",
             "discovery.candidates.v1",
             "ranking.set.v1",
         ] {
@@ -3656,13 +3692,18 @@ mod analyze_tests {
             vec![("evidence.shots.v1".to_owned(), "no_video".to_owned())]
         );
         // Everything the transcript feeds still runs.
-        for kind in ["index-transcript", "discover-candidates", "rank-candidates"] {
+        for kind in [
+            "index-transcript",
+            "editorial-windows",
+            "discover-candidates",
+            "rank-candidates",
+        ] {
             assert!(plan.tasks.iter().any(|task| task.kind == kind));
         }
     }
 
     /// A source with no audio has no transcript, so the four speech stages and
-    /// the three that read a transcript are all absent — each with the reason.
+    /// the four that read a transcript are all absent — each with the reason.
     #[test]
     fn a_source_with_no_audio_skips_everything_that_needs_speech() {
         let plan = plan(true, false);
@@ -3678,6 +3719,7 @@ mod analyze_tests {
                 "speech.alignment.v1",
                 "speech.transcript.v1",
                 "index.transcript.v1",
+                "editorial.windows.v1",
                 "discovery.candidates.v1",
                 "ranking.set.v1",
             ])

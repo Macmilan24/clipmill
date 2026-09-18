@@ -83,6 +83,11 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Structure over the words, for search and selection',
   },
   {
+    kind: 'editorial.windows.v1',
+    label: 'Cut windows',
+    detail: 'The transcript in overlapping pieces an editorial model reads',
+  },
+  {
     kind: 'discovery.candidates.v1',
     label: 'Propose candidates',
     detail: 'Moments nominated, each with evidence',
