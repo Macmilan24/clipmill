@@ -12,7 +12,7 @@ use tokio::{
     net::{UnixListener, UnixStream},
     sync::{Semaphore, oneshot},
     task::JoinSet,
-    time::{MissedTickBehavior, interval, timeout},
+    time::{sleep, timeout},
 };
 
 use clipmill_artifacts::ArtifactPath;
@@ -35,6 +35,7 @@ const MAX_CONNECTIONS: usize = 64;
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 const GC_INTERVAL: Duration = Duration::from_hours(6);
+const GC_IDLE_RETRY: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub struct Daemon {
@@ -527,18 +528,20 @@ impl Daemon {
     }
 }
 
-async fn run_artifact_maintenance(
+pub(crate) async fn run_artifact_maintenance(
     artifacts: ArtifactHandle,
     database: crate::db::DbHandle,
     grace: Duration,
     mut stopped: oneshot::Receiver<()>,
 ) {
-    let mut schedule = interval(GC_INTERVAL);
-    schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    // A deferred scan is retried after a quiet interval, not six hours later.
+    // It always reads fresh DB roots and fresh actor-owned reader pins.
+    let mut delay = Duration::ZERO;
     loop {
         tokio::select! {
             _ = &mut stopped => break,
-            _ = schedule.tick() => {
+            () = sleep(delay) => {
+                delay = GC_INTERVAL;
                 let started = Instant::now();
                 let Ok(roots) = database.list_artifact_roots().await else {
                     tracing::warn!(
@@ -549,7 +552,15 @@ async fn run_artifact_maintenance(
                     );
                     continue;
                 };
-                if let Ok(report) = artifacts.collect(roots, SystemTime::now(), grace).await {
+                let collected = tokio::select! {
+                    biased;
+                    _ = &mut stopped => break,
+                    result = artifacts.collect(roots, SystemTime::now(), grace) => result,
+                };
+                if let Ok(report) = collected {
+                    if report.deferred {
+                        delay = GC_IDLE_RETRY;
+                    }
                     tracing::info!(
                         operation = "gc",
                         latency_ms = latency_millis(started),
@@ -558,7 +569,8 @@ async fn run_artifact_maintenance(
                         grace_preserved = report.preserved_by_grace,
                         deleted = report.deleted,
                         quarantine_deleted = report.quarantine_deleted,
-                        "artifact garbage collection complete"
+                        deferred = report.deferred,
+                        "artifact garbage collection pass"
                     );
                 } else {
                     tracing::warn!(

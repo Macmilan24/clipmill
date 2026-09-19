@@ -454,3 +454,23 @@ received the checks documented above. No additional concrete release blocker
 was found in this core pass. The first-load timing sample and unmeasured human
 editorial quality remain explicit limitations. Commit, PR, CI and merge are
 the coordinator's remaining delivery steps.
+
+## Follow-up release checks
+
+The first cross-platform CI pass found a stale evidence-index harness: it did
+not start the face worker now required by analysis. The repair runs both real
+visual workers with verified pinned YuNet weights and adds frame-count and
+model-provenance assertions. Existing digest, warm-cache and recovery checks
+remain. All three real analysis tests and the full ranking drill passed locally.
+The finishing agent independently reviewed this repair and found no blocker.
+
+Further tracing established that the previously recorded startup delay was a
+release blocker: cleanup occupied the artifact actor for 55.097 seconds, exceeding
+the native bridge's ten-second timeout. Cleanup now yields during verification
+when foreground work arrives and retries with fresh roots and pins. The CI-repair
+agent independently reviewed the change and found no blocker. Full digest checks,
+no sweep after incomplete verification, retention, pins and safe filesystem
+deletion remain intact; individual filesystem operations remain uninterruptible.
+The live first request improved from 55.1798 to 0.1747 seconds, and idle cleanup
+subsequently completed. Artifact and maintenance regressions and strict clippy
+passed. These follow-up fixes still require the final CI run before merge.

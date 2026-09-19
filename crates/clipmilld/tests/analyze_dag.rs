@@ -21,13 +21,11 @@
 //!   A killed daemon finishes the DAG inside the 30-second recovery SLO.
 //!
 //! The source here carries video and no audio, so the speech half is skipped with
-//! a stated reason and the shot detector is the worker under test. A full analysis
-//! of a recording with speech needs the three pinned speech models and a worker
-//! fleet no drill currently starts; that is W26's harness, and the speech chain's
-//! own end-to-end coverage lives in `gate-speech`.
+//! a stated reason and the shot and face detectors are the workers under test.
+//! Speech analysis is covered by `gate-speech` and the full fleet by `gate-lock-phase1`.
 //!
-//! Requires the pinned FFmpeg sidecars and the shots worker environment, so every
-//! test is `#[ignore]` and driven by `just gate-ranking`.
+//! Requires pinned FFmpeg, `YuNet` weights, and both visual worker environments,
+//! so every test is `#[ignore]` and driven by `just gate-ranking`.
 #![cfg(unix)]
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
@@ -118,6 +116,8 @@ fn spawn_analyze_daemon(data_dir: &Path, socket: &Path) -> Child {
             std::env::var("CLIPMILL_TEST_DAEMON_LOG").unwrap_or_else(|_| "error".to_owned()),
         )
         .env("CLIPMILL_FFPROBE", workspace_tool("ffprobe"))
+        .env("CLIPMILL_MODELS_DIR", workspace().join("models/registry"))
+        .env("CLIPMILL_WEIGHTS_DIR", workspace().join(".cache/models"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
@@ -138,11 +138,11 @@ fn provision_worker(data_dir: &Path, identity: &Path) {
     assert!(status.success(), "worker key generator failed: {status}");
 }
 
-fn spawn_shots_worker(data_dir: &Path, identity: &Path) -> Child {
-    let executable = workspace().join("workers/shots/.venv/bin/clipmill-worker-shots");
+fn spawn_visual_worker(kind: &str, data_dir: &Path, identity: &Path) -> Child {
+    let executable = workspace().join(format!("workers/{kind}/.venv/bin/clipmill-worker-{kind}"));
     assert!(
         executable.is_file(),
-        "shots worker environment is missing; run `uv sync --project workers/shots`"
+        "{kind} worker environment is missing; run `uv sync --project workers/{kind}`"
     );
     Command::new(executable)
         .arg("--identity")
@@ -154,7 +154,35 @@ fn spawn_shots_worker(data_dir: &Path, identity: &Path) -> Child {
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .spawn()
-        .expect("spawn shots worker")
+        .expect("spawn visual worker")
+}
+
+fn provision_visual_workers(data_dir: &Path, identities_dir: &Path) -> [PathBuf; 2] {
+    ["shots", "faces"].map(|kind| {
+        let identity = identities_dir.join(format!("worker-{kind}.json"));
+        provision_worker(data_dir, &identity);
+        identity
+    })
+}
+
+struct VisualWorkers([Reaped; 2]);
+
+impl VisualWorkers {
+    fn spawn(data_dir: &Path, identities: &[PathBuf; 2]) -> Self {
+        Self(std::array::from_fn(|index| {
+            Reaped(spawn_visual_worker(
+                ["shots", "faces"][index],
+                data_dir,
+                &identities[index],
+            ))
+        }))
+    }
+
+    fn kill(&mut self) {
+        for worker in &mut self.0 {
+            worker.kill();
+        }
+    }
 }
 
 /// A child killed when the test leaves, so a failure does not leak a daemon.
@@ -219,7 +247,58 @@ fn read_manifest(data_dir: &Path, job: &Job) -> Value {
         .join(&digest[..2])
         .join(digest);
     let raw = fs::read(object.join("analysis.json")).expect("read the analysis manifest");
-    serde_json::from_slice(&raw).expect("the manifest is JSON")
+    let manifest = serde_json::from_slice(&raw).expect("the manifest is JSON");
+    assert_measured_face_evidence(data_dir, &manifest);
+    manifest
+}
+
+fn artifact_document(data_dir: &Path, address: &str, file: &str) -> Value {
+    let _: ArtifactId = address.parse().expect("artifact address");
+    let digest = address.strip_prefix("sha256:").expect("digest");
+    let object = data_dir
+        .join("artifacts/objects/sha256")
+        .join(&digest[..2])
+        .join(digest);
+    serde_json::from_slice(&fs::read(object.join(file)).expect("published document"))
+        .expect("document JSON")
+}
+
+fn assert_measured_face_evidence(data_dir: &Path, manifest: &Value) {
+    let stages = stage_addresses(manifest);
+    let address = stages
+        .get("vision.face_track.v1")
+        .expect("face detection is rooted");
+    let faces = artifact_document(data_dir, address, "faces.json");
+    let artifact = artifact_document(data_dir, address, "manifest.json");
+    let frames = artifact_document(
+        data_dir,
+        faces["frames_artifact_id"]
+            .as_str()
+            .expect("exact frames input"),
+        "index.json",
+    );
+    let examined = faces["coverage"]["frames_examined"]
+        .as_u64()
+        .expect("frame count");
+    assert!(
+        examined > 0,
+        "an empty result must still examine the source frames"
+    );
+    assert_eq!(
+        examined,
+        u64::try_from(frames["frames"].as_array().expect("sampled frames").len())
+            .expect("frame count")
+    );
+    assert_eq!(faces["coverage"]["analyzed"], true);
+    assert_eq!(faces["source_fingerprint"], manifest["source_fingerprint"]);
+    assert_eq!(faces["producer"]["stage"], "detect-faces");
+    // The recipe records the registry bundle identity, including revision and
+    // filenames, rather than the hash of the single ONNX file. Re-pinning the
+    // model deliberately changes this expected identity.
+    assert_eq!(
+        artifact["producer"]["model_digest"],
+        "sha256:0ca8930cd602aab4b920c70f8ad8caa59bda9da938cfb46dd0e878d8102cb027"
+    );
 }
 
 fn stage_addresses(manifest: &Value) -> BTreeMap<String, String> {
@@ -254,7 +333,7 @@ async fn probed_source(socket: &Path, media: &Path) -> (String, String) {
 }
 
 #[tokio::test]
-#[ignore = "requires pinned FFmpeg and the shots worker environment"]
+#[ignore = "requires pinned FFmpeg, YuNet, and both visual worker environments"]
 #[allow(clippy::too_many_lines)]
 async fn analyze_runs_the_whole_pipeline_and_agrees_with_itself_when_warm() {
     let temp = workspace_tempdir();
@@ -266,11 +345,10 @@ async fn analyze_runs_the_whole_pipeline_and_agrees_with_itself_when_warm() {
 
     // Before the daemon starts: it reads its trust map once, so a worker
     // provisioned afterwards is one it has never heard of.
-    let identity = temp.path().join("worker.json");
-    provision_worker(&data_dir, &identity);
+    let identities = provision_visual_workers(&data_dir, temp.path());
     let mut daemon = Reaped(spawn_analyze_daemon(&data_dir, &socket));
     wait_until_ready(&socket).await.expect("daemon ready");
-    let mut worker = Reaped(spawn_shots_worker(&data_dir, &identity));
+    let mut workers = VisualWorkers::spawn(&data_dir, &identities);
 
     let (project_id, source_id) = probed_source(&socket, &media).await;
 
@@ -293,8 +371,9 @@ async fn analyze_runs_the_whole_pipeline_and_agrees_with_itself_when_warm() {
             "evidence.source_map.v1".to_owned(),
             "media.ingest_manifest.v1".to_owned(),
             "evidence.shots.v1".to_owned(),
+            "vision.face_track.v1".to_owned(),
         ]),
-        "silent footage produces the probe, the ingest, and the shot cuts"
+        "silent footage produces probe, ingest, shot cuts, and measured face evidence"
     );
 
     // The skip list, which is the whole reason it exists: eight stages absent
@@ -343,12 +422,12 @@ async fn analyze_runs_the_whole_pipeline_and_agrees_with_itself_when_warm() {
         "a warm analysis names the same artifact for every stage"
     );
 
-    worker.kill();
+    workers.kill();
     daemon.kill();
 }
 
 #[tokio::test]
-#[ignore = "requires pinned FFmpeg and the shots worker environment"]
+#[ignore = "requires pinned FFmpeg, YuNet, and both visual worker environments"]
 async fn a_daemon_killed_mid_analysis_finishes_within_the_recovery_slo() {
     let temp = workspace_tempdir();
     let data_dir = temp.path().join("data");
@@ -359,11 +438,10 @@ async fn a_daemon_killed_mid_analysis_finishes_within_the_recovery_slo() {
 
     // Before the daemon starts: it reads its trust map once, so a worker
     // provisioned afterwards is one it has never heard of.
-    let identity = temp.path().join("worker.json");
-    provision_worker(&data_dir, &identity);
+    let identities = provision_visual_workers(&data_dir, temp.path());
     let mut daemon = Reaped(spawn_analyze_daemon(&data_dir, &socket));
     wait_until_ready(&socket).await.expect("daemon ready");
-    let mut worker = Reaped(spawn_shots_worker(&data_dir, &identity));
+    let mut workers = VisualWorkers::spawn(&data_dir, &identities);
 
     let (project_id, source_id) = probed_source(&socket, &media).await;
     let submitted = submit_analyze(&socket, "req-kill", &project_id, &source_id)
@@ -381,13 +459,13 @@ async fn a_daemon_killed_mid_analysis_finishes_within_the_recovery_slo() {
         JobState::Succeeded as i32,
         "killed too late to test"
     );
-    worker.kill();
+    workers.kill();
     daemon.kill();
 
     let recovery_started = Instant::now();
     let mut daemon = Reaped(spawn_analyze_daemon(&data_dir, &socket));
     wait_until_ready(&socket).await.expect("daemon restarts");
-    let mut worker = Reaped(spawn_shots_worker(&data_dir, &identity));
+    let mut workers = VisualWorkers::spawn(&data_dir, &identities);
 
     let finished = wait_for_job(
         &socket,
@@ -405,14 +483,14 @@ async fn a_daemon_killed_mid_analysis_finishes_within_the_recovery_slo() {
     let manifest = read_manifest(&data_dir, &finished);
     assert_eq!(manifest["schema_version"], "clipmill.analysis.manifest.v1");
 
-    worker.kill();
+    workers.kill();
     daemon.kill();
 }
 
 /// Everything the fan-in names must be an artifact that is actually in the store,
 /// because a shell walks this document to find what a project has.
 #[tokio::test]
-#[ignore = "requires pinned FFmpeg and the shots worker environment"]
+#[ignore = "requires pinned FFmpeg, YuNet, and both visual worker environments"]
 async fn every_address_the_manifest_names_is_readable_from_the_store() {
     let temp = workspace_tempdir();
     let data_dir = temp.path().join("data");
@@ -423,11 +501,10 @@ async fn every_address_the_manifest_names_is_readable_from_the_store() {
 
     // Before the daemon starts: it reads its trust map once, so a worker
     // provisioned afterwards is one it has never heard of.
-    let identity = temp.path().join("worker.json");
-    provision_worker(&data_dir, &identity);
+    let identities = provision_visual_workers(&data_dir, temp.path());
     let mut daemon = Reaped(spawn_analyze_daemon(&data_dir, &socket));
     wait_until_ready(&socket).await.expect("daemon ready");
-    let mut worker = Reaped(spawn_shots_worker(&data_dir, &identity));
+    let mut workers = VisualWorkers::spawn(&data_dir, &identities);
 
     let (project_id, source_id) = probed_source(&socket, &media).await;
     let job = submit_analyze(&socket, "req-walk", &project_id, &source_id)
@@ -468,6 +545,6 @@ async fn every_address_the_manifest_names_is_readable_from_the_store() {
         }
     }
 
-    worker.kill();
+    workers.kill();
     daemon.kill();
 }
