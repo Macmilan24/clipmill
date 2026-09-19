@@ -37,6 +37,7 @@ clipmill-evidence = { path = "crates/clipmill-evidence", version = "0.0.1" }
 clipmill-export = { path = "crates/clipmill-export", version = "0.0.1" }
 clipmill-reframe = { path = "crates/clipmill-reframe", version = "0.0.1" }
 clipmill-render = { path = "crates/clipmill-render", version = "0.0.1" }
+clipmill-youtube = { path = "crates/clipmill-youtube", version = "0.0.1" }
 clipmill-contracts = { path = "crates/clipmill-contracts", version = "0.0.1" }
 clipmilld = { path = "crates/clipmilld", version = "0.0.1" }
 clap = { version = "4.5", features = ["derive"] }

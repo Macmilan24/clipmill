@@ -19,6 +19,10 @@ import sys
 
 CATEGORIES = {
     "Hostile input and parsers": (
+        "crates/clipmill-youtube/**",
+        "crates/clipmilld/src/service/youtube_publish*",
+        "crates/clipmilld/src/service/youtube_publish/**",
+        "apps/desktop/src-tauri/src/youtube.rs",
         "integrations/**",
         "crates/clipmilld/src/service/youtube.rs",
         "crates/clipmilld/src/youtube_transport.rs",
@@ -46,6 +50,10 @@ CATEGORIES = {
         "workers/**",
     ),
     "Filesystem publication and paths": (
+        "crates/clipmill-youtube/**",
+        "crates/clipmilld/src/service/youtube_publish*",
+        "crates/clipmilld/src/service/youtube_publish/**",
+        "apps/desktop/src-tauri/src/youtube.rs",
         "integrations/**",
         "crates/clipmilld/src/service/youtube.rs",
         "crates/clipmilld/src/youtube_transport.rs",
@@ -71,6 +79,10 @@ CATEGORIES = {
         "tools/fetch-ffmpeg.sh",
     ),
     "Secrets, logs, and credentials": (
+        "crates/clipmill-youtube/**",
+        "crates/clipmilld/src/service/youtube_publish*",
+        "crates/clipmilld/src/service/youtube_publish/**",
+        "apps/desktop/src-tauri/src/youtube.rs",
         "integrations/**",
         ".github/**",
         "crates/clipmilld/src/device.rs",
@@ -78,6 +90,10 @@ CATEGORIES = {
         "tools/security/**",
     ),
     "Network policy and egress": (
+        "crates/clipmill-youtube/**",
+        "crates/clipmilld/src/service/youtube_publish*",
+        "crates/clipmilld/src/service/youtube_publish/**",
+        "apps/desktop/src-tauri/src/youtube.rs",
         "integrations/**",
         "tools/import-youtube.sh",
         "crates/clipmilld/src/service/youtube.rs",

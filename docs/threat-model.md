@@ -63,6 +63,34 @@ interruption. [YouTube import](youtube-import.md) records setup and scope. A liv
 download check is separate from these offline tests, and neither verifies the
 creator's permission on the user's behalf.
 
+## YouTube publishing extension
+
+Channel connection and publishing use fixed Google HTTPS endpoints through a
+narrow daemon-owned transport. OAuth uses the system browser, a loopback callback,
+random state and PKCE S256; callback input and provider responses are bounded.
+The macOS Keychain holds client configuration, tokens and resumable URLs. Other
+platforms fail closed with an unavailable status. No secret enters renderer
+views, command arguments, logs or project archives. Disconnect shares the
+refresh lock so a late refresh cannot recreate deleted credentials.
+
+Private upload requires reviewed metadata, audience/disclosure choices, explicit
+rights confirmation and the actual connected channel. The daemon verifies the
+immutable rendered export and retains its artifact while recovery is possible.
+SQLite records remote intent and receipts outside the cached worker machinery.
+The upload session is protected before sending media; server acknowledgements
+drive progress. Lost final replies are reconciled against the same session.
+An expired session after possible completion remains uncertain, never an
+automatic replacement upload. Local project deletion retains remote knowledge.
+
+Publish is an explicit update to that existing video ID. Current channel and
+processing state are checked first. Mutable status settings are preserved and
+the resource ETag rejects concurrent changes. HTTPS redirects and ambient
+proxies are disabled; session URLs must have the exact approved scheme, host,
+port and path. Synthetic loopback fixtures test these boundaries, including
+lost receipts, hostile redirects, callback state, token refusals and ETag
+conflicts. They are not evidence of real account authorization or Google's
+approval for public uploads. See [publishing](youtube-publishing.md).
+
 ## Assets and trust boundaries
 
 The assets are original media, source paths, project metadata, immutable CAS

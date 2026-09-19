@@ -1,5 +1,6 @@
 mod batch;
 mod youtube;
+mod youtube_publish;
 
 use std::{
     io::{Read, Seek, SeekFrom},
@@ -92,6 +93,7 @@ pub(crate) struct Service {
     decoder: Option<std::path::PathBuf>,
     batch_admission: std::sync::Arc<tokio::sync::Mutex<()>>,
     youtube: Option<std::sync::Arc<youtube::YoutubeRuntime>>,
+    publishing: std::sync::Arc<youtube_publish::PublishingRuntime>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -152,6 +154,7 @@ impl Service {
             decoder: None,
             batch_admission: std::sync::Arc::default(),
             youtube: None,
+            publishing: std::sync::Arc::default(),
         }
     }
 
@@ -198,6 +201,7 @@ impl Service {
             decoder: Some(decoder),
             batch_admission: std::sync::Arc::default(),
             youtube,
+            publishing: std::sync::Arc::default(),
         }
     }
 
@@ -456,6 +460,40 @@ impl Service {
                 self.update_export_batch_item(request_id, request_hash, update)
                     .await
             }
+            request::Body::ConfigureYoutubePublishing(asked) => {
+                self.configure_youtube_publishing(request_id, asked).await
+            }
+            request::Body::ConnectYoutubeChannel(_) => {
+                self.connect_youtube_channel(request_id).await
+            }
+            request::Body::GetYoutubePublishingStatus(_) => {
+                self.youtube_publishing_status(request_id).await
+            }
+            request::Body::UpdateYoutubeConnection(asked) => {
+                self.update_youtube_connection(request_id, asked).await
+            }
+            request::Body::StartYoutubeUpload(asked) => {
+                self.start_youtube_upload(request_id, request_hash, asked)
+                    .await
+            }
+            request::Body::GetYoutubeUpload(asked) => {
+                self.get_youtube_upload(request_id, asked.upload_id).await
+            }
+            request::Body::ListYoutubeUploads(asked) => {
+                self.list_youtube_uploads(request_id, asked.project_id)
+                    .await
+            }
+            request::Body::UpdateYoutubeUpload(asked) => {
+                self.update_youtube_upload(request_id, request_hash, asked)
+                    .await
+            }
+            request::Body::PublishYoutubeUpload(asked) => {
+                self.publish_youtube_upload(request_id, request_hash, asked.upload_id)
+                    .await
+            }
+            request::Body::DraftYoutubeMetadata(asked) => {
+                self.draft_youtube_metadata(request_id, asked).await
+            }
             request::Body::StartYoutubeImport(asked) => {
                 self.start_youtube_import(request_id, request_hash, asked)
                     .await
@@ -558,6 +596,7 @@ impl Service {
             .await
         {
             Ok(bytes) => {
+                self.pause_youtube_project(&project_id.to_string()).await;
                 self.cleanup_youtube_project(&project_id.to_string()).await;
                 Reply {
                     bytes,
@@ -3032,6 +3071,16 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetReadiness(_)) => "get_readiness",
         Some(request::Body::SubmitExportBatch(_)) => "submit_export_batch",
         Some(request::Body::ListExportBatches(_)) => "list_export_batches",
+        Some(request::Body::ConfigureYoutubePublishing(_)) => "configure_youtube_publishing",
+        Some(request::Body::ConnectYoutubeChannel(_)) => "connect_youtube_channel",
+        Some(request::Body::GetYoutubePublishingStatus(_)) => "get_youtube_publishing_status",
+        Some(request::Body::UpdateYoutubeConnection(_)) => "update_youtube_connection",
+        Some(request::Body::StartYoutubeUpload(_)) => "start_youtube_upload",
+        Some(request::Body::GetYoutubeUpload(_)) => "get_youtube_upload",
+        Some(request::Body::ListYoutubeUploads(_)) => "list_youtube_uploads",
+        Some(request::Body::UpdateYoutubeUpload(_)) => "update_youtube_upload",
+        Some(request::Body::PublishYoutubeUpload(_)) => "publish_youtube_upload",
+        Some(request::Body::DraftYoutubeMetadata(_)) => "draft_youtube_metadata",
         Some(request::Body::StartYoutubeImport(_)) => "start_youtube_import",
         Some(request::Body::GetYoutubeImport(_)) => "get_youtube_import",
         Some(request::Body::ListYoutubeImports(_)) => "list_youtube_imports",
@@ -3094,7 +3143,9 @@ fn error_reply(request_id: String, code: ErrorCode, message: impl Into<String>) 
 
 fn store_error_reply(request_id: String, error: &StoreError) -> Reply {
     match error {
-        StoreError::Conflict | StoreError::ImportQualityConflict => {
+        StoreError::Conflict
+        | StoreError::ImportQualityConflict
+        | StoreError::PublishingConflict(_) => {
             error_reply(request_id, ErrorCode::Conflict, error.to_string())
         }
         StoreError::NotFound => error_reply(request_id, ErrorCode::NotFound, error.to_string()),

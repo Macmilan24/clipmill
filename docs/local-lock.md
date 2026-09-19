@@ -10,6 +10,11 @@ Its bounded helper downloads one video before the ordinary local source inspecto
 and analysis pipeline run. It does not enable cloud reasoning or sign in to a
 channel. See [YouTube import](youtube-import.md) for runtime and storage boundaries.
 
+Channel sign-in, private upload, resume/reconciliation and Publish are separate
+explicit network operations. Reading local publishing status or editing upload
+metadata does not contact Google. [YouTube publishing](youtube-publishing.md)
+documents the credential and remote-side-effect boundaries.
+
 Cloud editorial processing is optional. `./tools/run-workers.sh --cloud-editorial`
 (or `CLIPMILL_EDITORIAL_CLOUD=1`) starts a separate cloud worker with its own
 identity. On its first use, enroll that identity with
@@ -23,15 +28,15 @@ local.
 
 ## What the badge measures
 
-`engaged=true` means no network-allowed task or YouTube import has started in the current daemon
+`engaged=true` means no network-allowed task, YouTube import or publishing operation has started in the current daemon
 session. The registry can contain optional cloud recipes while the badge is
-engaged. Once a cloud task or import starts, the badge remains disengaged until the daemon
+engaged. Once one of these operations starts, the badge remains disengaged until the daemon
 restarts. The separately displayed registry count shows how many stages can use
 the network.
 
 The IPC field `egress_attempts` is a historical name. It counts network-allowed
 task starts, including a task satisfied from cache, and admitted YouTube import
-attempts. Offline importer readiness checks do not increment it. It is not a packet counter,
+attempts and explicitly admitted publishing operations. Offline importer readiness checks do not increment it. It is not a packet counter,
 a byte meter, or proof that a provider request completed. The UI labels it
 “Network operations started this session.” Restart resets this session counter; durable
 job history and the cloud budget ledger are separate records.
@@ -60,8 +65,10 @@ current desktop launcher does not impose a firewall on its Python processes.
 
 ## Independent offline proof
 
-CI's denied-network gate enters a Linux namespace without network interfaces,
+CI's denied-network gate enters a Linux namespace with only loopback enabled,
 checks that an outbound canary cannot connect, and runs the offline suite.
+Loopback permits local OAuth/HTTP protocol fixtures; no external interface or
+route is added.
 That establishes that the exercised local paths work without egress. It does
 not contain arbitrary desktop processes or exercise a real paid provider call.
 New local worker paths must be covered by offline tests; a passing unit test

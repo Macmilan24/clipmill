@@ -501,7 +501,10 @@ impl DaemonClient {
         }
     }
 
-    async fn call(&self, body: request::Body) -> Result<response::Body, DaemonLinkError> {
+    pub(crate) async fn call(
+        &self,
+        body: request::Body,
+    ) -> Result<response::Body, DaemonLinkError> {
         let request_id = REQUEST_IDS.next("shell");
         let envelope = Request {
             request_id: request_id.clone(),
