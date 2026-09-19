@@ -313,7 +313,10 @@ fn assemble_span(
         captions.burned().len(),
     ));
     let mut document = EditDocument {
-        video: clipmill_edit_ir::VideoTrack { segments },
+        video: clipmill_edit_ir::VideoTrack {
+            segments,
+            transition_ticks: 10_800,
+        },
         captions,
         ..EditDocument::default()
     };

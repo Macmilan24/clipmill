@@ -17,6 +17,10 @@ export interface EditIr {
     den: 90000;
   };
   video: {
+    /**
+     * Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.
+     */
+    transition_ticks?: number;
     segments?: VideoSegment[];
   };
   captions: {

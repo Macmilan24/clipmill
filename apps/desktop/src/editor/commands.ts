@@ -29,6 +29,11 @@ export function setLayout(mode: LayoutMode, segmentId = SEGMENT): EditCommandJso
   return { op: 'set_layout', segment_id: segmentId, state: mode };
 }
 
+/** The whole clip's soft-cut duration in document ticks; zero disables it. */
+export function setTransition(durationTicks: number): EditCommandJson {
+  return { op: 'set_transition', duration_ticks: durationTicks };
+}
+
 export function setCropKeyframe(
   tTicks: number,
   rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },

@@ -109,6 +109,12 @@ export function Editor({
   const [playhead, setFrame] = useState(0);
   const clockFrame = useRef(0);
   const resumeAfterLoad = useRef(false);
+  const waitingForReference = useRef(false);
+  const resumeAfterReference = useRef(false);
+  const playbackFailed = useRef(false);
+  const activeDocument = useRef(docId);
+  activeDocument.current = docId;
+  const [preparingPreview, setPreparingPreview] = useState(false);
   const updateFrame = useCallback((next: number) => {
     clockFrame.current = next;
     setFrame(next);
@@ -127,6 +133,10 @@ export function Editor({
   useEffect(() => {
     updateFrame(0);
     resumeAfterLoad.current = false;
+    waitingForReference.current = false;
+    resumeAfterReference.current = false;
+    playbackFailed.current = false;
+    setPreparingPreview(false);
     setPlaying(false);
     setPlaybackProblem(null);
   }, [docId, updateFrame]);
@@ -178,21 +188,80 @@ export function Editor({
 
   const step = useCallback((by: number) => seek(frame + by), [frame, seek]);
 
+  const stopWithProblem = useCallback(
+    (message: string) => {
+      if (activeDocument.current !== docId || playbackFailed.current) return;
+      playbackFailed.current = true;
+      waitingForReference.current = false;
+      resumeAfterReference.current = false;
+      resumeAfterLoad.current = false;
+      setPreparingPreview(false);
+      const element = video.current;
+      if (element && !element.paused) element.pause();
+      setPlaying(false);
+      setPlaybackProblem(message);
+    },
+    [docId],
+  );
+
+  const onBuffering = useCallback(
+    (waiting: boolean) => {
+      if (activeDocument.current !== docId || waitingForReference.current === waiting) return;
+      const element = video.current;
+      if (waiting) {
+        if (!element || playbackFailed.current) return;
+        waitingForReference.current = true;
+        resumeAfterReference.current = !element.paused || resumeAfterLoad.current;
+        resumeAfterLoad.current = false;
+        setPreparingPreview(true);
+        element.pause();
+        seek(clockFrame.current);
+        setPlaying(resumeAfterReference.current);
+        return;
+      }
+      const resume = resumeAfterReference.current;
+      waitingForReference.current = false;
+      resumeAfterReference.current = false;
+      setPreparingPreview(false);
+      setPlaying(false);
+      if (resume && element && !playbackFailed.current) {
+        draftAudio.connect();
+        void element.play().catch(() => {
+          stopWithProblem('Playback could not continue. Try playing the clip again.');
+        });
+      }
+    },
+    [docId, seek, draftAudio.connect, stopWithProblem],
+  );
+
+  const onMediaPlaying = useCallback(
+    (next: boolean) => {
+      if (activeDocument.current !== docId) return;
+      setPlaying(waitingForReference.current ? resumeAfterReference.current : next);
+    },
+    [docId],
+  );
+
   const togglePlayback = useCallback(() => {
     const element = video.current;
     if (!element || !plan) return;
     setPlaybackProblem(null);
+    playbackFailed.current = false;
+    if (waitingForReference.current) {
+      resumeAfterReference.current = !resumeAfterReference.current;
+      setPlaying(resumeAfterReference.current);
+      return;
+    }
     if (!element.paused) {
       element.pause();
     } else {
       if (frame >= plan.frameCount - 1 || element.ended) seek(0);
       draftAudio.connect();
       void element.play().catch(() => {
-        setPlaying(false);
-        setPlaybackProblem('Playback could not start. Try playing the clip again.');
+        stopWithProblem('Playback could not start. Try playing the clip again.');
       });
     }
-  }, [frame, plan, seek, draftAudio.connect]);
+  }, [frame, plan, seek, draftAudio.connect, stopWithProblem]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -237,7 +306,8 @@ export function Editor({
   const onProxyTime = useCallback(
     (seconds: number, atMediaEnd = false): number | null => {
       const element = video.current;
-      if (!plan || !element || element.seeking) return null;
+      if (!plan || !element || element.seeking || playbackFailed.current) return null;
+      if (waitingForReference.current) return clockFrame.current;
       const active = segmentAt(plan, clockFrame.current);
       if (!active || proxyUrls.get(active.sourceFingerprint) !== element.getAttribute('src'))
         return null;
@@ -262,24 +332,20 @@ export function Editor({
             resumeAfterLoad.current = true;
           } else {
             void element.play().catch(() => {
-              setPlaying(false);
-              setPlaybackProblem('Playback could not continue. Try playing the clip again.');
+              stopWithProblem('Playback could not continue. Try playing the clip again.');
             });
           }
         }
         return null;
       }
       if (atMediaEnd) {
-        setPlaying(false);
-        setPlaybackProblem(
-          'The preview ended before the clip. Reopen the clip to reload its proxy.',
-        );
+        stopWithProblem('The preview ended before the clip. Reopen the clip to reload its proxy.');
         return null;
       }
       updateFrame(next.frame);
       return next.frame;
     },
-    [plan, proxyUrls, seek, updateFrame],
+    [plan, proxyUrls, seek, updateFrame, stopWithProblem],
   );
 
   const onMetadata = useCallback(() => {
@@ -288,12 +354,17 @@ export function Editor({
     seek(clockFrame.current);
     if (resumeAfterLoad.current) {
       resumeAfterLoad.current = false;
+      if (waitingForReference.current) {
+        resumeAfterReference.current = true;
+        setPlaying(true);
+        return;
+      }
+      if (playbackFailed.current) return;
       void element.play().catch(() => {
-        setPlaying(false);
-        setPlaybackProblem('Playback could not continue. Try playing the clip again.');
+        stopWithProblem('Playback could not continue. Try playing the clip again.');
       });
     }
-  }, [seek]);
+  }, [seek, stopWithProblem]);
 
   if (loading) {
     return <div className="p-8 text-sm text-[var(--cm-ink-2)]">Fetching the preview plan…</div>;
@@ -406,6 +477,7 @@ export function Editor({
             <Stage
               key={docId}
               proxyUrl={proxyUrl}
+              proxyUrls={proxyUrls}
               videoRef={video}
               frame={frame}
               plan={plan}
@@ -415,12 +487,11 @@ export function Editor({
               startSeconds={proxySecondsAt(plan, frame)}
               onProxyTime={onProxyTime}
               onMetadata={onMetadata}
-              onPlaying={setPlaying}
+              onPlaying={onMediaPlaying}
+              preparingPreview={preparingPreview}
+              onBuffering={onBuffering}
               onError={() => {
-                setPlaying(false);
-                setPlaybackProblem(
-                  'The preview could not be loaded. Reopen the clip to try again.',
-                );
+                stopWithProblem('The preview could not be loaded. Reopen the clip to try again.');
               }}
             />
           </div>
@@ -560,6 +631,7 @@ function sourceClock(ticks: number): string {
 /** The 9:16 stage: the proxy, cropped by the plan, with the plan's captions. */
 function Stage({
   proxyUrl,
+  proxyUrls,
   videoRef,
   frame,
   plan,
@@ -571,8 +643,11 @@ function Stage({
   onMetadata,
   onPlaying,
   onError,
+  preparingPreview,
+  onBuffering,
 }: {
   readonly proxyUrl: string | null;
+  readonly proxyUrls: ReadonlyMap<string, string>;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
   readonly frame: number;
   readonly plan: PreviewPlan;
@@ -585,6 +660,8 @@ function Stage({
   readonly onMetadata: () => void;
   readonly onPlaying: (playing: boolean) => void;
   readonly onError: () => void;
+  readonly preparingPreview: boolean;
+  readonly onBuffering: (waiting: boolean) => void;
 }) {
   const style = plan.captionStyle;
   const relative = (pixels: number) => `${(pixels / plan.width) * 100}cqw`;
@@ -627,12 +704,25 @@ function Stage({
             plan={plan}
             frame={frame}
             onFrame={onProxyTime}
+            proxyUrls={proxyUrls}
+            onError={onError}
+            onBuffering={onBuffering}
           />
         </div>
       ) : (
         <p className="grid h-full place-items-center p-6 text-center text-sm text-[var(--cm-ink-2)]">
           This recording has no proxy, so there is nothing to play.
         </p>
+      )}
+      {preparingPreview && (
+        <div
+          role="status"
+          className="absolute inset-0 z-10 grid place-items-center bg-[var(--cm-glass)] backdrop-blur-[2px]"
+        >
+          <span className="rounded-md border border-[var(--cm-glass-border)] bg-[var(--cm-surface-1)] px-3 py-2 text-xs text-[var(--cm-ink-2)]">
+            Preparing preview…
+          </span>
+        </div>
       )}
       {proxyUrl && lines.length > 0 && (
         <p

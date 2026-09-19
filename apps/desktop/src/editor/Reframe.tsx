@@ -9,12 +9,20 @@
  *
  * Nudges are explicit keyframes; every change goes through the edit command log.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, RotateCcw } from 'lucide-react';
 
 import { Button } from '../components/ui/button.js';
+import { Input } from '../components/ui/input.js';
+import { Switch } from '../components/ui/switch.js';
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
-import { removeCropKeyframe, segmentTicksAt, setCropKeyframe, setLayout } from './commands.js';
+import {
+  removeCropKeyframe,
+  segmentTicksAt,
+  setCropKeyframe,
+  setLayout,
+  setTransition,
+} from './commands.js';
 import { cropAt, segmentAt, sourceOf } from './player.js';
 
 export interface ReframeProps {
@@ -83,6 +91,7 @@ export function Reframe({
 
   return (
     <div className="flex flex-col gap-4 p-4 text-sm">
+      <SoftCuts plan={plan} busy={busy} onApply={onApply} />
       <section>
         <p className="mb-2 text-xs text-[var(--cm-ink-2)]">Mode</p>
         <div className="flex flex-wrap gap-2">
@@ -275,6 +284,115 @@ export function Reframe({
         )}
       </section>
     </div>
+  );
+}
+
+/** A duration is one edit when applied, never an edit for every typed digit. */
+function SoftCuts({ plan, busy, onApply }: Pick<ReframeProps, 'plan' | 'busy' | 'onApply'>) {
+  const id = useId();
+  const savedTicks = plan.transitionTicks ?? 0;
+  const enabled = savedTicks > 0;
+  const savedMillis = savedTicks / 90;
+  // A new saved plan (including undo) replaces the draft without remounting
+  // the focused control. Playhead updates keep the same immutable plan.
+  const [draft, setDraft] = useState<{ plan: PreviewPlan; value: string } | null>(null);
+  const duration = draft?.plan === plan ? draft.value : String(savedMillis);
+  const milliseconds = Number(duration);
+  const valid =
+    duration.trim() !== '' &&
+    Number.isInteger(milliseconds) &&
+    milliseconds >= 40 &&
+    milliseconds <= 250;
+  const changed = Math.round(milliseconds * 90) !== savedTicks;
+
+  return (
+    <section
+      className="rounded-xl border border-[var(--cm-glass-border)] bg-[var(--cm-surface-2)] p-3"
+      aria-labelledby={`${id}-title`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <label id={`${id}-title`} htmlFor={`${id}-enabled`} className="font-medium">
+            Soft cuts
+          </label>
+          <p className="mt-0.5 text-[10px] text-[var(--cm-ink-3)]">Whole clip</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--cm-ink-2)]" aria-hidden>
+            {enabled ? 'On' : 'Off'}
+          </span>
+          <Switch
+            id={`${id}-enabled`}
+            checked={enabled}
+            disabled={busy}
+            aria-describedby={`${id}-description`}
+            onCheckedChange={(checked) => onApply(setTransition(checked ? 10_800 : 0))}
+          />
+        </div>
+      </div>
+      <p id={`${id}-description`} className="mt-3 text-xs leading-relaxed text-[var(--cm-ink-2)]">
+        Briefly blend between camera shots for a softer change between people.
+      </p>
+      {enabled && (
+        <form
+          className="mt-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy && valid && changed) onApply(setTransition(milliseconds * 90));
+          }}
+        >
+          <label htmlFor={`${id}-duration`} className="text-xs text-[var(--cm-ink-2)]">
+            Blend duration
+          </label>
+          <div className="mt-1.5 flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Input
+                id={`${id}-duration`}
+                type="number"
+                min={40}
+                max={250}
+                step={1}
+                value={duration}
+                disabled={busy}
+                aria-invalid={!valid}
+                aria-describedby={`${id}-duration-help`}
+                className="h-8 pr-9 font-mono text-xs tabular-nums"
+                onChange={(event) => setDraft({ plan, value: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setDraft(null);
+                  }
+                }}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[10px] text-[var(--cm-ink-3)]">
+                ms
+              </span>
+            </div>
+            <Button type="submit" size="sm" variant="outline" disabled={busy || !valid || !changed}>
+              Apply
+            </Button>
+          </div>
+          <p
+            id={`${id}-duration-help`}
+            className={`mt-1.5 text-[10px] leading-relaxed ${valid ? 'text-[var(--cm-ink-3)]' : 'text-[var(--cm-warning-ink)]'}`}
+          >
+            {valid
+              ? '40–250 ms · 120 ms is a gentle starting point.'
+              : 'Enter a whole number from 40 to 250 ms.'}
+          </p>
+        </form>
+      )}
+      <p className="mt-3 text-[10px] leading-relaxed text-[var(--cm-ink-3)]">
+        Short shots use shorter blends. Audio and caption timing stay unchanged.
+        {plan.segments.length < 2 && ' This clip has no cuts to blend.'}
+      </p>
+      {enabled && plan.segments.length > 1 && plan.transitions?.length === 0 && (
+        <p className="mt-2 text-xs leading-relaxed text-[var(--cm-ink-2)]" role="note">
+          No cuts can be softened at this duration and framing.
+        </p>
+      )}
+    </section>
   );
 }
 

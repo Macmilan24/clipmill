@@ -10,6 +10,9 @@
 # store that never saw it, a repeat is a cache identity rather than a
 # re-encode, re-explaining an edit changes nothing, a render with no rights
 # attestation is refused, and a killed daemon finishes inside the recovery SLO.
+# The soft-cut probe decodes changing footage at 30 and 30000/1001 fps,
+# comparing every blended RGB frame with the preview weights and checking
+# that frame count and decoded audio remain unchanged.
 #
 # Leaves a watchable clip in target/render-demo/ so the milestone is a file
 # rather than a passing test.
@@ -40,6 +43,9 @@ fi
 
 export CLIPMILL_RENDER_DEMO_DIR="${CLIPMILL_RENDER_DEMO_DIR:-$PWD/target/render-demo}"
 
+echo "==> soft-cut decoded conformance"
+cargo test -p clipmill-render --test soft_cut_decode -- --ignored --nocapture --test-threads=1
+
 echo "==> render conformance ($ITERATIONS iterations)"
 for iteration in $(seq 1 "$ITERATIONS"); do
   echo "render-drill: iteration $iteration/$ITERATIONS"
@@ -48,5 +54,5 @@ for iteration in $(seq 1 "$ITERATIONS"); do
   cargo test -p clipmilld --test render_clip -- --ignored --nocapture --test-threads=1
 done
 
-echo "render-drill: OK ($ITERATIONS iterations; profile, captions, sidecars, loudness, manifest, byte stability, warm identity, refusals, kill recovery)"
+echo "render-drill: OK ($ITERATIONS iterations; soft-cut pixels and timing, profile, captions, sidecars, loudness, manifest, byte stability, warm identity, refusals, kill recovery)"
 echo "render-drill: the first slice is at $CLIPMILL_RENDER_DEMO_DIR/clip.mp4"

@@ -791,6 +791,13 @@ impl CropRect {
 #[doc = "          \"items\": {"]
 #[doc = "            \"$ref\": \"#/$defs/videoSegment\""]
 #[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"transition_ticks\": {"]
+#[doc = "          \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
+#[doc = "          \"default\": 0,"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 22500.0,"]
+#[doc = "          \"minimum\": 0.0"]
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
@@ -1088,6 +1095,13 @@ impl EditIrTimebase {
 #[doc = "      \"items\": {"]
 #[doc = "        \"$ref\": \"#/$defs/videoSegment\""]
 #[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"transition_ticks\": {"]
+#[doc = "      \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
+#[doc = "      \"default\": 0,"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 22500.0,"]
+#[doc = "      \"minimum\": 0.0"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -1099,11 +1113,15 @@ impl EditIrTimebase {
 pub struct EditIrVideo {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub segments: ::std::vec::Vec<VideoSegment>,
+    #[doc = "Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged."]
+    #[serde(default)]
+    pub transition_ticks: i64,
 }
 impl ::std::default::Default for EditIrVideo {
     fn default() -> Self {
         Self {
             segments: Default::default(),
+            transition_ticks: Default::default(),
         }
     }
 }
@@ -2398,11 +2416,13 @@ pub mod builder {
     pub struct EditIrVideo {
         segments:
             ::std::result::Result<::std::vec::Vec<super::VideoSegment>, ::std::string::String>,
+        transition_ticks: ::std::result::Result<i64, ::std::string::String>,
     }
     impl ::std::default::Default for EditIrVideo {
         fn default() -> Self {
             Self {
                 segments: Ok(Default::default()),
+                transition_ticks: Ok(Default::default()),
             }
         }
     }
@@ -2417,6 +2437,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for segments: {e}"));
             self
         }
+        pub fn transition_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.transition_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for transition_ticks: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<EditIrVideo> for super::EditIrVideo {
         type Error = super::error::ConversionError;
@@ -2425,6 +2455,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 segments: value.segments?,
+                transition_ticks: value.transition_ticks?,
             })
         }
     }
@@ -2432,6 +2463,7 @@ pub mod builder {
         fn from(value: super::EditIrVideo) -> Self {
             Self {
                 segments: Ok(value.segments),
+                transition_ticks: Ok(value.transition_ticks),
             }
         }
     }
