@@ -261,3 +261,39 @@ played the preceding shot. These are native proxy checks on this recording;
 the separate decoded export regression above verifies render timing and weights.
 Relaunch restored r3 and 120 ms. A fresh-session edit saved 150 ms at r4 and Undo
 returned to 120 ms at r5, exercising the request-ID repair against the real store.
+
+## Preventing previous-shot flashes
+
+A fully opaque picture can still be wrong. The blank/white-frame checks above
+did not detect a one-frame mismatch between incoming footage and outgoing
+framing, which was the user's subsequent clarification.
+
+The source proxy and output program can start on different frame grids. In the
+saved clip, the first shot change is at program frame 38.016, while the incoming
+layout starts at frame 39. A decoded source frame already belongs to the new
+shot, but flooring its program time still selects the previous layout. The
+player now holds the previous complete picture until the decoded shot and
+program frame agree, without seeking, pausing audio or advancing captions early.
+Regression coverage includes this actual source offset and fractional cuts at
+24 and 29.97 fps.
+
+Decoded pictures must also stay paired with their timestamps during reference
+loading, paused edits and redraws. Reusing the last callback timestamp while
+sampling the live video again can pick up pixels from the next shot. The preview
+therefore retains a raw decoded bitmap with its timestamp and uses that pair
+for redraws. With decoded-frame callbacks available, seek events arm a new
+callback rather than treating `currentTime` as proof that new pixels are ready.
+
+Native verification on the user's saved r23 edit traced raw bitmap copies from
+their decoded timestamps through final canvas publication. Across the complete
+59-second playback, the probe observed 1,768 decoded callbacks, including 16
+frames in the fractional shot-boundary gap, and zero publications of those
+incoming pictures under an outgoing program-frame allocation. The main video
+did not seek between shots; its only seek held the final program frame. The
+paused first picture also appeared after a cold app launch. This checks the
+identified timing mismatch on this recording, not every possible visual defect.
+
+Controlled regressions cover live pixels advancing before a redraw, Pause
+immediately after a held boundary frame, both decode/seek-event orders, delayed
+references and trims that move a reference's program frame without changing its
+source position. The user's saved edit was not changed by these final checks.

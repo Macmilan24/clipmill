@@ -4,6 +4,7 @@ import type { PreviewPlan, PreviewSource } from '../daemon/client.js';
 import { cropAt, proxySecondsAt, segmentAt, sourceOf } from './player.js';
 
 type Crop = ReturnType<typeof cropAt>;
+type Picture = HTMLVideoElement | HTMLCanvasElement;
 interface Drawing {
   readonly crop: Crop;
   readonly secondary: Crop;
@@ -15,15 +16,17 @@ interface Drawing {
 /** Both portraits are sampled from this one decoded frame; they cannot drift. */
 export function drawComposition(
   context: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
+  video: Picture,
   drawing: Drawing,
 ) {
   const { width, height, crop, secondary, source } = drawing;
-  if (!video.videoWidth || !video.videoHeight) return false;
+  const pixelWidth = 'videoWidth' in video ? video.videoWidth : video.width;
+  const pixelHeight = 'videoHeight' in video ? video.videoHeight : video.height;
+  if (!pixelWidth || !pixelHeight) return false;
   context.clearRect(0, 0, width, height);
   const portrait = (rect: NonNullable<Crop>, top: number, viewportHeight: number) => {
-    const sx = video.videoWidth / (source?.displayWidth ?? video.videoWidth);
-    const sy = video.videoHeight / (source?.displayHeight ?? video.videoHeight);
+    const sx = pixelWidth / (source?.displayWidth ?? pixelWidth);
+    const sy = pixelHeight / (source?.displayHeight ?? pixelHeight);
     context.drawImage(
       video,
       rect.x * sx,
@@ -41,38 +44,42 @@ export function drawComposition(
     if (secondary) portrait(secondary, height / 2, height / 2);
     return true;
   }
-  const fill = Math.max(width / video.videoWidth, height / video.videoHeight);
+  const fill = Math.max(width / pixelWidth, height / pixelHeight);
   context.save();
   context.filter = `blur(${(40 * height) / 1920}px)`;
   try {
     context.drawImage(
       video,
-      (width - video.videoWidth * fill) / 2,
-      (height - video.videoHeight * fill) / 2,
-      video.videoWidth * fill,
-      video.videoHeight * fill,
+      (width - pixelWidth * fill) / 2,
+      (height - pixelHeight * fill) / 2,
+      pixelWidth * fill,
+      pixelHeight * fill,
     );
   } finally {
     context.restore();
   }
-  const fit = Math.min(width / video.videoWidth, height / video.videoHeight);
+  const fit = Math.min(width / pixelWidth, height / pixelHeight);
   context.drawImage(
     video,
-    (width - video.videoWidth * fit) / 2,
-    (height - video.videoHeight * fit) / 2,
-    video.videoWidth * fit,
-    video.videoHeight * fit,
+    (width - pixelWidth * fit) / 2,
+    (height - pixelHeight * fit) / 2,
+    pixelWidth * fit,
+    pixelHeight * fit,
   );
   return true;
 }
 
 /** One clock for decoded pixels, crops and the editor playhead. */
-export function observeVideoFrames(media: HTMLVideoElement, draw: (seconds: number) => void) {
+export function observeVideoFrames(
+  media: HTMLVideoElement,
+  draw: (seconds: number, picture: HTMLCanvasElement) => void,
+) {
   const decodedFrames = typeof media.requestVideoFrameCallback === 'function';
   let request: number | null = null;
   let generation = 0;
   let disposed = false;
-  let lastTime: number | null = null;
+  let cached: { seconds: number; picture: HTMLCanvasElement } | null = null;
+  let scratch = document.createElement('canvas');
   const cancel = () => {
     generation += 1;
     if (request !== null) {
@@ -81,15 +88,37 @@ export function observeVideoFrames(media: HTMLVideoElement, draw: (seconds: numb
       request = null;
     }
   };
-  const present = (seconds: number) => {
+  const redraw = () => {
     if (disposed || media.seeking || media.readyState < 2) return;
-    lastTime = seconds;
-    draw(seconds);
+    if (cached) draw(cached.seconds, cached.picture);
+  };
+  const present = (seconds: number) => {
+    if (disposed || (!decodedFrames && (media.seeking || media.readyState < 2))) return;
+    if (!media.videoWidth || !media.videoHeight) return;
+    if (scratch.width !== media.videoWidth) scratch.width = media.videoWidth;
+    if (scratch.height !== media.videoHeight) scratch.height = media.videoHeight;
+    const context = scratch.getContext('2d');
+    if (!context) return;
+    try {
+      context.globalCompositeOperation = 'copy';
+      context.drawImage(media, 0, 0);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'InvalidStateError')) throw error;
+      return;
+    }
+    // Keep decoded pixels with their own PTS. A reference finishing its seek,
+    // or a paused crop edit, must never sample a newer live video frame under
+    // an older timestamp. Double buffering also preserves the last good pair
+    // if a decoder becomes unavailable during the next copy.
+    const previous = cached?.picture;
+    cached = { seconds, picture: scratch };
+    scratch = previous ?? document.createElement('canvas');
+    redraw();
   };
   // A paused video can still present its first decoded frame or a seek result.
   // One pending rVFC catches that without polling or repainting idle frames.
   const schedule = () => {
-    if (disposed || request !== null || media.seeking || (!decodedFrames && media.paused)) return;
+    if (disposed || request !== null || (!decodedFrames && (media.seeking || media.paused))) return;
     const scheduledGeneration = generation;
     if (decodedFrames) {
       request = media.requestVideoFrameCallback((_now, metadata) => {
@@ -102,22 +131,28 @@ export function observeVideoFrames(media: HTMLVideoElement, draw: (seconds: numb
       request = requestAnimationFrame(() => {
         if (disposed || generation !== scheduledGeneration) return;
         request = null;
-        if (lastTime !== media.currentTime) present(media.currentTime);
+        if (cached?.seconds !== media.currentTime) present(media.currentTime);
         schedule();
       });
     }
   };
   const ready = () => {
-    present(media.currentTime);
+    // currentTime is the playback/seek clock, not a decoded frame's PTS.
+    // With rVFC, wait for the matching pixels even after loadeddata/seeked.
+    if (decodedFrames) redraw();
+    else present(media.currentTime);
     schedule();
   };
   const seeking = () => {
     cancel();
-    lastTime = null;
+    cached = null;
+    // Register before the seek result is presented, including paused seeks.
+    // If its callback precedes seeked, snapshot now and publish at seeked.
+    schedule();
   };
   const pause = () => {
     cancel();
-    present(lastTime ?? media.currentTime);
+    redraw();
     schedule();
   };
   // timeupdate must not race the decoded-frame clock. It is only a fallback
@@ -136,7 +171,7 @@ export function observeVideoFrames(media: HTMLVideoElement, draw: (seconds: numb
   for (const [event, listener] of Object.entries(events)) media.addEventListener(event, listener);
   ready();
   return {
-    redraw: () => present(lastTime ?? media.currentTime),
+    redraw,
     dispose: () => {
       disposed = true;
       cancel();
@@ -169,6 +204,7 @@ export function CompositionCanvas({
   const latest = useRef({ plan, onFrame, onError, onBuffering });
   latest.current = { plan, onFrame, onError, onBuffering };
   const observer = useRef<ReturnType<typeof observeVideoFrames> | null>(null);
+  const referenceObserver = useRef<ReturnType<typeof observeVideoFrames> | null>(null);
   const referenceVideo = useRef<HTMLVideoElement>(null);
   const referenceFailed = useRef(false);
   const reference = useRef<{ plan: PreviewPlan; frame: number; canvas: HTMLCanvasElement } | null>(
@@ -181,41 +217,49 @@ export function CompositionCanvas({
   const outgoing = upcoming ? segmentAt(plan, upcoming.outgoingFrame) : null;
   const referenceUrl = outgoing ? proxyUrls?.get(outgoing.sourceFingerprint) : undefined;
   const referenceFrame = upcoming?.outgoingFrame;
+  const referenceSeconds =
+    referenceFrame === undefined ? null : proxySecondsAt(plan, referenceFrame);
+  const referenceTarget = useRef({ frame: referenceFrame, seconds: referenceSeconds });
+  referenceTarget.current = { frame: referenceFrame, seconds: referenceSeconds };
   useEffect(() => {
     reference.current = null;
     referenceFailed.current = false;
     const media = referenceVideo.current;
-    if (referenceFrame !== undefined && !referenceUrl) {
+    if (referenceSeconds !== null && !referenceUrl) {
       referenceFailed.current = true;
       latest.current.onError?.();
       return;
     }
-    if (!media || !referenceUrl || referenceFrame === undefined) return;
-    const seconds = proxySecondsAt(plan, referenceFrame);
-    const segment = segmentAt(plan, referenceFrame);
-    if (seconds === null || !segment) return;
+    if (!media || !referenceUrl) return;
+    const seconds = referenceSeconds;
+    if (seconds === null) return;
     const bitmap = document.createElement('canvas');
-    bitmap.width = plan.width;
-    bitmap.height = plan.height;
     const position = () => {
       if (Math.abs(media.currentTime - seconds) > 1 / 90_000) media.currentTime = seconds;
     };
-    const capture = () => {
+    const capture = (_seconds: number, picture: HTMLCanvasElement) => {
       if (Math.abs(media.currentTime - seconds) > 1 / 90_000) return;
+      const target = referenceTarget.current;
+      if (target.frame === undefined || target.seconds !== seconds) return;
+      const currentPlan = latest.current.plan;
+      const segment = segmentAt(currentPlan, target.frame);
+      if (!segment || proxySecondsAt(currentPlan, target.frame) !== seconds) return;
+      if (bitmap.width !== currentPlan.width) bitmap.width = currentPlan.width;
+      if (bitmap.height !== currentPlan.height) bitmap.height = currentPlan.height;
       const context = bitmap.getContext('2d');
       if (!context) return;
       try {
         if (
-          !drawComposition(context, media, {
-            crop: cropAt(plan, referenceFrame),
-            secondary: cropAt(plan, referenceFrame, true),
-            source: sourceOf(plan, segment),
-            width: plan.width,
-            height: plan.height,
+          !drawComposition(context, picture, {
+            crop: cropAt(currentPlan, target.frame),
+            secondary: cropAt(currentPlan, target.frame, true),
+            source: sourceOf(currentPlan, segment),
+            width: currentPlan.width,
+            height: currentPlan.height,
           })
         )
           return;
-        reference.current = { plan, frame: referenceFrame, canvas: bitmap };
+        reference.current = { plan: currentPlan, frame: target.frame, canvas: bitmap };
         observer.current?.redraw();
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'InvalidStateError')) throw error;
@@ -224,12 +268,20 @@ export function CompositionCanvas({
     media.addEventListener('loadedmetadata', position);
     position();
     const prepared = observeVideoFrames(media, capture);
+    referenceObserver.current = prepared;
     return () => {
       prepared.dispose();
+      referenceObserver.current = null;
       media.removeEventListener('loadedmetadata', position);
       if (!media.paused) media.pause();
     };
-  }, [plan, referenceUrl, referenceFrame]);
+  }, [referenceUrl, referenceSeconds]);
+  useEffect(() => {
+    // A crop edit can keep the paused reference at the exact same source
+    // position. Recompose its cached decoded picture; no new decode is due.
+    reference.current = null;
+    referenceObserver.current?.redraw();
+  }, [plan, referenceFrame]);
   useEffect(() => {
     const media = video.current;
     const output = canvas.current;
@@ -237,8 +289,7 @@ export function CompositionCanvas({
     // Compose offscreen and publish only a complete frame. A decoder becoming
     // unavailable midway through a seek must not clear the visible picture.
     const buffer = document.createElement('canvas');
-    const draw = (seconds: number) => {
-      if (!media.videoWidth || !media.videoHeight) return;
+    const draw = (seconds: number, picture: HTMLCanvasElement) => {
       const current = latest.current;
       const programFrame = current.onFrame(seconds);
       if (programFrame === null || media.seeking) return;
@@ -264,7 +315,7 @@ export function CompositionCanvas({
       if (buffer.width !== drawingPlan.width) buffer.width = drawingPlan.width;
       if (buffer.height !== drawingPlan.height) buffer.height = drawingPlan.height;
       try {
-        const drawn = drawComposition(context, media, {
+        const drawn = drawComposition(context, picture, {
           crop: cropAt(drawingPlan, programFrame),
           secondary: cropAt(drawingPlan, programFrame, true),
           source: segment ? sourceOf(drawingPlan, segment) : null,
