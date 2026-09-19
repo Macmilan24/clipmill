@@ -51,6 +51,42 @@ export interface Source {
   readonly createdUnixMillis: number;
 }
 
+export interface SourceDetails {
+  readonly source: Source;
+  readonly sourceMapJson: string;
+}
+
+export type YoutubeImportState =
+  | 'queued'
+  | 'downloading'
+  | 'processing'
+  | 'registering'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
+/** Durable download state. A missing total is unknown, not zero percent. */
+export interface YoutubeImport {
+  readonly importId: string;
+  readonly projectId: string;
+  readonly canonicalUrl: string;
+  readonly videoId: string;
+  readonly title: string;
+  readonly channel: string;
+  /** Requested maximum download height; absent/zero in legacy records means 1080. */
+  readonly maxHeight?: number;
+  readonly state: YoutubeImportState;
+  readonly attempt: number;
+  readonly downloadedBytes: number;
+  readonly totalBytes?: number;
+  readonly sourceId: string;
+  readonly errorCode: string;
+  readonly error: string;
+  readonly createdUnixMillis: number;
+  readonly updatedUnixMillis: number;
+}
+
 /**
  * What a stage has done so far, in the unit it measured.
  *
@@ -163,9 +199,8 @@ export interface MediaFile {
 /**
  * What this installation is using on disk.
  *
- * Three categories rather than one total, because the three are different
- * decisions: artifacts can be collected, weights should not be re-downloaded,
- * and state must be left alone.
+ * Categories separate decisions: artifacts can be collected, weights should
+ * not be re-downloaded, and state and imported originals belong to projects.
  */
 export interface StorageStats {
   readonly categories: readonly StorageCategory[];
@@ -375,6 +410,49 @@ export async function registerSource(
   }
   const { invoke } = await core();
   return invoke<RegisteredSource>('register_source', { projectId, absolutePath });
+}
+
+export async function getSource(sourceId: string): Promise<SourceDetails> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<SourceDetails>('get_source', { sourceId });
+}
+
+export async function startYoutubeImport(
+  projectId: string,
+  url: string,
+  rightsConfirmed: boolean,
+  maxHeight = 1080,
+): Promise<YoutubeImport> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<YoutubeImport>('start_youtube_import', {
+    projectId,
+    url,
+    rightsConfirmed,
+    maxHeight,
+  });
+}
+
+export async function getYoutubeImport(importId: string): Promise<YoutubeImport> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<YoutubeImport>('get_youtube_import', { importId });
+}
+
+export async function listYoutubeImports(projectId = ''): Promise<readonly YoutubeImport[]> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<YoutubeImport[]>('list_youtube_imports', { projectId });
+}
+
+export async function updateYoutubeImport(
+  importId: string,
+  action: 'cancel' | 'retry',
+): Promise<YoutubeImport> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<YoutubeImport>('update_youtube_import', { importId, action });
 }
 
 /** Start the analysis. The reply is the job, so a screen can watch it. */

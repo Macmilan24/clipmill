@@ -19,7 +19,7 @@
 import type { SourceMap } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { Job, Source } from '../daemon/client.js';
+import type { Job, Source, YoutubeImport } from '../daemon/client.js';
 import { type ImportSettings, languageSubtag, projectNameFor, secondsToTicks } from './model.js';
 
 /**
@@ -47,6 +47,8 @@ export interface ChosenSource {
   readonly sourceMap: SourceMap | null;
   /** True when an unchanged file avoided a second probe. */
   readonly cached: boolean;
+  /** Actual remote metadata, when the source was imported from YouTube. */
+  readonly title?: string;
 }
 
 export class ImportLoader {
@@ -72,6 +74,27 @@ export class ImportLoader {
       source: registered.source,
       sourceMap: parseProbe(registered.sourceMapJson),
       cached: registered.observationCacheHit,
+    };
+  }
+
+  /** Open the exact registered source of a completed import, including after relaunch. */
+  async imported(record: YoutubeImport): Promise<ChosenSource> {
+    if (record.state !== 'completed' || !record.sourceId) {
+      throw new Error('This video has not finished importing.');
+    }
+    const detail = await this.api.getSource(record.sourceId);
+    if (
+      detail.source.projectId !== record.projectId ||
+      detail.source.sourceId !== record.sourceId
+    ) {
+      throw new Error('The imported source did not match this project.');
+    }
+    return {
+      projectId: record.projectId,
+      source: detail.source,
+      sourceMap: parseProbe(detail.sourceMapJson),
+      cached: false,
+      ...(record.title ? { title: record.title } : {}),
     };
   }
 

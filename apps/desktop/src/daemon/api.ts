@@ -27,6 +27,8 @@ import {
   type Project,
   type RegisteredSource,
   type Source,
+  type SourceDetails,
+  type YoutubeImport,
   type StorageStats,
   type ArchiveResult,
   type ExportPlan,
@@ -52,6 +54,11 @@ import {
   solveCropPath,
   readDocument,
   registerSource,
+  getSource,
+  startYoutubeImport,
+  getYoutubeImport,
+  listYoutubeImports,
+  updateYoutubeImport,
   setClipDecision,
   resolveMedia,
   submitAnalyze,
@@ -79,6 +86,16 @@ export interface ShellApi {
   createProject(name: string): Promise<string>;
   chooseSourceFile(): Promise<string | null>;
   registerSource(projectId: string, absolutePath: string): Promise<RegisteredSource>;
+  getSource(sourceId: string): Promise<SourceDetails>;
+  startYoutubeImport(
+    projectId: string,
+    url: string,
+    rightsConfirmed: boolean,
+    maxHeight?: number,
+  ): Promise<YoutubeImport>;
+  getYoutubeImport(importId: string): Promise<YoutubeImport>;
+  listYoutubeImports(projectId?: string): Promise<readonly YoutubeImport[]>;
+  updateYoutubeImport(importId: string, action: 'cancel' | 'retry'): Promise<YoutubeImport>;
   submitAnalyze(projectId: string, request: AnalyzeRequest): Promise<Job>;
   directClip(request: DirectClipInput): Promise<DirectedClip>;
   solveCropPath(
@@ -131,6 +148,11 @@ export const daemonApi: ShellApi = {
   createProject,
   chooseSourceFile,
   registerSource,
+  getSource,
+  startYoutubeImport,
+  getYoutubeImport,
+  listYoutubeImports,
+  updateYoutubeImport,
   submitAnalyze,
   directClip,
   solveCropPath,

@@ -143,7 +143,7 @@ jobs:
         run: python3 -m unittest discover -s tools/security/tests
       - name: pytest and installed license policy (all projects)
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial integrations/youtube-import eval/harness; do
             echo "==> $project"
             uv sync --frozen --quiet --project "$project"
             (cd "$project" && uv run --frozen pytest)
@@ -785,7 +785,7 @@ jobs:
           enable-cache: true
       - name: Sync every frozen Python environment
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial integrations/youtube-import eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Audit every Python lockfile
@@ -824,7 +824,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speech-mlx workers/shots workers/faces workers/editorial integrations/youtube-import eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate
