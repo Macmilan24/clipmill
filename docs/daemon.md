@@ -111,6 +111,22 @@ a system root. Scheduler capacity changes only after signature, fingerprint,
 and CAS verification. Measured RAM and backend availability participate in
 both in-memory reservation and SQLite task admission.
 
+On macOS, admission uses 75% of installed physical RAM, rather than 75% of a
+cached free-memory observation. macOS can reclaim cached files and compress or
+swap inactive application pages when a model allocates. The signed profile's
+available-memory figure remains a diagnostic; it does not require users to close
+applications or rescan merely to attempt inference. Startup, cached-profile
+restore, rescan, readiness and worker admission use the same policy. Linux keeps
+its `MemAvailable`-based budget. Swap is never added to ClipMill's capacity, and
+the per-admission headroom, built-in task reservations, model context limits,
+cancellation and allocation-failure handling still apply. This budget is an
+admission policy, not a process memory cap or a fleet-wide reservation. Worker
+admission bounds each worker independently; it does not promise that every
+runtime allocation will succeed.
+
+See Apple's [memory usage explanation](https://support.apple.com/guide/activity-monitor/view-memory-usage-actmntr1004/mac)
+and MLX's [allocation-limit semantics](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.set_memory_limit.html).
+
 ## Current recovery claim
 
 The kill drill now submits real four-node jobs while injecting `SIGKILL`. Every
