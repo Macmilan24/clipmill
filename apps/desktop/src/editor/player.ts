@@ -125,6 +125,82 @@ export function frameAtProxySeconds(
 }
 
 /**
+ * Advance a playing proxy without seeking across continuous camera cuts.
+ *
+ * A delayed decoded-frame callback can cross several cuts. Their exact tick
+ * intervals and frame ranges must both join, and their source must be the same
+ * (therefore using the same proxy and coverage offset). A real edit stops the
+ * walk at its immediate successor: elapsed time in omitted footage must never
+ * advance the program past that edit.
+ */
+export function resolvePlaybackFrame(
+  plan: PreviewPlan,
+  currentFrame: number,
+  proxySeconds: number,
+): { frame: number; seek: boolean; ended: boolean } {
+  const lastFrame = Math.max(0, plan.frameCount - 1);
+  const heldFrame = Math.max(0, Math.min(lastFrame, currentFrame));
+  const initial = segmentAt(plan, heldFrame);
+  const proxy = initial ? proxyOf(plan, initial) : null;
+  if (
+    !initial ||
+    !proxy ||
+    !Number.isFinite(proxySeconds) ||
+    plan.rateNum <= 0 ||
+    plan.rateDen <= 0
+  ) {
+    return { frame: heldFrame, seek: false, ended: plan.frameCount <= 0 };
+  }
+
+  let index = plan.segments.indexOf(initial);
+  let segment = initial;
+  while (proxySeconds >= (segment.outTicks - proxy.coverageStartTicks) / TICKS_PER_SECOND) {
+    const following = plan.segments[index + 1];
+    if (!following) return { frame: lastFrame, seek: false, ended: true };
+    if (
+      following.sourceFingerprint !== segment.sourceFingerprint ||
+      following.inTicks !== segment.outTicks ||
+      following.programStartTicks !==
+        segment.programStartTicks + segment.outTicks - segment.inTicks ||
+      following.firstFrame !== segment.endFrame
+    ) {
+      return { frame: following.firstFrame, seek: true, ended: false };
+    }
+    segment = following;
+    index += 1;
+  }
+
+  // Continuous cuts share one affine clock. Do not clamp to a following
+  // segment's firstFrame: a cut at 0.52 s falls between frames 15 and 16 at
+  // 30000/1001 fps, and frame 15 remains visible until frame 16 actually starts.
+  const proxyTicks = proxySeconds * TICKS_PER_SECOND;
+  const programTicks =
+    proxyTicks + proxy.coverageStartTicks - initial.inTicks + initial.programStartTicks;
+  const framePosition = (programTicks * plan.rateNum) / (TICKS_PER_SECOND * plan.rateDen);
+  // Subtracting a source offset several minutes in can put an exact frame
+  // boundary a few floating-point units below its integer. Correct only that
+  // arithmetic error, never a fraction-of-a-frame playback tolerance.
+  const roundingErrorTicks =
+    Number.EPSILON *
+    2 *
+    (Math.abs(proxyTicks) +
+      Math.abs(proxy.coverageStartTicks) +
+      Math.abs(initial.inTicks) +
+      Math.abs(initial.programStartTicks));
+  const roundingErrorFrames =
+    (roundingErrorTicks * plan.rateNum) / (TICKS_PER_SECOND * plan.rateDen);
+  const nearestFrame = Math.round(framePosition);
+  const frame = Math.floor(
+    Math.abs(framePosition - nearestFrame) <= roundingErrorFrames ? nearestFrame : framePosition,
+  );
+  return {
+    frame: Math.max(initial.firstFrame, Math.min(lastFrame, frame)),
+    seek: false,
+    ended: false,
+  };
+}
+
+/**
  * The CSS transform that shows a crop in a stage the crop's aspect fills.
  *
  * The crop is a rectangle in the *source* frame, and the element on stage is
