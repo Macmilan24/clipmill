@@ -19,6 +19,7 @@ import {
   highlightedWord,
   lanePosition,
   proxySecondsAt,
+  resolvePlaybackFrame,
   secondsAt,
   segmentAt,
   sourceTicksAt,
@@ -226,5 +227,222 @@ describe('duration labels at the program boundary', () => {
   it('does not clamp the end to the last playable frame', () => {
     const program = { frameCount: 1260, rateNum: 30, rateDen: 1 } as PreviewPlan;
     expect(timecode(program, 1260)).toBe('0:42.00');
+  });
+});
+
+/** Source intervals in ticks relative to a recording's ten-minute mark. */
+function cutPlan(
+  intervals: readonly (readonly [number, number])[],
+  rateNum = 30_000,
+  rateDen = 1_001,
+): PreviewPlan {
+  const base = plan();
+  let programStartTicks = 0;
+  const segments = intervals.map(([start, end], index) => {
+    const segment = {
+      ...base.segments[0]!,
+      segmentId: `cut_${index}`,
+      inTicks: 600 * TICKS + start,
+      outTicks: 600 * TICKS + end,
+      programStartTicks,
+      firstFrame: Math.ceil((programStartTicks * rateNum) / (TICKS * rateDen)),
+      endFrame: Math.ceil(((programStartTicks + end - start) * rateNum) / (TICKS * rateDen)),
+    };
+    programStartTicks += end - start;
+    return segment;
+  });
+  return {
+    ...base,
+    segments,
+    rateNum,
+    rateDen,
+    frameCount: Math.ceil((programStartTicks * rateNum) / (TICKS * rateDen)),
+  };
+}
+
+describe('advancing a playing proxy', () => {
+  it('crosses an exact camera cut without seeking', () => {
+    const at = cutPlan(
+      [
+        [0, TICKS / 2],
+        [TICKS / 2, TICKS],
+      ],
+      30,
+      1,
+    );
+    expect(resolvePlaybackFrame(at, 14, 600.5 - 1 / TICKS)).toEqual({
+      frame: 14,
+      seek: false,
+      ended: false,
+    });
+    expect(resolvePlaybackFrame(at, 14, 600.5)).toEqual({ frame: 15, seek: false, ended: false });
+  });
+
+  it('crosses several short shots when a decoded-frame callback arrives late', () => {
+    const at = cutPlan(
+      [
+        [0, 18_000],
+        [18_000, 36_000],
+        [36_000, 54_000],
+        [54_000, 90_000],
+      ],
+      30,
+      1,
+    );
+    expect(resolvePlaybackFrame(at, 2, 600.75)).toEqual({ frame: 22, seek: false, ended: false });
+  });
+
+  it.each([
+    ['one-tick source gap', 45_001, 90_001],
+    ['one-tick source overlap', 44_999, 89_999],
+    ['omitted source footage', 90_000, 135_000],
+    ['repeated source footage', 0, 45_000],
+    ['backward source edit', -45_000, 0],
+  ] as const)('seeks for a %s, even with adjacent timeline frames', (_label, start, end) => {
+    const at = cutPlan(
+      [
+        [0, 45_000],
+        [start, end],
+      ],
+      30,
+      1,
+    );
+    expect(resolvePlaybackFrame(at, 14, 600.5)).toEqual({ frame: 15, seek: true, ended: false });
+  });
+
+  it('does not consume a delayed callback past a genuine edit after continuous cuts', () => {
+    const at = cutPlan(
+      [
+        [0, 18_000],
+        [18_000, 36_000],
+        [90_000, 135_000],
+      ],
+      30,
+      1,
+    );
+    expect(resolvePlaybackFrame(at, 0, 610)).toEqual({ frame: 12, seek: true, ended: false });
+  });
+
+  it('seeks when identical source times refer to another source', () => {
+    const base = cutPlan([
+      [0, 45_000],
+      [45_000, 90_000],
+    ]);
+    const at = {
+      ...base,
+      segments: [base.segments[0]!, { ...base.segments[1]!, sourceFingerprint: 'another-source' }],
+    };
+    expect(resolvePlaybackFrame(at, 14, 600.5)).toEqual({ frame: 15, seek: true, ended: false });
+  });
+
+  it.each([
+    ['tick timeline gap', { programStartTicks: 45_001 }],
+    ['tick timeline overlap', { programStartTicks: 44_999 }],
+    ['frame timeline gap', { firstFrame: 16 }],
+    ['frame timeline overlap', { firstFrame: 14 }],
+  ])('does not infer continuity across a %s', (_label, change) => {
+    const base = cutPlan(
+      [
+        [0, 45_000],
+        [45_000, 90_000],
+      ],
+      30,
+      1,
+    );
+    const following = { ...base.segments[1]!, ...change };
+    const at = { ...base, segments: [base.segments[0]!, following] };
+    expect(resolvePlaybackFrame(at, 13, 600.5)).toEqual({
+      frame: following.firstFrame,
+      seek: true,
+      ended: false,
+    });
+  });
+
+  it('honors the proxy coverage offset across continuous shots', () => {
+    const base = cutPlan([
+      [0, 45_000],
+      [45_000, 90_000],
+    ]);
+    const at = {
+      ...base,
+      proxies: [{ ...base.proxies[0]!, coverageStartTicks: 100 * TICKS }],
+    };
+    expect(resolvePlaybackFrame(at, 0, 500.75)).toEqual({ frame: 22, seek: false, ended: false });
+  });
+
+  it.each([
+    [24, 1],
+    [30_000, 1_001],
+  ])('keeps fractional cut boundaries on the %i/%i program frame clock', (num, den) => {
+    const at = cutPlan(
+      [
+        [0, 46_800],
+        [46_800, 93_600],
+      ],
+      num,
+      den,
+    );
+    const nextFrame = at.segments[1]!.firstFrame;
+    expect(resolvePlaybackFrame(at, 0, 600.52)).toEqual({
+      frame: nextFrame - 1,
+      seek: false,
+      ended: false,
+    });
+    const nextTime = 600 + secondsAt(at, nextFrame);
+    expect(resolvePlaybackFrame(at, nextFrame - 1, nextTime - 1 / TICKS)).toEqual({
+      frame: nextFrame - 1,
+      seek: false,
+      ended: false,
+    });
+    expect(resolvePlaybackFrame(at, nextFrame - 1, nextTime)).toEqual({
+      frame: nextFrame,
+      seek: false,
+      ended: false,
+    });
+  });
+
+  it('seeks at the exact source boundary for a fractional-frame discontinuity', () => {
+    const at = cutPlan([
+      [0, 46_800],
+      [90_000, 136_800],
+    ]);
+    expect(resolvePlaybackFrame(at, 15, 600.52)).toEqual({ frame: 16, seek: true, ended: false });
+  });
+
+  it('stops at the actual final source boundary, including a partial final frame', () => {
+    const at = cutPlan([
+      [0, 46_800],
+      [46_800, 93_600],
+    ]);
+    expect(at.frameCount).toBe(32);
+    expect(resolvePlaybackFrame(at, 31, 601.04 - 1 / TICKS)).toEqual({
+      frame: 31,
+      seek: false,
+      ended: false,
+    });
+    expect(resolvePlaybackFrame(at, 31, 601.04)).toEqual({ frame: 31, seek: false, ended: true });
+    // The callback can also overshoot the entire chain while React still has
+    // the first shot's frame. The result must not seek backward through cuts.
+    expect(resolvePlaybackFrame(at, 0, 610)).toEqual({ frame: 31, seek: false, ended: true });
+  });
+
+  it('does not move into earlier segments for a stale time before the current source span', () => {
+    const at = cutPlan(
+      [
+        [0, 45_000],
+        [90_000, 135_000],
+      ],
+      30,
+      1,
+    );
+    expect(resolvePlaybackFrame(at, 15, 600.5)).toEqual({ frame: 15, seek: false, ended: false });
+  });
+
+  it('holds its frame when the source proxy is unavailable', () => {
+    expect(resolvePlaybackFrame({ ...plan(), proxies: [] }, 14, 601)).toEqual({
+      frame: 14,
+      seek: false,
+      ended: false,
+    });
   });
 });
