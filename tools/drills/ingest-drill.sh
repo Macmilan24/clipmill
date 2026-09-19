@@ -31,6 +31,9 @@ echo "==> ingest fan-out conformance ($ITERATIONS iterations)"
 for iteration in $(seq 1 "$ITERATIONS"); do
   echo "ingest-drill: iteration $iteration/$ITERATIONS"
   cargo test -p clipmilld --test ingest_fanout -- --ignored --nocapture
+  # Network transport is a deterministic local fixture; registration and ingest
+  # use the actual socket, database and pinned media tools. No YouTube traffic.
+  cargo test -p clipmilld --test youtube_import -- --ignored --nocapture
   # An hour-long recording, which the probe refused before it read packets as a
   # stream. Ignored by default because it builds media; this is where it runs.
   cargo test -p clipmilld --lib sources::tests::an_hour_long -- --ignored --nocapture

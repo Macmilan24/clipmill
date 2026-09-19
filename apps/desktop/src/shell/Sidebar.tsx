@@ -45,12 +45,12 @@ function describeLock(state: ConnectionState): LockView {
     ? {
         tone: 'text-[var(--color-success)]',
         headline: 'Local Lock · ON',
-        caption: 'No cloud tasks this session',
+        caption: 'No network operations this session',
       }
     : {
         tone: 'text-[var(--color-warning)]',
         headline: 'Local Lock · OFF',
-        caption: 'Cloud used this session',
+        caption: 'Network used this session',
       };
 }
 

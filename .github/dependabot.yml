@@ -19,6 +19,7 @@ updates:
       - /workers/shots
       - /workers/faces
       - /workers/editorial
+      - /integrations/youtube-import
       - /eval/harness
     schedule:
       interval: weekly

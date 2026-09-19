@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -99,6 +99,14 @@ pub mod request {
         ListExportBatches(super::ListExportBatchesRequest),
         #[prost(message, tag = "45")]
         UpdateExportBatchItem(super::UpdateExportBatchItemRequest),
+        #[prost(message, tag = "46")]
+        StartYoutubeImport(super::StartYoutubeImportRequest),
+        #[prost(message, tag = "47")]
+        GetYoutubeImport(super::GetYoutubeImportRequest),
+        #[prost(message, tag = "48")]
+        ListYoutubeImports(super::ListYoutubeImportsRequest),
+        #[prost(message, tag = "49")]
+        UpdateYoutubeImport(super::UpdateYoutubeImportRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -109,7 +117,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -191,6 +199,10 @@ pub mod response {
         ExportBatch(super::ExportBatchResponse),
         #[prost(message, tag = "45")]
         ListExportBatches(super::ListExportBatchesResponse),
+        #[prost(message, tag = "46")]
+        YoutubeImport(super::YoutubeImportResponse),
+        #[prost(message, tag = "47")]
+        ListYoutubeImports(super::ListYoutubeImportsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -916,6 +928,9 @@ pub struct GetSourceRequest {
 pub struct GetSourceResponse {
     #[prost(message, optional, tag = "1")]
     pub source: ::core::option::Option<Source>,
+    /// The stored probe, for hydrating an imported source without another mutation.
+    #[prost(string, tag = "2")]
+    pub source_map_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListSourcesRequest {
@@ -2034,6 +2049,86 @@ pub struct ExportBatchResponse {
 pub struct ListExportBatchesResponse {
     #[prost(message, repeated, tag = "1")]
     pub batches: ::prost::alloc::vec::Vec<ExportBatchV1>,
+}
+/// Explicit network acquisition; completed sources use the normal local pipeline.
+/// No path or downloader credential is accepted from or returned to the renderer.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeImportV1 {
+    #[prost(string, tag = "1")]
+    pub import_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub canonical_url: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub video_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub title: ::prost::alloc::string::String,
+    /// queued, downloading, processing, registering, completed, failed, cancelled, interrupted
+    #[prost(string, tag = "6")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "7")]
+    pub attempt: u32,
+    #[prost(uint64, tag = "8")]
+    pub downloaded_bytes: u64,
+    #[prost(uint64, optional, tag = "9")]
+    pub total_bytes: ::core::option::Option<u64>,
+    #[prost(string, tag = "10")]
+    pub source_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "11")]
+    pub error_code: ::prost::alloc::string::String,
+    #[prost(string, tag = "12")]
+    pub error: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "13")]
+    pub created_unix_millis: u64,
+    #[prost(uint64, tag = "14")]
+    pub updated_unix_millis: u64,
+    #[prost(string, tag = "15")]
+    pub channel: ::prost::alloc::string::String,
+    /// Maximum source height: 360, 720 or 1080. Legacy zero means 1080.
+    #[prost(uint32, tag = "16")]
+    pub max_height: u32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StartYoutubeImportRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub url: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub rights_confirmed: bool,
+    /// Zero preserves the legacy 1080 default; otherwise 360, 720 or 1080.
+    #[prost(uint32, tag = "4")]
+    pub max_height: u32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetYoutubeImportRequest {
+    #[prost(string, tag = "1")]
+    pub import_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListYoutubeImportsRequest {
+    /// Empty returns imports in all projects.
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateYoutubeImportRequest {
+    #[prost(string, tag = "1")]
+    pub import_id: ::prost::alloc::string::String,
+    /// cancel or retry. Retry increments the durable attempt; never auto-resumes.
+    #[prost(string, tag = "2")]
+    pub action: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeImportResponse {
+    #[prost(message, optional, tag = "1")]
+    pub record: ::core::option::Option<YoutubeImportV1>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListYoutubeImportsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub imports: ::prost::alloc::vec::Vec<YoutubeImportV1>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

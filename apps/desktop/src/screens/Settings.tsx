@@ -29,17 +29,21 @@ const CATEGORY_LABELS: Readonly<Record<string, string>> = {
   artifacts: 'Generated media',
   models: 'Model weights',
   state: 'Project state',
+  imports: 'Imported originals',
 };
 const CATEGORY_NOTES: Readonly<Record<string, string>> = {
   artifacts:
     'Proxies, transcripts, analysis and rendered media. Unreferenced files follow the retention policy.',
   models: 'Pinned model files, downloaded once and reused across projects.',
   state: 'Projects, saved edits and decisions. Keep these files to preserve your work.',
+  imports:
+    'Downloaded originals are kept with their project. Deleting the project removes its managed copies.',
 };
 const CATEGORY_COLORS: Readonly<Record<string, string>> = {
   artifacts: 'var(--cm-text-secondary)',
   models: 'var(--cm-text-muted)',
   state: 'var(--cm-text-primary)',
+  imports: 'var(--color-primary)',
 };
 
 export interface SettingsProps {
@@ -129,8 +133,8 @@ export function Settings({
           <SectionLink href="#settings-privacy" icon={<ShieldCheck />} label="Privacy & cloud" />
           <SectionLink href="#settings-storage" icon={<HardDrive />} label="Storage" />
           <p className="mt-5 hidden px-2 text-[11px] leading-relaxed text-[var(--cm-text-muted)] xl:block">
-            Preferences apply to this installation. Your source recordings stay in their original
-            location.
+            Preferences apply to this installation. Local files stay in their original location;
+            imported YouTube copies are managed below.
           </p>
         </nav>
         <div className="min-w-0 space-y-5">
@@ -304,8 +308,8 @@ export function Settings({
                         </div>
                         <p className="mt-1.5 text-xs leading-relaxed text-[var(--cm-text-secondary)]">
                           {lock.engaged
-                            ? 'No cloud processing has started in this daemon session.'
-                            : 'Cloud processing has started in this daemon session.'}
+                            ? 'No network operations have started in this daemon session.'
+                            : 'Network operations have started in this daemon session.'}
                         </p>
                       </div>
                     </div>
@@ -315,8 +319,15 @@ export function Settings({
                         label="Stages allowed to use the network"
                         value={lock.networkAllowedStages}
                       />
-                      <Count label="Cloud tasks started this session" value={lock.egressAttempts} />
+                      <Count
+                        label="Network operations started this session"
+                        value={lock.egressAttempts}
+                      />
                     </dl>
+                    <p className="mt-2 text-xs text-[var(--cm-text-muted)]">
+                      Includes enabled cloud analysis and YouTube imports. Importing a video does
+                      not enable cloud AI. Model downloads are managed separately.
+                    </p>
                     <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
                       Cloud-capable stages may be installed without being used. These counts
                       describe task policy and execution, not measured network traffic. Publishing

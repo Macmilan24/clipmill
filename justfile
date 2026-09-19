@@ -15,8 +15,14 @@ setup:
     cd workers/shots && uv sync
     cd workers/faces && uv sync
     cd workers/editorial && uv sync
+    cd integrations/youtube-import && uv sync --frozen
     cd eval/harness && uv sync
     pnpm install
+
+# Optional online source acquisition. Analysis remains local after import.
+setup-youtube:
+    cd integrations/youtube-import && uv sync --frozen
+    ./tools/import-youtube.sh --check --ffmpeg "{{justfile_directory()}}/.cache/bin/ffmpeg"
 
 # Regenerate all contract code from contracts/ (protobuf + JSON Schema).
 codegen:
@@ -46,6 +52,7 @@ test:
     cd workers/shots && uv run pytest
     cd workers/faces && uv run pytest
     cd workers/editorial && uv run pytest
+    cd integrations/youtube-import && uv run --frozen pytest
     cd eval/harness && uv run pytest
     pnpm typecheck
     pnpm test

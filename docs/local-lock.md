@@ -5,6 +5,11 @@ standard worker launcher starts a local editorial process serving propose,
 review, and visual checks. It does not register cloud capabilities or import the
 cloud adapter. Model acquisition is a separate, explicitly invoked operation.
 
+YouTube source import is also a separate, explicitly requested network operation.
+Its bounded helper downloads one video before the ordinary local source inspector
+and analysis pipeline run. It does not enable cloud reasoning or sign in to a
+channel. See [YouTube import](youtube-import.md) for runtime and storage boundaries.
+
 Cloud editorial processing is optional. `./tools/run-workers.sh --cloud-editorial`
 (or `CLIPMILL_EDITORIAL_CLOUD=1`) starts a separate cloud worker with its own
 identity. On its first use, enroll that identity with
@@ -18,16 +23,17 @@ local.
 
 ## What the badge measures
 
-`engaged=true` means no network-allowed task has started in the current daemon
+`engaged=true` means no network-allowed task or YouTube import has started in the current daemon
 session. The registry can contain optional cloud recipes while the badge is
-engaged. Once a cloud task starts, the badge remains disengaged until the daemon
+engaged. Once a cloud task or import starts, the badge remains disengaged until the daemon
 restarts. The separately displayed registry count shows how many stages can use
 the network.
 
 The IPC field `egress_attempts` is a historical name. It counts network-allowed
-task starts, including a task satisfied from cache. It is not a packet counter,
+task starts, including a task satisfied from cache, and admitted YouTube import
+attempts. Offline importer readiness checks do not increment it. It is not a packet counter,
 a byte meter, or proof that a provider request completed. The UI labels it
-“Cloud tasks started this session.” Restart resets this session counter; durable
+“Network operations started this session.” Restart resets this session counter; durable
 job history and the cloud budget ledger are separate records.
 
 ## Enforcement in the application
