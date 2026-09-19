@@ -158,6 +158,10 @@ class Video(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    transition_ticks: conint(ge=0, le=22500) | None = Field(
+        0,
+        description='Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.',
+    )
     segments: list[VideoSegment] | None = None
 
 

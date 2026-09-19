@@ -252,6 +252,15 @@ function Preview() {
                           ),
                         })),
                       });
+                    else if (command.op === 'set_transition')
+                      setPlan({
+                        ...plan,
+                        revision: plan.revision + 1,
+                        transitionTicks: Number(command.duration_ticks),
+                        // This fixture has one shot, so its saved preference
+                        // produces no boundaries. It does not call the renderer.
+                        transitions: [],
+                      });
                     else setNotice('This development preview does not save editing commands.');
                   }}
                   onUndo={noAction}

@@ -110,6 +110,8 @@ pub struct PreviewGain {
 /// Everything the player needs, and nothing it has to work out.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewPlan {
+    pub transition_ticks: i64,
+    pub transitions: Vec<crate::PreviewTransition>,
     pub rate: FrameRate,
     pub frame_count: i64,
     /// One entry per frame of the program. `None` where the layout is fit and
@@ -166,6 +168,8 @@ pub fn preview_plan(
         })
         .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
     Ok(PreviewPlan {
+        transition_ticks: document.video.transition_ticks,
+        transitions: crate::transitions::transitions(document, rate),
         caption_style,
         rate,
         frame_count,

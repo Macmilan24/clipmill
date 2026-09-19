@@ -37,6 +37,43 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+describe('native bridge errors', () => {
+  it('shows a string rejection when opening the clip fails', async () => {
+    const api: ShellApi = {
+      ...fakeApi(twoProjects()),
+      previewPlan: () => Promise.reject('daemon error: clip document not found'),
+    };
+    const { result } = renderHook(() => useEditor(A, api));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.problem).toBe('daemon error: clip document not found');
+    expect(result.current.plan).toBeNull();
+  });
+
+  it.each([
+    ['native string', 'daemon error: conflict', 'daemon error: conflict'],
+    ['Error object', new Error('connection closed'), 'connection closed'],
+    ['unknown rejection', undefined, 'The edit could not be saved. Try again.'],
+    ['empty message', new Error(''), 'The edit could not be saved. Try again.'],
+  ])('keeps the saved edit and exposes a %s failure', async (_label, failure, message) => {
+    const saved = { ...planAt(600), transitionTicks: 0 };
+    const api: ShellApi = {
+      ...fakeApi(twoProjects()),
+      previewPlan: () => Promise.resolve(saved),
+      applyEditCommand: () => Promise.reject(failure),
+    };
+    const { result } = renderHook(() => useEditor(A, api));
+    await waitFor(() => expect(result.current.plan).toBe(saved));
+    await act(async () => {
+      await result.current.apply({ op: 'set_transition', duration_ticks: 10_800 });
+    });
+    expect(result.current.problem).toBe(message);
+    expect(result.current.plan).toBe(saved);
+    expect(result.current.revision).toBe(saved.revision);
+    expect(result.current.busy).toBe(false);
+    expect(result.current.canUndo).toBe(false);
+  });
+});
+
 describe('a mutation that lands after the document changed', () => {
   it('leaves the new document’s plan, revision and history untouched', async () => {
     const applied = deferred<AppliedCommand>();

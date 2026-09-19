@@ -47,23 +47,145 @@ function fitted(): PreviewPlan {
 }
 
 function show(overrides: Partial<Parameters<typeof Reframe>[0]> = {}) {
-  render(
-    <Reframe
-      plan={solved()}
-      frame={0}
-      busy={false}
-      onApply={() => {}}
-      onResolve={() => {}}
-      resolving={false}
-      resolveRefusal={null}
-      {...overrides}
-    />,
-  );
+  const props: Parameters<typeof Reframe>[0] = {
+    plan: solved(),
+    frame: 0,
+    busy: false,
+    onApply: () => {},
+    onResolve: () => {},
+    resolving: false,
+    resolveRefusal: null,
+    ...overrides,
+  };
+  const view = render(<Reframe {...props} />);
+  return { replan: (next: PreviewPlan) => view.rerender(<Reframe {...props} plan={next} />) };
 }
 
 function resolveButton() {
   return screen.getByRole('button', { name: /re-solve the path/i });
 }
+
+describe('soft cuts', () => {
+  it('keeps older documents off and enables the whole clip with a saved 120 ms command', () => {
+    const onApply = vi.fn();
+    const view = show({ onApply });
+    const toggle = screen.getByRole('switch', { name: 'Soft cuts' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByRole('spinbutton', { name: 'Blend duration' })).toBeNull();
+    expect(screen.getByText('Whole clip')).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(onApply).toHaveBeenCalledExactlyOnceWith({
+      op: 'set_transition',
+      duration_ticks: 10_800,
+    });
+    // Only the saved plan changes the displayed state; a pending/failed save is not On.
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    view.replan({ ...solved(), transitionTicks: 10_800, revision: 2 });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('spinbutton', { name: 'Blend duration' })).toHaveProperty(
+      'value',
+      '120',
+    );
+  });
+
+  it('submits one duration edit after typing and reflects the saved value on undo', () => {
+    const onApply = vi.fn();
+    const initial = { ...solved(), transitionTicks: 10_800 };
+    const view = show({ plan: initial, onApply });
+    const duration = screen.getByRole('spinbutton', { name: 'Blend duration' });
+    fireEvent.change(duration, { target: { value: '1' } });
+    fireEvent.change(duration, { target: { value: '18' } });
+    fireEvent.change(duration, { target: { value: '180' } });
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(onApply).toHaveBeenCalledExactlyOnceWith({
+      op: 'set_transition',
+      duration_ticks: 16_200,
+    });
+    view.replan({ ...initial, transitionTicks: 16_200, revision: 2 });
+    expect(screen.getByRole('spinbutton', { name: 'Blend duration' })).toHaveProperty(
+      'value',
+      '180',
+    );
+    expect(screen.getByRole('button', { name: 'Apply' })).toHaveProperty('disabled', true);
+    view.replan({ ...initial, revision: 3 });
+    expect(screen.getByRole('spinbutton', { name: 'Blend duration' })).toHaveProperty(
+      'value',
+      '120',
+    );
+    fireEvent.click(screen.getByRole('switch', { name: 'Soft cuts' }));
+    expect(onApply).toHaveBeenLastCalledWith({ op: 'set_transition', duration_ticks: 0 });
+  });
+
+  it('supports form submission and Escape without committing every keyboard change', () => {
+    const onApply = vi.fn();
+    show({ plan: { ...solved(), transitionTicks: 18_000 }, onApply });
+    const duration = screen.getByRole('spinbutton', { name: 'Blend duration' });
+    expect(duration).toHaveProperty('value', '200');
+    fireEvent.change(duration, { target: { value: '160' } });
+    fireEvent.keyDown(duration, { key: 'Escape' });
+    expect(duration).toHaveProperty('value', '200');
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.change(duration, { target: { value: '40' } });
+    fireEvent.submit(duration.closest('form')!);
+    expect(onApply).toHaveBeenCalledExactlyOnceWith({
+      op: 'set_transition',
+      duration_ticks: 3_600,
+    });
+  });
+
+  it.each(['', '39', '251', '120.5'])('refuses an invalid duration %s without an edit', (value) => {
+    const onApply = vi.fn();
+    show({ plan: { ...solved(), transitionTicks: 10_800 }, onApply });
+    const duration = screen.getByRole('spinbutton', { name: 'Blend duration' });
+    fireEvent.change(duration, { target: { value } });
+    expect(duration.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Apply' })).toHaveProperty('disabled', true);
+    fireEvent.submit(duration.closest('form')!);
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('disables controls during a save and explains its scope and short-shot behavior', () => {
+    const onApply = vi.fn();
+    show({ plan: { ...solved(), transitionTicks: 10_800 }, busy: true, onApply });
+    const toggle = screen.getByRole('switch', { name: 'Soft cuts' });
+    expect(toggle).toHaveProperty('disabled', true);
+    expect(screen.getByRole('spinbutton', { name: 'Blend duration' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(screen.getByRole('button', { name: 'Apply' })).toHaveProperty('disabled', true);
+    fireEvent.click(toggle);
+    expect(onApply).not.toHaveBeenCalled();
+    expect(screen.getByText(/short shots use shorter blends/i)).toBeTruthy();
+    expect(screen.getByText(/this clip has no cuts to blend/i)).toBeTruthy();
+  });
+
+  it('explains when the saved plan cannot blend any cuts without guessing for older hosts', () => {
+    const base = solved();
+    const first = base.segments[0]!;
+    const initial = {
+      ...base,
+      segments: [first, { ...first, segmentId: 'seg_2' }],
+      transitionTicks: 3_600,
+    };
+    const view = show({ plan: initial });
+    expect(screen.queryByText(/no cuts can be softened/i)).toBeNull();
+    view.replan({ ...initial, transitions: [] });
+    expect(screen.getByRole('note').textContent).toBe(
+      'No cuts can be softened at this duration and framing.',
+    );
+    view.replan({ ...initial, transitionTicks: 0, transitions: [] });
+    expect(screen.queryByText(/no cuts can be softened/i)).toBeNull();
+    view.replan({
+      ...initial,
+      transitions: [
+        { incomingSegmentId: 'seg_2', outgoingFrame: 14, firstFrame: 15, endFrame: 17 },
+      ],
+    });
+    expect(screen.queryByText(/no cuts can be softened/i)).toBeNull();
+  });
+});
 
 describe('asking the solver again', () => {
   it('offers the button when there is a track to solve from', () => {

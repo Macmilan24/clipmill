@@ -1,7 +1,9 @@
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CompositionCanvas, observeVideoFrames } from '../src/editor/CompositionCanvas.js';
 import { plan } from './support/clips.js';
+import type { PreviewPlan } from '../src/daemon/client.js';
+import { mapping } from './support/plan.js';
 
 function transport(decoded = true) {
   const media = document.createElement('video');
@@ -128,10 +130,11 @@ function context() {
     restore: vi.fn(),
     filter: 'none',
     globalCompositeOperation: 'source-over',
+    globalAlpha: 1,
   };
 }
 
-function canvasHarness() {
+function canvasHarness(custom: Partial<PreviewPlan> = {}, paused = false, frame = 0) {
   const buffer = context();
   const destination = context();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
@@ -142,20 +145,24 @@ function canvasHarness() {
       : buffer) as unknown as CanvasRenderingContext2D;
   });
   const video = transport();
-  const initial = {
+  video.state.paused = paused;
+  video.state.currentTime = 600 + frame / 30;
+  const initial: PreviewPlan = {
     ...plan(),
     crops: [
       [0, 0, 900, 800],
       [100, 40, 800, 600],
     ] as const,
+    ...custom,
   };
   const onFrame = vi.fn((seconds: number) => Math.round((seconds - 600) * 30));
   const props = {
     video: { current: video.media },
     mediaKey: 'proxy-a',
     plan: initial,
-    frame: 0,
+    frame,
     onFrame,
+    proxyUrls: new Map(initial.proxies.map((item) => [item.sourceFingerprint, 'proxy-a'])),
   };
   const view = render(<CompositionCanvas {...props} />);
   return { ...video, buffer, destination, onFrame, view, props };
@@ -215,5 +222,84 @@ describe('atomic preview composition', () => {
     expect(media.pause).toHaveBeenCalled();
     stale(0, { mediaTime: 601 } as VideoFrameCallbackMetadata);
     expect(buffer.drawImage).toHaveBeenCalledTimes(count);
+  });
+});
+
+function softCutPlan(): Partial<PreviewPlan> {
+  const rate = { frameCount: 60, rateNum: 30, rateDen: 1 };
+  return {
+    ...rate,
+    ...mapping(rate),
+    transitionTicks: 10800,
+    transitions: [{ incomingSegmentId: 'seg_2', outgoingFrame: 29, firstFrame: 30, endFrame: 34 }],
+    crops: Array.from({ length: 60 }, (_, frame) => [frame < 30 ? 0 : 100, 0, 540, 960] as const),
+  };
+}
+
+function readyReference() {
+  const reference = screen.getByTestId('transition-reference') as HTMLVideoElement;
+  Object.defineProperties(reference, {
+    videoWidth: { value: 960 },
+    videoHeight: { value: 540 },
+    readyState: { configurable: true, value: 4 },
+  });
+  fireEvent.loadedData(reference);
+  return reference;
+}
+
+describe('soft cuts use an exact outgoing picture', () => {
+  it('scrubs directly into a blend, holds until its reference loads, and applies the planned alpha', () => {
+    const { buffer, destination, media } = canvasHarness(softCutPlan(), true, 31);
+    // Starting here has no previously played picture to reuse.
+    expect(destination.drawImage).not.toHaveBeenCalled();
+    const draws: { source: unknown; alpha: number }[] = [];
+    buffer.drawImage.mockImplementation((source) =>
+      draws.push({ source, alpha: buffer.globalAlpha }),
+    );
+    const reference = readyReference();
+    expect(reference.muted).toBe(true);
+    expect(reference.currentTime).toBeCloseTo(600 + 29 / 30, 8);
+    expect(draws.some((draw) => draw.source === reference)).toBe(true);
+    expect(draws.some((draw) => draw.source === media)).toBe(true);
+    expect(draws.at(-1)?.source).toBeInstanceOf(HTMLCanvasElement);
+    expect(draws.at(-1)?.alpha).toBe(0.75);
+    expect(destination.drawImage).toHaveBeenCalledOnce();
+  });
+
+  it('preloads the outgoing frame and blends only inside the planned frame interval', () => {
+    const { media, buffer, destination, present } = canvasHarness(softCutPlan());
+    readyReference();
+    const blends: number[] = [];
+    buffer.drawImage.mockImplementation((source) => {
+      if (source instanceof HTMLCanvasElement) blends.push(buffer.globalAlpha);
+    });
+    destination.drawImage.mockClear();
+    present(601);
+    present(601 + 2 / 30);
+    present(601 + 4 / 30);
+    expect(blends).toEqual([1, 0.5]);
+    expect(destination.drawImage).toHaveBeenCalledTimes(3);
+    expect(buffer.drawImage.mock.calls.at(-1)?.[0]).toBe(media);
+  });
+
+  it('invalidates a prepared reference when a new revision changes the crop', () => {
+    const { buffer, view, props } = canvasHarness(softCutPlan(), true, 31);
+    readyReference();
+    buffer.drawImage.mockClear();
+    view.rerender(
+      <CompositionCanvas
+        {...props}
+        plan={{
+          ...props.plan,
+          revision: 2,
+          crops: props.plan.crops.map(() => [200, 0, 540, 960] as const),
+        }}
+      />,
+    );
+    const reference = screen.getByTestId('transition-reference');
+    // Both incoming and held outgoing crops are rebuilt from r2, not r1's cache.
+    expect(
+      buffer.drawImage.mock.calls.some((call) => call[0] === reference && call[1] === 100),
+    ).toBe(true);
   });
 });

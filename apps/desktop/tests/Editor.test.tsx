@@ -201,6 +201,7 @@ function playback() {
     return Promise.resolve();
   });
   const pause = vi.spyOn(media, 'pause').mockImplementation(function (this: HTMLMediaElement) {
+    if (state(this).paused) return;
     state(this).paused = true;
     fireEvent.pause(this);
   });
@@ -260,6 +261,10 @@ function playback() {
       fireEvent.loadedData(element);
       fireEvent.seeked(element);
     },
+    finishSeek(element: HTMLVideoElement) {
+      state(element).seeking = false;
+      fireEvent.seeked(element);
+    },
     decode(element: HTMLVideoElement, seconds: number) {
       const next = state(element).callbacks.entries().next().value;
       expect(next, 'playing video must have a pending decoded-frame callback').toBeDefined();
@@ -306,12 +311,104 @@ function endingAtProxyEof(): PreviewPlan {
   };
 }
 
+function softShots(): PreviewPlan {
+  return {
+    ...shots(),
+    transitionTicks: 10_800,
+    transitions: [{ incomingSegmentId: 'shot_1', outgoingFrame: 14, firstFrame: 15, endFrame: 19 }],
+  };
+}
+
 describe('decoded playback across shots and documents', () => {
   let control: ReturnType<typeof playback>;
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
     control?.restore();
+  });
+
+  it('stops the playing transport when a soft-cut reference fails to load', () => {
+    control = playback();
+    show(softShots());
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    expect(control.state(element).paused).toBe(false);
+    control.pause.mockClear();
+
+    fireEvent.error(screen.getByTestId('transition-reference'));
+
+    expect(control.state(element).paused).toBe(true);
+    expect(control.pause).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: /^play$/i })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('The preview could not be loaded');
+  });
+
+  it('buffers a slow soft-cut reference at the requested frame, then resumes when it is ready', () => {
+    control = playback();
+    show(softShots());
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.play.mockClear();
+
+    const stale = control.decode(element, 600 + 16 / 30);
+    expect(control.state(element).paused).toBe(true);
+    expect(element.currentTime).toBeCloseTo(600 + 16 / 30, 8);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 16 of 60');
+    expect(screen.getByText(/preparing preview/i)).toBeTruthy();
+    fireEvent.seeking(element);
+    control.finishSeek(element);
+    act(() => stale(0, { mediaTime: 600 + 22 / 30 } as VideoFrameCallbackMetadata));
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 16 of 60');
+    expect(control.play).not.toHaveBeenCalled();
+
+    control.ready(screen.getByTestId('transition-reference') as HTMLVideoElement);
+    expect(control.play).toHaveBeenCalledOnce();
+    expect(control.state(element).paused).toBe(false);
+    expect(screen.queryByText(/preparing preview/i)).toBeNull();
+    control.decode(element, 600 + 17 / 30);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 17 of 60');
+  });
+
+  it('honors Pause during buffering instead of resuming when the reference arrives', () => {
+    control = playback();
+    show(softShots());
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.decode(element, 600 + 16 / 30);
+    expect(control.state(element).paused).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /^pause$/i }));
+    control.play.mockClear();
+    fireEvent.seeking(element);
+    control.finishSeek(element);
+
+    control.ready(screen.getByTestId('transition-reference') as HTMLVideoElement);
+    expect(control.play).not.toHaveBeenCalled();
+    expect(control.state(element).paused).toBe(true);
+    expect(screen.getByRole('button', { name: /^play$/i })).toBeTruthy();
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 16 of 60');
+  });
+
+  it('clears automatic resume after a buffered reference fails', () => {
+    control = playback();
+    show(softShots());
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.decode(element, 600 + 16 / 30);
+    expect(control.state(element).paused).toBe(true);
+    control.play.mockClear();
+    const reference = screen.getByTestId('transition-reference') as HTMLVideoElement;
+    fireEvent.error(reference);
+    expect(screen.getByRole('alert').textContent).toContain('The preview could not be loaded');
+    fireEvent.seeking(element);
+    control.finishSeek(element);
+    control.ready(reference);
+    expect(control.play).not.toHaveBeenCalled();
+    expect(control.state(element).paused).toBe(true);
+    expect(screen.getByRole('button', { name: /^play$/i })).toBeTruthy();
   });
 
   it('keeps continuous shots playing without seeking, including delayed multi-cut callbacks', () => {

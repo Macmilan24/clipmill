@@ -97,6 +97,7 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     let rate = request.profile.rate();
     let mut chains: Vec<String> = Vec::new();
     let mut video_labels = Vec::new();
+    let mut video_spans = Vec::new();
     let mut audio_labels = Vec::new();
 
     for (index, span) in request.spans.iter().enumerate() {
@@ -128,6 +129,7 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
                 &label,
             )?);
             video_labels.push(label);
+            video_spans.push(span);
         }
         let label = format!("a{index}");
         if span.has_audio {
@@ -156,17 +158,16 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     // Quantize boundaries once on the complete program. AV concat pads shorter
     // audio to each independently-rounded video span, accumulating silence and
     // losing the tail across many cuts; keep their clocks independent instead.
-    let audio_inputs = format!("[{}]", audio_labels.join("]["));
-    chains.push(format!(
-        "{audio_inputs}concat=n={}:v=0:a=1[acat]",
-        audio_labels.len()
-    ));
+    chains.push(concat_chain(&audio_labels, false));
     if !request.audio_only {
-        let video_inputs = format!("[{}]", video_labels.join("]["));
-        chains.push(format!(
-            "{video_inputs}concat=n={}:v=1:a=0[vcat]",
-            video_labels.len()
-        ));
+        apply_transitions(
+            request.document,
+            rate,
+            &video_spans,
+            &mut video_labels,
+            &mut chains,
+        );
+        chains.push(concat_chain(&video_labels, true));
     }
 
     let mut audio_chain = vec!["[acat]".to_owned()];
@@ -200,6 +201,59 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         video_label: "[vout]".to_owned(),
         audio_label: "[aout]".to_owned(),
     })
+}
+
+fn concat_chain(labels: &[String], video: bool) -> String {
+    format!(
+        "[{}]concat=n={}:v={}:a={}[{}cat]",
+        labels.join("]["),
+        labels.len(),
+        u8::from(video),
+        u8::from(!video),
+        if video { "v" } else { "a" },
+    )
+}
+
+/// Blend a clone of the outgoing final composed frame over the incoming
+/// picture. Padding is confined to the overlay branch; the main segment
+/// allocation, audio concat and captions keep their original clocks.
+fn apply_transitions(
+    document: &EditDocument,
+    rate: FrameRate,
+    spans: &[&DecodeSpan],
+    labels: &mut [String],
+    chains: &mut Vec<String>,
+) {
+    for transition in crate::transitions::transitions(document, rate) {
+        let Some(index) = spans
+            .iter()
+            .position(|span| span.segment_id == transition.incoming_segment_id)
+        else {
+            continue;
+        };
+        if index == 0 {
+            continue;
+        }
+        let frames = transition.end_frame - transition.first_frame;
+        let outgoing_frames = spans[index - 1].frame_count;
+        chains.push(format!(
+            "[{}]split=2[cut_keep_{index}][cut_tail_{index}]",
+            labels[index - 1]
+        ));
+        chains.push(format!(
+            "[cut_tail_{index}]trim=start_frame={last}:end_frame={outgoing_frames},\
+             setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop={padding},format=yuva420p,\
+             fade=t=out:start_frame=0:nb_frames={frames}:alpha=1[cut_hold_{index}]",
+            last = outgoing_frames - 1,
+            padding = frames - 1,
+        ));
+        chains.push(format!(
+            "[{}][cut_hold_{index}]overlay=eof_action=pass:repeatlast=0:format=yuv420[cut_mix_{index}]",
+            labels[index]
+        ));
+        labels[index - 1] = format!("cut_keep_{index}");
+        labels[index] = format!("cut_mix_{index}");
+    }
 }
 
 fn source_for<'a>(

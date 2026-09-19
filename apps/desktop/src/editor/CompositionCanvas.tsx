@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { PreviewPlan, PreviewSource } from '../daemon/client.js';
-import { cropAt, segmentAt, sourceOf } from './player.js';
+import { cropAt, proxySecondsAt, segmentAt, sourceOf } from './player.js';
 
 type Crop = ReturnType<typeof cropAt>;
 interface Drawing {
@@ -152,17 +152,84 @@ export function CompositionCanvas({
   plan,
   frame,
   onFrame,
+  proxyUrls,
+  onError,
+  onBuffering,
 }: {
   readonly video: RefObject<HTMLVideoElement | null>;
   readonly mediaKey: string;
   readonly plan: PreviewPlan;
   readonly frame: number;
   readonly onFrame: (seconds: number) => number | null;
+  readonly proxyUrls?: ReadonlyMap<string, string>;
+  readonly onError?: () => void;
+  readonly onBuffering?: (waiting: boolean) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const latest = useRef({ plan, onFrame });
-  latest.current = { plan, onFrame };
+  const latest = useRef({ plan, onFrame, onError, onBuffering });
+  latest.current = { plan, onFrame, onError, onBuffering };
   const observer = useRef<ReturnType<typeof observeVideoFrames> | null>(null);
+  const referenceVideo = useRef<HTMLVideoElement>(null);
+  const referenceFailed = useRef(false);
+  const reference = useRef<{ plan: PreviewPlan; frame: number; canvas: HTMLCanvasElement } | null>(
+    null,
+  );
+  // Prepare the upcoming boundary in advance. A separate muted, paused decoder
+  // also makes a direct scrub into a blend deterministic: playback history is
+  // never substituted for the outgoing frame named by the saved plan.
+  const upcoming = plan.transitions?.find((transition) => frame < transition.endFrame);
+  const outgoing = upcoming ? segmentAt(plan, upcoming.outgoingFrame) : null;
+  const referenceUrl = outgoing ? proxyUrls?.get(outgoing.sourceFingerprint) : undefined;
+  const referenceFrame = upcoming?.outgoingFrame;
+  useEffect(() => {
+    reference.current = null;
+    referenceFailed.current = false;
+    const media = referenceVideo.current;
+    if (referenceFrame !== undefined && !referenceUrl) {
+      referenceFailed.current = true;
+      latest.current.onError?.();
+      return;
+    }
+    if (!media || !referenceUrl || referenceFrame === undefined) return;
+    const seconds = proxySecondsAt(plan, referenceFrame);
+    const segment = segmentAt(plan, referenceFrame);
+    if (seconds === null || !segment) return;
+    const bitmap = document.createElement('canvas');
+    bitmap.width = plan.width;
+    bitmap.height = plan.height;
+    const position = () => {
+      if (Math.abs(media.currentTime - seconds) > 1 / 90_000) media.currentTime = seconds;
+    };
+    const capture = () => {
+      if (Math.abs(media.currentTime - seconds) > 1 / 90_000) return;
+      const context = bitmap.getContext('2d');
+      if (!context) return;
+      try {
+        if (
+          !drawComposition(context, media, {
+            crop: cropAt(plan, referenceFrame),
+            secondary: cropAt(plan, referenceFrame, true),
+            source: sourceOf(plan, segment),
+            width: plan.width,
+            height: plan.height,
+          })
+        )
+          return;
+        reference.current = { plan, frame: referenceFrame, canvas: bitmap };
+        observer.current?.redraw();
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'InvalidStateError')) throw error;
+      }
+    };
+    media.addEventListener('loadedmetadata', position);
+    position();
+    const prepared = observeVideoFrames(media, capture);
+    return () => {
+      prepared.dispose();
+      media.removeEventListener('loadedmetadata', position);
+      if (!media.paused) media.pause();
+    };
+  }, [plan, referenceUrl, referenceFrame]);
   useEffect(() => {
     const media = video.current;
     const output = canvas.current;
@@ -177,6 +244,20 @@ export function CompositionCanvas({
       if (programFrame === null || media.seeking) return;
       const drawingPlan = current.plan;
       const segment = segmentAt(drawingPlan, programFrame);
+      const transition = drawingPlan.transitions?.find(
+        (item) => programFrame >= item.firstFrame && programFrame < item.endFrame,
+      );
+      const held = reference.current;
+      if (
+        transition &&
+        (!held || held.plan !== drawingPlan || held.frame !== transition.outgoingFrame)
+      ) {
+        if (referenceFailed.current) current.onError?.();
+        else current.onBuffering?.(true);
+        // Preserve the last complete picture until a seek-only reference is
+        // decoded. Publishing an unblended frame here would flash at the cut.
+        return;
+      }
       const context = buffer.getContext('2d');
       const destination = output.getContext('2d');
       if (!context || !destination) return;
@@ -191,6 +272,17 @@ export function CompositionCanvas({
           height: drawingPlan.height,
         });
         if (drawn) {
+          if (transition && held) {
+            context.save();
+            try {
+              context.globalAlpha =
+                (transition.endFrame - programFrame) /
+                (transition.endFrame - transition.firstFrame);
+              context.drawImage(held.canvas, 0, 0);
+            } finally {
+              context.restore();
+            }
+          }
           destination.save();
           try {
             // Replace even translucent blur edges; source-over would blend
@@ -200,6 +292,7 @@ export function CompositionCanvas({
           } finally {
             destination.restore();
           }
+          current.onBuffering?.(false);
         }
       } catch (error) {
         // drawImage may lose its decoded frame during a media transition.
@@ -220,18 +313,40 @@ export function CompositionCanvas({
     if (video.current?.paused) observer.current?.redraw();
   }, [video, plan, frame]);
   return (
-    <canvas
-      ref={canvas}
-      width={plan.width}
-      height={plan.height}
-      className="absolute inset-0 h-full w-full"
-      data-testid="composition"
-      role="img"
-      aria-label={
-        cropAt(plan, frame, true)
-          ? 'Draft composition with two synchronized portraits'
-          : 'Draft clip composition'
-      }
-    />
+    <>
+      {referenceUrl && (
+        // No audio or captions belong to the held outgoing picture.
+        <video
+          ref={referenceVideo}
+          src={referenceUrl}
+          muted
+          playsInline
+          preload="auto"
+          crossOrigin="anonymous"
+          aria-hidden="true"
+          tabIndex={-1}
+          className="pointer-events-none absolute h-full w-full opacity-0"
+          data-testid="transition-reference"
+          onError={() => {
+            referenceFailed.current = true;
+            reference.current = null;
+            onError?.();
+          }}
+        />
+      )}
+      <canvas
+        ref={canvas}
+        width={plan.width}
+        height={plan.height}
+        className="absolute inset-0 h-full w-full"
+        data-testid="composition"
+        role="img"
+        aria-label={
+          cropAt(plan, frame, true)
+            ? 'Draft composition with two synchronized portraits'
+            : 'Draft clip composition'
+        }
+      />
+    </>
   );
 }

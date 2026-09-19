@@ -37,6 +37,12 @@ import type { ClipRef } from '../shell/route.js';
 const PROXY_KIND = 'media.proxy.v1';
 const FACES_KIND = 'vision.face_track.v1';
 
+/** Tauri rejects with strings; browser adapters may reject with Error objects. */
+function failureMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  return message.trim() || fallback;
+}
+
 /** Where a clip's media comes from: an artifact, and the project it is in. */
 export interface ArtifactRef {
   readonly projectId: string;
@@ -158,7 +164,7 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
         }
       } catch (error) {
         if (live && request === latest.current) {
-          setProblem((error as Error).message);
+          setProblem(failureMessage(error, 'The clip could not be opened. Try opening it again.'));
           setLoading(false);
         }
       }
@@ -213,7 +219,7 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
         // the honest answer; silently rebasing would lose an edit nobody
         // decided to discard.
         if (current()) {
-          setProblem((error as Error).message);
+          setProblem(failureMessage(error, 'The edit could not be saved. Try again.'));
         }
         return null;
       } finally {

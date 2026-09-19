@@ -596,6 +596,8 @@ impl From<clipmill_contracts::proto::ipc::v1::SolveCropPathResponse> for CropPat
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewPlanView {
+    pub transition_ticks: i64,
+    pub transitions: Vec<PreviewTransitionView>,
     pub revision: u64,
     pub rate_num: u32,
     pub rate_den: u32,
@@ -618,6 +620,15 @@ pub struct PreviewPlanView {
     pub proxies: Vec<PreviewProxyView>,
     /// Which cue list `cues` came from: `burn_in` or `reading`.
     pub presentation: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewTransitionView {
+    pub incoming_segment_id: String,
+    pub outgoing_frame: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -721,6 +732,17 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 .map(|crop| {
                     crop.present
                         .then_some([crop.x, crop.y, crop.width, crop.height])
+                })
+                .collect(),
+            transition_ticks: reply.transition_ticks,
+            transitions: reply
+                .transitions
+                .into_iter()
+                .map(|transition| PreviewTransitionView {
+                    incoming_segment_id: transition.incoming_segment_id,
+                    outgoing_frame: transition.outgoing_frame,
+                    first_frame: transition.first_frame,
+                    end_frame: transition.end_frame,
                 })
                 .collect(),
             caption_style: reply.caption_style.map(|style| PreviewCaptionStyleView {
