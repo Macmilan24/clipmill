@@ -1,4 +1,4 @@
-# Threat model: local processing and optional cloud editorial
+# Threat model: local processing and explicit network operations
 
 ## Scope and security claim
 
@@ -29,6 +29,39 @@ capabilities; the cloud adapter is loaded only by the separate cloud entry
 point. The standard launcher does not start that process. These entry-point and
 scheduler controls prevent accidental routing; they do not sandbox malicious
 code running as the user's OS account.
+
+## YouTube acquisition extension
+
+An explicit import request, with the user's permission assertion, admits one
+canonical HTTPS YouTube video to a separate acquisition process. It increments
+the session network-operation counter before launch. Local file registration
+continues to reject URLs. Successful acquisition passes through the same pinned
+probe and source mutation checks before the daemon publishes a completed import.
+
+The helper receives fixed arguments and a private attempt directory. It disables
+ambient configuration, plugins, browser cookies, netrc, proxy environment and
+remote solver downloads. yt-dlp and its matching EJS package are locked and pass
+the Python license policy; the configured Node runtime must be supported. Only
+direct HTTPS formats up to 1080p are selected, with six-hour and 8 GiB limits.
+Observed bytes, combined temporary storage, free space, output volume and elapsed
+time are bounded. These controls are application limits, not an OS network or
+filesystem sandbox. YouTube and its media hosts still receive the ordinary
+download request and client IP.
+
+SQLite owns durable intent and attempt fencing; the helper cannot write it.
+Cancellation kills the process group, including remux and challenge-solver
+children. A daemon-death watcher and advisory attempt lock support recovery.
+Signed media URLs and raw provider exceptions do not enter logs, IPC or project
+metadata. Stored source titles and channel names are untrusted display text,
+never instructions or filesystem names. Managed originals remain source data
+and must not be removed by disposable artifact-cache cleanup.
+
+Falsification tests cover hostile links, refused metadata, unknown-length byte
+limits, low space during merging, missing final files, path escape, safe errors,
+process-group cancellation, durable duplicate/retry behavior and restart
+interruption. [YouTube import](youtube-import.md) records setup and scope. A live
+download check is separate from these offline tests, and neither verifies the
+creator's permission on the user's behalf.
 
 ## Assets and trust boundaries
 

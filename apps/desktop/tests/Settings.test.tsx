@@ -73,6 +73,21 @@ describe('the settings screen', () => {
     expect(screen.getByText('Not engaged')).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy();
     expect(screen.queryByText('Engaged')).toBeNull();
+    expect(
+      screen.getByText('Network operations have started in this daemon session.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Cloud processing has started in this daemon session.')).toBeNull();
+  });
+
+  it('labels downloaded originals and explains their project lifetime', () => {
+    show({
+      storage: storage({
+        categories: [{ key: 'imports', bytes: 1024, items: 1, path: '/data/imports' }],
+      }),
+    });
+    expect(screen.getByText('Imported originals')).toBeTruthy();
+    expect(screen.getByText(/Deleting the project removes its managed copies/)).toBeTruthy();
+    expect(screen.getByText('/data/imports')).toBeTruthy();
   });
 
   it('does not read as engaged when a stage is allowed the network', () => {

@@ -24,6 +24,74 @@ use clipmill_contracts::proto::ipc::v1::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceDetailsView {
+    pub source: SourceView,
+    pub source_map_json: String,
+}
+
+impl TryFrom<clipmill_contracts::proto::ipc::v1::GetSourceResponse> for SourceDetailsView {
+    type Error = &'static str;
+    fn try_from(
+        reply: clipmill_contracts::proto::ipc::v1::GetSourceResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: reply.source.ok_or("the daemon returned no source")?.into(),
+            source_map_json: reply.source_map_json,
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YoutubeImportView {
+    pub import_id: String,
+    pub project_id: String,
+    pub canonical_url: String,
+    pub video_id: String,
+    pub title: String,
+    pub channel: String,
+    pub max_height: u32,
+    pub state: String,
+    pub attempt: u32,
+    pub downloaded_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_bytes: Option<u64>,
+    pub source_id: String,
+    pub error_code: String,
+    pub error: String,
+    pub created_unix_millis: u64,
+    pub updated_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::YoutubeImportV1> for YoutubeImportView {
+    fn from(value: clipmill_contracts::proto::ipc::v1::YoutubeImportV1) -> Self {
+        Self {
+            import_id: value.import_id,
+            project_id: value.project_id,
+            canonical_url: value.canonical_url,
+            video_id: value.video_id,
+            title: value.title,
+            channel: value.channel,
+            max_height: if value.max_height == 0 {
+                1080
+            } else {
+                value.max_height
+            },
+            state: value.state,
+            attempt: value.attempt,
+            downloaded_bytes: value.downloaded_bytes,
+            total_bytes: value.total_bytes,
+            source_id: value.source_id,
+            error_code: value.error_code,
+            error: value.error,
+            created_unix_millis: value.created_unix_millis,
+            updated_unix_millis: value.updated_unix_millis,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct ProjectView {
     #[serde(rename = "projectId")]
     pub project_id: String,
@@ -1220,5 +1288,49 @@ impl TryFrom<clipmill_contracts::proto::ipc::v1::ExportBatchV1> for ExportBatchV
                 })
                 .collect::<Result<Vec<_>, String>>()?,
         })
+    }
+}
+
+#[cfg(test)]
+mod youtube_view_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+
+    #[test]
+    fn import_progress_preserves_unknown_totals_and_real_metadata() {
+        let view = YoutubeImportView::from(clipmill_contracts::proto::ipc::v1::YoutubeImportV1 {
+            import_id: "imp_1".to_owned(),
+            project_id: "prj_1".to_owned(),
+            title: "A creator's video".to_owned(),
+            channel: "Actual channel".to_owned(),
+            state: "processing".to_owned(),
+            downloaded_bytes: 1_024,
+            attempt: 2,
+            ..Default::default()
+        });
+        let json = serde_json::to_value(view).unwrap();
+        assert_eq!(json["importId"], "imp_1");
+        assert_eq!(json["downloadedBytes"], 1_024);
+        assert_eq!(json["title"], "A creator's video");
+        assert_eq!(json["channel"], "Actual channel");
+        assert_eq!(json["state"], "processing");
+        assert_eq!(json["attempt"], 2);
+        assert_eq!(json["maxHeight"], 1080);
+        assert!(json.get("totalBytes").is_none());
+    }
+
+    #[test]
+    fn source_details_refuse_a_missing_source_instead_of_a_ready_placeholder() {
+        let empty = clipmill_contracts::proto::ipc::v1::GetSourceResponse::default();
+        assert!(SourceDetailsView::try_from(empty).is_err());
+    }
+
+    #[test]
+    fn import_quality_preserves_the_requested_download_height() {
+        let view = YoutubeImportView::from(clipmill_contracts::proto::ipc::v1::YoutubeImportV1 {
+            max_height: 360,
+            ..Default::default()
+        });
+        assert_eq!(serde_json::to_value(view).unwrap()["maxHeight"], 360);
     }
 }

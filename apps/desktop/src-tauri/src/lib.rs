@@ -242,6 +242,81 @@ async fn register_source(
         })
 }
 
+#[tauri::command]
+async fn get_source(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    source_id: String,
+) -> Result<views::SourceDetailsView, String> {
+    supervisor
+        .client()
+        .get_source(&source_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .try_into()
+        .map_err(str::to_owned)
+}
+
+#[tauri::command]
+async fn start_youtube_import(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    url: String,
+    rights_confirmed: bool,
+    max_height: Option<u32>,
+) -> Result<views::YoutubeImportView, String> {
+    supervisor
+        .client()
+        .start_youtube_import(
+            &project_id,
+            &url,
+            rights_confirmed,
+            max_height.unwrap_or(1080),
+        )
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn get_youtube_import(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    import_id: String,
+) -> Result<views::YoutubeImportView, String> {
+    supervisor
+        .client()
+        .get_youtube_import(&import_id)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn list_youtube_imports(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+) -> Result<Vec<views::YoutubeImportView>, String> {
+    supervisor
+        .client()
+        .list_youtube_imports(&project_id)
+        .await
+        .map(|items| items.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn update_youtube_import(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    import_id: String,
+    action: String,
+) -> Result<views::YoutubeImportView, String> {
+    supervisor
+        .client()
+        .update_youtube_import(&import_id, &action)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// Submit the analysis DAG. The reply is the job, so a screen can watch it.
 #[tauri::command]
 async fn submit_analyze(
@@ -678,6 +753,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             storage_stats,
             choose_source_file,
             register_source,
+            get_source,
+            start_youtube_import,
+            get_youtube_import,
+            list_youtube_imports,
+            update_youtube_import,
             submit_analyze,
             apply_edit_command,
             list_edit_docs,

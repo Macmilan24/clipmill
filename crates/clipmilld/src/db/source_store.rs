@@ -203,33 +203,12 @@ pub(super) fn register_source(
         transaction.commit()?;
         return Ok(response);
     }
-    let created = sqlite_u64(created_unix_millis, "source timestamp")?;
-    transaction.execute(
-        "INSERT INTO sources(
-            source_id, project_id, source_fingerprint, source_map_json, created_unix_millis
-         ) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![
-            source_id,
-            project_id,
-            inspection.source_fingerprint,
-            inspection.source_map_json,
-            created,
-        ],
-    )?;
-    transaction.execute(
-        "INSERT INTO source_file_observations(
-            source_id, absolute_path, byte_size, sample_sha256,
-            device_id, inode, modified_unix_nanos
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![
-            source_id,
-            observation.absolute_path,
-            sqlite_u64(observation.byte_size, "source byte size")?,
-            observation.sample_sha256,
-            sqlite_u64(observation.device_id, "source device id")?,
-            sqlite_u64(observation.inode, "source inode")?,
-            sqlite_u64(observation.modified_unix_nanos, "source modification time")?,
-        ],
+    insert_inspected_source(
+        &transaction,
+        project_id,
+        source_id,
+        inspection,
+        created_unix_millis,
     )?;
     let source = get_source_tx(&transaction, source_id)?;
     let response = Response {
@@ -388,4 +367,44 @@ fn sqlite_row_u64(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64
             Box::new(error),
         )
     })
+}
+
+/// Shared insertion inside the caller's transaction, including import completion.
+pub(super) fn insert_inspected_source(
+    connection: &Connection,
+    project_id: &str,
+    source_id: &str,
+    inspection: &InspectedSource,
+    created_unix_millis: u64,
+) -> Result<(), StoreError> {
+    let observation = &inspection.observation;
+    let created = sqlite_u64(created_unix_millis, "source timestamp")?;
+    connection.execute(
+        "INSERT INTO sources(
+            source_id, project_id, source_fingerprint, source_map_json, created_unix_millis
+         ) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            source_id,
+            project_id,
+            inspection.source_fingerprint,
+            inspection.source_map_json,
+            created,
+        ],
+    )?;
+    connection.execute(
+        "INSERT INTO source_file_observations(
+            source_id, absolute_path, byte_size, sample_sha256,
+            device_id, inode, modified_unix_nanos
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            source_id,
+            observation.absolute_path,
+            sqlite_u64(observation.byte_size, "source byte size")?,
+            observation.sample_sha256,
+            sqlite_u64(observation.device_id, "source device id")?,
+            sqlite_u64(observation.inode, "source inode")?,
+            sqlite_u64(observation.modified_unix_nanos, "source modification time")?,
+        ],
+    )?;
+    Ok(())
 }

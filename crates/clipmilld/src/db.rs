@@ -23,6 +23,8 @@ use crate::jobs::{
     EventFilter, JobPlan, JobRecord, LeaseRequest, LeaseSelection, TaskCompletion, TaskEventRecord,
 };
 
+mod youtube_store;
+pub(crate) use youtube_store::YoutubeCommand;
 mod batch_store;
 pub(crate) use batch_store::BatchCommand;
 mod job_store;
@@ -39,7 +41,7 @@ mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 12;
+const SCHEMA_VERSION: i64 = 13;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -64,6 +66,10 @@ impl From<ProjectRecord> for Project {
 pub(crate) enum StoreError {
     #[error("request id was already used with a different request body")]
     Conflict,
+    #[error(
+        "This project already has this video at a different quality. Use its existing import, or create a new project for the selected quality."
+    )]
+    ImportQualityConflict,
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("database contains invalid data: {0}")]
@@ -101,6 +107,10 @@ impl DbActor {
                         let _result = ready_sender.send(Ok(()));
                         while let Some(command) = receiver.blocking_recv() {
                             match command {
+                                Command::Youtube { command, reply } => {
+                                    let _result = reply
+                                        .send(youtube_store::execute(&mut connection, command));
+                                }
                                 Command::Batch { command, reply } => {
                                     let _result =
                                         reply.send(batch_store::execute(&mut connection, command));
@@ -647,6 +657,18 @@ impl DbActor {
 }
 
 impl DbHandle {
+    pub(crate) async fn youtube_imports(
+        &self,
+        command: YoutubeCommand,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::YoutubeImportV1>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Youtube { command, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn export_batches(
         &self,
         command: BatchCommand,
@@ -1427,6 +1449,13 @@ impl DbHandle {
 
 #[derive(Debug)]
 enum Command {
+    Youtube {
+        command: YoutubeCommand,
+        reply: oneshot::Sender<
+            Result<Vec<clipmill_contracts::proto::ipc::v1::YoutubeImportV1>, StoreError>,
+        >,
+    },
+
     Batch {
         command: BatchCommand,
         reply: oneshot::Sender<
@@ -1825,8 +1854,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(edit_store::CREATE_V10_TABLES)?;
         transaction.execute_batch(edit_store::CREATE_V11_TABLES)?;
         transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
+        transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 12;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 13;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1871,7 +1901,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 12 {
             transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 12;")?;
+        if version < 13 {
+            transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 13;")?;
         transaction.commit()?;
     }
     Ok(())

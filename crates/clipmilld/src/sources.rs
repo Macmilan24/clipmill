@@ -3,10 +3,16 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader},
     io::{Read, Seek, SeekFrom},
-    os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt},
+    os::unix::{
+        fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt},
+        process::CommandExt,
+    },
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::{Duration, Instant, UNIX_EPOCH},
 };
@@ -15,7 +21,7 @@ use clipmill_core::Sha256Digest;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, watch};
 use ulid::Ulid;
 
 const SMALL_FILE_LIMIT: u64 = 16 * 1024 * 1024;
@@ -39,6 +45,7 @@ const MAX_STDOUT_BYTES: u64 = 16 * 1024 * 1024;
 /// its audio, and a file claiming more than that in a container we are about to
 /// hand a decoder is not a recording somebody made.
 const MAX_PACKETS: u64 = 10_000_000;
+const MAX_PACKET_LINE_BYTES: u64 = 1024;
 /// Discontinuities a single stream may have before the same conclusion.
 ///
 /// A normal recording has one run per stream. A concatenation or a recovered
@@ -108,7 +115,7 @@ pub(crate) enum SourceProbeError {
     InvalidPath(&'static str),
     #[error("cannot inspect local source: {0}")]
     Io(String),
-    #[error("FFprobe exceeded its 15-second deadline")]
+    #[error("FFprobe exceeded its inspection deadline")]
     Timeout,
     #[error("FFprobe output exceeded its bounded limit")]
     OutputLimit,
@@ -120,6 +127,36 @@ pub(crate) enum SourceProbeError {
     SourceChanged,
     #[error("source inspection task stopped unexpectedly")]
     Stopped,
+}
+
+#[derive(Default)]
+struct ProbeControl {
+    cancel: Option<watch::Receiver<bool>>,
+    abandoned: Arc<AtomicBool>,
+}
+
+impl ProbeControl {
+    fn check(&self) -> Result<(), SourceProbeError> {
+        if self.abandoned.load(Ordering::Relaxed)
+            || self
+                .cancel
+                .as_ref()
+                .is_some_and(|cancel| *cancel.borrow() || cancel.has_changed().is_err())
+        {
+            Err(SourceProbeError::Stopped)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Dropping an async inspection must also stop its blocking subprocess work.
+struct StopInspectionOnDrop(Arc<AtomicBool>);
+
+impl Drop for StopInspectionOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
 }
 
 impl SourceInspector {
@@ -151,15 +188,45 @@ impl SourceInspector {
         &self,
         sampled: SampledSource,
     ) -> Result<InspectedSource, SourceProbeError> {
+        self.complete_with_control(sampled, ProbeControl::default())
+            .await
+    }
+
+    pub(crate) async fn complete_cancellable(
+        &self,
+        sampled: SampledSource,
+        cancel: watch::Receiver<bool>,
+    ) -> Result<InspectedSource, SourceProbeError> {
+        self.complete_with_control(
+            sampled,
+            ProbeControl {
+                cancel: Some(cancel),
+                ..ProbeControl::default()
+            },
+        )
+        .await
+    }
+
+    async fn complete_with_control(
+        &self,
+        sampled: SampledSource,
+        control: ProbeControl,
+    ) -> Result<InspectedSource, SourceProbeError> {
         let ffprobe = self.ffprobe.clone();
         let scratch = self.scratch.clone();
-        let permit = Arc::clone(&self.permits)
-            .acquire_owned()
-            .await
-            .map_err(|_| SourceProbeError::Stopped)?;
+        let _stop_on_drop = StopInspectionOnDrop(Arc::clone(&control.abandoned));
+        let acquire = Arc::clone(&self.permits).acquire_owned();
+        tokio::pin!(acquire);
+        let permit = loop {
+            control.check()?;
+            tokio::select! {
+                permit = &mut acquire => break permit.map_err(|_| SourceProbeError::Stopped)?,
+                () = tokio::time::sleep(Duration::from_millis(10)) => {}
+            }
+        };
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            complete_inspection(&ffprobe, &scratch, sampled)
+            complete_inspection_controlled(&ffprobe, &scratch, sampled, &control)
         })
         .await
         .map_err(|_| SourceProbeError::Stopped)?
@@ -257,12 +324,24 @@ fn sample_source(value: &str) -> Result<SampledSource, SourceProbeError> {
     })
 }
 
+#[cfg(test)]
 fn complete_inspection(
     ffprobe: &Path,
     scratch: &Path,
     sampled: SampledSource,
 ) -> Result<InspectedSource, SourceProbeError> {
-    let (raw_probe, packet_runs) = run_ffprobe(ffprobe, scratch, &sampled.path)?;
+    complete_inspection_controlled(ffprobe, scratch, sampled, &ProbeControl::default())
+}
+
+fn complete_inspection_controlled(
+    ffprobe: &Path,
+    scratch: &Path,
+    sampled: SampledSource,
+    control: &ProbeControl,
+) -> Result<InspectedSource, SourceProbeError> {
+    let (raw_probe, packet_runs) =
+        run_ffprobe_controlled(ffprobe, scratch, &sampled.path, PROBE_TIMEOUT, control)?;
+    control.check()?;
     let path_after = identity(&fs::metadata(&sampled.path).map_err(io_error)?)?;
     if path_after != sampled.identity {
         return Err(SourceProbeError::SourceChanged);
@@ -383,20 +462,30 @@ fn identity(metadata: &fs::Metadata) -> Result<FileIdentity, SourceProbeError> {
     })
 }
 
-fn run_ffprobe(
-    ffprobe: &Path,
-    scratch: &Path,
-    source: &Path,
-) -> Result<(Value, BTreeMap<u64, StreamRuns>), SourceProbeError> {
-    run_ffprobe_with_timeout(ffprobe, scratch, source, PROBE_TIMEOUT)
-}
-
+#[cfg(test)]
 fn run_ffprobe_with_timeout(
     ffprobe: &Path,
     scratch: &Path,
     source: &Path,
     probe_timeout: Duration,
 ) -> Result<(Value, BTreeMap<u64, StreamRuns>), SourceProbeError> {
+    run_ffprobe_controlled(
+        ffprobe,
+        scratch,
+        source,
+        probe_timeout,
+        &ProbeControl::default(),
+    )
+}
+
+fn run_ffprobe_controlled(
+    ffprobe: &Path,
+    scratch: &Path,
+    source: &Path,
+    probe_timeout: Duration,
+    control: &ProbeControl,
+) -> Result<(Value, BTreeMap<u64, StreamRuns>), SourceProbeError> {
+    control.check()?;
     let work = scratch.join(format!("probe_{}", Ulid::new()));
     fs::create_dir(&work).map_err(io_error)?;
     fs::set_permissions(&work, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
@@ -434,18 +523,10 @@ fn run_ffprobe_with_timeout(
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
+    command.process_group(0);
     let mut child = command.spawn().map_err(io_error)?;
     let deadline = Instant::now() + probe_timeout;
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(io_error)? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            terminate_child(&mut child);
-            return Err(SourceProbeError::Timeout);
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
+    let status = wait_bounded(&mut child, deadline, control)?;
     let stdout_size = fs::metadata(&stdout_path).map_err(io_error)?.len();
     let stderr_size = fs::metadata(&stderr_path).map_err(io_error)?.len();
     if stdout_size > MAX_STDOUT_BYTES || stderr_size > MAX_STDERR_BYTES {
@@ -462,7 +543,13 @@ fn run_ffprobe_with_timeout(
     // A second invocation, streamed. Kept separate from the metadata read so a
     // long recording can never cost the container's headers: the two answers
     // have very different sizes and only one of them grows with duration.
-    let packets = stream_packets(ffprobe, &work, source, Instant::now() + PACKET_TIMEOUT)?;
+    let packets = stream_packets(
+        ffprobe,
+        &work,
+        source,
+        Instant::now() + PACKET_TIMEOUT,
+        control,
+    )?;
     Ok((metadata, packets))
 }
 
@@ -543,7 +630,9 @@ fn stream_packets(
     work: &Path,
     source: &Path,
     deadline: Instant,
+    control: &ProbeControl,
 ) -> Result<BTreeMap<u64, StreamRuns>, SourceProbeError> {
+    control.check()?;
     let stderr_path = work.join("packets-stderr.txt");
     let stderr = OpenOptions::new()
         .write(true)
@@ -570,50 +659,38 @@ fn stream_packets(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(stderr))
+        .process_group(0)
         .spawn()
         .map_err(io_error)?;
-
-    let mut runs = BTreeMap::<u64, StreamRuns>::new();
-    let outcome = (|| -> Result<(), SourceProbeError> {
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or(SourceProbeError::InvalidProbe("ffprobe produced no output"))?;
-        let mut seen = 0_u64;
-        for line in BufReader::new(stdout).lines() {
-            let line = line.map_err(io_error)?;
-            if Instant::now() >= deadline {
-                return Err(SourceProbeError::Timeout);
-            }
-            seen += 1;
-            if seen > MAX_PACKETS {
-                return Err(SourceProbeError::OutputLimit);
-            }
-            let mut fields = line.trim().split(',');
-            let (Some(index), Some(pts), Some(duration)) =
-                (fields.next(), fields.next(), fields.next())
-            else {
-                continue;
-            };
-            // A packet with no timestamp cannot place anything on a timeline,
-            // and the old path skipped it for the same reason. `N/A` is how
-            // ffprobe spells that here.
-            let (Ok(index), Ok(pts)) = (index.parse::<u64>(), pts.parse::<i128>()) else {
-                continue;
-            };
-            let duration = duration.parse::<i128>().unwrap_or(0).max(0);
-            runs.entry(index).or_default().observe(pts, duration)?;
-        }
-        Ok(())
-    })();
-
-    let status = match outcome {
-        Ok(()) => wait_bounded(&mut child, deadline)?,
-        Err(error) => {
-            terminate_child(&mut child);
-            return Err(error);
-        }
+    let Some(stdout) = child.stdout.take() else {
+        terminate_child(&mut child);
+        return Err(SourceProbeError::InvalidProbe("ffprobe produced no output"));
     };
+    // A blocking pipe read must not own the deadline. The supervisor keeps
+    // checking even when FFprobe emits no bytes or never closes its last line.
+    // Killing the process group closes the reader before this scope returns.
+    let (runs, status) = thread::scope(|scope| {
+        let reader = scope.spawn(move || read_packet_runs(stdout, control));
+        while !reader.is_finished() {
+            if let Err(error) = probe_running(deadline, control) {
+                terminate_child(&mut child);
+                return Err(error);
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        let runs = match reader.join() {
+            Ok(Ok(runs)) => runs,
+            outcome => {
+                terminate_child(&mut child);
+                return Err(outcome
+                    .ok()
+                    .and_then(Result::err)
+                    .unwrap_or(SourceProbeError::Stopped));
+            }
+        };
+        let status = wait_bounded(&mut child, deadline, control)?;
+        Ok((runs, status))
+    })?;
     if fs::metadata(&stderr_path).map_err(io_error)?.len() > MAX_STDERR_BYTES {
         return Err(SourceProbeError::OutputLimit);
     }
@@ -624,38 +701,97 @@ fn stream_packets(
     Ok(runs)
 }
 
+fn read_packet_runs(
+    stdout: impl Read,
+    control: &ProbeControl,
+) -> Result<BTreeMap<u64, StreamRuns>, SourceProbeError> {
+    let mut reader = BufReader::new(stdout);
+    let mut runs = BTreeMap::<u64, StreamRuns>::new();
+    let mut seen = 0_u64;
+    loop {
+        control.check()?;
+        let mut line = String::new();
+        let length = Read::by_ref(&mut reader)
+            .take(MAX_PACKET_LINE_BYTES + 1)
+            .read_line(&mut line)
+            .map_err(io_error)?;
+        if length == 0 {
+            return Ok(runs);
+        }
+        seen += 1;
+        if length as u64 > MAX_PACKET_LINE_BYTES || seen > MAX_PACKETS {
+            return Err(SourceProbeError::OutputLimit);
+        }
+        let mut fields = line.trim().split(',');
+        let (Some(index), Some(pts), Some(duration)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        // Missing timestamps cannot place a packet on the source timeline.
+        let (Ok(index), Ok(pts)) = (index.parse::<u64>(), pts.parse::<i128>()) else {
+            continue;
+        };
+        let duration = duration.parse::<i128>().unwrap_or(0).max(0);
+        runs.entry(index).or_default().observe(pts, duration)?;
+    }
+}
+
+fn probe_running(deadline: Instant, control: &ProbeControl) -> Result<(), SourceProbeError> {
+    control.check()?;
+    if Instant::now() >= deadline {
+        Err(SourceProbeError::Timeout)
+    } else {
+        Ok(())
+    }
+}
+
 /// Wait for a child, giving up at the deadline the probe was granted.
 fn wait_bounded(
     child: &mut std::process::Child,
     deadline: Instant,
+    control: &ProbeControl,
 ) -> Result<std::process::ExitStatus, SourceProbeError> {
     loop {
-        if let Some(status) = child.try_wait().map_err(io_error)? {
-            return Ok(status);
-        }
-        if Instant::now() >= deadline {
+        if let Err(error) = probe_running(deadline, control) {
             terminate_child(child);
-            return Err(SourceProbeError::Timeout);
+            return Err(error);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {}
+            Err(error) => {
+                terminate_child(child);
+                return Err(io_error(error));
+            }
         }
         thread::sleep(Duration::from_millis(10));
     }
 }
 
 fn terminate_child(child: &mut std::process::Child) {
-    let _status = Command::new("/bin/kill")
-        .arg("-TERM")
-        .arg(child.id().to_string())
-        .env_clear()
-        .status();
+    signal_probe_group(child.id(), "-TERM");
     let deadline = Instant::now() + TERMINATE_GRACE;
     while Instant::now() < deadline {
         if child.try_wait().ok().flatten().is_some() {
-            return;
+            break;
         }
         thread::sleep(Duration::from_millis(10));
     }
+    // Even when the immediate child already exited, a descendant may still
+    // hold the packet pipe. Finish the group before joining its reader.
+    signal_probe_group(child.id(), "-KILL");
     let _killed = child.kill();
     let _waited = child.wait();
+}
+
+fn signal_probe_group(pid: u32, signal: &str) {
+    let _status = Command::new("/bin/kill")
+        .args([signal, "--", &format!("-{pid}")])
+        .env_clear()
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1421,6 +1557,118 @@ mod tests {
             run_ffprobe_with_timeout(&sidecar, temp.path(), &source, Duration::from_millis(50))
                 .expect_err("stuck sidecar times out");
         assert!(matches!(error, SourceProbeError::Timeout));
+    }
+
+    fn blocked_packet_probe(root: &std::path::Path, partial_line: bool) -> std::path::PathBuf {
+        let sidecar = root.join("blocked-packet-ffprobe");
+        fs::write(
+            &sidecar,
+            format!(
+                "#!/bin/sh\nfor arg in \"$@\"; do\nif [ \"$arg\" = -show_entries ]; then\necho $$ > '{}'/packet.pid\n{}\nexec /bin/sleep 60\nfi\ndone\nprintf '%s' '{{\"format\":{{\"format_name\":\"test\",\"duration\":\"1.0\"}},\"streams\":[{{\"index\":0,\"codec_type\":\"video\",\"codec_name\":\"rawvideo\",\"time_base\":\"1/1000\",\"start_pts\":0,\"duration_ts\":1000,\"width\":1,\"height\":1}}]}}'\n",
+                root.display(),
+                if partial_line { "printf '0,12'" } else { ":" },
+            ),
+        )
+        .expect("write blocked packet probe");
+        fs::set_permissions(&sidecar, fs::Permissions::from_mode(0o700))
+            .expect("make fake probe executable");
+        sidecar
+    }
+
+    fn assert_packet_probe_reaped(root: &std::path::Path) {
+        let pid = fs::read_to_string(root.join("packet.pid")).expect("packet process started");
+        let status = std::process::Command::new("/bin/kill")
+            .args(["-0", pid.trim()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("check packet process");
+        assert!(!status.success(), "packet process survived inspection");
+    }
+
+    #[test]
+    fn packet_deadline_reaps_silent_and_unterminated_output_without_waiting_for_newline() {
+        for partial_line in [false, true] {
+            let temp = TempDir::new().expect("tempdir");
+            let sidecar = blocked_packet_probe(temp.path(), partial_line);
+            let started = std::time::Instant::now();
+            let error = super::stream_packets(
+                &sidecar,
+                temp.path(),
+                &temp.path().join("unused.bin"),
+                started + Duration::from_secs(2),
+                &super::ProbeControl::default(),
+            )
+            .expect_err("blocked read must time out");
+            assert!(matches!(error, SourceProbeError::Timeout));
+            assert!(started.elapsed() < Duration::from_secs(4));
+            assert_packet_probe_reaped(temp.path());
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_and_dropped_inspection_reap_packet_probe_before_releasing_permit() {
+        for abandon in [false, true] {
+            let temp = TempDir::new().expect("tempdir");
+            let sidecar = blocked_packet_probe(temp.path(), true);
+            let inspector = super::SourceInspector::new(sidecar, temp.path().join("scratch"))
+                .expect("inspector");
+            let source = temp.path().join("source.bin");
+            fs::write(&source, b"source").expect("source");
+            let sampled = inspector
+                .sample(source.to_string_lossy().into_owned())
+                .await
+                .expect("sample");
+            let (cancel, receiver) = tokio::sync::watch::channel(false);
+            let completing = inspector.clone();
+            let task =
+                tokio::spawn(
+                    async move { completing.complete_cancellable(sampled, receiver).await },
+                );
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !temp.path().join("packet.pid").exists() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("packet process starts");
+            if abandon {
+                task.abort();
+                assert!(task.await.expect_err("task aborted").is_cancelled());
+            } else {
+                cancel.send(true).expect("cancel");
+                let error = tokio::time::timeout(Duration::from_secs(3), task)
+                    .await
+                    .expect("inspection cancels promptly")
+                    .expect("join")
+                    .expect_err("cancelled");
+                assert!(matches!(error, SourceProbeError::Stopped));
+                assert_packet_probe_reaped(temp.path());
+            }
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while inspector.permits.available_permits() != 4 {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("blocking inspection releases its permit");
+            assert_packet_probe_reaped(temp.path());
+            assert_eq!(
+                fs::read_dir(temp.path().join("scratch"))
+                    .expect("scratch")
+                    .count(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn packet_reader_bounds_an_unterminated_line() {
+        let oversized =
+            vec![b'1'; usize::try_from(super::MAX_PACKET_LINE_BYTES + 1).expect("size")];
+        assert!(matches!(
+            super::read_packet_runs(oversized.as_slice(), &super::ProbeControl::default()),
+            Err(SourceProbeError::OutputLimit)
+        ));
     }
 
     #[test]

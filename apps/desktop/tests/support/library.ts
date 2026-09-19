@@ -238,6 +238,21 @@ export function filmstrip(artifactId: string, tiles: number): MediaArtifact {
 
 export function fakeApi(world: FakeWorld): ShellApi {
   return {
+    getSource: (sourceId) => {
+      const foundSource = Object.values(world.sources)
+        .flat()
+        .find((item) => item.sourceId === sourceId);
+      return foundSource
+        ? Promise.resolve({
+            source: foundSource,
+            sourceMapJson: world.documents[foundSource.sourceMapArtifactId]?.json ?? '',
+          })
+        : Promise.reject(new Error('no such source'));
+    },
+    startYoutubeImport: () => Promise.reject(new Error('no YouTube import configured')),
+    getYoutubeImport: () => Promise.reject(new Error('no such YouTube import')),
+    listYoutubeImports: () => Promise.resolve([]),
+    updateYoutubeImport: () => Promise.reject(new Error('no YouTube import configured')),
     submitExportBatch: () => Promise.reject(new Error('no batch response configured')),
     listExportBatches: () => Promise.resolve([]),
     updateExportBatchItem: () => Promise.reject(new Error('no batch response configured')),

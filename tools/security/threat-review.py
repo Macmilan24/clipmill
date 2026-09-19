@@ -19,6 +19,9 @@ import sys
 
 CATEGORIES = {
     "Hostile input and parsers": (
+        "integrations/**",
+        "crates/clipmilld/src/service/youtube.rs",
+        "crates/clipmilld/src/youtube_transport.rs",
         "contracts/**",
         # The media protocol parses a Range header the WebView controls and a
         # path it composes, which is the most attacker-adjacent parsing in the
@@ -43,12 +46,18 @@ CATEGORIES = {
         "workers/**",
     ),
     "Filesystem publication and paths": (
+        "integrations/**",
+        "crates/clipmilld/src/service/youtube.rs",
+        "crates/clipmilld/src/youtube_transport.rs",
         "crates/clipmill-artifacts/**",
         "crates/clipmilld/src/db/**",
         "crates/clipmilld/src/db.rs",
         "tools/drills/**",
     ),
     "Subprocess and sandbox": (
+        "integrations/**",
+        "tools/import-youtube.sh",
+        "crates/clipmilld/src/youtube_transport.rs",
         "crates/clipmilld/src/probe.rs",
         # The shell spawns the daemon and opens native dialogs, and its
         # capability file is what decides whether a page can reach a plugin.
@@ -62,12 +71,17 @@ CATEGORIES = {
         "tools/fetch-ffmpeg.sh",
     ),
     "Secrets, logs, and credentials": (
+        "integrations/**",
         ".github/**",
         "crates/clipmilld/src/device.rs",
         "eval/harness/src/clipmill_eval/attestation.py",
         "tools/security/**",
     ),
     "Network policy and egress": (
+        "integrations/**",
+        "tools/import-youtube.sh",
+        "crates/clipmilld/src/service/youtube.rs",
+        "crates/clipmilld/src/youtube_transport.rs",
         ".github/workflows/**",
         "docs/local-lock.md",
         "tools/drills/network-denial.sh",

@@ -49,6 +49,10 @@ message Request {
     SubmitExportBatchRequest submit_export_batch = 43;
     ListExportBatchesRequest list_export_batches = 44;
     UpdateExportBatchItemRequest update_export_batch_item = 45;
+    StartYoutubeImportRequest start_youtube_import = 46;
+    GetYoutubeImportRequest get_youtube_import = 47;
+    ListYoutubeImportsRequest list_youtube_imports = 48;
+    UpdateYoutubeImportRequest update_youtube_import = 49;
   }
 }
 
@@ -94,6 +98,8 @@ message Response {
     GetReadinessResponse get_readiness = 43;
     ExportBatchResponse export_batch = 44;
     ListExportBatchesResponse list_export_batches = 45;
+    YoutubeImportResponse youtube_import = 46;
+    ListYoutubeImportsResponse list_youtube_imports = 47;
   }
 }
 
@@ -704,6 +710,8 @@ message GetSourceRequest {
 
 message GetSourceResponse {
   Source source = 1;
+  // The stored probe, for hydrating an imported source without another mutation.
+  string source_map_json = 2;
 }
 
 message ListSourcesRequest {
@@ -1576,3 +1584,45 @@ message ExportBatchV1 {
 }
 message ExportBatchResponse { ExportBatchV1 batch = 1; }
 message ListExportBatchesResponse { repeated ExportBatchV1 batches = 1; }
+
+// Explicit network acquisition; completed sources use the normal local pipeline.
+// No path or downloader credential is accepted from or returned to the renderer.
+message YoutubeImportV1 {
+  string import_id = 1;
+  string project_id = 2;
+  string canonical_url = 3;
+  string video_id = 4;
+  string title = 5;
+  // queued, downloading, processing, registering, completed, failed, cancelled, interrupted
+  string state = 6;
+  uint32 attempt = 7;
+  uint64 downloaded_bytes = 8;
+  optional uint64 total_bytes = 9;
+  string source_id = 10;
+  string error_code = 11;
+  string error = 12;
+  uint64 created_unix_millis = 13;
+  uint64 updated_unix_millis = 14;
+  string channel = 15;
+  // Maximum source height: 360, 720 or 1080. Legacy zero means 1080.
+  uint32 max_height = 16;
+}
+message StartYoutubeImportRequest {
+  string project_id = 1;
+  string url = 2;
+  bool rights_confirmed = 3;
+  // Zero preserves the legacy 1080 default; otherwise 360, 720 or 1080.
+  uint32 max_height = 4;
+}
+message GetYoutubeImportRequest { string import_id = 1; }
+message ListYoutubeImportsRequest {
+  // Empty returns imports in all projects.
+  string project_id = 1;
+}
+message UpdateYoutubeImportRequest {
+  string import_id = 1;
+  // cancel or retry. Retry increments the durable attempt; never auto-resumes.
+  string action = 2;
+}
+message YoutubeImportResponse { YoutubeImportV1 record = 1; }
+message ListYoutubeImportsResponse { repeated YoutubeImportV1 imports = 1; }

@@ -45,6 +45,10 @@ ALLOWED = {
     # up inside what a creator publishes; a certificate bundle does not.
     "MPL-2.0",
     "PSF-2.0",
+    # yt-dlp's source/PyPI package is dedicated to the public domain with
+    # an unrestricted fallback grant: https://spdx.org/licenses/Unlicense.html
+    # We do not redistribute its differently licensed PyInstaller binaries.
+    "Unlicense",
     "Zlib",
 }
 ALIASES = {

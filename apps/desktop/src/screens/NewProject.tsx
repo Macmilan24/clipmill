@@ -7,6 +7,7 @@ import {
   Plus,
   ShieldCheck,
   TriangleAlert,
+  Video,
 } from 'lucide-react';
 import { type JSX, useState } from 'react';
 
@@ -39,6 +40,8 @@ import {
 import type { ConnectionState, Readiness } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 import { type ChosenSource, ImportLoader } from '../import/loader.js';
+import { YouTubeImport } from '../import/YouTubeImport.js';
+import { recallYoutube, rememberYoutube } from '../import/youtube.js';
 import {
   COUNT_BOUNDS,
   CUSTOM_PRESET_ID,
@@ -201,6 +204,9 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
   const [importer] = useState(() => loader ?? new ImportLoader());
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [chosen, setChosen] = useState<ChosenSource | null>(null);
+  const [sourceKind, setSourceKind] = useState<'local' | 'youtube'>(() =>
+    recallYoutube() ? 'youtube' : 'local',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -289,43 +295,86 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
         </Alert>
       )}
 
-      <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-5">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="glass rounded-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5 text-section-title">
               <FileVideo className="size-4" /> Source footage
             </CardTitle>
-            <StatusBadge tone="success">
+            <StatusBadge
+              tone={sourceKind === 'youtube' || route === 'cloud' ? 'outbound' : 'success'}
+            >
               <ShieldCheck className="size-3.5" />
-              {route === 'cloud'
-                ? 'Transcript sharing enabled for this run'
-                : 'Stays on this device'}
+              {sourceKind === 'youtube'
+                ? 'Downloads from YouTube'
+                : route === 'cloud'
+                  ? 'Transcript sharing enabled for this run'
+                  : 'Stays on this device'}
             </StatusBadge>
           </CardHeader>
           <CardContent>
-            <div className="rounded-[var(--cm-radius-panel)] border border-dashed border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-5 py-10 text-center">
-              <FileVideo className={cn('mx-auto size-7', MUTED)} />
-              <p className="mt-2 text-body font-(--cm-weight-label)">Choose a local file</p>
-              <p className={cn('mt-0.5 text-meta', SECONDARY)}>
-                Video and audio are processed on this device. Cloud-assisted mode sends transcript
-                text only.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                disabled={busy || !connected}
-                onClick={() => {
-                  void choose();
-                }}
-              >
-                {busy ? <Spinner /> : null}
-                {chosen === null ? 'Browse files' : 'Choose a different file'}
-              </Button>
-              <p className={cn('mono mt-3 text-technical', MUTED)}>
-                MP4 · MOV · MKV · WEBM · M4V · AVI
-              </p>
+            <div
+              role="group"
+              aria-label="Source location"
+              className="mb-4 flex w-fit gap-1 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-1"
+            >
+              {(['local', 'youtube'] as const).map((kind) => (
+                <Button
+                  key={kind}
+                  type="button"
+                  size="sm"
+                  variant={sourceKind === kind ? 'secondary' : 'ghost'}
+                  aria-pressed={sourceKind === kind}
+                  disabled={busy}
+                  onClick={() => {
+                    if (sourceKind === kind) return;
+                    setSourceKind(kind);
+                    setChosen(null);
+                    setError(null);
+                    if (kind === 'local') rememberYoutube(null);
+                  }}
+                >
+                  {kind === 'local' ? (
+                    <FileVideo className="size-3.5" />
+                  ) : (
+                    <Video className="size-3.5" />
+                  )}
+                  {kind === 'local' ? 'Local file' : 'YouTube'}
+                </Button>
+              ))}
             </div>
+            {sourceKind === 'youtube' ? (
+              <YouTubeImport
+                importer={importer}
+                connected={connected}
+                disabled={busy}
+                onChosen={setChosen}
+              />
+            ) : (
+              <div className="rounded-[var(--cm-radius-panel)] border border-dashed border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-5 py-10 text-center">
+                <FileVideo className={cn('mx-auto size-7', MUTED)} />
+                <p className="mt-2 text-body font-(--cm-weight-label)">Choose a local file</p>
+                <p className={cn('mt-0.5 text-meta', SECONDARY)}>
+                  Video and audio are processed on this device. Cloud-assisted mode sends transcript
+                  text only.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  disabled={busy || !connected}
+                  onClick={() => {
+                    void choose();
+                  }}
+                >
+                  {busy ? <Spinner /> : null}
+                  {chosen === null ? 'Browse files' : 'Choose a different file'}
+                </Button>
+                <p className={cn('mono mt-3 text-technical', MUTED)}>
+                  MP4 · MOV · MKV · WEBM · M4V · AVI
+                </p>
+              </div>
+            )}
 
             {chosen === null ? null : (
               <>
@@ -333,7 +382,7 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
                   <Check className="size-4 shrink-0 text-[var(--color-success)]" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-body font-(--cm-weight-label)">
-                      {chosen.source.absolutePath.split(/[/\\]/).pop()}
+                      {chosen.title || chosen.source.absolutePath.split(/[/\\]/).pop()}
                     </div>
                     <div className={cn('mono truncate text-technical', SECONDARY)}>
                       {formatDuration(chosen.sourceMap)} · {formatVideoSpec(chosen.sourceMap)} ·{' '}
@@ -598,7 +647,10 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
                   value={chosen === null ? EM_DASH : `${formatBytes(chosen.source.byteSize)} local`}
                 />
                 <SummaryRow label="Clip length" value={describeRange(settings)} />
-                <SummaryRow label="Network" value="0 bytes" />
+                <SummaryRow
+                  label="Analysis"
+                  value={route === 'cloud' ? 'Transcript sharing' : 'On this device'}
+                />
               </div>
 
               {/* Disabled reads as disabled, not as a dimmed primary: indigo is

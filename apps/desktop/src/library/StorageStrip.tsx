@@ -7,7 +7,7 @@ import type { StorageStats } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 
 /**
- * The three categories, in the daemon's order, with the wording chosen here.
+ * Storage categories, in the daemon's order, with the wording chosen here.
  *
  * The daemon sends stable keys and no labels, which is the right split: what a
  * category is called is a screen's business, and what it measures is not.
@@ -16,6 +16,7 @@ const LABELS: Readonly<Record<string, string>> = {
   artifacts: 'Artifacts',
   models: 'Models',
   state: 'State',
+  imports: 'Imported originals',
 };
 
 export function StorageStrip({
