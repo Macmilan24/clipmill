@@ -228,20 +228,20 @@ fn invalid_source_rolls_back_without_completing_or_overwriting_a_named_project()
 #[test]
 fn version_twelve_migrates_without_losing_projects() {
     let (temp, db) = setup();
-    db.execute_batch("DROP TABLE youtube_imports; PRAGMA user_version=12;")
+    db.execute_batch("DROP TABLE youtube_upload_roots; DROP TABLE youtube_uploads; DROP TABLE youtube_connections; DROP TABLE youtube_imports; PRAGMA user_version=12;")
         .unwrap();
     drop(db);
     let db = open_database(&temp.path().join("store.db"), &temp.path().join("backups")).unwrap();
     assert_eq!(
-        db.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+        db.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        13
+        super::super::SCHEMA_VERSION
     );
     assert_eq!(
         db.query_row(
             "SELECT count(*) FROM projects WHERE project_id=?1",
             [PROJECT],
-            |row| row.get::<_, u32>(0)
+            |row| row.get::<_, i64>(0)
         )
         .unwrap(),
         1

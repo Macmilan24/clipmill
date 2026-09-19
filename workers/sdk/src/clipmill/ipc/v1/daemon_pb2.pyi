@@ -94,7 +94,7 @@ EXPORT_SEVERITY_BLOCKING: ExportSeverity
 EXPORT_SEVERITY_ADVISORY: ExportSeverity
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "submit_export_batch", "list_export_batches", "update_export_batch_item", "start_youtube_import", "get_youtube_import", "list_youtube_imports", "update_youtube_import")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "submit_export_batch", "list_export_batches", "update_export_batch_item", "start_youtube_import", "get_youtube_import", "list_youtube_imports", "update_youtube_import", "configure_youtube_publishing", "connect_youtube_channel", "get_youtube_publishing_status", "update_youtube_connection", "start_youtube_upload", "get_youtube_upload", "list_youtube_uploads", "update_youtube_upload", "publish_youtube_upload", "draft_youtube_metadata")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -136,6 +136,16 @@ class Request(_message.Message):
     GET_YOUTUBE_IMPORT_FIELD_NUMBER: _ClassVar[int]
     LIST_YOUTUBE_IMPORTS_FIELD_NUMBER: _ClassVar[int]
     UPDATE_YOUTUBE_IMPORT_FIELD_NUMBER: _ClassVar[int]
+    CONFIGURE_YOUTUBE_PUBLISHING_FIELD_NUMBER: _ClassVar[int]
+    CONNECT_YOUTUBE_CHANNEL_FIELD_NUMBER: _ClassVar[int]
+    GET_YOUTUBE_PUBLISHING_STATUS_FIELD_NUMBER: _ClassVar[int]
+    UPDATE_YOUTUBE_CONNECTION_FIELD_NUMBER: _ClassVar[int]
+    START_YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
+    GET_YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
+    LIST_YOUTUBE_UPLOADS_FIELD_NUMBER: _ClassVar[int]
+    UPDATE_YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
+    PUBLISH_YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
+    DRAFT_YOUTUBE_METADATA_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -177,10 +187,20 @@ class Request(_message.Message):
     get_youtube_import: GetYoutubeImportRequest
     list_youtube_imports: ListYoutubeImportsRequest
     update_youtube_import: UpdateYoutubeImportRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessRequest, _Mapping]] = ..., submit_export_batch: _Optional[_Union[SubmitExportBatchRequest, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesRequest, _Mapping]] = ..., update_export_batch_item: _Optional[_Union[UpdateExportBatchItemRequest, _Mapping]] = ..., start_youtube_import: _Optional[_Union[StartYoutubeImportRequest, _Mapping]] = ..., get_youtube_import: _Optional[_Union[GetYoutubeImportRequest, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsRequest, _Mapping]] = ..., update_youtube_import: _Optional[_Union[UpdateYoutubeImportRequest, _Mapping]] = ...) -> None: ...
+    configure_youtube_publishing: ConfigureYoutubePublishingRequest
+    connect_youtube_channel: ConnectYoutubeChannelRequest
+    get_youtube_publishing_status: GetYoutubePublishingStatusRequest
+    update_youtube_connection: UpdateYoutubeConnectionRequest
+    start_youtube_upload: StartYoutubeUploadRequest
+    get_youtube_upload: GetYoutubeUploadRequest
+    list_youtube_uploads: ListYoutubeUploadsRequest
+    update_youtube_upload: UpdateYoutubeUploadRequest
+    publish_youtube_upload: PublishYoutubeUploadRequest
+    draft_youtube_metadata: DraftYoutubeMetadataRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessRequest, _Mapping]] = ..., submit_export_batch: _Optional[_Union[SubmitExportBatchRequest, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesRequest, _Mapping]] = ..., update_export_batch_item: _Optional[_Union[UpdateExportBatchItemRequest, _Mapping]] = ..., start_youtube_import: _Optional[_Union[StartYoutubeImportRequest, _Mapping]] = ..., get_youtube_import: _Optional[_Union[GetYoutubeImportRequest, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsRequest, _Mapping]] = ..., update_youtube_import: _Optional[_Union[UpdateYoutubeImportRequest, _Mapping]] = ..., configure_youtube_publishing: _Optional[_Union[ConfigureYoutubePublishingRequest, _Mapping]] = ..., connect_youtube_channel: _Optional[_Union[ConnectYoutubeChannelRequest, _Mapping]] = ..., get_youtube_publishing_status: _Optional[_Union[GetYoutubePublishingStatusRequest, _Mapping]] = ..., update_youtube_connection: _Optional[_Union[UpdateYoutubeConnectionRequest, _Mapping]] = ..., start_youtube_upload: _Optional[_Union[StartYoutubeUploadRequest, _Mapping]] = ..., get_youtube_upload: _Optional[_Union[GetYoutubeUploadRequest, _Mapping]] = ..., list_youtube_uploads: _Optional[_Union[ListYoutubeUploadsRequest, _Mapping]] = ..., update_youtube_upload: _Optional[_Union[UpdateYoutubeUploadRequest, _Mapping]] = ..., publish_youtube_upload: _Optional[_Union[PublishYoutubeUploadRequest, _Mapping]] = ..., draft_youtube_metadata: _Optional[_Union[DraftYoutubeMetadataRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "export_batch", "list_export_batches", "youtube_import", "list_youtube_imports")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "export_batch", "list_export_batches", "youtube_import", "list_youtube_imports", "youtube_publishing_status", "youtube_connect", "youtube_upload", "list_youtube_uploads", "draft_youtube_metadata")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -221,6 +241,11 @@ class Response(_message.Message):
     LIST_EXPORT_BATCHES_FIELD_NUMBER: _ClassVar[int]
     YOUTUBE_IMPORT_FIELD_NUMBER: _ClassVar[int]
     LIST_YOUTUBE_IMPORTS_FIELD_NUMBER: _ClassVar[int]
+    YOUTUBE_PUBLISHING_STATUS_FIELD_NUMBER: _ClassVar[int]
+    YOUTUBE_CONNECT_FIELD_NUMBER: _ClassVar[int]
+    YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
+    LIST_YOUTUBE_UPLOADS_FIELD_NUMBER: _ClassVar[int]
+    DRAFT_YOUTUBE_METADATA_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -261,7 +286,12 @@ class Response(_message.Message):
     list_export_batches: ListExportBatchesResponse
     youtube_import: YoutubeImportResponse
     list_youtube_imports: ListYoutubeImportsResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessResponse, _Mapping]] = ..., export_batch: _Optional[_Union[ExportBatchResponse, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesResponse, _Mapping]] = ..., youtube_import: _Optional[_Union[YoutubeImportResponse, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsResponse, _Mapping]] = ...) -> None: ...
+    youtube_publishing_status: YoutubePublishingStatusResponse
+    youtube_connect: YoutubeConnectResponse
+    youtube_upload: YoutubeUploadResponse
+    list_youtube_uploads: ListYoutubeUploadsResponse
+    draft_youtube_metadata: DraftYoutubeMetadataResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessResponse, _Mapping]] = ..., export_batch: _Optional[_Union[ExportBatchResponse, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesResponse, _Mapping]] = ..., youtube_import: _Optional[_Union[YoutubeImportResponse, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsResponse, _Mapping]] = ..., youtube_publishing_status: _Optional[_Union[YoutubePublishingStatusResponse, _Mapping]] = ..., youtube_connect: _Optional[_Union[YoutubeConnectResponse, _Mapping]] = ..., youtube_upload: _Optional[_Union[YoutubeUploadResponse, _Mapping]] = ..., list_youtube_uploads: _Optional[_Union[ListYoutubeUploadsResponse, _Mapping]] = ..., draft_youtube_metadata: _Optional[_Union[DraftYoutubeMetadataResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -1780,3 +1810,191 @@ class ListYoutubeImportsResponse(_message.Message):
     IMPORTS_FIELD_NUMBER: _ClassVar[int]
     imports: _containers.RepeatedCompositeFieldContainer[YoutubeImportV1]
     def __init__(self, imports: _Optional[_Iterable[_Union[YoutubeImportV1, _Mapping]]] = ...) -> None: ...
+
+class ConfigureYoutubePublishingRequest(_message.Message):
+    __slots__ = ("client_config_path",)
+    CLIENT_CONFIG_PATH_FIELD_NUMBER: _ClassVar[int]
+    client_config_path: str
+    def __init__(self, client_config_path: _Optional[str] = ...) -> None: ...
+
+class ConnectYoutubeChannelRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetYoutubePublishingStatusRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class UpdateYoutubeConnectionRequest(_message.Message):
+    __slots__ = ("connection_id", "action")
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ACTION_FIELD_NUMBER: _ClassVar[int]
+    connection_id: str
+    action: str
+    def __init__(self, connection_id: _Optional[str] = ..., action: _Optional[str] = ...) -> None: ...
+
+class YoutubeConnectionV1(_message.Message):
+    __slots__ = ("connection_id", "channel_id", "title", "state", "error", "created_unix_millis", "updated_unix_millis")
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    CHANNEL_ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    CREATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    connection_id: str
+    channel_id: str
+    title: str
+    state: str
+    error: str
+    created_unix_millis: int
+    updated_unix_millis: int
+    def __init__(self, connection_id: _Optional[str] = ..., channel_id: _Optional[str] = ..., title: _Optional[str] = ..., state: _Optional[str] = ..., error: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ...) -> None: ...
+
+class YoutubePublishingStatusResponse(_message.Message):
+    __slots__ = ("configured", "connections", "available")
+    CONFIGURED_FIELD_NUMBER: _ClassVar[int]
+    CONNECTIONS_FIELD_NUMBER: _ClassVar[int]
+    AVAILABLE_FIELD_NUMBER: _ClassVar[int]
+    configured: bool
+    connections: _containers.RepeatedCompositeFieldContainer[YoutubeConnectionV1]
+    available: bool
+    def __init__(self, configured: _Optional[bool] = ..., connections: _Optional[_Iterable[_Union[YoutubeConnectionV1, _Mapping]]] = ..., available: _Optional[bool] = ...) -> None: ...
+
+class YoutubeConnectResponse(_message.Message):
+    __slots__ = ("connection_id", "authorization_url")
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    AUTHORIZATION_URL_FIELD_NUMBER: _ClassVar[int]
+    connection_id: str
+    authorization_url: str
+    def __init__(self, connection_id: _Optional[str] = ..., authorization_url: _Optional[str] = ...) -> None: ...
+
+class YoutubeVideoMetadataV1(_message.Message):
+    __slots__ = ("title", "description", "tags", "made_for_kids", "contains_synthetic_media")
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    TAGS_FIELD_NUMBER: _ClassVar[int]
+    MADE_FOR_KIDS_FIELD_NUMBER: _ClassVar[int]
+    CONTAINS_SYNTHETIC_MEDIA_FIELD_NUMBER: _ClassVar[int]
+    title: str
+    description: str
+    tags: _containers.RepeatedScalarFieldContainer[str]
+    made_for_kids: bool
+    contains_synthetic_media: bool
+    def __init__(self, title: _Optional[str] = ..., description: _Optional[str] = ..., tags: _Optional[_Iterable[str]] = ..., made_for_kids: _Optional[bool] = ..., contains_synthetic_media: _Optional[bool] = ...) -> None: ...
+
+class StartYoutubeUploadRequest(_message.Message):
+    __slots__ = ("export_job_id", "connection_id", "expected_revision", "metadata", "rights_confirmed")
+    EXPORT_JOB_ID_FIELD_NUMBER: _ClassVar[int]
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    METADATA_FIELD_NUMBER: _ClassVar[int]
+    RIGHTS_CONFIRMED_FIELD_NUMBER: _ClassVar[int]
+    export_job_id: str
+    connection_id: str
+    expected_revision: int
+    metadata: YoutubeVideoMetadataV1
+    rights_confirmed: bool
+    def __init__(self, export_job_id: _Optional[str] = ..., connection_id: _Optional[str] = ..., expected_revision: _Optional[int] = ..., metadata: _Optional[_Union[YoutubeVideoMetadataV1, _Mapping]] = ..., rights_confirmed: _Optional[bool] = ...) -> None: ...
+
+class GetYoutubeUploadRequest(_message.Message):
+    __slots__ = ("upload_id",)
+    UPLOAD_ID_FIELD_NUMBER: _ClassVar[int]
+    upload_id: str
+    def __init__(self, upload_id: _Optional[str] = ...) -> None: ...
+
+class ListYoutubeUploadsRequest(_message.Message):
+    __slots__ = ("project_id",)
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    project_id: str
+    def __init__(self, project_id: _Optional[str] = ...) -> None: ...
+
+class UpdateYoutubeUploadRequest(_message.Message):
+    __slots__ = ("upload_id", "action")
+    UPLOAD_ID_FIELD_NUMBER: _ClassVar[int]
+    ACTION_FIELD_NUMBER: _ClassVar[int]
+    upload_id: str
+    action: str
+    def __init__(self, upload_id: _Optional[str] = ..., action: _Optional[str] = ...) -> None: ...
+
+class PublishYoutubeUploadRequest(_message.Message):
+    __slots__ = ("upload_id",)
+    UPLOAD_ID_FIELD_NUMBER: _ClassVar[int]
+    upload_id: str
+    def __init__(self, upload_id: _Optional[str] = ...) -> None: ...
+
+class YoutubeUploadV1(_message.Message):
+    __slots__ = ("upload_id", "project_id", "doc_id", "revision", "export_job_id", "ir_artifact_id", "render_artifact_id", "connection_id", "channel_id", "channel_title", "metadata", "state", "acknowledged_bytes", "total_bytes", "video_id", "visibility", "error_code", "error", "created_unix_millis", "updated_unix_millis")
+    UPLOAD_ID_FIELD_NUMBER: _ClassVar[int]
+    PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    EXPORT_JOB_ID_FIELD_NUMBER: _ClassVar[int]
+    IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    RENDER_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    CHANNEL_ID_FIELD_NUMBER: _ClassVar[int]
+    CHANNEL_TITLE_FIELD_NUMBER: _ClassVar[int]
+    METADATA_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    ACKNOWLEDGED_BYTES_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_BYTES_FIELD_NUMBER: _ClassVar[int]
+    VIDEO_ID_FIELD_NUMBER: _ClassVar[int]
+    VISIBILITY_FIELD_NUMBER: _ClassVar[int]
+    ERROR_CODE_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    CREATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    upload_id: str
+    project_id: str
+    doc_id: str
+    revision: int
+    export_job_id: str
+    ir_artifact_id: str
+    render_artifact_id: str
+    connection_id: str
+    channel_id: str
+    channel_title: str
+    metadata: YoutubeVideoMetadataV1
+    state: str
+    acknowledged_bytes: int
+    total_bytes: int
+    video_id: str
+    visibility: str
+    error_code: str
+    error: str
+    created_unix_millis: int
+    updated_unix_millis: int
+    def __init__(self, upload_id: _Optional[str] = ..., project_id: _Optional[str] = ..., doc_id: _Optional[str] = ..., revision: _Optional[int] = ..., export_job_id: _Optional[str] = ..., ir_artifact_id: _Optional[str] = ..., render_artifact_id: _Optional[str] = ..., connection_id: _Optional[str] = ..., channel_id: _Optional[str] = ..., channel_title: _Optional[str] = ..., metadata: _Optional[_Union[YoutubeVideoMetadataV1, _Mapping]] = ..., state: _Optional[str] = ..., acknowledged_bytes: _Optional[int] = ..., total_bytes: _Optional[int] = ..., video_id: _Optional[str] = ..., visibility: _Optional[str] = ..., error_code: _Optional[str] = ..., error: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ...) -> None: ...
+
+class YoutubeUploadResponse(_message.Message):
+    __slots__ = ("record",)
+    RECORD_FIELD_NUMBER: _ClassVar[int]
+    record: YoutubeUploadV1
+    def __init__(self, record: _Optional[_Union[YoutubeUploadV1, _Mapping]] = ...) -> None: ...
+
+class ListYoutubeUploadsResponse(_message.Message):
+    __slots__ = ("uploads",)
+    UPLOADS_FIELD_NUMBER: _ClassVar[int]
+    uploads: _containers.RepeatedCompositeFieldContainer[YoutubeUploadV1]
+    def __init__(self, uploads: _Optional[_Iterable[_Union[YoutubeUploadV1, _Mapping]]] = ...) -> None: ...
+
+class DraftYoutubeMetadataRequest(_message.Message):
+    __slots__ = ("export_job_id", "expected_revision")
+    EXPORT_JOB_ID_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    export_job_id: str
+    expected_revision: int
+    def __init__(self, export_job_id: _Optional[str] = ..., expected_revision: _Optional[int] = ...) -> None: ...
+
+class DraftYoutubeMetadataResponse(_message.Message):
+    __slots__ = ("metadata", "render_artifact_id", "revision", "transcript_excerpt")
+    METADATA_FIELD_NUMBER: _ClassVar[int]
+    RENDER_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    TRANSCRIPT_EXCERPT_FIELD_NUMBER: _ClassVar[int]
+    metadata: YoutubeVideoMetadataV1
+    render_artifact_id: str
+    revision: int
+    transcript_excerpt: str
+    def __init__(self, metadata: _Optional[_Union[YoutubeVideoMetadataV1, _Mapping]] = ..., render_artifact_id: _Optional[str] = ..., revision: _Optional[int] = ..., transcript_excerpt: _Optional[str] = ...) -> None: ...

@@ -238,6 +238,18 @@ export function filmstrip(artifactId: string, tiles: number): MediaArtifact {
 
 export function fakeApi(world: FakeWorld): ShellApi {
   return {
+    fetchYoutubePublishingStatus: () =>
+      Promise.resolve({ available: true, configured: false, connections: [] }),
+    chooseYoutubeClientConfig: () => Promise.resolve(null),
+    connectYoutubeChannel: () => Promise.reject(new Error('no channel configured')),
+    updateYoutubeConnection: () => Promise.reject(new Error('no channel configured')),
+    startYoutubeUpload: () => Promise.reject(new Error('no channel configured')),
+    draftYoutubeMetadata: () => Promise.reject(new Error('no metadata draft configured')),
+    listYoutubeUploads: () => Promise.resolve([]),
+    getYoutubeUpload: () => Promise.reject(new Error('no upload configured')),
+    updateYoutubeUpload: () => Promise.reject(new Error('no upload configured')),
+    publishYoutubeUpload: () => Promise.reject(new Error('no upload configured')),
+    openYoutubePage: () => Promise.resolve(),
     getSource: (sourceId) => {
       const foundSource = Object.values(world.sources)
         .flat()

@@ -13,13 +13,14 @@ source video through **New project → YouTube** does not require this setup.
 4. Under **Clients**, create an OAuth client with application type **Desktop app**.
    A web-application client or API key is not a substitute for desktop sign-in.
 5. Download the client JSON file to your computer. Select it through ClipMill's
-   channel setup once that feature is available. Do not paste access tokens,
+   channel setup in **Settings → YouTube**. Do not paste access tokens,
    refresh tokens or the client JSON into a chat, issue or source-control file.
 6. Use **Connect channel** and complete Google's consent flow in your system
    browser. Check the actual channel name and ID shown after connection before
    choosing an export to upload.
 
-The app uses the desktop authorization flow with a loopback callback, random
+Channel connection currently uses macOS Keychain; other platforms show it as
+unavailable. The app uses the desktop authorization flow with a loopback callback, random
 state and PKCE. Google account passwords remain in the browser; channel tokens
 belong in the operating system credential store. Google's authoritative
 [desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)

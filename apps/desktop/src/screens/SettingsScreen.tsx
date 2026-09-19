@@ -4,6 +4,8 @@ import type { Theme } from '@clipmill/tokens';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { LocalLock, StorageStats } from '../daemon/client.js';
 import { Settings } from './Settings.js';
+import { ConnectionCard } from '../youtube/ConnectionCard.js';
+import { UploadHistory } from '../youtube/UploadHistory.js';
 
 export interface SettingsScreenProps {
   readonly api?: ShellApi;
@@ -49,6 +51,14 @@ export function SettingsScreen({ api = daemonApi, ...preferences }: SettingsScre
   return (
     <Settings
       {...preferences}
+      integrations={
+        preferences.integrations ?? (
+          <div className="space-y-5">
+            <ConnectionCard api={api} />
+            <UploadHistory api={api} />
+          </div>
+        )
+      }
       storage={storage}
       lock={lock}
       loading={loading}

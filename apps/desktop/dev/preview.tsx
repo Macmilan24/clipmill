@@ -14,6 +14,10 @@ import { Editor } from '../src/screens/Editor.js';
 import { Export } from '../src/screens/Export.js';
 import { BatchExportScreen } from '../src/screens/BatchExportScreen.js';
 import { batchApi } from './batch-fixtures.js';
+import { publishingFixture } from './publishing-fixtures.js';
+import { ConnectionCard } from '../src/youtube/ConnectionCard.js';
+import { UploadPanel } from '../src/youtube/UploadPanel.js';
+import { UploadHistory } from '../src/youtube/UploadHistory.js';
 import { Library } from '../src/screens/Library.js';
 import { Settings } from '../src/screens/Settings.js';
 import { ModelsDevice } from '../src/screens/ModelsDevice.js';
@@ -52,6 +56,15 @@ class PreviewLibrary extends LibraryLoader {
   }
 }
 const libraryLoader = new PreviewLibrary();
+const publishingScenario = new URLSearchParams(location.search).get('publishing');
+const publishingApi = {
+  ...daemonApi,
+  ...publishingFixture(
+    publishingScenario === 'connected' || publishingScenario === 'history',
+    publishingScenario === 'history',
+  ),
+  listProjects: async () => [project],
+};
 const importLoader = new ImportLoader({
   ...daemonApi,
   fetchReadiness: async () => ({
@@ -277,6 +290,19 @@ function Preview() {
               )}
               {page === 'export' && (
                 <Export
+                  publishing={
+                    <UploadPanel
+                      api={publishingApi}
+                      projectId="preview"
+                      docId="preview-edit"
+                      exportJobId="preview-export"
+                      revision={plan.revision}
+                      renderArtifactId="preview-render"
+                      currentRevision={plan.revision}
+                      delivered
+                      onSetup={() => setPage('settings')}
+                    />
+                  }
                   onEdit={() => setPage('editor')}
                   docId="preview-edit"
                   labels={labels}
@@ -345,6 +371,12 @@ function Preview() {
               )}
               {page === 'settings' && (
                 <Settings
+                  integrations={
+                    <div className="space-y-5">
+                      <ConnectionCard api={publishingApi} />
+                      <UploadHistory api={publishingApi} />
+                    </div>
+                  }
                   storage={storage}
                   lock={lock}
                   loading={false}

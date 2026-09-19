@@ -353,12 +353,12 @@ function LocalLockCard({
           {locked
             ? 'No network operations have started in this engine session. Local analysis keeps source media, frames and transcripts on this device.'
             : connected
-              ? 'Network operations have started in this engine session. This includes YouTube imports and explicitly enabled cloud analysis; importing a video does not enable cloud AI.'
+              ? 'Network operations have started in this engine session. This includes YouTube imports, channel sign-in, publishing and explicitly enabled cloud analysis; importing a video does not enable cloud AI.'
               : 'Reconnect to check whether network operations have started in this engine session.'}
         </p>
         <p className={cn('mt-2 text-[11px] leading-relaxed', MUTED)}>
-          This records cloud analysis and source import starts, not a network firewall or a count of
-          bytes sent. Model downloads are managed separately.
+          This records cloud analysis, source imports and channel operations, not a network firewall
+          or a count of bytes sent. Model downloads are managed separately.
         </p>
         <Separator className="my-3 bg-[var(--cm-glass-border)]" />
         <dl className="grid gap-2">

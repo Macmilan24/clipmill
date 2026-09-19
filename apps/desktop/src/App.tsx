@@ -225,6 +225,7 @@ export function App(): JSX.Element {
                 },
               },
               export: {
+                onOpenChannelSettings: () => setRoute({ kind: 'section', sectionId: 'settings' }),
                 onEdit: (next) => openClip(next, 'editor'),
                 onOpen: (next) => {
                   openClip(next, 'export');

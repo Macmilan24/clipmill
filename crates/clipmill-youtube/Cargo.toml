@@ -1,0 +1,29 @@
+[package]
+name = "clipmill-youtube"
+description = "Narrow private-first YouTube transport and desktop OAuth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+base64 = "0.22"
+getrandom.workspace = true
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "form", "query", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url = "2.5"
+
+[dev-dependencies]
+http = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7"
+
+[lints]
+workspace = true
