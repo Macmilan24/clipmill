@@ -166,3 +166,46 @@ The narrow inverse of a trim — the old window — is used only when trimming
 back reproduces the arrangement byte for byte; a trim that kept a crop, a
 gain value or a folded caption undoes through the whole prior arrangement
 instead, and the undo is exact either way.
+
+## Decoded-frame playback and cut continuity
+
+The canvas uses `requestVideoFrameCallback` and the decoded frame's `mediaTime`
+for both its program-frame lookup and its crop. React receives that same frame
+for the playhead and captions; painting does not wait for a React commit. Webviews
+without this API use a single animation-frame fallback that stops while paused.
+A paused video keeps one decoded-frame callback pending so opening and seeking
+can display the first available picture without an idle polling loop.
+
+Adjacent segments play continuously only when source identity, source ticks,
+program ticks and frame ranges join exactly. Real gaps, repetitions and source
+changes still seek. Stale callbacks are cancelled across seeks and source/document
+changes. Composition happens in a temporary canvas and replaces the visible
+bitmap only after a successful draw, including its translucent blur edges.
+Native end-of-file events finish or advance the edit even when the last decoded
+proxy frame precedes the final program frame; Replay explicitly seeks the clip's
+start instead of relying on the browser's whole-file restart.
+
+### Native verification, 2026-09-19
+
+The macOS desktop build was tested through its real media protocol on a saved
+59-second, 1,770-frame edit with alternating single and two-portrait layouts.
+Web Inspector counters recorded six unnecessary seeks over 14.3 seconds before
+the fix. With the repaired frame clock, a full playback recorded 1,771 decoded
+callbacks, no intermediate seeks, and only the intended seek onto the final held
+frame. The largest gap between consecutive decoded timestamps was 33.367 ms.
+A 16×16 canvas sample on every callback found no fully transparent or fully white
+frames. The first picture appeared while paused; rapid scrubbing, stepping and
+replay were also checked. No document edits were made during these checks.
+
+An intermediate build recorded one transparent sample before adding the paused
+decoded-frame subscription; the subsequent cold-open/full-playback check above
+recorded none. This is a regression check for this footage and machine, not a
+cross-platform frame-delivery guarantee or an export pixel-parity test. Export
+still renders the saved document independently from original footage.
+
+Regression tests cover fractional frame boundaries, delayed callbacks crossing
+several shots, real source gaps and overlaps, paused edits, decode failures,
+source/document replacement, native EOF and Replay. An independent review found
+the detached-media, compositing-edge and EOF cases; all were fixed and retested.
+EOF cases are exercised by controlled media tests rather than by the native
+mid-source recording used for the compositor check.
