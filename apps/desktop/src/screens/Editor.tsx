@@ -313,7 +313,13 @@ export function Editor({
         return null;
       // A paused seek requests a program frame even when the lower-rate proxy
       // decodes an earlier frame. Do not move the scrubber back to that frame.
-      if (element.paused && !atMediaEnd) return clockFrame.current;
+      if (element.paused && !atMediaEnd) {
+        // Pausing in the fractional boundary gap must not repaint the newly
+        // decoded incoming bitmap under the held outgoing frame's crop.
+        return resolvePlaybackFrame(plan, clockFrame.current, seconds).hold
+          ? null
+          : clockFrame.current;
+      }
       const next = resolvePlaybackFrame(plan, clockFrame.current, seconds);
       if (next.seek || next.ended) {
         if (next.ended) {
@@ -343,7 +349,7 @@ export function Editor({
         return null;
       }
       updateFrame(next.frame);
-      return next.frame;
+      return next.hold ? null : next.frame;
     },
     [plan, proxyUrls, seek, updateFrame, stopWithProblem],
   );

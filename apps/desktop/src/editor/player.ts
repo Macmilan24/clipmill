@@ -137,7 +137,7 @@ export function resolvePlaybackFrame(
   plan: PreviewPlan,
   currentFrame: number,
   proxySeconds: number,
-): { frame: number; seek: boolean; ended: boolean } {
+): { frame: number; seek: boolean; ended: boolean; hold?: true } {
   const lastFrame = Math.max(0, plan.frameCount - 1);
   const heldFrame = Math.max(0, Math.min(lastFrame, currentFrame));
   const initial = segmentAt(plan, heldFrame);
@@ -170,9 +170,9 @@ export function resolvePlaybackFrame(
     index += 1;
   }
 
-  // Continuous cuts share one affine clock. Do not clamp to a following
-  // segment's firstFrame: a cut at 0.52 s falls between frames 15 and 16 at
-  // 30000/1001 fps, and frame 15 remains visible until frame 16 actually starts.
+  // Continuous cuts share one affine clock, but source and program frame
+  // lattices can have different origins. A decoded picture may cross into
+  // the next shot before the program reaches its first allocated frame.
   const proxyTicks = proxySeconds * TICKS_PER_SECOND;
   const programTicks =
     proxyTicks + proxy.coverageStartTicks - initial.inTicks + initial.programStartTicks;
@@ -193,10 +193,15 @@ export function resolvePlaybackFrame(
   const frame = Math.floor(
     Math.abs(framePosition - nearestFrame) <= roundingErrorFrames ? nearestFrame : framePosition,
   );
+  const programFrame = Math.max(initial.firstFrame, Math.min(lastFrame, frame));
   return {
-    frame: Math.max(initial.firstFrame, Math.min(lastFrame, frame)),
+    frame: programFrame,
     seek: false,
     ended: false,
+    // Do not apply the outgoing crop to already-incoming pixels. Keep the
+    // last complete picture until both clocks agree, without seeking or
+    // advancing the caption/playhead clock to an early incoming frame.
+    ...(segmentAt(plan, programFrame) !== segment ? { hold: true as const } : {}),
   };
 }
 
