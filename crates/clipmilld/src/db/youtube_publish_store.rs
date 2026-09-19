@@ -58,10 +58,19 @@ pub(crate) struct PublishingReply {
     pub uploads: Vec<Publication>,
     pub receipt: Option<Vec<u8>>,
     pub export_payload: Option<clipmill_contracts::proto::ipc::v1::ExportClipPayloadV1>,
+    pub metadata_job: Option<crate::jobs::JobRecord>,
+    pub events: Vec<crate::jobs::TaskEventRecord>,
 }
 
 #[derive(Debug)]
 pub(crate) enum PublishingCommand {
+    MetadataJob {
+        project_id: String,
+        payload: Vec<u8>,
+        job_id: String,
+        plan: Option<Box<crate::jobs::JobPlan>>,
+        retry_job_id: String,
+    },
     ExportPayload {
         job_id: String,
     },
@@ -123,6 +132,24 @@ pub(super) fn execute(
     let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut reply = PublishingReply::default();
     match command {
+        PublishingCommand::MetadataJob {
+            project_id,
+            payload,
+            job_id,
+            plan,
+            retry_job_id,
+        } => {
+            let (job, events) = metadata_job(
+                &tx,
+                &project_id,
+                &payload,
+                &job_id,
+                plan.as_deref(),
+                &retry_job_id,
+            )?;
+            reply.metadata_job = job;
+            reply.events = events;
+        }
         PublishingCommand::ExportPayload { job_id } => {
             let bytes: Vec<u8> = tx
                 .query_row(
@@ -518,6 +545,87 @@ fn receipt_id(bytes: &[u8]) -> Result<String, StoreError> {
             .ok_or(StoreError::InvalidData("upload receipt missing record")),
         _ => Err(StoreError::InvalidData("wrong upload receipt")),
     }
+}
+
+/// A metadata result is shared by repeated exports of one immutable edit.
+/// Lookup and insertion belong to the same SQLite transaction so two windows
+/// cannot schedule duplicate model runs. A retry names its failed predecessor;
+/// replaying that intent returns the replacement instead of starting another.
+fn metadata_job(
+    tx: &rusqlite::Transaction<'_>,
+    project_id: &str,
+    payload: &[u8],
+    job_id: &str,
+    plan: Option<&crate::jobs::JobPlan>,
+    retry_job_id: &str,
+) -> Result<
+    (
+        Option<crate::jobs::JobRecord>,
+        Vec<crate::jobs::TaskEventRecord>,
+    ),
+    StoreError,
+> {
+    use clipmill_contracts::proto::ipc::v1::JobState;
+    let exists: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM projects WHERE project_id=?1 AND is_system=0)",
+        [project_id],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        return Err(StoreError::NotFound);
+    }
+    let find = |id: &str| -> Result<Option<String>, StoreError> {
+        Ok(tx
+            .query_row(
+                "SELECT job_id FROM jobs WHERE project_id=?1 AND kind='youtube-metadata'
+             AND payload=?2 AND (?3='' OR job_id=?3)
+             ORDER BY created_unix_millis DESC,job_id DESC LIMIT 1",
+                params![project_id, payload, id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    };
+    let found = find(job_id)?;
+    if !job_id.is_empty() && found.is_none() {
+        return Err(StoreError::NotFound);
+    }
+    let existing = found
+        .map(|id| super::job_store::get_job(tx, &id))
+        .transpose()?;
+    let Some(plan) = plan else {
+        return Ok((existing, Vec::new()));
+    };
+    if !job_id.is_empty()
+        || plan.project_id != project_id
+        || plan.kind != "youtube-metadata"
+        || plan.payload != payload
+    {
+        return Err(StoreError::InvalidData(
+            "metadata plan does not match its identity",
+        ));
+    }
+    let replace = if retry_job_id.is_empty() {
+        false
+    } else {
+        let predecessor = find(retry_job_id)?.ok_or(StoreError::NotFound)?;
+        let previous = super::job_store::get_job(tx, &predecessor)?;
+        if !matches!(
+            JobState::try_from(previous.state),
+            Ok(JobState::Failed | JobState::Cancelled)
+        ) {
+            return Err(StoreError::PublishingConflict(
+                "Only failed or cancelled metadata can be retried.",
+            ));
+        }
+        existing
+            .as_ref()
+            .is_some_and(|job| job.job_id == retry_job_id)
+    };
+    if existing.is_some() && !replace {
+        return Ok((existing, Vec::new()));
+    }
+    let events = super::job_store::insert_job_plan(tx, plan)?;
+    Ok((Some(super::job_store::get_job(tx, &plan.job_id)?), events))
 }
 
 #[cfg(test)]

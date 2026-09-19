@@ -1980,21 +1980,47 @@ class ListYoutubeUploadsResponse(_message.Message):
     def __init__(self, uploads: _Optional[_Iterable[_Union[YoutubeUploadV1, _Mapping]]] = ...) -> None: ...
 
 class DraftYoutubeMetadataRequest(_message.Message):
-    __slots__ = ("export_job_id", "expected_revision")
+    __slots__ = ("export_job_id", "expected_revision", "generation_action", "generation_job_id")
     EXPORT_JOB_ID_FIELD_NUMBER: _ClassVar[int]
     EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_ACTION_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_JOB_ID_FIELD_NUMBER: _ClassVar[int]
     export_job_id: str
     expected_revision: int
-    def __init__(self, export_job_id: _Optional[str] = ..., expected_revision: _Optional[int] = ...) -> None: ...
+    generation_action: str
+    generation_job_id: str
+    def __init__(self, export_job_id: _Optional[str] = ..., expected_revision: _Optional[int] = ..., generation_action: _Optional[str] = ..., generation_job_id: _Optional[str] = ...) -> None: ...
 
 class DraftYoutubeMetadataResponse(_message.Message):
-    __slots__ = ("metadata", "render_artifact_id", "revision", "transcript_excerpt")
+    __slots__ = ("metadata", "render_artifact_id", "revision", "transcript_excerpt", "generation_job_id", "generation_state", "generation_message", "model_name", "generated_metadata")
     METADATA_FIELD_NUMBER: _ClassVar[int]
     RENDER_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
     TRANSCRIPT_EXCERPT_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_JOB_ID_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_STATE_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    MODEL_NAME_FIELD_NUMBER: _ClassVar[int]
+    GENERATED_METADATA_FIELD_NUMBER: _ClassVar[int]
     metadata: YoutubeVideoMetadataV1
     render_artifact_id: str
     revision: int
     transcript_excerpt: str
-    def __init__(self, metadata: _Optional[_Union[YoutubeVideoMetadataV1, _Mapping]] = ..., render_artifact_id: _Optional[str] = ..., revision: _Optional[int] = ..., transcript_excerpt: _Optional[str] = ...) -> None: ...
+    generation_job_id: str
+    generation_state: str
+    generation_message: str
+    model_name: str
+    generated_metadata: YoutubeVideoMetadataV1
+    def __init__(self, metadata: _Optional[_Union[YoutubeVideoMetadataV1, _Mapping]] = ..., render_artifact_id: _Optional[str] = ..., revision: _Optional[int] = ..., transcript_excerpt: _Optional[str] = ..., generation_job_id: _Optional[str] = ..., generation_state: _Optional[str] = ..., generation_message: _Optional[str] = ..., model_name: _Optional[str] = ..., generated_metadata: _Optional[_Union[YoutubeVideoMetadataV1, _Mapping]] = ...) -> None: ...
+
+class YoutubeMetadataTaskPayloadV1(_message.Message):
+    __slots__ = ("key_version", "ir_artifact_id", "prompt_digest", "max_output_tokens")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    PROMPT_DIGEST_FIELD_NUMBER: _ClassVar[int]
+    MAX_OUTPUT_TOKENS_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    ir_artifact_id: str
+    prompt_digest: str
+    max_output_tokens: int
+    def __init__(self, key_version: _Optional[str] = ..., ir_artifact_id: _Optional[str] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ...) -> None: ...

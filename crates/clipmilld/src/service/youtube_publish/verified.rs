@@ -16,7 +16,21 @@ pub(super) struct VerifiedExport {
     pub bytes: u64,
     pub sha256: String,
     pub lease: ArtifactLease,
-    pub sources: Vec<String>,
+}
+
+pub(super) struct MetadataContext {
+    pub project_id: String,
+    pub ir_id: String,
+    pub source_link: Option<String>,
+    pub has_transcript: bool,
+    pub draft: DraftYoutubeMetadataResponse,
+}
+
+struct MetadataExport {
+    project_id: String,
+    ir_id: String,
+    render_id: String,
+    sources: Vec<String>,
 }
 
 impl Service {
@@ -60,10 +74,10 @@ impl Service {
             Error::Invalid("The exported video is missing. Export it again before uploading.")
         })?;
         let expected_ir = summary.ir_artifact_id.clone();
-        let (lease, manifest, bytes, sha256) = tokio::task::spawn_blocking(move || {
+        let (lease, bytes, sha256) = tokio::task::spawn_blocking(move || {
             let manifest = verified_manifest(&lease, &expected_ir)?;
             let (bytes, sha256, _) = verified_clip(&lease, &manifest)?;
-            Ok::<_, Error>((lease, manifest, bytes, sha256))
+            Ok::<_, Error>((lease, bytes, sha256))
         })
         .await
         .map_err(|_| Error::Protocol)??;
@@ -75,7 +89,6 @@ impl Service {
             bytes,
             sha256,
             lease,
-            sources: manifest.input_source_fingerprints,
         })
     }
     pub(super) async fn verified_publication_file(
@@ -103,13 +116,66 @@ impl Service {
         .map_err(|_| Error::Protocol)??;
         Ok((lease, tokio::fs::File::from_std(file)))
     }
-    pub(super) async fn youtube_metadata_draft(
+    // Reading a suggestion must not repeatedly hash the entire MP4 while the
+    // UI polls. The export row and verified manifest bind this cheap read to
+    // the immutable edit. Starting inference verifies the bytes separately.
+    async fn youtube_metadata_export(
         &self,
         request: &DraftYoutubeMetadataRequest,
-    ) -> Result<DraftYoutubeMetadataResponse, Error> {
-        let export = self
-            .verified_youtube_export(&request.export_job_id, request.expected_revision)
-            .await?;
+    ) -> Result<MetadataExport, Error> {
+        let job = self
+            .database
+            .get_job(request.export_job_id.clone())
+            .await
+            .map_err(|_| Error::Invalid("Choose a completed export."))?;
+        let export = job.export.ok_or(Error::Invalid(
+            "Choose an export job, not an analysis or preview.",
+        ))?;
+        if job.state != JobState::Succeeded as i32 || export.revision != request.expected_revision {
+            return Err(Error::Invalid(
+                "The selected export is not complete at the reviewed revision.",
+            ));
+        }
+        let mut renders = job
+            .tasks
+            .iter()
+            .filter(|task| task.kind == "render-clip" && task.state == TaskState::Succeeded as i32);
+        let render = renders
+            .next()
+            .ok_or(Error::Invalid("This export has no completed render."))?;
+        if renders.next().is_some() {
+            return Err(Error::Protocol);
+        }
+        let render_id: ArtifactId = render
+            .output_artifact_id
+            .parse()
+            .map_err(|_| Error::Protocol)?;
+        let lease = self
+            .artifacts
+            .as_ref()
+            .ok_or(Error::Protocol)?
+            .open(render_id)
+            .await
+            .map_err(|_| {
+                Error::Invalid("The rendered snapshot is unavailable. Export it again.")
+            })?;
+        let expected_ir = export.ir_artifact_id.clone();
+        let manifest = tokio::task::spawn_blocking(move || verified_manifest(&lease, &expected_ir))
+            .await
+            .map_err(|_| Error::Protocol)??;
+        Ok(MetadataExport {
+            project_id: job.project_id,
+            ir_id: export.ir_artifact_id,
+            render_id: render_id.to_string(),
+            sources: manifest.input_source_fingerprints,
+        })
+    }
+
+    pub(super) async fn youtube_metadata_context(
+        &self,
+        request: &DraftYoutubeMetadataRequest,
+    ) -> Result<MetadataContext, Error> {
+        let export = self.youtube_metadata_export(request).await?;
         let stored = self
             .database
             .publishing(PublishingCommand::ExportPayload {
@@ -178,11 +244,19 @@ impl Service {
             }
         }
         let metadata = grounded_draft(&title, &excerpt, source_link.as_deref());
-        Ok(DraftYoutubeMetadataResponse {
-            metadata: Some(metadata),
-            render_artifact_id: export.render_id,
-            revision: request.expected_revision,
-            transcript_excerpt: clean(&excerpt, 2000),
+        Ok(MetadataContext {
+            project_id: export.project_id,
+            ir_id: export.ir_id,
+            source_link,
+            has_transcript: !excerpt.trim().is_empty(),
+            draft: DraftYoutubeMetadataResponse {
+                metadata: Some(metadata),
+                render_artifact_id: export.render_id,
+                revision: request.expected_revision,
+                transcript_excerpt: clean(&excerpt, 2000),
+                generation_state: "idle".into(),
+                ..Default::default()
+            },
         })
     }
 }
