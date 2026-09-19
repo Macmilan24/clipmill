@@ -18,7 +18,7 @@ use clipmill_contracts::proto::{
         IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1,
         RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1,
         SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1,
-        TranscribeSourcePayloadV1,
+        TranscribeSourcePayloadV1, YoutubeMetadataTaskPayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -58,6 +58,16 @@ pub(crate) const INDEX_STAGE_KEY_VERSION: &str = "clipmill.index-stage.v1";
 
 /// Key version the editorial stage payloads carry.
 pub(crate) const EDITORIAL_STAGE_KEY_VERSION: &str = "clipmill.editorial-stage.v1";
+
+pub(crate) const YOUTUBE_METADATA_KEY_VERSION: &str = "clipmill.youtube-metadata.v1";
+pub(crate) const YOUTUBE_METADATA_MAX_OUTPUT_TOKENS: u32 = 1024;
+
+pub(crate) fn youtube_metadata_prompt_digest() -> String {
+    let prompt = include_str!(
+        "../../../workers/editorial/src/clipmill_worker_editorial/prompts/metadata.v1.txt"
+    );
+    format!("sha256:{}", hex::encode(Sha256::digest(prompt.as_bytes())))
+}
 
 /// Key version the discovery stage payload carries.
 pub(crate) const DISCOVER_STAGE_KEY_VERSION: &str = "clipmill.discover-stage.v1";
@@ -300,6 +310,53 @@ pub(crate) struct JobPlan {
 }
 
 impl JobPlan {
+    /// Optional publishing copy over a saved edit. The task key excludes job
+    /// and export identities, so exporting the same snapshot reuses its draft.
+    pub(crate) fn youtube_metadata(
+        project_id: &ProjectId,
+        job_payload: Vec<u8>,
+        ir_id: ArtifactId,
+        models: &crate::models::ModelRegistry,
+        now: u64,
+    ) -> Result<Self, &'static str> {
+        let implementation = crate::implementations::candidates_for_stage("youtube-metadata")
+            .next()
+            .ok_or("YouTube metadata implementation missing")?;
+        if models.get(implementation.model).is_none() {
+            return Err("Qwen model is not registered");
+        }
+        Ok(Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "youtube-metadata".into(),
+            source_id: None,
+            payload: job_payload,
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: "youtube-metadata".into(),
+                input_kinds: vec![],
+                output_kind: "publishing.metadata.v1".into(),
+                payload: YoutubeMetadataTaskPayloadV1 {
+                    key_version: YOUTUBE_METADATA_KEY_VERSION.into(),
+                    ir_artifact_id: ir_id.to_string(),
+                    prompt_digest: youtube_metadata_prompt_digest(),
+                    max_output_tokens: YOUTUBE_METADATA_MAX_OUTPUT_TOKENS,
+                }
+                .encode_to_vec(),
+                dependencies: vec![],
+                input_artifact_ids: vec![ir_id.to_string()],
+                resources: speech_resources(implementation, models, 1),
+                implementation: implementation.name.into(),
+                // Malformed writing should be an explicit retry, not three
+                // identical model calls that hold up other local work.
+                max_attempts: 1,
+                is_final: true,
+            }],
+        })
+    }
+
     pub(crate) fn demo(project_id: &ProjectId, payload: Vec<u8>, now: u64) -> Self {
         let job_id = JobId::new().to_string();
         let seed = TaskId::new().to_string();
@@ -3893,6 +3950,71 @@ mod discovery_tests {
         let encoded = plan(Some(LOUDNESS), None).tasks[0].payload.clone();
         let text = String::from_utf8_lossy(&encoded);
         assert!(!text.contains('/'), "a path reached the artifact key");
+    }
+}
+
+#[cfg(test)]
+mod youtube_metadata_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use super::*;
+
+    fn plan(ir: ArtifactId, context: &[u8], now: u64) -> (JobPlan, crate::models::ModelRegistry) {
+        let models = crate::models::ModelRegistry::load(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry"),
+        )
+        .unwrap();
+        let plan = JobPlan::youtube_metadata(&ProjectId::new(), context.to_vec(), ir, &models, now)
+            .unwrap();
+        (plan, models)
+    }
+
+    fn address(plan: &JobPlan, models: &crate::models::ModelRegistry) -> ArtifactId {
+        let task = &plan.tasks[0];
+        crate::recipes::worker_recipe(
+            &LeasedTask {
+                project_id: plan.project_id.clone(),
+                job_id: plan.job_id.clone(),
+                source_id: None,
+                task_id: task.task_id.clone(),
+                lease_id: LeaseId::new().to_string(),
+                kind: task.kind.clone(),
+                output_kind: task.output_kind.clone(),
+                payload: task.payload.clone(),
+                implementation: task.implementation.clone(),
+                attempt: 1,
+                input_artifact_ids: task
+                    .input_artifact_ids
+                    .iter()
+                    .map(|id| id.parse().unwrap())
+                    .collect(),
+                resources: task.resources.clone(),
+            },
+            models,
+        )
+        .unwrap()
+        .artifact_id()
+        .unwrap()
+    }
+
+    #[test]
+    fn reexports_share_copy_but_corrected_snapshots_do_not() {
+        let ir = format!("sha256:{}", "a".repeat(64)).parse().unwrap();
+        let other = format!("sha256:{}", "b".repeat(64)).parse().unwrap();
+        let (first, models) = plan(ir, b"export-one", 1);
+        let (second, _) = plan(ir, b"export-two", 2);
+        let (corrected, _) = plan(other, b"export-three", 3);
+        assert_ne!(first.job_id, second.job_id);
+        assert_eq!(address(&first, &models), address(&second, &models));
+        assert_ne!(address(&first, &models), address(&corrected, &models));
+        let task = &first.tasks[0];
+        assert_eq!(task.resources.network_policy, "local-lock");
+        assert!(task.is_final);
+        assert_eq!(task.max_attempts, 1);
+        assert_eq!(
+            crate::recipes::model_for(&task.kind, "editorial", &task.implementation).unwrap(),
+            "qwen3-5-editorial-mlx"
+        );
     }
 }
 

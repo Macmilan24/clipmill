@@ -4,6 +4,216 @@ use crate::db::{list_artifact_roots, open_database};
 use clipmill_contracts::proto::ipc::v1::YoutubeVideoMetadataV1;
 
 const PROJECT: &str = "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV";
+
+fn metadata_plan(payload: &[u8], time: u64) -> crate::jobs::JobPlan {
+    let models = crate::models::ModelRegistry::load(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry"),
+    )
+    .unwrap();
+    crate::jobs::JobPlan::youtube_metadata(
+        &PROJECT.parse().unwrap(),
+        payload.to_vec(),
+        format!("sha256:{}", "44".repeat(32)).parse().unwrap(),
+        &models,
+        time,
+    )
+    .unwrap()
+}
+fn metadata_command(
+    payload: &[u8],
+    plan: Option<crate::jobs::JobPlan>,
+    retry: &str,
+) -> PublishingCommand {
+    PublishingCommand::MetadataJob {
+        project_id: PROJECT.into(),
+        payload: payload.into(),
+        job_id: String::new(),
+        plan: plan.map(Box::new),
+        retry_job_id: retry.into(),
+    }
+}
+
+#[test]
+fn metadata_find_or_submit_reuses_completed_work_and_survives_store_restart() {
+    use clipmill_contracts::proto::ipc::v1::JobState;
+    let (temp, mut db) = setup();
+    let payload = b"immutable-edit-model-prompt";
+    let first = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 10)), ""),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    let repeat = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 11)), ""),
+    )
+    .unwrap();
+    assert_eq!(first.job_id, repeat.metadata_job.unwrap().job_id);
+    assert!(repeat.events.is_empty());
+    db.execute(
+        "UPDATE jobs SET state=?1 WHERE job_id=?2",
+        params![JobState::Succeeded as i32, first.job_id],
+    )
+    .unwrap();
+    drop(db);
+    let mut db =
+        open_database(&temp.path().join("store.db"), &temp.path().join("backups")).unwrap();
+    let restored = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 12)), ""),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    assert_eq!(restored.job_id, first.job_id);
+    assert_eq!(restored.state, JobState::Succeeded as i32);
+    assert!(
+        execute(
+            &mut db,
+            metadata_command(payload, Some(metadata_plan(payload, 13)), &first.job_id)
+        )
+        .is_err(),
+        "successful work cannot be retried into another model call"
+    );
+    let changed = b"new-immutable-edit-model-prompt";
+    let next = execute(
+        &mut db,
+        metadata_command(changed, Some(metadata_plan(changed, 14)), ""),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    assert_ne!(next.job_id, first.job_id);
+}
+
+#[test]
+fn metadata_retry_is_predecessor_fenced_and_does_not_revive_cancellation() {
+    use clipmill_contracts::proto::ipc::v1::JobState;
+    let (_temp, mut db) = setup();
+    let payload = b"immutable-edit-model-prompt";
+    let first = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 10)), ""),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    db.execute(
+        "UPDATE jobs SET state=?1 WHERE job_id=?2",
+        params![JobState::Cancelled as i32, first.job_id],
+    )
+    .unwrap();
+    let still_cancelled = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 11)), ""),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    assert_eq!(still_cancelled.job_id, first.job_id);
+    let retried = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 12)), &first.job_id),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    assert_ne!(retried.job_id, first.job_id);
+    db.execute(
+        "UPDATE jobs SET state=?1 WHERE job_id=?2",
+        params![JobState::Failed as i32, retried.job_id],
+    )
+    .unwrap();
+    let replayed = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 13)), &first.job_id),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    assert_eq!(
+        replayed.job_id, retried.job_id,
+        "a replay names the same failed predecessor, not a new retry"
+    );
+    assert_eq!(replayed.state, JobState::Failed as i32);
+}
+
+#[test]
+fn metadata_status_refuses_foreign_job_or_changed_snapshot() {
+    let (_temp, mut db) = setup();
+    let payload = b"immutable-edit-model-prompt";
+    let saved = execute(
+        &mut db,
+        metadata_command(payload, Some(metadata_plan(payload, 10)), ""),
+    )
+    .unwrap()
+    .metadata_job
+    .unwrap();
+    assert!(matches!(
+        execute(
+            &mut db,
+            PublishingCommand::MetadataJob {
+                project_id: PROJECT.into(),
+                payload: b"different-edit".to_vec(),
+                job_id: saved.job_id,
+                plan: None,
+                retry_job_id: String::new(),
+            }
+        ),
+        Err(StoreError::NotFound)
+    ));
+    let unknown: String = clipmill_core::JobId::new().to_string();
+    assert!(matches!(
+        execute(
+            &mut db,
+            PublishingCommand::MetadataJob {
+                project_id: PROJECT.into(),
+                payload: payload.to_vec(),
+                job_id: unknown,
+                plan: None,
+                retry_job_id: String::new(),
+            }
+        ),
+        Err(StoreError::NotFound)
+    ));
+}
+
+#[tokio::test]
+async fn concurrent_metadata_requests_share_one_job_and_cancel_the_same_work() {
+    use clipmill_contracts::proto::ipc::v1::JobState;
+    let (temp, db) = setup();
+    drop(db);
+    let actor =
+        crate::db::DbActor::start(&temp.path().join("store.db"), &temp.path().join("backups"))
+            .unwrap();
+    let database = actor.handle();
+    let payload = b"concurrent-immutable-edit-model-prompt";
+    let first_request = metadata_command(payload, Some(metadata_plan(payload, 10)), "");
+    let second_request = metadata_command(payload, Some(metadata_plan(payload, 11)), "");
+    let (first, second) = tokio::join!(
+        database.publishing(first_request),
+        database.publishing(second_request)
+    );
+    let first = first.unwrap().metadata_job.unwrap();
+    assert_eq!(first.job_id, second.unwrap().metadata_job.unwrap().job_id);
+    assert_eq!(database.list_jobs(PROJECT.into()).await.unwrap().len(), 1);
+    database
+        .cancel_job("cancel-metadata".into(), [9; 32], first.job_id.clone(), 12)
+        .await
+        .unwrap();
+    let found = database
+        .publishing(metadata_command(payload, None, ""))
+        .await
+        .unwrap()
+        .metadata_job
+        .unwrap();
+    assert_eq!(found.state, JobState::Cancelled as i32);
+    assert_eq!(found.job_id, first.job_id);
+    drop(database);
+    actor.shutdown().await.unwrap();
+}
 fn setup() -> (tempfile::TempDir, Connection) {
     let temp = tempfile::tempdir().unwrap();
     let mut db =

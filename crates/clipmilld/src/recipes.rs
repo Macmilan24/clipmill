@@ -317,6 +317,15 @@ const REGISTRY: &[Recipe] = &[
         tools: &[],
     },
     Recipe {
+        kind: "youtube-metadata",
+        output_kind: "publishing.metadata.v1",
+        semantic_version: "clipmill.youtube-metadata.v1",
+        executor: Executor::Worker,
+        capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
         kind: "editorial-propose-cloud",
         output_kind: "editorial.proposals.v1",
         semantic_version: "clipmill.editorial.proposals.v1",

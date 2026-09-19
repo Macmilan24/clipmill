@@ -20,6 +20,25 @@ and approve a private upload to the displayed channel. Suggestions are grounded
 in the clip's stored evidence; they are editable and never silently replace the
 user's edits.
 
+The initial draft is available without running a model. **Write with Qwen** is an
+optional local writing step using the installed Qwen3.5 model. It reads the full
+saved, corrected caption text for the exported clip and proposes a title, a short
+description, search tags and up to three hashtags. The application adds verified
+source attribution; the model cannot supply source URLs. Empty captions or text
+beyond the bounded model context leave manual writing available.
+
+Generation uses the existing worker queue, cancellation and artifact cache.
+Repeated starts and re-exports of the same saved edit reuse its generation;
+changed captions produce a different input. A restart restores generation state.
+Polling does not repeatedly hash the exported video. Failed or cancelled writing
+requires an explicit retry and never produces a usable cached suggestion.
+
+Generated text appears separately until **Apply suggestion** is selected. Applying
+it replaces only the title, description and tags, clears metadata approval, and
+preserves the user's audience and synthetic-media choices. Writing or applying
+metadata never starts an upload or changes a video's visibility. Model output is
+a draft for human review, not a guarantee of accuracy or audience performance.
+
 Upload progress counts bytes acknowledged by YouTube. Pause and resume retain
 the same operation. After transfer, review the private video in YouTube Studio;
 processing can continue after all bytes have arrived. A separate explicit
@@ -103,5 +122,6 @@ the real store migrated from schema 13 to 14 with all 19 saved document hashes
 unchanged, including revision 24 of the open edit. Native Settings showed the
 unconfigured channel, disabled Connect action, empty history and a working,
 cancellable client-file picker. The previously imported 360p test source remained
-available. Real Google sign-in and private uploading remain unverified until the
-user supplies their Desktop client and completes browser consent.
+available. In the subsequent live session, the user supplied their Desktop
+client, completed browser consent, and confirmed a successful upload through the
+full workflow. No additional upload is performed when testing metadata writing.

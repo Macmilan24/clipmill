@@ -2324,6 +2324,11 @@ pub struct DraftYoutubeMetadataRequest {
     pub export_job_id: ::prost::alloc::string::String,
     #[prost(uint64, tag = "2")]
     pub expected_revision: u64,
+    /// Empty reads the basic draft. start/status/cancel/retry refer to optional local Qwen writing.
+    #[prost(string, tag = "3")]
+    pub generation_action: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub generation_job_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DraftYoutubeMetadataResponse {
@@ -2336,6 +2341,30 @@ pub struct DraftYoutubeMetadataResponse {
     /// A bounded transcript excerpt from the immutable rendered snapshot.
     #[prost(string, tag = "4")]
     pub transcript_excerpt: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub generation_job_id: ::prost::alloc::string::String,
+    /// idle, queued, running, succeeded, failed, cancelled, or unavailable.
+    #[prost(string, tag = "6")]
+    pub generation_state: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub generation_message: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub model_name: ::prost::alloc::string::String,
+    /// Present only when the generated suggestion is ready; never applies itself.
+    #[prost(message, optional, tag = "9")]
+    pub generated_metadata: ::core::option::Option<YoutubeVideoMetadataV1>,
+}
+/// No request/job/export IDs: identical immutable edits share the model cache.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeMetadataTaskPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub ir_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub prompt_digest: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "4")]
+    pub max_output_tokens: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

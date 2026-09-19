@@ -519,7 +519,9 @@ def test_local_worker_does_not_import_cloud_adapter_even_when_inference_fails():
 import sys
 from clipmill_worker_editorial import CAPABILITIES
 from clipmill_worker_editorial.inference import call, ReviewReply
-assert CAPABILITIES == ('editorial-look', 'editorial-propose', 'editorial-review')
+assert CAPABILITIES == (
+    'editorial-look', 'editorial-propose', 'editorial-review', 'youtube-metadata'
+)
 class Broken:
     def generate(self, *args):
         raise RuntimeError('local model unavailable')
