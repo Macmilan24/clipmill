@@ -31,8 +31,7 @@
           "description": "Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.",
           "type": "integer",
           "minimum": 0,
-          "maximum": 22500,
-          "default": 0
+          "maximum": 22500
         },
         "segments": {
           "type": "array",

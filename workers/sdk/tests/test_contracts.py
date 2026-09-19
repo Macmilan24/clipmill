@@ -107,6 +107,29 @@ def test_valid_edit_ir_fixtures_roundtrip_canonically(name: str) -> None:
     assert canonical(reserialized) == raw, f"edit_ir/{name} round-trip must be byte-identical"
 
 
+@pytest.mark.parametrize("duration_ticks", [0, 1, 10_800, 22_500])
+def test_edit_ir_preserves_an_explicit_soft_cut_duration(duration_ticks: int) -> None:
+    schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.edit_ir")
+    document = json.loads((FIXTURES / "edit_ir" / "valid" / "clip.json").read_text())
+    document["video"]["transition_ticks"] = duration_ticks
+    parsed = schemas.EditIr.model_validate(document)
+    assert parsed.video.transition_ticks == duration_ticks
+    # Explicit zero is meaningful input, even though an omitted field also
+    # means Off to the renderer. Preserve either representation as supplied.
+    assert parsed.model_dump(mode="json", exclude_none=True) == document
+
+
+@pytest.mark.parametrize("duration_ticks", [-1, 22_501, 10_800.5])
+def test_edit_ir_rejects_soft_cut_durations_outside_integer_bounds(
+    duration_ticks: int | float,
+) -> None:
+    schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.edit_ir")
+    document = json.loads((FIXTURES / "edit_ir" / "valid" / "clip.json").read_text())
+    document["video"]["transition_ticks"] = duration_ticks
+    with pytest.raises(ValidationError):
+        schemas.EditIr.model_validate(document)
+
+
 @pytest.mark.parametrize("name", EDIT_IR_INVALID)
 def test_invalid_edit_ir_fixtures_are_rejected(name: str) -> None:
     schemas = importlib.import_module("clipmill_worker_sdk.gen.schemas.edit_ir")

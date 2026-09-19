@@ -794,7 +794,6 @@ impl CropRect {
 #[doc = "        },"]
 #[doc = "        \"transition_ticks\": {"]
 #[doc = "          \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
-#[doc = "          \"default\": 0,"]
 #[doc = "          \"type\": \"integer\","]
 #[doc = "          \"maximum\": 22500.0,"]
 #[doc = "          \"minimum\": 0.0"]
@@ -1098,7 +1097,6 @@ impl EditIrTimebase {
 #[doc = "    },"]
 #[doc = "    \"transition_ticks\": {"]
 #[doc = "      \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
-#[doc = "      \"default\": 0,"]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"maximum\": 22500.0,"]
 #[doc = "      \"minimum\": 0.0"]
@@ -1114,8 +1112,8 @@ pub struct EditIrVideo {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub segments: ::std::vec::Vec<VideoSegment>,
     #[doc = "Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged."]
-    #[serde(default)]
-    pub transition_ticks: i64,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub transition_ticks: ::std::option::Option<i64>,
 }
 impl ::std::default::Default for EditIrVideo {
     fn default() -> Self {
@@ -2416,7 +2414,7 @@ pub mod builder {
     pub struct EditIrVideo {
         segments:
             ::std::result::Result<::std::vec::Vec<super::VideoSegment>, ::std::string::String>,
-        transition_ticks: ::std::result::Result<i64, ::std::string::String>,
+        transition_ticks: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
     }
     impl ::std::default::Default for EditIrVideo {
         fn default() -> Self {
@@ -2439,7 +2437,7 @@ pub mod builder {
         }
         pub fn transition_ticks<T>(mut self, value: T) -> Self
         where
-            T: ::std::convert::TryInto<i64>,
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
             T::Error: ::std::fmt::Display,
         {
             self.transition_ticks = value
