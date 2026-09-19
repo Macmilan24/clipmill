@@ -475,6 +475,7 @@ export function AnalysisProgress({
                       maxTicks: 90 * 90_000,
                       count: 5,
                       localEditorial: true,
+                      contentProfile: job?.contentProfile === 'scripted' ? 'scripted' : 'interview',
                     })
                     .then((next) => onRestarted(projectId, next.jobId))
                     .catch((cause: unknown) =>

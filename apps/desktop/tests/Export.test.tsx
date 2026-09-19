@@ -69,6 +69,38 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
 }
 
 describe('the export screen', () => {
+  it('describes render progress as media time and delivery as the next step', () => {
+    show({
+      delivery: {
+        revision: 4,
+        destinationDir: '/tmp/clips',
+        settled: false,
+        files: null,
+        failure: null,
+        interruption: null,
+        stages: [
+          {
+            kind: 'render',
+            label: 'Render',
+            state: 'running',
+            progress: { unit: 'media_millis', done: 6336, total: 15900 },
+            waitReason: '',
+          },
+          {
+            kind: 'deliver',
+            label: 'Deliver',
+            state: 'waiting',
+            progress: null,
+            waitReason: 'waiting: dependencies',
+          },
+        ],
+      },
+    });
+    expect(screen.getByTestId('stage-render').textContent).toBe('0:06.3 of 0:15.9 rendered');
+    expect(screen.getByTestId('stage-deliver').textContent).toBe('After rendering');
+    expect(screen.queryByText(/media_millis|dependencies/)).toBeNull();
+  });
+
   it('shows the names the daemon resolved rather than names of its own', () => {
     // The pattern says {index}-{clip} and the title is "Charging less", so a
     // local implementation would draw "01-Charging-less". The daemon said
@@ -127,9 +159,10 @@ describe('the export screen', () => {
     expect(screen.queryByText(/I hold the rights/)).toBeNull();
   });
 
-  it('records the attestation it will write, in the words it will write', () => {
+  it('confirms the selected source permission without exposing its metadata code', () => {
     show({ rightsGateNeeded: true });
-    expect(screen.getByText(/own_content/)).toBeTruthy();
+    expect(screen.getByText(/selected source permission/)).toBeTruthy();
+    expect(screen.queryByText(/own_content/)).toBeNull();
   });
 
   it('says a free-space figure could not be read rather than showing zero', () => {
@@ -137,7 +170,7 @@ describe('the export screen', () => {
     // the key is left off rather than set to undefined.
     const { availableBytes: _unread, ...unknown } = plan();
     show({ plan: unknown });
-    expect(screen.getByText('not readable')).toBeTruthy();
+    expect(screen.getByText('Free disk space').nextElementSibling?.textContent).toBe('Unavailable');
   });
 
   it('says no clip is chosen rather than showing an empty form', () => {
@@ -153,4 +186,18 @@ it('keeps export disabled while a changed destination or filename is being valid
     'disabled',
     true,
   );
+});
+
+it('groups fast captions into one review control while keeping the export blocked', () => {
+  const finding = {
+    code: 'captions.reading_rate',
+    severity: 'blocking' as const,
+    detail: 'Passage one asks for 22.1 characters a second.',
+  };
+  show({ hotCaptions: [finding], plan: plan({ passes: false, findings: [finding] }) });
+  expect(screen.getByTestId('hot-captions-gate').textContent).toContain('One caption');
+  expect(screen.getAllByText(finding.detail)).toHaveLength(1);
+  expect(screen.queryByText(/captions[._]reading_rate/)).toBeNull();
+  expect(screen.getByText('Review caption details (1)')).toBeTruthy();
+  expect(screen.getByRole('button', { name: /export revision/i })).toHaveProperty('disabled', true);
 });

@@ -57,6 +57,7 @@ export interface ResultsState {
    * lattice and answers with where it actually landed, which is why the notice
    * quotes the director rather than echoing what was asked for.
    */
+  readonly manual: (startTicks: number, endTicks: number) => Promise<DirectedClip | null>;
   readonly direct: (
     candidateId: string,
     cut: ClipCut,
@@ -209,6 +210,11 @@ export function useResults(
           sourceId: snapshot.source.sourceId,
           candidateId,
           cut,
+          ...(snapshot.rows.some(
+            (row) => row.candidateId === candidateId && row.review?.status === 'rejected',
+          )
+            ? { allowDeclined: true }
+            : {}),
           ...(window ? { startTicks: window.startTicks, endTicks: window.endTicks } : {}),
           // A different cut is a different edit, asked for on purpose. Without
           // this the daemon would hand back the existing document — with the
@@ -227,7 +233,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run, took],
+    [api, projectId, reload, snapshot.source, snapshot.run, snapshot.rows, took],
   );
 
   const decide = useCallback(
@@ -251,6 +257,11 @@ export function useResults(
             candidateId,
             cut: 'chosen',
             approve: true,
+            ...(snapshot.rows.some(
+              (row) => row.candidateId === candidateId && row.review?.status === 'rejected',
+            )
+              ? { allowDeclined: true }
+              : {}),
             // The run the board is showing: its candidate, its boundaries,
             // its transcript — not whichever run published each stage last.
             ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
@@ -262,6 +273,38 @@ export function useResults(
           if (context !== contextSequence.current) return null;
           setNotice(decision === 'kept' ? 'Kept for later.' : 'Rejected.');
         }
+        reload();
+        return directed;
+      } catch (error) {
+        if (context === contextSequence.current) setNotice((error as Error).message);
+        return null;
+      } finally {
+        if (context === contextSequence.current) setBusy(false);
+      }
+    },
+    [api, projectId, reload, snapshot.source, snapshot.run, snapshot.rows, took],
+  );
+
+  const manual = useCallback(
+    async (startTicks: number, endTicks: number): Promise<DirectedClip | null> => {
+      if (!projectId || !snapshot.source || !snapshot.run) return null;
+      const context = contextSequence.current;
+      setBusy(true);
+      setNotice(null);
+      try {
+        const directed = await api.directClip({
+          projectId,
+          sourceId: snapshot.source.sourceId,
+          jobId: snapshot.run.jobId,
+          candidateId: '',
+          cut: 'exact',
+          startTicks,
+          endTicks,
+          manualSpan: true,
+          approve: false,
+        });
+        if (context !== contextSequence.current) return null;
+        took(directed);
         reload();
         return directed;
       } catch (error) {
@@ -290,6 +333,14 @@ export function useResults(
         // `Promise.all` cannot say.
         for (const candidateId of candidateIds) {
           try {
+            if (
+              snapshot.rows.some(
+                (row) => row.candidateId === candidateId && row.review?.status === 'rejected',
+              )
+            ) {
+              failures.push('Inspect declined moments individually before choosing to edit.');
+              continue;
+            }
             // eslint-disable-next-line no-await-in-loop -- see above
             await api.directClip({
               projectId,
@@ -317,7 +368,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run],
+    [api, projectId, reload, snapshot.source, snapshot.run, snapshot.rows],
   );
 
   return {
@@ -337,5 +388,6 @@ export function useResults(
     tileUrl,
     solveFor,
     direct,
+    manual,
   };
 }

@@ -16,15 +16,15 @@
 #   The published contract, over the fixtures every language reads, and the
 #   goldens that say which clips this system would actually show.
 #
-#   The analyze DAG, against a real daemon and a real worker. Probe, ingest, shot
-#   detection, and the fan-in that roots them: the plan is accepted, the addresses
-#   the plan declared reach a worker's lease, the manifest names every stage that
+#   The analyze DAG, against a real daemon and both visual workers. Probe, ingest,
+#   shot and face detection, and the fan-in that roots them: the plan is accepted,
+#   its declared addresses reach a worker's lease, the manifest names every stage that
 #   ran and accounts for the ones it skipped, a warm re-submit resolves to the
 #   same identities, and a killed daemon finishes inside the 30-second SLO.
 #
 #   What that last part does not cover: the speech half. A recording with audio
-#   needs the three pinned speech models and a worker fleet no drill starts, which
-#   is W26's harness. The chain itself is covered end to end by `gate-speech`, and
+#   needs the three pinned speech models and the fleet used by `gate-lock-phase1`.
+#   The chain itself is covered end to end by `gate-speech`, and
 #   the stages that read a transcript are covered by the goldens above.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -101,19 +101,22 @@ if [ "$(fingerprint contracts/fixtures/ranking.set)" != "$goldens_before" ]; the
   exit 1
 fi
 
-# The end-to-end half needs a decoder and a worker environment. Verified rather
-# than fetched: acquisition happens outside the Local Lock, so a machine without
-# them is one this drill cannot speak for.
+# The end-to-end half needs a decoder, both visual workers, and pinned YuNet.
+# Verified rather than fetched: acquisition happens outside the Local Lock, so
+# a machine without them is one this drill cannot speak for.
 for tool in .cache/bin/ffmpeg .cache/bin/ffprobe; do
   if [ ! -x "$tool" ]; then
     echo "ranking-drill: $tool is missing; run ./tools/fetch-ffmpeg.sh" >&2
     exit 2
   fi
 done
-if [ ! -x workers/shots/.venv/bin/clipmill-worker-shots ]; then
-  echo "ranking-drill: the shots worker is not built; run 'uv sync --project workers/shots'" >&2
-  exit 2
-fi
+for worker in shots faces; do
+  if [ ! -x "workers/$worker/.venv/bin/clipmill-worker-$worker" ]; then
+    echo "ranking-drill: the $worker worker is not built; run 'uv sync --project workers/$worker'" >&2
+    exit 2
+  fi
+done
+./tools/fetch-models.sh --verify-only yunet-face
 
 echo "==> the analyze DAG, over a real daemon ($ITERATIONS iterations)"
 for iteration in $(seq 1 "$ITERATIONS"); do

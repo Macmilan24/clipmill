@@ -79,7 +79,9 @@ export function sourceTicksAt(plan: PreviewPlan, frame: number): number | null {
     return null;
   }
   return (
-    segment.inTicks + Math.round(secondsAt(plan, frame - segment.firstFrame) * TICKS_PER_SECOND)
+    segment.inTicks +
+    Math.round(secondsAt(plan, frame) * TICKS_PER_SECOND) -
+    segment.programStartTicks
   );
 }
 
@@ -116,8 +118,9 @@ export function frameAtProxySeconds(
     return segment.firstFrame;
   }
   const sourceTicks = seconds * TICKS_PER_SECOND + proxy.coverageStartTicks;
-  const offsetSeconds = (sourceTicks - segment.inTicks) / TICKS_PER_SECOND;
-  const frame = segment.firstFrame + Math.floor((offsetSeconds * plan.rateNum) / plan.rateDen);
+  const programSeconds =
+    (sourceTicks - segment.inTicks + segment.programStartTicks) / TICKS_PER_SECOND;
+  const frame = Math.floor((programSeconds * plan.rateNum) / plan.rateDen);
   return Math.max(segment.firstFrame, Math.min(segment.endFrame - 1, frame));
 }
 
@@ -153,13 +156,15 @@ export function stageTransform(
 export function cropAt(
   plan: PreviewPlan,
   frame: number,
+  secondary = false,
 ): {
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
 } | null {
-  const found = plan.crops[Math.max(0, Math.min(plan.crops.length - 1, frame))];
+  const crops = secondary ? (plan.secondaryCrops ?? []) : plan.crops;
+  const found = crops[Math.max(0, Math.min(crops.length - 1, frame))];
   if (!found) {
     return null;
   }
@@ -214,16 +219,22 @@ export function lanePosition(plan: PreviewPlan, frame: number): number {
   return (frame / (plan.frameCount - 1)) * 100;
 }
 
-/** The gain in decibels at a frame, held from the last point before it. */
+/** The same linear dB curve the renderer applies, held outside its endpoints. */
 export function gainAt(plan: PreviewPlan, frame: number): number {
-  let value = 0;
-  for (const point of plan.gain) {
-    if (point.frame > frame) {
-      break;
+  const first = plan.gain[0];
+  if (!first) return 0;
+  if (frame <= first.frame) return first.gainDb;
+  for (let index = 1; index < plan.gain.length; index++) {
+    const before = plan.gain[index - 1]!;
+    const after = plan.gain[index]!;
+    if (frame <= after.frame) {
+      const span = after.frame - before.frame;
+      return span <= 0
+        ? after.gainDb
+        : before.gainDb + ((after.gainDb - before.gainDb) * (frame - before.frame)) / span;
     }
-    value = point.gainDb;
   }
-  return value;
+  return plan.gain[plan.gain.length - 1]!.gainDb;
 }
 
 /** A frame as `m:ss.ff`, which is how an editor reads a transport. */

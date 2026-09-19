@@ -22,6 +22,10 @@ export interface EditorialJudgments {
    * One entry per candidate the review was asked about, in the candidates document's order.
    */
   candidates: Judgment[];
+  /**
+   * The editorial rubric selected for this run; older artifacts use interview.
+   */
+  content_profile?: "interview" | "scripted";
 }
 export interface ModelProducer {
   stage: string;
@@ -85,6 +89,7 @@ export interface Reason {
     | "irrelevant_intro"
     | "misleading_omission"
     | "visual_dependency"
-    | "other";
+    | "other"
+    | "transcript_uncertain";
   detail: string;
 }

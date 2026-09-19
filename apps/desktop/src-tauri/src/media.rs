@@ -86,6 +86,38 @@ impl MediaProtocol {
 
     /// Answer one media request.
     pub async fn serve(&self, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+        let origin = request.headers().get(header::ORIGIN).cloned();
+        if let Some(origin) = &origin
+            && !origin.to_str().is_ok_and(allowed_origin)
+        {
+            return refuse(
+                StatusCode::FORBIDDEN,
+                "media is available only to the application",
+            );
+        }
+        let mut response = self.serve_inner(request).await;
+        if let Some(origin) = origin {
+            response
+                .headers_mut()
+                .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+            response.headers_mut().insert(
+                header::VARY,
+                tauri::http::HeaderValue::from_static("Origin"),
+            );
+            response.headers_mut().insert(
+                header::ACCESS_CONTROL_EXPOSE_HEADERS,
+                tauri::http::HeaderValue::from_static(
+                    "Content-Length, Content-Range, Accept-Ranges",
+                ),
+            );
+        }
+        response
+    }
+
+    async fn serve_inner(&self, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+        if request.method() != tauri::http::Method::GET {
+            return refuse(StatusCode::METHOD_NOT_ALLOWED, "media supports GET only");
+        }
         let Some(target) = Target::parse(request.uri().path()) else {
             return refuse(StatusCode::BAD_REQUEST, "malformed media path");
         };
@@ -475,5 +507,27 @@ mod tests {
         let range = Range::parse("bytes=0-", huge).expect("a range");
         assert_eq!(range.start, 0);
         assert_eq!(range.end, MAX_SPAN_BYTES - 1);
+    }
+}
+
+/// No wildcard CORS: only the production WebView and the fixed local dev server.
+fn allowed_origin(origin: &str) -> bool {
+    matches!(
+        origin,
+        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
+    ) || (cfg!(debug_assertions)
+        && matches!(origin, "http://localhost:5173" | "http://127.0.0.1:5173"))
+}
+
+#[cfg(test)]
+mod cors_tests {
+    #[test]
+    fn only_the_application_origin_can_use_decoded_media() {
+        assert!(super::allowed_origin("tauri://localhost"));
+        assert!(!super::allowed_origin(
+            "https://tauri.localhost.evil.example"
+        ));
+        assert!(!super::allowed_origin("null"));
+        assert!(!super::allowed_origin("https://example.com"));
     }
 }

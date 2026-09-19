@@ -116,6 +116,20 @@
     "editorial": {
       "description": "Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.",
       "$ref": "#/$defs/editorial_coverage"
+    },
+    "content_profile": {
+      "type": "string",
+      "enum": ["interview", "scripted"],
+      "default": "interview",
+      "description": "The editorial rubric selected for this run; older artifacts use interview."
+    },
+    "declined": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ranked"
+      },
+      "default": [],
+      "description": "Assessed nominations declined by the editorial reviewer. Inspectable for explicit manual recovery; never recommendations or selected clips."
     }
   },
   "$defs": {
@@ -222,7 +236,7 @@
           "properties": {
             "status": {
               "type": "string",
-              "enum": ["accepted", "needs_review"]
+              "enum": ["accepted", "needs_review", "rejected"]
             },
             "reasons": {
               "type": "array",

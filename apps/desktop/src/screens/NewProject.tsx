@@ -277,7 +277,7 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
             New Project
           </h1>
           <p className={cn('mt-1 text-meta', SECONDARY)}>
-            Find complete moments in an English podcast or interview with local Qwen 3.5.
+            Find complete moments in English podcasts, interviews and scripted scenes.
           </p>
         </div>
       </div>
@@ -366,25 +366,32 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
             <CardContent>
               <div className="mb-4 space-y-3">
                 <Label htmlFor="editorial-route">Editorial analysis</Label>
-                <select
-                  id="editorial-route"
+                <Select
                   value={route}
                   disabled={busy}
-                  className="w-full rounded border p-2"
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setSettings((current) => ({
                       ...current,
-                      editorialRoute: event.target.value as 'local' | 'cloud' | 'heuristic',
+                      editorialRoute: value as 'local' | 'cloud' | 'heuristic',
                       cloudConsent: false,
                     }))
                   }
                 >
-                  <option value="local">Local · Qwen 3.5</option>
-                  <option value="cloud">Cloud-assisted · Anthropic Claude Sonnet 4.6</option>
-                  <option value="heuristic">Heuristic baseline · no editorial model</option>
-                </select>
+                  <SelectTrigger id="editorial-route" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">Local · Qwen 3.5</SelectItem>
+                    <SelectItem value="cloud">
+                      Cloud-assisted · Anthropic Claude Sonnet 4.6
+                    </SelectItem>
+                    <SelectItem value="heuristic">
+                      Heuristic baseline · no editorial model
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
                 {route === 'cloud' && (
-                  <div className="space-y-2 text-sm">
+                  <div className="space-y-3 rounded-lg border border-[color-mix(in_srgb,var(--color-outbound)_30%,transparent)] bg-[var(--cm-recessed)] p-3 text-xs leading-relaxed text-[var(--cm-text-secondary)]">
                     <p>
                       Only transcript text and clip references go to Anthropic. Video, audio, and
                       sampled frames stay local.
@@ -424,6 +431,38 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
                       account clipmill. No key is stored in this screen.
                     </p>
                   </div>
+                )}
+              </div>
+              <div className="mb-5 space-y-2.5">
+                <Label htmlFor="content-profile">Footage type</Label>
+                <Select
+                  value={settings.contentProfile ?? 'interview'}
+                  disabled={busy}
+                  onValueChange={(value) =>
+                    setSettings((current) => ({
+                      ...current,
+                      contentProfile: value as 'interview' | 'scripted',
+                    }))
+                  }
+                >
+                  <SelectTrigger id="content-profile" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="interview">Podcast / interview</SelectItem>
+                    <SelectItem value="scripted">TV / movie scene</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
+                  {settings.contentProfile === 'scripted'
+                    ? 'Looks for a complete dramatic beat: a reveal and reaction, confrontation, joke or emotional turn. The wider plot can stay unresolved.'
+                    : 'Looks for a complete answer, story, useful insight or takeaway, with the context a new viewer needs.'}
+                </p>
+                {route === 'heuristic' && (
+                  <p className="text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
+                    The baseline does not use an editorial model. This profile is recorded for the
+                    run; the genre rubric applies to model analysis.
+                  </p>
                 )}
               </div>
               <RadioGroup

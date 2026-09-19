@@ -33,7 +33,34 @@ class RetryableTaskError(RuntimeError):
 
 
 class DeterministicTaskError(RuntimeError):
-    """The same input and implementation will fail again."""
+    """The same input and implementation will fail again.
+
+    Optional codes select a fixed public diagnostic. Exception arguments may
+    contain decoder stderr, source paths, or private content and never become
+    a daemon completion detail. Unknown codes preserve the legacy class-only
+    result rather than turning the code into another free-form output channel.
+    """
+
+    def __init__(self, *args: object, code: str | None = None) -> None:
+        super().__init__(*args)
+        self.code = code if code in _DETERMINISTIC_DETAILS else None
+
+    @property
+    def safe_detail(self) -> str:
+        return _DETERMINISTIC_DETAILS.get(self.code, type(self).__name__)
+
+
+_DETERMINISTIC_DETAILS = {
+    "frames.decode_failed": (
+        "frames.decode_failed: The pinned decoder could not read the sampled frames."
+    ),
+    "frames.count_mismatch": (
+        "frames.count_mismatch: Decoded frame count does not match the sampled frame index."
+    ),
+    "frames.input_invalid": (
+        "frames.input_invalid: Sampled frame input is missing, corrupt, or invalid."
+    ),
+}
 
 
 class LeaseCancelled(RuntimeError):
@@ -284,7 +311,7 @@ class WorkerClient:
                         lease_id=context.lease.lease_id,
                         outcome=worker_pb2.TASK_OUTCOME_FAILED,
                         failure_class=worker_pb2.FAILURE_CLASS_DETERMINISTIC,
-                        detail=type(error).__name__,
+                        detail=error.safe_detail,
                     )
                 except LeaseCancelled:
                     raise

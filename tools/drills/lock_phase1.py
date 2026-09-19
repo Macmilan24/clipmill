@@ -153,15 +153,48 @@ def direct_the_top_clip(
     if not selected:
         raise GateFailure("the ranking selected nothing to direct")
     candidate_id = selected[0]
+    ranked = next(
+        (item for item in ranking.get("cohort", []) if item.get("candidate_id") == candidate_id),
+        None,
+    )
+    if ranked is None:
+        raise GateFailure(f"selected candidate {candidate_id} has no ranked boundary")
 
     directed = client.direct_clip(project_id, source_id, candidate_id)
     document = json.loads(directed.doc.document_json)
-    segments = document.get("video", {}).get("segments", [])
-    if len(segments) != 1:
-        raise GateFailure(f"a directed clip should be one segment, got {len(segments)}")
-    if directed.end_ticks <= directed.start_ticks:
-        raise GateFailure("the directed clip has no duration")
+    require_directed_span(
+        directed, document, ranking["source_fingerprint"], ranked["boundary"]["chosen"]
+    )
     return directed.doc.doc_id
+
+
+def require_directed_span(
+    directed: pb.DirectClipResponse, document: dict, source_fingerprint: str, chosen: dict
+) -> None:
+    """Camera cuts may split the edit, but cannot change the selected source span."""
+
+    expected_start, expected_end = chosen["start_ticks"], chosen["end_ticks"]
+    if expected_start < 0 or expected_end <= expected_start:
+        raise GateFailure("the ranked boundary has no valid duration")
+    if (directed.start_ticks, directed.end_ticks) != (expected_start, expected_end):
+        raise GateFailure("the directed response does not cover the ranked source span")
+    segments = document.get("video", {}).get("segments", [])
+    if not segments:
+        raise GateFailure("the directed clip has no video segments")
+    cursor = expected_start
+    duration = 0
+    for index, segment in enumerate(segments):
+        if segment.get("source_fingerprint") != source_fingerprint:
+            raise GateFailure(f"directed segment {index} uses a different source")
+        start, end = segment.get("in_ticks"), segment.get("out_ticks")
+        if type(start) is not int or type(end) is not int or end <= start:
+            raise GateFailure(f"directed segment {index} has no valid duration")
+        if start != cursor:
+            raise GateFailure(f"directed segment {index} breaks source continuity at {cursor}")
+        duration += end - start
+        cursor = end
+    if cursor != expected_end or duration != expected_end - expected_start:
+        raise GateFailure("the directed segments do not cover the complete ranked source span")
 
 
 def export(client: DaemonClient, project_id: str, doc_id: str, destination: Path) -> pb.Job:

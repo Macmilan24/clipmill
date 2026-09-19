@@ -145,10 +145,10 @@ describe('the lanes', () => {
     expect(lanePosition(at, at.frameCount - 1)).toBe(100);
   });
 
-  it('hold the gain from the last point before a frame', () => {
+  it('interpolates gain in decibels and holds beyond the last point', () => {
     const at = plan();
     expect(gainAt(at, 0)).toBe(0);
-    expect(gainAt(at, 14)).toBe(0);
+    expect(gainAt(at, 14)).toBeCloseTo(-5.6);
     expect(gainAt(at, 15)).toBe(-6);
     expect(gainAt(at, 29)).toBe(-6);
   });

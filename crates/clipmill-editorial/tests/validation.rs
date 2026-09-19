@@ -39,6 +39,25 @@ fn a_valid_span_is_bound_to_words_and_not_changed_by_ranking() {
     assert!(c.intervals[0].end_ticks <= w.sentences[3].end_ticks + 13_500);
 }
 #[test]
+fn content_profile_is_bound_to_proposals_and_preserved_in_candidates() {
+    let (mut windows, transcript, mut proposals) = fixture();
+    windows.content_profile =
+        clipmill_contracts::schemas::editorial_windows::EditorialWindowsContentProfile::Scripted;
+    let mismatch: EditorialProposals = serde_json::from_value(proposals.clone()).unwrap();
+    assert!(
+        validate::proposals(&windows, &transcript, &mismatch, ID, 90_000, 90 * 90_000)
+            .unwrap_err()
+            .to_string()
+            .contains("content profile")
+    );
+    proposals["content_profile"] = json!("scripted");
+    let output = run(&windows, &transcript, proposals);
+    assert_eq!(
+        serde_json::to_value(output.candidates).unwrap()["content_profile"],
+        "scripted"
+    );
+}
+#[test]
 fn unknown_sentences_and_outside_window_spans_are_refused() {
     let (w, t, mut p) = fixture();
     p["windows"][0]["proposals"][0]["first_sentence_index"] = json!(999);

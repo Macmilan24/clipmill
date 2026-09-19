@@ -109,6 +109,12 @@ impl Coverage {
 #[doc = "          \"type\": \"integer\","]
 #[doc = "          \"minimum\": 0.0"]
 #[doc = "        },"]
+#[doc = "        \"max_clip_ticks\": {"]
+#[doc = "          \"description\": \"Duration-aware core tail extension; zero denotes the legacy word-only overlap.\","]
+#[doc = "          \"default\": 0,"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
 #[doc = "        \"overlap_words\": {"]
 #[doc = "          \"description\": \"At least this many words of the previous window's tail begin the next window, so a moment on the seam is seen whole by one of them.\","]
 #[doc = "          \"type\": \"integer\","]
@@ -121,6 +127,15 @@ impl Coverage {
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    \"content_profile\": {"]
+#[doc = "      \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "      \"default\": \"interview\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"interview\","]
+#[doc = "        \"scripted\""]
+#[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"coverage\": {"]
 #[doc = "      \"$ref\": \"#/$defs/coverage\""]
@@ -194,6 +209,9 @@ impl Coverage {
 #[serde(deny_unknown_fields)]
 pub struct EditorialWindows {
     pub budget: EditorialWindowsBudget,
+    #[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+    #[serde(default = "defaults::editorial_windows_content_profile")]
+    pub content_profile: EditorialWindowsContentProfile,
     pub coverage: Coverage,
     pub inputs: EditorialWindowsInputs,
     #[doc = "Echoed from the index: where the timing under these sentences is a guess, so a consumer that cuts on a word there knows what the cut is worth."]
@@ -234,6 +252,12 @@ impl EditorialWindows {
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 0.0"]
 #[doc = "    },"]
+#[doc = "    \"max_clip_ticks\": {"]
+#[doc = "      \"description\": \"Duration-aware core tail extension; zero denotes the legacy word-only overlap.\","]
+#[doc = "      \"default\": 0,"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
 #[doc = "    \"overlap_words\": {"]
 #[doc = "      \"description\": \"At least this many words of the previous window's tail begin the next window, so a moment on the seam is seen whole by one of them.\","]
 #[doc = "      \"type\": \"integer\","]
@@ -254,6 +278,9 @@ impl EditorialWindows {
 pub struct EditorialWindowsBudget {
     #[doc = "How many sentences on each side of the core are offered as context."]
     pub context_sentences: u64,
+    #[doc = "Duration-aware core tail extension; zero denotes the legacy word-only overlap."]
+    #[serde(default)]
+    pub max_clip_ticks: u64,
     #[doc = "At least this many words of the previous window's tail begin the next window, so a moment on the seam is seen whole by one of them."]
     pub overlap_words: u64,
     #[doc = "How many words a window's core aims to hold. A single sentence longer than this still forms a window on its own; a sentence is never split."]
@@ -262,6 +289,85 @@ pub struct EditorialWindowsBudget {
 impl EditorialWindowsBudget {
     pub fn builder() -> builder::EditorialWindowsBudget {
         Default::default()
+    }
+}
+#[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "  \"default\": \"interview\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"interview\","]
+#[doc = "    \"scripted\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditorialWindowsContentProfile {
+    #[serde(rename = "interview")]
+    Interview,
+    #[serde(rename = "scripted")]
+    Scripted,
+}
+impl ::std::fmt::Display for EditorialWindowsContentProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Interview => f.write_str("interview"),
+            Self::Scripted => f.write_str("scripted"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditorialWindowsContentProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "interview" => Ok(Self::Interview),
+            "scripted" => Ok(Self::Scripted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorialWindowsContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditorialWindowsContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorialWindowsContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for EditorialWindowsContentProfile {
+    fn default() -> Self {
+        EditorialWindowsContentProfile::Interview
     }
 }
 #[doc = "The index this was cut from, and the transcript the index's word indexes are the authority for — carried so a consumer can walk a word index back to a word without opening the index first."]
@@ -1340,6 +1446,8 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct EditorialWindows {
         budget: ::std::result::Result<super::EditorialWindowsBudget, ::std::string::String>,
+        content_profile:
+            ::std::result::Result<super::EditorialWindowsContentProfile, ::std::string::String>,
         coverage: ::std::result::Result<super::Coverage, ::std::string::String>,
         inputs: ::std::result::Result<super::EditorialWindowsInputs, ::std::string::String>,
         invalid_regions:
@@ -1356,6 +1464,7 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 budget: Err("no value supplied for budget".to_string()),
+                content_profile: Ok(super::defaults::editorial_windows_content_profile()),
                 coverage: Err("no value supplied for coverage".to_string()),
                 inputs: Err("no value supplied for inputs".to_string()),
                 invalid_regions: Err("no value supplied for invalid_regions".to_string()),
@@ -1378,6 +1487,16 @@ pub mod builder {
             self.budget = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for budget: {e}"));
+            self
+        }
+        pub fn content_profile<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditorialWindowsContentProfile>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content_profile = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content_profile: {e}"));
             self
         }
         pub fn coverage<T>(mut self, value: T) -> Self
@@ -1488,6 +1607,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 budget: value.budget?,
+                content_profile: value.content_profile?,
                 coverage: value.coverage?,
                 inputs: value.inputs?,
                 invalid_regions: value.invalid_regions?,
@@ -1505,6 +1625,7 @@ pub mod builder {
         fn from(value: super::EditorialWindows) -> Self {
             Self {
                 budget: Ok(value.budget),
+                content_profile: Ok(value.content_profile),
                 coverage: Ok(value.coverage),
                 inputs: Ok(value.inputs),
                 invalid_regions: Ok(value.invalid_regions),
@@ -1521,6 +1642,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct EditorialWindowsBudget {
         context_sentences: ::std::result::Result<u64, ::std::string::String>,
+        max_clip_ticks: ::std::result::Result<u64, ::std::string::String>,
         overlap_words: ::std::result::Result<u64, ::std::string::String>,
         target_words: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
     }
@@ -1528,6 +1650,7 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 context_sentences: Err("no value supplied for context_sentences".to_string()),
+                max_clip_ticks: Ok(Default::default()),
                 overlap_words: Err("no value supplied for overlap_words".to_string()),
                 target_words: Err("no value supplied for target_words".to_string()),
             }
@@ -1542,6 +1665,16 @@ pub mod builder {
             self.context_sentences = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for context_sentences: {e}"));
+            self
+        }
+        pub fn max_clip_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.max_clip_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for max_clip_ticks: {e}"));
             self
         }
         pub fn overlap_words<T>(mut self, value: T) -> Self
@@ -1572,6 +1705,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 context_sentences: value.context_sentences?,
+                max_clip_ticks: value.max_clip_ticks?,
                 overlap_words: value.overlap_words?,
                 target_words: value.target_words?,
             })
@@ -1581,6 +1715,7 @@ pub mod builder {
         fn from(value: super::EditorialWindowsBudget) -> Self {
             Self {
                 context_sentences: Ok(value.context_sentences),
+                max_clip_ticks: Ok(value.max_clip_ticks),
                 overlap_words: Ok(value.overlap_words),
                 target_words: Ok(value.target_words),
             }
@@ -2167,5 +2302,11 @@ pub mod builder {
                 word_count: Ok(value.word_count),
             }
         }
+    }
+}
+#[doc = r" Generation of default values for serde."]
+pub mod defaults {
+    pub(super) fn editorial_windows_content_profile() -> super::EditorialWindowsContentProfile {
+        super::EditorialWindowsContentProfile::Interview
     }
 }

@@ -85,7 +85,7 @@ pub(crate) const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 pub(crate) const SHOTS_IMPLEMENTATION: &str = "clipmill-worker-shots@0.1.0+pyscenedetect-content";
 /// The face detector's identity, which reaches the artifact key beside the
 /// model digest the capability binds.
-pub(crate) const FACES_IMPLEMENTATION: &str = "clipmill-worker-faces@0.1.0+yunet-2023mar";
+pub(crate) const FACES_IMPLEMENTATION: &str = "clipmill-worker-faces@0.1.1+yunet-2023mar";
 pub(crate) const FACES_STAGE_KEY_VERSION: &str = "clipmill.faces-stage.v1";
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -1357,6 +1357,12 @@ impl JobPlan {
         decoder_bom: &str,
         now: u64,
     ) -> Result<Self, &'static str> {
+        if !matches!(
+            request.content_profile.as_str(),
+            "" | "interview" | "scripted"
+        ) {
+            return Err("Choose an interview or scripted content profile");
+        }
         if let Some(cloud) = &request.cloud_editorial
             && (request.local_editorial
                 || !cloud.transcript_consent
@@ -1496,6 +1502,28 @@ impl JobPlan {
             }
         };
 
+        // Framing evidence belongs to this same analysis snapshot. It reads the
+        // sampled frames already produced by ingest and is rooted by the final
+        // manifest so directing a clip never borrows another run's tracks.
+        if let Some(frames) = &handles.frames {
+            let face_id = TaskId::new().to_string();
+            let mut face = faces_task(
+                face_id.clone(),
+                &FacesStagePayloadV1 {
+                    key_version: FACES_STAGE_KEY_VERSION.to_owned(),
+                    stage: "detect-faces".to_owned(),
+                    source_fingerprint: source.source_fingerprint.to_owned(),
+                    detection: None,
+                },
+            );
+            face.input_kinds = vec!["media.frames.v1".to_owned()];
+            face.dependencies = vec![frames.task_id.clone()];
+            stages.push(("vision.face_track.v1".to_owned(), face_id));
+            tasks.push(face);
+        } else {
+            skip("vision.face_track.v1", "no_video");
+        }
+
         // Everything downstream of the transcript. Without one there is nothing
         // to index, nothing to search, and nothing to rank — which the manifest
         // states rather than the plan pretending it ran them and found nothing.
@@ -1556,6 +1584,8 @@ impl JobPlan {
                         payload: EditorialStagePayloadV1 {
                             key_version: EDITORIAL_STAGE_KEY_VERSION.to_owned(),
                             stage: editorial::KIND_WINDOWS.to_owned(),
+                            content_profile: editorial_profile(request).to_owned(),
+                            duration: Some(editorial_duration(request)),
                             ..Default::default()
                         }
                         .encode_to_vec(),
@@ -1592,6 +1622,7 @@ impl JobPlan {
                                 payload: EditorialStagePayloadV1 {
                                     key_version: EDITORIAL_STAGE_KEY_VERSION.into(),
                                     stage: editorial::KIND_VALIDATE.into(),
+                                    content_profile: editorial_profile(request).to_owned(),
                                     duration: Some(editorial_duration(request)),
                                     ..Default::default()
                                 }
@@ -1925,6 +1956,14 @@ fn speech_implementation(
         .unwrap_or_else(|| unreachable!("{kind} is planned without a registered implementation"))
 }
 
+fn editorial_profile(request: &AnalyzeSourcePayloadV1) -> &str {
+    if request.content_profile.is_empty() {
+        "interview"
+    } else {
+        &request.content_profile
+    }
+}
+
 fn editorial_duration(request: &AnalyzeSourcePayloadV1) -> ClipDurationV1 {
     let range = request.duration.unwrap_or_default();
     ClipDurationV1 {
@@ -1992,6 +2031,7 @@ fn editorial_worker_task(
             prompt_digest: format!("sha256:{}", hex::encode(Sha256::digest(prompt.as_bytes()))),
             max_output_tokens: 2048,
             cloud: cloud.clone(),
+            content_profile: editorial_profile(request).to_owned(),
         }
         .encode_to_vec(),
         dependencies,
@@ -2005,7 +2045,7 @@ fn editorial_worker_task(
             speech_resources(implementation, models, 1)
         },
         implementation: if cloud.is_some() {
-            format!("clipmill-worker-editorial@0.1.1/{operation}-cloud")
+            format!("clipmill-worker-editorial@0.2.0/{operation}-cloud")
         } else {
             implementation.name.into()
         },
@@ -2246,6 +2286,7 @@ pub(crate) struct JobRecord {
     pub failure_detail: String,
     /// What an export job is delivering; `None` for every other kind.
     pub export: Option<v1::ExportSummaryV1>,
+    pub content_profile: String,
 }
 
 impl From<JobRecord> for v1::Job {
@@ -2263,6 +2304,7 @@ impl From<JobRecord> for v1::Job {
             failure_detail: value.failure_detail,
             source_id: value.source_id.unwrap_or_default(),
             export: value.export,
+            content_profile: value.content_profile,
         }
     }
 }
@@ -3819,6 +3861,7 @@ mod analyze_tests {
     fn request() -> AnalyzeSourcePayloadV1 {
         AnalyzeSourcePayloadV1 {
             local_editorial: false,
+            content_profile: String::new(),
             cloud_editorial: None,
             key_version: "clipmill.analyze-source.v1".to_owned(),
             source_id: SOURCE.to_owned(),
@@ -3967,13 +4010,36 @@ mod analyze_tests {
         assert_eq!(finals[0].kind, analysis::KIND_MANIFEST);
     }
 
+    #[test]
+    fn every_modeled_analysis_task_resolves_its_exact_planned_implementation() {
+        let local = AnalyzeSourcePayloadV1 {
+            local_editorial: true,
+            ..request()
+        };
+        for plan in [
+            plan(true, true),
+            editorial_plan(&local).expect("local plan"),
+        ] {
+            for task in plan.tasks {
+                if let Some(capability) =
+                    crate::recipes::lookup(&task.kind).and_then(|recipe| recipe.capability)
+                {
+                    crate::recipes::model_for(&task.kind, capability, &task.implementation)
+                        .unwrap_or_else(|error| {
+                            panic!("{} planned {}: {error}", task.kind, task.implementation)
+                        });
+                }
+            }
+        }
+    }
+
     /// The fan-in depends on every stage, because that is what makes the whole
     /// analysis reachable from the one artifact the job roots.
     #[test]
     fn the_fan_in_depends_on_every_stage_that_published_something() {
         let plan = plan(true, true);
         let manifest = task(&plan, analysis::KIND_MANIFEST);
-        assert_eq!(manifest.dependencies.len(), 11);
+        assert_eq!(manifest.dependencies.len(), 12);
         assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
         // Nothing declared: every input is a task in this plan.
         assert!(manifest.input_artifact_ids.is_empty());
@@ -3985,6 +4051,7 @@ mod analyze_tests {
             "speech.alignment.v1",
             "speech.transcript.v1",
             "evidence.shots.v1",
+            "vision.face_track.v1",
             "index.transcript.v1",
             "editorial.windows.v1",
             "discovery.candidates.v1",
@@ -4068,7 +4135,10 @@ mod analyze_tests {
         let skipped = skipped_of(&plan);
         assert_eq!(
             skipped,
-            vec![("evidence.shots.v1".to_owned(), "no_video".to_owned())]
+            vec![
+                ("evidence.shots.v1".to_owned(), "no_video".to_owned()),
+                ("vision.face_track.v1".to_owned(), "no_video".to_owned())
+            ]
         );
         // Everything the transcript feeds still runs.
         for kind in [

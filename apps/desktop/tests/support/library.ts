@@ -238,6 +238,9 @@ export function filmstrip(artifactId: string, tiles: number): MediaArtifact {
 
 export function fakeApi(world: FakeWorld): ShellApi {
   return {
+    submitExportBatch: () => Promise.reject(new Error('no batch response configured')),
+    listExportBatches: () => Promise.resolve([]),
+    updateExportBatchItem: () => Promise.reject(new Error('no batch response configured')),
     listProjects: () => Promise.resolve(world.projects),
     listJobs: (projectId) => Promise.resolve(world.jobs[projectId] ?? []),
     fetchJob: (jobId) => {

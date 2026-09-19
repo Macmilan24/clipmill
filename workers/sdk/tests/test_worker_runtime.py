@@ -11,6 +11,13 @@ from pathlib import Path
 import pytest
 from clipmill.shm.v1 import shm_pb2
 from clipmill.worker.v1 import worker_pb2
+from clipmill_worker_sdk.client import (
+    CancellationToken,
+    DeterministicTaskError,
+    TaskContext,
+    WorkerClient,
+    WorkerConfiguration,
+)
 from clipmill_worker_sdk.framing import encode_frame, recv_frame, send_frame
 from clipmill_worker_sdk.identity import WorkerIdentity, registration_preimage
 from clipmill_worker_sdk.shared_memory import _receive_memfd_descriptor, validate_descriptor
@@ -38,6 +45,60 @@ def identity_file(path: Path) -> WorkerIdentity:
     )
     path.chmod(0o600)
     return WorkerIdentity.load(path)
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (None, "DeterministicTaskError"),
+        ("unknown-private-token", "DeterministicTaskError"),
+        (
+            "frames.decode_failed",
+            "frames.decode_failed: The pinned decoder could not read the sampled frames.",
+        ),
+        (
+            "frames.count_mismatch",
+            "frames.count_mismatch: Decoded frame count does not match the sampled frame index.",
+        ),
+        (
+            "frames.input_invalid",
+            "frames.input_invalid: Sampled frame input is missing, corrupt, or invalid.",
+        ),
+    ],
+)
+def test_deterministic_completion_uses_only_catalog_details(
+    tmp_path: Path, code: str | None, expected: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = WorkerClient(
+        WorkerConfiguration(
+            socket_path=tmp_path / "unused-worker.sock",
+            shm_socket_path=tmp_path / "unused-shm.sock",
+            identity=identity_file(tmp_path / "identity.json"),
+            family="faces",
+            capabilities=("detect-faces",),
+        )
+    )
+    context = TaskContext(
+        lease=worker_pb2.TaskLease(lease_id="test-lease", heartbeat_interval_ms=1000),
+        staging=None,
+        shared=None,
+        cancellation=CancellationToken(),
+    )
+
+    def fail(_context: TaskContext) -> None:
+        raise DeterministicTaskError(
+            "decoder stderr /private/source secret-recording-text", code=code
+        )
+
+    with socket.socket() as unused_stream:
+        complete = client._run_handler_with_heartbeats(unused_stream, context, fail)
+    assert complete.outcome == worker_pb2.TASK_OUTCOME_FAILED
+    assert complete.failure_class == worker_pb2.FAILURE_CLASS_DETERMINISTIC
+    assert complete.detail == expected
+    assert b"secret-recording-text" not in complete.SerializeToString()
+    assert b"/private/source" not in complete.SerializeToString()
+    assert "unknown-private-token" not in complete.detail
+    assert "secret-recording-text" not in caplog.text
 
 
 def test_identity_signs_fresh_challenge_and_canonical_capabilities(tmp_path: Path) -> None:

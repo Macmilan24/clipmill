@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ResultsLoader } from '../src/results/loader.js';
 import { CANDIDATE, OLD, OLD_JOB, OLD_SOURCE, twoProjects } from './support/clips.js';
-import { fakeApi, job, source, task } from './support/library.js';
+import { fakeApi, job, source, sourceMap, sourceMapDocument, task } from './support/library.js';
 
 const OTHER_SOURCE = 'src_other';
 const OTHER_JOB = 'job-other';
@@ -124,4 +124,84 @@ describe('which analysis the board reads', () => {
     expect(row?.docId).toBe('edt_here');
     expect(row?.docJobId).toBe(OLD_JOB);
   });
+});
+
+describe('manual span source bounds', () => {
+  it.each([true, false])(
+    'accepts duration only from this source fingerprint (matching=%s)',
+    async (matching) => {
+      const world = twoProjects();
+      const chosen = world.sources[OLD]![0]!;
+      const map = sourceMap({
+        source_fingerprint: matching ? chosen.sourceFingerprint : OTHER_FINGERPRINT,
+      });
+      const withMap = {
+        ...world,
+        documents: {
+          ...world.documents,
+          [chosen.sourceMapArtifactId]: sourceMapDocument(chosen.sourceMapArtifactId, map),
+        },
+      };
+      const snapshot = await new ResultsLoader(fakeApi(withMap)).load(OLD, OLD_SOURCE, OLD_JOB);
+      expect(snapshot.problem).toBeNull();
+      expect(snapshot.sourceDurationTicks).toBe(matching ? map.container.duration_ticks : null);
+      expect(snapshot.rows).toHaveLength(2);
+    },
+  );
+  it('keeps clips available if source timing cannot be read and never guesses from their spans', async () => {
+    const snapshot = await new ResultsLoader(fakeApi(twoProjects())).load(OLD, OLD_SOURCE, OLD_JOB);
+    expect(snapshot.sourceDurationTicks).toBeNull();
+    expect(snapshot.rows).toHaveLength(2);
+    expect(snapshot.problem).toBeNull();
+  });
+});
+
+describe('filmstrip identity', () => {
+  it.each([true, false])(
+    'uses source timing only from the same recording (matching=%s)',
+    async (matching) => {
+      const world = twoProjects();
+      const chosen = world.sources[OLD]![0]!;
+      const stripId = 'sha256:filmstrip';
+      const analysis = world.jobs[OLD]![0]!;
+      const snapshot = await new ResultsLoader(
+        fakeApi({
+          ...world,
+          jobs: {
+            ...world.jobs,
+            [OLD]: [
+              {
+                ...analysis,
+                tasks: [
+                  ...analysis.tasks,
+                  task('media.filmstrip.v1', TaskState.SUCCEEDED, { outputArtifactId: stripId }),
+                ],
+              },
+            ],
+          },
+          documents: {
+            ...world.documents,
+            [stripId]: {
+              artifactId: stripId,
+              kind: 'media.filmstrip.v1',
+              json: JSON.stringify({
+                schema_version: 'clipmill.media.filmstrip.v1',
+                source_fingerprint: matching ? chosen.sourceFingerprint : OTHER_FINGERPRINT,
+                tiles: [{ file: 'tile_00124.jpg', t_ticks: 600 * 90_000 }],
+              }),
+            },
+          },
+        }),
+      ).load(OLD, OLD_SOURCE, OLD_JOB);
+      expect(snapshot.filmstrip).toEqual(
+        matching
+          ? {
+              artifactId: stripId,
+              tiles: [{ file: 'tile_00124.jpg', tTicks: 600 * 90_000 }],
+            }
+          : null,
+      );
+      expect(snapshot.problem).toBeNull();
+    },
+  );
 });

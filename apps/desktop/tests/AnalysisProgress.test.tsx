@@ -97,6 +97,7 @@ describe('the Analysis Progress screen', () => {
         maxTicks: 90 * 90000,
         count: 5,
         localEditorial: true,
+        contentProfile: 'interview',
       }),
     );
     await waitFor(() => expect(onRestarted).toHaveBeenCalledWith('p1', 'job-p1'));
@@ -105,7 +106,7 @@ describe('the Analysis Progress screen', () => {
   it('shows every stage of the pipeline, named for a reader', async () => {
     show();
     const pipeline = within(await screen.findByRole('list', { name: 'Pipeline stages' }));
-    expect(pipeline.getAllByRole('listitem')).toHaveLength(14);
+    expect(pipeline.getAllByRole('listitem')).toHaveLength(15);
     for (const label of [
       'Inspect source',
       'Ingest',

@@ -32,8 +32,37 @@ def test_valid_fixtures_roundtrip_canonically() -> None:
     for path in paths:
         raw = path.read_text(encoding="utf-8")
         parsed = RankingSet.model_validate_json(raw)
-        reserialized = parsed.model_dump(mode="json", exclude_none=True)
+        # Rust omits optional empty vectors; defaults remain available to
+        # readers without adding fields to older stored artifact bytes.
+        reserialized = parsed.model_dump(mode="json", exclude_none=True, exclude_unset=True)
         assert canonical(reserialized) == raw, f"{path.name} did not round-trip"
+
+
+def test_legacy_ranking_defaults_declines_without_changing_field_presence() -> None:
+    document = valid("interview.json")
+    document.pop("declined", None)
+    parsed = RankingSet.model_validate(document)
+    assert parsed.declined == []
+    assert "declined" not in parsed.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+
+
+def test_declined_candidate_survives_roundtrip_separately_from_recommendations() -> None:
+    document = valid("interview.json")
+    declined = document["cohort"].pop()
+    declined["review"] = {
+        "status": "rejected",
+        "reasons": ["missing_setup"],
+        "route": "local",
+        "summary": "The opening needs context from an earlier exchange.",
+    }
+    document["cohort"] = []
+    document["selected"] = []
+    document["declined"] = [declined]
+    parsed = RankingSet.model_validate(document)
+    assert len(parsed.declined) == 1
+    assert parsed.declined[0].review.status == "rejected"
+    assert parsed.cohort == [] and parsed.selected == []
+    assert parsed.model_dump(mode="json", exclude_none=True, exclude_unset=True) == document
 
 
 def test_invalid_fixtures_are_rejected() -> None:

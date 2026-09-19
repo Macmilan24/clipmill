@@ -50,6 +50,7 @@ fn fit_document() -> EditDocument {
         180_000,
         540_000,
         Layout {
+            secondary_crop_path: Vec::new(),
             state: LayoutState::Fit,
             crop_path: Vec::new(),
         },
@@ -281,27 +282,20 @@ fn a_silent_source_still_occupies_its_span() {
 /// render would hang rather than fail. After the concat there is nothing left
 /// to starve, and `-frames:v` ends the stream.
 #[test]
-fn the_tail_pad_holds_the_program_and_never_a_span() {
-    let plan = compile(&first_slice(), &[source()], &RenderProfile::default()).expect("compiles");
-    let graph = &plan.graph.graph;
-    assert_eq!(plan.spans.len(), 2, "this fixture must exercise a concat");
-    assert_eq!(
-        graph.matches("tpad=").count(),
-        1,
-        "exactly one pad, for the program: {graph}"
-    );
-    let pad = graph.find("tpad=").expect("the pad is present");
-    let concat = graph.find("concat=").expect("the concat is present");
-    assert!(
-        pad > concat,
-        "a pad before the concat would starve the second span: {graph}"
-    );
+fn every_video_span_is_bounded_on_one_global_frame_grid_without_padding_audio() {
+    let plan = compile(&first_slice(), &[source()], &RenderProfile::default()).expect("compile");
+    assert_eq!(plan.graph.graph.matches("tpad=").count(), plan.spans.len());
+    for span in &plan.spans {
+        assert!(
+            plan.graph
+                .graph
+                .contains(&format!("trim=end_frame={}", span.frame_count))
+        );
+    }
+    assert!(plan.graph.graph.contains("concat=n=2:v=0:a=1[acat]"));
+    assert!(plan.graph.graph.contains("concat=n=2:v=1:a=0[vcat]"));
 }
 
-/// The loudness measurement pass has no video chain to pad.
-///
-/// It decodes audio only, so a video filter there would be both useless and a
-/// second place the pad could drift out of step with the encode graph.
 #[test]
 fn the_measurement_pass_carries_no_tail_pad() {
     let plan = compile(&fit_document(), &[source()], &RenderProfile::default()).expect("compiles");
@@ -355,6 +349,7 @@ fn crop_document(path: Vec<CropKeyframe>) -> EditDocument {
         0,
         180_000,
         Layout {
+            secondary_crop_path: Vec::new(),
             state: LayoutState::SpeakerFill,
             crop_path: path,
         },
@@ -718,6 +713,11 @@ fn speaker_fill_without_a_path_is_refused() {
         refuses(&crop_document(Vec::new()), &[source()]),
         RenderError::SpeakerFillWithoutCropPath(_)
     ));
+    let preview =
+        clipmill_render::preview_plan(&crop_document(Vec::new()), &RenderProfile::default())
+            .expect("legacy document remains editable");
+    assert!(preview.segments[0].framing_warning.contains("choose Fit"));
+    assert!(preview.crops.iter().all(Option::is_none));
 }
 
 #[test]
@@ -780,5 +780,44 @@ fn two_crop_keyframes_on_one_frame_are_refused() {
     assert!(matches!(
         refuses(&crop_document(path), &[source()]),
         RenderError::CropKeyframesTooDense(_)
+    ));
+}
+
+#[test]
+fn two_person_render_and_preview_use_both_independent_viewports() {
+    let mut document = crop_document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: CropRect {
+            x: 0,
+            y: 140,
+            width: 900,
+            height: 800,
+        },
+    }]);
+    let layout = &mut document.video.segments[0].layout;
+    layout.state = LayoutState::TwoUp;
+    layout.secondary_crop_path = vec![CropKeyframe {
+        t_ticks: 0,
+        rect: CropRect {
+            x: 1000,
+            y: 140,
+            width: 900,
+            height: 800,
+        },
+    }];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("two-person composition compiles");
+    assert!(plan.graph.graph.contains("vstack=inputs=2"));
+    assert!(plan.graph.graph.contains("scale=1080:960"));
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert_eq!(preview.crops[0].unwrap().x, 0);
+    assert_eq!(preview.secondary_crops[0].unwrap().x, 1000);
+    assert_eq!(preview.secondary_crops.len(), preview.crops.len());
+    document.video.segments[0].layout.secondary_crop_path[0]
+        .rect
+        .x = 1500;
+    assert!(matches!(
+        compile(&document, &[source()], &profile),
+        Err(RenderError::CropOutsideFrame(_))
     ));
 }

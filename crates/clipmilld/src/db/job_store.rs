@@ -1945,7 +1945,24 @@ fn complete_job_record(
                 destination_dir: request.destination_dir,
             })
         });
+    let content_profile = (header.kind == "analyze-source")
+        .then(|| {
+            clipmill_contracts::proto::ipc::v1::AnalyzeSourcePayloadV1::decode(
+                header.payload.as_slice(),
+            )
+            .ok()
+        })
+        .flatten()
+        .map(|payload| {
+            if payload.content_profile.is_empty() {
+                "interview".to_owned()
+            } else {
+                payload.content_profile
+            }
+        })
+        .unwrap_or_default();
     Ok(JobRecord {
+        content_profile,
         job_id: header.job_id,
         project_id: header.project_id,
         source_id: header.source_id,

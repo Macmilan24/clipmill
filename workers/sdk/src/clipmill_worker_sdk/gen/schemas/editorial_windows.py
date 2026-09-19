@@ -25,6 +25,15 @@ class Budget(BaseModel):
         ...,
         description='How many sentences on each side of the core are offered as context.',
     )
+    max_clip_ticks: conint(ge=0) | None = Field(
+        0,
+        description='Duration-aware core tail extension; zero denotes the legacy word-only overlap.',
+    )
+
+
+class ContentProfile(StrEnum):
+    interview = 'interview'
+    scripted = 'scripted'
 
 
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
@@ -182,4 +191,8 @@ class EditorialWindows(BaseModel):
     invalid_regions: list[InvalidRegion] = Field(
         ...,
         description='Echoed from the index: where the timing under these sentences is a guess, so a consumer that cuts on a word there knows what the cut is worth.',
+    )
+    content_profile: ContentProfile | None = Field(
+        'interview',
+        description='The editorial rubric selected for this run; older artifacts use interview.',
     )

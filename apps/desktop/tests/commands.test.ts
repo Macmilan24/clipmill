@@ -25,6 +25,9 @@ import {
   splitCue,
   ticksAt,
   trim,
+  trimStartAt,
+  trimEndAt,
+  solvedKeyframe,
 } from '../src/editor/commands.js';
 import { mapping } from './support/plan.js';
 
@@ -179,5 +182,66 @@ describe('the One-Euro filter', () => {
     filter.filter(500, 0);
     filter.reset();
     expect(filter.filter(10, 16)).toBe(10);
+  });
+});
+
+describe('multi-shot editing', () => {
+  it('keeps full-height solved crops within the encoder aspect tolerance', () => {
+    const key = solvedKeyframe(
+      { tTicks: 900_000, centerX: 0.5, centerY: 0.5, scale: 1 },
+      { inTicks: 900_000 },
+      { displayWidth: 1920, displayHeight: 1080 },
+      { width: 1080, height: 1920 },
+    );
+    expect(key.rect.width).toBe(608);
+    expect(Math.abs(key.rect.width * 1920 - key.rect.height * 1080)).toBeLessThanOrEqual(1920);
+  });
+  it('begin/end clip actions remove all preceding/following shots', () => {
+    const base = plan();
+    const first = base.segments[0]!;
+    const multi = {
+      ...base,
+      rateNum: 30,
+      rateDen: 1,
+      frameCount: 600,
+      segments: [
+        {
+          ...first,
+          inTicks: 900_000,
+          outTicks: 1_800_000,
+          programStartTicks: 0,
+          firstFrame: 0,
+          endFrame: 300,
+        },
+        {
+          ...first,
+          segmentId: 'second',
+          inTicks: 1_800_000,
+          outTicks: 2_700_000,
+          programStartTicks: 900_000,
+          firstFrame: 300,
+          endFrame: 600,
+        },
+      ],
+    };
+    expect(trimStartAt(multi, 450)).toEqual({
+      op: 'ripple_delete',
+      start_ticks: 0,
+      end_ticks: 1_350_000,
+      reflow_edges: true,
+    });
+    expect(trimEndAt(multi, 150)).toEqual({
+      op: 'ripple_delete',
+      start_ticks: 450_000,
+      end_ticks: 1_800_000,
+      reflow_edges: true,
+    });
+    expect(trimEndAt(multi, 300)).toEqual({
+      op: 'ripple_delete',
+      start_ticks: 900_000,
+      end_ticks: 1_800_000,
+      reflow_edges: true,
+    });
+    expect(trimEndAt(multi, 0)).toBeNull();
   });
 });

@@ -31,7 +31,7 @@ import {
   document,
   twoProjects,
 } from './support/clips.js';
-import { fakeApi } from './support/library.js';
+import { fakeApi, sourceMap, sourceMapDocument } from './support/library.js';
 
 /** Newest first, which is the order the daemon answers in and `newest` reads. */
 const PROJECTS = [
@@ -260,4 +260,60 @@ it('does not reopen a clip after the user leaves it during approval', async () =
     ),
   );
   expect(onEdit).not.toHaveBeenCalled();
+});
+
+it('opens the actual manual document identity returned for an older named run', async () => {
+  const world = twoProjects();
+  const selected = world.sources[OLD]![0]!;
+  const map = sourceMapDocument(
+    selected.sourceMapArtifactId,
+    sourceMap({
+      source_fingerprint: selected.sourceFingerprint,
+    }),
+  );
+  const shell = fakeApi({ ...world, documents: { ...world.documents, [map.artifactId]: map } });
+  const original = shell.directClip;
+  const direct = vi.spyOn(shell, 'directClip').mockImplementation(async (input) => ({
+    ...(await original(input)),
+    candidateId: 'manual_600_630',
+    docId: 'edt_manual_source_span',
+  }));
+  const onEdit = vi.fn();
+  render(
+    <TooltipProvider>
+      <ResultsScreen
+        candidateId={null}
+        projectId={OLD}
+        sourceId={OLD_SOURCE}
+        jobId={OLD_JOB}
+        onInspect={() => {}}
+        onEdit={onEdit}
+        onBack={() => {}}
+        api={shell}
+      />
+    </TooltipProvider>,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Make a manual clip' }));
+  fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00' } });
+  fireEvent.change(screen.getByLabelText('End time'), { target: { value: '10:30' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create manual edit' }));
+  await waitFor(() => expect(onEdit).toHaveBeenCalledOnce());
+  expect(direct).toHaveBeenCalledWith(
+    expect.objectContaining({
+      candidateId: '',
+      manualSpan: true,
+      approve: false,
+      jobId: OLD_JOB,
+      startTicks: 600 * 90_000,
+      endTicks: 630 * 90_000,
+    }),
+  );
+  expect(onEdit).toHaveBeenCalledWith({
+    projectId: OLD,
+    sourceId: OLD_SOURCE,
+    jobId: OLD_JOB,
+    candidateId: 'manual_600_630',
+    docId: 'edt_manual_source_span',
+    labels: { project: 'CUDA kernels', clip: 'Manual clip' },
+  });
 });

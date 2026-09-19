@@ -69,6 +69,39 @@ export interface DeliveryStage {
   readonly waitReason: string;
 }
 
+/** Worker counters are media time, not elapsed wall time or an ETA. */
+export function deliveryProgressText(progress: NonNullable<DeliveryStage['progress']>): string {
+  if (progress.unit === 'media_millis') {
+    const clock = (millis: number) => {
+      const tenths = Math.max(0, Math.floor(millis / 100));
+      const seconds = Math.floor(tenths / 10);
+      return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}.${tenths % 10}`;
+    };
+    return `${clock(progress.done)} of ${clock(progress.total)} rendered`;
+  }
+  if (progress.unit === 'frames' || progress.unit === 'files')
+    return `${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} ${progress.unit}`;
+  return `${Math.floor((100 * progress.done) / progress.total)}% complete`;
+}
+
+/** Translate durable scheduling reasons without exposing their machine codes. */
+export function deliveryWaitText(stage: DeliveryStage): string {
+  switch (stage.waitReason) {
+    case 'waiting: admission':
+      return 'Waiting to start';
+    case 'waiting: dependencies':
+      return stage.kind === 'deliver' ? 'After rendering' : 'Waiting for preparation';
+    case 'retry: daemon restart':
+      return 'Resuming after restart';
+    case 'retry: transient failure':
+      return 'Retrying after an interruption';
+    case 'retry: lease expired':
+      return 'Restarting an interrupted step';
+    default:
+      return stage.waitReason || 'waiting';
+  }
+}
+
 /** One file the delivery wrote, with the path it is at. */
 export interface DeliveredPath {
   readonly name: string;
@@ -78,6 +111,7 @@ export interface DeliveredPath {
 }
 
 export interface Delivery {
+  readonly renderArtifactId?: string | undefined;
   readonly revision: number;
   readonly destinationDir: string;
   readonly stages: readonly DeliveryStage[];
@@ -182,7 +216,9 @@ export function useDelivery(
   api: ShellApi = daemonApi,
 ): Delivery | null {
   const [job, setJob] = useState<Job | null>(null);
-  const [files, setFiles] = useState<readonly DeliveredPath[] | null>(null);
+  const [files, setFiles] = useState<{ jobId: string; value: readonly DeliveredPath[] } | null>(
+    null,
+  );
   const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
@@ -212,9 +248,13 @@ export function useDelivery(
         if (current.state === JobState.SUCCEEDED && deliver) {
           const document = await api.readDocument(projectId, deliver.outputArtifactId);
           if (live) {
-            setFiles(
-              deliveredPaths(JSON.parse(document.json) as ExportPackage, queued.destinationDir),
-            );
+            setFiles({
+              jobId: queued.jobId,
+              value: deliveredPaths(
+                JSON.parse(document.json) as ExportPackage,
+                queued.destinationDir,
+              ),
+            });
           }
         }
       } catch (error) {
@@ -236,13 +276,17 @@ export function useDelivery(
   if (!queued) {
     return null;
   }
+  const current = job?.jobId === queued.jobId ? job : null;
   return {
+    renderArtifactId: current?.tasks.find(
+      (task) => task.outputKind === RENDER_KIND && task.state === TaskState.SUCCEEDED,
+    )?.outputArtifactId,
     revision: queued.revision,
     destinationDir: queued.destinationDir,
-    stages: deliveryStages(job),
-    settled: settled(job),
-    files,
-    failure: failureOf(job),
-    interruption: settled(job) ? null : problem,
+    stages: deliveryStages(current),
+    settled: settled(current),
+    files: files?.jobId === queued.jobId ? files.value : null,
+    failure: failureOf(current),
+    interruption: settled(current) ? null : problem,
   };
 }

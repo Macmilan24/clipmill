@@ -21,6 +21,10 @@ export interface EditorialProposals {
    * One entry per window of the input, in order, whether or not the model proposed anything for it. A window absent from this list was not asked, which is a different document from one the model answered 'none' to.
    */
   windows: WindowAnswer[];
+  /**
+   * The editorial rubric selected for this run; older artifacts use interview.
+   */
+  content_profile?: "interview" | "scripted";
 }
 /**
  * Who answered, and under what: the implementation, the model by name and digest, the route the request took, the prompt version and the decoding configuration. Together with the inputs this is the cache identity of the answer; a changed prompt is a different result and an unchanged one is a hit.

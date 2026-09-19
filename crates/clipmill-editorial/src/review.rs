@@ -29,6 +29,9 @@ pub fn apply(
             "review belongs to different candidates or source".into(),
         ));
     }
+    if ranking.content_profile.to_string() != judgments.content_profile.to_string() {
+        return Err(Error("review uses a different content profile".into()));
+    }
     let all: BTreeSet<_> = ranking
         .cohort
         .iter()
@@ -103,7 +106,16 @@ pub fn apply(
             .iter()
             .map(|r| r.detail.to_string())
             .collect();
-        if answer.status == Some(JudgmentStatus::Rejected) {
+        // Preserve an inspectable decline without treating it as a recommendation.
+        // Uncertain transcription/pictures alone cannot prove missing source content.
+        let uncertain_only = !answer.reasons.is_empty()
+            && answer.reasons.iter().all(|reason| {
+                matches!(
+                    reason.code,
+                    ReasonCode::VisualDependency | ReasonCode::TranscriptUncertain
+                )
+            });
+        if answer.status == Some(JudgmentStatus::Rejected) && !uncertain_only {
             ranking.filtered.push(ranked::FilteredCandidate {
                 candidate_id: row.candidate_id.clone(),
                 reason: ranked::FilteredCandidateReason::ExcludedByDiscovery,
@@ -112,6 +124,16 @@ pub fn apply(
                     reasons.join("; ")
                 ))?),
             });
+            row.review = Some(ranked::RankedReview {
+                status: ranked::RankedReviewStatus::Rejected,
+                reasons,
+                route: parsed(&judgments.producer.route.to_string())?,
+                summary: answer
+                    .summary
+                    .as_ref()
+                    .map(|summary| summary.as_str().to_owned()),
+            });
+            ranking.declined.push(row);
             continue;
         }
         let mut status = if answer.status == Some(JudgmentStatus::Accepted) {
@@ -245,14 +267,17 @@ pub fn apply_looks(
     {
         return Err(Error("visual checks belong to a different review".into()));
     }
+    if ranking.content_profile.to_string() != looks.content_profile.to_string()
+        || ranking.content_profile.to_string() != judgments.content_profile.to_string()
+    {
+        return Err(Error(
+            "visual checks use a different content profile".into(),
+        ));
+    }
     let expected: BTreeSet<_> = judgments
         .candidates
         .iter()
-        .filter(|j| {
-            j.outcome == JudgmentOutcome::Answered
-                && visually_dependent(j)
-                && j.status != Some(JudgmentStatus::Rejected)
-        })
+        .filter(|j| j.outcome == JudgmentOutcome::Answered && visually_dependent(j))
         .map(|j| j.candidate_id.as_str())
         .collect();
     let mut checks = BTreeMap::new();
@@ -277,10 +302,13 @@ pub fn apply_looks(
         if let Some(review) = ranking
             .cohort
             .iter_mut()
+            .chain(ranking.declined.iter_mut())
             .find(|r| r.candidate_id.as_str() == id)
             .and_then(|r| r.review.as_mut())
         {
-            review.status = ranked::RankedReviewStatus::NeedsReview;
+            if review.status != ranked::RankedReviewStatus::Rejected {
+                review.status = ranked::RankedReviewStatus::NeedsReview;
+            }
             let detail = if complete {
                 check
                     .and_then(|c| c.detail.as_ref())

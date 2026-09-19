@@ -40,17 +40,20 @@ pub struct Budget {
     pub overlap_words: u64,
     /// Sentences offered as context on each side of the core.
     pub context_sentences: u64,
+    /// Extend a core far enough to finish any eligible moment that starts in it.
+    /// Zero retains the legacy word-only overlap for old callers.
+    pub max_clip_ticks: u64,
 }
 
 impl Budget {
-    /// About four minutes of ordinary speech per window, with the last half
-    /// minute of one beginning the next, and a sentence or two around it.
-    /// Sized for a model that answers in a few seconds per window, so an
-    /// hour is fifteen calls rather than one that cannot cite anything.
+    /// A nominal 600-word core plus enough following sentences to finish
+    /// a 90-second moment beginning anywhere in that core. Two sentences
+    /// around the resulting core provide context rather than clip endpoints.
     pub const DEFAULT: Self = Self {
         target_words: 600,
         overlap_words: 80,
         context_sentences: 2,
+        max_clip_ticks: 90 * 90_000,
     };
 }
 
@@ -129,6 +132,40 @@ fn cut(word_counts: &[u64], topic_starts: &[usize], budget: Budget) -> Vec<Cut> 
     cuts
 }
 
+/// Extend nominal word-sized cores by at most one clip-duration tail.
+///
+/// Each sentence begins in a nominal core. Including every legal end for that
+/// core's final start also includes every legal end for all its earlier starts.
+/// This covers sparse dialogue and fast speech without pretending a fixed word
+/// overlap is a fixed duration. Nominal cores still advance by the word budget;
+/// we do not create one model call per sentence when speech is unusually dense.
+fn cover_duration(cuts: Vec<Cut>, times: &[(u64, u64)], max_ticks: u64) -> Vec<Cut> {
+    if max_ticks == 0 {
+        return cuts;
+    }
+    let mut extended: Vec<Cut> = Vec::new();
+    for cut in cuts {
+        let nominal_end = cut.first + cut.count;
+        let latest_start = times[nominal_end - 1].0;
+        let mut end = nominal_end;
+        while end < times.len() && times[end].1.saturating_sub(latest_start) <= max_ticks {
+            end += 1;
+        }
+        // An already complete tail needs no second call over a subset of it.
+        if extended
+            .last()
+            .is_some_and(|previous| previous.first + previous.count >= end)
+        {
+            continue;
+        }
+        extended.push(Cut {
+            first: cut.first,
+            count: end - cut.first,
+        });
+    }
+    extended
+}
+
 /// Cut the index into windows.
 ///
 /// The index is the authority for every sentence and topic here; nothing is
@@ -154,13 +191,22 @@ pub fn windows(
         .iter()
         .filter_map(|topic| usize::try_from(topic.first_sentence_index).ok())
         .collect();
-    let windows = cut(&word_counts, &topic_starts, budget)
-        .into_iter()
-        .enumerate()
-        .map(|(position, cut)| window_of(index, &sentences, budget, position, cut))
+    let times: Vec<_> = sentences
+        .iter()
+        .map(|sentence| (sentence.start_ticks, sentence.end_ticks))
         .collect();
+    let windows = cover_duration(
+        cut(&word_counts, &topic_starts, budget),
+        &times,
+        budget.max_clip_ticks,
+    )
+    .into_iter()
+    .enumerate()
+    .map(|(position, cut)| window_of(index, &sentences, budget, position, cut))
+    .collect();
 
     Ok(EditorialWindows {
+        content_profile: doc::EditorialWindowsContentProfile::Interview,
         schema_version: serde_json::json!("clipmill.editorial.windows.v1"),
         source_fingerprint: address(index.source_fingerprint.as_str(), "source_fingerprint")?,
         inputs: doc::EditorialWindowsInputs {
@@ -189,6 +235,7 @@ pub fn windows(
             target_words: non_zero_u64(budget.target_words.max(1)),
             overlap_words: budget.overlap_words,
             context_sentences: budget.context_sentences,
+            max_clip_ticks: budget.max_clip_ticks,
         },
         coverage: doc::Coverage {
             start_ticks: index.coverage.start_ticks,
@@ -345,7 +392,7 @@ fn non_zero_u64(value: u64) -> NonZeroU64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Budget, Cut, cut};
+    use super::{Budget, Cut, cover_duration, cut};
 
     fn cuts(
         word_counts: &[u64],
@@ -360,6 +407,7 @@ mod tests {
                 target_words: target,
                 overlap_words: overlap,
                 context_sentences: 2,
+                max_clip_ticks: 0,
             },
         )
         .into_iter()
@@ -414,5 +462,66 @@ mod tests {
             assert!(pair[1].0 > pair[0].0, "{found:?}");
         }
         assert_eq!(found.last().map(|(first, count)| first + count), Some(5));
+    }
+    #[test]
+    fn a_seventy_second_moment_crossing_a_word_core_seam_is_proposable() {
+        let counts = [100; 30];
+        let times: Vec<_> = (0..30)
+            .map(|i| (i * 10 * 90_000, (i + 1) * 10 * 90_000))
+            .collect();
+        let nominal = cut(&counts, &[], Budget::DEFAULT);
+        assert!(
+            !nominal
+                .iter()
+                .any(|c| c.first <= 4 && c.first + c.count > 10)
+        );
+        let covered = cover_duration(nominal, &times, 90 * 90_000);
+        assert!(
+            covered
+                .iter()
+                .any(|c| c.first <= 4 && c.first + c.count > 10)
+        );
+        assert_eq!(times[10].1 - times[4].0, 70 * 90_000);
+    }
+
+    #[test]
+    fn every_duration_valid_sentence_span_fits_for_sparse_and_dense_dialogue() {
+        for seconds_per_sentence in [1, 3, 10, 40] {
+            let counts = [30; 180];
+            let times: Vec<_> = (0..180)
+                .map(|i| {
+                    (
+                        i * seconds_per_sentence * 90_000,
+                        (i + 1) * seconds_per_sentence * 90_000 - 1,
+                    )
+                })
+                .collect();
+            let budget = Budget {
+                target_words: 600,
+                overlap_words: 80,
+                context_sentences: 2,
+                max_clip_ticks: 90 * 90_000,
+            };
+            let nominal = cut(&counts, &[18, 39, 60], budget);
+            let nominal_count = nominal.len();
+            let covered = cover_duration(nominal, &times, budget.max_clip_ticks);
+            assert!(
+                covered.len() <= nominal_count,
+                "duration coverage does not multiply model calls"
+            );
+            for first in 0..times.len() {
+                for last in first..times.len() {
+                    let duration = times[last].1 - times[first].0;
+                    if (20 * 90_000..=90 * 90_000).contains(&duration) {
+                        assert!(
+                            covered
+                                .iter()
+                                .any(|c| c.first <= first && c.first + c.count > last),
+                            "missing {first}:{last} at density {seconds_per_sentence}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

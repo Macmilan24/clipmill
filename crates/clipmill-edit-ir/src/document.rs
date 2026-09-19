@@ -94,6 +94,8 @@ pub fn interpolate(from: i64, to: i64, offset: i64, span: i64) -> i64 {
 pub enum LayoutState {
     /// Crop to a single speaker and follow them along the crop path.
     SpeakerFill,
+    /// Two deliberate, equal-height viewports; no active-speaker inference.
+    TwoUp,
     /// Letterbox the whole frame; the crop path is inert but preserved.
     #[default]
     Fit,
@@ -105,6 +107,21 @@ pub struct Layout {
     pub state: LayoutState,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crop_path: Vec<CropKeyframe>,
+    /// Lower viewport in a two-person composition, inert in other layouts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secondary_crop_path: Vec<CropKeyframe>,
+}
+
+impl Layout {
+    /// Old documents may request a followed crop without having saved one.
+    /// Keep them editable, but make the missing framing explicit to delivery.
+    pub fn needs_crop_repair(&self) -> bool {
+        match self.state {
+            LayoutState::Fit => false,
+            LayoutState::SpeakerFill => self.crop_path.is_empty(),
+            LayoutState::TwoUp => self.crop_path.is_empty() || self.secondary_crop_path.is_empty(),
+        }
+    }
 }
 
 /// One span of one source, placed on the program timeline by its position in
@@ -931,25 +948,38 @@ impl EditDocument {
                 ));
             }
             let duration = segment.duration_ticks();
-            let mut previous: Option<i64> = None;
-            for keyframe in &segment.layout.crop_path {
-                if keyframe.t_ticks < 0 || keyframe.t_ticks > duration {
-                    return Err(DocumentError::CropKeyframeOutOfSegment(
-                        segment.segment_id.clone(),
-                    ));
+            if segment.layout.state == LayoutState::TwoUp
+                && (segment.layout.crop_path.is_empty()
+                    || segment.layout.secondary_crop_path.is_empty())
+            {
+                return Err(DocumentError::TwoUpWithoutCropPaths(
+                    segment.segment_id.clone(),
+                ));
+            }
+            for path in [
+                &segment.layout.crop_path,
+                &segment.layout.secondary_crop_path,
+            ] {
+                let mut previous: Option<i64> = None;
+                for keyframe in path {
+                    if keyframe.t_ticks < 0 || keyframe.t_ticks > duration {
+                        return Err(DocumentError::CropKeyframeOutOfSegment(
+                            segment.segment_id.clone(),
+                        ));
+                    }
+                    if previous.is_some_and(|value| value >= keyframe.t_ticks) {
+                        return Err(DocumentError::UnorderedCropPath(segment.segment_id.clone()));
+                    }
+                    if keyframe.rect.width <= 0 || keyframe.rect.height <= 0 {
+                        return Err(DocumentError::EmptyCropRect(segment.segment_id.clone()));
+                    }
+                    if keyframe.rect.x < 0 || keyframe.rect.y < 0 {
+                        return Err(DocumentError::NegativeCropOrigin(
+                            segment.segment_id.clone(),
+                        ));
+                    }
+                    previous = Some(keyframe.t_ticks);
                 }
-                if previous.is_some_and(|value| value >= keyframe.t_ticks) {
-                    return Err(DocumentError::UnorderedCropPath(segment.segment_id.clone()));
-                }
-                if keyframe.rect.width <= 0 || keyframe.rect.height <= 0 {
-                    return Err(DocumentError::EmptyCropRect(segment.segment_id.clone()));
-                }
-                if keyframe.rect.x < 0 || keyframe.rect.y < 0 {
-                    return Err(DocumentError::NegativeCropOrigin(
-                        segment.segment_id.clone(),
-                    ));
-                }
-                previous = Some(keyframe.t_ticks);
             }
         }
 
@@ -1027,6 +1057,8 @@ pub enum DocumentError {
     UnorderedGainCurve,
     #[error("loudness and gain values must be finite")]
     NonFiniteGain,
+    #[error("two-person layout on segment {0} requires both crop paths")]
+    TwoUpWithoutCropPaths(String),
     #[error("no segment named {0}")]
     UnknownSegment(String),
     #[error("no cue named {0}")]

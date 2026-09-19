@@ -259,6 +259,7 @@ pub fn discover(
     });
 
     Ok(contract::DiscoveryCandidates {
+        content_profile: contract::DiscoveryCandidatesContentProfile::Interview,
         editorial: None,
         schema_version: serde_json::json!("clipmill.discovery.candidates.v1"),
         source_fingerprint: parse(index.source_fingerprint.as_str(), "source_fingerprint")?,

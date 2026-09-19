@@ -59,6 +59,7 @@
       "reasons": []
     }
   ],
+  "content_profile": "interview",
   "inputs": {
     "candidates_artifact_id": "sha256:ca7d000000000000000000000000000000000000000000000000000000000044",
     "windows_artifact_id": "sha256:e01a000000000000000000000000000000000000000000000000000000000031"

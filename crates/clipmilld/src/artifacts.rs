@@ -156,6 +156,17 @@ pub(crate) struct ArtifactActor {
 
 impl ArtifactActor {
     pub(crate) fn start(path: &Path) -> Result<(Self, RecoveryReport), DaemonError> {
+        Self::start_inner(
+            path,
+            #[cfg(test)]
+            None,
+        )
+    }
+
+    fn start_inner(
+        path: &Path,
+        #[cfg(test)] pause: Option<GcPause>,
+    ) -> Result<(Self, RecoveryReport), DaemonError> {
         let (sender, mut receiver) = mpsc::channel(COMMAND_CAPACITY);
         let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
         let store_path = path.to_path_buf();
@@ -165,6 +176,8 @@ impl ArtifactActor {
                 Ok((mut store, recovery)) => {
                     let _ready = ready_sender.send(Ok(recovery));
                     let mut staging_context = BTreeMap::new();
+                    #[cfg(test)]
+                    let mut pause = pause;
                     while let Some(command) = receiver.blocking_recv() {
                         match command {
                             Command::Prepare { recipe, reply } => {
@@ -209,7 +222,19 @@ impl ArtifactActor {
                                 grace,
                                 reply,
                             } => {
-                                let _reply = reply.send(store.collect_garbage(roots, now, grace));
+                                let result =
+                                    store.collect_garbage_interruptible(roots, now, grace, || {
+                                        #[cfg(test)]
+                                        if let Some(pause) = pause.take() {
+                                            let _sent = pause.reached.send(());
+                                            let _resumed = pause.resume.recv();
+                                        }
+                                        // A single actor still owns the store. No foreground
+                                        // operation runs inside the scan; yielding returns to
+                                        // this command loop before fresh roots are requested.
+                                        !receiver.is_empty() || reply.is_closed()
+                                    });
+                                let _reply = reply.send(result);
                             }
                             Command::Usage { reply } => {
                                 let _reply = reply.send(store.usage());
@@ -493,3 +518,13 @@ enum Command {
         reply: oneshot::Sender<()>,
     },
 }
+
+#[cfg(test)]
+#[derive(Debug)]
+struct GcPause {
+    reached: oneshot::Sender<()>,
+    resume: std::sync::mpsc::Receiver<()>,
+}
+
+#[cfg(test)]
+mod tests;

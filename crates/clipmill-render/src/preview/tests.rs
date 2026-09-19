@@ -54,6 +54,7 @@ fn document(state: LayoutState) -> EditDocument {
                 in_ticks: 0,
                 out_ticks: 120 * FRAME_TICKS,
                 layout: Layout {
+                    secondary_crop_path: Vec::new(),
                     state,
                     crop_path: vec![
                         CropKeyframe {

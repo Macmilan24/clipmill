@@ -219,8 +219,8 @@ export function clipRows(
   );
   const edited = newestDocumentPerCandidate(documents);
 
-  return [...ranking.cohort]
-    .sort((left, right) => left.rank - right.rank)
+  return [...ranking.cohort, ...(ranking.declined ?? [])]
+    .toSorted((left, right) => left.rank - right.rank)
     .map((ranked) => {
       const candidate = byId.get(ranked.candidate_id);
       const chosen = ranked.boundary.chosen;
@@ -233,12 +233,16 @@ export function clipRows(
         band: ranked.review
           ? ranked.review.status === 'accepted'
             ? 'strong'
-            : 'needs_review'
+            : ranked.review.status === 'rejected'
+              ? 'declined'
+              : 'needs_review'
           : ranked.uncertainty.band,
         bandLabel: ranked.review
           ? ranked.review.status === 'accepted'
             ? 'Ready to review'
-            : 'Needs review'
+            : ranked.review.status === 'rejected'
+              ? 'Declined by editorial review'
+              : 'Needs review'
           : (BAND_LABELS[ranked.uncertainty.band] ?? ranked.uncertainty.band),
         warnings: [...(ranked.review?.reasons ?? []), ...(ranked.uncertainty.warnings ?? [])],
         startTicks: chosen.start_ticks,
@@ -280,7 +284,7 @@ export function clipRows(
         docJobId: edited.get(ranked.candidate_id)?.jobId || null,
         latticeStarts: candidate?.boundary_lattice.starts ?? [],
         latticeEnds: candidate?.boundary_lattice.ends ?? [],
-        recommended: recommended.has(ranked.candidate_id),
+        recommended: ranked.review?.status !== 'rejected' && recommended.has(ranked.candidate_id),
         proposer: candidate?.proposer?.name ?? null,
         clusterId: candidate?.cluster_id ?? null,
         hook: quote(candidate?.roles?.hook),
@@ -329,6 +333,8 @@ export interface Summary {
   /** Missing analysis is independent of whether the requested clip count was met. */
   readonly warnings?: readonly string[];
   readonly filtered: number;
+  readonly declined?: number;
+  readonly contentProfile?: 'interview' | 'scripted';
 }
 
 export function summarize(ranking: RankingSet): Summary {
@@ -353,6 +359,8 @@ export function summarize(ranking: RankingSet): Summary {
   }
   return {
     selected: ranking.selected.length,
+    declined: ranking.declined?.length ?? 0,
+    contentProfile: ranking.content_profile ?? 'interview',
     cohort: ranking.cohort.length,
     requested: ranking.requested.count,
     shortfall: (ranking.shortfall ?? []).map(

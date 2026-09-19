@@ -543,6 +543,7 @@ async fn a_run_is_started_watched_read_and_streamed() {
             &project,
             clipmill_contracts::proto::ipc::v1::AnalyzeSourcePayloadV1 {
                 local_editorial: false,
+                content_profile: String::new(),
                 cloud_editorial: None,
                 key_version: "clipmill.analyze-source.v1".to_owned(),
                 source_id: source.source_id.clone(),

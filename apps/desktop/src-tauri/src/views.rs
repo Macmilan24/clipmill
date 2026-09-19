@@ -131,6 +131,8 @@ impl From<Task> for TaskView {
 
 #[derive(Debug, Serialize)]
 pub struct JobView {
+    #[serde(rename = "contentProfile")]
+    pub content_profile: String,
     #[serde(rename = "jobId")]
     pub job_id: String,
     #[serde(rename = "projectId")]
@@ -200,6 +202,7 @@ impl From<Job> for JobView {
             failure_detail: job.failure_detail,
             source_id: job.source_id,
             export: job.export.map(Into::into),
+            content_profile: job.content_profile,
         }
     }
 }
@@ -254,6 +257,8 @@ pub struct AnalyzeRequest {
     pub count: u64,
     #[serde(default, rename = "localEditorial")]
     pub local_editorial: bool,
+    #[serde(default, rename = "contentProfile")]
+    pub content_profile: String,
     #[serde(default, rename = "cloudEditorial")]
     pub cloud_editorial: Option<CloudEditorialRequest>,
 }
@@ -279,6 +284,7 @@ impl AnalyzeRequest {
             count: self.count,
             diversity_milli: 0,
             local_editorial: self.local_editorial,
+            content_profile: self.content_profile,
             cloud_editorial: self.cloud_editorial.map(|c| {
                 clipmill_contracts::proto::ipc::v1::EditorialCloudV1 {
                     transcript_consent: c.transcript_consent,
@@ -399,6 +405,10 @@ pub struct DocumentView {
 /// What the renderer asks for when a clip is approved.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "wire request flags mirror the existing IPC contract"
+)]
 pub struct DirectClipInput {
     pub project_id: String,
     pub source_id: String,
@@ -421,6 +431,10 @@ pub struct DirectClipInput {
     /// Record the approval in the same write as the document.
     #[serde(default)]
     pub approve: bool,
+    #[serde(default)]
+    pub allow_declined: bool,
+    #[serde(default)]
+    pub manual_span: bool,
     /// The analysis run the candidate belongs to; every stage the director
     /// reads is taken from it. Empty takes the newest run over the source.
     #[serde(default)]
@@ -443,6 +457,8 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             end_ticks: input.end_ticks,
             variation: input.variation,
             approve: input.approve,
+            allow_declined: input.allow_declined,
+            manual_span: input.manual_span,
             job_id: input.job_id,
         }
     }
@@ -587,6 +603,8 @@ pub struct PreviewPlanView {
     /// One entry per frame; null where the layout is fit and the whole picture
     /// is shown, which is a different statement from a crop covering it.
     pub crops: Vec<Option<[i64; 4]>>,
+    pub secondary_crops: Vec<Option<[i64; 4]>>,
+    pub caption_style: Option<PreviewCaptionStyleView>,
     pub cues: Vec<PreviewCueView>,
     pub gain: Vec<PreviewGainView>,
     pub width: i64,
@@ -604,12 +622,32 @@ pub struct PreviewPlanView {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PreviewCaptionStyleView {
+    pub style_ref: String,
+    pub font_family: String,
+    pub font_size: u32,
+    pub spoken: String,
+    pub unspoken: String,
+    pub outline: String,
+    pub shadow: String,
+    pub outline_width: u32,
+    pub shadow_depth: u32,
+    pub bold: bool,
+    pub boxed: bool,
+    pub margin_horizontal: u32,
+    pub margin_vertical: u32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewSegmentView {
     pub segment_id: String,
     pub source_fingerprint: String,
     pub in_ticks: i64,
     pub out_ticks: i64,
     pub program_start_ticks: i64,
+    pub has_two_up_paths: bool,
+    pub framing_warning: String,
     pub first_frame: i64,
     pub end_frame: i64,
 }
@@ -667,6 +705,10 @@ pub struct PreviewGainView {
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for PreviewPlanView {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "field-for-field conversion of the daemon preview contract"
+    )]
     fn from(reply: clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse) -> Self {
         Self {
             revision: reply.revision,
@@ -675,6 +717,29 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
             frame_count: reply.frame_count,
             crops: reply
                 .crops
+                .into_iter()
+                .map(|crop| {
+                    crop.present
+                        .then_some([crop.x, crop.y, crop.width, crop.height])
+                })
+                .collect(),
+            caption_style: reply.caption_style.map(|style| PreviewCaptionStyleView {
+                style_ref: style.style_ref,
+                font_family: style.font_family,
+                font_size: style.font_size,
+                spoken: style.spoken,
+                unspoken: style.unspoken,
+                outline: style.outline,
+                shadow: style.shadow,
+                outline_width: style.outline_width,
+                shadow_depth: style.shadow_depth,
+                bold: style.bold,
+                boxed: style.boxed,
+                margin_horizontal: style.margin_horizontal,
+                margin_vertical: style.margin_vertical,
+            }),
+            secondary_crops: reply
+                .secondary_crops
                 .into_iter()
                 .map(|crop| {
                     crop.present
@@ -726,6 +791,8 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                     in_ticks: segment.in_ticks,
                     out_ticks: segment.out_ticks,
                     program_start_ticks: segment.program_start_ticks,
+                    has_two_up_paths: segment.has_two_up_paths,
+                    framing_warning: segment.framing_warning,
                     first_frame: segment.first_frame,
                     end_frame: segment.end_frame,
                 })
@@ -1026,7 +1093,7 @@ impl From<clipmill_contracts::proto::ipc::v1::GetReadinessResponse> for Readines
 /// itself: the generated proto types carry no serde derives, and giving the
 /// renderer its own struct keeps the field names camel-cased on the side that
 /// reads them and snake-cased on the side that transmits them.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportRequestInput {
     pub doc_id: String,
@@ -1065,5 +1132,71 @@ impl From<ExportRequestInput> for ExportRequestV1 {
             title: input.title,
             expected_revision: input.expected_revision,
         }
+    }
+}
+
+impl From<ExportRequestV1> for ExportRequestInput {
+    fn from(request: ExportRequestV1) -> Self {
+        Self {
+            doc_id: request.doc_id,
+            destination_dir: request.destination_dir,
+            naming_pattern: request.naming_pattern,
+            source_attestation: request.source_attestation,
+            gates_passed: request.gates_passed,
+            ai_assistance: request.ai_assistance,
+            index: request.index,
+            date: request.date,
+            title: request.title,
+            expected_revision: request.expected_revision,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportBatchView {
+    pub batch_id: String,
+    pub created_unix_millis: u64,
+    pub items: Vec<ExportBatchItemView>,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportBatchItemView {
+    pub index: u32,
+    pub project_id: String,
+    pub request: ExportRequestInput,
+    pub state: String,
+    pub attempt: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queued: Option<QueuedExportView>,
+    pub error: String,
+}
+impl TryFrom<clipmill_contracts::proto::ipc::v1::ExportBatchV1> for ExportBatchView {
+    type Error = String;
+    fn try_from(
+        batch: clipmill_contracts::proto::ipc::v1::ExportBatchV1,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            batch_id: batch.batch_id,
+            created_unix_millis: batch.created_unix_millis,
+            items: batch
+                .items
+                .into_iter()
+                .map(|item| {
+                    Ok(ExportBatchItemView {
+                        index: item.index,
+                        project_id: item.project_id,
+                        request: item
+                            .request
+                            .ok_or("Saved batch item has no request")?
+                            .into(),
+                        state: item.state,
+                        attempt: item.attempt,
+                        queued: item.queued.map(Into::into),
+                        error: item.error,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+        })
     }
 }
