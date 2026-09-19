@@ -7,8 +7,8 @@
  * playhead moves, and — the case the audit reproduced — when a trim changes
  * the mapping under a playhead that did not move.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '../src/components/ui/tooltip.js';
 import type { PreviewPlan } from '../src/daemon/client.js';
@@ -32,13 +32,14 @@ function program(frames: number, inSeconds: number): PreviewPlan {
 
 const video = () => screen.getByTestId('proxy') as HTMLVideoElement;
 
-function show(initial: PreviewPlan) {
+function show(initial: PreviewPlan, urls?: ReadonlyMap<string, string>) {
   const onApply = vi.fn();
   // The URL map is what the hook derives from the plan's proxies.
-  const props = (current: PreviewPlan) => ({
+  const props = (current: PreviewPlan, docId = 'edt_A') => ({
     plan: current,
-    proxyUrls: new Map(current.proxies.map((proxy) => [proxy.sourceFingerprint, PROXY_URL])),
-    docId: 'edt_A',
+    proxyUrls:
+      urls ?? new Map(current.proxies.map((proxy) => [proxy.sourceFingerprint, PROXY_URL])),
+    docId,
     labels: { project: 'CUDA kernels', clip: 'Clip 01' },
     loading: false,
     problem: null,
@@ -63,10 +64,10 @@ function show(initial: PreviewPlan) {
   return {
     onApply,
     video,
-    replan: (next: PreviewPlan) =>
+    replan: (next: PreviewPlan, docId = 'edt_A') =>
       view.rerender(
         <TooltipProvider>
-          <Editor {...props(next)} />
+          <Editor {...props(next, docId)} />
         </TooltipProvider>,
       ),
   };
@@ -133,6 +134,394 @@ describe('the player and the recording’s clock', () => {
   it('says there is nothing to play when the recording has no proxy', () => {
     show({ ...program(900, 600), proxies: [] });
     expect(screen.getByText(/no proxy/i)).toBeTruthy();
+  });
+});
+
+/** Browser media state with explicitly delivered decoded-frame callbacks. */
+function playback() {
+  type MediaState = {
+    time: number;
+    paused: boolean;
+    seeking: boolean;
+    ended: boolean;
+    ready: number;
+    callbacks: Map<number, VideoFrameRequestCallback>;
+  };
+  const mediaStates = new WeakMap<HTMLMediaElement, MediaState>();
+  const state = (media: HTMLMediaElement) => {
+    let found = mediaStates.get(media);
+    if (!found) {
+      found = {
+        time: 0,
+        paused: true,
+        seeking: false,
+        ended: false,
+        ready: 0,
+        callbacks: new Map(),
+      };
+      mediaStates.set(media, found);
+    }
+    return found;
+  };
+  const media = HTMLMediaElement.prototype;
+  const timeDescriptor = Object.getOwnPropertyDescriptor(media, 'currentTime')!;
+  vi.spyOn(media, 'currentTime', 'get').mockImplementation(function (this: HTMLMediaElement) {
+    return state(this).time;
+  });
+  const seeks = vi.spyOn(media, 'currentTime', 'set').mockImplementation(function (
+    this: HTMLMediaElement,
+    time,
+  ) {
+    state(this).time = time;
+    state(this).seeking = true;
+    state(this).ended = false;
+  });
+  vi.spyOn(media, 'paused', 'get').mockImplementation(function (this: HTMLMediaElement) {
+    return state(this).paused;
+  });
+  vi.spyOn(media, 'seeking', 'get').mockImplementation(function (this: HTMLMediaElement) {
+    return state(this).seeking;
+  });
+  vi.spyOn(media, 'ended', 'get').mockImplementation(function (this: HTMLMediaElement) {
+    return state(this).ended;
+  });
+  vi.spyOn(media, 'readyState', 'get').mockImplementation(function (this: HTMLMediaElement) {
+    return state(this).ready;
+  });
+  const play = vi.spyOn(media, 'play').mockImplementation(function (this: HTMLMediaElement) {
+    // Native play() at EOF restarts the whole media resource unless the editor
+    // first seeks back to the selected clip's source start.
+    if (state(this).ended) {
+      state(this).time = 0;
+      state(this).ended = false;
+    }
+    state(this).paused = false;
+    fireEvent.play(this);
+    fireEvent.playing(this);
+    return Promise.resolve();
+  });
+  const pause = vi.spyOn(media, 'pause').mockImplementation(function (this: HTMLMediaElement) {
+    state(this).paused = true;
+    fireEvent.pause(this);
+  });
+  vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(1280);
+  vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(720);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    clearRect: vi.fn(),
+    drawImage: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  let nextId = 0;
+  const requestDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLVideoElement.prototype,
+    'requestVideoFrameCallback',
+  );
+  const cancelDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLVideoElement.prototype,
+    'cancelVideoFrameCallback',
+  );
+  Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', {
+    configurable: true,
+    value(this: HTMLVideoElement, callback: VideoFrameRequestCallback) {
+      const id = ++nextId;
+      state(this).callbacks.set(id, callback);
+      return id;
+    },
+  });
+  Object.defineProperty(HTMLVideoElement.prototype, 'cancelVideoFrameCallback', {
+    configurable: true,
+    value(this: HTMLVideoElement, id: number) {
+      state(this).callbacks.delete(id);
+    },
+  });
+  const restore = () => {
+    // Getter and setter spies wrap the same descriptor; restore both together.
+    Object.defineProperty(media, 'currentTime', timeDescriptor);
+    for (const [name, descriptor] of [
+      ['requestVideoFrameCallback', requestDescriptor],
+      ['cancelVideoFrameCallback', cancelDescriptor],
+    ] as const) {
+      if (descriptor) Object.defineProperty(HTMLVideoElement.prototype, name, descriptor);
+      else Reflect.deleteProperty(HTMLVideoElement.prototype, name);
+    }
+  };
+  return {
+    state,
+    seeks,
+    play,
+    pause,
+    restore,
+    ready(element: HTMLVideoElement) {
+      state(element).ready = 4;
+      state(element).ended = false;
+      fireEvent.loadedMetadata(element);
+      state(element).seeking = false;
+      fireEvent.loadedData(element);
+      fireEvent.seeked(element);
+    },
+    decode(element: HTMLVideoElement, seconds: number) {
+      const next = state(element).callbacks.entries().next().value;
+      expect(next, 'playing video must have a pending decoded-frame callback').toBeDefined();
+      state(element).time = seconds;
+      state(element).callbacks.delete(next![0]);
+      act(() => next![1](0, { mediaTime: seconds } as VideoFrameCallbackMetadata));
+      return next![1];
+    },
+    end(element: HTMLVideoElement, seconds: number) {
+      state(element).time = seconds;
+      state(element).paused = true;
+      state(element).ended = true;
+      fireEvent.ended(element);
+    },
+  };
+}
+
+/** Four half-second shots, continuous unless the last shot starts elsewhere. */
+function shots(lastStart = 601.5): PreviewPlan {
+  const base = program(60, 600);
+  return {
+    ...base,
+    segments: Array.from({ length: 4 }, (_unused, index) => {
+      const start = index === 3 ? lastStart : 600 + index / 2;
+      return {
+        ...base.segments[0]!,
+        segmentId: `shot_${index}`,
+        inTicks: start * TICKS,
+        outTicks: (start + 0.5) * TICKS,
+        programStartTicks: index * 0.5 * TICKS,
+        firstFrame: index * 15,
+        endFrame: (index + 1) * 15,
+      };
+    }),
+  };
+}
+
+function endingAtProxyEof(): PreviewPlan {
+  const base = program(60, 600.01);
+  return {
+    ...base,
+    segments: [{ ...base.segments[0]!, outTicks: 602 * TICKS }],
+    proxies: [{ ...base.proxies[0]!, coverageEndTicks: 602 * TICKS, rateNum: 24, rateDen: 1 }],
+  };
+}
+
+describe('decoded playback across shots and documents', () => {
+  let control: ReturnType<typeof playback>;
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    control?.restore();
+  });
+
+  it('keeps continuous shots playing without seeking, including delayed multi-cut callbacks', () => {
+    control = playback();
+    show(shots());
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.seeks.mockClear();
+
+    control.decode(element, 600.5);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 15 of 60');
+    control.decode(element, 601.75);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 52 of 60');
+    expect(control.seeks).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /^pause$/i })).toBeTruthy();
+  });
+
+  it('seeks a genuine source gap once and ignores seeking events and stale decoded callbacks', () => {
+    control = playback();
+    show(shots(610));
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.seeks.mockClear();
+
+    const oldCallback = control.decode(element, 601.75);
+    expect(control.seeks).toHaveBeenCalledExactlyOnceWith(610);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 45 of 60');
+    fireEvent.seeking(element);
+    act(() => oldCallback(0, { mediaTime: 601.9 } as VideoFrameCallbackMetadata));
+    fireEvent.timeUpdate(element);
+    expect(control.seeks).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 45 of 60');
+
+    control.state(element).seeking = false;
+    fireEvent.seeked(element);
+    control.decode(element, 610.1);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 48 of 60');
+    expect(control.seeks).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads a different source before seeking and resuming playback', () => {
+    control = playback();
+    const base = shots(120);
+    const nextSource = 'sha256:another-source';
+    const nextUrl = 'clipmill-media://localhost/p_old/sha256:proxy-next/proxy.mp4';
+    const next: PreviewPlan = {
+      ...base,
+      segments: base.segments.map((segment, index) =>
+        index === 3 ? { ...segment, sourceFingerprint: nextSource } : segment,
+      ),
+      sources: [...base.sources, { ...base.sources[0]!, sourceFingerprint: nextSource }],
+      proxies: [...base.proxies, { ...base.proxies[0]!, sourceFingerprint: nextSource }],
+    };
+    show(
+      next,
+      new Map([
+        [base.segments[0]!.sourceFingerprint, PROXY_URL],
+        [nextSource, nextUrl],
+      ]),
+    );
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.seeks.mockClear();
+    control.play.mockClear();
+
+    control.decode(element, 601.5);
+    expect(video().getAttribute('src')).toBe(nextUrl);
+    expect(control.seeks).not.toHaveBeenCalled();
+    expect(control.state(element).paused).toBe(true);
+    expect(control.play).not.toHaveBeenCalled();
+    control.ready(element);
+    expect(control.seeks).toHaveBeenCalledExactlyOnceWith(120);
+    expect(control.play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /^pause$/i })).toBeTruthy();
+    control.decode(element, 120.1);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 48 of 60');
+  });
+
+  it('repositions a playing proxy when a new revision changes its source mapping', () => {
+    control = playback();
+    const view = show(shots());
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    const oldCallback = control.decode(element, 600.5);
+    control.seeks.mockClear();
+
+    view.replan({ ...program(45, 605), revision: 1 });
+    expect(control.seeks).toHaveBeenCalledExactlyOnceWith(605.5);
+    fireEvent.seeking(element);
+    act(() => oldCallback(0, { mediaTime: 601 } as VideoFrameCallbackMetadata));
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 15 of 45');
+    control.state(element).seeking = false;
+    fireEvent.seeked(element);
+    control.decode(element, 605.6);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 18 of 45');
+    expect(control.seeks).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a paused requested frame when the lower-rate proxy decodes an earlier picture', () => {
+    control = playback();
+    show(shots());
+    const element = video();
+    control.ready(element);
+    fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
+      target: { value: '16' },
+    });
+    control.seeks.mockClear();
+    control.state(element).time = 600.5;
+    control.state(element).seeking = false;
+    fireEvent.seeked(element);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 16 of 60');
+    expect(control.seeks).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /^play$/i })).toBeTruthy();
+  });
+
+  it('finishes at native EOF and replays the clip even when no final program frame was decoded', () => {
+    control = playback();
+    show(endingAtProxyEof());
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.decode(element, 602 - 1 / 24);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 58 of 60');
+
+    control.end(element, 602);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 59 of 60');
+    expect(screen.getByRole('button', { name: /^play$/i })).toBeTruthy();
+    control.seeks.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    expect(control.seeks).toHaveBeenCalledExactlyOnceWith(600.01);
+    expect(element.currentTime).toBe(600.01);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 0 of 60');
+  });
+
+  it('continues into another source when the previous proxy ends between program frames', () => {
+    control = playback();
+    const base = endingAtProxyEof();
+    const nextSource = 'sha256:source-after-eof';
+    const nextUrl = 'clipmill-media://localhost/p_old/sha256:after-eof/proxy.mp4';
+    const at: PreviewPlan = {
+      ...base,
+      frameCount: 90,
+      crops: Array.from({ length: 90 }, () => null),
+      segments: [
+        ...base.segments,
+        {
+          ...base.segments[0]!,
+          segmentId: 'after_eof',
+          sourceFingerprint: nextSource,
+          inTicks: 120 * TICKS,
+          outTicks: 121 * TICKS,
+          programStartTicks: 179_100,
+          firstFrame: 60,
+          endFrame: 90,
+        },
+      ],
+      sources: [...base.sources, { ...base.sources[0]!, sourceFingerprint: nextSource }],
+      proxies: [...base.proxies, { ...base.proxies[0]!, sourceFingerprint: nextSource }],
+    };
+    show(
+      at,
+      new Map([
+        [base.segments[0]!.sourceFingerprint, PROXY_URL],
+        [nextSource, nextUrl],
+      ]),
+    );
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    control.decode(element, 602 - 1 / 24);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 58 of 90');
+    control.seeks.mockClear();
+    control.play.mockClear();
+
+    control.end(element, 602);
+    expect(video().getAttribute('src')).toBe(nextUrl);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 60 of 90');
+    expect(control.seeks).not.toHaveBeenCalled();
+    expect(control.play).not.toHaveBeenCalled();
+    control.ready(element);
+    // Program frame60 starts 0.01s after this segment's fractional boundary.
+    expect(control.seeks).toHaveBeenCalledExactlyOnceWith(120.01);
+    expect(control.play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /^pause$/i })).toBeTruthy();
+    control.decode(element, 120.11);
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 63 of 90');
+  });
+
+  it('stops the old video and its decoded callbacks when another document shares the source', async () => {
+    control = playback();
+    const view = show(shots());
+    const oldElement = video();
+    control.ready(oldElement);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    const staleCallback = control.decode(oldElement, 600.5);
+    control.pause.mockClear();
+
+    await act(async () => view.replan(program(90, 610), 'edt_B'));
+    expect(video()).not.toBe(oldElement);
+    expect(control.state(oldElement).paused).toBe(true);
+    expect(control.pause).toHaveBeenCalledTimes(1);
+    expect(control.state(oldElement).callbacks.size).toBe(0);
+    expect(video().currentTime).toBe(610);
+    expect(screen.getByRole('button', { name: /^play$/i })).toBeTruthy();
+    act(() => staleCallback(0, { mediaTime: 601.5 } as VideoFrameCallbackMetadata));
+    expect(screen.getByTestId('timecode').textContent).toContain('frame 0 of 90');
   });
 });
 

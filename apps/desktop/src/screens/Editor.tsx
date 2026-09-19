@@ -42,13 +42,12 @@ import {
   cropAt,
   cueAt,
   cueLines,
-  frameAtProxySeconds,
   gainAt,
   highlightedWord,
   lanePosition,
   proxySecondsAt,
+  resolvePlaybackFrame,
   segmentAt,
-  sourceOf,
   timecode,
 } from '../editor/player.js';
 
@@ -108,6 +107,12 @@ export function Editor({
 }: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [playhead, setFrame] = useState(0);
+  const clockFrame = useRef(0);
+  const resumeAfterLoad = useRef(false);
+  const updateFrame = useCallback((next: number) => {
+    clockFrame.current = next;
+    setFrame(next);
+  }, []);
   const [playing, setPlaying] = useState(false);
   const [playbackProblem, setPlaybackProblem] = useState<string | null>(null);
   // What is drawn is always a frame the program has. A trim can shorten the
@@ -120,10 +125,11 @@ export function Editor({
   // A different document is a different program; a playhead left where the
   // last one was would seek the new proxy to a frame it may not have.
   useEffect(() => {
-    setFrame(0);
+    updateFrame(0);
+    resumeAfterLoad.current = false;
     setPlaying(false);
     setPlaybackProblem(null);
-  }, [docId]);
+  }, [docId, updateFrame]);
 
   /**
    * Put the playhead on a program frame, and the media element where that
@@ -136,16 +142,24 @@ export function Editor({
         return;
       }
       const next = Math.max(0, Math.min(plan.frameCount - 1, target));
-      setFrame(next);
+      updateFrame(next);
       const element = video.current;
       const seconds = proxySecondsAt(plan, next);
       if (element && seconds !== null) {
+        const source = segmentAt(plan, next);
+        const url = source ? proxyUrls.get(source.sourceFingerprint) : null;
+        if (url !== element.getAttribute('src')) {
+          // React will change src; seeking the previous recording would show
+          // unrelated footage. Resume only after the new proxy is positioned.
+          resumeAfterLoad.current = !element.paused;
+          return;
+        }
         // Set whether or not the media has loaded: before metadata a browser
         // keeps it as the position to start from, which is what is wanted.
         element.currentTime = seconds;
       }
     },
-    [plan],
+    [plan, proxyUrls, updateFrame],
   );
 
   // A new plan is a new mapping. A trim moved the segment's window, so the
@@ -158,9 +172,9 @@ export function Editor({
     if (!plan) {
       return;
     }
-    seek(Math.min(playhead, plan.frameCount - 1));
+    seek(Math.min(clockFrame.current, plan.frameCount - 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the plan is the signal
-  }, [plan]);
+  }, [plan, docId]);
 
   const step = useCallback((by: number) => seek(frame + by), [frame, seek]);
 
@@ -171,7 +185,7 @@ export function Editor({
     if (!element.paused) {
       element.pause();
     } else {
-      if (frame >= plan.frameCount - 1) seek(0);
+      if (frame >= plan.frameCount - 1 || element.ended) seek(0);
       draftAudio.connect();
       void element.play().catch(() => {
         setPlaying(false);
@@ -218,51 +232,68 @@ export function Editor({
   const secondaryCrop = useMemo(() => (plan ? cropAt(plan, frame, true) : null), [plan, frame]);
   const segment = useMemo(() => (plan ? segmentAt(plan, frame) : null), [plan, frame]);
 
-  /**
-   * What the media element reports, read back as a program frame.
-   *
-   * The element plays the proxy, which runs on past the segment's end into
-   * footage the clip does not include. When it gets there the next segment
-   * begins — seeked to its own place in the proxy — or, on the last one, the
-   * program is over and playback stops on its final frame rather than into the
-   * rest of the recording.
-   */
+  // This callback returns the frame synchronously: the canvas must use its
+  // crop for these decoded pixels, without waiting for React to move the UI.
   const onProxyTime = useCallback(
-    (seconds: number) => {
-      if (!plan || !segment) {
-        return;
-      }
+    (seconds: number, atMediaEnd = false): number | null => {
       const element = video.current;
-      const proxyEnd = proxySecondsAt(plan, segment.endFrame - 1);
-      const ended = proxyEnd !== null && seconds > proxyEnd + secondsPerFrame(plan);
-      if (!ended) {
-        setFrame(frameAtProxySeconds(plan, segment, seconds));
-        return;
+      if (!plan || !element || element.seeking) return null;
+      const active = segmentAt(plan, clockFrame.current);
+      if (!active || proxyUrls.get(active.sourceFingerprint) !== element.getAttribute('src'))
+        return null;
+      // A paused seek requests a program frame even when the lower-rate proxy
+      // decodes an earlier frame. Do not move the scrubber back to that frame.
+      if (element.paused && !atMediaEnd) return clockFrame.current;
+      const next = resolvePlaybackFrame(plan, clockFrame.current, seconds);
+      if (next.seek || next.ended) {
+        if (next.ended) {
+          element.pause();
+          setPlaying(false);
+        }
+        seek(next.frame);
+        if (atMediaEnd && next.seek) {
+          // Native EOF is paused already, but an edit can continue in another
+          // recording (or repeat this one). Preserve that playback intent.
+          const following = segmentAt(plan, next.frame);
+          if (
+            following &&
+            proxyUrls.get(following.sourceFingerprint) !== element.getAttribute('src')
+          ) {
+            resumeAfterLoad.current = true;
+          } else {
+            void element.play().catch(() => {
+              setPlaying(false);
+              setPlaybackProblem('Playback could not continue. Try playing the clip again.');
+            });
+          }
+        }
+        return null;
       }
-      const following = plan.segments[plan.segments.indexOf(segment) + 1];
-      if (following) {
-        seek(following.firstFrame);
-        return;
+      if (atMediaEnd) {
+        setPlaying(false);
+        setPlaybackProblem(
+          'The preview ended before the clip. Reopen the clip to reload its proxy.',
+        );
+        return null;
       }
-      element?.pause();
-      setPlaying(false);
-      seek(plan.frameCount - 1);
+      updateFrame(next.frame);
+      return next.frame;
     },
-    [plan, segment, seek],
+    [plan, proxyUrls, seek, updateFrame],
   );
 
-  // Keep the playhead and captions in step with decoded video, not the browser's
-  // coarse timeupdate event (usually only a few events each second).
-  useEffect(() => {
-    if (!playing) return;
-    let request = 0;
-    const tick = () => {
-      if (video.current) onProxyTime(video.current.currentTime);
-      request = requestAnimationFrame(tick);
-    };
-    request = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(request);
-  }, [playing, onProxyTime]);
+  const onMetadata = useCallback(() => {
+    const element = video.current;
+    if (!element) return;
+    seek(clockFrame.current);
+    if (resumeAfterLoad.current) {
+      resumeAfterLoad.current = false;
+      void element.play().catch(() => {
+        setPlaying(false);
+        setPlaybackProblem('Playback could not continue. Try playing the clip again.');
+      });
+    }
+  }, [seek]);
 
   if (loading) {
     return <div className="p-8 text-sm text-[var(--cm-ink-2)]">Fetching the preview plan…</div>;
@@ -292,7 +323,6 @@ export function Editor({
     );
   }
 
-  const source = segment ? sourceOf(plan, segment) : null;
   const proxyUrl = segment ? (proxyUrls.get(segment.sourceFingerprint) ?? null) : null;
 
   return (
@@ -374,17 +404,17 @@ export function Editor({
           </div>
           <div className="editor-stage-wrap">
             <Stage
+              key={docId}
               proxyUrl={proxyUrl}
               videoRef={video}
-              crop={crop}
-              secondaryCrop={secondaryCrop}
+              frame={frame}
               plan={plan}
-              source={source}
               lines={cue ? cueLines(cue) : []}
               cue={cue}
               highlighted={highlighted}
               startSeconds={proxySecondsAt(plan, frame)}
               onProxyTime={onProxyTime}
+              onMetadata={onMetadata}
               onPlaying={setPlaying}
               onError={() => {
                 setPlaying(false);
@@ -521,11 +551,6 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
   );
 }
 
-/** Seconds one frame lasts, the slack allowed before a segment counts as over. */
-function secondsPerFrame(plan: PreviewPlan): number {
-  return plan.rateNum > 0 ? plan.rateDen / plan.rateNum : 0;
-}
-
 /** A source tick as `m:ss`, which is how a person reads where a clip sits. */
 function sourceClock(ticks: number): string {
   const seconds = Math.floor(ticks / 90_000);
@@ -536,31 +561,28 @@ function sourceClock(ticks: number): string {
 function Stage({
   proxyUrl,
   videoRef,
-  crop,
-  secondaryCrop,
+  frame,
   plan,
-  source,
   lines,
   cue,
   highlighted,
   startSeconds,
   onProxyTime,
+  onMetadata,
   onPlaying,
   onError,
 }: {
   readonly proxyUrl: string | null;
   readonly videoRef: React.RefObject<HTMLVideoElement | null>;
-  readonly crop: ReturnType<typeof cropAt>;
-  readonly secondaryCrop: ReturnType<typeof cropAt>;
+  readonly frame: number;
   readonly plan: PreviewPlan;
-  /** The frame the crop is measured in. Null when the plan does not know it. */
-  readonly source: { readonly displayWidth: number; readonly displayHeight: number } | null;
   readonly lines: readonly string[];
   readonly cue: ReturnType<typeof cueAt>;
   readonly highlighted: number;
   /** Where in the proxy the current frame is, to land on when the media loads. */
   readonly startSeconds: number | null;
-  readonly onProxyTime: (seconds: number) => void;
+  readonly onProxyTime: (seconds: number, atMediaEnd?: boolean) => number | null;
+  readonly onMetadata: () => void;
   readonly onPlaying: (playing: boolean) => void;
   readonly onError: () => void;
 }) {
@@ -588,26 +610,23 @@ function Stage({
             playsInline
             data-testid="proxy"
             data-start-seconds={startSeconds ?? undefined}
-            onLoadedMetadata={(event) => {
-              // A proxy opens at its own zero, which is the recording's
-              // opening; the clip begins minutes later.
-              if (startSeconds !== null) {
-                event.currentTarget.currentTime = startSeconds;
-              }
-            }}
-            onTimeUpdate={(event) => onProxyTime(event.currentTarget.currentTime)}
+            onLoadedMetadata={onMetadata}
             onPlay={() => onPlaying(true)}
             onPause={() => onPlaying(false)}
-            onEnded={() => onPlaying(false)}
+            onEnded={(event) => {
+              onPlaying(false);
+              // The last decoded PTS can precede the last program frame.
+              // EOF itself must advance/finish the edit, not restart the proxy.
+              onProxyTime(event.currentTarget.currentTime, true);
+            }}
             onError={onError}
           />
           <CompositionCanvas
             video={videoRef}
-            crop={crop}
-            secondary={secondaryCrop}
-            source={source}
-            width={plan.width}
-            height={plan.height}
+            mediaKey={proxyUrl}
+            plan={plan}
+            frame={frame}
+            onFrame={onProxyTime}
           />
         </div>
       ) : (
