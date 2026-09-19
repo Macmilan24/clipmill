@@ -132,6 +132,15 @@ describe('Models & Device', () => {
   it('shows Local Lock as ON only when the daemon says so', () => {
     renderScreen(connected, profile);
     expect(screen.getByText('ON')).toBeDefined();
+    expect(screen.getByText('No network operations this session')).toBeDefined();
+  });
+
+  it('does not claim cloud AI was used when an import disengaged Local Lock', () => {
+    renderScreen({ ...connected, localLock: false }, profile);
+    expect(screen.getByText('Network operations')).toBeDefined();
+    expect(screen.getByText('Network used this session')).toBeDefined();
+    expect(screen.getByText(/importing a video does not enable cloud AI/)).toBeDefined();
+    expect(screen.queryByText('Cloud used this session')).toBeNull();
   });
 
   it('reports Local Lock as unknown when the daemon is unreachable', () => {

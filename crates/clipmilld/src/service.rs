@@ -1,4 +1,5 @@
 mod batch;
+mod youtube;
 
 use std::{
     io::{Read, Seek, SeekFrom},
@@ -90,6 +91,7 @@ pub(crate) struct Service {
     /// The pinned decoder every media stage runs, for the same question.
     decoder: Option<std::path::PathBuf>,
     batch_admission: std::sync::Arc<tokio::sync::Mutex<()>>,
+    youtube: Option<std::sync::Arc<youtube::YoutubeRuntime>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,6 +151,7 @@ impl Service {
             roster: crate::worker::new_roster(),
             decoder: None,
             batch_admission: std::sync::Arc::default(),
+            youtube: None,
         }
     }
 
@@ -168,6 +171,17 @@ impl Service {
         roster: crate::worker::WorkerRoster,
         decoder: std::path::PathBuf,
     ) -> Self {
+        let helper = std::env::var_os("CLIPMILL_YOUTUBE_IMPORTER").map_or_else(
+            || {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tools/import-youtube.sh")
+            },
+            std::path::PathBuf::from,
+        );
+        let youtube = Some(std::sync::Arc::new(youtube::YoutubeRuntime::new(
+            crate::youtube_transport::YoutubeDownloader::new(helper, decoder.clone()),
+            storage.data.join("imports"),
+        )));
         Self {
             database,
             started_unix_millis,
@@ -183,6 +197,7 @@ impl Service {
             roster,
             decoder: Some(decoder),
             batch_admission: std::sync::Arc::default(),
+            youtube,
         }
     }
 
@@ -441,6 +456,21 @@ impl Service {
                 self.update_export_batch_item(request_id, request_hash, update)
                     .await
             }
+            request::Body::StartYoutubeImport(asked) => {
+                self.start_youtube_import(request_id, request_hash, asked)
+                    .await
+            }
+            request::Body::GetYoutubeImport(asked) => {
+                self.get_youtube_import(request_id, asked.import_id).await
+            }
+            request::Body::ListYoutubeImports(asked) => {
+                self.list_youtube_imports(request_id, asked.project_id)
+                    .await
+            }
+            request::Body::UpdateYoutubeImport(asked) => {
+                self.update_youtube_import(request_id, request_hash, asked)
+                    .await
+            }
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -527,10 +557,13 @@ impl Service {
             )
             .await
         {
-            Ok(bytes) => Reply {
-                bytes,
-                outcome: Outcome::Success,
-            },
+            Ok(bytes) => {
+                self.cleanup_youtube_project(&project_id.to_string()).await;
+                Reply {
+                    bytes,
+                    outcome: Outcome::Success,
+                }
+            }
             Err(error) => store_error_reply(request_id, &error),
         }
     }
@@ -1946,6 +1979,11 @@ impl Service {
                     ),
                     category(crate::storage::MODELS, report.models, &report.paths.models),
                     category(crate::storage::STATE, report.state, &report.paths.state),
+                    category(
+                        crate::storage::IMPORTS,
+                        report.imports,
+                        &report.paths.imports,
+                    ),
                 ],
                 available_bytes: report.available_bytes.unwrap_or(0),
                 available_known: report.available_bytes.is_some(),
@@ -2814,6 +2852,8 @@ impl Service {
             Ok(source) => response_reply(
                 request_id,
                 response::Body::GetSource(GetSourceResponse {
+                    source_map_json: String::from_utf8(source.source_map_json.clone())
+                        .unwrap_or_default(),
                     source: Some(source.into()),
                 }),
             ),
@@ -2992,6 +3032,10 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetReadiness(_)) => "get_readiness",
         Some(request::Body::SubmitExportBatch(_)) => "submit_export_batch",
         Some(request::Body::ListExportBatches(_)) => "list_export_batches",
+        Some(request::Body::StartYoutubeImport(_)) => "start_youtube_import",
+        Some(request::Body::GetYoutubeImport(_)) => "get_youtube_import",
+        Some(request::Body::ListYoutubeImports(_)) => "list_youtube_imports",
+        Some(request::Body::UpdateYoutubeImport(_)) => "update_youtube_import",
         Some(request::Body::UpdateExportBatchItem(_)) => "update_export_batch_item",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
@@ -3050,7 +3094,9 @@ fn error_reply(request_id: String, code: ErrorCode, message: impl Into<String>) 
 
 fn store_error_reply(request_id: String, error: &StoreError) -> Reply {
     match error {
-        StoreError::Conflict => error_reply(request_id, ErrorCode::Conflict, error.to_string()),
+        StoreError::Conflict | StoreError::ImportQualityConflict => {
+            error_reply(request_id, ErrorCode::Conflict, error.to_string())
+        }
         StoreError::NotFound => error_reply(request_id, ErrorCode::NotFound, error.to_string()),
         StoreError::Database(_) | StoreError::InvalidData(_) | StoreError::Stopped => {
             // The caller is told only that the store failed; the reason is

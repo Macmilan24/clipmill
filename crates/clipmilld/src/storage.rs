@@ -1,16 +1,9 @@
 //! How much disk this installation is using, and where the answer comes from.
 //!
-//! Three categories, because the three answers a user acts on are different
-//! actions. Artifacts are re-derivable and can be collected. Model weights are
-//! expensive to fetch and should not be. State is small and must not be touched.
-//! One total would tell nobody what to do about it.
-//!
-//! Only one of the three is cheap to know. The artifact store already holds
-//! every manifest in memory and can sum declared sizes without touching disk;
-//! the other two are directory trees that have to be walked. They are small —
-//! a handful of weight files, a database and its backups — so the walk is
-//! bounded, but it is still a walk, which is why this runs off the async runtime
-//! and not on it.
+//! Artifacts are re-derivable; model weights are expensive to fetch; state is
+//! durable; imported originals are retained until their project is deleted.
+//! The artifact catalogue supplies its own totals. Other categories are counted
+//! by directory walks off the async runtime, without reading file contents.
 
 use std::{
     fs,
@@ -23,6 +16,7 @@ use clipmill_artifacts::StoreUsage;
 pub(crate) const ARTIFACTS: &str = "artifacts";
 pub(crate) const MODELS: &str = "models";
 pub(crate) const STATE: &str = "state";
+pub(crate) const IMPORTS: &str = "imports";
 
 /// The directories a storage report covers.
 ///
@@ -53,6 +47,7 @@ pub(crate) struct Report {
     pub artifacts: Category,
     pub models: Category,
     pub state: Category,
+    pub imports: Category,
     /// Free space on the volume holding the data directory, when the filesystem
     /// would say. `None` and zero are different answers and must not be
     /// collapsed: one means "could not be read", the other means "full".
@@ -64,6 +59,7 @@ pub(crate) struct Report {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ReportPaths {
+    pub imports: PathBuf,
     pub artifacts: PathBuf,
     pub models: PathBuf,
     pub state: PathBuf,
@@ -72,7 +68,7 @@ pub(crate) struct ReportPaths {
 impl StorageDirs {
     /// Measure everything but the artifacts, which the store answers for.
     ///
-    /// Blocking: two directory walks and one filesystem query. Call it off the
+    /// Blocking: three directory walks and one filesystem query. Call it off the
     /// runtime.
     pub(crate) fn measure(&self, artifacts: StoreUsage) -> Report {
         Report {
@@ -82,8 +78,10 @@ impl StorageDirs {
             },
             models: walk(&self.weights),
             state: walk(&self.state),
+            imports: walk(&self.data.join("imports")),
             available_bytes: fs2::available_space(&self.data).ok(),
             paths: ReportPaths {
+                imports: self.data.join("imports"),
                 artifacts: self.artifacts.clone(),
                 models: self.weights.clone(),
                 state: self.state.clone(),
@@ -169,6 +167,12 @@ mod tests {
         fs::create_dir_all(&state).expect("dirs");
         fs::write(state.join("clipmill.db"), [0_u8; 64]).expect("write");
 
+        fs::create_dir_all(root.path().join("imports/project/attempt")).unwrap();
+        fs::write(
+            root.path().join("imports/project/attempt/source.mkv"),
+            [0_u8; 128],
+        )
+        .unwrap();
         let dirs = StorageDirs {
             artifacts: root.path().join("artifacts"),
             data: root.path().to_path_buf(),
@@ -195,6 +199,14 @@ mod tests {
             }
         );
         assert_eq!(report.models, Category::default());
+        assert_eq!(
+            report.imports,
+            Category {
+                bytes: 128,
+                items: 1
+            }
+        );
+        assert_eq!(report.paths.imports, root.path().join("imports"));
         // A temporary directory sits on a real filesystem, so this is readable.
         assert!(report.available_bytes.is_some());
     }

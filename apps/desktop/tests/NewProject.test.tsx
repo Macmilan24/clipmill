@@ -3,7 +3,7 @@
  *
  * The design's setup page offers a great deal this build cannot do — creative
  * direction compiled into scoring parameters, audience and tone, speaker-aware
- * reframing, burnt-in captions, a folder watcher and a YouTube importer. What is
+ * reframing, burnt-in captions and a folder watcher. What is
  * checked here is that the controls which survived all change something the
  * daemon receives, and that the ones which state a fact — the cloud toggle, the
  * rights gate — behave as facts rather than as decoration.
@@ -210,12 +210,11 @@ describe('the New Project screen', () => {
     });
   });
 
-  /** None of the four appear, because nothing behind them exists yet. */
+  /** Unimplemented actions remain absent; supported source types have their own flow. */
   it('offers nothing the pipeline cannot act on', () => {
     show();
     for (const absent of [
       /Creative direction/,
-      /YouTube/,
       /Folder watch/,
       /Speaker-aware/,
       /Burn captions/,

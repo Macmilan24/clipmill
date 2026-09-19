@@ -351,14 +351,14 @@ function LocalLockCard({
       <CardContent>
         <p className={cn('text-meta', SECONDARY)}>
           {locked
-            ? 'No cloud analysis has started in this engine session. Local stages keep source media, frames and transcripts on this device.'
+            ? 'No network operations have started in this engine session. Local analysis keeps source media, frames and transcripts on this device.'
             : connected
-              ? 'Cloud analysis has started in this engine session. Cloud use requires explicit consent on each analysis.'
-              : 'Reconnect to check whether cloud analysis has started in this engine session.'}
+              ? 'Network operations have started in this engine session. This includes YouTube imports and explicitly enabled cloud analysis; importing a video does not enable cloud AI.'
+              : 'Reconnect to check whether network operations have started in this engine session.'}
         </p>
         <p className={cn('mt-2 text-[11px] leading-relaxed', MUTED)}>
-          This is a record of processing policy and task starts, not a network firewall or a count
-          of bytes sent.
+          This records cloud analysis and source import starts, not a network firewall or a count of
+          bytes sent. Model downloads are managed separately.
         </p>
         <Separator className="my-3 bg-[var(--cm-glass-border)]" />
         <dl className="grid gap-2">
@@ -540,13 +540,13 @@ export function ModelsDevice({
               />
               <Stat
                 icon={<ShieldCheck />}
-                label="Cloud processing"
+                label="Network operations"
                 value={connected ? (state.localLock ? 'Unused' : 'Used') : EM_DASH}
                 detail={
                   connected
                     ? state.localLock
-                      ? 'No cloud tasks this session'
-                      : 'Cloud used this session'
+                      ? 'No network operations this session'
+                      : 'Network used this session'
                     : 'daemon not connected'
                 }
               />

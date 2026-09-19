@@ -190,6 +190,95 @@ pub struct DaemonClient {
 }
 
 impl DaemonClient {
+    pub async fn get_source(
+        &self,
+        source_id: &str,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::GetSourceResponse, DaemonLinkError> {
+        use clipmill_contracts::proto::ipc::v1::GetSourceRequest;
+        match self
+            .call(request::Body::GetSource(GetSourceRequest {
+                source_id: source_id.to_owned(),
+            }))
+            .await?
+        {
+            response::Body::GetSource(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn start_youtube_import(
+        &self,
+        project_id: &str,
+        url: &str,
+        rights_confirmed: bool,
+        max_height: u32,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::YoutubeImportV1, DaemonLinkError> {
+        use clipmill_contracts::proto::ipc::v1::StartYoutubeImportRequest;
+        self.youtube_import_call(request::Body::StartYoutubeImport(
+            StartYoutubeImportRequest {
+                project_id: project_id.to_owned(),
+                url: url.to_owned(),
+                rights_confirmed,
+                max_height,
+            },
+        ))
+        .await
+    }
+
+    pub async fn get_youtube_import(
+        &self,
+        import_id: &str,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::YoutubeImportV1, DaemonLinkError> {
+        use clipmill_contracts::proto::ipc::v1::GetYoutubeImportRequest;
+        self.youtube_import_call(request::Body::GetYoutubeImport(GetYoutubeImportRequest {
+            import_id: import_id.to_owned(),
+        }))
+        .await
+    }
+
+    pub async fn update_youtube_import(
+        &self,
+        import_id: &str,
+        action: &str,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::YoutubeImportV1, DaemonLinkError> {
+        use clipmill_contracts::proto::ipc::v1::UpdateYoutubeImportRequest;
+        self.youtube_import_call(request::Body::UpdateYoutubeImport(
+            UpdateYoutubeImportRequest {
+                import_id: import_id.to_owned(),
+                action: action.to_owned(),
+            },
+        ))
+        .await
+    }
+
+    async fn youtube_import_call(
+        &self,
+        body: request::Body,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::YoutubeImportV1, DaemonLinkError> {
+        match self.call(body).await? {
+            response::Body::YoutubeImport(reply) => reply.record.ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn list_youtube_imports(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::YoutubeImportV1>, DaemonLinkError> {
+        use clipmill_contracts::proto::ipc::v1::ListYoutubeImportsRequest;
+        match self
+            .call(request::Body::ListYoutubeImports(
+                ListYoutubeImportsRequest {
+                    project_id: project_id.to_owned(),
+                },
+            ))
+            .await?
+        {
+            response::Body::ListYoutubeImports(reply) => Ok(reply.imports),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub fn new(socket: PathBuf) -> Self {
         Self { socket }
     }

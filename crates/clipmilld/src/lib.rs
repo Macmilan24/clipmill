@@ -36,6 +36,7 @@ mod speech;
 mod storage;
 #[cfg(unix)]
 mod worker;
+mod youtube_transport;
 
 pub use artifacts::{ArtifactCoordinator, ArtifactServiceError};
 pub use config::{Config, Paths};

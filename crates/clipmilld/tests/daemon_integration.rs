@@ -598,7 +598,7 @@ async fn storage_is_reported_by_category_and_grows_with_what_is_published() {
             .iter()
             .map(|category| category.key.as_str())
             .collect::<Vec<_>>(),
-        vec!["artifacts", "models", "state"]
+        vec!["artifacts", "models", "state", "imports"]
     );
     // A daemon that has finished starting has written its database, so a state
     // figure of zero would mean the walk found nothing rather than that nothing
