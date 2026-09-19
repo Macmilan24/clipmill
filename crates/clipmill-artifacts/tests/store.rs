@@ -545,6 +545,82 @@ fn garbage_collection_fails_closed_for_a_corrupt_reachable_payload() {
 }
 
 #[test]
+fn garbage_collection_can_yield_mid_hash_without_deleting_or_skipping_integrity() {
+    let temp = TempDir::new().unwrap();
+    let (mut store, _) = ArtifactStore::initialize(temp.path()).unwrap();
+    let root = recipe(61);
+    let root_id = root.artifact_id().unwrap();
+    let mut payload = vec![7; 2 * 1024 * 1024];
+    drop(commit_payload(&mut store, root, "large.bin", &payload));
+    let orphan = recipe(62);
+    let orphan_id = orphan.artifact_id().unwrap();
+    drop(commit_payload(
+        &mut store,
+        orphan,
+        "orphan.bin",
+        b"keep until the whole mark passes",
+    ));
+    // Corruption at the tail distinguishes a yielded scan from one that
+    // silently skipped payload verification or completed before cancellation.
+    let path = store.paths().object_dir(root_id).join("large.bin");
+    make_writable(&path);
+    *payload.last_mut().unwrap() = 8;
+    fs::write(&path, payload).unwrap();
+    let now = SystemTime::now() + Duration::from_hours(192);
+    let grace = Duration::from_hours(168);
+    let mut checkpoints = 0;
+    let deferred = store
+        .collect_garbage_interruptible([root_id], now, grace, || {
+            checkpoints += 1;
+            checkpoints == 20
+        })
+        .unwrap();
+    assert_eq!(checkpoints, 20);
+    assert!(deferred.deferred);
+    assert_eq!(deferred.deleted, 0);
+    assert_eq!(deferred.quarantine_deleted, 0);
+    assert!(store.open(orphan_id).is_ok());
+    assert!(
+        matches!(store.collect_garbage([root_id], now, grace), Err(ArtifactError::ReachableCorrupt { artifact_id, .. }) if artifact_id == root_id)
+    );
+    assert!(
+        store.open(orphan_id).is_ok(),
+        "the retry still fails closed on corruption"
+    );
+}
+
+#[test]
+fn interruption_after_quarantine_reports_progress_and_idle_retry_finishes_cleanup() {
+    let temp = TempDir::new().unwrap();
+    let (mut store, _) = ArtifactStore::initialize(temp.path()).unwrap();
+    let mut paths = Vec::new();
+    for id in [63, 64] {
+        let recipe = recipe(id);
+        paths.push(store.paths().object_dir(recipe.artifact_id().unwrap()));
+        drop(commit_payload(&mut store, recipe, "orphan.bin", b"expired"));
+    }
+    let now = SystemTime::now() + Duration::from_hours(192);
+    let grace = Duration::from_hours(168);
+    let deferred = store
+        .collect_garbage_interruptible([], now, grace, || paths.iter().any(|path| !path.exists()))
+        .unwrap();
+    assert!(deferred.deferred);
+    assert_eq!(
+        deferred.deleted, 1,
+        "the safely quarantined object is already gone from the catalog"
+    );
+    assert_eq!(store.usage().objects, 1);
+    let complete = store.collect_garbage([], now, grace).unwrap();
+    assert!(!complete.deferred);
+    assert_eq!(complete.deleted, 1);
+    assert_eq!(
+        complete.quarantine_deleted, 1,
+        "the interrupted unlink is recovered"
+    );
+    assert_eq!(store.usage().objects, 0);
+}
+
+#[test]
 fn garbage_collection_honors_exact_grace_and_recovers_interrupted_deletion() {
     let temp = TempDir::new().expect("tempdir");
     let root = temp.path().join("artifacts");

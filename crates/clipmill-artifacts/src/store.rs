@@ -354,11 +354,44 @@ impl ArtifactStore {
         now: SystemTime,
         grace: Duration,
     ) -> Result<GcReport, ArtifactError> {
+        self.collect_garbage_interruptible(roots, now, grace, || false)
+    }
+
+    /// Yield to foreground work without treating an incomplete integrity scan
+    /// as permission to delete. Callers must retry with fresh roots and pins.
+    pub fn collect_garbage_interruptible(
+        &mut self,
+        roots: impl IntoIterator<Item = ArtifactId>,
+        now: SystemTime,
+        grace: Duration,
+        mut interrupted: impl FnMut() -> bool,
+    ) -> Result<GcReport, ArtifactError> {
+        let mut report = GcReport::default();
+        match self.collect_garbage_inner(roots, now, grace, &mut interrupted, &mut report) {
+            Ok(()) => Ok(report),
+            Err(ArtifactError::CollectionInterrupted) => {
+                report.deferred = true;
+                Ok(report)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn collect_garbage_inner(
+        &mut self,
+        roots: impl IntoIterator<Item = ArtifactId>,
+        now: SystemTime,
+        grace: Duration,
+        interrupted: &mut impl FnMut() -> bool,
+        report: &mut GcReport,
+    ) -> Result<(), ArtifactError> {
+        checkpoint(interrupted)?;
         let mut pending = roots.into_iter().collect::<Vec<_>>();
         pending.extend(pinned_ids(&self.pins)?);
         let mut reachable = BTreeSet::new();
 
         while let Some(artifact_id) = pending.pop() {
+            checkpoint(interrupted)?;
             if !reachable.insert(artifact_id) {
                 continue;
             }
@@ -366,12 +399,17 @@ impl ArtifactStore {
                 .catalog
                 .get(&artifact_id)
                 .ok_or(ArtifactError::ReachableMissing(artifact_id))?;
-            let inputs = load_reachable_inputs(&entry.dir, artifact_id).map_err(|error| {
-                ArtifactError::ReachableCorrupt {
-                    artifact_id,
-                    detail: error.to_string(),
-                }
-            })?;
+            let inputs =
+                load_reachable_inputs(&entry.dir, artifact_id, interrupted).map_err(|error| {
+                    if matches!(error, ArtifactError::CollectionInterrupted) {
+                        error
+                    } else {
+                        ArtifactError::ReachableCorrupt {
+                            artifact_id,
+                            detail: error.to_string(),
+                        }
+                    }
+                })?;
             pending.extend(inputs);
         }
 
@@ -387,7 +425,7 @@ impl ArtifactStore {
             })
             .collect::<Vec<_>>();
 
-        let mut report = GcReport {
+        *report = GcReport {
             reachable: reachable.len(),
             preserved_by_grace: self
                 .catalog
@@ -398,16 +436,21 @@ impl ArtifactStore {
                 .count(),
             ..GcReport::default()
         };
+        // No mutation, including old quarantine cleanup, precedes a complete
+        // verified mark and this final foreground-work check.
+        checkpoint(interrupted)?;
         for (artifact_id, path) in candidates {
+            checkpoint(interrupted)?;
             let quarantine = quarantine_entry(&self.paths, &path, "gc")?;
             self.catalog.remove(&artifact_id);
-            fs::remove_dir_all(&quarantine)
-                .map_err(|source| ArtifactError::io(&quarantine, source))?;
-            sync_directory(&self.paths.quarantine)?;
+            // Once quarantined, this object is safely removed from the store.
+            // An interrupted unlink leaves only recoverable quarantine bytes.
             report.deleted += 1;
+            remove_tree_interruptible(&quarantine, interrupted)?;
+            sync_directory(&self.paths.quarantine)?;
         }
-        report.quarantine_deleted = cleanup_quarantine(&self.paths, now, grace)?;
-        Ok(report)
+        cleanup_quarantine(&self.paths, now, grace, interrupted, report)?;
+        Ok(())
     }
 }
 
@@ -614,6 +657,9 @@ pub struct GcReport {
     pub preserved_by_grace: usize,
     pub deleted: usize,
     pub quarantine_deleted: usize,
+    /// Foreground work interrupted this pass. Counts include only completed
+    /// mutations; a fresh mark is required before collecting anything else.
+    pub deferred: bool,
 }
 
 fn rebuild_catalog(
@@ -677,6 +723,15 @@ fn quarantine_stale_staging(
 }
 
 fn load_catalog_entry(path: &Path, artifact_id: ArtifactId) -> Result<CatalogEntry, ArtifactError> {
+    load_catalog_entry_interruptible(path, artifact_id, &mut || false)
+}
+
+fn load_catalog_entry_interruptible(
+    path: &Path,
+    artifact_id: ArtifactId,
+    interrupted: &mut impl FnMut() -> bool,
+) -> Result<CatalogEntry, ArtifactError> {
+    checkpoint(interrupted)?;
     let metadata = fs::symlink_metadata(path).map_err(|source| ArtifactError::io(path, source))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(ArtifactError::NonRegularFile);
@@ -688,11 +743,12 @@ fn load_catalog_entry(path: &Path, artifact_id: ArtifactId) -> Result<CatalogEnt
         .into_iter()
         .map(|file| (file.path, file.bytes))
         .collect::<BTreeMap<_, _>>();
-    let actual = scan_payload_paths(path, true)?;
+    let actual = scan_payload_paths_interruptible(path, true, interrupted)?;
     if actual != declared.keys().cloned().collect() {
         return Err(ArtifactError::DeclaredFileSetMismatch);
     }
     for (artifact_path, expected_bytes) in &declared {
+        checkpoint(interrupted)?;
         let payload = path.join(artifact_path.as_path());
         let payload_metadata =
             fs::symlink_metadata(&payload).map_err(|source| ArtifactError::io(&payload, source))?;
@@ -715,9 +771,11 @@ fn load_catalog_entry(path: &Path, artifact_id: ArtifactId) -> Result<CatalogEnt
 fn load_reachable_inputs(
     path: &Path,
     artifact_id: ArtifactId,
+    interrupted: &mut impl FnMut() -> bool,
 ) -> Result<Vec<ArtifactId>, ArtifactError> {
-    let entry = load_catalog_entry(path, artifact_id)?;
+    let entry = load_catalog_entry_interruptible(path, artifact_id, interrupted)?;
     for record in entry.manifest.file_records()? {
+        checkpoint(interrupted)?;
         let payload = entry.dir.join(record.path.as_path());
         let metadata =
             fs::symlink_metadata(&payload).map_err(|source| ArtifactError::io(&payload, source))?;
@@ -729,7 +787,7 @@ fn load_reachable_inputs(
         if metadata.len() != record.bytes {
             return Err(ArtifactError::PayloadSizeMismatch);
         }
-        if hash_open_file(&mut file, &payload)? != record.digest {
+        if hash_open_file_interruptible(&mut file, &payload, interrupted)? != record.digest {
             return Err(ArtifactError::PayloadHashMismatch);
         }
     }
@@ -753,8 +811,16 @@ fn scan_payload_paths(
     root: &Path,
     skip_manifest: bool,
 ) -> Result<BTreeSet<ArtifactPath>, ArtifactError> {
+    scan_payload_paths_interruptible(root, skip_manifest, &mut || false)
+}
+
+fn scan_payload_paths_interruptible(
+    root: &Path,
+    skip_manifest: bool,
+    interrupted: &mut impl FnMut() -> bool,
+) -> Result<BTreeSet<ArtifactPath>, ArtifactError> {
     let mut paths = BTreeSet::new();
-    scan_payload_directory(root, root, skip_manifest, &mut paths)?;
+    scan_payload_directory(root, root, skip_manifest, &mut paths, interrupted)?;
     Ok(paths)
 }
 
@@ -763,15 +829,17 @@ fn scan_payload_directory(
     current: &Path,
     skip_manifest: bool,
     paths: &mut BTreeSet<ArtifactPath>,
+    interrupted: &mut impl FnMut() -> bool,
 ) -> Result<(), ArtifactError> {
-    for entry in directory_entries(current)? {
+    for entry in directory_entries_interruptible(current, interrupted)? {
+        checkpoint(interrupted)?;
         let metadata =
             fs::symlink_metadata(&entry).map_err(|source| ArtifactError::io(&entry, source))?;
         if metadata.file_type().is_symlink() {
             return Err(ArtifactError::SymlinkRejected);
         }
         if metadata.is_dir() {
-            scan_payload_directory(root, &entry, skip_manifest, paths)?;
+            scan_payload_directory(root, &entry, skip_manifest, paths, interrupted)?;
             continue;
         }
         if !metadata.is_file() {
@@ -816,12 +884,21 @@ fn hash_and_sync_file(path: &Path) -> Result<(Sha256Digest, u64), ArtifactError>
 }
 
 fn hash_open_file(file: &mut File, path: &Path) -> Result<Sha256Digest, ArtifactError> {
+    hash_open_file_interruptible(file, path, &mut || false)
+}
+
+fn hash_open_file_interruptible(
+    file: &mut File,
+    path: &Path,
+    interrupted: &mut impl FnMut() -> bool,
+) -> Result<Sha256Digest, ArtifactError> {
     file.seek(SeekFrom::Start(0))
         .map_err(|source| ArtifactError::io(path, source))?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
     loop {
+        checkpoint(interrupted)?;
         let read = reader
             .read(&mut buffer)
             .map_err(|source| ArtifactError::io(path, source))?;
@@ -876,9 +953,18 @@ fn sync_directory(path: &Path) -> Result<(), ArtifactError> {
 }
 
 fn directory_entries(path: &Path) -> Result<Vec<PathBuf>, ArtifactError> {
+    directory_entries_interruptible(path, &mut || false)
+}
+
+fn directory_entries_interruptible(
+    path: &Path,
+    interrupted: &mut impl FnMut() -> bool,
+) -> Result<Vec<PathBuf>, ArtifactError> {
+    checkpoint(interrupted)?;
     let entries = fs::read_dir(path).map_err(|source| ArtifactError::io(path, source))?;
     entries
         .map(|entry| {
+            checkpoint(interrupted)?;
             entry
                 .map(|value| value.path())
                 .map_err(|source| ArtifactError::io(path, source))
@@ -928,25 +1014,46 @@ fn cleanup_quarantine(
     paths: &StorePaths,
     now: SystemTime,
     grace: Duration,
-) -> Result<usize, ArtifactError> {
-    let mut deleted = 0;
-    for entry in directory_entries(&paths.quarantine)? {
+    interrupted: &mut impl FnMut() -> bool,
+    report: &mut GcReport,
+) -> Result<(), ArtifactError> {
+    for entry in directory_entries_interruptible(&paths.quarantine, interrupted)? {
+        checkpoint(interrupted)?;
         let metadata =
             fs::symlink_metadata(&entry).map_err(|source| ArtifactError::io(&entry, source))?;
         if !older_than(metadata.modified().ok(), now, grace) {
             continue;
         }
-        if metadata.is_dir() && !metadata.file_type().is_symlink() {
-            fs::remove_dir_all(&entry).map_err(|source| ArtifactError::io(&entry, source))?;
-        } else {
-            fs::remove_file(&entry).map_err(|source| ArtifactError::io(&entry, source))?;
-        }
-        deleted += 1;
+        remove_tree_interruptible(&entry, interrupted)?;
+        report.quarantine_deleted += 1;
     }
-    if deleted > 0 {
+    if report.quarantine_deleted > 0 {
         sync_directory(&paths.quarantine)?;
     }
-    Ok(deleted)
+    Ok(())
+}
+
+fn checkpoint(interrupted: &mut impl FnMut() -> bool) -> Result<(), ArtifactError> {
+    if interrupted() {
+        Err(ArtifactError::CollectionInterrupted)
+    } else {
+        Ok(())
+    }
+}
+
+fn remove_tree_interruptible(
+    path: &Path,
+    interrupted: &mut impl FnMut() -> bool,
+) -> Result<(), ArtifactError> {
+    checkpoint(interrupted)?;
+    let metadata = fs::symlink_metadata(path).map_err(|source| ArtifactError::io(path, source))?;
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        // Keep the standard library's descriptor-relative, no-follow deletion
+        // on Unix. Yield between objects, not via a racy hand-written walk.
+        fs::remove_dir_all(path).map_err(|source| ArtifactError::io(path, source))
+    } else {
+        fs::remove_file(path).map_err(|source| ArtifactError::io(path, source))
+    }
 }
 
 fn older_than(published: Option<SystemTime>, now: SystemTime, grace: Duration) -> bool {
@@ -1029,6 +1136,8 @@ pub enum ArtifactError {
         artifact_id: ArtifactId,
         detail: String,
     },
+    #[error("garbage collection yielded to foreground work")]
+    CollectionInterrupted,
     #[error("artifact reader pin registry is poisoned")]
     PinRegistryPoisoned,
     #[error("system clock is before the Unix epoch")]
