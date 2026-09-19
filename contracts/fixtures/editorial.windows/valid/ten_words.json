@@ -1,9 +1,11 @@
 {
   "budget": {
     "context_sentences": 2,
+    "max_clip_ticks": 8100000,
     "overlap_words": 80,
     "target_words": 600
   },
+  "content_profile": "interview",
   "coverage": {
     "analyzed": true,
     "end_ticks": 900000,

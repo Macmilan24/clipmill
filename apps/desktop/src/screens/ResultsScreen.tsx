@@ -23,6 +23,7 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { ClipDecision, DirectedClip, Project } from '../daemon/client.js';
 import type { ClipRow } from '../results/model.js';
+import { ManualClip } from '../results/ManualClip.js';
 import { useResults } from '../results/useResults.js';
 import type { ClipRef } from '../shell/route.js';
 import { ClipInspector } from './ClipInspector.js';
@@ -61,6 +62,7 @@ export function ResultsScreen({
   onBack,
   api = daemonApi,
 }: ResultsScreenProps) {
+  const [manualOpen, setManualOpen] = useState(false);
   const [projects, setProjects] = useState<readonly Project[]>([]);
   /** A pick made in the header, which outranks the route until the route moves. */
   const [projectReload, setProjectReload] = useState(0);
@@ -124,6 +126,7 @@ export function ResultsScreen({
     api,
   );
   const { snapshot, solveFor } = results;
+  useEffect(() => setManualOpen(false), [project?.projectId, sourceId, jobId]);
 
   /** The breadcrumb's words for a clip: the project's name and the clip's rank. */
   const labelsFor = (id: string) => {
@@ -249,42 +252,69 @@ export function ResultsScreen({
     : null;
 
   return (
-    <Results
-      loading={results.loading || projectsLoading}
-      notice={results.notice}
-      rows={snapshot.rows}
-      summary={snapshot.summary}
-      problem={
-        projectsProblem
-          ? { kind: 'unreadable', detail: projectsProblem }
-          : wanted && !project
-            ? {
-                kind: 'unreadable',
-                detail: 'This project is no longer available. Choose another project to continue.',
-              }
-            : snapshot.problem
-      }
-      sourceName={sourceName}
-      run={snapshot.run}
-      tileUrl={results.tileUrl}
-      projects={projects}
-      activeProjectId={project?.projectId ?? null}
-      busy={results.busy}
-      onChooseProject={setPicked}
-      onApproveMany={(ids) => {
-        void results.approveMany(ids);
-      }}
-      onReload={() => {
-        if (projectsProblem || (wanted && !project)) setProjectReload((value) => value + 1);
-        else results.reload();
-      }}
-      onInspect={inspect}
-      onEdit={(id) => {
-        const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
-        if (row?.docId) {
-          edit(row, row.docId, row.docJobId ?? undefined);
+    <>
+      <ManualClip
+        key={`${project?.projectId ?? ''}/${snapshot.source?.sourceId ?? ''}/${snapshot.run?.jobId ?? ''}`}
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        sourceName={sourceName ?? 'Recording'}
+        sourceDurationTicks={snapshot.sourceDurationTicks ?? null}
+        proxyUrl={results.proxyUrl}
+        busy={results.busy}
+        notice={results.notice}
+        onCreate={async (startTicks, endTicks) => {
+          const directed = await results.manual(startTicks, endTicks);
+          if (!directed || !mounted.current || intentRef.current !== intent) return false;
+          onEdit({
+            projectId: directed.projectId,
+            sourceId: directed.sourceId,
+            candidateId: directed.candidateId,
+            docId: directed.docId,
+            ...(directed.jobId ? { jobId: directed.jobId } : {}),
+            labels: { ...(project ? { project: project.name } : {}), clip: 'Manual clip' },
+          });
+          return true;
+        }}
+      />
+      <Results
+        loading={results.loading || projectsLoading}
+        notice={results.notice}
+        {...(snapshot.source && snapshot.run ? { onManualClip: () => setManualOpen(true) } : {})}
+        rows={snapshot.rows}
+        summary={snapshot.summary}
+        problem={
+          projectsProblem
+            ? { kind: 'unreadable', detail: projectsProblem }
+            : wanted && !project
+              ? {
+                  kind: 'unreadable',
+                  detail:
+                    'This project is no longer available. Choose another project to continue.',
+                }
+              : snapshot.problem
         }
-      }}
-    />
+        sourceName={sourceName}
+        run={snapshot.run}
+        tileUrl={results.tileUrl}
+        projects={projects}
+        activeProjectId={project?.projectId ?? null}
+        busy={results.busy}
+        onChooseProject={setPicked}
+        onApproveMany={(ids) => {
+          void results.approveMany(ids);
+        }}
+        onReload={() => {
+          if (projectsProblem || (wanted && !project)) setProjectReload((value) => value + 1);
+          else results.reload();
+        }}
+        onInspect={inspect}
+        onEdit={(id) => {
+          const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
+          if (row?.docId) {
+            edit(row, row.docId, row.docJobId ?? undefined);
+          }
+        }}
+      />
+    </>
   );
 }

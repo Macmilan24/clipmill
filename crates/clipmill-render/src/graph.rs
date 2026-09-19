@@ -21,43 +21,10 @@ use crate::{
     timing::{FrameRate, ticks_to_seconds},
 };
 
-/// Holds the last frame so the encoder can always reach the planned count.
-///
-/// `-frames:v` is a cap, not a pad: FFmpeg stops at the number given and never
-/// invents a frame to reach it. So the plan's count was only ever authoritative
-/// when the graph happened to produce at least that many, which is true exactly
-/// when `fps` is a no-op — that is, when the source is already at the render
-/// target. It is not, for anything a phone or a screen recorder produced, and
-/// resampling 30 to 30000/1001 yields fewer frames than the span asks for. The
-/// render then refused its own output for being two frames short.
-///
-/// Padding rather than predicting: deriving the count the way `fps` derives it
-/// would mean reimplementing FFmpeg's resampler in Rust and keeping it in step
-/// across upgrades, and a prediction can drift where a constraint cannot.
-///
-/// This is unreachable whenever the graph already satisfies the count, because
-/// `-frames:v` truncates before the pad is ever drawn from. So a source already
-/// at the target rate encodes to the same bytes it did before this existed —
-/// measured against the pinned encoder rather than argued, identical SHA-256
-/// with and without it, which is what says the goldens do not move.
-///
-/// Where it sits is the safety of it, and
-/// `the_tail_pad_holds_the_program_and_never_a_span` holds it there: a pad that
-/// stops on end-of-input never stops, so one placed inside a span chain would
-/// hold that span forever and `concat` would never reach the next.
-///
-/// Bounded at one second, and that bound is load-bearing rather than tidy. An
-/// unbounded pad (`stop=-1`) deadlocks the graph as soon as audio is mapped
-/// beside it: measured against the pinned encoder, the encode stalls at 396 of
-/// the 495 frames it was asked for and never returns, which reaches the daemon
-/// as a duration-scaled deadline rather than as anything a reader could place.
-/// A second is far more than the shortfall can be — resampling 30 to
-/// 30000/1001 loses a tenth of a percent, so even the 180-second ceiling on a
-/// clip is about five frames — and a graph short by more than that is wrong in
-/// a way the count should still refuse.
-///
-/// The cost, stated rather than hidden: a clip from a 30 fps source can end on
-/// up to two cloned frames, about 67 ms of held final image.
+/// Bounded resampler slack, immediately trimmed to the segment's allocation
+/// on the global program frame grid. This never inserts extra program frames
+/// or audio. A low-rate/VFR source holds its final available image until the
+/// quantized boundary, as normal frame-rate conversion does.
 const TAIL_PAD: &str = "tpad=stop_mode=clone:stop_duration=1";
 
 /// One decode span: an input file pre-seeked to a keyframe, then trimmed
@@ -73,6 +40,8 @@ pub struct DecodeSpan {
     pub trim_end_ticks: i64,
     pub has_audio: bool,
     pub frame_count: i64,
+    /// Phase of this segment’s first frame on the global program grid.
+    pub video_offset_ticks: i64,
 }
 
 /// The crop rectangle a segment shows on one of its own frames.
@@ -140,13 +109,15 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
             .ok_or_else(|| RenderError::UnknownSegment(span.segment_id.clone()))?;
         let start = ticks_to_seconds(span.trim_start_ticks);
         let end = ticks_to_seconds(span.trim_end_ticks);
-        if !request.audio_only {
+        if !request.audio_only && span.frame_count > 0 {
             let label = format!("v{index}");
             chains.push(format!(
-                "[{index}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS,\
-                 fps={num}/{den},format=yuv420p[t{index}]",
+                "[{index}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS-{offset}/TB,\
+                 fps={num}/{den}:start_time=0,{TAIL_PAD},trim=end_frame={frames},setpts=PTS-STARTPTS,format=yuv420p[t{index}]",
                 num = rate.num,
                 den = rate.den,
+                frames = span.frame_count,
+                offset = ticks_to_seconds(span.video_offset_ticks),
             ));
             let source = source_for(request.sources, &segment.source_fingerprint)?;
             chains.extend(layout_chains(
@@ -182,25 +153,21 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         return Err(RenderError::EmptyProgram);
     }
 
-    let count = audio_labels.len();
-    let concat_inputs = (0..count)
-        .map(|index| {
-            let video = video_labels
-                .get(index)
-                .map_or_else(String::new, |label| format!("[{label}]"));
-            format!("{video}[{}]", audio_labels[index])
-        })
-        .collect::<Vec<_>>()
-        .concat();
-    let video_flag = i32::from(!request.audio_only);
-    let concat_outputs = if request.audio_only {
-        "[acat]".to_owned()
-    } else {
-        "[vcat][acat]".to_owned()
-    };
+    // Quantize boundaries once on the complete program. AV concat pads shorter
+    // audio to each independently-rounded video span, accumulating silence and
+    // losing the tail across many cuts; keep their clocks independent instead.
+    let audio_inputs = format!("[{}]", audio_labels.join("]["));
     chains.push(format!(
-        "{concat_inputs}concat=n={count}:v={video_flag}:a=1{concat_outputs}"
+        "{audio_inputs}concat=n={}:v=0:a=1[acat]",
+        audio_labels.len()
     ));
+    if !request.audio_only {
+        let video_inputs = format!("[{}]", video_labels.join("]["));
+        chains.push(format!(
+            "{video_inputs}concat=n={}:v=1:a=0[vcat]",
+            video_labels.len()
+        ));
+    }
 
     let mut audio_chain = vec!["[acat]".to_owned()];
     if let Some(gain) = gain_filter(request.document) {
@@ -221,9 +188,9 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
             // libass sees exactly one directory holding exactly one pinned
             // font, so the render cannot pick up whatever the host installed.
             Some(file) => {
-                format!("[vcat]subtitles=filename={file}:fontsdir={FONTS_DIR},{TAIL_PAD}[vout]")
+                format!("[vcat]subtitles=filename={file}:fontsdir={FONTS_DIR}[vout]")
             }
-            None => format!("[vcat]{TAIL_PAD}[vout]"),
+            None => "[vcat]null[vout]".to_owned(),
         };
         chains.push(burn);
     }
@@ -273,10 +240,37 @@ fn layout_chains(
             ),
         ]),
         LayoutState::SpeakerFill => {
-            let crop = crop_filter(segment, source, profile)?;
+            let crop = crop_filter(segment, source, profile, &segment.layout.crop_path, height)?;
             Ok(vec![format!(
                 "[t{index}]{crop},scale={width}:{height},setsar=1,format=yuv420p[{label}]"
             )])
+        }
+        LayoutState::TwoUp => {
+            let viewport_height = height / 2;
+            let upper = crop_filter(
+                segment,
+                source,
+                profile,
+                &segment.layout.crop_path,
+                viewport_height,
+            )?;
+            let lower = crop_filter(
+                segment,
+                source,
+                profile,
+                &segment.layout.secondary_crop_path,
+                viewport_height,
+            )?;
+            Ok(vec![
+                format!("[t{index}]split=2[t{index}upper][t{index}lower]"),
+                format!(
+                    "[t{index}upper]{upper},scale={width}:{viewport_height},setsar=1[t{index}u]"
+                ),
+                format!(
+                    "[t{index}lower]{lower},scale={width}:{viewport_height},setsar=1[t{index}l]"
+                ),
+                format!("[t{index}u][t{index}l]vstack=inputs=2,format=yuv420p[{label}]"),
+            ])
         }
     }
 }
@@ -285,8 +279,9 @@ fn crop_filter(
     segment: &VideoSegment,
     source: &SourceInput,
     profile: &RenderProfile,
+    path: &[CropKeyframe],
+    viewport_height: i64,
 ) -> Result<String, RenderError> {
-    let path = &segment.layout.crop_path;
     let first = path
         .first()
         .ok_or_else(|| RenderError::SpeakerFillWithoutCropPath(segment.segment_id.clone()))?;
@@ -305,8 +300,8 @@ fn crop_filter(
     // output's aspect by up to one source pixel, which scaling absorbs
     // invisibly. Anything wider than that is a framing mistake, not rounding,
     // and stretching faces to hide it would be the wrong kindness.
-    let aspect_error = (crop_width * profile.height - crop_height * profile.width).abs();
-    if aspect_error > profile.height {
+    let aspect_error = (crop_width * viewport_height - crop_height * profile.width).abs();
+    if aspect_error > viewport_height {
         return Err(RenderError::CropAspectMismatch(segment.segment_id.clone()));
     }
     for keyframe in path {
@@ -328,7 +323,7 @@ fn crop_filter(
         frames.push(frame);
     }
     Ok(format!(
-        "crop=w={crop_width}:h={crop_height}:x='{}':y='{}'",
+        "crop=w={crop_width}:h={crop_height}:x='{}':y='{}':exact=1",
         axis_expression(path, &frames, |rect| rect.x),
         axis_expression(path, &frames, |rect| rect.y),
     ))

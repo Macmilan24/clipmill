@@ -372,3 +372,31 @@ describe('opening the clip', () => {
     expect(video!.currentTime).toBeCloseTo(90, 3);
   });
 });
+
+describe('inspecting a model-declined moment', () => {
+  it('shows the reason and makes the human override explicit', () => {
+    const decisions: string[] = [];
+    show({
+      rows: [
+        row({
+          review: {
+            status: 'rejected',
+            route: 'local',
+            reasons: ['The local response is missing.'],
+          },
+          band: 'declined',
+          bandLabel: 'Declined by editorial review',
+          recommended: false,
+        }),
+      ],
+      onDecide: (decision) => decisions.push(decision),
+    });
+    expect(screen.getAllByText('Declined by editorial review').length).toBeGreaterThan(0);
+    expect(screen.getByText('The local response is missing.')).toBeTruthy();
+    expect(screen.queryByText('Why selected')).toBeNull();
+    expect(screen.queryByText('Pays off with')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Approve for the editor' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit despite review' }));
+    expect(decisions).toEqual(['approved']);
+  });
+});

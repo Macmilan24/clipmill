@@ -102,6 +102,16 @@ impl Default for Weights {
 /// same as not being framed at all.
 const MIN_FACE_FRACTION: f64 = 0.16;
 
+/// Source and destination display dimensions. Normalized detections need both
+/// aspects: a square or portrait recording cannot use landscape crop arithmetic.
+#[derive(Clone, Copy, Debug)]
+pub struct FrameGeometry {
+    pub source_width: u32,
+    pub source_height: u32,
+    pub output_width: u32,
+    pub output_height: u32,
+}
+
 /// One point on the solved path. Normalized against the source frame, so the
 /// same path drives any resolution.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -160,17 +170,18 @@ fn fitted(aspect_width: u32, aspect_height: u32, span: (u64, u64)) -> Vec<Keyfra
 }
 
 /// The samples of one track that fall inside a span, in time order.
-fn samples(track: &Track, start: u64, end: u64) -> Vec<(u64, f64, f64, f64)> {
-    let mut found: Vec<(u64, f64, f64, f64)> = track
+fn samples(track: &Track, start: u64, end: u64) -> Vec<(u64, f64, f64, f64, f64)> {
+    let mut found: Vec<(u64, f64, f64, f64, f64)> = track
         .boxes
         .iter()
-        .filter(|box_| box_.t_ticks >= start && box_.t_ticks <= end)
+        .filter(|box_| box_.t_ticks >= start && box_.t_ticks < end)
         .map(|box_| {
             (
                 box_.t_ticks,
                 box_.x + box_.w / 2.0,
                 box_.y + box_.h / 2.0,
                 box_.h,
+                box_.w,
             )
         })
         .collect();
@@ -324,36 +335,26 @@ const SIMPLIFY_TOLERANCE: f64 = 0.003;
 /// inside, and smoothed the same way and for the same reason: a crop that
 /// breathes is as distracting as one that lurches.
 fn solve_extent(
-    observed: &[(u64, f64, f64, f64)],
-    aspect_width: u32,
-    aspect_height: u32,
-    weights: Weights,
-) -> Result<(Vec<f64>, Vec<f64>), BandedError> {
-    let targets: Vec<f64> = observed
+    observed: &[(u64, f64, f64, f64, f64)],
+    geometry: FrameGeometry,
+) -> (Vec<f64>, Vec<f64>) {
+    let source_aspect = f64::from(geometry.source_width) / f64::from(geometry.source_height);
+    let crop_aspect = f64::from(geometry.output_width) / f64::from(geometry.output_height);
+    let max_height = (source_aspect / crop_aspect).min(1.0);
+    // Hold the zoom for an entire shot. FFmpeg crop evaluates dimensions once;
+    // changing them per keyframe would make the proposed camera unrenderable.
+    // The largest observation receives headroom, including wide face boxes.
+    let height = observed
         .iter()
-        .map(|(_, _, _, face_height)| (face_height / MIN_FACE_FRACTION).clamp(0.2, 1.0))
-        .collect();
-    let zoom_weights = Weights {
-        velocity: weights.zoom,
-        acceleration: weights.zoom * 4.0,
-        ..weights
-    };
-    let mut scale = solve_axis(&targets, zoom_weights)?;
-    for value in &mut scale {
-        *value = value.clamp(0.2, 1.0);
-    }
-    // Width as a share of the source width, given the requested aspect and the
-    // source's own. A 9:16 crop from a 16:9 source at full height is 0.316 wide.
-    let source_aspect = 16.0 / 9.0;
-    let crop_aspect = f64::from(aspect_width) / f64::from(aspect_height);
-    let widths = scale
-        .iter()
-        .map(|height| (height * crop_aspect / source_aspect).min(1.0))
-        .collect();
-    Ok((scale, widths))
+        .map(|(_, _, _, h, w)| (h / MIN_FACE_FRACTION).max(w * source_aspect / crop_aspect * 1.25))
+        .fold(0.2_f64.min(max_height), f64::max)
+        .min(max_height);
+    let width = height * crop_aspect / source_aspect;
+    (vec![height; observed.len()], vec![width; observed.len()])
 }
 
-/// Solve a crop path over one span.
+/// Compatibility entry point for callers whose source geometry is 16:9.
+/// Product callers with source dimensions use [`solve_in_frame`].
 pub fn solve(
     document: &VisionFaceTrack,
     start: u64,
@@ -363,10 +364,40 @@ pub fn solve(
     weights: Weights,
     gate: FocusGate,
 ) -> Result<CropPath, SolveError> {
+    solve_in_frame(
+        document,
+        start,
+        end,
+        FrameGeometry {
+            source_width: 16,
+            source_height: 9,
+            output_width: aspect_width,
+            output_height: aspect_height,
+        },
+        weights,
+        gate,
+    )
+}
+
+/// Solve a crop path over one span.
+pub fn solve_in_frame(
+    document: &VisionFaceTrack,
+    start: u64,
+    end: u64,
+    geometry: FrameGeometry,
+    weights: Weights,
+    gate: FocusGate,
+) -> Result<CropPath, SolveError> {
     if end <= start {
         return Err(SolveError::EmptySpan);
     }
-    if aspect_width == 0 || aspect_height == 0 {
+    let aspect_width = geometry.output_width;
+    let aspect_height = geometry.output_height;
+    if aspect_width == 0
+        || aspect_height == 0
+        || geometry.source_width == 0
+        || geometry.source_height == 0
+    {
         return Err(SolveError::DegenerateAspect);
     }
 
@@ -409,16 +440,17 @@ pub fn solve(
         });
     }
 
-    let (scale, widths) = solve_extent(&observed, aspect_width, aspect_height, weights)?;
+    let (scale, widths) = solve_extent(&observed, geometry);
 
     let times: Vec<u64> = observed.iter().map(|(at, ..)| *at).collect();
     let mut x_targets: Vec<f64> = Vec::with_capacity(observed.len());
     let mut y_targets: Vec<f64> = Vec::with_capacity(observed.len());
-    for (index, (_, cx, cy, _)) in observed.iter().enumerate() {
+    for (index, (_, cx, cy, _, _)) in observed.iter().enumerate() {
         let half_w = widths[index] / 2.0;
         let half_h = scale[index] / 2.0;
         x_targets.push(cx.clamp(half_w.min(0.5), (1.0 - half_w).max(0.5)));
-        y_targets.push(cy.clamp(half_h.min(0.5), (1.0 - half_h).max(0.5)));
+        // Aim below the face center so the face sits above the viewport center.
+        y_targets.push((cy + scale[index] * 0.14).clamp(half_h.min(0.5), (1.0 - half_h).max(0.5)));
     }
 
     let mut xs = solve_axis(&x_targets, weights)?;
@@ -434,11 +466,11 @@ pub fn solve(
 
     // What the path is worth: the share of observed faces it actually holds.
     let mut held = 0_u32;
-    for (index, (_, cx, cy, face_height)) in observed.iter().enumerate() {
+    for (index, (_, cx, cy, face_height, face_width)) in observed.iter().enumerate() {
         let half_w = widths[index] / 2.0;
         let half_h = scale[index] / 2.0;
         let face_half = face_height / 2.0;
-        if (cx - xs[index]).abs() + face_half <= half_w + f64::EPSILON
+        if (cx - xs[index]).abs() + face_width / 2.0 <= half_w + f64::EPSILON
             && (cy - ys[index]).abs() + face_half <= half_h + f64::EPSILON
         {
             held += 1;

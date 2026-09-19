@@ -53,6 +53,7 @@ fn sample_document() -> EditDocument {
         in_ticks,
         out_ticks,
         layout: Layout {
+            secondary_crop_path: Vec::new(),
             state: LayoutState::SpeakerFill,
             crop_path: keyframes
                 .into_iter()
@@ -250,6 +251,7 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
     commands.push(EditCommand::RippleDelete {
         start_ticks: start,
         end_ticks: (start + span).min(duration),
+        reflow_edges: false,
     });
     commands.push(EditCommand::SetGain {
         t_ticks: start,
@@ -341,6 +343,7 @@ fn a_batch_undoes_as_one_step() {
             EditCommand::RippleDelete {
                 start_ticks: 10_000,
                 end_ticks: 40_000,
+                reflow_edges: false,
             },
         ],
     };
@@ -389,6 +392,7 @@ fn ripple_delete_through_a_segment_splits_it_and_closes_the_gap() {
     let command = EditCommand::RippleDelete {
         start_ticks: 30_000,
         end_ticks: 60_000,
+        reflow_edges: false,
     };
     let inverse = command.apply(&mut document).expect("ripple applies");
     assert_eq!(

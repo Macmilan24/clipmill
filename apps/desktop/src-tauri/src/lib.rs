@@ -380,6 +380,46 @@ async fn export_clip(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn submit_export_batch(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    requests: Vec<views::ExportRequestInput>,
+) -> Result<views::ExportBatchView, String> {
+    supervisor
+        .client()
+        .submit_export_batch(requests.into_iter().map(Into::into).collect())
+        .await
+        .map_err(|error| error.to_string())?
+        .try_into()
+}
+#[tauri::command]
+async fn list_export_batches(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<Vec<views::ExportBatchView>, String> {
+    supervisor
+        .client()
+        .list_export_batches()
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect()
+}
+#[tauri::command]
+async fn update_export_batch_item(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    batch_id: String,
+    index: u32,
+    action: String,
+) -> Result<views::ExportBatchView, String> {
+    supervisor
+        .client()
+        .update_export_batch_item(batch_id, index, action)
+        .await
+        .map_err(|error| error.to_string())?
+        .try_into()
+}
+
 /// Show a delivered file in the operating system's file manager.
 ///
 /// The one thing the renderer may do with a path, and only with a path that
@@ -644,6 +684,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             preview_plan,
             plan_export,
             export_clip,
+            submit_export_batch,
+            list_export_batches,
+            update_export_batch_item,
             export_archive,
             local_lock,
             readiness,

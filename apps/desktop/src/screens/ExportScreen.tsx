@@ -30,6 +30,7 @@ import { useEditDocuments } from '../editor/documents.js';
 import { latestExportOf, useDelivery } from '../export/delivery.js';
 import type { ClipRef } from '../shell/route.js';
 import { Export } from './Export.js';
+import { BatchExportScreen } from './BatchExportScreen.js';
 
 /** Long enough that a typed word is one request, short enough to feel live. */
 const PLAN_DEBOUNCE_MS = 250;
@@ -61,12 +62,6 @@ export function effectivePattern(typed: string): string {
 }
 const DEFAULT_PATTERN = '{index}-{clip}';
 /**
- * What Phase 1 attests. One value, because the document is model-assisted and
- * hand-authored in exactly one way, and a picker offering positions nobody can
- * verify would be a picker that manufactures claims.
- */
-const ATTESTATION = 'own_content';
-/**
  * The model work that shaped every clip this pipeline produces: captions from
  * recognition, and a crop path from a face pass. Declared rather than inferred,
  * because a disclosure a renderer guessed is a disclosure nobody checked.
@@ -83,14 +78,16 @@ export interface ExportScreenProps {
 }
 
 export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportScreenProps) {
+  const [batchMode, setBatchMode] = useState(false);
   const projectId = clip?.projectId ?? null;
   const docId = clip?.docId ?? null;
   const [durationTicks, setDurationTicks] = useState(0);
   const [title, setTitle] = useState('');
   const [destination, setDestination] = useState('');
   const [pattern, setPattern] = useState('{index}-{clip}');
-  const [gatePassed, setGatePassed] = useState(false);
-  const [hotCaptionsConfirmed, setHotCaptionsConfirmed] = useState(false);
+  const [attestation, setAttestation] = useState('');
+  const [rightsApproval, setRightsApproval] = useState<string | null>(null);
+  const [captionApproval, setCaptionApproval] = useState<string | null>(null);
   const [plan, setPlan] = useState<ExportPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -100,13 +97,65 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
   /** Bumped to plan again over the document as it is now, after a conflict. */
   const [replan, setReplan] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectionGeneration = useRef(0);
   const delivery = useDelivery(projectId, queued, api);
+  const approvalKey = plan
+    ? JSON.stringify([
+        projectId,
+        docId,
+        plan.revision,
+        plan.findings
+          .filter((finding) => finding.code === HOT_CAPTION_CODE)
+          .map((finding) => finding.detail.replace(/ — confirmed as read\.$/, ''))
+          .sort(),
+      ])
+    : null;
+  const gatePassed = approvalKey !== null && rightsApproval === approvalKey;
+  const hotCaptionsConfirmed = approvalKey !== null && captionApproval === approvalKey;
+  const [audition, setAudition] = useState<{
+    projectId: string;
+    renderId: string;
+    url: string;
+  } | null>(null);
+  const [auditionProblem, setAuditionProblem] = useState<string | null>(null);
+  const renderId = delivery?.renderArtifactId;
+  useEffect(() => {
+    setAudition(null);
+    setAuditionProblem(null);
+    if (!projectId || !renderId) return;
+    let live = true;
+    void api
+      .resolveMedia(projectId, renderId)
+      .then((media) => {
+        const file = media.files.find((file) => file.mediaType === 'video/mp4');
+        if (live && file)
+          setAudition({ projectId, renderId, url: api.mediaUrl(projectId, renderId, file.path) });
+        else if (live)
+          setAuditionProblem(
+            'The rendered artifact contains no playable MP4. Open the delivered file to review it.',
+          );
+      })
+      .catch(() => {
+        if (live)
+          setAuditionProblem(
+            'The rendered preview could not be loaded. Open the delivered MP4 to review it.',
+          );
+      });
+    return () => {
+      live = false;
+    };
+  }, [api, projectId, renderId]);
 
   // The named document's plan: its duration decides whether the rights gate
   // applies, and its opening words are the title's default. A different clip
   // is a different answer to both, and a stale plan or a queued id from the
   // last one must not be shown under this one's name.
   useEffect(() => {
+    selectionGeneration.current += 1;
+    setBusy(false);
+    setAttestation('');
+    setRightsApproval(null);
+    setCaptionApproval(null);
     setDurationTicks(0);
     setTitle('');
     setPlan(null);
@@ -163,7 +212,7 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
       docId,
       destinationDir: destination,
       namingPattern: effectivePattern(pattern),
-      sourceAttestation: ATTESTATION,
+      sourceAttestation: attestation,
       gatesPassed: [
         ...(gatePassed ? [DURATION_GATE] : []),
         ...(hotCaptionsConfirmed ? [READING_RATE_GATE] : []),
@@ -173,7 +222,7 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
       date: today(),
       title,
     };
-  }, [docId, destination, pattern, gatePassed, hotCaptionsConfirmed, title]);
+  }, [docId, destination, pattern, gatePassed, hotCaptionsConfirmed, title, attestation]);
 
   // The captions the strip named as too fast to read. Once confirmed they
   // come back as advisories under the same code, so the confirmation stays
@@ -233,28 +282,33 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
   }, [api]);
 
   const onExport = useCallback(async () => {
-    if (request === null || plan === null) {
+    if (request === null || plan === null || !attestation) {
       return;
     }
+    const generation = selectionGeneration.current;
     setBusy(true);
     setError(null);
     try {
       // The revision the plan checked is the revision that may leave.
-      setQueued(await api.exportClip({ ...request, expectedRevision: plan.revision }));
+      const exported = await api.exportClip({ ...request, expectedRevision: plan.revision });
+      if (selectionGeneration.current === generation) setQueued(exported);
     } catch (cause) {
+      if (selectionGeneration.current !== generation) return;
       const message = cause instanceof Error ? cause.message : String(cause);
       setError(message);
       if (message.includes('moved since it was reviewed')) {
         // The document is not what was reviewed. Plan again over what it is
         // now, so the findings and the names on screen are of that, and let
         // the person look before asking again.
+        setRightsApproval(null);
+        setCaptionApproval(null);
         setPlan(null);
         setReplan((count) => count + 1);
       }
     } finally {
-      setBusy(false);
+      if (selectionGeneration.current === generation) setBusy(false);
     }
-  }, [api, request, plan]);
+  }, [api, request, plan, attestation]);
 
   const onReveal = useCallback(
     async (path: string) => {
@@ -272,20 +326,32 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
       setError('An archive needs a folder to go in.');
       return;
     }
+    const generation = selectionGeneration.current;
     setBusy(true);
     setError(null);
     try {
       const written = await api.exportArchive(projectId, destination);
-      setArchive({ path: written.path, entryCount: written.entryCount });
+      if (selectionGeneration.current === generation)
+        setArchive({ path: written.path, entryCount: written.entryCount });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      if (selectionGeneration.current === generation)
+        setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setBusy(false);
+      if (selectionGeneration.current === generation) setBusy(false);
     }
   }, [api, projectId, destination]);
 
+  if (batchMode)
+    return (
+      <BatchExportScreen
+        api={api}
+        onBack={() => setBatchMode(false)}
+        {...(onEdit ? { onEdit } : {})}
+      />
+    );
   return (
     <Export
+      onBatch={() => setBatchMode(true)}
       onEdit={clip && onEdit ? () => onEdit(clip) : undefined}
       docId={docId}
       labels={clip?.labels ?? null}
@@ -293,12 +359,25 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
       destination={destination}
       pattern={pattern}
       title={title}
-      attestation={ATTESTATION}
+      attestation={attestation}
+      onAttestationChange={(value) => {
+        setAttestation(value);
+        setRightsApproval(null);
+      }}
+      audition={
+        audition?.projectId === projectId && audition.renderId === renderId ? audition.url : null
+      }
+      auditionProblem={auditionProblem}
+      onAuditionError={() =>
+        setAuditionProblem(
+          'The rendered file could not be played here. Open the delivered MP4 to review it.',
+        )
+      }
       rightsGateNeeded={rightsGateNeeded}
       rightsGatePassed={gatePassed}
       hotCaptions={hotCaptions}
       hotCaptionsConfirmed={hotCaptionsConfirmed}
-      onHotCaptionsChange={setHotCaptionsConfirmed}
+      onHotCaptionsChange={(checked) => setCaptionApproval(checked ? approvalKey : null)}
       plan={plan}
       planning={planning}
       busy={busy}
@@ -308,7 +387,7 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
       onDestinationChange={setDestination}
       onPatternChange={setPattern}
       onChooseFolder={() => void onChooseFolder()}
-      onRightsGateChange={setGatePassed}
+      onRightsGateChange={(checked) => setRightsApproval(checked ? approvalKey : null)}
       onExport={() => void onExport()}
       onArchive={() => void onArchive()}
       onReveal={(path) => void onReveal(path)}

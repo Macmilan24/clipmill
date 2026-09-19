@@ -38,12 +38,24 @@ import {
 } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 
 import type { ExportFinding, ExportPlan } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
-import type { Delivery, DeliveryStage } from '../export/delivery.js';
+import {
+  type Delivery,
+  type DeliveryStage,
+  deliveryProgressText,
+  deliveryWaitText,
+} from '../export/delivery.js';
 
 /**
  * What the render actually does, stated rather than offered.
@@ -65,6 +77,20 @@ function hottestRate(findings: readonly ExportFinding[]): string {
   return Number.isFinite(top) ? `up to ${top.toFixed(1)} characters a second` : 'too fast';
 }
 
+/** Stable machine codes stay in the export record, not in the reading flow. */
+function findingTitle(code: string): string {
+  if (code.startsWith('framing.')) return 'Framing needs attention';
+  if (code === 'boundary.inside_word') return 'A cut interrupts a word';
+  if (code === 'rights.gate_not_passed') return 'Confirm this clip’s permission';
+  if (code.startsWith('rights.')) return 'Choose your source permission';
+  if (code === 'disk.insufficient') return 'More storage is needed';
+  if (code === 'disk.unknown') return 'Storage could not be checked';
+  if (code.startsWith('disk.')) return 'Storage is running low';
+  if (code.startsWith('captions.burn_in.')) return 'On-screen caption notice';
+  if (code.startsWith('captions.')) return 'Subtitle check';
+  return 'Export check';
+}
+
 /**
  * The daemon's refusal of the name pattern, when that is what the error is.
  *
@@ -80,13 +106,14 @@ function patternProblemOf(error: string | null): string | null {
 
 const DELIVERY: readonly (readonly [string, string])[] = [
   ['Video', '1080 × 1920, H.264, CRF 18'],
-  ['Audio', 'AAC, −14 LUFS integrated, −1.0 dBTP ceiling'],
+  ['Audio', 'AAC, −14 LUFS integrated, −1.0 dBTP target'],
   ['Captions', 'Burned in, with SRT and WebVTT files'],
   ['Additional files', 'Thumbnail, metadata, render manifest and checksums'],
 ];
 
 export interface ExportProps {
   readonly onEdit?: (() => void) | undefined;
+  readonly onBatch?: () => void;
   readonly docId: string | null;
   /** What the clip is called — the project and the clip — when the route knew. */
   readonly labels: { readonly project?: string; readonly clip?: string } | null;
@@ -96,6 +123,10 @@ export interface ExportProps {
   readonly pattern: string;
   readonly title: string;
   readonly attestation: string;
+  readonly onAttestationChange?: (value: string) => void;
+  readonly audition?: string | null;
+  readonly auditionProblem?: string | null;
+  readonly onAuditionError?: () => void;
   readonly rightsGateNeeded: boolean;
   readonly rightsGatePassed: boolean;
   /**
@@ -136,18 +167,28 @@ export function Export(props: ExportProps): JSX.Element {
             edits below.
           </EmptyDescription>
         </EmptyHeader>
+        {props.onBatch && (
+          <Button variant="outline" onClick={props.onBatch}>
+            Export a collection
+          </Button>
+        )}
         {props.picker}
       </Empty>
     );
   }
 
   const blocking = (props.plan?.findings ?? []).filter(
-    (finding) => finding.severity === 'blocking',
+    (finding) =>
+      finding.severity === 'blocking' &&
+      !(finding.code === 'captions.reading_rate' && props.hotCaptions.length > 0),
   );
   const advisory = (props.plan?.findings ?? []).filter(
-    (finding) => finding.severity === 'advisory',
+    (finding) =>
+      finding.severity === 'advisory' &&
+      !(finding.code === 'captions.reading_rate' && props.hotCaptions.length > 0),
   );
-  const ready = props.plan?.passes === true && !props.busy && !props.planning;
+  const ready =
+    props.plan?.passes === true && props.attestation !== '' && !props.busy && !props.planning;
   const delivering = props.delivery !== null && !props.delivery.settled;
   const patternProblem = patternProblemOf(props.error);
 
@@ -162,12 +203,19 @@ export function Export(props: ExportProps): JSX.Element {
               : 'Your edited clip'}
           </p>
         </div>
-        {props.onEdit && (
-          <Button variant="outline" size="sm" onClick={props.onEdit}>
-            <ArrowLeft className="size-4" />
-            Back to editor
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {props.onBatch && (
+            <Button variant="outline" size="sm" onClick={props.onBatch}>
+              Export a collection
+            </Button>
+          )}
+          {props.onEdit && (
+            <Button variant="outline" size="sm" onClick={props.onEdit}>
+              <ArrowLeft className="size-4" />
+              Back to editor
+            </Button>
+          )}
+        </div>
       </header>
       <div className="export-grid">
         <div className="export-column">
@@ -236,48 +284,86 @@ export function Export(props: ExportProps): JSX.Element {
               <CardTitle className="text-sm">Export checks</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="source-rights">Source rights</Label>
+                <Select
+                  value={props.attestation}
+                  onValueChange={(value) => props.onAttestationChange?.(value)}
+                >
+                  <SelectTrigger id="source-rights" className="w-full">
+                    <SelectValue placeholder="Choose the permission you hold" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="own_content">I own this footage</SelectItem>
+                    <SelectItem value="licensed_content">
+                      I have permission or a license for this use
+                    </SelectItem>
+                    <SelectItem value="public_domain">
+                      This footage is in the public domain
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Your choice is saved with this export.
+                </p>
+              </div>
               {props.rightsGateNeeded && (
                 <label className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs">
                   <input
                     type="checkbox"
                     className="mt-0.5"
                     checked={props.rightsGatePassed}
+                    disabled={props.busy || props.planning}
                     onChange={(event) => props.onRightsGateChange(event.target.checked)}
                   />
                   <span>
-                    This clip runs past a minute. I hold the rights to this footage, or it is
-                    licensed for this use.{' '}
-                    <span className="text-[var(--cm-ink-3)]">
-                      Recorded verbatim in the delivered metadata as “{props.attestation}”.
-                    </span>
+                    This clip runs past a minute. I confirm that my selected source permission
+                    covers this use.
                   </span>
                 </label>
               )}
 
               {props.hotCaptions.length > 0 && (
-                <label
-                  className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs"
-                  data-testid="hot-captions-gate"
-                >
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={props.hotCaptionsConfirmed}
-                    onChange={(event) => props.onHotCaptionsChange(event.target.checked)}
-                  />
-                  <span>
-                    {props.hotCaptions.length === 1
-                      ? 'One caption'
-                      : `${props.hotCaptions.length} captions`}{' '}
-                    in the subtitle file run faster than a reader can follow (
-                    {hottestRate(props.hotCaptions)}; the profile allows 20 a second). The speech is
-                    that fast, and slowing the captions would mean hiding words that were said.
-                    Export them as they are.{' '}
-                    <span className="text-[var(--cm-ink-3)]">
-                      Recorded in the delivered metadata as “captions_reading_rate”.
+                <div className="space-y-2">
+                  <label
+                    className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs"
+                    data-testid="hot-captions-gate"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={props.hotCaptionsConfirmed}
+                      disabled={props.busy || props.planning}
+                      onChange={(event) => props.onHotCaptionsChange(event.target.checked)}
+                    />
+                    <span>
+                      {props.hotCaptions.length === 1
+                        ? 'One caption'
+                        : `${props.hotCaptions.length} captions`}{' '}
+                      in the subtitle file exceed the reading-speed target (
+                      {hottestRate(props.hotCaptions)}). I reviewed them and want to export them as
+                      they are.
                     </span>
-                  </span>
-                </label>
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    {props.hotCaptionsConfirmed
+                      ? `Confirmed for revision r${props.plan?.revision ?? '—'}.`
+                      : 'Review required before export. You can also adjust these captions in the editor.'}
+                  </p>
+                  <details className="rounded-lg border px-3 py-2 text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Review caption details ({props.hotCaptions.length})
+                    </summary>
+                    <ul className="mt-3 space-y-2 leading-5">
+                      {props.hotCaptions.map((finding, index) => (
+                        <li key={`${finding.detail}:${index}`}>
+                          <span className="mr-1.5 text-muted-foreground">{index + 1}.</span>
+                          {finding.detail.replace(/ — confirmed as read\.$/, '')}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
               )}
 
               {props.planning && (
@@ -287,20 +373,20 @@ export function Export(props: ExportProps): JSX.Element {
               )}
 
               {blocking.map((finding) => (
-                <Alert key={finding.code} variant="destructive">
+                <Alert key={`${finding.code}:${finding.detail}`} variant="destructive">
                   <AlertTriangle />
                   <AlertDescription>
-                    <span className="font-mono text-[10px] opacity-70">{finding.code}</span>{' '}
-                    {finding.detail}
+                    <span className="font-medium">{findingTitle(finding.code)}</span>
+                    <span className="mt-1 block">{finding.detail}</span>
                   </AlertDescription>
                 </Alert>
               ))}
               {advisory.map((finding) => (
-                <Alert key={finding.code}>
+                <Alert key={`${finding.code}:${finding.detail}`}>
                   <Info />
                   <AlertDescription>
-                    <span className="font-mono text-[10px] opacity-70">{finding.code}</span>{' '}
-                    {finding.detail}
+                    <span className="font-medium">{findingTitle(finding.code)}</span>
+                    <span className="mt-1 block">{finding.detail}</span>
                   </AlertDescription>
                 </Alert>
               ))}
@@ -336,9 +422,13 @@ export function Export(props: ExportProps): JSX.Element {
                 <div className="flex justify-between gap-4">
                   <dt className="text-[var(--cm-ink-2)]">Free disk space</dt>
                   <dd className="font-mono text-[var(--cm-ink-1)]">
-                    {props.plan?.availableBytes === undefined
-                      ? 'not readable'
-                      : formatBytes(props.plan.availableBytes)}
+                    {!props.destination.trim()
+                      ? 'Choose a folder'
+                      : props.planning
+                        ? 'Checking…'
+                        : props.plan?.availableBytes === undefined
+                          ? 'Unavailable'
+                          : formatBytes(props.plan.availableBytes)}
                   </dd>
                 </div>
               </dl>
@@ -361,6 +451,38 @@ export function Export(props: ExportProps): JSX.Element {
         <DeliveryCard delivery={props.delivery} onReveal={props.onReveal} />
       )}
 
+      {props.audition && props.delivery && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">
+              Final rendered preview · r{props.delivery.revision}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <video
+              aria-label={`Final rendered revision r${props.delivery.revision}`}
+              src={props.audition}
+              onError={props.onAuditionError}
+              controls
+              playsInline
+              preload="metadata"
+              className="mx-auto max-h-[560px] max-w-full rounded-lg bg-black"
+            />
+            <p className="mt-3 text-xs text-muted-foreground">
+              This is the encoded file with its final captions, framing and mastered audio. Review
+              this version before uploading.
+              {props.plan && props.plan.revision !== props.delivery.revision
+                ? ` Your current edit is r${props.plan.revision}; export it again to review those changes.`
+                : ''}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+      {props.auditionProblem && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {props.auditionProblem}
+        </p>
+      )}
       <div className="export-actions">
         <Button onClick={props.onExport} disabled={!ready || delivering}>
           {props.busy
@@ -391,9 +513,7 @@ export function Export(props: ExportProps): JSX.Element {
 function stageWord(stage: DeliveryStage): string {
   switch (stage.state) {
     case 'running':
-      return stage.progress
-        ? `${stage.progress.done} of ${stage.progress.total} ${stage.progress.unit}`
-        : 'running';
+      return stage.progress ? deliveryProgressText(stage.progress) : 'running';
     case 'done':
       return 'done';
     case 'failed':
@@ -401,7 +521,7 @@ function stageWord(stage: DeliveryStage): string {
     case 'cancelled':
       return 'cancelled';
     default:
-      return stage.waitReason === '' ? 'waiting' : stage.waitReason;
+      return deliveryWaitText(stage);
   }
 }
 

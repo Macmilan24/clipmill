@@ -75,7 +75,12 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
   {
     kind: 'evidence.shots.v1',
     label: 'Detect shots',
-    detail: 'Cuts, so no clip is allowed to straddle one',
+    detail: 'Camera cuts, so framing stays stable within each shot',
+  },
+  {
+    kind: 'vision.face_track.v1',
+    label: 'Plan framing',
+    detail: 'Find faces for stable single- and two-person compositions',
   },
   {
     kind: 'index.transcript.v1',

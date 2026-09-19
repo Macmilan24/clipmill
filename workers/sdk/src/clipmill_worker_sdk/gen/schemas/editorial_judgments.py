@@ -9,6 +9,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
 
+class ContentProfile(StrEnum):
+    interview = 'interview'
+    scripted = 'scripted'
+
+
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
@@ -81,6 +86,7 @@ class Code(StrEnum):
     misleading_omission = 'misleading_omission'
     visual_dependency = 'visual_dependency'
     other = 'other'
+    transcript_uncertain = 'transcript_uncertain'
 
 
 class Reason(BaseModel):
@@ -154,4 +160,8 @@ class EditorialJudgments(BaseModel):
     candidates: list[Judgment] = Field(
         ...,
         description="One entry per candidate the review was asked about, in the candidates document's order.",
+    )
+    content_profile: ContentProfile | None = Field(
+        'interview',
+        description='The editorial rubric selected for this run; older artifacts use interview.',
     )

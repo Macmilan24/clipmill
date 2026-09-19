@@ -19,7 +19,7 @@
  * on screen.
  */
 import { JobState } from '@clipmill/contracts';
-import { AlertCircle, ArrowRight } from 'lucide-react';
+import { AlertCircle, ArrowRight, Scissors } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
@@ -36,6 +36,7 @@ import type { Project } from '../daemon/client.js';
 import type { RunInfo } from '../results/loader.js';
 import { CandidateGrid } from '../results/parts/CandidateGrid.js';
 import { CandidateTable } from '../results/parts/CandidateTable.js';
+import { DeclinedMoments } from '../results/parts/DeclinedMoments.js';
 import { DetailRail } from '../results/parts/DetailRail.js';
 import { StatStrip } from '../results/parts/StatStrip.js';
 import { type BoardView, Toolbar } from '../results/parts/Toolbar.js';
@@ -73,6 +74,7 @@ export interface ResultsProps {
   readonly onApproveMany: (candidateIds: readonly string[]) => void;
   readonly onReload: () => void;
   readonly notice?: string | null;
+  readonly onManualClip?: () => void;
 }
 
 /** The job's state as the design's badge, from the job rather than assumed. */
@@ -98,7 +100,7 @@ function completedAt(millis: number): string {
 
 export function Results({
   loading,
-  rows,
+  rows: allRows,
   summary,
   problem,
   sourceName,
@@ -113,7 +115,13 @@ export function Results({
   onApproveMany,
   onReload,
   notice,
+  onManualClip,
 }: ResultsProps) {
+  const rows = useMemo(() => allRows.filter((row) => row.review?.status !== 'rejected'), [allRows]);
+  const declined = useMemo(
+    () => allRows.filter((row) => row.review?.status === 'rejected'),
+    [allRows],
+  );
   const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, query: '' });
   const [sort, setSort] = useState<SortKey>('rank');
   const [view, setView] = useState<BoardView>('list');
@@ -187,6 +195,14 @@ export function Results({
           </div>
           <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-[var(--cm-text-secondary)]">
             {sourceName && <span className="truncate">{sourceName}</span>}
+            {summary?.contentProfile && (
+              <span className="text-[11px] text-[var(--cm-text-muted)]">
+                ·{' '}
+                {summary.contentProfile === 'scripted'
+                  ? 'TV / movie scenes'
+                  : 'Podcast / interview'}
+              </span>
+            )}
             {run && (
               <>
                 <span aria-hidden>·</span>
@@ -201,7 +217,13 @@ export function Results({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onManualClip && (
+            <Button variant="outline" disabled={busy} onClick={onManualClip}>
+              <Scissors />
+              Make a manual clip
+            </Button>
+          )}
           {(projects.length > 1 || (projects.length > 0 && !activeProjectId)) && (
             <Select value={activeProjectId ?? ''} onValueChange={onChooseProject} disabled={busy}>
               <SelectTrigger
@@ -219,7 +241,7 @@ export function Results({
               </SelectContent>
             </Select>
           )}
-          {!problem && (
+          {!problem && rows.length > 0 && (
             <Button
               className="h-[var(--cm-control-primary)] gap-2"
               disabled={busy || focused === null}
@@ -285,7 +307,34 @@ export function Results({
         />
       )}
 
-      {!problem && (
+      {!problem && declined.length > 0 && (
+        <DeclinedMoments
+          rows={declined}
+          onlyDeclines={rows.length === 0}
+          busy={busy}
+          onInspect={onInspect}
+        />
+      )}
+      {!problem && rows.length === 0 && declined.length === 0 && (
+        <Empty className="workspace-panel min-h-0 flex-1 rounded-[var(--cm-radius-card)]">
+          <EmptyHeader>
+            <Scissors className="mx-auto size-6 text-[var(--cm-text-muted)]" aria-hidden />
+            <EmptyTitle>No clips are ready for review</EmptyTitle>
+            <EmptyDescription>
+              {incomplete
+                ? 'No clips are ready from this partial analysis. Unassessed sections may still contain worthwhile moments.'
+                : 'This run returned no clip candidates. You can choose a source interval and make your own edit.'}
+            </EmptyDescription>
+          </EmptyHeader>
+          {onManualClip && (
+            <Button disabled={busy} onClick={onManualClip}>
+              Choose a source interval
+              <ArrowRight className="size-4" aria-hidden />
+            </Button>
+          )}
+        </Empty>
+      )}
+      {!problem && rows.length > 0 && (
         <>
           <Toolbar
             editorial={rows.some((row) => row.review !== undefined)}
@@ -303,11 +352,7 @@ export function Results({
             {shown.length === 0 ? (
               <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
                 <p className="text-[13px] text-[var(--cm-text-secondary)]">
-                  {rows.length === 0
-                    ? incomplete
-                      ? 'No clips are ready from this partial analysis. Unassessed sections may still contain worthwhile moments.'
-                      : 'No suitable complete moments were found in this recording.'
-                    : 'No clip matches those filters.'}
+                  No clip matches those filters.
                 </p>
               </div>
             ) : view === 'list' ? (

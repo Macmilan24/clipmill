@@ -147,7 +147,7 @@ pub(crate) async fn execute_rank_task(
     let mut config = Map::new();
     config.insert("algorithm".to_owned(), json!("clipmill.ranking.set.v1"));
     if judgments.is_some() {
-        config.insert("editorial_review_version".to_owned(), json!(2));
+        config.insert("editorial_review_version".to_owned(), json!(3));
     }
     // Everything the ranking was told, by name. Asking for a different number
     // of clips, or a different diversity trade-off, is a different answer

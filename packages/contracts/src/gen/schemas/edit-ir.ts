@@ -65,11 +65,18 @@ export interface VideoSegment {
   in_ticks: number;
   out_ticks: number;
   layout: {
-    state: "speaker_fill" | "fit";
+    state: "speaker_fill" | "fit" | "two_up";
     /**
      * Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.
      */
     crop_path?: {
+      t_ticks: number;
+      rect: CropRect;
+    }[];
+    /**
+     * Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.
+     */
+    secondary_crop_path?: {
       t_ticks: number;
       rect: CropRect;
     }[];

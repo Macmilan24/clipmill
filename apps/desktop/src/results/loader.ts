@@ -15,6 +15,7 @@ import type {
   MediaAudioPeaks,
   MediaFilmstrip,
   RankingSet,
+  SourceMap,
 } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
@@ -66,6 +67,7 @@ export interface ResultsSnapshot {
   readonly source: Source | null;
   readonly rows: readonly ClipRow[];
   readonly summary: Summary | null;
+  readonly sourceDurationTicks?: number | null;
   /** The proxy this source's clips are previewed from, when it has one. */
   readonly proxyArtifactId: string | null;
   /** The face tracks a crop path is solved from. Null when nobody looked. */
@@ -80,6 +82,7 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
   source: null,
   rows: [],
   summary: null,
+  sourceDurationTicks: null,
   proxyArtifactId: null,
   faceTrackArtifactId: null,
   run: null,
@@ -140,18 +143,30 @@ export class ResultsLoader {
 
     try {
       const filmstripId = publishedArtifact(job, FILMSTRIP_KIND);
-      const [rankingDoc, candidateDoc, indexDoc, decisions, filmstripDoc, peaksDoc, documents] =
-        await Promise.all([
-          this.api.readDocument(projectId, ranking),
-          this.api.readDocument(projectId, candidates),
-          this.readOptional(projectId, publishedArtifact(job, INDEX_KIND)),
-          this.api.listClipDecisions(projectId, source.sourceId).catch(() => []),
-          this.readOptional(projectId, filmstripId),
-          this.readOptional(projectId, publishedArtifact(job, PEAKS_KIND)),
-          // Which clips already have an edit. A failure here loses a badge,
-          // not the board, so it is read like the optional documents.
-          this.api.listEditDocs(projectId).catch(() => []),
-        ]);
+      const [
+        rankingDoc,
+        candidateDoc,
+        indexDoc,
+        decisions,
+        filmstripDoc,
+        peaksDoc,
+        documents,
+        sourceMapDoc,
+      ] = await Promise.all([
+        this.api.readDocument(projectId, ranking),
+        this.api.readDocument(projectId, candidates),
+        this.readOptional(projectId, publishedArtifact(job, INDEX_KIND)),
+        this.api.listClipDecisions(projectId, source.sourceId).catch(() => []),
+        this.readOptional(projectId, filmstripId),
+        this.readOptional(projectId, publishedArtifact(job, PEAKS_KIND)),
+        // Which clips already have an edit. A failure here loses a badge,
+        // not the board, so it is read like the optional documents.
+        this.api.listEditDocs(projectId).catch(() => []),
+        this.readOptional(
+          projectId,
+          publishedArtifact(job, 'evidence.source_map.v1') ?? (source.sourceMapArtifactId || null),
+        ),
+      ]);
       const rankingSet = JSON.parse(rankingDoc.json) as RankingSet;
       // The ranking names the recording it ranked. Showing another source's
       // clips under this one's name would be worse than showing none.
@@ -167,15 +182,34 @@ export class ResultsLoader {
       );
       const filmstrip: MediaFilmstrip | null = filmstripDoc ? JSON.parse(filmstripDoc) : null;
       const peaks: MediaAudioPeaks | null = peaksDoc ? JSON.parse(peaksDoc) : null;
+      let sourceDurationTicks: number | null = null;
+      if (sourceMapDoc) {
+        try {
+          const map = JSON.parse(sourceMapDoc) as SourceMap;
+          if (
+            map.schema_version === 'clipmill.source_map.v1' &&
+            map.source_fingerprint === source.sourceFingerprint &&
+            Number.isSafeInteger(map.container.duration_ticks) &&
+            map.container.duration_ticks > 0
+          )
+            sourceDurationTicks = map.container.duration_ticks;
+        } catch {
+          /* Timing is unavailable; never infer the recording length from candidate spans. */
+        }
+      }
       return {
         source,
         rows,
+        sourceDurationTicks,
         summary: summarize(rankingSet),
         proxyArtifactId: publishedArtifact(job, PROXY_KIND),
         faceTrackArtifactId: publishedArtifact(job, FACES_KIND),
         run: { jobId: job.jobId, state: job.state, completedUnixMillis: job.updatedUnixMillis },
         filmstrip:
-          filmstrip && filmstripId
+          filmstrip &&
+          filmstripId &&
+          filmstrip.schema_version === 'clipmill.media.filmstrip.v1' &&
+          filmstrip.source_fingerprint === source.sourceFingerprint
             ? {
                 artifactId: filmstripId,
                 tiles: filmstrip.tiles.map((tile) => ({ file: tile.file, tTicks: tile.t_ticks })),

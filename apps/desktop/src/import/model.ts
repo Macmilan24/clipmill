@@ -97,6 +97,7 @@ export interface ImportSettings {
   readonly maxSeconds: number;
   readonly count: number;
   readonly editorialRoute?: 'local' | 'cloud' | 'heuristic';
+  readonly contentProfile?: 'interview' | 'scripted';
   readonly cloudBudgetUsd?: number;
   readonly cloudConsent?: boolean;
   readonly language: string;
@@ -105,8 +106,9 @@ export interface ImportSettings {
 
 export const DEFAULT_SETTINGS: ImportSettings = {
   presetId: 'short',
-  minSeconds: 15,
-  maxSeconds: 60,
+  minSeconds: 20,
+  maxSeconds: 90,
+  contentProfile: 'interview',
   count: 5,
   language: AUTO_LANGUAGE,
   rightsAttested: false,

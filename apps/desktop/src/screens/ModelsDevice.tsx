@@ -1,6 +1,7 @@
 import {
   Cpu,
   Gauge,
+  Laptop,
   MemoryStick,
   RefreshCw,
   ShieldCheck,
@@ -31,6 +32,7 @@ import { cn } from '@/lib/utils';
 
 import { ModelReadiness } from './ModelReadiness.js';
 import type { ConnectionState } from '../daemon/client.js';
+import { type ShellApi, daemonApi } from '../daemon/api.js';
 import {
   EM_DASH,
   acceleratorMemory,
@@ -50,6 +52,7 @@ import {
 } from '../deviceProfile.js';
 
 interface ModelsDeviceProps {
+  readonly api?: ShellApi;
   readonly state: ConnectionState;
   readonly profile: DeviceProfile | null;
   readonly artifactId: string | null;
@@ -84,7 +87,7 @@ function Stat({
   readonly meter?: number;
 }): JSX.Element {
   return (
-    <Card className="glass gap-0 rounded-2xl py-4">
+    <Card className="gap-0 rounded-xl py-4">
       <CardContent className="px-4">
         <div className={cn('flex items-center gap-1.5 text-meta', SECONDARY)}>
           <span className="[&_svg]:size-3.5">{icon}</span>
@@ -94,7 +97,7 @@ function Stat({
             the whole string on hover beats a tile that reflows to three lines. */}
         <div
           title={value}
-          className="mono mt-2 truncate text-page-title font-(--cm-weight-heading) text-[var(--cm-text-primary)]"
+          className="mono mt-2 truncate text-lg font-(--cm-weight-heading) text-[var(--cm-text-primary)]"
         >
           {value}
         </div>
@@ -347,8 +350,15 @@ function LocalLockCard({
       </CardHeader>
       <CardContent>
         <p className={cn('text-meta', SECONDARY)}>
-          When on, ClipMill blocks model requests that would send source media, frames, transcript,
-          or embeddings off-device.
+          {locked
+            ? 'No cloud analysis has started in this engine session. Local stages keep source media, frames and transcripts on this device.'
+            : connected
+              ? 'Cloud analysis has started in this engine session. Cloud use requires explicit consent on each analysis.'
+              : 'Reconnect to check whether cloud analysis has started in this engine session.'}
+        </p>
+        <p className={cn('mt-2 text-[11px] leading-relaxed', MUTED)}>
+          This is a record of processing policy and task starts, not a network firewall or a count
+          of bytes sent.
         </p>
         <Separator className="my-3 bg-[var(--cm-glass-border)]" />
         <dl className="grid gap-2">
@@ -424,6 +434,7 @@ function RuntimesCard({ profile }: { readonly profile: DeviceProfile }): JSX.Ele
 }
 
 export function ModelsDevice({
+  api = daemonApi,
   state,
   profile,
   artifactId,
@@ -435,110 +446,144 @@ export function ModelsDevice({
   const connected = state.status === 'connected';
 
   return (
-    <>
-      <div className="mb-4 flex items-start justify-between gap-4">
+    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-page-title font-(--cm-weight-heading) tracking-[-0.01em]">
-            Models &amp; Device
-          </h1>
-          <p className={cn('mt-1 text-meta', SECONDARY)}>
-            What this machine measured, what may use a connection, and how resources are shared.
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cm-text-muted)]">
+            Studio infrastructure
+          </p>
+          <h1 className="workspace-title">Models &amp; Device</h1>
+          <p className="workspace-subtitle mt-1 max-w-[620px]">
+            The intelligence behind your clips, and the machine that runs it.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={onRescan} disabled={busy || !connected}>
-          {busy ? <Spinner /> : <RefreshCw />}
-          {busy ? 'Measuring…' : 'Rescan hardware'}
-        </Button>
-      </div>
-
-      {profile === null ? (
-        <Empty className="glass rounded-xl" aria-label="Device profile unavailable">
-          <EmptyHeader>
-            <EmptyMedia variant="icon" className="glass-elevated size-14 rounded-full">
-              <TriangleAlert className="size-5" />
-            </EmptyMedia>
-            <EmptyTitle className="text-card-title">
-              {connected ? 'No device profile yet' : 'Daemon not connected'}
-            </EmptyTitle>
-            <EmptyDescription>
-              {error ?? 'The shell will show measured hardware as soon as the daemon answers.'}
-            </EmptyDescription>
-          </EmptyHeader>
+        <StatusBadge tone={connected ? 'success' : 'warning'}>
+          <span className="size-1.5 rounded-full bg-current" />
+          {connected ? 'Engine connected' : 'Engine disconnected'}
+        </StatusBadge>
+      </header>
+      {connected && <ModelReadiness api={api} />}
+      <section aria-labelledby="device-heading" className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
+            <h2 id="device-heading" className="flex items-center gap-2 text-sm font-semibold">
+              <Laptop className="size-4 text-[var(--cm-text-secondary)]" />
+              Your device
+            </h2>
+            <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">
+              A measured snapshot. Rescan after your hardware or available resources change.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onRescan} disabled={busy || !connected}>
+            {busy ? <Spinner /> : <RefreshCw />}
+            {busy ? 'Measuring…' : 'Rescan hardware'}
+          </Button>
+        </div>
+        {profile === null ? (
+          <Empty
+            className="rounded-xl border border-[var(--cm-glass-border)] bg-[var(--cm-glass)]"
+            aria-label="Device profile unavailable"
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <TriangleAlert className="size-5" />
+              </EmptyMedia>
+              <EmptyTitle className="text-card-title">
+                {connected ? 'No device profile yet' : 'Daemon not connected'}
+              </EmptyTitle>
+              <EmptyDescription>
+                {error ?? 'Hardware measurements appear as soon as the engine answers.'}
+              </EmptyDescription>
+            </EmptyHeader>
             <Button onClick={onReconnect}>
               <RefreshCw />
               Retry now
             </Button>
-          </div>
-        </Empty>
-      ) : (
-        <>
-          <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
-            <Stat
-              icon={<Zap />}
-              label="Accelerator"
-              value={describeAccelerator(primaryAccelerator(profile))}
-              detail={acceleratorMemory(profile)}
-            />
-            <MemoryStat profile={profile} />
-            <Stat
-              icon={<Cpu />}
-              label="CPU"
-              value={profile.cpu.model}
-              detail={`${describeCores(profile.cpu)} · ${describePlatform(profile)}`}
-            />
-            <Stat
-              icon={<ShieldCheck />}
-              label="Cloud processing"
-              value={connected ? (state.localLock ? 'Unused' : 'Used') : EM_DASH}
-              detail={
-                connected
-                  ? state.localLock
-                    ? 'No cloud tasks this session'
-                    : 'Cloud used this session'
-                  : 'daemon not connected'
-              }
-            />
-          </div>
-
-          {error === null ? null : (
-            <Alert className="glass mb-4 rounded-xl">
-              <TriangleAlert className="text-[var(--color-warning)]" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="grid grid-cols-[minmax(0,744fr)_minmax(0,400fr)] items-start gap-4">
-            <div className="flex flex-col gap-4">
-              <DecodeCard profile={profile} />
-              <CapabilitiesCard profile={profile} />
+          </Empty>
+        ) : (
+          <>
+            {!connected && (
+              <Alert>
+                <TriangleAlert />
+                <AlertDescription>
+                  Showing the last device profile. Reconnect to verify current readiness.
+                </AlertDescription>
+                <Button
+                  className="col-start-2 mt-2 w-fit"
+                  variant="outline"
+                  size="sm"
+                  onClick={onReconnect}
+                >
+                  Reconnect engine
+                </Button>
+              </Alert>
+            )}
+            {error !== null && (
+              <Alert variant="destructive">
+                <TriangleAlert />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <Stat
+                icon={<Zap />}
+                label="Accelerator"
+                value={describeAccelerator(primaryAccelerator(profile))}
+                detail={acceleratorMemory(profile)}
+              />
+              <MemoryStat profile={profile} />
+              <Stat
+                icon={<Cpu />}
+                label="CPU"
+                value={profile.cpu.model}
+                detail={`${describeCores(profile.cpu)} · ${describePlatform(profile)}`}
+              />
+              <Stat
+                icon={<ShieldCheck />}
+                label="Cloud processing"
+                value={connected ? (state.localLock ? 'Unused' : 'Used') : EM_DASH}
+                detail={
+                  connected
+                    ? state.localLock
+                      ? 'No cloud tasks this session'
+                      : 'Cloud used this session'
+                    : 'daemon not connected'
+                }
+              />
             </div>
-            <div className="flex flex-col gap-4">
-              <LocalLockCard state={state} profile={profile} />
-              {connected && <ModelReadiness />}
-              <Card className="glass rounded-xl">
-                <CardHeader>
-                  <CardTitle className="text-section-title">Shared memory</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="mono text-page-title font-(--cm-weight-heading)">
-                    {formatRate(profile.phase0?.shared_memory?.bytes_per_second)}
-                  </div>
-                  <p className={cn('mt-1 text-meta', SECONDARY)}>
-                    Measured transfer between the daemon and a worker, which is how frames move
-                    without a copy through the socket.
-                  </p>
-                </CardContent>
-              </Card>
-              <RuntimesCard profile={profile} />
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+              <div className="min-w-0 space-y-4">
+                <DecodeCard profile={profile} />
+                <CapabilitiesCard profile={profile} />
+              </div>
+              <div className="min-w-0 space-y-4">
+                <LocalLockCard state={state} profile={profile} />
+                <Card className="rounded-xl">
+                  <CardHeader>
+                    <CardTitle className="text-section-title">Shared memory</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="mono text-page-title font-(--cm-weight-heading)">
+                      {formatRate(profile.phase0?.shared_memory?.bytes_per_second)}
+                    </div>
+                    <p className={cn('mt-1 text-meta leading-relaxed', SECONDARY)}>
+                      Measured transfer between the engine and a worker. Frames pass through shared
+                      memory without an extra copy through the socket.
+                    </p>
+                  </CardContent>
+                </Card>
+                <RuntimesCard profile={profile} />
+              </div>
             </div>
-          </div>
-
-          <p className={cn('mono mt-4 text-technical', MUTED)}>
-            device_profile · {shortDigest(artifactId ?? undefined)}
-          </p>
-        </>
-      )}
-    </>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--cm-glass-border)] pt-3 text-[10px] text-[var(--cm-text-muted)]">
+              <p>Measurements describe this profile, not live resource use.</p>
+              <p className="mono" title={artifactId ?? undefined}>
+                device_profile · {shortDigest(artifactId ?? undefined)}
+              </p>
+            </div>
+          </>
+        )}
+      </section>
+    </div>
   );
 }

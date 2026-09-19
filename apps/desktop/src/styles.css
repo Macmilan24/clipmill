@@ -443,3 +443,12 @@ input[type='range'] {
   background: var(--cm-text-primary);
   border: 2px solid var(--cm-accent);
 }
+
+/* The same pinned font used by libass; caption preview never depends on a host font. */
+@font-face {
+  font-family: 'ClipMill Caption Inter';
+  src: url('./assets/captions/Inter-Bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+}

@@ -30,6 +30,8 @@ function program(frames: number, inSeconds: number): PreviewPlan {
   };
 }
 
+const video = () => screen.getByTestId('proxy') as HTMLVideoElement;
+
 function show(initial: PreviewPlan) {
   const onApply = vi.fn();
   // The URL map is what the hook derives from the plan's proxies.
@@ -58,7 +60,6 @@ function show(initial: PreviewPlan) {
       <Editor {...props(initial)} />
     </TooltipProvider>,
   );
-  const video = () => screen.getByTestId('proxy') as HTMLVideoElement;
   return {
     onApply,
     video,
@@ -186,4 +187,64 @@ describe('editor interaction boundaries', () => {
     expect(screen.getByRole('alert').textContent).toContain('Could not save the edit');
     view.unmount();
   });
+});
+
+it('presents two portraits from one media element and edits the selected lower crop', () => {
+  const initial = program(30, 600);
+  const two: PreviewPlan = {
+    ...initial,
+    crops: Array.from({ length: 30 }, () => [0, 140, 900, 800] as const),
+    secondaryCrops: Array.from({ length: 30 }, () => [1000, 140, 900, 800] as const),
+  };
+  const { onApply } = show(two);
+  expect(document.querySelectorAll('video')).toHaveLength(1);
+  expect(screen.getByRole('img', { name: /two synchronized portraits/i })).toBeTruthy();
+  fireEvent.mouseDown(screen.getByRole('tab', { name: /reframe/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'Lower' }));
+  fireEvent.click(screen.getByRole('button', { name: /move crop left/i }));
+  expect(onApply).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      op: 'set_secondary_crop_keyframe',
+      rect: { x: 984, y: 140, width: 900, height: 800 },
+    }),
+  );
+});
+
+it('shows a stored framing problem over the draft regardless of the active tab', () => {
+  const base = program(30, 600);
+  show({
+    ...base,
+    segments: base.segments.map((segment) => ({
+      ...segment,
+      framingWarning: 'This shot has no saved crop path. Choose Fit.',
+    })),
+  });
+  expect(screen.getByRole('alert').textContent).toContain('no saved crop path');
+});
+
+it('uses the renderer’s caption style and placement while labelling proxy audio as draft', () => {
+  const base = plan();
+  show({
+    ...base,
+    cues: [{ ...base.cues[0]!, region: 'upper_safe' }],
+    captionStyle: {
+      styleRef: 'clipmill.captions.minimal.v1',
+      fontFamily: 'Inter',
+      fontSize: 72,
+      spoken: '#ffffffff',
+      unspoken: '#ffffffff',
+      outline: '#000000ff',
+      shadow: '#000000ff',
+      outlineWidth: 3,
+      shadowDepth: 1,
+      bold: false,
+      boxed: false,
+      marginHorizontal: 96,
+      marginVertical: 240,
+    },
+  });
+  const caption = screen.getByTestId('caption');
+  expect(caption.style.fontWeight).toBe('400');
+  expect(caption.style.top).toBe('12.5%');
+  expect(screen.getByText(/Fast proxy preview with your gain edits/)).toBeTruthy();
 });

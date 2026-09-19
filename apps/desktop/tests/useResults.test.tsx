@@ -4,7 +4,14 @@ import type { CropPath } from '../src/daemon/client.js';
 import { EMPTY_SNAPSHOT, ResultsLoader, type ResultsSnapshot } from '../src/results/loader.js';
 import { useResults } from '../src/results/useResults.js';
 import { emptyWorld, fakeApi, source } from './support/library.js';
-import { CANDIDATE, OTHER_CANDIDATE, OLD, twoProjects } from './support/clips.js';
+import {
+  CANDIDATE,
+  OTHER_CANDIDATE,
+  OLD,
+  OLD_JOB,
+  OLD_SOURCE,
+  twoProjects,
+} from './support/clips.js';
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -58,7 +65,7 @@ describe('results selection races', () => {
     expect(hook.result.current.crop).toEqual(current);
   });
 
-  it.each(['approval', 'variation', 'batch'] as const)(
+  it.each(['approval', 'variation', 'batch', 'manual'] as const)(
     'does not reload the previous project when a delayed %s completes',
     async (operation) => {
       const api = fakeApi(twoProjects());
@@ -80,7 +87,9 @@ describe('results selection races', () => {
             ? hook.result.current.decide(CANDIDATE, 'approved')
             : operation === 'variation'
               ? hook.result.current.direct(CANDIDATE, 'alternative')
-              : hook.result.current.approveMany([CANDIDATE]);
+              : operation === 'manual'
+                ? hook.result.current.manual(600 * 90_000, 630 * 90_000)
+                : hook.result.current.approveMany([CANDIDATE]);
       });
       hook.rerender({ id: 'p_new' });
       await waitFor(() => expect(hook.result.current.snapshot.source?.projectId).toBe('p_new'));
@@ -94,4 +103,58 @@ describe('results selection races', () => {
       expect(loads.mock.calls.filter(([id]) => id === OLD)).toHaveLength(1);
     },
   );
+});
+
+it('creates a manual edit from the named run without pretending it was approved by the model', async () => {
+  const api = fakeApi(twoProjects());
+  const direct = vi.spyOn(api, 'directClip');
+  const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+  await waitFor(() => expect(hook.result.current.snapshot.run?.jobId).toBe(OLD_JOB));
+  await act(async () => {
+    await hook.result.current.manual(600 * 90_000, 630 * 90_000);
+  });
+  expect(direct).toHaveBeenCalledWith({
+    projectId: OLD,
+    sourceId: OLD_SOURCE,
+    jobId: OLD_JOB,
+    candidateId: '',
+    cut: 'exact',
+    startTicks: 600 * 90_000,
+    endTicks: 630 * 90_000,
+    manualSpan: true,
+    approve: false,
+  });
+});
+
+describe('declined edit intent', () => {
+  it('requires an individual edit action and never overrides declines in a bulk approval', async () => {
+    const api = fakeApi(twoProjects());
+    const snapshot = await new ResultsLoader(api).load(OLD, null, null);
+    vi.spyOn(ResultsLoader.prototype, 'load').mockResolvedValue({
+      ...snapshot,
+      rows: snapshot.rows.map((row) =>
+        row.candidateId === CANDIDATE
+          ? Object.assign({}, row, {
+              review: {
+                status: 'rejected' as const,
+                route: 'local' as const,
+                reasons: ['The payoff is incomplete.'],
+              },
+            })
+          : row,
+      ),
+    });
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, null, null, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => hook.result.current.approveMany([CANDIDATE]));
+    expect(direct).not.toHaveBeenCalled();
+    expect(hook.result.current.notice).toContain('Inspect declined moments individually');
+    await act(async () => {
+      await hook.result.current.decide(CANDIDATE, 'approved');
+    });
+    expect(direct).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId: CANDIDATE, approve: true, allowDeclined: true }),
+    );
+  });
 });

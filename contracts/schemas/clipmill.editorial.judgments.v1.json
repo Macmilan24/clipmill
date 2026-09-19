@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clipmill.dev/schemas/clipmill.editorial.judgments.v1.json",
   "title": "EditorialJudgments",
-  "description": "What the editorial model made of each candidate once it saw it with the context around it (plan, Milestone 2): whether the moment stands on its own, and if not, why — an unresolved reference, a question that was never asked, a payoff that is not there, an ad read, an irrelevant introduction, an omission that changes the meaning — and whether understanding it depends on what is on screen. The answer is a status a person can act on and reasons a person can read, in place of a number nobody calibrated. A malformed reply or a model failure is recorded as exactly that, distinct from a rejection: the ranking treats an unjudged candidate as unjudged, not as bad.",
+  "description": "What the editorial model made of each candidate once it saw it with the context around it (plan, Milestone 2): whether the moment stands on its own, and if not, why \u2014 an unresolved reference, a question that was never asked, a payoff that is not there, an ad read, an irrelevant introduction, an omission that changes the meaning \u2014 and whether understanding it depends on what is on screen. The answer is a status a person can act on and reasons a person can read, in place of a number nobody calibrated. A malformed reply or a model failure is recorded as exactly that, distinct from a rejection: the ranking treats an unjudged candidate as unjudged, not as bad.",
   "type": "object",
   "required": ["schema_version", "source_fingerprint", "inputs", "producer", "candidates"],
   "additionalProperties": false,
@@ -35,6 +35,12 @@
       "items": {
         "$ref": "#/$defs/judgment"
       }
+    },
+    "content_profile": {
+      "type": "string",
+      "enum": ["interview", "scripted"],
+      "default": "interview",
+      "description": "The editorial rubric selected for this run; older artifacts use interview."
     }
   },
   "$defs": {
@@ -169,7 +175,7 @@
           }
         },
         "visual_dependency": {
-          "description": "Whether understanding the moment depends on what is on screen — the flag that sends it to the visual check.",
+          "description": "Whether understanding the moment depends on what is on screen \u2014 the flag that sends it to the visual check.",
           "type": "boolean"
         },
         "summary": {
@@ -194,7 +200,8 @@
             "irrelevant_intro",
             "misleading_omission",
             "visual_dependency",
-            "other"
+            "other",
+            "transcript_uncertain"
           ]
         },
         "detail": {

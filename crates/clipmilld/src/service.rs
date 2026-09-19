@@ -1,3 +1,5 @@
+mod batch;
+
 use std::{
     io::{Read, Seek, SeekFrom},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -87,6 +89,7 @@ pub(crate) struct Service {
     roster: crate::worker::WorkerRoster,
     /// The pinned decoder every media stage runs, for the same question.
     decoder: Option<std::path::PathBuf>,
+    batch_admission: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -145,6 +148,7 @@ impl Service {
             policy: std::sync::Arc::default(),
             roster: crate::worker::new_roster(),
             decoder: None,
+            batch_admission: std::sync::Arc::default(),
         }
     }
 
@@ -178,6 +182,7 @@ impl Service {
             policy,
             roster,
             decoder: Some(decoder),
+            batch_admission: std::sync::Arc::default(),
         }
     }
 
@@ -427,6 +432,15 @@ impl Service {
             }
             request::Body::GetLocalLock(_) => self.get_local_lock(request_id),
             request::Body::GetReadiness(_) => self.get_readiness(request_id),
+            request::Body::SubmitExportBatch(batch) => {
+                self.submit_export_batch(request_id, request_hash, batch)
+                    .await
+            }
+            request::Body::ListExportBatches(_) => self.list_export_batches(request_id).await,
+            request::Body::UpdateExportBatchItem(update) => {
+                self.update_export_batch_item(request_id, request_hash, update)
+                    .await
+            }
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -1505,12 +1519,36 @@ impl Service {
     /// one snapshot. An approval, when requested, lands in the same
     /// transaction as the document either way, so "approved but nothing to
     /// open" is not a state the store can be left in.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "explicit selection admission and retry recovery precede one document transaction"
+    )]
     async fn direct_clip(
         &self,
         request_id: String,
         request_hash: [u8; 32],
         direct: &DirectClipRequest,
     ) -> Reply {
+        let mut normalized = direct.clone();
+        if direct.manual_span {
+            if direct.job_id.is_empty() || direct.start_ticks >= direct.end_ticks {
+                return error_reply(
+                    request_id,
+                    ErrorCode::InvalidArgument,
+                    "Choose an analysis run and a nonempty source interval",
+                );
+            }
+            let identity = format!(
+                "{}:{}:{}:{}",
+                direct.source_id, direct.job_id, direct.start_ticks, direct.end_ticks
+            );
+            normalized.candidate_id = format!(
+                "cand_{}",
+                &hex::encode(Sha256::digest(identity.as_bytes()))[..16]
+            );
+            normalized.approve = false;
+        }
+        let direct = &normalized;
         let Ok(project_id) = direct.project_id.parse::<ProjectId>() else {
             return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
         };
@@ -1743,6 +1781,10 @@ impl Service {
         }
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "source geometry and matching evidence must be resolved before solving"
+    )]
     async fn solve_crop_path(&self, request_id: String, solve: &SolveCropPathRequest) -> Reply {
         let Ok(project_id) = solve.project_id.parse::<ProjectId>() else {
             return error_reply(
@@ -1812,12 +1854,40 @@ impl Service {
                 }
             };
 
-        match clipmill_reframe::solve(
+        let registered = match self.database.list_sources(project_id.to_string()).await {
+            Ok(sources) => sources,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let frame = registered
+            .iter()
+            .find(|source| source.source_fingerprint == document.source_fingerprint.as_str())
+            .and_then(|source| crate::inspector::frame_of(&source.source_map_json));
+        let Some(frame) = frame else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "the face tracks have no registered source display dimensions",
+            );
+        };
+        let (Ok(source_width), Ok(source_height)) =
+            (u32::try_from(frame.width), u32::try_from(frame.height))
+        else {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "source display dimensions are too large",
+            );
+        };
+        match clipmill_reframe::solve_in_frame(
             &document,
             solve.start_ticks,
             solve.end_ticks,
-            solve.aspect_width,
-            solve.aspect_height,
+            clipmill_reframe::FrameGeometry {
+                source_width,
+                source_height,
+                output_width: solve.aspect_width,
+                output_height: solve.aspect_height,
+            },
             crop_weights(solve.weights.as_ref()),
             FocusGate::default(),
         ) {
@@ -1971,6 +2041,14 @@ impl Service {
         // the response cannot promise bytes that are not there — and its declared
         // size is the manifest's, not the descriptor's, because the manifest is
         // what the digest covers.
+        // Parse that inventory once: a filmstrip may contain thousands of tiles.
+        let Ok(declared_sizes) = lease.declared_file_sizes() else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the media manifest cannot be read",
+            );
+        };
         let mut files = Vec::with_capacity(named.len());
         for name in named {
             let Some(media_type) = crate::shell::media_type_for(&name) else {
@@ -1987,7 +2065,7 @@ impl Service {
                     "the descriptor names an invalid artifact path",
                 );
             };
-            let Some(bytes) = lease.declared_bytes(&path) else {
+            let Some(bytes) = declared_sizes.get(&path).copied() else {
                 return error_reply(
                     request_id,
                     ErrorCode::Internal,
@@ -2912,6 +2990,9 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ExportArchive(_)) => "export_archive",
         Some(request::Body::GetLocalLock(_)) => "get_local_lock",
         Some(request::Body::GetReadiness(_)) => "get_readiness",
+        Some(request::Body::SubmitExportBatch(_)) => "submit_export_batch",
+        Some(request::Body::ListExportBatches(_)) => "list_export_batches",
+        Some(request::Body::UpdateExportBatchItem(_)) => "update_export_batch_item",
         Some(request::Body::Ping(_)) => "ping",
         Some(request::Body::Health(_)) => "health",
         Some(request::Body::CreateProject(_)) => "create_project",
@@ -3039,6 +3120,20 @@ fn unix_millis() -> Result<u64, &'static str> {
 /// were interpolated from. Sending keyframes would make the player
 /// interpolate, and interpolating is exactly where the two sides would have to
 /// agree about rounding — which is the agreement that cannot be assumed.
+fn preview_colour(colour: clipmill_render::Colour) -> String {
+    format!(
+        "#{:02x}{:02x}{:02x}{:02x}",
+        colour.red,
+        colour.green,
+        colour.blue,
+        255 - colour.transparency
+    )
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "field-for-field conversion of the shared render preview contract"
+)]
 fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPreviewPlanResponse {
     GetPreviewPlanResponse {
         revision,
@@ -3060,6 +3155,35 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                     present: false,
                     ..PreviewCropV1::default()
                 },
+            })
+            .collect(),
+        caption_style: Some(clipmill_contracts::proto::ipc::v1::PreviewCaptionStyleV1 {
+            style_ref: plan.caption_style.style_ref.clone(),
+            font_family: plan.caption_style.font_family.clone(),
+            font_size: plan.caption_style.font_size,
+            spoken: preview_colour(plan.caption_style.spoken),
+            unspoken: preview_colour(plan.caption_style.unspoken),
+            outline: preview_colour(plan.caption_style.outline),
+            shadow: preview_colour(plan.caption_style.shadow),
+            outline_width: plan.caption_style.outline_width,
+            shadow_depth: plan.caption_style.shadow_depth,
+            bold: plan.caption_style.bold,
+            boxed: plan.caption_style.boxed,
+            margin_horizontal: plan.caption_style.margin_horizontal,
+            margin_vertical: plan.caption_style.margin_vertical,
+        }),
+        secondary_crops: plan
+            .secondary_crops
+            .iter()
+            .map(|crop| match crop {
+                Some(rect) => PreviewCropV1 {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    present: true,
+                },
+                None => PreviewCropV1::default(),
             })
             .collect(),
         cues: plan
@@ -3115,6 +3239,8 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 program_start_ticks: segment.program_start_ticks,
                 first_frame: segment.first_frame,
                 end_frame: segment.end_frame,
+                has_two_up_paths: segment.has_two_up_paths,
+                framing_warning: segment.framing_warning.clone(),
             })
             .collect(),
         // Resolved by the handler, which is the one with a database.
@@ -3134,36 +3260,61 @@ fn assemble(
     evidence: &crate::inspector::Evidence,
     direct: &DirectClipRequest,
 ) -> Result<clipmill_edit_ir::EditDocument, String> {
+    if evidence
+        .ranking
+        .declined
+        .iter()
+        .any(|row| row.candidate_id.as_str() == direct.candidate_id)
+        && !direct.allow_declined
+    {
+        return Err(
+            "This nomination was declined. Choose Edit despite review to create a manual edit."
+                .to_owned(),
+        );
+    }
     let style_ref = if direct.style_ref.is_empty() {
         clipmill_captions::DEFAULT_STYLE_REF.to_owned()
     } else {
         direct.style_ref.clone()
     };
-    let cut = match ClipCutV1::try_from(direct.cut).unwrap_or(ClipCutV1::Unspecified) {
-        ClipCutV1::Alternative => clipmill_director::Cut::Alternative,
-        // An exact pair is snapped before anything is built from it: a boundary
-        // arriving over this socket has been through a process the director does
-        // not control, and the lattice is what legal means.
-        ClipCutV1::Exact => clipmill_director::Cut::Exact(snapped(evidence, direct)?),
-        ClipCutV1::Chosen | ClipCutV1::Unspecified => clipmill_director::Cut::Chosen,
+    let cut = if direct.manual_span {
+        clipmill_director::Cut::Chosen
+    } else {
+        match ClipCutV1::try_from(direct.cut).unwrap_or(ClipCutV1::Unspecified) {
+            ClipCutV1::Alternative => clipmill_director::Cut::Alternative,
+            // An exact pair is snapped before anything is built from it: a boundary
+            // arriving over this socket has been through a process the director does
+            // not control, and the lattice is what legal means.
+            ClipCutV1::Exact => clipmill_director::Cut::Exact(snapped(evidence, direct)?),
+            ClipCutV1::Chosen | ClipCutV1::Unspecified => clipmill_director::Cut::Chosen,
+        }
     };
-    clipmill_director::direct(
-        clipmill_director::Evidence {
-            candidates: &evidence.candidates,
-            ranking: &evidence.ranking,
-            transcript: &evidence.transcript,
-            index: evidence.index.as_ref(),
-            shots: evidence.shots.as_ref(),
-            faces: evidence.faces.as_ref(),
-        },
-        &clipmill_director::Request {
-            candidate_id: direct.candidate_id.clone(),
-            cut,
-            style_ref,
-            frame: evidence.frame,
-            aspect: clipmill_director::Aspect::default(),
-        },
-    )
+    let director_evidence = clipmill_director::Evidence {
+        candidates: &evidence.candidates,
+        ranking: &evidence.ranking,
+        transcript: &evidence.transcript,
+        index: evidence.index.as_ref(),
+        shots: evidence.shots.as_ref(),
+        faces: evidence.faces.as_ref(),
+    };
+    let request = clipmill_director::Request {
+        candidate_id: direct.candidate_id.clone(),
+        cut,
+        style_ref,
+        frame: evidence.frame,
+        aspect: clipmill_director::Aspect::default(),
+    };
+    if direct.manual_span {
+        let boundary = clipmill_director::Boundary {
+            start_ticks: i64::try_from(direct.start_ticks)
+                .map_err(|_| "start exceeds timeline".to_owned())?,
+            end_ticks: i64::try_from(direct.end_ticks)
+                .map_err(|_| "end exceeds timeline".to_owned())?,
+        };
+        clipmill_director::direct_span(director_evidence, &request, boundary)
+    } else {
+        clipmill_director::direct(director_evidence, &request)
+    }
     .map_err(|error| error.to_string())
 }
 
@@ -3298,6 +3449,17 @@ impl Service {
         request_hash: [u8; 32],
         request: &ExportClipRequest,
     ) -> Reply {
+        // An accepted export belongs to its frozen snapshot even if the edit
+        // or destination has changed since. Recover it before mutable checks.
+        match self
+            .database
+            .replay_request(request_id.clone(), request_hash)
+            .await
+        {
+            Ok(Some(bytes)) => return export_submission_reply(request_id, &bytes),
+            Ok(None) => {}
+            Err(error) => return store_error_reply(request_id, &error),
+        }
         let Some(asked) = request.request.as_ref() else {
             return error_reply(
                 request_id,
@@ -3401,7 +3563,7 @@ impl Service {
         project_id: &ProjectId,
         resolved: ExportRequestV1,
         ir_artifact_id: clipmill_core::ArtifactId,
-        revision: u64,
+        _revision: u64,
     ) -> Reply {
         let render_payload = RenderClipPayloadV1 {
             key_version: RENDER_CLIP_KEY_VERSION.to_owned(),
@@ -3417,7 +3579,6 @@ impl Service {
             request: Some(resolved.clone()),
         }
         .encode_to_vec();
-        let destination_dir = resolved.destination_dir.clone();
         let job_payload = ExportClipPayloadV1 {
             key_version: EXPORT_CLIP_KEY_VERSION.to_owned(),
             request: Some(resolved),
@@ -3435,7 +3596,6 @@ impl Service {
             deliver_payload,
             now,
         );
-        let job_id = plan.job_id.clone();
         match self
             .database
             .submit_job(request_id.clone(), request_hash, plan)
@@ -3446,15 +3606,7 @@ impl Service {
                 if let Some(scheduler) = &self.scheduler {
                     scheduler.notify();
                 }
-                response_reply(
-                    request_id,
-                    response::Body::ExportClip(ExportClipResponse {
-                        job_id,
-                        revision,
-                        ir_artifact_id: ir_artifact_id.to_string(),
-                        destination_dir,
-                    }),
-                )
+                export_submission_reply(request_id, &result.bytes)
             }
             Err(error) => store_error_reply(request_id, &error),
         }
@@ -3909,6 +4061,49 @@ fn delivered_names(stem: &str) -> Vec<String> {
         .iter()
         .map(|role| format!("{stem}.{}", role.extension()))
         .collect()
+}
+
+/// Turn the durable job submission receipt into its public export receipt.
+/// A retry must never invent a new job id beside the job SQLite already owns.
+fn export_submission_reply(request_id: String, bytes: &[u8]) -> Reply {
+    let Ok(response) = Response::decode(bytes) else {
+        return error_reply(
+            request_id,
+            ErrorCode::Internal,
+            "saved export response is invalid",
+        );
+    };
+    match response.body {
+        Some(response::Body::SubmitJob(submitted)) => {
+            let Some(job) = submitted.job else {
+                return error_reply(request_id, ErrorCode::Internal, "saved export has no job");
+            };
+            let Some(export) = job.export else {
+                return error_reply(
+                    request_id,
+                    ErrorCode::Conflict,
+                    "request id belongs to another operation",
+                );
+            };
+            response_reply(
+                request_id,
+                response::Body::ExportClip(ExportClipResponse {
+                    job_id: job.job_id,
+                    revision: export.revision,
+                    ir_artifact_id: export.ir_artifact_id,
+                    destination_dir: export.destination_dir,
+                }),
+            )
+        }
+        Some(response::Body::ExportClip(export)) => {
+            response_reply(request_id, response::Body::ExportClip(export))
+        }
+        _ => error_reply(
+            request_id,
+            ErrorCode::Conflict,
+            "request id belongs to another operation",
+        ),
+    }
 }
 
 #[cfg(test)]

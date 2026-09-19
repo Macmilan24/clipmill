@@ -146,27 +146,33 @@ export function CandidateTable({
                 </span>
                 <span className="mono flex items-center gap-2 truncate text-[10px] text-[var(--cm-text-muted)]">
                   {clock(row.startTicks)} – {clock(row.endTicks)}
-                  <span
-                    className="flex items-center gap-1 ml-1"
-                    role="group"
-                    aria-label={
-                      signals.length === 0 ? 'No signals recorded' : `${signals.length} signals`
-                    }
-                  >
-                    {signals.slice(0, 4).map((signal) => (
-                      <span
-                        key={signal.key}
-                        title={signal.label}
-                        className="size-2 rounded-full"
-                        style={{ background: TONE_INK[signal.tone] }}
-                      />
-                    ))}
-                    {signals.length > 4 && (
-                      <span className="mono text-[9px] text-[var(--cm-text-muted)]">
-                        +{signals.length - 4}
-                      </span>
-                    )}
-                  </span>
+                  {row.review ? (
+                    <span className="font-sans text-[10px] text-[var(--cm-text-secondary)]">
+                      Editorial review
+                    </span>
+                  ) : (
+                    <span
+                      className="flex items-center gap-1 ml-1"
+                      role="group"
+                      aria-label={
+                        signals.length === 0 ? 'No signals recorded' : `${signals.length} signals`
+                      }
+                    >
+                      {signals.slice(0, 4).map((signal) => (
+                        <span
+                          key={signal.key}
+                          title={signal.label}
+                          className="size-2 rounded-full"
+                          style={{ background: TONE_INK[signal.tone] }}
+                        />
+                      ))}
+                      {signals.length > 4 && (
+                        <span className="mono text-[9px] text-[var(--cm-text-muted)]">
+                          +{signals.length - 4}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </span>
               </span>
 

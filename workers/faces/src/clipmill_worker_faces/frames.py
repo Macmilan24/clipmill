@@ -69,6 +69,10 @@ class Frames:
 class DecodeFailed(RuntimeError):
     """The frames would not decode, which they will not next time either."""
 
+    def __init__(self, message: str, *, code: str = "frames.decode_failed") -> None:
+        super().__init__(message)
+        self.code = code
+
 
 def read_frames(artifact: VerifiedArtifact, descriptor_path: Path) -> Frames:
     """Read a verified frames descriptor, refusing anything that is not one."""
@@ -108,7 +112,7 @@ def jpeg_size(path: Path) -> tuple[int, int]:
 
     data = path.read_bytes()
     if len(data) < 4 or data[0] != 0xFF or data[1] != 0xD8:
-        raise DecodeFailed(f"{path.name} is not a JPEG")
+        raise DecodeFailed(f"{path.name} is not a JPEG", code="frames.input_invalid")
     offset = 2
     while offset + 9 < len(data):
         if data[offset] != 0xFF:
@@ -120,16 +124,18 @@ def jpeg_size(path: Path) -> tuple[int, int]:
             height = int.from_bytes(data[offset + 5 : offset + 7], "big")
             width = int.from_bytes(data[offset + 7 : offset + 9], "big")
             if width == 0 or height == 0:
-                raise DecodeFailed(f"{path.name} declares a zero dimension")
+                raise DecodeFailed(
+                    f"{path.name} declares a zero dimension", code="frames.input_invalid"
+                )
             return width, height
         if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
             offset += 2
             continue
         segment = int.from_bytes(data[offset + 2 : offset + 4], "big")
         if segment < 2:
-            raise DecodeFailed(f"{path.name} has a malformed segment")
+            raise DecodeFailed(f"{path.name} has a malformed segment", code="frames.input_invalid")
         offset += 2 + segment
-    raise DecodeFailed(f"{path.name} has no start-of-frame marker")
+    raise DecodeFailed(f"{path.name} has no start-of-frame marker", code="frames.input_invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +166,9 @@ def letterbox_for(width: int, height: int, size: int) -> Letterbox:
     """Where a frame of this shape lands inside a square of this size."""
 
     if width <= 0 or height <= 0:
-        raise DecodeFailed("a frame with no extent cannot be letterboxed")
+        raise DecodeFailed(
+            "a frame with no extent cannot be letterboxed", code="frames.input_invalid"
+        )
     scale = min(size / width, size / height)
     return Letterbox(width=round(width * scale), height=round(height * scale), size=size)
 
@@ -192,6 +200,11 @@ def decode_frames(
         "-nostdin",
         "-f",
         "image2pipe",
+        # Ingest's sampled frames are JPEGs. Autodetection can fail on a full
+        # batch of low-entropy images (for example a black screen), even though
+        # every image is valid. Bind the input codec before opening the pipe.
+        "-c:v",
+        "mjpeg",
         "-i",
         "-",
         "-vf",
@@ -219,12 +232,14 @@ def decode_frames(
 
     stride = box.size * box.size * 3
     if stride == 0 or len(finished.stdout) % stride != 0:
-        raise DecodeFailed("the decoder produced a partial frame")
+        raise DecodeFailed("the decoder produced a partial frame", code="frames.count_mismatch")
     count = len(finished.stdout) // stride
     if count != len(paths):
         # A short read here would silently shift every timestamp after it, which
         # is the one failure a face track cannot recover from.
-        raise DecodeFailed(f"asked for {len(paths)} frames and got {count}")
+        raise DecodeFailed(
+            f"asked for {len(paths)} frames and got {count}", code="frames.count_mismatch"
+        )
     buffer = np.frombuffer(finished.stdout, dtype=np.uint8)
     return [
         buffer[index * stride : (index + 1) * stride].reshape(box.size, box.size, 3)

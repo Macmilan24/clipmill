@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -93,6 +93,12 @@ pub mod request {
         GetLocalLock(super::GetLocalLockRequest),
         #[prost(message, tag = "42")]
         GetReadiness(super::GetReadinessRequest),
+        #[prost(message, tag = "43")]
+        SubmitExportBatch(super::SubmitExportBatchRequest),
+        #[prost(message, tag = "44")]
+        ListExportBatches(super::ListExportBatchesRequest),
+        #[prost(message, tag = "45")]
+        UpdateExportBatchItem(super::UpdateExportBatchItemRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -103,7 +109,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -181,6 +187,10 @@ pub mod response {
         GetLocalLock(super::GetLocalLockResponse),
         #[prost(message, tag = "43")]
         GetReadiness(super::GetReadinessResponse),
+        #[prost(message, tag = "44")]
+        ExportBatch(super::ExportBatchResponse),
+        #[prost(message, tag = "45")]
+        ListExportBatches(super::ListExportBatchesResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -489,6 +499,9 @@ pub struct EditorialStagePayloadV1 {
     pub max_output_tokens: u32,
     #[prost(message, optional, tag = "6")]
     pub cloud: ::core::option::Option<EditorialCloudV1>,
+    /// interview or scripted; empty reads as interview for older runs.
+    #[prost(string, tag = "7")]
+    pub content_profile: ::prost::alloc::string::String,
 }
 /// Versioned payload for discovery (book ch. 15). The request names a source;
 /// the daemon resolves it to the evidence index, the transcript behind it, and
@@ -627,6 +640,9 @@ pub struct AnalyzeSourcePayloadV1 {
     pub local_editorial: bool,
     #[prost(message, optional, tag = "8")]
     pub cloud_editorial: ::core::option::Option<EditorialCloudV1>,
+    /// Persisted editorial rubric; interview (default) or scripted.
+    #[prost(string, tag = "9")]
+    pub content_profile: ::prost::alloc::string::String,
 }
 /// Explicit consent applies only to this run. Credentials never enter the request.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -766,6 +782,9 @@ pub struct Job {
     /// renderer state that a remount starts without.
     #[prost(message, optional, tag = "12")]
     pub export: ::core::option::Option<ExportSummaryV1>,
+    /// Selected rubric read from this analysis job's persisted payload.
+    #[prost(string, tag = "13")]
+    pub content_profile: ::prost::alloc::string::String,
 }
 /// The identity of an export, as its job carries it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1402,6 +1421,13 @@ pub struct DirectClipRequest {
     /// the newest run over the source, checked for coherence the same way.
     #[prost(string, tag = "10")]
     pub job_id: ::prost::alloc::string::String,
+    /// Explicit human override for a declined nomination; never implied by bulk approval.
+    #[prost(bool, tag = "11")]
+    pub allow_declined: bool,
+    /// Explicit user-selected source interval, without an editorial recommendation.
+    /// Requires a named run and start/end ticks; candidate_id is ignored.
+    #[prost(bool, tag = "12")]
+    pub manual_span: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {
@@ -1524,6 +1550,11 @@ pub struct PreviewSegmentV1 {
     pub first_frame: i64,
     #[prost(int64, tag = "7")]
     pub end_frame: i64,
+    /// Both saved viewport paths remain available even when displaying Fit.
+    #[prost(bool, tag = "8")]
+    pub has_two_up_paths: bool,
+    #[prost(string, tag = "9")]
+    pub framing_warning: ::prost::alloc::string::String,
 }
 /// A source the program draws from, as the crops are measured against it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1563,6 +1594,36 @@ pub struct PreviewProxyV1 {
     pub rate_num: u32,
     #[prost(uint32, tag = "9")]
     pub rate_den: u32,
+}
+/// Resolved export preset. Colours are CSS #RRGGBBAA, dimensions in output pixels.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCaptionStyleV1 {
+    #[prost(string, tag = "1")]
+    pub style_ref: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub font_family: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "3")]
+    pub font_size: u32,
+    #[prost(string, tag = "4")]
+    pub spoken: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub unspoken: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub outline: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub shadow: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "8")]
+    pub outline_width: u32,
+    #[prost(uint32, tag = "9")]
+    pub shadow_depth: u32,
+    #[prost(bool, tag = "10")]
+    pub bold: bool,
+    #[prost(bool, tag = "11")]
+    pub boxed: bool,
+    #[prost(uint32, tag = "12")]
+    pub margin_horizontal: u32,
+    #[prost(uint32, tag = "13")]
+    pub margin_vertical: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetPreviewPlanResponse {
@@ -1604,6 +1665,12 @@ pub struct GetPreviewPlanResponse {
     /// must name the list it means, because each list numbers its own cues.
     #[prost(string, tag = "13")]
     pub presentation: ::prost::alloc::string::String,
+    /// Lower viewport, one per frame. Absent outside a two-person composition.
+    /// The primary crop fills the top half, this crop fills the bottom half.
+    #[prost(message, repeated, tag = "14")]
+    pub secondary_crops: ::prost::alloc::vec::Vec<PreviewCropV1>,
+    #[prost(message, optional, tag = "15")]
+    pub caption_style: ::core::option::Option<PreviewCaptionStyleV1>,
 }
 /// The edit documents a project holds, oldest first.
 ///
@@ -1893,6 +1960,62 @@ pub struct GetReadinessResponse {
 pub struct GetLocalLockResponse {
     #[prost(message, optional, tag = "1")]
     pub status: ::core::option::Option<LocalLockStatusV1>,
+}
+/// A durable explicit selection. Every item retains the exact approved request.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubmitExportBatchRequest {
+    #[prost(message, repeated, tag = "1")]
+    pub requests: ::prost::alloc::vec::Vec<ExportRequestV1>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListExportBatchesRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateExportBatchItemRequest {
+    #[prost(string, tag = "1")]
+    pub batch_id: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub index: u32,
+    /// retry or cancel. Retry never advances the approved revision.
+    #[prost(string, tag = "3")]
+    pub action: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExportBatchItemV1 {
+    /// Derived from the saved edit document; available even during recovery.
+    #[prost(string, tag = "7")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(message, optional, tag = "2")]
+    pub request: ::core::option::Option<ExportRequestV1>,
+    /// pending, queued, failed, or cancelled. Queued jobs have their own lifecycle.
+    #[prost(string, tag = "3")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "4")]
+    pub attempt: u32,
+    #[prost(message, optional, tag = "5")]
+    pub queued: ::core::option::Option<ExportClipResponse>,
+    #[prost(string, tag = "6")]
+    pub error: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExportBatchV1 {
+    #[prost(string, tag = "1")]
+    pub batch_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub created_unix_millis: u64,
+    #[prost(message, repeated, tag = "3")]
+    pub items: ::prost::alloc::vec::Vec<ExportBatchItemV1>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExportBatchResponse {
+    #[prost(message, optional, tag = "1")]
+    pub batch: ::core::option::Option<ExportBatchV1>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListExportBatchesResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub batches: ::prost::alloc::vec::Vec<ExportBatchV1>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

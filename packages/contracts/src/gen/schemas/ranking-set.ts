@@ -59,6 +59,14 @@ export interface RankingSet {
    */
   filtered?: FilteredCandidate[];
   editorial?: EditorialCoverage;
+  /**
+   * The editorial rubric selected for this run; older artifacts use interview.
+   */
+  content_profile?: "interview" | "scripted";
+  /**
+   * Assessed nominations declined by the editorial reviewer. Inspectable for explicit manual recovery; never recommendations or selected clips.
+   */
+  declined?: Ranked[];
 }
 export interface Producer {
   stage: string;
@@ -92,7 +100,7 @@ export interface Ranked {
    */
   cluster_id: string;
   review?: {
-    status: "accepted" | "needs_review";
+    status: "accepted" | "needs_review" | "rejected";
     reasons: string[];
     route: "local" | "cloud";
     summary?: string;

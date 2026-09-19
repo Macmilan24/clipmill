@@ -41,6 +41,10 @@ export interface EditorialWindows {
      * How many sentences on each side of the core are offered as context.
      */
     context_sentences: number;
+    /**
+     * Duration-aware core tail extension; zero denotes the legacy word-only overlap.
+     */
+    max_clip_ticks?: number;
   };
   coverage: Coverage;
   /**
@@ -59,6 +63,10 @@ export interface EditorialWindows {
    * Echoed from the index: where the timing under these sentences is a guess, so a consumer that cuts on a word there knows what the cut is worth.
    */
   invalid_regions: InvalidRegion[];
+  /**
+   * The editorial rubric selected for this run; older artifacts use interview.
+   */
+  content_profile?: "interview" | "scripted";
 }
 export interface Producer {
   stage: string;

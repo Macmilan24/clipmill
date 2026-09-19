@@ -217,6 +217,7 @@ fn the_analysis_stage_payload_carries_the_skips_and_no_inputs() {
 #[test]
 fn the_analyze_job_payload_names_a_source_and_a_request() {
     let message = AnalyzeSourcePayloadV1 {
+        content_profile: "scripted".to_owned(),
         local_editorial: false,
         cloud_editorial: None,
         key_version: "clipmill.analyze-source.v1".to_owned(),

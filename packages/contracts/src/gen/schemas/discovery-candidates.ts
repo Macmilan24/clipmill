@@ -38,6 +38,10 @@ export interface DiscoveryCandidates {
    */
   clusters: Cluster[];
   editorial?: EditorialCoverage;
+  /**
+   * The editorial rubric selected for this run; older artifacts use interview.
+   */
+  content_profile?: "interview" | "scripted";
 }
 export interface Producer {
   stage: string;

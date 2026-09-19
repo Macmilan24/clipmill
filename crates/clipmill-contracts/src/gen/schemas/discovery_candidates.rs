@@ -730,6 +730,15 @@ impl Coverage {
 #[doc = "        \"$ref\": \"#/$defs/cluster\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"content_profile\": {"]
+#[doc = "      \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "      \"default\": \"interview\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"interview\","]
+#[doc = "        \"scripted\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"coverage\": {"]
 #[doc = "      \"$ref\": \"#/$defs/coverage\""]
 #[doc = "    },"]
@@ -789,6 +798,9 @@ pub struct DiscoveryCandidates {
     pub candidates: ::std::vec::Vec<Candidate>,
     #[doc = "Near-duplicate groupings. Every candidate belongs to exactly one cluster, including the ones that duplicate nothing. Ranking sends a cluster's representative forward and can still offer the alternatives, so a diversity decision is shown rather than silent."]
     pub clusters: ::std::vec::Vec<Cluster>,
+    #[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+    #[serde(default = "defaults::discovery_candidates_content_profile")]
+    pub content_profile: DiscoveryCandidatesContentProfile,
     pub coverage: Coverage,
     #[doc = "The platform range candidates were expanded against, as ticks. Part of the artifact key: asking for a different length is a different search, not a filter over this one."]
     pub duration_target: DurationRange,
@@ -805,6 +817,85 @@ pub struct DiscoveryCandidates {
 impl DiscoveryCandidates {
     pub fn builder() -> builder::DiscoveryCandidates {
         Default::default()
+    }
+}
+#[doc = "The editorial rubric selected for this run; older artifacts use interview."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The editorial rubric selected for this run; older artifacts use interview.\","]
+#[doc = "  \"default\": \"interview\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"interview\","]
+#[doc = "    \"scripted\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum DiscoveryCandidatesContentProfile {
+    #[serde(rename = "interview")]
+    Interview,
+    #[serde(rename = "scripted")]
+    Scripted,
+}
+impl ::std::fmt::Display for DiscoveryCandidatesContentProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Interview => f.write_str("interview"),
+            Self::Scripted => f.write_str("scripted"),
+        }
+    }
+}
+impl ::std::str::FromStr for DiscoveryCandidatesContentProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "interview" => Ok(Self::Interview),
+            "scripted" => Ok(Self::Scripted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for DiscoveryCandidatesContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for DiscoveryCandidatesContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DiscoveryCandidatesContentProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for DiscoveryCandidatesContentProfile {
+    fn default() -> Self {
+        DiscoveryCandidatesContentProfile::Interview
     }
 }
 #[doc = "What was read. The index is the authority for every evidence reference below and the transcript for every word boundary; the loudness envelope is optional because a source with no audio has none, and prosody then contributes nothing rather than contributing a default."]
@@ -3092,6 +3183,8 @@ pub mod builder {
     pub struct DiscoveryCandidates {
         candidates: ::std::result::Result<::std::vec::Vec<super::Candidate>, ::std::string::String>,
         clusters: ::std::result::Result<::std::vec::Vec<super::Cluster>, ::std::string::String>,
+        content_profile:
+            ::std::result::Result<super::DiscoveryCandidatesContentProfile, ::std::string::String>,
         coverage: ::std::result::Result<super::Coverage, ::std::string::String>,
         duration_target: ::std::result::Result<super::DurationRange, ::std::string::String>,
         editorial: ::std::result::Result<
@@ -3110,6 +3203,7 @@ pub mod builder {
             Self {
                 candidates: Err("no value supplied for candidates".to_string()),
                 clusters: Err("no value supplied for clusters".to_string()),
+                content_profile: Ok(super::defaults::discovery_candidates_content_profile()),
                 coverage: Err("no value supplied for coverage".to_string()),
                 duration_target: Err("no value supplied for duration_target".to_string()),
                 editorial: Ok(Default::default()),
@@ -3140,6 +3234,16 @@ pub mod builder {
             self.clusters = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for clusters: {e}"));
+            self
+        }
+        pub fn content_profile<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::DiscoveryCandidatesContentProfile>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content_profile = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content_profile: {e}"));
             self
         }
         pub fn coverage<T>(mut self, value: T) -> Self
@@ -3231,6 +3335,7 @@ pub mod builder {
             Ok(Self {
                 candidates: value.candidates?,
                 clusters: value.clusters?,
+                content_profile: value.content_profile?,
                 coverage: value.coverage?,
                 duration_target: value.duration_target?,
                 editorial: value.editorial?,
@@ -3247,6 +3352,7 @@ pub mod builder {
             Self {
                 candidates: Ok(value.candidates),
                 clusters: Ok(value.clusters),
+                content_profile: Ok(value.content_profile),
                 coverage: Ok(value.coverage),
                 duration_target: Ok(value.duration_target),
                 editorial: Ok(value.editorial),
@@ -4092,5 +4198,12 @@ pub mod builder {
                 seeds: Ok(value.seeds),
             }
         }
+    }
+}
+#[doc = r" Generation of default values for serde."]
+pub mod defaults {
+    pub(super) fn discovery_candidates_content_profile() -> super::DiscoveryCandidatesContentProfile
+    {
+        super::DiscoveryCandidatesContentProfile::Interview
     }
 }

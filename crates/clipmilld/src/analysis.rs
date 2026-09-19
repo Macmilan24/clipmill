@@ -43,7 +43,7 @@ const OUTPUT_FILE: &str = "analysis.json";
 /// enumerates them: a plan that grew a stage nobody added here would publish an
 /// artifact that fails its own contract, and finding that out at write time with
 /// the kind named beats finding it out in a consumer.
-const STAGE_ORDER: [&str; 14] = [
+const STAGE_ORDER: [&str; 15] = [
     "evidence.source_map.v1",
     "media.ingest_manifest.v1",
     "speech.vad.v1",
@@ -51,6 +51,7 @@ const STAGE_ORDER: [&str; 14] = [
     "speech.alignment.v1",
     "speech.transcript.v1",
     "evidence.shots.v1",
+    "vision.face_track.v1",
     "index.transcript.v1",
     "editorial.windows.v1",
     "editorial.proposals.v1",

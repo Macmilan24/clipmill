@@ -36,6 +36,7 @@ fn document(path: Vec<CropKeyframe>) -> EditDocument {
         in_ticks: 10 * SECOND,
         out_ticks: 20 * SECOND,
         layout: Layout {
+            secondary_crop_path: Vec::new(),
             state: LayoutState::SpeakerFill,
             crop_path: path,
         },
@@ -249,4 +250,143 @@ fn a_curve_the_cut_never_reaches_is_left_alone() {
         }]
     );
     assert!(matches!(inverse, EditCommand::Trim { .. }));
+}
+
+#[test]
+fn both_portraits_survive_trim_ripple_and_undo() {
+    let mut original = document(vec![
+        CropKeyframe {
+            t_ticks: 0,
+            rect: rect(100),
+        },
+        CropKeyframe {
+            t_ticks: 10 * SECOND,
+            rect: rect(300),
+        },
+    ]);
+    original.video.segments[0].layout.state = LayoutState::TwoUp;
+    original.video.segments[0].layout.secondary_crop_path = vec![
+        CropKeyframe {
+            t_ticks: 0,
+            rect: rect(700),
+        },
+        CropKeyframe {
+            t_ticks: 10 * SECOND,
+            rect: rect(900),
+        },
+    ];
+    original.validate().expect("two viewports");
+    let mut edited = original.clone();
+    let undo = trim(&mut edited, 12 * SECOND, 18 * SECOND);
+    let layout = &edited.video.segments[0].layout;
+    assert_eq!(layout.crop_path[0].rect.x, 140);
+    assert_eq!(layout.secondary_crop_path[0].rect.x, 740);
+    assert_eq!(
+        layout.secondary_crop_path.last().unwrap().t_ticks,
+        6 * SECOND
+    );
+    undo.apply(&mut edited).expect("undo trim");
+    assert_eq!(edited, original);
+    let undo = EditCommand::RippleDelete {
+        start_ticks: 3 * SECOND,
+        end_ticks: 6 * SECOND,
+        reflow_edges: false,
+    }
+    .apply(&mut edited)
+    .expect("ripple");
+    assert_eq!(edited.video.segments.len(), 2);
+    assert_eq!(
+        edited.video.segments[1].layout.secondary_crop_path[0]
+            .rect
+            .x,
+        820
+    );
+    undo.apply(&mut edited).expect("undo ripple");
+    assert_eq!(edited, original);
+}
+
+#[test]
+fn an_incomplete_two_person_layout_is_rejected_without_mutating_the_document() {
+    let mut edited = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(100),
+    }]);
+    let before = edited.clone();
+    assert!(
+        EditCommand::SetLayout {
+            segment_id: "seg_1".to_owned(),
+            state: LayoutState::TwoUp
+        }
+        .apply(&mut edited)
+        .is_err()
+    );
+    assert_eq!(edited, before);
+}
+
+#[test]
+fn adjusting_the_lower_portrait_leaves_the_upper_untouched_and_undoes() {
+    let mut original = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(100),
+    }]);
+    original.video.segments[0].layout.state = LayoutState::TwoUp;
+    original.video.segments[0].layout.secondary_crop_path = vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(700),
+    }];
+    let mut edited = original.clone();
+    let undo = EditCommand::SetSecondaryCropKeyframe {
+        segment_id: "seg_1".to_owned(),
+        t_ticks: 0,
+        rect: rect(720),
+    }
+    .apply(&mut edited)
+    .expect("lower crop command");
+    assert_eq!(
+        edited.video.segments[0].layout.crop_path,
+        original.video.segments[0].layout.crop_path
+    );
+    assert_eq!(
+        edited.video.segments[0].layout.secondary_crop_path[0]
+            .rect
+            .x,
+        720
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+}
+
+#[test]
+fn a_new_solve_replaces_old_manual_keyframes_and_undo_restores_them() {
+    let original = document(vec![
+        CropKeyframe {
+            t_ticks: 0,
+            rect: rect(100),
+        },
+        CropKeyframe {
+            t_ticks: 3 * SECOND,
+            rect: rect(150),
+        },
+    ]);
+    let replacement = vec![CropKeyframe {
+        t_ticks: 0,
+        rect: CropRect {
+            x: 120,
+            y: 100,
+            width: 506,
+            height: 900,
+        },
+    }];
+    let mut edited = original.clone();
+    let undo = EditCommand::ReplaceCropPath {
+        segment_id: "seg_1".to_owned(),
+        path: replacement.clone(),
+    }
+    .apply(&mut edited)
+    .expect("replace path");
+    assert_eq!(edited.video.segments[0].layout.crop_path, replacement);
+    let redo = undo.apply(&mut edited).expect("undo new solve");
+    assert_eq!(edited, original);
+    redo.apply(&mut edited).expect("redo new solve");
+    assert_eq!(edited.video.segments[0].layout.crop_path, replacement);
 }

@@ -34,6 +34,10 @@ pub enum EditCommand {
     RippleDelete {
         start_ticks: i64,
         end_ticks: i64,
+        /// New whole-program trims repair caption fragments at the kept edge.
+        /// Absent in older logs: replay must preserve their original grouping.
+        #[serde(default, skip_serializing_if = "is_false")]
+        reflow_edges: bool,
     },
     /// Restore a previously captured arrangement. This is the inverse of
     /// every command that can destroy material.
@@ -58,6 +62,21 @@ pub enum EditCommand {
         rect: CropRect,
     },
     RemoveCropKeyframe {
+        segment_id: String,
+        t_ticks: i64,
+    },
+    /// Replace a solved path atomically, removing obsolete manual keyframes.
+    ReplaceCropPath {
+        segment_id: String,
+        path: Vec<CropKeyframe>,
+    },
+    /// Adjust the lower portrait without changing the upper portrait.
+    SetSecondaryCropKeyframe {
+        segment_id: String,
+        t_ticks: i64,
+        rect: CropRect,
+    },
+    RemoveSecondaryCropKeyframe {
         segment_id: String,
         t_ticks: i64,
     },
@@ -124,6 +143,14 @@ fn is_reading(presentation: &Presentation) -> bool {
     *presentation == Presentation::Reading
 }
 
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if hands the field by reference"
+)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 impl EditCommand {
     /// Apply this command, returning the command that undoes it.
     ///
@@ -149,7 +176,8 @@ impl EditCommand {
             Self::RippleDelete {
                 start_ticks,
                 end_ticks,
-            } => Self::apply_ripple_delete(document, *start_ticks, *end_ticks),
+                reflow_edges,
+            } => Self::apply_ripple_delete(document, *start_ticks, *end_ticks, *reflow_edges),
             Self::RestoreArrangement {
                 segments,
                 cues,
@@ -179,64 +207,35 @@ impl EditCommand {
                     state: previous,
                 })
             }
+            Self::ReplaceCropPath { segment_id, path } => {
+                let index = document.segment_index(segment_id)?;
+                let previous = std::mem::replace(
+                    &mut document.video.segments[index].layout.crop_path,
+                    path.clone(),
+                );
+                Ok(Self::ReplaceCropPath {
+                    segment_id: segment_id.clone(),
+                    path: previous,
+                })
+            }
             Self::SetCropKeyframe {
                 segment_id,
                 t_ticks,
                 rect,
-            } => {
-                let index = document.segment_index(segment_id)?;
-                let segment = document
-                    .video
-                    .segments
-                    .get_mut(index)
-                    .ok_or_else(|| DocumentError::UnknownSegment(segment_id.clone()))?;
-                let path = &mut segment.layout.crop_path;
-                match path.binary_search_by_key(t_ticks, |keyframe| keyframe.t_ticks) {
-                    Ok(position) => {
-                        let previous = path[position].rect;
-                        path[position].rect = *rect;
-                        Ok(Self::SetCropKeyframe {
-                            segment_id: segment_id.clone(),
-                            t_ticks: *t_ticks,
-                            rect: previous,
-                        })
-                    }
-                    Err(position) => {
-                        path.insert(
-                            position,
-                            CropKeyframe {
-                                t_ticks: *t_ticks,
-                                rect: *rect,
-                            },
-                        );
-                        Ok(Self::RemoveCropKeyframe {
-                            segment_id: segment_id.clone(),
-                            t_ticks: *t_ticks,
-                        })
-                    }
-                }
-            }
+            } => Self::crop_command(document, segment_id, *t_ticks, Some(*rect), false),
             Self::RemoveCropKeyframe {
                 segment_id,
                 t_ticks,
-            } => {
-                let index = document.segment_index(segment_id)?;
-                let segment = document
-                    .video
-                    .segments
-                    .get_mut(index)
-                    .ok_or_else(|| DocumentError::UnknownSegment(segment_id.clone()))?;
-                let path = &mut segment.layout.crop_path;
-                let position = path
-                    .binary_search_by_key(t_ticks, |keyframe| keyframe.t_ticks)
-                    .map_err(|_| CommandError::NoCropKeyframe(*t_ticks))?;
-                let removed = path.remove(position);
-                Ok(Self::SetCropKeyframe {
-                    segment_id: segment_id.clone(),
-                    t_ticks: *t_ticks,
-                    rect: removed.rect,
-                })
-            }
+            } => Self::crop_command(document, segment_id, *t_ticks, None, false),
+            Self::SetSecondaryCropKeyframe {
+                segment_id,
+                t_ticks,
+                rect,
+            } => Self::crop_command(document, segment_id, *t_ticks, Some(*rect), true),
+            Self::RemoveSecondaryCropKeyframe {
+                segment_id,
+                t_ticks,
+            } => Self::crop_command(document, segment_id, *t_ticks, None, true),
             Self::EditCaptionText {
                 cue_id,
                 word_index,
@@ -380,6 +379,70 @@ impl EditCommand {
     /// shortening as a tail deletion, as this once did, kept the original
     /// opening caption over footage that now began a second later and cut
     /// the caption that was actually still playing.
+    fn crop_command(
+        document: &mut EditDocument,
+        segment_id: &str,
+        t_ticks: i64,
+        rect: Option<CropRect>,
+        secondary: bool,
+    ) -> Result<Self, CommandError> {
+        let index = document.segment_index(segment_id)?;
+        let segment = document
+            .video
+            .segments
+            .get_mut(index)
+            .ok_or_else(|| DocumentError::UnknownSegment(segment_id.to_owned()))?;
+        let path = if secondary {
+            &mut segment.layout.secondary_crop_path
+        } else {
+            &mut segment.layout.crop_path
+        };
+        let set = |rect| {
+            if secondary {
+                Self::SetSecondaryCropKeyframe {
+                    segment_id: segment_id.to_owned(),
+                    t_ticks,
+                    rect,
+                }
+            } else {
+                Self::SetCropKeyframe {
+                    segment_id: segment_id.to_owned(),
+                    t_ticks,
+                    rect,
+                }
+            }
+        };
+        let remove = || {
+            if secondary {
+                Self::RemoveSecondaryCropKeyframe {
+                    segment_id: segment_id.to_owned(),
+                    t_ticks,
+                }
+            } else {
+                Self::RemoveCropKeyframe {
+                    segment_id: segment_id.to_owned(),
+                    t_ticks,
+                }
+            }
+        };
+        match (
+            path.binary_search_by_key(&t_ticks, |keyframe| keyframe.t_ticks),
+            rect,
+        ) {
+            (Ok(position), Some(rect)) => {
+                let previous = path[position].rect;
+                path[position].rect = rect;
+                Ok(set(previous))
+            }
+            (Err(position), Some(rect)) => {
+                path.insert(position, CropKeyframe { t_ticks, rect });
+                Ok(remove())
+            }
+            (Ok(position), None) => Ok(set(path.remove(position).rect)),
+            (Err(_), None) => Err(CommandError::NoCropKeyframe(t_ticks)),
+        }
+    }
+
     fn apply_trim(
         document: &mut EditDocument,
         segment_id: &str,
@@ -441,19 +504,15 @@ impl EditCommand {
             in_ticks,
             new_duration,
         );
+        segment.layout.secondary_crop_path = EditDocument::retime_crop_path(
+            &segment.layout.secondary_crop_path,
+            old_in,
+            in_ticks,
+            new_duration,
+        );
         // How many words each cue had, so a cue the cut fell inside can be
         // told from one it merely moved.
-        let word_counts: Vec<(Presentation, String, usize)> =
-            [Presentation::Reading, Presentation::BurnIn]
-                .into_iter()
-                .flat_map(|presentation| {
-                    document
-                        .captions
-                        .list(presentation)
-                        .iter()
-                        .map(move |cue| (presentation, cue.cue_id.clone(), cue.word_count()))
-                })
-                .collect();
+        let word_counts = Self::caption_word_counts(document);
 
         // The tail first, in the old program coordinates, so the head's
         // shift does not move the tail before it is cut.
@@ -483,9 +542,31 @@ impl EditCommand {
             }
             _ => {}
         }
-        // A cue the cut fell inside keeps its remaining words; if what
-        // remains cannot be read on its own, it is folded into the cue
-        // beside it and the pair is broken again — see `reflow`.
+        Self::reflow_shortened_edges(document, &word_counts, head_delta > 0, tail_delta < 0);
+        Ok((old_in, old_out))
+    }
+
+    fn caption_word_counts(document: &EditDocument) -> Vec<(Presentation, String, usize)> {
+        [Presentation::Reading, Presentation::BurnIn]
+            .into_iter()
+            .flat_map(|presentation| {
+                document
+                    .captions
+                    .list(presentation)
+                    .iter()
+                    .map(move |cue| (presentation, cue.cue_id.clone(), cue.word_count()))
+            })
+            .collect()
+    }
+
+    /// Repair only a surviving cue that lost words at a trimmed program edge.
+    /// Removing an entire cue must not regroup its untouched neighbour.
+    fn reflow_shortened_edges(
+        document: &mut EditDocument,
+        word_counts: &[(Presentation, String, usize)],
+        head: bool,
+        tail: bool,
+    ) {
         for presentation in [Presentation::Reading, Presentation::BurnIn] {
             let was = |cue: &CaptionCue| {
                 word_counts.iter().any(|(list, id, count)| {
@@ -493,25 +574,26 @@ impl EditCommand {
                 })
             };
             let cues = document.captions.list_mut(presentation);
-            if head_delta > 0 && cues.first().is_some_and(was) {
+            if head && cues.first().is_some_and(was) {
                 reflow::reflow_fragment(cues, presentation, reflow::Edge::Head);
             }
-            if tail_delta < 0 && cues.last().is_some_and(was) {
+            if tail && cues.last().is_some_and(was) {
                 reflow::reflow_fragment(cues, presentation, reflow::Edge::Tail);
             }
         }
-        Ok((old_in, old_out))
     }
 
     fn apply_ripple_delete(
         document: &mut EditDocument,
         start_ticks: i64,
         end_ticks: i64,
+        reflow_edges: bool,
     ) -> Result<Self, CommandError> {
         if end_ticks <= start_ticks || start_ticks < 0 {
             return Err(CommandError::EmptyRange);
         }
         let inverse = Self::capture(document);
+        let word_counts = reflow_edges.then(|| Self::caption_word_counts(document));
         let span = end_ticks.saturating_sub(start_ticks);
         let starts = document.segment_program_starts();
         let existing_ids = document
@@ -546,11 +628,23 @@ impl EditCommand {
                     segment.in_ticks,
                     head.duration_ticks(),
                 );
+                head.layout.secondary_crop_path = EditDocument::retime_crop_path(
+                    &segment.layout.secondary_crop_path,
+                    segment.in_ticks,
+                    segment.in_ticks,
+                    head.duration_ticks(),
+                );
                 let mut tail = segment.clone();
                 tail.segment_id = EditDocument::derive_id(&existing_ids, &segment.segment_id);
                 tail.in_ticks = tail_in;
                 tail.layout.crop_path = EditDocument::retime_crop_path(
                     &segment.layout.crop_path,
+                    segment.in_ticks,
+                    tail_in,
+                    tail.duration_ticks(),
+                );
+                tail.layout.secondary_crop_path = EditDocument::retime_crop_path(
+                    &segment.layout.secondary_crop_path,
                     segment.in_ticks,
                     tail_in,
                     tail.duration_ticks(),
@@ -575,11 +669,27 @@ impl EditCommand {
                 trimmed.in_ticks,
                 trimmed.duration_ticks(),
             );
+            trimmed.layout.secondary_crop_path = EditDocument::retime_crop_path(
+                &segment.layout.secondary_crop_path,
+                segment.in_ticks,
+                trimmed.in_ticks,
+                trimmed.duration_ticks(),
+            );
             kept.push(trimmed);
         }
         let program_end = document.program_duration_ticks();
         document.video.segments = kept;
         document.splice_program_content(start_ticks, span, 0, program_end);
+        // The editor's whole-program head/tail controls use ripple deletion
+        // across shot segments. They need the same caption repair as Trim.
+        if let Some(word_counts) = word_counts {
+            Self::reflow_shortened_edges(
+                document,
+                &word_counts,
+                start_ticks == 0,
+                end_ticks >= program_end,
+            );
+        }
         Ok(inverse)
     }
 

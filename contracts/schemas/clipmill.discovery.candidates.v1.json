@@ -74,6 +74,12 @@
     "editorial": {
       "description": "Coverage and partial failures of the editorial route. Missing areas are not evidence that no worthwhile moment exists.",
       "$ref": "#/$defs/editorial_coverage"
+    },
+    "content_profile": {
+      "type": "string",
+      "enum": ["interview", "scripted"],
+      "default": "interview",
+      "description": "The editorial rubric selected for this run; older artifacts use interview."
     }
   },
   "$defs": {
