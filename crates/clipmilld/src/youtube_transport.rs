@@ -22,7 +22,7 @@ impl Drop for ProcessGroup {
         // asynchronous termination path. Kill descendants too in that case.
         if let Some(pid) = self.0.take() {
             let _ = std::process::Command::new("/bin/kill")
-                .args(["-KILL", &format!("-{pid}")])
+                .args(["-KILL", "--", &format!("-{pid}")])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status();
@@ -364,14 +364,14 @@ async fn terminate(child: &mut Child, process_group: Option<u32>) {
     if let Some(pid) = process_group {
         let group = format!("-{pid}");
         let _signal = Command::new("/bin/kill")
-            .args(["-TERM", &group])
+            .args(["-TERM", "--", &group])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .await;
         tokio::time::sleep(Duration::from_millis(150)).await;
         let _signal = Command::new("/bin/kill")
-            .args(["-KILL", &group])
+            .args(["-KILL", "--", &group])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -392,6 +392,30 @@ mod tests {
         fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
         YoutubeDownloader::new(path, PathBuf::from("/fixed/ffmpeg"))
+    }
+
+    async fn assert_descendant_stopped(pid: &str) {
+        // A killed orphan can remain a zombie until Linux's namespace init
+        // reaps it. kill -0 reports that PID as existing even though it cannot
+        // execute or hold sockets/files. Check execution state, with a bounded
+        // grace period for signal delivery, rather than assuming PID removal.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let output = Command::new("/bin/ps")
+                .args(["-o", "stat=", "-p", pid])
+                .output()
+                .await
+                .unwrap();
+            let state = String::from_utf8(output.stdout).unwrap();
+            if state.trim().is_empty() || state.trim_start().starts_with('Z') {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "download child survived: {state}"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 
     #[tokio::test]
@@ -470,13 +494,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(result.unwrap_err().code, "cancelled");
-        let status = Command::new("/bin/kill")
-            .args(["-0", descendant.trim()])
-            .stderr(Stdio::null())
-            .status()
-            .await
-            .unwrap();
-        assert!(!status.success(), "download child survived cancellation");
+        assert_descendant_stopped(descendant.trim()).await;
     }
 
     #[tokio::test]
@@ -503,13 +521,7 @@ mod tests {
         task.abort();
         let _ = task.await;
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let status = Command::new("/bin/kill")
-            .args(["-0", descendant.trim()])
-            .stderr(Stdio::null())
-            .status()
-            .await
-            .unwrap();
-        assert!(!status.success(), "download child survived task abort");
+        assert_descendant_stopped(descendant.trim()).await;
     }
 
     #[test]
