@@ -29,6 +29,7 @@ pub mod preview;
 mod profile;
 mod subtitles;
 mod timing;
+mod transitions;
 
 pub use graph::{DecodeSpan, FilterGraph, LOUDNORM_SLOT, crop_rect_at};
 pub use manifest::{
@@ -50,3 +51,4 @@ pub use profile::{
 };
 pub use subtitles::{CueWindow, Sweep, unrenderable_character};
 pub use timing::{FrameRate, centis_to_ass, millis_to_srt, millis_to_vtt, ticks_to_seconds};
+pub use transitions::PreviewTransition;

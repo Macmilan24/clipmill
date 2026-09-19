@@ -1365,8 +1365,20 @@ class PreviewCaptionStyleV1(_message.Message):
     margin_vertical: int
     def __init__(self, style_ref: _Optional[str] = ..., font_family: _Optional[str] = ..., font_size: _Optional[int] = ..., spoken: _Optional[str] = ..., unspoken: _Optional[str] = ..., outline: _Optional[str] = ..., shadow: _Optional[str] = ..., outline_width: _Optional[int] = ..., shadow_depth: _Optional[int] = ..., bold: _Optional[bool] = ..., boxed: _Optional[bool] = ..., margin_horizontal: _Optional[int] = ..., margin_vertical: _Optional[int] = ...) -> None: ...
 
+class PreviewTransitionV1(_message.Message):
+    __slots__ = ("incoming_segment_id", "outgoing_frame", "first_frame", "end_frame")
+    INCOMING_SEGMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    OUTGOING_FRAME_FIELD_NUMBER: _ClassVar[int]
+    FIRST_FRAME_FIELD_NUMBER: _ClassVar[int]
+    END_FRAME_FIELD_NUMBER: _ClassVar[int]
+    incoming_segment_id: str
+    outgoing_frame: int
+    first_frame: int
+    end_frame: int
+    def __init__(self, incoming_segment_id: _Optional[str] = ..., outgoing_frame: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ...) -> None: ...
+
 class GetPreviewPlanResponse(_message.Message):
-    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies", "presentation", "secondary_crops", "caption_style")
+    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies", "presentation", "secondary_crops", "caption_style", "transition_ticks", "transitions")
     REVISION_FIELD_NUMBER: _ClassVar[int]
     RATE_NUM_FIELD_NUMBER: _ClassVar[int]
     RATE_DEN_FIELD_NUMBER: _ClassVar[int]
@@ -1382,6 +1394,8 @@ class GetPreviewPlanResponse(_message.Message):
     PRESENTATION_FIELD_NUMBER: _ClassVar[int]
     SECONDARY_CROPS_FIELD_NUMBER: _ClassVar[int]
     CAPTION_STYLE_FIELD_NUMBER: _ClassVar[int]
+    TRANSITION_TICKS_FIELD_NUMBER: _ClassVar[int]
+    TRANSITIONS_FIELD_NUMBER: _ClassVar[int]
     revision: int
     rate_num: int
     rate_den: int
@@ -1397,7 +1411,9 @@ class GetPreviewPlanResponse(_message.Message):
     presentation: str
     secondary_crops: _containers.RepeatedCompositeFieldContainer[PreviewCropV1]
     caption_style: PreviewCaptionStyleV1
-    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ..., presentation: _Optional[str] = ..., secondary_crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., caption_style: _Optional[_Union[PreviewCaptionStyleV1, _Mapping]] = ...) -> None: ...
+    transition_ticks: int
+    transitions: _containers.RepeatedCompositeFieldContainer[PreviewTransitionV1]
+    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ..., presentation: _Optional[str] = ..., secondary_crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., caption_style: _Optional[_Union[PreviewCaptionStyleV1, _Mapping]] = ..., transition_ticks: _Optional[int] = ..., transitions: _Optional[_Iterable[_Union[PreviewTransitionV1, _Mapping]]] = ...) -> None: ...
 
 class ListEditDocsRequest(_message.Message):
     __slots__ = ("project_id",)

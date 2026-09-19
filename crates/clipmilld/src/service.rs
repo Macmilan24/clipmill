@@ -3157,6 +3157,19 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 },
             })
             .collect(),
+        transition_ticks: plan.transition_ticks,
+        transitions: plan
+            .transitions
+            .iter()
+            .map(
+                |transition| clipmill_contracts::proto::ipc::v1::PreviewTransitionV1 {
+                    incoming_segment_id: transition.incoming_segment_id.clone(),
+                    outgoing_frame: transition.outgoing_frame,
+                    first_frame: transition.first_frame,
+                    end_frame: transition.end_frame,
+                },
+            )
+            .collect(),
         caption_style: Some(clipmill_contracts::proto::ipc::v1::PreviewCaptionStyleV1 {
             style_ref: plan.caption_style.style_ref.clone(),
             font_family: plan.caption_style.font_family.clone(),

@@ -209,3 +209,91 @@ source/document replacement, native EOF and Replay. An independent review found
 the detached-media, compositing-edge and EOF cases; all were fixed and retested.
 EOF cases are exercised by controlled media tests rather than by the native
 mid-source recording used for the compositor check.
+
+## Soft cuts between people
+
+New directed edits request a 120 ms blend between cropped shots. In the editor,
+Reframe → Soft cuts applies to the whole clip, with Off and a 40–250 ms duration.
+Older saved edits keep their original hard cuts until the setting is enabled.
+The optional `video.transition_ticks` field is omitted when zero, preserving
+legacy canonical document bytes; changing it is a normal undoable edit.
+
+This is a brief fade of the outgoing shot's final composition over the live
+incoming shot. It does not pan between unrelated camera views or overlap source
+intervals. Audio, captions, source windows and total duration keep their timing.
+Fit-to-Fit boundaries remain hard cuts. The shared renderer allocator rounds the
+requested duration to frames, caps it at 250 ms and half the incoming shot, and
+omits blends shorter than two frames. The editor reports when no boundary can
+use the saved duration and framing.
+
+The preview plan names each outgoing frame and the half-open incoming blend
+interval. The canvas preloads that outgoing picture through a muted, paused
+reference decoder; direct scrubbing therefore produces the same blend without
+requiring playback history. A missing reference pauses the transport on the
+requested frame until it is ready. Pause cancels automatic resume, and media
+errors stop playback with a visible explanation. Stale revision references are
+discarded. Captions are drawn over the blended picture.
+
+Export uses the same frame allocation, holding the outgoing composed frame with
+FFmpeg and fading its alpha over the incoming frames before captions are burned
+in. The pinned-FFmpeg regression decodes changing footage at 30 and 29.97 fps,
+checks the expected blended pixels and complete frame count, and compares the
+decoded audio byte for byte with hard-cut output. Unit and component checks
+cover short shots, legacy documents, undo, trimming, paused scrubs, reference
+errors, buffering and cancelled resume.
+
+Native verification also exposed a pre-existing save failure after shell
+relaunch: counter-only request IDs collided with durable mutation receipts.
+The shell now prefixes its counter with a fresh session ULID while reusing the
+same complete envelope for retries. Editor failures returned as Tauri strings
+are displayed instead of being lost through an `Error.message` cast. Regression
+checks cover restarted counters and a dropped mutation reply.
+
+### Native soft-cut verification, 2026-09-19
+
+On the saved 59-second edit used above, the native Reframe control enabled
+120 ms at r1, applied 180 ms as one edit at r2, and Undo restored 120 ms at r3.
+A full soft-cut playback produced 1,771 decoded callbacks with no intermediate
+primary-video seeks, no fully white or transparent samples, and a maximum
+decoded timestamp gap of 33.367 ms. A paused seek directly to frame 40 showed
+the blended picture inside the first transition; it did not depend on having
+played the preceding shot. These are native proxy checks on this recording;
+the separate decoded export regression above verifies render timing and weights.
+Relaunch restored r3 and 120 ms. A fresh-session edit saved 150 ms at r4 and Undo
+returned to 120 ms at r5, exercising the request-ID repair against the real store.
+
+## Preventing previous-shot flashes
+
+A fully opaque picture can still be wrong. The blank/white-frame checks above
+did not detect a one-frame mismatch between incoming footage and outgoing
+framing, which was the user's subsequent clarification.
+
+The source proxy and output program can start on different frame grids. In the
+saved clip, the first shot change is at program frame 38.016, while the incoming
+layout starts at frame 39. A decoded source frame already belongs to the new
+shot, but flooring its program time still selects the previous layout. The
+player now holds the previous complete picture until the decoded shot and
+program frame agree, without seeking, pausing audio or advancing captions early.
+Regression coverage includes this actual source offset and fractional cuts at
+24 and 29.97 fps.
+
+Decoded pictures must also stay paired with their timestamps during reference
+loading, paused edits and redraws. Reusing the last callback timestamp while
+sampling the live video again can pick up pixels from the next shot. The preview
+therefore retains a raw decoded bitmap with its timestamp and uses that pair
+for redraws. With decoded-frame callbacks available, seek events arm a new
+callback rather than treating `currentTime` as proof that new pixels are ready.
+
+Native verification on the user's saved r23 edit traced raw bitmap copies from
+their decoded timestamps through final canvas publication. Across the complete
+59-second playback, the probe observed 1,768 decoded callbacks, including 16
+frames in the fractional shot-boundary gap, and zero publications of those
+incoming pictures under an outgoing program-frame allocation. The main video
+did not seek between shots; its only seek held the final program frame. The
+paused first picture also appeared after a cold app launch. This checks the
+identified timing mismatch on this recording, not every possible visual defect.
+
+Controlled regressions cover live pixels advancing before a redraw, Pause
+immediately after a held boundary frame, both decode/seek-event orders, delayed
+references and trims that move a reference's program frame without changing its
+source position. The user's saved edit was not changed by these final checks.

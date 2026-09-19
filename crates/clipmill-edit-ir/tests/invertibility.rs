@@ -79,6 +79,7 @@ fn sample_document() -> EditDocument {
     };
     EditDocument {
         video: VideoTrack {
+            transition_ticks: 0,
             segments: vec![
                 segment("seg_a", 0, 90_000, vec![0, 45_000, 90_000]),
                 segment("seg_b", 180_000, 270_000, vec![0, 90_000]),
