@@ -364,6 +364,10 @@ fn the_document_the_director_produced_is_one_the_ir_accepts() {
     .expect("a document");
 
     document.validate().expect("a valid edit document");
+    assert_eq!(
+        document.video.transition_ticks, 10_800,
+        "new edits request subtle soft cuts"
+    );
 }
 
 fn face_evidence(people: usize) -> clipmill_contracts::schemas::vision_face_track::VisionFaceTrack {

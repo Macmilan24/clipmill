@@ -694,8 +694,22 @@ export interface PreviewCaptionStyle {
   readonly marginVertical: number;
 }
 
+/** A saved soft cut, allocated on the render's program frame grid. */
+export interface PreviewTransition {
+  readonly incomingSegmentId: string;
+  /** The outgoing picture held while the incoming shot appears. */
+  readonly outgoingFrame: number;
+  /** Program frames affected by the blend, half-open. */
+  readonly firstFrame: number;
+  readonly endFrame: number;
+}
+
 export interface PreviewPlan {
   readonly captionStyle?: PreviewCaptionStyle;
+  /** Requested clip-wide blend duration; absent in older plans means off. */
+  readonly transitionTicks?: number;
+  /** Actual blends, shortened to fit each neighboring shot by the renderer. */
+  readonly transitions?: readonly PreviewTransition[];
   readonly revision: number;
   readonly rateNum: number;
   readonly rateDen: number;

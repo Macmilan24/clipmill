@@ -7,7 +7,10 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        LazyLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -59,8 +62,32 @@ const CALLS_IN_FLIGHT: usize = 16;
 /// connection without answering.
 const RETRY_AFTER: Duration = Duration::from_millis(100);
 
-static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+static REQUEST_IDS: LazyLock<RequestIds> = LazyLock::new(RequestIds::new);
 static CALLS: Semaphore = Semaphore::const_new(CALLS_IN_FLIGHT);
+
+/// The daemon persists mutation receipts across shell restarts. A counter alone
+/// reuses an old receipt's key when the next shell process begins at zero.
+struct RequestIds {
+    session: ulid::Ulid,
+    counter: AtomicU64,
+}
+
+impl RequestIds {
+    fn new() -> Self {
+        Self {
+            session: ulid::Ulid::new(),
+            counter: AtomicU64::new(0),
+        }
+    }
+
+    fn next(&self, prefix: &str) -> String {
+        format!(
+            "{prefix}-{}-{}",
+            self.session,
+            self.counter.fetch_add(1, Ordering::Relaxed)
+        )
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum DaemonLinkError {
@@ -386,7 +413,7 @@ impl DaemonClient {
     }
 
     async fn call(&self, body: request::Body) -> Result<response::Body, DaemonLinkError> {
-        let request_id = format!("shell-{}", REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed));
+        let request_id = REQUEST_IDS.next("shell");
         let envelope = Request {
             request_id: request_id.clone(),
             body: Some(body),
@@ -656,10 +683,7 @@ impl DaemonClient {
     where
         F: FnMut(TaskEvent),
     {
-        let request_id = format!(
-            "shell-events-{}",
-            REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
-        );
+        let request_id = REQUEST_IDS.next("shell-events");
         let envelope = Request {
             request_id: request_id.clone(),
             body: Some(request::Body::SubscribeTaskEvents(
@@ -872,6 +896,72 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
+
+    #[test]
+    fn request_ids_do_not_repeat_when_a_shell_session_restarts_its_counter() {
+        let before_restart = RequestIds::new();
+        let after_restart = RequestIds::new();
+        let old = before_restart.next("shell");
+        let new = after_restart.next("shell");
+        // Both processes begin at zero, but durable mutation receipt keys must
+        // still differ. Events and concurrent calls share the same sequence.
+        assert!(old.ends_with("-0"));
+        assert!(new.ends_with("-0"));
+        assert_ne!(old, new);
+        assert_ne!(old, before_restart.next("shell"));
+        assert_ne!(new, after_restart.next("shell-events"));
+        assert!(old.len() <= 128 && new.len() <= 128);
+        assert!(old.is_ascii() && new.is_ascii());
+    }
+
+    #[tokio::test]
+    async fn a_dropped_mutation_reply_retries_the_identical_request_envelope() {
+        use tokio::net::UnixListener;
+
+        // macOS temporary directories can exceed the Unix socket path limit.
+        let socket = PathBuf::from(format!("/tmp/cm-retry-{}.sock", ulid::Ulid::new()));
+        let listener = UnixListener::bind(&socket).expect("bind test socket");
+        let server = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await.expect("first connection");
+            let original = read_frame(&mut first).await.expect("first request");
+            // The mutation could already be committed. Lose only its reply.
+            drop(first);
+            let (mut retry, _) = listener.accept().await.expect("retry connection");
+            let repeated = read_frame(&mut retry).await.expect("retried request");
+            assert_eq!(
+                original, repeated,
+                "a retry must reuse the complete envelope"
+            );
+            let request = Request::decode(repeated.as_slice()).expect("request envelope");
+            assert!(matches!(
+                request.body,
+                Some(request::Body::CreateProject(_))
+            ));
+            let response = Response {
+                request_id: request.request_id,
+                body: Some(response::Body::CreateProject(
+                    clipmill_contracts::proto::ipc::v1::CreateProjectResponse {
+                        project: Some(Project {
+                            project_id: "prj_retry_receipt".to_owned(),
+                            ..Project::default()
+                        }),
+                    },
+                )),
+            };
+            write_frame(&mut retry, &response.encode_to_vec())
+                .await
+                .expect("send receipt");
+        });
+        let received = DaemonClient::new(socket.clone())
+            .create_project("a retried mutation")
+            .await;
+        timeout(Duration::from_secs(2), server)
+            .await
+            .expect("retry reached test server")
+            .expect("test server");
+        std::fs::remove_file(socket).expect("remove test socket");
+        assert_eq!(received.expect("replayed response"), "prj_retry_receipt");
+    }
 
     #[test]
     fn varint_round_trips_through_the_frame_reader() {

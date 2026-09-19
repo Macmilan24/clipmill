@@ -48,6 +48,7 @@ fn word(text: &str, from: i64, to: i64) -> CaptionWord {
 fn document(state: LayoutState) -> EditDocument {
     EditDocument {
         video: VideoTrack {
+            transition_ticks: 0,
             segments: vec![VideoSegment {
                 segment_id: "seg_1".to_owned(),
                 source_fingerprint: SOURCE.to_owned(),

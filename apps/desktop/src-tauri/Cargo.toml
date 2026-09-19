@@ -31,4 +31,5 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+ulid = { workspace = true }
 tauri-plugin-dialog = "2.7.2"

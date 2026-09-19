@@ -146,8 +146,20 @@ impl VideoSegment {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct VideoTrack {
+    /// Requested soft-cut duration. Zero preserves legacy hard cuts. The
+    /// renderer bounds each blend by its incoming shot's frame allocation.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub transition_ticks: i64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segments: Vec<VideoSegment>,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if requires a reference"
+)]
+fn is_zero(value: &i64) -> bool {
+    *value == 0
 }
 
 /// One word with its own timing, so text selection is time selection.
@@ -924,6 +936,9 @@ impl EditDocument {
         if self.timebase.num != 1 || self.timebase.den != TICKS_PER_SECOND {
             return Err(DocumentError::UnsupportedTimebase);
         }
+        if !(0..=22_500).contains(&self.video.transition_ticks) {
+            return Err(DocumentError::InvalidTransitionDuration);
+        }
         let mut seen_segments = Vec::with_capacity(self.video.segments.len());
         for segment in &self.video.segments {
             if segment.segment_id.is_empty() {
@@ -1009,6 +1024,8 @@ impl EditDocument {
 
 #[derive(Debug, Error)]
 pub enum DocumentError {
+    #[error("soft cuts must be between zero and 250 milliseconds")]
+    InvalidTransitionDuration,
     #[error("edit document version {0} is not supported")]
     UnsupportedVersion(String),
     #[error("edit documents must use the 1/90000 edit timebase")]

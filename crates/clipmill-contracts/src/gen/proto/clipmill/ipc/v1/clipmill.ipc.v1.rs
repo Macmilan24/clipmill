@@ -1625,6 +1625,20 @@ pub struct PreviewCaptionStyleV1 {
     #[prost(uint32, tag = "13")]
     pub margin_vertical: u32,
 }
+/// A duration-preserving blend of an outgoing still and live incoming video.
+/// Outgoing alpha = (end_frame - frame) / (end_frame - first_frame), for
+/// first_frame <= frame < end_frame. Captions are drawn after this blend.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewTransitionV1 {
+    #[prost(string, tag = "1")]
+    pub incoming_segment_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub outgoing_frame: i64,
+    #[prost(int64, tag = "3")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "4")]
+    pub end_frame: i64,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetPreviewPlanResponse {
     /// The revision this plan describes. A caller holding a document at a
@@ -1671,6 +1685,10 @@ pub struct GetPreviewPlanResponse {
     pub secondary_crops: ::prost::alloc::vec::Vec<PreviewCropV1>,
     #[prost(message, optional, tag = "15")]
     pub caption_style: ::core::option::Option<PreviewCaptionStyleV1>,
+    #[prost(int64, tag = "16")]
+    pub transition_ticks: i64,
+    #[prost(message, repeated, tag = "17")]
+    pub transitions: ::prost::alloc::vec::Vec<PreviewTransitionV1>,
 }
 /// The edit documents a project holds, oldest first.
 ///

@@ -23,6 +23,11 @@ use crate::{
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditCommand {
+    /// Hold the outgoing composition briefly over the incoming picture.
+    /// This changes no source interval, audio, caption or program timing.
+    SetTransition {
+        duration_ticks: i64,
+    },
     /// Move a segment's source window. Program-anchored content after the
     /// segment follows; content stranded in a shortened tail is removed.
     Trim {
@@ -168,6 +173,13 @@ impl EditCommand {
     #[allow(clippy::too_many_lines)]
     fn apply_in_place(&self, document: &mut EditDocument) -> Result<Self, CommandError> {
         match self {
+            Self::SetTransition { duration_ticks } => {
+                let previous =
+                    std::mem::replace(&mut document.video.transition_ticks, *duration_ticks);
+                Ok(Self::SetTransition {
+                    duration_ticks: previous,
+                })
+            }
             Self::Trim {
                 segment_id,
                 in_ticks,

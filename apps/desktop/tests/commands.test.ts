@@ -21,6 +21,7 @@ import {
   setCueLines,
   setGain,
   setLayout,
+  setTransition,
   snapToWord,
   splitCue,
   ticksAt,
@@ -92,6 +93,11 @@ describe('the commands an editor produces', () => {
       at_word_index: 2,
       new_cue_id: 'hot_1_b',
     });
+  });
+
+  it('addresses soft-cut duration to the whole document, including turning it off', () => {
+    expect(setTransition(10_800)).toEqual({ op: 'set_transition', duration_ticks: 10_800 });
+    expect(setTransition(0)).toEqual({ op: 'set_transition', duration_ticks: 0 });
   });
 
   it('name the cue list a cue-scoped command means, and only when it is not the default', () => {

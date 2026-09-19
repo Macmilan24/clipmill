@@ -373,7 +373,7 @@ describe('advancing a playing proxy', () => {
   it.each([
     [24, 1],
     [30_000, 1_001],
-  ])('keeps fractional cut boundaries on the %i/%i program frame clock', (num, den) => {
+  ])('holds the picture when %i/%i decoded and program shot boundaries disagree', (num, den) => {
     const at = cutPlan(
       [
         [0, 46_800],
@@ -383,22 +383,54 @@ describe('advancing a playing proxy', () => {
       den,
     );
     const nextFrame = at.segments[1]!.firstFrame;
+    expect(resolvePlaybackFrame(at, 0, 600.52 - 1 / TICKS)).toEqual({
+      frame: nextFrame - 1,
+      seek: false,
+      ended: false,
+    });
     expect(resolvePlaybackFrame(at, 0, 600.52)).toEqual({
       frame: nextFrame - 1,
       seek: false,
       ended: false,
+      hold: true,
     });
     const nextTime = 600 + secondsAt(at, nextFrame);
     expect(resolvePlaybackFrame(at, nextFrame - 1, nextTime - 1 / TICKS)).toEqual({
       frame: nextFrame - 1,
       seek: false,
       ended: false,
+      hold: true,
     });
     expect(resolvePlaybackFrame(at, nextFrame - 1, nextTime)).toEqual({
       frame: nextFrame,
       seek: false,
       ended: false,
     });
+  });
+
+  it('does not flash the outgoing crop at a shot cut minutes into the recording', () => {
+    // The saved edit starts just before a source frame. Its first camera cut
+    // lands at program frame 38.016, while the incoming layout starts at 39.
+    const sourceStart = 204_852_600;
+    const cut = 204_966_762;
+    const nextCut = 205_131_927;
+    const base = cutPlan([
+      [0, cut - sourceStart],
+      [cut - sourceStart, nextCut - sourceStart],
+    ]);
+    const at = {
+      ...base,
+      segments: base.segments.map((segment) => ({
+        ...segment,
+        inTicks: segment.inTicks - 600 * TICKS + sourceStart,
+        outTicks: segment.outTicks - 600 * TICKS + sourceStart,
+      })),
+    };
+    const resolved = resolvePlaybackFrame(at, 37, cut / TICKS);
+    expect(resolved).toEqual({ frame: 38, seek: false, ended: false, hold: true });
+    const aligned = resolvePlaybackFrame(at, resolved.frame, (cut + 3003) / TICKS);
+    expect(aligned).toEqual({ frame: 39, seek: false, ended: false });
+    expect(segmentAt(at, aligned.frame)).toBe(at.segments[1]);
   });
 
   it('seeks at the exact source boundary for a fractional-frame discontinuity', () => {
