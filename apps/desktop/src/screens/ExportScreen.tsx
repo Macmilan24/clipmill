@@ -31,6 +31,7 @@ import { latestExportOf, useDelivery } from '../export/delivery.js';
 import type { ClipRef } from '../shell/route.js';
 import { Export } from './Export.js';
 import { BatchExportScreen } from './BatchExportScreen.js';
+import { UploadPanel } from '../youtube/UploadPanel.js';
 
 /** Long enough that a typed word is one request, short enough to feel live. */
 const PLAN_DEBOUNCE_MS = 250;
@@ -74,10 +75,17 @@ export interface ExportScreenProps {
   /** Open a different clip here — from the list this screen offers. */
   readonly onOpen: (clip: ClipRef) => void;
   readonly onEdit?: (clip: ClipRef) => void;
+  readonly onOpenChannelSettings?: () => void;
   readonly api?: ShellApi;
 }
 
-export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportScreenProps) {
+export function ExportScreen({
+  clip,
+  onOpen,
+  onEdit,
+  onOpenChannelSettings,
+  api = daemonApi,
+}: ExportScreenProps) {
   const [batchMode, setBatchMode] = useState(false);
   const projectId = clip?.projectId ?? null;
   const docId = clip?.docId ?? null;
@@ -351,6 +359,23 @@ export function ExportScreen({ clip, onOpen, onEdit, api = daemonApi }: ExportSc
     );
   return (
     <Export
+      publishing={
+        projectId && docId ? (
+          <UploadPanel
+            key={`${projectId}:${docId}`}
+            api={api}
+            projectId={projectId}
+            docId={docId}
+            exportJobId={queued?.jobId ?? null}
+            revision={queued?.revision ?? null}
+            renderArtifactId={delivery?.renderArtifactId ?? null}
+            irArtifactId={queued?.irArtifactId ?? null}
+            currentRevision={plan?.revision ?? null}
+            delivered={Boolean(delivery?.settled && delivery.files)}
+            {...(onOpenChannelSettings ? { onSetup: onOpenChannelSettings } : {})}
+          />
+        ) : null
+      }
       onBatch={() => setBatchMode(true)}
       onEdit={clip && onEdit ? () => onEdit(clip) : undefined}
       docId={docId}

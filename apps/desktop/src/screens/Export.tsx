@@ -114,6 +114,7 @@ const DELIVERY: readonly (readonly [string, string])[] = [
 export interface ExportProps {
   readonly onEdit?: (() => void) | undefined;
   readonly onBatch?: () => void;
+  readonly publishing?: ReactNode;
   readonly docId: string | null;
   /** What the clip is called — the project and the clip — when the route knew. */
   readonly labels: { readonly project?: string; readonly clip?: string } | null;
@@ -483,6 +484,7 @@ export function Export(props: ExportProps): JSX.Element {
           {props.auditionProblem}
         </p>
       )}
+      {props.publishing}
       <div className="export-actions">
         <Button onClick={props.onExport} disabled={!ready || delivering}>
           {props.busy

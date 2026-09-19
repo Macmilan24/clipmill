@@ -23,7 +23,9 @@ use crate::jobs::{
     EventFilter, JobPlan, JobRecord, LeaseRequest, LeaseSelection, TaskCompletion, TaskEventRecord,
 };
 
+mod youtube_publish_store;
 mod youtube_store;
+pub(crate) use youtube_publish_store::{Publication, PublishingCommand, PublishingReply};
 pub(crate) use youtube_store::YoutubeCommand;
 mod batch_store;
 pub(crate) use batch_store::BatchCommand;
@@ -41,7 +43,7 @@ mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 13;
+const SCHEMA_VERSION: i64 = 14;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -70,6 +72,8 @@ pub(crate) enum StoreError {
         "This project already has this video at a different quality. Use its existing import, or create a new project for the selected quality."
     )]
     ImportQualityConflict,
+    #[error("{0}")]
+    PublishingConflict(&'static str),
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("database contains invalid data: {0}")]
@@ -107,6 +111,12 @@ impl DbActor {
                         let _result = ready_sender.send(Ok(()));
                         while let Some(command) = receiver.blocking_recv() {
                             match command {
+                                Command::Publishing { command, reply } => {
+                                    let _result = reply.send(youtube_publish_store::execute(
+                                        &mut connection,
+                                        *command,
+                                    ));
+                                }
                                 Command::Youtube { command, reply } => {
                                     let _result = reply
                                         .send(youtube_store::execute(&mut connection, command));
@@ -657,6 +667,21 @@ impl DbActor {
 }
 
 impl DbHandle {
+    pub(crate) async fn publishing(
+        &self,
+        command: PublishingCommand,
+    ) -> Result<PublishingReply, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Publishing {
+                command: Box::new(command),
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn youtube_imports(
         &self,
         command: YoutubeCommand,
@@ -1449,6 +1474,10 @@ impl DbHandle {
 
 #[derive(Debug)]
 enum Command {
+    Publishing {
+        command: Box<PublishingCommand>,
+        reply: oneshot::Sender<Result<PublishingReply, StoreError>>,
+    },
     Youtube {
         command: YoutubeCommand,
         reply: oneshot::Sender<
@@ -1855,8 +1884,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(edit_store::CREATE_V11_TABLES)?;
         transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
         transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
+        transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 13;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 14;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1904,7 +1934,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 13 {
             transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 13;")?;
+        if version < 14 {
+            transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 14;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -2152,6 +2185,8 @@ fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, Store
          SELECT artifact_id FROM source_artifact_roots
          UNION
          SELECT artifact_id FROM system_artifact_roots
+         UNION
+         SELECT artifact_id FROM youtube_upload_roots
          ORDER BY artifact_id ASC",
     )?;
     let rows = statement.query_map([], |row| row.get::<_, String>(0))?;

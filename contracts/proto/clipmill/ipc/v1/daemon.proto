@@ -53,6 +53,16 @@ message Request {
     GetYoutubeImportRequest get_youtube_import = 47;
     ListYoutubeImportsRequest list_youtube_imports = 48;
     UpdateYoutubeImportRequest update_youtube_import = 49;
+    ConfigureYoutubePublishingRequest configure_youtube_publishing = 50;
+    ConnectYoutubeChannelRequest connect_youtube_channel = 51;
+    GetYoutubePublishingStatusRequest get_youtube_publishing_status = 52;
+    UpdateYoutubeConnectionRequest update_youtube_connection = 53;
+    StartYoutubeUploadRequest start_youtube_upload = 54;
+    GetYoutubeUploadRequest get_youtube_upload = 55;
+    ListYoutubeUploadsRequest list_youtube_uploads = 56;
+    UpdateYoutubeUploadRequest update_youtube_upload = 57;
+    PublishYoutubeUploadRequest publish_youtube_upload = 58;
+    DraftYoutubeMetadataRequest draft_youtube_metadata = 59;
   }
 }
 
@@ -100,6 +110,11 @@ message Response {
     ListExportBatchesResponse list_export_batches = 45;
     YoutubeImportResponse youtube_import = 46;
     ListYoutubeImportsResponse list_youtube_imports = 47;
+    YoutubePublishingStatusResponse youtube_publishing_status = 48;
+    YoutubeConnectResponse youtube_connect = 49;
+    YoutubeUploadResponse youtube_upload = 50;
+    ListYoutubeUploadsResponse list_youtube_uploads = 51;
+    DraftYoutubeMetadataResponse draft_youtube_metadata = 52;
   }
 }
 
@@ -1626,3 +1641,95 @@ message UpdateYoutubeImportRequest {
 }
 message YoutubeImportResponse { YoutubeImportV1 record = 1; }
 message ListYoutubeImportsResponse { repeated YoutubeImportV1 imports = 1; }
+
+// Channel credentials and resumable session URLs are never IPC data.
+message ConfigureYoutubePublishingRequest { string client_config_path = 1; }
+message ConnectYoutubeChannelRequest {}
+message GetYoutubePublishingStatusRequest {}
+message UpdateYoutubeConnectionRequest {
+  string connection_id = 1;
+  // cancel an unfinished connection, or disconnect an established channel.
+  string action = 2;
+}
+message YoutubeConnectionV1 {
+  string connection_id = 1;
+  string channel_id = 2;
+  string title = 3;
+  // connecting, connected, interrupted, failed, disconnected.
+  string state = 4;
+  string error = 5;
+  uint64 created_unix_millis = 6;
+  uint64 updated_unix_millis = 7;
+}
+message YoutubePublishingStatusResponse {
+  bool configured = 1;
+  repeated YoutubeConnectionV1 connections = 2;
+  bool available = 3;
+}
+message YoutubeConnectResponse {
+  string connection_id = 1;
+  // The trusted desktop host opens this; never store it in renderer state.
+  string authorization_url = 2;
+}
+message YoutubeVideoMetadataV1 {
+  string title = 1;
+  string description = 2;
+  repeated string tags = 3;
+  bool made_for_kids = 4;
+  bool contains_synthetic_media = 5;
+}
+message StartYoutubeUploadRequest {
+  string export_job_id = 1;
+  string connection_id = 2;
+  uint64 expected_revision = 3;
+  YoutubeVideoMetadataV1 metadata = 4;
+  bool rights_confirmed = 5;
+}
+message GetYoutubeUploadRequest { string upload_id = 1; }
+message ListYoutubeUploadsRequest {
+  // Empty returns all local publishing operations, including recovery history.
+  string project_id = 1;
+}
+message UpdateYoutubeUploadRequest {
+  string upload_id = 1;
+  // pause, resume, or reconcile. No action creates a replacement remote video.
+  string action = 2;
+}
+message PublishYoutubeUploadRequest { string upload_id = 1; }
+message YoutubeUploadV1 {
+  string upload_id = 1;
+  string project_id = 2;
+  string doc_id = 3;
+  uint64 revision = 4;
+  string export_job_id = 5;
+  string ir_artifact_id = 6;
+  string render_artifact_id = 7;
+  string connection_id = 8;
+  string channel_id = 9;
+  string channel_title = 10;
+  YoutubeVideoMetadataV1 metadata = 11;
+  // queued, verifying, starting, uploading, paused, auth_required, reconciling,
+  // completion_uncertain, private, publishing, public, failed.
+  string state = 12;
+  uint64 acknowledged_bytes = 13;
+  uint64 total_bytes = 14;
+  string video_id = 15;
+  string visibility = 16;
+  string error_code = 17;
+  string error = 18;
+  uint64 created_unix_millis = 19;
+  uint64 updated_unix_millis = 20;
+}
+message YoutubeUploadResponse { YoutubeUploadV1 record = 1; }
+message ListYoutubeUploadsResponse { repeated YoutubeUploadV1 uploads = 1; }
+message DraftYoutubeMetadataRequest {
+  string export_job_id = 1;
+  uint64 expected_revision = 2;
+}
+message DraftYoutubeMetadataResponse {
+  YoutubeVideoMetadataV1 metadata = 1;
+  string render_artifact_id = 2;
+  uint64 revision = 3;
+  // A bounded transcript excerpt from the immutable rendered snapshot.
+  string transcript_excerpt = 4;
+}
