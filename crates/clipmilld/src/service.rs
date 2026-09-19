@@ -4034,11 +4034,19 @@ fn check_editorial_capacity(
         "Qwen has not passed its local runtime check. Restart `just workers` to run the check, then refresh readiness.".clone_into(&mut readiness.remedy);
     } else if capacity.ram_bytes < required {
         readiness.ready = false;
-        readiness.remedy = format!(
-            "Qwen needs {} MiB of schedulable memory; {} MiB is available. Close memory-heavy applications, rescan in Models, then refresh readiness.",
-            required.div_ceil(1024 * 1024),
-            capacity.ram_bytes / (1024 * 1024)
-        );
+        readiness.remedy = if cfg!(target_os = "macos") {
+            format!(
+                "Qwen needs {} MiB; this Mac's physical-memory processing budget is {} MiB. Use a smaller model or a Mac with more memory. Current free memory does not block admission.",
+                required.div_ceil(1024 * 1024),
+                capacity.ram_bytes / (1024 * 1024)
+            )
+        } else {
+            format!(
+                "Qwen needs {} MiB of schedulable memory; {} MiB is available. Close memory-heavy applications, rescan in Models, then refresh readiness.",
+                required.div_ceil(1024 * 1024),
+                capacity.ram_bytes / (1024 * 1024)
+            )
+        };
     }
 }
 

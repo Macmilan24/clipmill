@@ -122,7 +122,9 @@ struct HardwareMeasurement {
 pub struct VerifiedDeviceProfile {
     pub hardware_fingerprint: String,
     pub measurement_generation: u64,
+    pub platform_os: String,
     pub logical_cores: u32,
+    pub total_memory_bytes: u64,
     pub available_memory_bytes: u64,
     pub available_backends: BTreeSet<String>,
     /// Which implementation each stage is bound to on this device. Read from
@@ -184,8 +186,10 @@ impl DeviceProfiler {
     pub(crate) async fn scheduler_capacity(&self) -> Result<ResourceCapacity, DeviceProfileError> {
         let identity = self.identity().await?;
         let available_memory = measured_available_memory(identity.total_memory_bytes).await;
-        Ok(ResourceCapacity::measured(
+        Ok(ResourceCapacity::for_device(
+            &identity.platform.os,
             identity.cpu.logical_cores,
+            identity.total_memory_bytes,
             available_memory,
             measured_available_disk(&self.inner.scratch),
         ))
@@ -564,7 +568,7 @@ pub fn verify_profile(
 ) -> Result<VerifiedDeviceProfile, DeviceProfileError> {
     let mut value: Value = serde_json::from_str(profile_json)
         .map_err(|error| DeviceProfileError::Json(error.to_string()))?;
-    serde_json::from_value::<DeviceProfile>(value.clone())
+    let typed = serde_json::from_value::<DeviceProfile>(value.clone())
         .map_err(|error| DeviceProfileError::Json(error.to_string()))?;
     // Read before the attestation object is removed, but from the same bytes
     // the signature covers — a binding that is not inside what was signed is
@@ -641,7 +645,9 @@ pub fn verify_profile(
     Ok(VerifiedDeviceProfile {
         hardware_fingerprint,
         measurement_generation,
+        platform_os: typed.platform.os.to_string(),
         logical_cores,
+        total_memory_bytes: typed.memory.total_bytes,
         available_memory_bytes,
         available_backends,
         bindings,
@@ -1267,7 +1273,9 @@ mod tests {
         assert_eq!(verified.measurement_generation, 7);
         assert_eq!(verified.hardware_fingerprint, fingerprint);
         assert!(verified.available_memory_bytes > 0);
-        serde_json::from_str::<Value>(&profile).expect("JSON");
+        let value = serde_json::from_str::<Value>(&profile).expect("JSON");
+        assert_eq!(value["memory"]["total_bytes"], verified.total_memory_bytes);
+        assert_eq!(value["platform"]["os"], verified.platform_os);
         assert_eq!(
             fs::metadata(temp.path().join("device.key"))
                 .expect("key")

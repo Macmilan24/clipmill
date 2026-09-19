@@ -636,8 +636,10 @@ async fn startup_profile_capacity(
     }
     // Disk comes from the live measurement, not the profile: a profile records
     // what a machine *is*, and free space is what it *has right now*.
-    let measured = ResourceCapacity::measured(
+    let measured = ResourceCapacity::for_device(
+        &verified.platform_os,
         verified.logical_cores,
+        verified.total_memory_bytes,
         verified.available_memory_bytes,
         live.disk_bytes,
     )
