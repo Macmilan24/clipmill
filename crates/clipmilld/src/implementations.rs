@@ -127,6 +127,15 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
     },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/metadata",
+        capability: "editorial",
+        stage: "youtube-metadata",
+        model: "qwen3-5-editorial-mlx",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+    },
     // The face detector. One candidate and no accelerated sibling: YuNet is a
     // 230 kB CPU graph whose whole appeal is having no runtime tail, and an
     // accelerated variant would be a second implementation to keep honest for

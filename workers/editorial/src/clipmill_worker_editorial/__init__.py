@@ -29,11 +29,16 @@ CAPABILITIES = (
     "editorial-look",
     "editorial-propose",
     "editorial-review",
+    "youtube-metadata",
 )
 
 
 def execute(context: TaskContext) -> tuple[str, ...]:
     """Local entrypoint: cloud leases are rejected before any runtime is opened."""
+    if context.lease.kind == "youtube-metadata":
+        from .metadata import execute_metadata
+
+        return execute_metadata(context)
     return execute_stage(context, CAPABILITIES)
 
 

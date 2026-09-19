@@ -26,6 +26,7 @@ export function publishingFixture(connected: boolean, history = false): Publishi
     connections: connected ? [connection] : [],
   };
   let uploads: YoutubeUpload[] = [];
+  let writing = false;
   const metadata = {
     title: 'The question that changed how I create',
     description:
@@ -106,14 +107,24 @@ export function publishingFixture(connected: boolean, history = false): Publishi
       status = { ...status, connections: [] };
       return Promise.resolve(status);
     },
-    draftYoutubeMetadata: (_job, revision) =>
-      Promise.resolve({
+    draftYoutubeMetadata: (_job, revision, action) => {
+      if (action === 'start' || action === 'retry') writing = true;
+      if (action === 'cancel') writing = false;
+      return Promise.resolve({
         metadata,
         revision,
         renderArtifactId: 'preview-render',
+        generationJobId: writing ? 'preview-writing' : '',
+        generationState: writing ? 'succeeded' : 'idle',
+        generationMessage: '',
+        modelName: 'Qwen 3.5',
+        generatedMetadata: writing
+          ? { ...metadata, title: 'The question that helps you finish creative work' }
+          : null,
         transcriptExcerpt:
           'I used to ask, “Is this good enough?” But that question stopped me from making anything. Now I ask, “What can I learn from finishing this?” That small change gave me permission to keep creating.',
-      }),
+      });
+    },
     startYoutubeUpload: (request) => {
       const record: YoutubeUpload = {
         uploadId: 'preview-upload',

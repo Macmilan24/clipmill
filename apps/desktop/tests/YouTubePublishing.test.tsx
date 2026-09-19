@@ -568,3 +568,223 @@ describe('upload receipts after project removal', () => {
     );
   });
 });
+
+const generated = {
+  ...metadata,
+  title: 'Why keeping your files local matters',
+  description: 'A grounded description of this clip. #LocalFiles',
+  tags: ['local files', 'workflow'],
+  madeForKids: true,
+  containsSyntheticMedia: true,
+};
+const finishedWriting: YoutubeMetadataDraft = {
+  ...draft,
+  generationJobId: 'writing_1',
+  generationState: 'succeeded',
+  modelName: 'Qwen 3.5',
+  generatedMetadata: generated,
+};
+
+describe('optional local metadata writing', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('starts only on request, preserves edits while writing, and applies only text with fresh approval', async () => {
+    const response = deferred<YoutubeMetadataDraft>();
+    const write = vi
+      .fn<PublishingApi['draftYoutubeMetadata']>()
+      .mockImplementation((_job, _revision, action) =>
+        action === 'start' ? response.promise : Promise.resolve(draft),
+      );
+    const startUpload = vi.fn<PublishingApi['startYoutubeUpload']>();
+    const publish = vi.fn<PublishingApi['publishYoutubeUpload']>();
+    render(
+      <UploadPanel
+        {...props}
+        api={api({
+          draftYoutubeMetadata: write,
+          startYoutubeUpload: startUpload,
+          publishYoutubeUpload: publish,
+        })}
+      />,
+    );
+    const title = await screen.findByLabelText('Video title');
+    await screen.findByRole('button', { name: 'Write with Qwen' });
+    expect(write).toHaveBeenCalledExactlyOnceWith('exp_1', 7);
+    await approve();
+    const confirmation = screen.getByRole('checkbox', { name: /I reviewed rendered r7/ });
+    expect(confirmation.getAttribute('aria-checked')).toBe('true');
+    const button = screen.getByRole('button', { name: 'Write with Qwen' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(write.mock.calls.filter((call) => call[2] === 'start')).toHaveLength(1);
+    fireEvent.change(title, { target: { value: 'My title while Qwen writes' } });
+    await act(async () => response.resolve(finishedWriting));
+    await screen.findByText(generated.title);
+    expect(title).toHaveProperty('value', 'My title while Qwen writes');
+    fireEvent.click(confirmation);
+    expect(confirmation.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply suggestion' }));
+    expect(title).toHaveProperty('value', generated.title);
+    expect(screen.getByLabelText('Description & hashtags')).toHaveProperty(
+      'value',
+      generated.description,
+    );
+    expect(screen.getByLabelText('Tags')).toHaveProperty('value', 'local files, workflow');
+    expect(screen.getByLabelText('Audience').textContent).toBe('Not made for kids');
+    expect(screen.getByLabelText('Realistic altered or synthetic content').textContent).toBe('No');
+    expect(confirmation.getAttribute('aria-checked')).toBe('false');
+    expect(startUpload).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('restores a saved suggestion without running Qwen or applying it on open', async () => {
+    const write = vi.fn<PublishingApi['draftYoutubeMetadata']>().mockResolvedValue(finishedWriting);
+    render(<UploadPanel {...props} api={api({ draftYoutubeMetadata: write })} />);
+    await screen.findByText(generated.title);
+    expect(screen.getByLabelText('Video title')).toHaveProperty('value', metadata.title);
+    expect(write).toHaveBeenCalledExactlyOnceWith('exp_1', 7);
+  });
+
+  it('cancels durably, ignores an older poll, and retries the identified failed job explicitly', async () => {
+    const oldStatus = deferred<YoutubeMetadataDraft>();
+    const write = vi
+      .fn<PublishingApi['draftYoutubeMetadata']>()
+      .mockImplementation((_job, _revision, action, jobId) => {
+        if (action === 'start')
+          return Promise.resolve({
+            ...draft,
+            generationJobId: 'writing_1',
+            generationState: 'queued',
+          });
+        if (action === 'status' && jobId === 'writing_1') return oldStatus.promise;
+        if (action === 'cancel')
+          return Promise.resolve({
+            ...draft,
+            generationJobId: 'writing_1',
+            generationState: 'cancelled',
+          });
+        if (action === 'retry')
+          return Promise.resolve({
+            ...draft,
+            generationJobId: 'writing_2',
+            generationState: 'running',
+          });
+        if (action === 'status' && jobId === 'writing_2')
+          return Promise.resolve({
+            ...draft,
+            generationJobId: 'writing_2',
+            generationState: 'failed',
+            generationMessage: 'The local writer stopped. Your details are still editable.',
+          });
+        return Promise.resolve(draft);
+      });
+    render(<UploadPanel {...props} api={api({ draftYoutubeMetadata: write })} />);
+    const writeButton = await screen.findByRole('button', { name: 'Write with Qwen' });
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(writeButton));
+    expect(screen.getByText('Waiting for the local model')).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(write).toHaveBeenCalledWith('exp_1', 7, 'status', 'writing_1');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancel writing' })));
+    expect(write).toHaveBeenCalledWith('exp_1', 7, 'cancel', 'writing_1');
+    await act(async () => oldStatus.resolve(finishedWriting));
+    expect(screen.queryByText(generated.title)).toBeNull();
+    expect(screen.getByText('Writing cancelled. Your details are unchanged.')).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry writing' })));
+    expect(write).toHaveBeenCalledWith('exp_1', 7, 'retry', 'writing_1');
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(
+      screen.getByText('The local writer stopped. Your details are still editable.'),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Video title'), {
+      target: { value: 'A manually written title' },
+    });
+    expect(screen.getByLabelText('Video title')).toHaveProperty(
+      'value',
+      'A manually written title',
+    );
+  });
+
+  it('drops old export responses even when the same export job is shown at another revision', async () => {
+    const late = deferred<YoutubeMetadataDraft>();
+    const write = vi
+      .fn<PublishingApi['draftYoutubeMetadata']>()
+      .mockImplementation((_job, revision, action) =>
+        action === 'start'
+          ? late.promise
+          : Promise.resolve({
+              ...draft,
+              revision,
+              renderArtifactId: revision === 7 ? 'render_1' : 'render_2',
+              metadata: { ...metadata, title: `Revision ${revision}` },
+            }),
+      );
+    const currentApi = api({ draftYoutubeMetadata: write });
+    const view = render(<UploadPanel {...props} api={currentApi} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Write with Qwen' }));
+    view.rerender(
+      <UploadPanel
+        {...props}
+        revision={8}
+        currentRevision={8}
+        renderArtifactId="render_2"
+        api={currentApi}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('Video title')).toHaveProperty('value', 'Revision 8'),
+    );
+    await act(async () => late.resolve(finishedWriting));
+    expect(screen.queryByText(generated.title)).toBeNull();
+    expect(screen.getByLabelText('Video title')).toHaveProperty('value', 'Revision 8');
+  });
+
+  it('keeps manual upload available when the local model is unavailable', async () => {
+    const write = vi
+      .fn<PublishingApi['draftYoutubeMetadata']>()
+      .mockImplementation((_job, _revision, action) =>
+        Promise.resolve(
+          action
+            ? {
+                ...draft,
+                generationState: 'unavailable',
+                generationMessage:
+                  'Install Qwen from Models, or keep writing these details yourself.',
+              }
+            : draft,
+        ),
+      );
+    render(<UploadPanel {...props} api={api({ draftYoutubeMetadata: write })} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Write with Qwen' }));
+    await screen.findByText('Install Qwen from Models, or keep writing these details yourself.');
+    await approve();
+    expect(screen.getByRole('button', { name: 'Upload r7 privately' })).toHaveProperty(
+      'disabled',
+      false,
+    );
+    expect(write.mock.calls.filter((call) => call[2] === 'start')).toHaveLength(1);
+  });
+});
+
+it('offers manual editing instead of restarting an unavailable saved suggestion', async () => {
+  const write = vi.fn<PublishingApi['draftYoutubeMetadata']>().mockResolvedValue({
+    ...draft,
+    generationState: 'unavailable',
+    generationJobId: 'saved-writing',
+    generationMessage:
+      'This saved suggestion could not be verified. Keep editing these details yourself.',
+    modelName: 'qwen3-5-editorial-mlx',
+  });
+  render(<UploadPanel {...props} api={api({ draftYoutubeMetadata: write })} />);
+  await screen.findByText(/This saved suggestion could not be verified/);
+  expect(screen.queryByRole('button', { name: 'Write with Qwen' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Retry writing' })).toBeNull();
+  expect(screen.getByText('Qwen 3.5 · On this device · Optional')).toBeTruthy();
+  expect(screen.queryByText(/qwen3-5-editorial-mlx/)).toBeNull();
+  await approve();
+  expect(screen.getByRole('button', { name: 'Upload r7 privately' })).toHaveProperty(
+    'disabled',
+    false,
+  );
+  expect(write).toHaveBeenCalledExactlyOnceWith('exp_1', 7);
+});

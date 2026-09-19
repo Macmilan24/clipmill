@@ -1,4 +1,5 @@
 //! Channel connections and explicit publication of an immutable approved render.
+mod metadata;
 mod transfer;
 mod verified;
 

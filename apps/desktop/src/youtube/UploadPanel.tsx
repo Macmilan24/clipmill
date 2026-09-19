@@ -42,6 +42,7 @@ import {
 } from './model.js';
 import { usePublishingStatus } from './usePublishingStatus.js';
 import { useUploads } from './useUploads.js';
+import { MetadataWriter } from './MetadataWriter.js';
 
 interface UploadPanelProps {
   readonly api: PublishingApi;
@@ -235,7 +236,7 @@ export function UploadPanel(props: UploadPanelProps) {
           connection.status?.available &&
           currentUploads.length === 0 && (
             <MetadataForm
-              key={exportJobId}
+              key={`${exportJobId}:${revision}:${renderArtifactId}`}
               api={api}
               exportJobId={exportJobId}
               revision={revision}
@@ -368,6 +369,23 @@ function MetadataForm({
         <p role="status" className="flex items-center gap-2 text-xs text-[var(--cm-text-muted)]">
           <Spinner /> Reading the rendered clip’s saved metadata…
         </p>
+      )}
+      {draft && !error && (
+        <MetadataWriter
+          api={api}
+          exportJobId={exportJobId}
+          revision={revision}
+          renderArtifactId={renderArtifactId}
+          draft={draft}
+          disabled={disabled}
+          onApply={(suggestion) => {
+            dirty.current = true;
+            setTitle(suggestion.title);
+            setDescription(suggestion.description);
+            setTags(suggestion.tags.join(', '));
+            setConfirmed(false);
+          }}
+        />
       )}
       <div className="space-y-2">
         <div className="flex justify-between gap-2">

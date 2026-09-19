@@ -149,6 +149,11 @@ pub struct MetadataDraft {
     render_artifact_id: String,
     revision: u64,
     transcript_excerpt: String,
+    generation_job_id: String,
+    generation_state: String,
+    generation_message: String,
+    model_name: String,
+    generated_metadata: Option<Metadata>,
 }
 
 async fn status_call(
@@ -258,6 +263,8 @@ pub async fn draft_youtube_metadata(
     supervisor: Host<'_>,
     export_job_id: String,
     expected_revision: u64,
+    generation_action: Option<String>,
+    generation_job_id: Option<String>,
 ) -> Result<MetadataDraft, String> {
     let reply = supervisor
         .client()
@@ -265,6 +272,8 @@ pub async fn draft_youtube_metadata(
             ipc::DraftYoutubeMetadataRequest {
                 export_job_id,
                 expected_revision,
+                generation_action: generation_action.unwrap_or_default(),
+                generation_job_id: generation_job_id.unwrap_or_default(),
             },
         ))
         .await
@@ -280,6 +289,11 @@ pub async fn draft_youtube_metadata(
         render_artifact_id: draft.render_artifact_id,
         revision: draft.revision,
         transcript_excerpt: draft.transcript_excerpt,
+        generation_job_id: draft.generation_job_id,
+        generation_state: draft.generation_state,
+        generation_message: draft.generation_message,
+        model_name: draft.model_name,
+        generated_metadata: draft.generated_metadata.map(Into::into),
     })
 }
 

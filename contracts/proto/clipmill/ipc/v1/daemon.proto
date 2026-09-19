@@ -1725,6 +1725,9 @@ message ListYoutubeUploadsResponse { repeated YoutubeUploadV1 uploads = 1; }
 message DraftYoutubeMetadataRequest {
   string export_job_id = 1;
   uint64 expected_revision = 2;
+  // Empty reads the basic draft. start/status/cancel/retry refer to optional local Qwen writing.
+  string generation_action = 3;
+  string generation_job_id = 4;
 }
 message DraftYoutubeMetadataResponse {
   YoutubeVideoMetadataV1 metadata = 1;
@@ -1732,4 +1735,19 @@ message DraftYoutubeMetadataResponse {
   uint64 revision = 3;
   // A bounded transcript excerpt from the immutable rendered snapshot.
   string transcript_excerpt = 4;
+  string generation_job_id = 5;
+  // idle, queued, running, succeeded, failed, cancelled, or unavailable.
+  string generation_state = 6;
+  string generation_message = 7;
+  string model_name = 8;
+  // Present only when the generated suggestion is ready; never applies itself.
+  YoutubeVideoMetadataV1 generated_metadata = 9;
+}
+
+// No request/job/export IDs: identical immutable edits share the model cache.
+message YoutubeMetadataTaskPayloadV1 {
+  string key_version = 1;
+  string ir_artifact_id = 2;
+  string prompt_digest = 3;
+  uint32 max_output_tokens = 4;
 }

@@ -67,11 +67,20 @@ export interface StartYoutubeUpload {
   readonly rightsConfirmed: boolean;
 }
 
+export type YoutubeMetadataGenerationState =
+  'idle' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'unavailable';
+export type YoutubeMetadataGenerationAction = 'start' | 'status' | 'cancel' | 'retry';
+
 export interface YoutubeMetadataDraft {
   readonly metadata: YoutubeVideoMetadata;
   readonly renderArtifactId: string;
   readonly revision: number;
   readonly transcriptExcerpt: string;
+  readonly generationJobId?: string;
+  readonly generationState?: YoutubeMetadataGenerationState;
+  readonly generationMessage?: string;
+  readonly modelName?: string;
+  readonly generatedMetadata?: YoutubeVideoMetadata | null;
 }
 
 export interface PublishingApi {
@@ -86,6 +95,8 @@ export interface PublishingApi {
   draftYoutubeMetadata(
     exportJobId: string,
     expectedRevision: number,
+    generationAction?: YoutubeMetadataGenerationAction,
+    generationJobId?: string,
   ): Promise<YoutubeMetadataDraft>;
   listYoutubeUploads(projectId?: string): Promise<readonly YoutubeUpload[]>;
   getYoutubeUpload(uploadId: string): Promise<YoutubeUpload>;
@@ -113,8 +124,13 @@ export const publishingApi: PublishingApi = {
   updateYoutubeConnection: (connectionId, action) =>
     call('update_youtube_connection', { connectionId, action }),
   startYoutubeUpload: (request) => call('start_youtube_upload', { request }),
-  draftYoutubeMetadata: (exportJobId, expectedRevision) =>
-    call('draft_youtube_metadata', { exportJobId, expectedRevision }),
+  draftYoutubeMetadata: (exportJobId, expectedRevision, generationAction, generationJobId) =>
+    call('draft_youtube_metadata', {
+      exportJobId,
+      expectedRevision,
+      ...(generationAction ? { generationAction } : {}),
+      ...(generationJobId ? { generationJobId } : {}),
+    }),
   listYoutubeUploads: (projectId = '') => call('list_youtube_uploads', { projectId }),
   getYoutubeUpload: (uploadId) => call('get_youtube_upload', { uploadId }),
   updateYoutubeUpload: (uploadId, action) => call('update_youtube_upload', { uploadId, action }),
