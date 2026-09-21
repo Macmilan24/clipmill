@@ -1157,7 +1157,7 @@ impl From<clipmill_contracts::proto::ipc::v1::GetReadinessResponse> for Readines
 }
 
 /// Deserializable export request matching the renderer's camelCase fields.
-/// Generated wire types lack serde derives; conversion supplies their snake_case
+/// Generated wire types lack serde derives; conversion supplies their `snake_case`
 /// fields before transmission.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
