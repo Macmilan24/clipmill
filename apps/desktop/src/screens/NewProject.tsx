@@ -298,7 +298,7 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
             <div
               role="group"
               aria-label="Source location"
-              className="mb-4 flex w-fit gap-1 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-1"
+              className="import-source-tabs mb-4 flex w-fit gap-1 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-1"
             >
               {(['local', 'youtube'] as const).map((kind) => (
                 <Button

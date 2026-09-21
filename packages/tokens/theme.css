@@ -22,7 +22,7 @@
   --border: var(--cm-glass-border);
   --input: var(--cm-recessed-border);
   --ring: var(--cm-accent-focus);
-  --sidebar: var(--cm-glass);
+  --sidebar: var(--cm-rail);
   --sidebar-foreground: var(--cm-text-secondary);
   --sidebar-primary: var(--cm-accent);
   --sidebar-primary-foreground: var(--cm-accent-foreground);
@@ -82,8 +82,8 @@
   --text-meta: var(--cm-type-meta);
   --text-technical: var(--cm-type-technical);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: max(2px, calc(var(--radius) - 4px));
+  --radius-md: max(2px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
