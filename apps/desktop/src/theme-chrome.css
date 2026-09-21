@@ -1,0 +1,47 @@
+/* Surface details shared by themes with the Paper & Ink treatment. */
+:root[data-theme-chrome='ink'] [data-slot='tabs-list'],
+:root[data-theme-chrome='ink'] .import-source-tabs {
+  gap: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:root[data-theme-chrome='ink'] [data-slot='tabs-trigger'],
+:root[data-theme-chrome='ink'] .import-source-tabs button {
+  padding-inline: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-theme-chrome='ink'] [data-slot='tabs-trigger'][data-state='active'],
+:root[data-theme-chrome='ink'] .import-source-tabs button[aria-pressed='true'] {
+  border-bottom-color: var(--cm-accent);
+  color: var(--cm-text-primary);
+}
+
+:root[data-theme-chrome='ink'] .youtube-import-form {
+  padding-inline: 0;
+  padding-bottom: 0;
+  border: 0;
+  border-top: 1px solid var(--cm-glass-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+:root[data-theme-chrome='ink'] .import-preset {
+  border-color: transparent;
+  border-bottom-color: var(--cm-glass-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-theme-chrome='ink'] .import-preset:has([data-state='checked']) {
+  border-bottom-color: var(--cm-accent);
+  box-shadow: 0 1px 0 var(--cm-accent);
+}

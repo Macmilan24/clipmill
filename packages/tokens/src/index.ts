@@ -1,12 +1,6 @@
-/**
- * Pro-Studio Precision design tokens.
- *
- * tokens.json is the hand-transcribed source of truth; tokens.css and
- * tailwind-preset.css are generated from it and committed (decision R2).
- * Import the CSS once at the app entry point, then read values through the
- * custom properties rather than re-declaring literals in components.
- */
+/** Shared tokens and local workspace appearance preferences. */
 import tokens from './tokens.json' with { type: 'json' };
+import catalog from './workspace-themes.json' with { type: 'json' };
 
 export { tokens };
 
@@ -17,8 +11,31 @@ export const THEMES: readonly Theme[] = ['dark', 'light'];
 /** Matches the :root block in tokens.css, so first paint needs no correction. */
 export const DEFAULT_THEME: Theme = 'dark';
 
+export type WorkspaceTheme = keyof typeof catalog.themes;
+export const DEFAULT_WORKSPACE_THEME = catalog.default as WorkspaceTheme;
+export const WORKSPACE_THEMES = Object.entries(catalog.themes).map(([id, definition]) =>
+  Object.assign({ id: id as WorkspaceTheme }, definition),
+);
+
+export function isWorkspaceTheme(value: unknown): value is WorkspaceTheme {
+  return typeof value === 'string' && Object.hasOwn(catalog.themes, value);
+}
+
+export function workspacePalette(workspace: WorkspaceTheme, appearance: Theme) {
+  return { ...tokens.themes[appearance], ...catalog.themes[workspace][appearance] };
+}
+
 const THEME_ATTRIBUTE = 'data-theme';
 const STORAGE_KEY = 'clipmill.theme';
+const WORKSPACE_STORAGE_KEY = 'clipmill.workspace-theme';
+
+function readPreference(storage: ThemeStorage | null, key: string): string | null {
+  try {
+    return storage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function isTheme(value: unknown): value is Theme {
   return value === 'dark' || value === 'light';
@@ -35,13 +52,7 @@ export interface ThemeStorage {
   setItem(key: string, value: string): void;
 }
 
-/**
- * The one runtime theme switch. The design ships two artboards per screen, but
- * the shell must not fork components per theme: every themed value resolves
- * through a custom property, and this controller flips the single attribute
- * those properties key off. The attribute always wins over the OS preference,
- * which is only consulted to pick the very first value.
- */
+/** Theme and light/dark choices are independent and never affect project data. */
 export class ThemeController {
   readonly #root: ThemeTarget;
   readonly #storage: ThemeStorage | null;
@@ -53,11 +64,16 @@ export class ThemeController {
 
   /** Stored choice, else the OS preference, else the stylesheet default. */
   static resolveInitial(storage: ThemeStorage | null, prefersLight: boolean): Theme {
-    const stored = storage?.getItem(STORAGE_KEY);
+    const stored = readPreference(storage, STORAGE_KEY);
     if (isTheme(stored)) {
       return stored;
     }
     return prefersLight ? 'light' : DEFAULT_THEME;
+  }
+
+  static resolveWorkspace(storage: ThemeStorage | null): WorkspaceTheme {
+    const stored = readPreference(storage, WORKSPACE_STORAGE_KEY);
+    return isWorkspaceTheme(stored) ? stored : DEFAULT_WORKSPACE_THEME;
   }
 
   current(): Theme {
@@ -67,8 +83,23 @@ export class ThemeController {
 
   apply(theme: Theme): Theme {
     this.#root.setAttribute(THEME_ATTRIBUTE, theme);
-    this.#storage?.setItem(STORAGE_KEY, theme);
+    this.#remember(STORAGE_KEY, theme);
     return theme;
+  }
+
+  applyWorkspace(theme: WorkspaceTheme): WorkspaceTheme {
+    this.#root.setAttribute('data-workspace-theme', theme);
+    this.#root.setAttribute('data-theme-chrome', catalog.themes[theme].chrome);
+    this.#remember(WORKSPACE_STORAGE_KEY, theme);
+    return theme;
+  }
+
+  #remember(key: string, value: string): void {
+    try {
+      this.#storage?.setItem(key, value);
+    } catch {
+      // The current session remains usable when preference storage is unavailable.
+    }
   }
 
   toggle(): Theme {

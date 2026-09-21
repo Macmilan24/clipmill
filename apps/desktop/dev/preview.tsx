@@ -1,5 +1,11 @@
 /** Deliberately separate from main.tsx and the production build. No daemon calls. */
-import { useState, type CSSProperties } from 'react';
+import { useLayoutEffect, useState, type CSSProperties } from 'react';
+import {
+  DEFAULT_WORKSPACE_THEME,
+  ThemeController,
+  isWorkspaceTheme,
+  type WorkspaceTheme,
+} from '@clipmill/tokens';
 import { createRoot, type Root } from 'react-dom/client';
 import { JobState } from '@clipmill/contracts';
 import { SidebarInset, SidebarProvider } from '../src/components/ui/sidebar.js';
@@ -75,13 +81,23 @@ const importLoader = new ImportLoader({
     workers: [],
   }),
   chooseSourceFile: async () => null,
+  listYoutubeImports: async () => [],
 });
+const appearanceController = new ThemeController(document.documentElement);
 function Preview() {
   const search = new URLSearchParams(location.search);
   const [page, setPage] = useState(search.get('screen') ?? 'results');
   const [theme, setTheme] = useState<'dark' | 'light'>(
     search.get('theme') === 'light' ? 'light' : 'dark',
   );
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(() => {
+    const requested = search.get('workspaceTheme');
+    return isWorkspaceTheme(requested) ? requested : DEFAULT_WORKSPACE_THEME;
+  });
+  useLayoutEffect(() => {
+    appearanceController.apply(theme);
+    appearanceController.applyWorkspace(workspaceTheme);
+  }, [theme, workspaceTheme]);
   const [rows, setRows] = useState<ClipRow[]>(() => {
     const scenario = search.get('scenario');
     if (scenario === 'empty') return [];
@@ -122,7 +138,6 @@ function Preview() {
   const [destination, setDestination] = useState('/Users/demo/Movies/ClipMill');
   const [pattern, setPattern] = useState('{index}-{clip}');
   const media = search.get('media');
-  document.documentElement.dataset['theme'] = theme;
   const labels = { project: project.name, clip: 'A better question' };
   const inspect = (id: string) => {
     setCandidate(id);
@@ -383,6 +398,8 @@ function Preview() {
                   error={null}
                   theme={theme}
                   onThemeChange={setTheme}
+                  workspaceTheme={workspaceTheme}
+                  onWorkspaceThemeChange={setWorkspaceTheme}
                   onRefresh={noAction}
                 />
               )}

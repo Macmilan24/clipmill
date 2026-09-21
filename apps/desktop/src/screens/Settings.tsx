@@ -3,25 +3,22 @@ import {
   Database,
   HardDrive,
   Lock,
-  Moon,
   Palette,
   Plug,
   RefreshCw,
   ShieldCheck,
   ShieldOff,
-  Sun,
   TriangleAlert,
 } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
-import type { Theme } from '@clipmill/tokens';
+import type { Theme, WorkspaceTheme } from '@clipmill/tokens';
 
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+import { AppearancePreferences } from './AppearancePreferences.js';
 
 import './preferences.css';
 
@@ -59,6 +56,8 @@ export interface SettingsProps {
   readonly onRefresh?: () => void;
   readonly theme?: Theme;
   readonly onThemeChange?: (theme: Theme) => void;
+  readonly workspaceTheme?: WorkspaceTheme;
+  readonly onWorkspaceThemeChange?: (theme: WorkspaceTheme) => void;
   readonly integrations?: ReactNode;
 }
 
@@ -92,6 +91,8 @@ export function Settings({
   onRefresh,
   theme,
   onThemeChange,
+  workspaceTheme,
+  onWorkspaceThemeChange,
   integrations,
 }: SettingsProps): JSX.Element {
   const total =
@@ -140,70 +141,15 @@ export function Settings({
                 <SectionHeading
                   icon={<Palette />}
                   title="Appearance"
-                  detail="A quiet workspace, in light or dark."
+                  detail="Make the workspace feel like yours."
                 />
                 <CardContent className="px-5 py-5">
-                  <RadioGroup
-                    value={theme}
-                    onValueChange={(value) => {
-                      if (value === 'dark' || value === 'light') onThemeChange(value);
-                    }}
-                    aria-label="Workspace theme"
-                    className="grid grid-cols-2 gap-3"
-                  >
-                    {(['light', 'dark'] as const).map((option) => (
-                      <label
-                        key={option}
-                        htmlFor={`theme-${option}`}
-                        className={cn(
-                          'preference-theme cursor-pointer rounded-lg border p-3 transition-colors',
-                          theme === option
-                            ? 'border-[var(--color-primary)] bg-[var(--cm-accent-selected)]'
-                            : 'border-[var(--cm-glass-border)] hover:bg-[var(--cm-recessed)]',
-                        )}
-                      >
-                        <div
-                          aria-hidden="true"
-                          className={`preference-theme-preview preference-theme-${option}`}
-                        >
-                          <div className="preference-theme-rail">
-                            <span />
-                            <span />
-                            <span />
-                          </div>
-                          <div className="preference-theme-workspace">
-                            <span className="preference-theme-title" />
-                            <div className="preference-theme-canvas">
-                              <span />
-                            </div>
-                            <div className="preference-theme-track">
-                              <span />
-                              <span />
-                              <span />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2 text-xs font-medium">
-                            {option === 'dark' ? (
-                              <Moon className="size-3.5" />
-                            ) : (
-                              <Sun className="size-3.5" />
-                            )}
-                            {option === 'dark' ? 'Dark studio' : 'Light studio'}
-                          </span>
-                          <RadioGroupItem
-                            id={`theme-${option}`}
-                            value={option}
-                            aria-label={option === 'dark' ? 'Dark studio' : 'Light studio'}
-                          />
-                        </div>
-                      </label>
-                    ))}
-                  </RadioGroup>
-                  <p className="mt-3 text-[11px] text-[var(--cm-text-muted)]">
-                    Saved on this device. You can also switch from the toolbar.
-                  </p>
+                  <AppearancePreferences
+                    theme={theme}
+                    onThemeChange={onThemeChange}
+                    {...(workspaceTheme === undefined ? {} : { workspaceTheme })}
+                    {...(onWorkspaceThemeChange === undefined ? {} : { onWorkspaceThemeChange })}
+                  />
                 </CardContent>
               </Card>
             </section>
