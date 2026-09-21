@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   Cpu,
   Gauge,
   Laptop,
@@ -29,6 +30,8 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+
+import './preferences.css';
 
 import { ModelReadiness } from './ModelReadiness.js';
 import type { ConnectionState } from '../daemon/client.js';
@@ -65,13 +68,6 @@ interface ModelsDeviceProps {
 const MUTED = 'text-[var(--cm-text-muted)]';
 const SECONDARY = 'text-[var(--cm-text-secondary)]';
 
-/**
- * One headline number, with the one line of context that makes it mean
- * something.
- *
- * A tile rather than a chart: a single current value has no shape to plot, and a
- * one-bar bar chart is the classic way of spending a whole panel on a number.
- */
 function Stat({
   icon,
   label,
@@ -87,23 +83,16 @@ function Stat({
   readonly meter?: number;
 }): JSX.Element {
   return (
-    <Card className="gap-0 rounded-xl py-4">
-      <CardContent className="px-4">
+    <Card className="device-fact">
+      <CardContent className="device-fact-content">
         <div className={cn('flex items-center gap-1.5 text-meta', SECONDARY)}>
           <span className="[&_svg]:size-3.5">{icon}</span>
           {label}
         </div>
-        {/* Device names are as long as their vendors made them. Truncated with
-            the whole string on hover beats a tile that reflows to three lines. */}
-        <div
-          title={value}
-          className="mono mt-2 truncate text-lg font-(--cm-weight-heading) text-[var(--cm-text-primary)]"
-        >
+        <div title={value} className="device-fact-value">
           {value}
         </div>
         {meter === undefined ? null : (
-          // A ratio against a limit is a meter, not a two-slice pie. The track is
-          // the same recessed surface every other field uses.
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--cm-recessed)]">
             <div
               className="h-full rounded-full bg-[var(--color-primary)]"
@@ -113,7 +102,7 @@ function Stat({
         )}
         <div
           title={typeof detail === 'string' ? detail : undefined}
-          className={cn('mono mt-2 truncate text-technical', MUTED)}
+          className={cn('mt-1 text-technical', MUTED)}
         >
           {detail}
         </div>
@@ -139,14 +128,6 @@ function MemoryStat({ profile }: { readonly profile: DeviceProfile }): JSX.Eleme
   );
 }
 
-/**
- * Measured decode throughput, one bar per codec and height.
- *
- * A bar chart because the job is comparing magnitude, and one hue because the
- * bars are the same measurement of different inputs — colouring them by value
- * would spend the identity channel re-encoding what bar length already shows.
- * Every bar carries its own number, so nothing here depends on reading a colour.
- */
 const DECODE_CONFIG: ChartConfig = {
   fps: { label: 'Throughput', color: 'var(--color-primary)' },
 };
@@ -170,9 +151,7 @@ function DecodeCard({ profile }: { readonly profile: DeviceProfile }): JSX.Eleme
             <EmptyHeader>
               <EmptyTitle className="text-body">No decode benchmarks in this profile</EmptyTitle>
               <EmptyDescription>
-                Throughput is measured against the pinned FFmpeg build. This profile was taken
-                without it, so there is nothing to compare — rescanning on a machine that has it
-                fills this in.
+                Install the pinned FFmpeg build, then rescan to measure decode speed.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -252,14 +231,6 @@ function DecodeCard({ profile }: { readonly profile: DeviceProfile }): JSX.Eleme
   );
 }
 
-/**
- * One capability, one tile.
- *
- * The table this replaces made a reader parse four columns to learn one thing:
- * whether the machine can do it. State is a dot and a word — never colour alone —
- * and the reason a backend was refused sits where it belongs, under the backend
- * that was refused.
- */
 function CapabilityTile({
   capability,
   backend,
@@ -304,9 +275,6 @@ function CapabilitiesCard({ profile }: { readonly profile: DeviceProfile }): JSX
         </span>
       </CardHeader>
       <CardContent>
-        <p className={cn('mb-3 text-meta', SECONDARY)}>
-          Backends are admitted by measurement on this machine, never by a per-platform assumption.
-        </p>
         {rows.length === 0 ? (
           <p className={cn('text-meta', MUTED)}>This profile predates capability probing.</p>
         ) : (
@@ -356,25 +324,32 @@ function LocalLockCard({
               ? 'Network operations have started in this engine session. This includes YouTube imports, channel sign-in, publishing and explicitly enabled cloud analysis; importing a video does not enable cloud AI.'
               : 'Reconnect to check whether network operations have started in this engine session.'}
         </p>
-        <p className={cn('mt-2 text-[11px] leading-relaxed', MUTED)}>
-          This records cloud analysis, source imports and channel operations, not a network firewall
-          or a count of bytes sent. Model downloads are managed separately.
-        </p>
-        <Separator className="my-3 bg-[var(--cm-glass-border)]" />
-        <dl className="grid gap-2">
-          {(
-            [
-              ['Profile attestation', isAttested(profile) ? 'ed25519' : EM_DASH],
-              ['Hardware fingerprint', shortDigest(profile.phase0?.hardware_fingerprint)],
-              ['Measurement generation', String(profile.phase0?.measurement_generation ?? EM_DASH)],
-            ] as const
-          ).map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between gap-2">
-              <dt className={cn('text-meta', SECONDARY)}>{label}</dt>
-              <dd className="mono truncate text-technical">{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <details className="preference-disclosure mt-3">
+          <summary>
+            <ChevronDown className="size-3.5" /> Privacy and attestation details
+          </summary>
+          <p className={cn('mt-3 text-[11px] leading-relaxed', MUTED)}>
+            Records task execution, not measured traffic or a network firewall. Model downloads are
+            managed separately.
+          </p>
+          <dl className="mt-3 grid gap-2">
+            {(
+              [
+                ['Profile attestation', isAttested(profile) ? 'ed25519' : EM_DASH],
+                ['Hardware fingerprint', shortDigest(profile.phase0?.hardware_fingerprint)],
+                [
+                  'Measurement generation',
+                  String(profile.phase0?.measurement_generation ?? EM_DASH),
+                ],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-2">
+                <dt className={cn('text-meta', SECONDARY)}>{label}</dt>
+                <dd className="mono truncate text-technical">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       </CardContent>
     </Card>
   );
@@ -446,15 +421,12 @@ export function ModelsDevice({
   const connected = state.status === 'connected';
 
   return (
-    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6">
+    <div className="preferences-page models-page">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cm-text-muted)]">
-            Studio infrastructure
-          </p>
           <h1 className="workspace-title">Models &amp; Device</h1>
           <p className="workspace-subtitle mt-1 max-w-[620px]">
-            The intelligence behind your clips, and the machine that runs it.
+            Manage local models and check your device.
           </p>
         </div>
         <StatusBadge tone={connected ? 'success' : 'warning'}>
@@ -471,7 +443,7 @@ export function ModelsDevice({
               Your device
             </h2>
             <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">
-              A measured snapshot. Rescan after your hardware or available resources change.
+              Hardware and available memory at the last scan.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={onRescan} disabled={busy || !connected}>
@@ -524,7 +496,7 @@ export function ModelsDevice({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="device-facts">
               <Stat
                 icon={<Zap />}
                 label="Accelerator"
@@ -551,36 +523,44 @@ export function ModelsDevice({
                 }
               />
             </div>
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-              <div className="min-w-0 space-y-4">
-                <DecodeCard profile={profile} />
-                <CapabilitiesCard profile={profile} />
+            <LocalLockCard state={state} profile={profile} />
+            <details className="preference-disclosure device-measurements">
+              <summary>
+                <ChevronDown className="size-4" />
+                <span>Device measurements</span>
+                <span className="preference-disclosure-hint">
+                  Performance, capabilities and runtimes
+                </span>
+              </summary>
+              <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                <div className="min-w-0 space-y-4">
+                  <DecodeCard profile={profile} />
+                  <CapabilitiesCard profile={profile} />
+                </div>
+                <div className="min-w-0 space-y-4">
+                  <Card className="rounded-xl">
+                    <CardHeader>
+                      <CardTitle className="text-section-title">Shared memory</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="mono text-page-title font-(--cm-weight-heading)">
+                        {formatRate(profile.phase0?.shared_memory?.bytes_per_second)}
+                      </div>
+                      <p className={cn('mt-1 text-meta leading-relaxed', SECONDARY)}>
+                        Measured transfer speed between the engine and a worker.
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <RuntimesCard profile={profile} />
+                </div>
               </div>
-              <div className="min-w-0 space-y-4">
-                <LocalLockCard state={state} profile={profile} />
-                <Card className="rounded-xl">
-                  <CardHeader>
-                    <CardTitle className="text-section-title">Shared memory</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mono text-page-title font-(--cm-weight-heading)">
-                      {formatRate(profile.phase0?.shared_memory?.bytes_per_second)}
-                    </div>
-                    <p className={cn('mt-1 text-meta leading-relaxed', SECONDARY)}>
-                      Measured transfer between the engine and a worker. Frames pass through shared
-                      memory without an extra copy through the socket.
-                    </p>
-                  </CardContent>
-                </Card>
-                <RuntimesCard profile={profile} />
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--cm-glass-border)] pt-3 text-[11px] text-[var(--cm-text-muted)]">
+                <p>Measurements describe this profile, not live resource use.</p>
+                <p className="mono" title={artifactId ?? undefined}>
+                  device_profile · {shortDigest(artifactId ?? undefined)}
+                </p>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--cm-glass-border)] pt-3 text-[10px] text-[var(--cm-text-muted)]">
-              <p>Measurements describe this profile, not live resource use.</p>
-              <p className="mono" title={artifactId ?? undefined}>
-                device_profile · {shortDigest(artifactId ?? undefined)}
-              </p>
-            </div>
+            </details>
           </>
         )}
       </section>

@@ -15,9 +15,17 @@
  */
 import {
   ArrowLeft,
+  Captions as CaptionsIcon,
   Check,
-  ChevronLeft,
-  ChevronRight,
+  Film,
+  Scan,
+  Scissors,
+  StepBack,
+  StepForward,
+  Volume2,
+  Info,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
   Redo2,
@@ -35,6 +43,7 @@ import { CompositionCanvas } from '../editor/CompositionCanvas.js';
 import { useDraftAudio } from '../editor/useDraftAudio.js';
 import { Captions } from '../editor/Captions.js';
 import { Reframe } from '../editor/Reframe.js';
+import '../editor/workspace.css';
 import { snapToWord, trimEndAt, trimStartAt } from '../editor/commands.js';
 import type { EditCommandJson } from '../daemon/client.js';
 import type { PreviewPlan } from '../daemon/client.js';
@@ -120,6 +129,7 @@ export function Editor({
     setFrame(next);
   }, []);
   const [playing, setPlaying] = useState(false);
+  const [focusedPreview, setFocusedPreview] = useState(false);
   const [playbackProblem, setPlaybackProblem] = useState<string | null>(null);
   // What is drawn is always a frame the program has. A trim can shorten the
   // program under a playhead that did not move, and between that render and
@@ -138,6 +148,7 @@ export function Editor({
     playbackFailed.current = false;
     setPreparingPreview(false);
     setPlaying(false);
+    setFocusedPreview(false);
     setPlaybackProblem(null);
   }, [docId, updateFrame]);
 
@@ -265,6 +276,7 @@ export function Editor({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) setFocusedPreview(false);
       const target = event.target;
       // Text, range inputs and Radix controls own their keyboard interactions.
       if (
@@ -373,7 +385,11 @@ export function Editor({
   }, [seek, stopWithProblem]);
 
   if (loading) {
-    return <div className="p-8 text-sm text-[var(--cm-ink-2)]">Fetching the preview plan…</div>;
+    return (
+      <div className="editor-loading" role="status">
+        Opening your clip…
+      </div>
+    );
   }
 
   if (!plan || !docId) {
@@ -388,7 +404,7 @@ export function Editor({
             </EmptyTitle>
             <EmptyDescription>
               {problem ??
-                'Approving a clip in the Inspector creates its edit document and opens it here. Any edit already made can be reopened below.'}
+                'Choose a saved edit below, or approve a clip in Results to start editing.'}
             </EmptyDescription>
           </EmptyHeader>
           {picker}
@@ -403,9 +419,9 @@ export function Editor({
   const proxyUrl = segment ? (proxyUrls.get(segment.sourceFingerprint) ?? null) : null;
 
   return (
-    <div className="editor-workspace">
+    <div className="editor-workspace" data-preview-focused={focusedPreview}>
       <header className="workspace-heading editor-heading">
-        <div className="flex min-w-0 items-center gap-4">
+        <div className="editor-identity">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -416,7 +432,7 @@ export function Editor({
             <ArrowLeft />
           </Button>
           <div className="min-w-0">
-            <h1 className="truncate text-[15px] font-semibold" data-testid="clip-name">
+            <h1 className="truncate text-[15px] font-medium" data-testid="clip-name">
               {labels?.clip ?? 'Clip editor'}
             </h1>
             <p className="workspace-subtitle truncate">
@@ -425,15 +441,12 @@ export function Editor({
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <span
-            role="status"
-            className="flex items-center gap-1.5 text-[11px] text-[var(--cm-text-secondary)]"
-          >
-            {!busy && <Check className="size-3.5" />}{' '}
-            {busy ? 'Saving…' : `Saved · r${plan.revision}`}
+        <div className="editor-header-actions">
+          <span role="status" className="editor-save-state">
+            {!busy && !problem && <Check className="size-3.5" />}{' '}
+            {busy ? 'Saving…' : problem ? 'Check edit status' : `Saved · r${plan.revision}`}
           </span>
-          <div className="flex border-x border-[var(--cm-glass-border)] px-2">
+          <div className="editor-history">
             <Button
               size="icon-sm"
               variant="ghost"
@@ -455,6 +468,16 @@ export function Editor({
               <Redo2 />
             </Button>
           </div>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => setFocusedPreview((focused) => !focused)}
+            aria-label={focusedPreview ? 'Restore editing panels' : 'Focus preview'}
+            aria-pressed={focusedPreview}
+            title={focusedPreview ? 'Restore editing panels (Esc)' : 'Focus preview'}
+          >
+            {focusedPreview ? <Minimize2 /> : <Maximize2 />}
+          </Button>
           {onExport && (
             <Button size="sm" onClick={onExport} disabled={busy} aria-label="Export this clip">
               <Upload className="size-4" />
@@ -464,19 +487,28 @@ export function Editor({
         </div>
       </header>
       {(problem || playbackProblem || draftAudio.problem || segment?.framingWarning) && (
-        <p
-          role="alert"
-          className="border-b border-[var(--cm-glass-border)] bg-[var(--cm-glass)] px-6 py-2 text-xs text-[var(--cm-danger-ink)]"
-        >
+        <p role="alert" className="editor-alert">
           {problem || playbackProblem || draftAudio.problem || segment?.framingWarning}
         </p>
       )}
       <div className="editor-body">
         <section className="editor-viewer" aria-label="Clip preview">
-          <div className="flex items-center justify-between text-[11px] text-[var(--cm-text-muted)]">
-            <span>Draft preview · r{plan.revision}</span>
-            <span className="mono">
-              {plan.width} × {plan.height} · {(plan.rateNum / plan.rateDen).toFixed(2)} fps
+          <div className="editor-viewer-heading">
+            <span className="editor-monitor-label">
+              <Film aria-hidden="true" /> Program
+            </span>
+            <span className="editor-monitor-metadata">
+              {segment && plan.segments.length > 1 && (
+                <span className="editor-monitor-position">
+                  Section {String(plan.segments.indexOf(segment) + 1).padStart(2, '0')}
+                  <span aria-hidden="true"> / </span>
+                  <span className="sr-only"> of </span>
+                  {String(plan.segments.length).padStart(2, '0')}
+                </span>
+              )}
+              <span>
+                {plan.width} × {plan.height}
+              </span>
             </span>
           </div>
           <div className="editor-stage-wrap">
@@ -501,20 +533,6 @@ export function Editor({
               }}
             />
           </div>
-          <p className="text-center text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
-            Fast proxy preview with your gain edits.{' '}
-            {onExport ? (
-              <button
-                type="button"
-                onClick={onExport}
-                className="text-[var(--cm-accent)] underline underline-offset-2"
-              >
-                Render r{plan.revision} for final picture and mastered audio.
-              </button>
-            ) : (
-              'Review the rendered file for final picture and mastered audio.'
-            )}
-          </p>
           <Transport
             plan={plan}
             frame={frame}
@@ -524,14 +542,44 @@ export function Editor({
             onSeek={seek}
             onToggle={togglePlayback}
           />
+          <details className="editor-preview-details">
+            <summary>
+              <Info aria-hidden="true" /> About this preview
+            </summary>
+            <div>
+              <p>Fast proxy preview with your gain edits.</p>
+              <p className="mono">
+                Revision {plan.revision} · {(plan.rateNum / plan.rateDen).toFixed(2)} fps
+              </p>
+              {onExport ? (
+                <button type="button" onClick={onExport}>
+                  Render r{plan.revision} for final picture and mastered audio.
+                </button>
+              ) : (
+                <p>Review the rendered file for final picture and mastered audio.</p>
+              )}
+            </div>
+          </details>
         </section>
         <aside className="editor-properties" aria-label="Edit controls">
-          <Tabs defaultValue="captions" className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="m-3 w-[calc(100%-1.5rem)] shrink-0">
-              <TabsTrigger value="reframe">Reframe</TabsTrigger>
-              <TabsTrigger value="captions">Captions</TabsTrigger>
-              <TabsTrigger value="audio">Audio</TabsTrigger>
-              <TabsTrigger value="clip">Clip</TabsTrigger>
+          <Tabs defaultValue="captions" className="editor-tool-tabs">
+            <TabsList className="editor-tool-list" aria-label="Editing tools">
+              <TabsTrigger value="captions">
+                <CaptionsIcon aria-hidden="true" />
+                Captions
+              </TabsTrigger>
+              <TabsTrigger value="reframe">
+                <Scan aria-hidden="true" />
+                Reframe
+              </TabsTrigger>
+              <TabsTrigger value="audio">
+                <Volume2 aria-hidden="true" />
+                Audio
+              </TabsTrigger>
+              <TabsTrigger value="clip">
+                <Scissors aria-hidden="true" />
+                Clip
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="reframe">
               <Reframe
@@ -551,55 +599,60 @@ export function Editor({
               <Audio plan={plan} frame={frame} busy={busy} onApply={onApply} />
             </TabsContent>
             <TabsContent value="clip">
-              <div className="flex flex-col gap-3 p-4 text-sm">
-                <dl className="space-y-2 text-xs">
-                  <Row label="Output" value={`${plan.width}×${plan.height}`} />
-                  <Row label="Rate" value={`${(plan.rateNum / plan.rateDen).toFixed(3)} fps`} />
-                  <Row label="Frames" value={String(plan.frameCount)} />
-                  <Row
-                    label="Layout"
-                    value={secondaryCrop ? 'Two portraits' : crop ? 'Face crop' : 'Fit'}
-                  />
-                  <Row label="Gain here" value={`${gainAt(plan, frame).toFixed(1)} dB`} />
-                  {segment && (
+              <div className="editor-panel editor-clip-panel">
+                <section>
+                  <h2 className="editor-panel-title">Trim your clip</h2>
+                  <p className="editor-help">
+                    Set the playhead, then trim. Cuts snap to word boundaries.
+                  </p>
+                  <div className="editor-trim-actions">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || trimStartAt(plan, snapToWord(plan, frame)) === null}
+                      onClick={() => {
+                        const command = trimStartAt(plan, snapToWord(plan, frame));
+                        if (command) {
+                          onApply(command);
+                        }
+                      }}
+                    >
+                      Trim start here
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || trimEndAt(plan, snapToWord(plan, frame)) === null}
+                      onClick={() => {
+                        const command = trimEndAt(plan, snapToWord(plan, frame));
+                        if (command) {
+                          onApply(command);
+                        }
+                      }}
+                    >
+                      Trim end here
+                    </Button>
+                  </div>
+                </section>
+                <details className="editor-details">
+                  <summary>Clip details</summary>
+                  <dl className="editor-detail-list">
+                    <Row label="Output" value={`${plan.width}×${plan.height}`} />
+                    <Row label="Rate" value={`${(plan.rateNum / plan.rateDen).toFixed(3)} fps`} />
+                    <Row label="Frames" value={String(plan.frameCount)} />
                     <Row
-                      label="Source window"
-                      value={`${sourceClock(segment.inTicks)} – ${sourceClock(segment.outTicks)}`}
+                      label="Layout"
+                      value={secondaryCrop ? 'Two portraits' : crop ? 'Face crop' : 'Fit'}
                     />
-                  )}
-                </dl>
-                <p className="text-xs text-[var(--cm-ink-2)]">
-                  Trimming snaps to a caption boundary rather than to the pointer: a cut inside a
-                  word is a cut a viewer hears.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy || trimStartAt(plan, snapToWord(plan, frame)) === null}
-                    onClick={() => {
-                      const command = trimStartAt(plan, snapToWord(plan, frame));
-                      if (command) {
-                        onApply(command);
-                      }
-                    }}
-                  >
-                    Trim start here
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy || trimEndAt(plan, snapToWord(plan, frame)) === null}
-                    onClick={() => {
-                      const command = trimEndAt(plan, snapToWord(plan, frame));
-                      if (command) {
-                        onApply(command);
-                      }
-                    }}
-                  >
-                    Trim end here
-                  </Button>
-                </div>
+                    <Row label="Gain here" value={`${gainAt(plan, frame).toFixed(1)} dB`} />
+                    {segment && (
+                      <Row
+                        label="Source window"
+                        value={`${sourceClock(segment.inTicks)} – ${sourceClock(segment.outTicks)}`}
+                      />
+                    )}
+                  </dl>
+                </details>
               </div>
             </TabsContent>
           </Tabs>
@@ -607,11 +660,11 @@ export function Editor({
       </div>
 
       <div className="editor-timeline">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-[12px] font-medium">Timeline</h2>
-          <span className="text-[10px] text-[var(--cm-text-muted)]">
-            Space to play · ← → step · Shift to step 10 frames
-          </span>
+        <div className="editor-timeline-heading">
+          <h2>
+            <Film aria-hidden="true" /> Timeline
+          </h2>
+          <span>Space to play · ← → step · Shift to step 10 frames</span>
         </div>
         <Lanes plan={plan} frame={frame} onSeek={seek} />
       </div>
@@ -716,7 +769,7 @@ function Stage({
           />
         </div>
       ) : (
-        <p className="grid h-full place-items-center p-6 text-center text-sm text-[var(--cm-ink-2)]">
+        <p className="grid h-full place-items-center p-6 text-center text-sm text-[var(--cm-viewer-ink)]">
           This recording has no proxy, so there is nothing to play.
         </p>
       )}
@@ -810,7 +863,7 @@ function Transport({
   readonly onToggle: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2" aria-label="Transport">
+    <div className="editor-transport" aria-label="Transport">
       <input
         type="range"
         aria-label="Scrub"
@@ -821,7 +874,7 @@ function Transport({
         onChange={(event) => onSeek(Number(event.target.value))}
         className="studio-range"
       />
-      <div className="flex items-center justify-center gap-3">
+      <div className="editor-transport-row">
         <Button
           variant="ghost"
           size="sm"
@@ -829,7 +882,7 @@ function Transport({
           aria-label="Previous frame"
           disabled={disabled || frame === 0}
         >
-          <ChevronLeft className="size-4" />
+          <StepBack className="size-4" />
         </Button>
         <Button
           size="icon-sm"
@@ -846,11 +899,11 @@ function Transport({
           aria-label="Next frame"
           disabled={disabled || frame >= plan.frameCount - 1}
         >
-          <ChevronRight className="size-4" />
+          <StepForward className="size-4" />
         </Button>
-        <span className="ml-3 font-mono text-xs text-[var(--cm-ink-2)]" data-testid="timecode">
+        <span className="editor-timecode" data-testid="timecode">
           {timecode(plan, frame)}{' '}
-          <span className="text-[var(--cm-text-muted)]">/ {timecode(plan, plan.frameCount)}</span>
+          <span className="editor-duration">/ {timecode(plan, plan.frameCount)}</span>
           <span className="sr-only">
             {' '}
             · frame {frame} of {plan.frameCount}
@@ -895,15 +948,23 @@ function Lanes({
     {
       id: 'video',
       label: 'Video',
-      body: (
-        <span className="absolute inset-0 flex items-center rounded-sm bg-[var(--cm-accent-selected)] px-2 text-[10px] text-[var(--cm-text-secondary)]">
-          Source footage
+      icon: <Film aria-hidden="true" />,
+      body: plan.segments.map((part, index) => (
+        <span
+          key={part.segmentId}
+          className="editor-video-block"
+          title={`Section ${index + 1} · Source ${sourceClock(part.inTicks)}–${sourceClock(part.outTicks)}`}
+          style={span(part.firstFrame, part.endFrame)}
+        >
+          <span className="editor-block-number">{String(index + 1).padStart(2, '0')}</span>
+          <span>Source footage</span>
         </span>
-      ),
+      )),
     },
     {
       id: 'reframe',
       label: 'Framing',
+      icon: <Scan aria-hidden="true" />,
       body: cropRuns.map((run) => (
         <span
           key={run.first}
@@ -917,6 +978,7 @@ function Lanes({
     {
       id: 'captions',
       label: 'Captions',
+      icon: <CaptionsIcon aria-hidden="true" />,
       body: plan.cues.map((cue) => (
         <span
           key={cue.cueId}
@@ -931,6 +993,7 @@ function Lanes({
     {
       id: 'audio',
       label: 'Audio',
+      icon: <Volume2 aria-hidden="true" />,
       body: (
         <>
           <span className="absolute inset-x-0 top-1/2 h-px bg-[var(--cm-text-muted)]/40" />
@@ -949,7 +1012,7 @@ function Lanes({
   return (
     <section className="timeline-grid" aria-label="Timeline">
       <span />
-      <div className="flex justify-between font-mono text-[10px] text-[var(--cm-text-muted)]">
+      <div className="editor-timeline-ruler">
         {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
           <span key={ratio}>{timecode(plan, Math.floor(plan.frameCount * ratio))}</span>
         ))}
@@ -958,6 +1021,7 @@ function Lanes({
         <Track
           key={lane.id}
           label={lane.label}
+          icon={lane.icon}
           playhead={playhead}
           frame={frame}
           frameCount={plan.frameCount}
@@ -972,6 +1036,7 @@ function Lanes({
 
 function Track({
   label,
+  icon,
   playhead,
   frame,
   frameCount,
@@ -979,6 +1044,7 @@ function Track({
   children,
 }: {
   readonly label: string;
+  readonly icon: ReactNode;
   readonly playhead: number;
   readonly frame: number;
   readonly frameCount: number;
@@ -987,10 +1053,14 @@ function Track({
 }) {
   return (
     <>
-      <span className="timeline-label">{label}</span>
+      <span className="timeline-label">
+        {icon}
+        <span>{label}</span>
+      </span>
       <button
         type="button"
         className="timeline-track text-left"
+        data-track={label.toLowerCase()}
         aria-label={`Seek in ${label.toLowerCase()} track`}
         onClick={(event) => {
           if (!event.detail) return;

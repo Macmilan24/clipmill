@@ -4,7 +4,6 @@ import { type JSX, useState } from 'react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { cn } from '@/lib/utils';
 
-import { formatBytes } from '../deviceProfile.js';
 import {
   EM_DASH,
   type LibraryProject,
@@ -12,7 +11,6 @@ import {
   describeStatus,
   formatDuration,
   formatRelative,
-  formatVideoSpec,
 } from './model.js';
 
 /**
@@ -35,26 +33,24 @@ function Thumbnail({
   const usable = src !== null && !broken;
 
   return (
-    <div className="relative aspect-[352/166] w-full overflow-hidden rounded-[10px] bg-[var(--cm-recessed)]">
+    <div className="project-film-frame relative aspect-video w-full overflow-hidden rounded-[4px] bg-[var(--cm-viewer)] text-[var(--cm-viewer-ink)]">
       {usable ? (
         <img
           src={src}
           alt=""
           loading="lazy"
-          // Desaturated in both themes, per the design: a wall of full-colour
-          // stills competes with the interface for attention.
-          className="size-full object-cover saturate-[0.72]"
+          className="size-full object-cover"
           onError={() => {
             setBroken(true);
           }}
         />
       ) : (
         <div className="flex size-full items-center justify-center">
-          <Film className="size-6 text-[var(--cm-text-disabled)]" />
+          <Film className="size-6 opacity-60" />
         </div>
       )}
       {duration === EM_DASH ? null : (
-        <span className="mono absolute bottom-2 left-2 rounded-[4px] bg-[color-mix(in_srgb,#000_62%,transparent)] px-1.5 py-0.5 text-technical text-white">
+        <span className="mono absolute right-2 bottom-2 rounded-[3px] bg-[var(--cm-viewer)] px-1.5 py-0.5 text-technical text-[var(--cm-viewer-ink)]">
           {duration}
         </span>
       )}
@@ -71,8 +67,6 @@ export function ProjectCard({
 }): JSX.Element {
   const status = describeStatus(entry.status);
   const activity = describeActivity(entry.status);
-  const spec = formatVideoSpec(entry.sourceMap);
-  const size = entry.source === null ? EM_DASH : formatBytes(entry.source.byteSize);
 
   return (
     <button
@@ -80,38 +74,35 @@ export function ProjectCard({
       onClick={() => {
         onOpen(entry);
       }}
-      // The design's restrained hover: lifted 2px, the surface a step brighter,
-      // the shadow a step deeper. Every value comes from a token, so a change to
-      // the glass scale moves the resting and hovered states together.
-      className="glass block rounded-[var(--cm-radius-card)] p-3 text-left transition-[transform,background-color,box-shadow] hover:bg-[var(--cm-glass-elevated)] hover:border-[var(--cm-text-muted)] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      className="project-film-card group block min-w-0 rounded-[6px] p-1 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <div className="relative">
         <Thumbnail src={entry.thumbnail} duration={formatDuration(entry.sourceMap)} />
-        <StatusBadge tone={status.tone} className="glass absolute top-2 right-2">
-          {status.label}
-        </StatusBadge>
       </div>
 
-      <div className="px-1 pt-3">
-        <h2 className="truncate text-card-title font-(--cm-weight-heading)">
+      <div className="border-b border-[var(--cm-glass-border)] px-1 pt-3 pb-3">
+        <h2
+          className="line-clamp-2 text-card-title font-(--cm-weight-heading) leading-snug"
+          title={entry.project.name}
+        >
           {entry.project.name}
         </h2>
-        <p
-          className={cn(
-            'mono mt-1 truncate text-meta',
-            activity === null ? 'text-[var(--cm-text-secondary)]' : 'text-[var(--color-primary)]',
-          )}
-        >
-          {activity ?? `${spec} · ${size}`}
-        </p>
+        {activity !== null && (
+          <p
+            className={cn(
+              'mono mt-1 truncate text-meta',
+              activity === null ? 'text-[var(--cm-text-secondary)]' : 'text-[var(--color-primary)]',
+            )}
+          >
+            {activity}
+          </p>
+        )}
 
-        <div className="mt-3 flex items-center justify-between border-t border-[var(--cm-glass-border)] pt-2.5">
-          <span className="mono text-technical text-[var(--cm-text-muted)]">
-            Created {formatRelative(entry.project.createdUnixMillis)}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+          <span className="text-meta text-[var(--cm-text-muted)]">
+            {formatRelative(entry.project.createdUnixMillis)}
           </span>
-          {activity === null ? null : (
-            <span className="mono text-technical text-[var(--cm-text-muted)]">{spec}</span>
-          )}
         </div>
       </div>
     </button>
