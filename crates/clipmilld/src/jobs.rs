@@ -133,7 +133,7 @@ impl ResourceCapacity {
         }
     }
 
-    /// What this machine can actually lend a task right now.
+    /// Apply headroom to a memory budget and bound built-in parallelism.
     ///
     /// Disk is a parameter rather than a constant because it used to be one:
     /// a flat 512 MiB, on every machine, whatever it had free. Delivery
@@ -159,6 +159,25 @@ impl ResourceCapacity {
             accelerator_mask: 0,
             vram_bytes: 0,
         }
+    }
+
+    /// macOS can reclaim pageable memory and compress inactive applications.
+    /// A free-memory snapshot (often taken before a model was loaded) is not a
+    /// hardware ceiling. Bound each admission by 75% of physical RAM instead;
+    /// never add swap to the budget. Linux retains `MemAvailable`.
+    pub(crate) fn for_device(
+        platform: &str,
+        logical_cores: u32,
+        total_memory_bytes: u64,
+        available_memory_bytes: u64,
+        available_disk_bytes: u64,
+    ) -> Self {
+        let memory = if platform == "macos" {
+            total_memory_bytes
+        } else {
+            available_memory_bytes.min(total_memory_bytes)
+        };
+        Self::measured(logical_cores, memory, available_disk_bytes)
     }
 
     pub(crate) fn with_available_backends(mut self, backends: &BTreeSet<String>) -> Self {
@@ -2441,7 +2460,7 @@ pub(crate) struct SchedulerHandle {
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     verified_capacity: Arc<Mutex<Option<ResourceCapacity>>>,
     /// Startup resource observations, not user-configured RAM limits.
-    /// Free memory is replaced by each verified profile; CPU/disk stay bounded.
+    /// The memory budget is replaced by each verified profile; CPU/disk stay bounded.
     startup_capacity: ResourceCapacity,
     /// Which implementation each speech stage is bound to, as last verified
     /// (D19). Read when a job is planned, never when a task is leased: a
@@ -2458,8 +2477,10 @@ impl SchedulerHandle {
     pub(crate) fn apply_device_profile(&self, profile: &VerifiedDeviceProfile) {
         // As in `daemon.rs`: the profile says nothing about free space, so the
         // figure measured when this scheduler started is the one to keep.
-        let measured = ResourceCapacity::measured(
+        let measured = ResourceCapacity::for_device(
+            &profile.platform_os,
             profile.logical_cores,
+            profile.total_memory_bytes,
             profile.available_memory_bytes,
             self.startup_capacity.disk_bytes,
         )
@@ -2469,8 +2490,8 @@ impl SchedulerHandle {
                 .cpu_threads
                 .min(self.startup_capacity.cpu_threads)
                 .max(1),
-            // Free memory is a fresh observation, not a permanent boot-time
-            // ceiling. A new profile may observe memory released since startup.
+            // Apply the same platform policy as startup and readiness. A
+            // cached available-memory observation cannot cap macOS admission.
             ram_bytes: measured.ram_bytes,
             disk_bytes: measured.disk_bytes.min(self.startup_capacity.disk_bytes),
             accelerator_mask: measured.accelerator_mask,
@@ -3410,7 +3431,9 @@ mod resource_tests {
         handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
             hardware_fingerprint: String::new(),
             measurement_generation: 1,
+            platform_os: "linux".to_owned(),
             logical_cores: 4,
+            total_memory_bytes: 24 << 30,
             available_memory_bytes: 16 << 30,
             available_backends: BTreeSet::from(["metal".to_owned()]),
             bindings: crate::selection::Bindings::portable(),
@@ -3438,7 +3461,9 @@ mod resource_tests {
             handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
                 hardware_fingerprint: String::new(),
                 measurement_generation: free_gib,
+                platform_os: "linux".to_owned(),
                 logical_cores: 64,
+                total_memory_bytes: 24 << 30,
                 available_memory_bytes: free_gib << 30,
                 available_backends: BTreeSet::new(),
                 bindings: crate::selection::Bindings::portable(),
@@ -3448,6 +3473,44 @@ mod resource_tests {
             assert_eq!(measured.cpu_threads, 4);
             assert_eq!(measured.disk_bytes, 10 << 30);
         }
+    }
+
+    #[test]
+    fn macos_admission_survives_low_free_memory_and_profile_refresh() {
+        let startup = ResourceCapacity::for_device("macos", 4, 24 << 30, 2 << 30, 10 << 30);
+        let handle = super::SchedulerHandle {
+            notify: Arc::new(tokio::sync::Notify::new()),
+            capacity_update: Arc::new(Mutex::new(None)),
+            verified_capacity: Arc::new(Mutex::new(None)),
+            startup_capacity: startup,
+            bindings: Arc::new(Mutex::new(crate::selection::Bindings::portable())),
+        };
+        assert_eq!(handle.machine_capacity().ram_bytes, 18 << 30);
+        for free_gib in [16, 1, 0] {
+            handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
+                hardware_fingerprint: String::new(),
+                measurement_generation: 1,
+                platform_os: "macos".to_owned(),
+                logical_cores: 4,
+                total_memory_bytes: 24 << 30,
+                available_memory_bytes: free_gib << 30,
+                available_backends: BTreeSet::from(["metal".to_owned()]),
+                bindings: crate::selection::Bindings::portable(),
+            });
+            let mut capacity = handle.machine_capacity();
+            assert_eq!(capacity.ram_bytes, 18 << 30);
+            let mut model = ResourceDeclaration::demo();
+            model.cpu_threads = 1;
+            model.ram_bytes = 5_977_071_067 + (2 << 30);
+            assert!(capacity.reserve(&model));
+            assert!(capacity.reserve(&model));
+            assert!(
+                !capacity.reserve(&model),
+                "declared reservations still bind"
+            );
+        }
+        let small_mac = ResourceCapacity::for_device("macos", 4, 8 << 30, 7 << 30, 10 << 30);
+        assert_eq!(small_mac.ram_bytes, 6 << 30);
     }
 
     #[test]
