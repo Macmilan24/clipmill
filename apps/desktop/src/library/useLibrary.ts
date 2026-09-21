@@ -1,16 +1,7 @@
 /**
- * The Library's data, kept current without polling.
- *
- * The daemon already streams every task transition, so a list that re-fetched on
- * a timer would be both slower to react and busier at rest. An event says which
- * job moved; only that project is re-read.
- *
- * Two things make that work. Transitions arrive in bursts — a fan-out of eight
- * starts eight tasks at once — so ids are collected and flushed together, or one
- * ingest would fire eight identical refreshes. And the subscription reads the
- * current projects through a ref rather than depending on them, because an
- * effect that listed them would tear down and re-establish the subscription
- * every time one of them changed, which is every time an event arrives.
+ * Refresh Library projects on daemon task transitions.
+ * Batch project IDs to coalesce task bursts into one refresh per project. Read
+ * projects through a ref so updates do not recreate the event subscription.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 

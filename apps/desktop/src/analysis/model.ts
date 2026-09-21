@@ -1,13 +1,7 @@
 /**
- * The pipeline, as ten rows.
- *
- * A job's tasks are not the rows. Ingest is eight tasks and one row; the fan-in
- * that publishes the manifest is a task and no row at all; and a stage the
- * planner decided not to run for this recording has no task, which is a state of
- * its own rather than an absence to be rendered as "waiting" forever.
- *
- * All of that is a reading, so it lives here where it can be tested against a
- * job record and nothing else.
+ * Derive display rows from an analysis job.
+ * Ingest tasks share one row, manifest publication has no row, and stages omitted
+ * by the planner are distinct from stages still waiting to run.
  */
 import { TaskState } from '@clipmill/contracts';
 

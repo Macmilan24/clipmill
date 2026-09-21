@@ -1,23 +1,9 @@
-//! What the editor's player must draw, computed by the thing that renders.
+//! Sample preview semantics using the renderer's own interpretation.
 //!
-//! The binding decision of this workstream is that there is **one interpreter**.
-//! A preview is a claim about what the export will look like, and a claim like
-//! that is worth nothing if the preview arrived at it independently — two
-//! implementations of the same arithmetic are two answers waiting to differ on
-//! a frame nobody checked, and the frame nobody checked is the one a creator
-//! ships.
-//!
-//! So this module does no timing math of its own. The crop at a frame comes
-//! from [`crate::crop_rect_at`], the frame a cue begins on comes from the same
-//! `frame_ceil` the ASS writer uses, and the karaoke sweep comes from the same
-//! `subtitles::sweep` the burned-in track is written from. What is left here is
-//! sampling: walking the frames and asking.
-//!
-//! The renderer draws with libass and the player draws with the DOM, so pixels
-//! will differ — antialiasing, hinting, subpixel positioning. That is expected
-//! and is documented as a tolerance. What may never differ is **semantics**: a
-//! different word, a different crop rectangle, a different frame for a cue.
-//! `gate-editor` renders fixture documents and compares.
+//! Crops use [`crate::crop_rect_at`], cue starts use the ASS writer's `frame_ceil`,
+//! and karaoke uses `subtitles::sweep`. DOM and libass drawing may differ within
+//! pixel tolerances, but words, crop rectangles, and cue frames must agree.
+//! `gate-editor` compares rendered fixture documents.
 
 use clipmill_edit_ir::{
     CaptionAnimation, CaptionCue, CaptionRegion, EditDocument, LayoutState, Presentation,

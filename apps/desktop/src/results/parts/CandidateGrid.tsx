@@ -1,14 +1,7 @@
 /**
- * The same candidates as cards, for comparing by picture rather than by row.
- *
- * Each card's still is the filmstrip tile nearest the clip's first frame — a
- * frame the ingest actually cut from this recording. A card with no still says
- * the run published no filmstrip, because a stock image would be a picture of
- * something that is not this clip.
- *
- * The same state, signal and selection rules as the table, from the same
- * module, so switching layouts changes how the board looks and never what it
- * says.
+ * Candidate cards using the filmstrip tile nearest each clip's first frame.
+ * Report missing filmstrips explicitly. State, signal, and selection rules are
+ * shared with the table so layout changes preserve meaning.
  */
 import { MediaStill } from '../../components/MediaStill.js';
 import { Checkbox } from '../../components/ui/checkbox.js';

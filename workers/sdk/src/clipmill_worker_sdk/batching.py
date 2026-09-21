@@ -1,21 +1,8 @@
-"""Turning speech segments into decode windows.
+"""Convert speech segments into bounded decode windows.
 
-The recognizer is the expensive stage, so what it is handed matters more than
-how fast it runs. Voice activity already decided where speech is; this decides
-how that becomes calls to a decoder with a bounded context.
-
-Shared rather than per-family. Every recognizer answers the same two questions
-— which speech to hand over, and what to do with a run longer than its context
-— and two implementations that answered them differently would produce decode
-windows that are not comparable, which is exactly what the measured selection
-between them assumes they are. The limit is the argument, because it is the
-one part that really is per-model.
-
-Pure, so the decisions are testable without loading a model — which is the
-point, because the interesting cases (a segment longer than the decoder's
-context, a segment that runs to the last sample) are the ones a fixture
-recording would never contain.
-"""
+All recognizers share this pure batching logic so implementation benchmarks use
+comparable windows. The context limit remains a parameter because it varies by
+model."""
 
 from __future__ import annotations
 
@@ -76,7 +63,7 @@ def decode_windows(
         # A speech run longer than the decoder's context. Splitting at the
         # quietest interior point would be kinder to whichever word straddles
         # the boundary; doing that needs the per-window probabilities, which
-        # live in the detector rather than in its published segments. Phase 2.
+        # live in the detector rather than in its published segments.
         cursor = start
         while cursor < end:
             stop = min(cursor + limit, end)

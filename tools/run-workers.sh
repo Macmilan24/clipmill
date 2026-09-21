@@ -1,23 +1,8 @@
 #!/usr/bin/env bash
-# Enrol and launch the model workers for a development session.
-#
-# The daemon does not start workers and should not: a worker is a separate
-# process precisely so a model crash costs a leased task rather than the
-# daemon's state (decision D03). But that leaves a gap nothing filled — every
-# gate starts its own workers inside a drill, and running the app for real had
-# no equivalent. The analyze DAG would plan voice activity, recognition,
-# alignment, shots and faces, and every one of them would sit unleased forever
-# because nothing was listening.
-#
-# Enrolment is the part that is easy to get subtly wrong. A worker authenticates
-# with an Ed25519 key whose public half the daemon must already trust, and the
-# daemon reads the trust directory **once, at startup**. So enrolling after the
-# daemon is running does nothing until it restarts — which is why `just app`
-# runs the enrolment step first, and why this script says so plainly rather than
-# letting a worker be rejected with an error nobody can place.
-#
-# Identities are development credentials. They live in the private state
-# directory at mode 0600, are generated once, and are never committed.
+# Enroll and launch development workers as separate processes.
+# The daemon reads trusted worker keys once at startup, so just app runs
+# --enrol-only before starting it. Restart the daemon after enrolling new keys.
+# Development identities are stored privately at mode 0600 and never committed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -46,12 +31,8 @@ TRUST_DIR="$STATE_DIR/worker-trust"
 IDENTITY_DIR="$STATE_DIR/worker-dev-identity"
 WORKER_SOCKET="$RUN_DIR/clipmill-workers.sock"
 
-# The families a Phase 1 analyze DAG leases. `speech-mlx` is deliberately not
-# here: which recognizer serves a capability is a measured per-device decision
-# (D19), and launching both would put two workers up for one capability.
-# Directory and entry point differ for one of them, so both are named rather
-# than derived: guessing a console-script name from a directory name is the
-# kind of cleverness that breaks the day somebody adds the sixth worker.
+# Default analysis workers, with explicit directory and entry-point names.
+# speech-mlx requires measured per-device selection and is not launched here.
 FAMILIES="vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr align:clipmill-worker-align shots:clipmill-worker-shots faces:clipmill-worker-faces"
 
 # Editorial inference is explicitly selected and initially supported on Apple silicon.
@@ -90,11 +71,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 identity_path, trust_dir = Path(sys.argv[1]), Path(sys.argv[2])
 
-# A real ULID, not twenty-six random characters. The daemon parses this with
-# `Ulid::from_string` and then requires it to round-trip canonically, so the
-# first ten characters must be a 48-bit millisecond timestamp — only `0`-`7`
-# are legal in the leading position, and a random letter there overflows and is
-# refused as a malformed trust entry.
+# Canonical ULIDs encode a 48-bit timestamp; the leading character must be 0-7.
 ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 
@@ -121,9 +98,7 @@ public_bytes = private_key.public_key().public_bytes(
     format=serialization.PublicFormat.Raw,
 )
 
-# Written at 0600 before anything goes in: the daemon refuses an identity or a
-# trust key any other user could read, and creating it permissive and fixing it
-# afterwards leaves a window where it was not.
+# Set private permissions before writing key material.
 identity_path.write_text("")
 identity_path.chmod(0o600)
 identity_path.write_text(

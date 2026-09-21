@@ -1,38 +1,17 @@
-//! The virtual camera: a crop path that follows a face without chasing it.
-//!
-//! Ch. 18's objective, with the terms this phase can evaluate:
+//! Solve a smoothed crop path around a tracked face.
 //!
 //! ```text
 //! min_x  Σ_t [ w_s‖x_t − c_t‖² + w_v‖x_t − x_{t−1}‖² + w_a‖x_t − 2x_{t−1} + x_{t−2}‖² ]
 //! ```
 //!
-//! `c_t` is where the subject is, so the subject term is containment written as
-//! a least-squares pull rather than as a barrier; the velocity and acceleration
-//! terms are the "human operator" damping. The protected-region term the book
-//! also lists is absent, because protected regions are text and graphics nobody
-//! has detected at this phase, and a term recorded as never firing reads like a
-//! term that was checked.
+//! The subject term pulls toward the face; velocity and acceleration terms damp
+//! jitter. Protected-region penalties are omitted because no text or graphics
+//! regions are detected. Independent x and y pentadiagonal systems use banded
+//! Cholesky in O(n).
 //!
-//! Every one of those terms exists to prevent **chasing** — the camera lurching
-//! at every detection flicker, which the book names as the failure users punish
-//! hardest — and the acceleration weight does the heaviest lifting.
-//!
-//! Written out, the objective is a quadratic in x, so its stationary point is
-//! one linear system. The acceleration term couples each sample to the two
-//! either side and nothing further, which makes that system pentadiagonal:
-//! banded Cholesky, O(n) rather than O(n³), microseconds for a clip. x and y are
-//! independent under this objective and are solved as two such systems.
-//!
-//! Three things the quadratic cannot express are applied afterwards, and are
-//! projections rather than parts of the optimum — stated plainly because the
-//! result is then a feasible near-optimal path rather than a constrained
-//! optimum, and a reader deserves to know which they have:
-//!
-//! 1. the crop must stay inside the frame,
-//! 2. the camera may not exceed a speed, in frame-widths per second so the
-//!    behaviour does not change with resolution,
-//! 3. the face must not be smaller than a floor of the crop, which is what
-//!    fixes the scale.
+//! Post-solve projections keep the crop inside the frame, cap speed in frame-widths
+//! per second, and enforce minimum face size within the crop. These projections
+//! produce a feasible near-optimal path, not a constrained optimum.
 
 use clipmill_contracts::schemas::vision_face_track::{Track, VisionFaceTrack};
 

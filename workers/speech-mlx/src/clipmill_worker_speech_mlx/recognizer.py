@@ -1,16 +1,8 @@
-"""Recognition with Qwen3-ASR, decoded one token at a time.
+"""Decode Qwen3-ASR token by token to retain confidence.
 
-`mlx-audio` offers a one-call `generate()` that returns text and nothing else.
-This module does not use it, and the reason is the observation contract: every
-perception output carries a confidence *distribution*, and a recognizer that
-returns only a string leaves nobody able to say which words it was unsure of.
-
-Decoding through the streaming step instead yields the model's log-probability
-vector at each position, so the emitted token's own probability is a
-measurement rather than a placeholder. It is the same quantity whisper.cpp
-reports as `whisper_full_get_token_p`, which is what makes the two
-implementations' documents comparable.
-"""
+The streaming step exposes the log-probability vector omitted by the text-only
+``generate()`` API. Each emitted token's probability is comparable to
+whisper.cpp's ``whisper_full_get_token_p`` measurement."""
 
 from __future__ import annotations
 

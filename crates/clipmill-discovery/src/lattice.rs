@@ -1,26 +1,10 @@
-//! Expansion: from a seed to every legal interval around it.
+//! Expand a proposal seed into legal start and end candidates for ranking.
 //!
-//! A proposer says "something worth clipping happens here". It does not say
-//! where the clip starts, and it should not: the boundary that reads best
-//! depends on speech rules, duration, and what the viewer sees, and the stage
-//! that knows those things is ranking. So a seed becomes a *lattice* — every
-//! place a clip could legally start, every place it could legally end — and
-//! ranking searches it (book ch. 15).
-//!
-//! Keeping the whole lattice rather than choosing is the point. Discovery has
-//! less information than the stage that has to live with the choice, and a
-//! pre-chosen boundary is a decision made by whoever had the least reason to
-//! make it.
-//!
-//! Legality is `Φ`. Two of its terms are real here and the rest are absent
-//! rather than always-passing: a start that lands inside a word is structurally
-//! illegal and never enters the lattice at all, and a pair outside the
-//! requested duration range or outside coverage is rejected. The design also
-//! names open loops, identity discontinuity, rights exclusions, and layout
-//! infeasibility. None of those can be measured at this phase — there is no
-//! open-loop detection, no diarization, no rights ledger, and the fit layout is
-//! always legal — so they are omitted. A term recorded as never firing reads
-//! like a term that was checked.
+//! Starts inside words are excluded; pairs outside coverage or the requested
+//! duration range are rejected. Open loops, identity discontinuity, and rights
+//! exclusions are not evaluated because their evidence is unavailable. Fit layout
+//! is always legal. Unevaluated predicates are omitted rather than recorded as
+//! passing checks.
 
 use std::collections::{BTreeMap, BTreeSet};
 

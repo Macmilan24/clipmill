@@ -1,15 +1,7 @@
 /**
- * Audio: the gain curve, and an honest meter beside it.
- *
- * The curve is editable because an editor knows things a normalizer does not —
- * a laugh that clips, a sentence that drops. What the meter must not do is
- * pretend to be the export's measurement: the render runs a real two-pass
- * loudnorm and this is a curve applied over a proxy. So the meter reads the
- * *target* and the curve's own offset, and says which is which.
- *
- * That distinction is written into `docs/preview-parity.md` as a tolerance
- * rather than hidden here, because an editor who thought this number was the
- * delivered loudness would trust it in exactly the situation where it is wrong.
+ * Edit the gain curve and display its offset alongside the loudness target.
+ * Proxy audition is not a delivered loudness measurement; export uses two-pass
+ * loudnorm. See `docs/preview-parity.md` for the preview tolerance.
  */
 import { Button } from '../components/ui/button.js';
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';

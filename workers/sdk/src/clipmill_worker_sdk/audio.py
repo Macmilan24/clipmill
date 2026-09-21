@@ -1,15 +1,7 @@
-"""Reading the ingest audio renditions a speech worker is given.
+"""Read verified ingest PCM renditions without decoding the source again.
 
-Ingest already decoded the source once and published normalized PCM (book
-ch. 12); a speech worker's job is to read that, not to open the original file
-again. It arrives through the verified artifact path, so the bytes below have
-been hashed against the manifest before this module sees them.
-
-No array library appears here on purpose. The SDK is shared with workers that
-have no numerical dependencies at all, so this hands back raw interleaved
-frames and lets each worker adopt them into whatever array type its runtime
-wants — which for every current consumer is a zero-copy view.
-"""
+The SDK has no array dependency. It returns raw interleaved frames for workers
+to view through their own numerical runtime."""
 
 from __future__ import annotations
 

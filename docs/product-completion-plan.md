@@ -1,6 +1,6 @@
 # Upload-ready product completion
 
-This extends `upload-ready-v1-plan.md` using the user's confirmed scope: English interviews/podcasts **and scripted TV/movie scenes**, Qwen3.5 as the local editorial model, and optional cloud reasoning only when explicitly enabled. The user deferred M0 and asked us to prioritize implementation; human acceptance targets remain unmeasured.
+This extends `upload-ready-v1-plan.md` with the confirmed scope: English interviews/podcasts **and scripted TV/movie scenes**, Qwen3.5 as the local editorial model, and optional cloud reasoning only when explicitly enabled. M0 remains deferred while implementation takes priority; human acceptance targets remain unmeasured.
 
 Each verified milestone receives a commit and push and an opened or updated PR. This is a development checkpoint cadence, not a recurring automation. Required CI and independent criticism are release gates.
 
@@ -76,7 +76,7 @@ The first full CI run also exposed a stale evidence-index harness on both platfo
 
 ## YouTube delivery — after the core milestones
 
-The user reconfirmed this order: finish and verify selection, finishing, routine export and UI refinements before implementing YouTube publishing. Early research and an isolated transport sketch do not change that order.
+The confirmed implementation order is: finish and verify selection, finishing, routine export and UI refinements before implementing YouTube publishing. Early research and an isolated transport sketch do not change that order.
 
 Connect a channel through system-browser desktop OAuth with PKCE, state validation and a loopback callback. Keep credentials in the OS credential store. Show the actual connected channel and let the user review clip-grounded title, description and tags.
 

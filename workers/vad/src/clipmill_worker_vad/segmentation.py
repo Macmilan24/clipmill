@@ -1,13 +1,7 @@
-"""Turning a stream of per-window speech probabilities into speech segments.
+"""Convert per-window speech probabilities into speech segments.
 
-Kept separate from the model on purpose. The neural network answers one narrow
-question — "does this 32 ms window sound like speech?" — and every decision
-that matters downstream is made here: where a segment starts, how long a pause
-has to be before it ends one, how much room to leave so a decoder is not handed
-a word already in progress. Those are the parameters an operator tunes and the
-gate asserts against, and they are worth being able to test without loading
-400 megabytes of weights.
-"""
+Start thresholds, pause length, and boundary padding are independent of model
+inference so segmentation can be tuned and tested on synthetic probabilities."""
 
 from __future__ import annotations
 

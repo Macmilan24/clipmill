@@ -1,26 +1,13 @@
-//! Finding the spans of a recording worth considering as clips.
+//! Propose clip candidates with evidence, legal boundaries, and duplicate groups.
 //!
-//! Discovery's job is width, not judgement (book ch. 15). It nominates; ranking
-//! decides. The separation is what keeps re-ranking interactive: ranking may
-//! reject, revise, or reorder a candidate, but it never has to *search*,
-//! because every candidate arrives with a legal boundary lattice already
-//! attached.
+//! Discovery nominates spans; ranking can revise or reorder them without searching
+//! again. Every candidate links to measured words, carries a legal boundary
+//! lattice, and belongs to a cluster.
 //!
-//! Three guarantees, and they are the whole contract. Every candidate carries
-//! evidence that walks back to words somebody measured (Rule 14.1). Every
-//! candidate carries a lattice whose every point is legal. Every candidate
-//! belongs to a cluster, so a near-duplicate is grouped rather than silently
-//! dropped and the interface can always say why.
-//!
-//! What is *not* here is as deliberate. Three proposers out of the design's
-//! ten, because the other seven read signals this phase does not measure. No
-//! semantic embedding, so clustering is interval and evidence overlap. No
-//! open-loop, identity, or rights terms in the legality predicate, because
-//! nothing can evaluate them yet — and a term that always passes reads like a
-//! term that was checked. Each of these limits is named in the document that
-//! gets published, not just here.
-//!
-//! Nothing in this crate does any I/O.
+//! Three heuristic proposers use the available signals. Clustering uses interval
+//! and evidence overlap, without embeddings. Open-loop, identity, and rights
+//! checks are omitted because their evidence is unavailable; published documents
+//! state these limits. All derivation is free of I/O.
 
 mod boundary;
 mod clustering;

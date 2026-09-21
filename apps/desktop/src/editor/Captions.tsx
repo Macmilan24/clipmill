@@ -1,25 +1,8 @@
 /**
- * 09 Captions: the words, and the five things a person actually wants to do to
- * them.
- *
- * Correct a word, split, merge, re-break a line, drop a filler. Each is one IR
- * command, so each is undoable and each is replayable — and none of them
- * re-derives anything. The cue a person is editing came from the caption
- * engine and the render will read the same list back; nothing here re-wraps
- * text or re-times a word.
- *
- * A correction is addressed to the word, not to the cue it is shown in. The
- * cues on screen are one of two groupings of the same words — the burned-in
- * one — and the sidecars are written from the other; a correction that reached
- * only the cue on screen left a deaf viewer reading the wrong name. The other
- * four are about the grouping, and are addressed to the grouping on screen.
- *
- * Removing a filler is a **caption** edit and not a media edit. The word was
- * said; the caption may stop showing it. Rippling the audio to match would be a
- * different and much larger decision, and one nobody asked this button to make.
- *
- * Re-transcribing a selection is Phase 2 and is marked as such rather than
- * shipped as a button that quietly does nothing.
+ * Undoable caption commands: correct, split, merge, re-break, and remove fillers.
+ * Word corrections apply across burned-in and sidecar groupings; grouping edits
+ * target the displayed cues. Filler removal changes captions only, leaving media
+ * unchanged. Caption timing and wrapping remain owned by the caption engine.
  */
 import { Check, Scissors, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';

@@ -1,15 +1,7 @@
 /**
- * A score as a ring, sized for the place it is standing in.
- *
- * The ring is drawn rather than approximated with a conic gradient, because a
- * gradient cannot round its own cap and the seam at zero is visible at every
- * size. An SVG arc also gives the sweep something to animate along, so a card
- * arriving on screen draws its score rather than blinking it into place.
- *
- * The band chooses the colour and the number never does. A score is a percentile
- * within one recording's cohort, so 71 is not "amber" in any absolute sense —
- * what a reader should take from the colour is the band the ranker assigned,
- * which is the only claim the document actually makes.
+ * SVG score ring with rounded caps and an animated sweep.
+ * Color reflects the ranker's band; the score is a percentile within one
+ * recording's cohort and does not determine an absolute color threshold.
  */
 import { useEffect, useState } from 'react';
 

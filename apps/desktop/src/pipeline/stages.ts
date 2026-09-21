@@ -1,17 +1,7 @@
 /**
- * The stages an analyze job runs, named for a reader.
- *
- * The daemon's DAG is wider than this list: ingest alone fans out into eight
- * derivatives — proxy, two audio rates, loudness, reference index, filmstrip,
- * peaks, frames — and the run ends with a fan-in that publishes the manifest
- * naming everything. Showing all of that would be showing the plumbing.
- *
- * So this is the reading of the DAG, not the DAG. Ingest is one line because a
- * user who asked for one thing to happen should see one thing happening; the
- * fan-in is absent because a manifest over work already reported is bookkeeping.
- * The order is the order the daemon declares in `analysis.rs`, and the keys are
- * artifact kinds, so a task is matched by what it publishes rather than by what
- * the daemon calls the work.
+ * Display stages for analysis jobs, ordered to match the daemon's `analysis.rs`.
+ * Ingest derivatives share one row; manifest publication is omitted. Artifact kinds
+ * match tasks to rows independently of task names.
  */
 export interface AnalysisStage {
   /** The artifact kind this stage publishes. */
@@ -20,13 +10,8 @@ export interface AnalysisStage {
   /** One line on what the stage actually does. */
   readonly detail: string;
   /**
-   * Kinds that roll up into this stage rather than standing on their own.
-   *
-   * Only ingest has any. Its eight derivatives run as eight tasks and finish at
-   * eight different times, and the row has to say "ingest is happening" while
-   * any of them is — otherwise the screen would go blank for the minutes that
-   * matter most, because the task named `media.ingest_manifest.v1` is the last
-   * thing to run and does almost nothing.
+   * Artifact kinds grouped under this stage. Ingest remains active while any
+   * derivative runs; its manifest task executes only after all derivatives finish.
    */
   readonly covers?: readonly string[];
 }

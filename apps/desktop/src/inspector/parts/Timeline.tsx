@@ -1,17 +1,7 @@
 /**
- * Where the cut is, everywhere it could legally be, and where the playhead is.
- *
- * The ticks are the boundary lattice — every start and end the optimizer was
- * allowed to choose between, at their real positions. Drawing them is what makes
- * the strip an instrument rather than a diagram: an editor who thinks the cut is
- * late can see whether an earlier edge exists, and the handles snap to those
- * edges because a boundary between them is not a cut this system can make. Every
- * boundary from the index is word-aligned by construction, so snapping is not a
- * convenience — it is the constraint.
- *
- * Dragging a handle proposes a cut; it does not perform one. The daemon holds
- * the authority and will move a boundary it disagrees with, which is why taking
- * the cut is a separate, named action and why the response says where it landed.
+ * Display the proposed cut, playhead, and word-aligned boundary lattice.
+ * Handles snap to legal boundaries. Dragging proposes a cut; the daemon applies
+ * it through a separate action and returns the accepted boundaries.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 

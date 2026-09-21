@@ -1,109 +1,97 @@
 # ClipMill
 
-**Local-first AI video clipping studio.** ClipMill turns long-form video —
-podcasts, streams, lectures, interviews — into publish-ready short clips, with
-every stage of the intelligence running on your own machine. No upload, no
-cloud dependency, no per-minute pricing: your footage never leaves your disk
-unless you explicitly send it somewhere.
+**A local-first video clipping studio.** Turn long recordings into short clips:
+find moments, review the suggestions, edit the framing and captions, and export
+video ready to upload.
 
-> **Status: pre-alpha, Phase 0 ("Harness") complete.** Contracts, the durable daemon,
-> filesystem artifact CAS, reusable durable DAG scheduler, local-source
-> evidence pipeline, and authenticated external-worker runtime are implemented:
-> private Unix-socket IPC, SQLite/WAL roots and leases, deterministic cache keys,
-> atomic publication, cursor-replayed task events, cancellation, recovery/GC,
-> hard-kill drills, pinned FFprobe supervision, immutable source fingerprints,
-> rational source maps, signed worker registration, daemon-owned output staging,
-> one-use read-only shared memory, measured and signed device profiles, and the
-> signed offline evaluation harness on macOS and Linux. The integrated security
-> workflow and signed, rights-cleared Seed-40 cold/warm proof close the Phase 0
-> exit. The desktop shell now boots in both themes and reports this machine's
-> real measured hardware over the daemon socket, reconnecting on its own when
-> the daemon dies. Nothing here makes clips yet.
+ClipMill is **pre-release software, available from source**. The import-to-export
+workflow is implemented, but clip selection still needs editorial judgment. The
+primary development platform is Apple silicon macOS; the local editorial model
+currently requires it. Linux x86_64 supports the portable processing components
+and CI checks, but does not yet have the same local editorial runtime. Windows is
+not supported.
 
-## Why
+## What you can do
 
-Cloud clipping tools are genuinely good — and structurally unable to offer
-what a local tool can: unlimited iteration at zero marginal cost, privacy by
-architecture, and full ownership of the editorial pipeline. ClipMill is built
-from a complete system-design monograph that treats the local machine as the
-studio, with orchestration width and depth standing in for frontier-model
-scale.
+- Import a local video or download a single YouTube video you have permission to
+  use, with a choice of download quality.
+- Analyze English podcasts, interviews, and scripted scenes. Local speech models
+  build a timed transcript; Qwen proposes moments and reviews their completeness,
+  with visual checks when needed.
+- Review ranked candidates, inspect their source context, and keep or reject
+  suggestions. You can also select a clip directly.
+- Edit trims, caption wording and line breaks, framing, crop movement,
+  transitions, and audio. Saved edits support undo and redo within an editing
+  session.
+- Export rendered video with burned-in captions and SRT/VTT sidecars, individually
+  or in batches. Export jobs and saved document revisions survive restarts.
 
-## Architecture (target)
+YouTube **channel connection and publishing are still in development**. YouTube
+source import is available; publishing is not part of the merged application yet.
 
-Polyglot by explicit boundary — each language's territory ends at a process
-boundary with a versioned contract:
+## Privacy and network use
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  clipmilld  (Rust) — single writer, owns all truth       │
-│  scheduler · project state (SQLite/WAL) · artifact CAS  │
-│  IPC gateway · resource manager · render supervision    │
-└───────┬───────────────┬───────────────┬─────────────────┘
-        │ protobuf/UDS  │               │
-┌───────┴───────┐ ┌─────┴─────────┐ ┌───┴──────────────────┐
-│ media workers │ │ model workers │ │ desktop shell        │
-│ FFmpeg,pinned │ │ Python, per-  │ │ Tauri 2 + React,     │
-│ sandboxed     │ │ family venvs  │ │ types generated from │
-│               │ │ stateless     │ │ contracts            │
-└───────────────┘ └───────────────┘ └──────────────────────┘
-```
+Analysis runs locally by default. Installing dependencies and model weights,
+and importing a YouTube video, require network access. An optional cloud
+editorial route sends transcript context only after explicit per-run consent;
+source frames and visual checks remain local. There is no automatic cloud
+fallback.
 
-- **Contracts are the source of truth** (`contracts/`): JSON Schema for
-  artifacts, Protobuf for IPC; Rust/Python/TypeScript types are generated,
-  never hand-mirrored.
-- **All time is rational** — integer ticks at 1/90000, never float seconds.
-- **Derived data is content-addressed**; anything that can't be regenerated
-  lives in SQLite under a single writer. There is no third place.
-- **Local Lock** — a zero-egress mode enforced by CI (network-denial tests),
-  not by promise.
+The Local Lock badge reports network operations started by the application in
+the current daemon session. It is **not an operating-system firewall**. See
+[Local Lock](docs/local-lock.md) for the exact guarantees and limitations.
 
-## Prerequisites (development)
+## Run from source
 
-- Rust (stable, see `rust-toolchain.toml`)
-- Node 22+ and `pnpm`
-- Python 3.12+ and `uv`
-- `just`, `buf`
-- macOS (primary) or Linux; Windows support arrives later
+You need Rust (the version in `rust-toolchain.toml`), Node.js 22+, pnpm (the version
+in `package.json`), Python 3.12, `uv`, `just`, and `ripgrep`. On macOS, install the
+Xcode Command Line Tools. Linux desktop development also needs WebKitGTK 4.1,
+GTK 3, libsoup 3, librsvg, and patchelf development packages.
 
-On Linux the shell additionally needs the WebView toolkit:
+From the repository root:
 
 ```sh
-sudo apt-get install libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-  libjavascriptcoregtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
+just setup
+
+# Speech recognition, alignment, voice activity, and face detection
+./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en yunet-face
+
+# Local editorial model (Apple silicon macOS; approximately 6 GB download)
+./tools/fetch-models.sh qwen3-5-editorial-mlx
 ```
+
+Launch the application, then start its workers in a second terminal:
 
 ```sh
-just setup   # fetch pinned FFmpeg and sync all workspaces
-just app     # launch the desktop shell against a live daemon
+# Terminal 1: enroll workers, build the daemon, and launch the desktop app
+uv run --offline --no-sync --project workers/sdk just app
+
+# Terminal 2, from the same repository root: start processing workers
+uv run --offline --no-sync --project workers/sdk just workers
 ```
 
-## The desktop shell
+The SDK environment supplies the Python dependencies used during worker
+enrollment. Keep both terminals running. **Models & Device** reports installed
+weights and connected workers; analysis readiness explains missing requirements.
+Local inference needs several gigabytes of memory beyond the downloaded weights,
+so available memory affects which jobs can run.
 
-`apps/desktop` is a Tauri 2 host with a React renderer. The split is deliberate:
+For YouTube downloads, `just setup-youtube` verifies the importer installation.
+See [YouTube import](docs/youtube-import.md) for supported URLs and limits.
 
-- The **renderer has no capabilities** — no filesystem, shell, or HTTP plugin is
-  compiled into the binary at all, so there is no ACL to misconfigure and no
-  code path to re-enable them. It reaches the daemon through exactly three
-  commands (`daemon_state`, `reconnect_daemon`, `device_profile`).
-- The **host owns the socket**, starts `clipmilld` when it is not already
-  running, and publishes every connection transition as an event.
-- **One theme switch.** The design ships a light and a dark artboard per screen;
-  `packages/tokens` expresses that as one token document, generated into
-  `tokens.css` and checked for drift in CI. Components never branch on theme.
-- **Phase 0 ships one real screen.** Models & Device renders measured hardware,
-  probed capabilities, and a Local Lock badge bound to the daemon's own answer —
-  including saying `unknown` when the daemon is unreachable. The other eight
-  sections state which phase builds them instead of showing a mockup.
+## Documentation and contributing
+
+- [Documentation index](docs/README.md) — feature guides and architecture
+- [Contributing](CONTRIBUTING.md) — development workflow and checks
+- [Worker setup](workers/README.md) — model processes and authentication
+- [Security policy](SECURITY.md) — reporting vulnerabilities
+
+The desktop application uses Tauri and React, a Rust daemon owns project state
+and jobs, and Python workers run the models. Shared schemas define the contracts
+between them. Bug reports, documentation improvements, and focused pull requests
+are welcome.
 
 ## License
 
-[AGPL-3.0-only](LICENSE). You can use, study, modify, and share ClipMill
-freely; if you offer a modified version as a network service, you must publish
-your source.
-
-## Credits
-
-ClipMill is designed and directed by **Sami (Samuel Dagne)**. The system
-design and implementation are built in close collaboration with **Claude**
-(Anthropic), which serves as the project's pair programmer.
+[AGPL-3.0-only](LICENSE). See the license for the terms of use, modification, and
+redistribution. Bundled dependencies and model weights retain their own licenses.

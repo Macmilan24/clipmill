@@ -1,12 +1,12 @@
 **ClipMill: plan for an upload-ready first version**
 
-Proposed 17 September 2026, following the [architecture review](/Users/sami/Personal/YT/clipmill/docs/architecture-review-2026-09-17.md). This is the working implementation proposal; its acceptance targets are goals, not measured claims about the current build.
+Proposed 17 September 2026, following the [architecture review](architecture-review-2026-09-17.md). This is the working implementation proposal; its acceptance targets are goals, not measured claims about the current build.
 
 The next product should do one job well: turn a dialogue recording into a small set of complete, well-framed, accurately captioned clips that a creator can approve and upload. Keep the existing stack and repair it incrementally. Every milestone includes the backend, its UI path, and a watchable result.
 
 **Confirmed scope**
 
-The user selected English podcasts and interviews, including two speakers, and optional cloud AI only when explicitly enabled. Use the current Mac as the initial reference platform. Start development with single-speaker footage; the completed version must also handle the declared two-speaker formats. Complex screen demonstrations, gameplay, sports, compilations, translation, and generative B-roll remain later work.
+The selected scope covers English podcasts and interviews, including two speakers, and optional cloud AI only when explicitly enabled. Use the current Mac as the initial reference platform. Start development with single-speaker footage; the completed version must also handle the declared two-speaker formats. Complex screen demonstrations, gameplay, sports, compilations, translation, and generative B-roll remain later work.
 
 Use local files first, including recordings obtained from YouTube. YouTube link import is a separate acquisition adapter, added after the core loop works; ordinary clipping must not depend on it. Keep media preparation, precise timing, editing, and rendering local. Route editorial reasoning locally or to an explicitly enabled cloud provider through the same candidate/judgment interface. Do not choose an inference model solely from a leaderboard: compare a small shortlist on the actual reference machine and editorial examples before pinning one. This planning choice does not itself authorize sending footage or transcripts to a provider.
 
@@ -35,9 +35,9 @@ Use a 1080×1920 SDR MP4 delivery preset with H.264 video, AAC-LC audio at 48 kH
 | Evaluation harness                                                        | Reuse; add human usefulness/repair labels, end-to-end UI checks, and a real encoding benchmark                                   |
 | Large evidence graph, many judges/proposers, new runtime/platform breadth | Defer until a measured failure justifies them; do not delete working infrastructure merely to simplify the diagram               |
 
-**Milestone 0 — Deferred by the user on 18 September 2026**
+**Milestone 0 — Deferred on 18 September 2026**
 
-The user explicitly chose Qwen3.5 and asked to skip M0. The following corpus proposal is retained as future quality work, not a prerequisite for M2. Functional gates still run; no measured editorial superiority is claimed.
+The revised scope selects Qwen3.5 and defers M0. The following corpus proposal is retained as future quality work, not a prerequisite for M2. Functional gates still run; no measured editorial superiority is claimed.
 
 Original proposal:
 
@@ -80,7 +80,7 @@ Main locations: a new editorial worker family, narrow cloud adapter, model regis
 
 **Functional verification:** the selected Qwen3.5 pipeline produces reviewable, exportable clips through the existing workflow, demonstrated by a real local model/daemon/worker/export run. This is implementation evidence, not the original quality exit. Incorrect references and unsupported output are rejected, incomplete analysis is visible, and a fully assessed recording can produce zero suggestions.
 
-**Quality exit (unverified):** human keep/reject decisions and repair effort on development footage show whether the editorial route improves over the heuristic baseline. The dedicated M0 corpus and model-comparison project are deferred at the user's request; no measured acceptance gain is currently claimed.
+**Quality exit (unverified):** human keep/reject decisions and repair effort on development footage show whether the editorial route improves over the heuristic baseline. The dedicated M0 corpus and model-comparison project are deferred; no measured acceptance gain is currently claimed.
 
 **Milestone 3 — Finish the clips to a consistent visual and audio standard**
 
@@ -119,6 +119,6 @@ These are ambitious initial targets, not statistical guarantees from a small sam
 
 Work in reviewable changes, normally in this order: explicit clip/run routing and atomic/retry-safe opening; preview source mapping; canonical caption corrections and migrations; trim retiming plus end-to-end export revision checks; editorial worker and discovery integration; semantic review and selection; face integration and tested layouts; final caption/audio presentation and rendered approval preview; batch delivery and readiness evaluation. Tests that protect a feature land with that feature.
 
-Milestone 0 is deferred at the user’s request. Start testing semantic proposals as soon as the repaired single-clip route produces a watchable file; do not wait for the entire editor to be polished. Prioritize the failure that prevents a better clip, rather than completing every infrastructure subsection in the old book. Set time estimates after the first repair batch and model benchmark reveal the real integration and performance costs.
+Milestone 0 is deferred. Start testing semantic proposals as soon as the repaired single-clip route produces a watchable file; do not wait for the entire editor to be polished. Prioritize the failure that prevents a better clip, rather than completing every infrastructure subsection in the old book. Set time estimates after the first repair batch and model benchmark reveal the real integration and performance costs.
 
 **First implementation batch:** preserve the exact selected project/source/analysis/candidate/document from Results through Editor and Export, reopen the existing document on repeat approval, and add the older-project/multiple-clip regression scenario. Its deliverable is a working route to the intended clip; subsequent batches repair what the clip displays and renders.

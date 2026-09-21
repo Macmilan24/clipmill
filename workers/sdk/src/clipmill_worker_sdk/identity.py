@@ -1,4 +1,4 @@
-"""Local Phase 0 worker identities and challenge-bound registration signing."""
+"""Local worker identities and challenge-bound registration signing."""
 
 from __future__ import annotations
 

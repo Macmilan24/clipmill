@@ -1,23 +1,9 @@
-//! The caption looks a project can choose, and the reduced-motion twin every
-//! one of them has.
+//! Caption style presets and their reduced-motion variants.
 //!
-//! Three presets, because three is what a creator will actually look at.
-//! **Clean** is the default: large, bold, outlined, with the karaoke sweep the
-//! platform native styles have taught viewers to read. **Minimal** is the same
-//! type without the sweep and without the weight, for footage that should carry
-//! itself. **Boxed** puts an opaque plate behind the words, which is the only
-//! one of the three that stays legible over a bright, busy, moving background.
-//!
-//! Every preset has a reduced-motion variant, and it is not an afterthought
-//! toggle: vestibular disorders and motion sensitivity are real, `prefers-
-//! reduced-motion` is a real signal, and a caption style with no still version
-//! is a caption style some viewers cannot use. The variant is the same
-//! typography with the animation removed, so choosing it changes how the words
-//! arrive and never which words they are.
-//!
-//! Styling lives here rather than in the render because the presets are part of
-//! the caption engine's contract: a document names a `style_ref`, and something
-//! has to be able to say whether that name exists.
+//! Clean uses bold outlined type and a karaoke sweep; Minimal removes the sweep
+//! and reduces weight; Boxed adds an opaque background. Reduced-motion variants
+//! preserve typography and words while removing animation. Presets live here so
+//! caption documents can validate their `style_ref` independently of rendering.
 
 /// Straight RGBA, converted by whatever draws it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,8 +1,8 @@
 # Independent product completion critique
 
 Initial audit: 18 September 2026, against the implementation merged in `55ea0de`.
-The user subsequently confirmed that scripted TV/movie scenes belong in the
-first version, alongside English podcasts/interviews. YouTube uploads should
+The subsequently confirmed first-version scope includes scripted TV/movie
+scenes alongside English podcasts/interviews. YouTube uploads should
 default to private, with a separate explicit Publish action.
 
 This is an independent, initially read-only assessment. Findings below describe
@@ -140,7 +140,7 @@ must never silently initiate a replacement upload.
 
 Second inspection: the in-progress M3 working tree, before the following
 findings were repaired. YouTube work is now deferred until the core milestones
-are finished, per the user's subsequent direction. The recommendations above
+are finished, following the revised implementation order. The recommendations above
 remain future architecture notes, not current completion requirements.
 
 The new two-path IR uses default-empty fields, preserving readability of old
@@ -160,15 +160,14 @@ multi-shot editing/timing seams.
 
 Bounded arithmetic checks independently reproduced the 320/312 frame mismatch
 and the 606×1080 aspect refusal. No heavy build or process restart was performed
-by this review. Implementation ownership was left with the finishing agent and
-root coordinator.
+by this review. Implementation changes were handled separately.
 
 ## Core repair review, 19 September 2026
 
 This section supersedes the open/closed status implied by the historical
 findings above. It reviews the current working tree, not a merged release.
 YouTube remains explicitly deferred until core completion; it is not a blocker
-for this pass. The critic edited only this document and did not restart the
+for this pass. This review changed only this document and did not restart the
 application or daemon.
 
 ### Repairs inspected
@@ -177,10 +176,10 @@ application or daemon.
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Editorial coverage and genre      | The duration-aware window overlap, persisted scripted/interview profile and profile-bound cache/review identity address the specific seam and rubric defects. A duration-valid span is still not evidence of a good clip.                                                                                                                                                                                                                                                                                                                                                                                       |
 | Declines and manual recovery      | Declines now retain their span and review separately from recommendations. Explicit human editing does not relabel them as model recommendations. `clipmill-director/src/lib.rs::direct_span` refuses a boundary inside a word and supplies an outward, millisecond-safe boundary suggestion. Uncertainty alone does not prove an incomplete story; missing setup/payoff still can. The review tests include `declines_preserve_the_exact_span_and_review_for_human_inspection`, `uncertainty_alone_is_not_a_semantic_rejection` and `a_visual_answer_attaches_to_a_decline_without_overriding_missing_payoff`. |
-| M3 shot timing                    | Global program-frame allocation replaces the per-shot rounding error. Audio and video concatenate separately. The finishing agent's decoded twenty-shot fixture now reports 312 frames, preserved source tail frame 259 and the audio pulse at 9.9000 seconds; the critic inspected the implementation and regression, but did not independently rerun that encoder gate. Continuous-source camera cuts no longer count as clipped-word boundaries.                                                                                                                                                             |
+| M3 shot timing                    | Global program-frame allocation replaces the per-shot rounding error. Audio and video concatenate separately. The separately reported decoded twenty-shot fixture records 312 frames, preserved source tail frame 259 and the audio pulse at 9.9000 seconds; the review inspected the implementation and regression, but did not independently rerun that encoder gate. Continuous-source camera cuts no longer count as clipped-word boundaries.                                                                                                                                                               |
 | M3 editing and composition        | Re-solve targets the active segment, uses renderable nearest-even geometry and replaces the whole crop path atomically. Whole-program head/tail trims preserve the intended retained interval. Undo restores both portrait paths. One-face and two-person framing remain shot-local; no active-speaker claim is inferred from face confidence.                                                                                                                                                                                                                                                                  |
 | Draft versus final playback       | Shared caption style, a bundled Inter font and linear-dB WebAudio automation replace the earlier false-parity claims. Draft playback remains labeled as such. The delivered encoded revision is the final audition authority. Native playback and audible behavior are a separate check below.                                                                                                                                                                                                                                                                                                                  |
-| Legacy framing and silence        | `Layout::needs_crop_repair`, preview warnings and export `framing.missing_crop` findings stop a missing saved crop from looking export-ready. Reframe's Fit action writes the repair. `RenderPlan::encode_graph` preserves measured digital silence and avoids non-finite loudnorm hints for very short audible material. Decoded silent and 200 ms audible regressions exist; their successful runs were reported by the finishing agent.                                                                                                                                                                      |
+| Legacy framing and silence        | `Layout::needs_crop_repair`, preview warnings and export `framing.missing_crop` findings stop a missing saved crop from looking export-ready. Reframe's Fit action writes the repair. `RenderPlan::encode_graph` preserves measured digital silence and avoids non-finite loudnorm hints for very short audible material. Decoded silent and 200 ms audible regressions exist; their successful runs were reported separately.                                                                                                                                                                                  |
 | Export approval                   | Rights are an explicit own/licensed/public-domain choice. Caption and duration acknowledgments bind to document, reviewed revision and relevant findings. Stale submit completions are guarded by selection generation. `useDelivery` binds its job and delivered files to the queued job ID, preventing an old job's files being attributed to a replacement export.                                                                                                                                                                                                                                           |
 | Durable batch admission           | All selected requests and expected revisions are persisted atomically. Stable item/attempt request IDs close the job-accepted-before-item-linked crash gap. Pending intents resume after daemon restart. First admission revalidates the expected revision; retry of an already admitted export uses its existing immutable snapshot, not the subsequently edited document. An independently failed item does not cancel its peers.                                                                                                                                                                             |
 | Batch RPC replay and cancellation | Outer retry/cancel request hashes now enter the same transactional deduplication store as the state transition. Replaying a lost response returns that receipt without incrementing the attempt again. Hash mismatch is a conflict. Cancellation checks the job state returned by the cancellation operation, refuses a completed export and reports errors under the caller's outer request ID. Late item links are conditional on attempt and pending state.                                                                                                                                                  |
@@ -208,8 +207,8 @@ stopped-store injections, not a claim to have randomly killed a live encoder.
 The database regression
 `batch_intents_are_atomic_and_replayed_updates_cannot_create_another_attempt`
 also checks rollback, request-hash conflict and a late link after cancellation.
-This critic inspected those tests; their Rust execution is the coordinator's
-verification responsibility.
+This review inspected those tests; their Rust execution remained a separate
+verification step.
 
 ### Real face-stage failures uncovered by the live run
 
@@ -227,7 +226,7 @@ The first two batches decoded successfully. A private-footage-free 120-frame
 solid-color JPEG fixture reproduced the same failure. Explicit input
 `-c:v mjpeg` fixed both cases; changing output frame pacing alone did not.
 
-The critic independently decoded all 16,078 real sampled frames across 134
+The review independently decoded all 16,078 real sampled frames across 134
 batches one-for-one in 18.49 seconds with the explicit JPEG codec and output
 passthrough pacing. This was a decoder check, not face inference or an
 editorial-quality check. No images or transcript text were copied into the
@@ -255,17 +254,17 @@ text, paths or decoder stderr.
   its result and remaining caveats are recorded below. Inspecting and editing
   those actual moments is still distinct from successful pipeline completion.
 - **Not established:** higher human acceptance, broad scripted-scene quality
-  or upload-readiness of every automatic recommendation. The user deferred
-  the benchmark milestone; neither synthetic media nor successful encoding
+  or upload-readiness of every automatic recommendation. The benchmark milestone remains
+  deferred; neither synthetic media nor successful encoding
   should be substituted for that evidence.
 
 No additional unresolved durable-batch blocker was found in this bounded final
 pass after the retry-polling repair. Core completion still requires the live
-and native checks above plus the coordinator's normal repository checks.
+and native checks above plus the normal repository checks.
 
 ### Continued gate verification: new findings
 
-The critic subsequently ran `just gate-milestone-1` with
+The review subsequently ran `just gate-milestone-1` with
 `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_INCREMENTAL=0`, `CARGO_NET_OFFLINE=true`,
 `UV_OFFLINE=true` and `CARGO_BUILD_JOBS=2`. The initial sandboxed attempt could
 not create its private Unix socket (`EPERM`), before any analysis. The approved
@@ -286,10 +285,10 @@ restart, immutable revision, captions and decoded source-timing checks. Do not
 disable shot detection or collapse the new program merely to make the old test
 pass.
 
-After the audition identity repair, the critic reran the export, ExportScreen
+After the audition identity repair, the review reran the export, ExportScreen
 and batch frontend files: 36 tests in three files passed in 9.53 seconds. This
-is additional unit evidence, not native playback proof. The coordinator reports
-that native batch delivery wrote seven files and draft playback works, but the
+is additional unit evidence, not native playback proof. Separate native verification reports
+that batch delivery wrote seven files and draft playback works, but the
 exact rendered audition currently fails while fetching its media manifest;
 that native failure remains a release check to resolve.
 
@@ -318,10 +317,9 @@ The first/last segment response repair and strengthened database approval/reopen
 test were inspected. The revised native gate preserves every detected shot,
 checks source/frame contiguity and every rendered segment, and uses the same
 whole-program ripple head/tail operations as the editor. Its decoded source-time
-tolerance was not relaxed. The coordinator reports the database regression
-passing.
+tolerance was not relaxed. The database regression was separately reported as passing.
 
-The critic's next real gate run progressed past multi-shot approval, correction,
+The review's next real gate run progressed past multi-shot approval, correction,
 both trims, undo/redo and restart, then failed export preflight after **152.51
 seconds**. Store and daemon/worker logs: `/private/tmp/cm-m1-11165`. Saved revision
 13 contains a first reading cue with one retained word, three characters, and a
@@ -358,12 +356,12 @@ exercise that path.
 
 ## Latest verified closures
 
-The critic inspected the edge-ripple repair: it shares the existing trim
+The review inspected the edge-ripple repair: it shares the existing trim
 reflow, applies to an actually shortened surviving cue at a program edge, and
 handles both presentations. Its regression preserves retained word text and
 identities, unrelated user grouping, and exact undo/redo.
 
-The critic independently reran **`just gate-milestone-1`: passed, one real
+The review independently reran **`just gate-milestone-1`: passed, one real
 scenario, 145.68 seconds**. It used the same offline/debug/incremental settings
 recorded above and an isolated daemon/fleet. The two-shot source selection at
 596–617 seconds was corrected in both caption presentations, trimmed to
@@ -385,22 +383,22 @@ A subsequent compatibility review made reflow explicitly opt-in:
 `RippleDelete.reflow_edges` defaults to false and serializes only when true.
 Old commands retain both their original JSON shape and old grouping behavior;
 new editor head/tail commands and both M1 gate operations explicitly set true.
-The critic inspected that unchanged opt-in runtime path and the missing/false
-legacy head/tail regressions. The owner reports 36 Edit IR tests, clippy, 22
+The review inspected that unchanged opt-in runtime path and the missing/false
+legacy head/tail regressions. Separate test results report 36 Edit IR tests, clippy, 22
 editor command/screen tests and full UI typecheck passing. The full gate was
 not redundantly rerun after this compatibility-only guard.
 
-The coordinator separately reports actual rebuilt-app verification: a completed
+Separate rebuilt-app verification reports: a completed
 seven-file collection restored after daemon/application restart; the exact
 rendered revision loaded, played from zero through 14 seconds and sought back
 to eight seconds with burned captions visible. Its synthetic QA export decoded
 477 frames at 1080×1920, H.264/AAC, 15.9 seconds; all six checksum entries matched,
 and SRT/VTT files were present. This was synthetic QA material, not a rights
-assertion or editorial approval for the user's television footage. The critic
+assertion or editorial approval for the television footage used for analysis. The review
 inspected the media-allowlist repair and its socket test but did not operate
 that native window or independently measure audible WebAudio gain.
 
-The updated-look live job `job_01M2V71PZN11G9VPFDSM4X2689` completed. The critic
+The updated-look live job `job_01M2V71PZN11G9VPFDSM4X2689` completed. The review
 independently reread its ranking: scripted profile, ten of ten windows answered,
 no failed reviews/visual checks, two selected **needs_review** moments and three
 preserved declines. Neither selected moment's visual reason retains the
@@ -411,21 +409,21 @@ A further native Results defect was fixed: the filmstrip timing descriptor was
 not on the document allowlist, so thumbnail selection could not read it. The
 repair adds only the project-owned `media.filmstrip.v1` `index.json`; image bytes
 remain on the media route. The loader checks its source fingerprint and schema.
-The critic inspected the bounded change. The owner reports two real-socket
+The review inspected the bounded change. Separate test results report two real-socket
 tests passing in 0.33 seconds, including cross-project refusal, plus seven shell
 policy tests, 39 Results tests, typecheck and formatting.
 
 **Performance repair inspected:** the 2,680-tile real filmstrip previously took
 10.502 seconds to resolve even warm because each tile's `declared_bytes` lookup
 reparsed the entire manifest. The implementation now builds one validated size
-map per request. The critic checked that ownership, type, safe-path, membership
+map per request. The review checked that ownership, type, safe-path, membership
 and verified-read behavior remain in place; manifest validation already refuses
 duplicate paths, so collecting the map does not introduce ambiguous membership.
-No global cache was added. The owner reports two declared-inventory tests and
+No global cache was added. Separate test results report two declared-inventory tests and
 three real-socket media tests passing, including every one of 2,680 tile
 names/sizes/types and unsafe-path, missing-file and wrong-project refusals;
-clippy, formatting and diff checks pass. The coordinator measured the same
-2,680-tile inventory on the rebuilt daemon at **0.0535 and 0.0534 seconds warm**,
+clippy, formatting and diff checks pass. Separate measurements of the same
+2,680-tile inventory on the rebuilt daemon were **0.0535 and 0.0534 seconds warm**,
 versus 10.502 seconds previously (about 196 times faster). Native Results now
 visibly renders the selected moment's thumbnail. This closes the repeated-parse
 performance finding.
@@ -436,7 +434,7 @@ improvement. This review has not isolated its cause and does not attribute it
 to hashing, model startup, storage or the inventory loop without evidence.
 Warm performance must not be presented as the latency of every first load.
 
-The critic also inspected the coordinator's final broad test logs, recorded
+The review also inspected the separately supplied final broad test logs, recorded
 before this last inventory-only optimization: 72 Rust test-result groups,
 787 passed, zero failed, 35 ignored; 37 desktop files, 400 tests passed in
 14.53 seconds. Those logs include the explicit reflow opt-in and filmstrip
@@ -453,7 +451,7 @@ thumbnail authorization and repeated-parse defects have been repaired and
 received the checks documented above. No additional concrete release blocker
 was found in this core pass. The first-load timing sample and unmeasured human
 editorial quality remain explicit limitations. Commit, PR, CI and merge are
-the coordinator's remaining delivery steps.
+the remaining delivery steps.
 
 ## Follow-up release checks
 
@@ -462,13 +460,12 @@ not start the face worker now required by analysis. The repair runs both real
 visual workers with verified pinned YuNet weights and adds frame-count and
 model-provenance assertions. Existing digest, warm-cache and recovery checks
 remain. All three real analysis tests and the full ranking drill passed locally.
-The finishing agent independently reviewed this repair and found no blocker.
+An independent review of this repair found no blocker.
 
 Further tracing established that the previously recorded startup delay was a
 release blocker: cleanup occupied the artifact actor for 55.097 seconds, exceeding
 the native bridge's ten-second timeout. Cleanup now yields during verification
-when foreground work arrives and retries with fresh roots and pins. The CI-repair
-agent independently reviewed the change and found no blocker. Full digest checks,
+when foreground work arrives and retries with fresh roots and pins. An independent review of the change found no blocker. Full digest checks,
 no sweep after incomplete verification, retention, pins and safe filesystem
 deletion remain intact; individual filesystem operations remain uninterruptible.
 The live first request improved from 55.1798 to 0.1747 seconds, and idle cleanup

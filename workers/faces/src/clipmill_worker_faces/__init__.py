@@ -1,21 +1,9 @@
-"""Face detection and tracking: who was on screen, and for how long.
+"""Face detections and tracks for downstream reframing.
 
-The reframe solver has one piece of evidence about who deserves the frame, and
-this stage produces it. That makes what it publishes more consequential than it
-looks: a track that fragments becomes a clip nobody follows, and a track welded
-together out of two people becomes a camera that swings between them.
-
-So the document records what was detected rather than who mattered. Which track
-the camera follows is decided later, in `clipmill-reframe`, by something that can
-be argued with — and every number this stage publishes is kept in the form that
-decision needs: presence and score apart rather than fused, bridged boxes marked
-as bridged, and the parameters that produced all of it in the artifact key.
-
-Two things are pinned rather than found. The weights arrive on the lease, as
-they do for the speech family, because a stage that resolved its own model would
-publish under an address claiming the pinned one produced these boxes. The JPEG
-decoder arrives the same way, for the same reason the shot detector's does.
-"""
+Presence and confidence remain separate, bridged boxes are marked, and tracking
+parameters enter the artifact key. The reframe solver chooses which track to
+follow. Both model weights and the JPEG decoder come from the lease so the
+published observation uses the producer named by its content address."""
 
 from __future__ import annotations
 
@@ -67,9 +55,8 @@ FRAMES_KIND = "media.frames.v1"
 STAGE = "detect-faces"
 DECODER = "ffmpeg"
 
-#: Defaults for anything the payload leaves at zero. Chosen against the failure
-#: each prevents rather than tuned on a benchmark, which is what the reframe
-#: corpus in W26 is for.
+#: Defaults for zero-valued payload settings; these are failure-prevention
+#: thresholds, not values tuned on the reframe benchmark corpus.
 DEFAULT_SCORE_THRESHOLD = 0.6
 DEFAULT_NMS_IOU = 0.3
 DEFAULT_MATCH_IOU = 0.5

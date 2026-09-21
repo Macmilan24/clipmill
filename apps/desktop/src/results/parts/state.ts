@@ -1,14 +1,7 @@
 /**
- * What a row is, and what its dots mean — decided once, for every view.
- *
- * A signal is a fact the documents hold about a clip, given a colour. The
- * qualities are axes the ranker measured above a display threshold; the
- * cautions are its warnings and penalties. Nothing here is a grade the
- * interface invented: every dot names the axis and the value behind it, so a
- * green dot reads as "Hook 93" on hover and not as an opinion.
- *
- * The thresholds are display cut-offs and are written here as such. They decide
- * whether a dot is drawn, never what the number is.
+ * Shared row state and signals for Results views.
+ * Quality signals use measured ranking axes; cautions use recorded warnings and
+ * penalties. Thresholds control visibility only and never change scores.
  */
 import type { ClipDecision } from '../../daemon/client.js';
 import type { ClipRow } from '../model.js';

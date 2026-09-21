@@ -1,11 +1,5 @@
 /**
- * Every other candidate, so a judgement is made in comparison.
- *
- * A clip is rarely good or bad on its own — it is better or worse than the one
- * below it — so the rail stays visible while a decision is being made rather
- * than sending an editor back to the board between clips. Each row carries the
- * decision already recorded against it, because the most useful thing to know
- * about the next clip is whether it has already been dealt with.
+ * Candidate comparison rail with each clip's recorded decision.
  */
 import type { ClipDecision } from '../../daemon/client.js';
 import { type ClipRow, duration } from '../../results/model.js';
