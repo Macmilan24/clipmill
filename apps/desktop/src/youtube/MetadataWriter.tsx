@@ -46,7 +46,7 @@ export function MetadataWriter({
   return (
     <section
       aria-label="Local metadata writer"
-      className="overflow-hidden rounded-xl border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)]"
+      className="overflow-hidden rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3 p-4">
         <div className="min-w-0 flex-1">
@@ -60,12 +60,10 @@ export function MetadataWriter({
           </p>
           <p className="mt-1.5 max-w-prose text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
             {writer.active
-              ? 'You can keep editing while Qwen prepares a title, description, and tags. Your text stays unchanged.'
-              : 'Qwen uses the transcript of rendered r' +
-                revision +
-                '. Review its suggestion before applying it.'}
+              ? 'Preparing a suggestion. You can keep editing.'
+              : 'Qwen uses the transcript of rendered r' + revision + '. Review before applying.'}
           </p>
-          <p className="mt-1.5 text-[10px] text-[var(--cm-text-muted)]">
+          <p className="mt-1.5 text-[11px] text-[var(--cm-text-muted)]">
             {modelName} · On this device · Optional
           </p>
         </div>
@@ -123,9 +121,7 @@ export function MetadataWriter({
       {suggestion && (
         <div className="space-y-3 border-t border-[var(--cm-glass-border)] p-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--cm-text-muted)]">
-              Suggested title
-            </p>
+            <p className="text-[11px] font-medium text-[var(--cm-text-muted)]">Suggested title</p>
             <p className="mt-1 break-words text-sm font-semibold">{suggestion.title}</p>
           </div>
           <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-[var(--cm-text-secondary)]">

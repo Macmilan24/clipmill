@@ -130,7 +130,7 @@ export function UploadPanel(props: UploadPanelProps) {
     ) ?? [];
   const ready = delivered && exportJobId !== null && revision !== null && renderArtifactId !== null;
   return (
-    <Card className="gap-0 overflow-hidden py-0" data-testid="youtube-publishing">
+    <Card className="youtube-section gap-0 overflow-hidden py-0" data-testid="youtube-publishing">
       <CardHeader className="border-b border-[var(--cm-glass-border)] px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -141,8 +141,7 @@ export function UploadPanel(props: UploadPanelProps) {
           </StatusBadge>
         </div>
         <p className="text-xs leading-relaxed text-[var(--cm-text-secondary)]">
-          Upload the exact rendered clip, review it on your channel, then choose whether to make it
-          public.
+          Review the rendered clip and its details before uploading.
         </p>
       </CardHeader>
       <CardContent className="space-y-5 px-5 py-5">
@@ -194,8 +193,7 @@ export function UploadPanel(props: UploadPanelProps) {
         )}
         {!ready && (
           <p className="text-xs text-[var(--cm-text-secondary)]">
-            Export this clip first. Its completed, immutable render will appear here for review and
-            upload.
+            Export this clip first. Your finished video will appear here for review and upload.
           </p>
         )}
         {ready && channels.length > 0 && connection.status?.available && (
@@ -218,7 +216,7 @@ export function UploadPanel(props: UploadPanelProps) {
               </SelectContent>
             </Select>
             {channel && (
-              <p className="break-all font-mono text-[10px] text-[var(--cm-text-muted)]">
+              <p className="break-all font-mono text-[11px] text-[var(--cm-text-muted)]">
                 {channel.channelId}
               </p>
             )}
@@ -341,10 +339,11 @@ function MetadataForm({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold">Prepare rendered revision r{revision}</p>
-        <span className="text-[11px] text-[var(--cm-text-muted)]">
-          Editable metadata · grounded in this clip
-        </span>
+        <p className="text-sm font-medium">
+          Video details{' '}
+          <span className="font-mono text-xs text-[var(--cm-text-muted)]">r{revision}</span>
+        </p>
+        <span className="text-[11px] text-[var(--cm-text-muted)]">Review before uploading</span>
       </div>
       {currentRevision !== null && currentRevision !== revision && (
         <p className="rounded-lg border border-[var(--cm-glass-border)] p-3 text-xs text-[var(--cm-warning-ink)]">
@@ -390,7 +389,7 @@ function MetadataForm({
       <div className="space-y-2">
         <div className="flex justify-between gap-2">
           <Label htmlFor="youtube-title">Video title</Label>
-          <span className="font-mono text-[10px] text-[var(--cm-text-muted)]">
+          <span className="font-mono text-[11px] text-[var(--cm-text-muted)]">
             {limits.titleCharacters}/100
           </span>
         </div>
@@ -601,7 +600,7 @@ export function UploadRecord({
       </p>
       {record.totalBytes > 0 && (
         <div>
-          <p className="font-mono text-[10px] text-[var(--cm-text-muted)]">
+          <p className="font-mono text-[11px] text-[var(--cm-text-muted)]">
             {formatBytes(record.acknowledgedBytes)} of {formatBytes(record.totalBytes)} received by
             YouTube
           </p>

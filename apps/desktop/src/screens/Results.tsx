@@ -1,23 +1,5 @@
-/**
- * The Results board: every clip the ranking believes in, and what it believed.
- *
- * The board shows counts rather than adjectives. "Four asked for, one
- * recommended" is a sentence a person can act on; "great results!" is not, and
- * the shortfall reasons are shown rather than padded away — a recording that
- * holds three good moments should return three and say so, because the fourth
- * would be a clip the system does not believe in.
- *
- * Three acts on a row, kept apart on purpose. Focusing a row moves the detail
- * rail so an editor can compare without losing their place. Ticking it adds it
- * to the set the footer and the header act on. Opening it is a third, deliberate
- * step into the inspector. A click that did all three would make looking at a
- * clip the same gesture as committing to it.
- *
- * Filtering, search and ordering are client-side because the answer is already
- * here. Every row was fetched to draw the summary, so asking the daemon again to
- * hide some of them would be a round trip that can only produce what is already
- * on screen.
- */
+import '../results/workspace.css';
+
 import { JobState } from '@clipmill/contracts';
 import { AlertCircle, ArrowRight, Scissors } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -124,7 +106,7 @@ export function Results({
   );
   const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, query: '' });
   const [sort, setSort] = useState<SortKey>('rank');
-  const [view, setView] = useState<BoardView>('list');
+  const [view, setView] = useState<BoardView>('grid');
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
 
@@ -165,7 +147,7 @@ export function Results({
 
   if (loading) {
     return (
-      <div className="workspace-page" role="status" aria-busy="true">
+      <div className="workspace-page results-workspace" role="status" aria-busy="true">
         <p className="text-xs text-[var(--cm-text-secondary)]">Loading results…</p>
         <Skeleton className="h-[92px] w-full rounded-[var(--cm-radius-card)]" />
         <Skeleton className="h-[var(--cm-control-standard)] w-full rounded-[var(--cm-radius-control)]" />
@@ -175,7 +157,7 @@ export function Results({
   }
 
   return (
-    <div className="workspace-page">
+    <div className="workspace-page results-workspace">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-3">
@@ -186,7 +168,7 @@ export function Results({
             </h1>
             {badge && !problem && (
               <span
-                className="rounded px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
+                className="results-run-state"
                 style={{ color: TONE_INK[badge.tone], background: wash(badge.tone) }}
               >
                 {badge.label}
@@ -348,7 +330,7 @@ export function Results({
             onView={setView}
           />
 
-          <div className="results-layout">
+          <div className="results-layout" data-view={view}>
             {shown.length === 0 ? (
               <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
                 <p className="text-[13px] text-[var(--cm-text-secondary)]">
@@ -357,6 +339,7 @@ export function Results({
               </div>
             ) : view === 'list' ? (
               <CandidateTable
+                tileUrl={tileUrl}
                 rows={shown}
                 focusedId={focused?.candidateId ?? null}
                 checked={checked}

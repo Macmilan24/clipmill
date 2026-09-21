@@ -241,10 +241,6 @@ export function Export(props: ExportProps): JSX.Element {
                   Browse
                 </Button>
               </div>
-              <p className="text-xs text-[var(--cm-ink-3)]">
-                Choose a folder on this device for the video and its accompanying files.
-              </p>
-
               <div>
                 <Label htmlFor="export-pattern">Name pattern</Label>
                 <Input
@@ -255,10 +251,11 @@ export function Export(props: ExportProps): JSX.Element {
                   onChange={(event) => props.onPatternChange(event.target.value)}
                 />
                 {patternProblem === null ? (
-                  <p className="mt-1 text-xs text-[var(--cm-ink-3)]">
+                  <details className="mt-2 text-xs text-[var(--cm-ink-3)]">
+                    <summary>Naming options</summary>
                     Enter a name or use {'{index}'}, {'{clip}'}, {'{project}'}, {'{duration}'},{' '}
                     {'{date}'} or {'{address}'}. Plain names get a clip number automatically.
-                  </p>
+                  </details>
                 ) : (
                   <p
                     className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--cm-danger-ink)]"
@@ -406,14 +403,23 @@ export function Export(props: ExportProps): JSX.Element {
               <CardTitle className="text-sm">Delivery format</CardTitle>
             </CardHeader>
             <CardContent>
-              <dl className="space-y-1 text-xs">
-                {DELIVERY.map(([label, value]) => (
-                  <div key={label} className="flex justify-between gap-4">
-                    <dt className="text-[var(--cm-ink-2)]">{label}</dt>
-                    <dd className="text-right text-[var(--cm-ink-1)]">{value}</dd>
-                  </div>
-                ))}
-                <Separator className="my-2" />
+              <p className="text-sm font-medium">1080 × 1920 · MP4</p>
+              <p className="mt-1 mb-4 text-xs text-muted-foreground">
+                Captions and mastered audio included.
+              </p>
+              <details className="export-specifications">
+                <summary>Format specifications</summary>
+                <dl className="space-y-2 text-xs">
+                  {DELIVERY.map(([label, value]) => (
+                    <div key={label} className="flex justify-between gap-4">
+                      <dt className="text-[var(--cm-ink-2)]">{label}</dt>
+                      <dd className="text-right text-[var(--cm-ink-1)]">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+              <Separator className="my-4" />
+              <dl className="space-y-2 text-xs">
                 <div className="flex justify-between gap-4">
                   <dt className="text-[var(--cm-ink-2)]">Estimated size</dt>
                   <dd className="font-mono text-[var(--cm-ink-1)]">
@@ -433,9 +439,6 @@ export function Export(props: ExportProps): JSX.Element {
                   </dd>
                 </div>
               </dl>
-              <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-                Vertical video with captions, ready for your final review before uploading.
-              </p>
             </CardContent>
           </Card>
         </div>

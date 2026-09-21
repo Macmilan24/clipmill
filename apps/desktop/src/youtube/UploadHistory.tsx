@@ -62,7 +62,7 @@ export function UploadHistory({ api }: { readonly api: ShellApi }) {
     (left, right) => right.updatedUnixMillis - left.updatedUnixMillis,
   );
   return (
-    <Card className="gap-0 overflow-hidden py-0">
+    <Card className="youtube-section preference-section gap-0 overflow-hidden py-0">
       <CardHeader className="border-b border-[var(--cm-glass-border)] px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -73,8 +73,7 @@ export function UploadHistory({ api }: { readonly api: ShellApi }) {
           </Button>
         </div>
         <p className="text-xs leading-relaxed text-[var(--cm-text-secondary)]">
-          Saved YouTube receipts remain here even after a source project is removed. Opening this
-          list does not contact YouTube.
+          Saved upload history. Kept even after a source project is removed.
         </p>
       </CardHeader>
       <CardContent className="space-y-4 px-5 py-5">

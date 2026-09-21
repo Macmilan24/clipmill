@@ -300,3 +300,18 @@ it('writes Fit to repair a legacy missing crop instead of treating the draft fal
     state: 'fit',
   });
 });
+
+it.each([
+  { crop: [1800, 0, 608, 1080] as const, warning: 'beyond the source picture' },
+  { crop: [200, 0, 900, 1080] as const, warning: 'proportions do not match' },
+])('shows unsafe framing before opening technical details: $warning', ({ crop, warning }) => {
+  const initial = plan(Array.from({ length: 30 }, () => crop));
+  const view = show({ plan: initial });
+  const alert = screen.getByRole('alert');
+  expect(alert.textContent).toContain(warning);
+  expect(alert.closest('details')).toBeNull();
+  expect(screen.getByText('Framing details').closest('details')?.open).toBe(false);
+
+  view.replan(fitted());
+  expect(screen.queryByRole('alert')).toBeNull();
+});

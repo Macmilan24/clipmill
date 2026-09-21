@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   Database,
   HardDrive,
   Lock,
@@ -21,6 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+
+import './preferences.css';
 
 import type { LocalLock, StorageStats } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
@@ -95,15 +98,12 @@ export function Settings({
     storage?.categories.reduce((sum, category) => sum + Math.max(0, category.bytes), 0) ?? 0;
   const appearance = theme !== undefined && onThemeChange !== undefined;
   return (
-    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6">
+    <div className="preferences-page settings-page">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cm-text-muted)]">
-            Your workspace
-          </p>
           <h1 className="workspace-title">Settings &amp; privacy</h1>
           <p className="workspace-subtitle mt-1">
-            Make the studio yours. Know where your work lives.
+            Appearance, connected accounts and local storage.
           </p>
         </div>
         {onRefresh && (
@@ -132,19 +132,15 @@ export function Settings({
           )}
           <SectionLink href="#settings-privacy" icon={<ShieldCheck />} label="Privacy & cloud" />
           <SectionLink href="#settings-storage" icon={<HardDrive />} label="Storage" />
-          <p className="mt-5 hidden px-2 text-[11px] leading-relaxed text-[var(--cm-text-muted)] xl:block">
-            Preferences apply to this installation. Local files stay in their original location;
-            imported YouTube copies are managed below.
-          </p>
         </nav>
-        <div className="min-w-0 space-y-5">
+        <div className="settings-sections min-w-0">
           {appearance && (
             <section id="settings-appearance" className="scroll-mt-6" aria-label="Appearance">
-              <Card className="gap-0 overflow-hidden py-0">
+              <Card className="preference-section gap-0 overflow-hidden py-0">
                 <SectionHeading
                   icon={<Palette />}
                   title="Appearance"
-                  detail="Choose the workspace that feels right for your editing session."
+                  detail="A quiet workspace, in light or dark."
                 />
                 <CardContent className="px-5 py-5">
                   <RadioGroup
@@ -155,12 +151,12 @@ export function Settings({
                     aria-label="Workspace theme"
                     className="grid grid-cols-2 gap-3"
                   >
-                    {(['dark', 'light'] as const).map((option) => (
+                    {(['light', 'dark'] as const).map((option) => (
                       <label
                         key={option}
                         htmlFor={`theme-${option}`}
                         className={cn(
-                          'cursor-pointer rounded-xl border p-3 transition-colors',
+                          'preference-theme cursor-pointer rounded-lg border p-3 transition-colors',
                           theme === option
                             ? 'border-[var(--color-primary)] bg-[var(--cm-accent-selected)]'
                             : 'border-[var(--cm-glass-border)] hover:bg-[var(--cm-recessed)]',
@@ -168,59 +164,22 @@ export function Settings({
                       >
                         <div
                           aria-hidden="true"
-                          className={cn(
-                            'flex h-[82px] overflow-hidden rounded-md border',
-                            option === 'dark'
-                              ? 'border-slate-700 bg-slate-900'
-                              : 'border-slate-200 bg-slate-50',
-                          )}
+                          className={`preference-theme-preview preference-theme-${option}`}
                         >
-                          <div
-                            className={cn(
-                              'w-1/4 space-y-2 border-r p-2.5',
-                              option === 'dark'
-                                ? 'border-slate-700 bg-slate-950'
-                                : 'border-slate-200 bg-white',
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                'h-1.5 w-5 rounded-sm',
-                                option === 'dark' ? 'bg-slate-400' : 'bg-slate-400',
-                              )}
-                            />
-                            <div
-                              className={cn(
-                                'h-1 w-full rounded-sm',
-                                option === 'dark' ? 'bg-slate-700' : 'bg-slate-200',
-                              )}
-                            />
-                            <div
-                              className={cn(
-                                'h-1 w-3/4 rounded-sm',
-                                option === 'dark' ? 'bg-slate-700' : 'bg-slate-200',
-                              )}
-                            />
+                          <div className="preference-theme-rail">
+                            <span />
+                            <span />
+                            <span />
                           </div>
-                          <div className="flex-1 p-3">
-                            <div
-                              className={cn(
-                                'h-1.5 w-2/3 rounded-sm',
-                                option === 'dark' ? 'bg-slate-400' : 'bg-slate-500',
-                              )}
-                            />
-                            <div className="mt-3 flex gap-1.5">
-                              {[0, 1, 2].map((key) => (
-                                <div
-                                  key={key}
-                                  className={cn(
-                                    'h-8 flex-1 rounded-sm border',
-                                    option === 'dark'
-                                      ? 'border-slate-700 bg-slate-800'
-                                      : 'border-slate-200 bg-white',
-                                  )}
-                                />
-                              ))}
+                          <div className="preference-theme-workspace">
+                            <span className="preference-theme-title" />
+                            <div className="preference-theme-canvas">
+                              <span />
+                            </div>
+                            <div className="preference-theme-track">
+                              <span />
+                              <span />
+                              <span />
                             </div>
                           </div>
                         </div>
@@ -243,7 +202,7 @@ export function Settings({
                     ))}
                   </RadioGroup>
                   <p className="mt-3 text-[11px] text-[var(--cm-text-muted)]">
-                    Saved automatically on this device. Change it any time from the toolbar.
+                    Saved on this device. You can also switch from the toolbar.
                   </p>
                 </CardContent>
               </Card>
@@ -263,11 +222,11 @@ export function Settings({
             className="scroll-mt-6"
             aria-label="Privacy and cloud processing"
           >
-            <Card className="gap-0 overflow-hidden py-0">
+            <Card className="preference-section gap-0 overflow-hidden py-0">
               <SectionHeading
                 icon={<ShieldCheck />}
                 title="Privacy & cloud"
-                detail="Local processing is the default. Cloud analysis requires your explicit consent."
+                detail="Local processing is the default. Cloud AI requires your consent."
               />
               <CardContent className="px-5 py-5">
                 {lockError && (
@@ -313,38 +272,42 @@ export function Settings({
                         </p>
                       </div>
                     </div>
-                    <dl className="mt-5 grid grid-cols-3 gap-3 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-3.5">
-                      <Count label="Stages registered" value={lock.stages} />
-                      <Count
-                        label="Stages allowed to use the network"
-                        value={lock.networkAllowedStages}
-                      />
-                      <Count
-                        label="Network operations started this session"
-                        value={lock.egressAttempts}
-                      />
-                    </dl>
-                    <p className="mt-2 text-xs text-[var(--cm-text-muted)]">
-                      Includes enabled cloud analysis, YouTube imports, channel sign-in and
-                      publishing. Importing a video does not enable cloud AI. Model downloads are
-                      managed separately.
-                    </p>
-                    <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
-                      Cloud-capable stages may be installed without being used. These counts
-                      describe task policy and execution, not measured network traffic. Publishing
-                      to a connected channel is a separate action from AI processing.
-                    </p>
+                    <details className="preference-disclosure mt-4">
+                      <summary>
+                        <ChevronDown className="size-3.5" /> Network activity details
+                      </summary>
+                      <dl className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-[var(--cm-recessed)] p-3.5">
+                        <Count label="Stages registered" value={lock.stages} />
+                        <Count
+                          label="Stages allowed to use the network"
+                          value={lock.networkAllowedStages}
+                        />
+                        <Count
+                          label="Network operations started this session"
+                          value={lock.egressAttempts}
+                        />
+                      </dl>
+                      <p className="mt-2 text-xs text-[var(--cm-text-muted)]">
+                        Includes enabled cloud analysis, YouTube imports, channel sign-in and
+                        publishing. Importing a video does not enable cloud AI. Model downloads are
+                        managed separately.
+                      </p>
+                      <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
+                        These counts describe task execution, not measured network traffic.
+                        Installed cloud stages are only used when enabled.
+                      </p>
+                    </details>
                   </>
                 )}
               </CardContent>
             </Card>
           </section>
           <section id="settings-storage" className="scroll-mt-6" aria-label="Storage">
-            <Card className="gap-0 overflow-hidden py-0">
+            <Card className="preference-section gap-0 overflow-hidden py-0">
               <SectionHeading
                 icon={<HardDrive />}
                 title="Storage"
-                detail="A clear account of the files ClipMill manages on this device."
+                detail="Files managed on this device."
               />
               <CardContent className="px-5 py-5">
                 {storageError && (
@@ -416,21 +379,30 @@ export function Settings({
                                 />
                                 {CATEGORY_LABELS[category.key] ?? category.key}
                               </h3>
-                              <p className="mt-1.5 max-w-[530px] text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-                                {CATEGORY_NOTES[category.key] ??
-                                  'Files managed by the local engine.'}
-                              </p>
                             </div>
                             <div className="shrink-0 text-right">
                               <p className="font-mono text-xs">{formatBytes(category.bytes)}</p>
-                              <p className="mt-1 text-[10px] text-[var(--cm-text-muted)]">
+                              <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
                                 {category.items} {category.items === 1 ? 'item' : 'items'}
                               </p>
                             </div>
                           </div>
-                          <p className="mt-2 select-all break-all rounded-md bg-[var(--cm-recessed)] px-2.5 py-2 font-mono text-[10px] leading-relaxed text-[var(--cm-text-muted)]">
-                            {category.path}
-                          </p>
+                          <details className="preference-disclosure mt-2">
+                            <summary>
+                              <ChevronDown className="size-3" />
+                              Location and details
+                              <span className="sr-only">
+                                {' '}
+                                for {CATEGORY_LABELS[category.key] ?? category.key}
+                              </span>
+                            </summary>
+                            <p className="mt-3 max-w-[530px] text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
+                              {CATEGORY_NOTES[category.key] ?? 'Files managed by the local engine.'}
+                            </p>
+                            <p className="mt-2 select-all break-all rounded-md bg-[var(--cm-recessed)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
+                              {category.path}
+                            </p>
+                          </details>
                         </li>
                       ))}
                     </ul>
@@ -444,8 +416,8 @@ export function Settings({
                           </StatusBadge>
                         </div>
                         <p className="mt-2 text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-                          Unreferenced generated files become eligible for cleanup after this
-                          retention period. Your source recordings and saved edits are kept.
+                          Unused generated files become eligible for cleanup after this period.
+                          Source recordings and saved edits are kept.
                         </p>
                       </div>
                     </div>
@@ -486,7 +458,7 @@ function Count({ label, value }: { readonly label: string; readonly value: numbe
   return (
     <div>
       <dd className="font-mono text-lg">{value}</dd>
-      <dt className="mt-1 max-w-[155px] text-[10px] leading-relaxed text-[var(--cm-text-secondary)]">
+      <dt className="mt-1 max-w-[155px] text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
         {label}
       </dt>
     </div>

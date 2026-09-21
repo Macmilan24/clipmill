@@ -62,6 +62,17 @@ export function Reframe({
   const segment = segmentAt(plan, frame);
   const source = segment ? sourceOf(plan, segment) : null;
   const at = segmentTicksAt(plan, frame);
+  const insideFrame =
+    crop !== null &&
+    source !== null &&
+    crop.x >= 0 &&
+    crop.y >= 0 &&
+    crop.x + crop.width <= source.displayWidth &&
+    crop.y + crop.height <= source.displayHeight;
+  const aspectMatches =
+    crop !== null &&
+    Math.abs(crop.width * (plan.height / (hasTwo ? 2 : 1)) - crop.height * plan.width) <=
+      plan.height / (hasTwo ? 2 : 1);
 
   const nudge = useCallback(
     (dx: number, dy: number) => {
@@ -90,8 +101,7 @@ export function Reframe({
   );
 
   return (
-    <div className="flex flex-col gap-4 p-4 text-sm">
-      <SoftCuts plan={plan} busy={busy} onApply={onApply} />
+    <div className="editor-panel editor-reframe-panel">
       <section>
         <p className="mb-2 text-xs text-[var(--cm-ink-2)]">Mode</p>
         <div className="flex flex-wrap gap-2">
@@ -128,10 +138,6 @@ export function Reframe({
             </Button>
           )}
         </div>
-        <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-          Frame a reliably visible face, show both people in equal portraits, or fit the entire
-          picture.
-        </p>
       </section>
 
       {crop ? (
@@ -157,20 +163,15 @@ export function Reframe({
                   Lower
                 </Button>
               </div>
-              <p className="mt-2 text-xs text-[var(--cm-ink-3)]">
-                Both people stay visible. Framing does not guess who is speaking.
-              </p>
             </section>
           )}
           <section>
-            <p className="mb-2 text-xs text-[var(--cm-ink-2)]">Crop at this frame</p>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs">
-              <Field label="x" value={crop.x} />
-              <Field label="y" value={crop.y} />
-              <Field label="w" value={crop.width} />
-              <Field label="h" value={crop.height} />
-            </dl>
-            <div className="mt-3 grid grid-cols-3 gap-1" role="group" aria-label="Nudge the crop">
+            <h2 className="editor-panel-title">Position</h2>
+            <div
+              className="editor-nudge grid grid-cols-3 gap-1"
+              role="group"
+              aria-label="Nudge the crop"
+            >
               <span />
               <Button
                 size="sm"
@@ -224,32 +225,34 @@ export function Reframe({
             </div>
           </section>
 
-          <section>
-            <p className="mb-2 text-xs text-[var(--cm-ink-2)]">Guardrails</p>
-            <dl className="space-y-1 text-xs">
+          {(!insideFrame || !aspectMatches) && (
+            <p role="alert" className="text-xs leading-relaxed text-[var(--cm-warning-ink)]">
+              {!insideFrame && 'The crop extends beyond the source picture. '}
+              {!aspectMatches && 'The crop proportions do not match the output. '}
+              Adjust the framing or choose Fit before exporting.
+            </p>
+          )}
+          <details className="editor-details">
+            <summary>Framing details</summary>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs">
+              <Field label="x" value={crop.x} />
+              <Field label="y" value={crop.y} />
+              <Field label="w" value={crop.width} />
+              <Field label="h" value={crop.height} />
+            </dl>
+            <dl className="mt-3 space-y-2 text-xs">
               <Guardrail
                 label="Inside the frame"
-                ok={
-                  source !== null &&
-                  crop.x >= 0 &&
-                  crop.y >= 0 &&
-                  crop.x + crop.width <= source.displayWidth &&
-                  crop.y + crop.height <= source.displayHeight
-                }
+                ok={insideFrame}
                 detail="a crop that leaves the picture renders black"
               />
               <Guardrail
                 label="Aspect matches the output"
-                ok={
-                  Math.abs(
-                    crop.width * (plan.height / (hasTwo ? 2 : 1)) - crop.height * plan.width,
-                  ) <=
-                  plan.height / (hasTwo ? 2 : 1)
-                }
+                ok={aspectMatches}
                 detail="a crop with the wrong proportions must be corrected before export"
               />
             </dl>
-          </section>
+          </details>
         </>
       ) : (
         <p className="text-xs text-[var(--cm-ink-2)]">
@@ -259,6 +262,7 @@ export function Reframe({
         </p>
       )}
 
+      <SoftCuts plan={plan} busy={busy} onApply={onApply} />
       <section>
         <Button
           size="sm"
@@ -306,16 +310,13 @@ function SoftCuts({ plan, busy, onApply }: Pick<ReframeProps, 'plan' | 'busy' | 
   const changed = Math.round(milliseconds * 90) !== savedTicks;
 
   return (
-    <section
-      className="rounded-xl border border-[var(--cm-glass-border)] bg-[var(--cm-surface-2)] p-3"
-      aria-labelledby={`${id}-title`}
-    >
+    <section className="editor-soft-cuts" aria-labelledby={`${id}-title`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <label id={`${id}-title`} htmlFor={`${id}-enabled`} className="font-medium">
             Soft cuts
           </label>
-          <p className="mt-0.5 text-[10px] text-[var(--cm-ink-3)]">Whole clip</p>
+          <p className="mt-0.5 text-[11px] text-[var(--cm-ink-3)]">Whole clip</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--cm-ink-2)]" aria-hidden>
@@ -331,7 +332,7 @@ function SoftCuts({ plan, busy, onApply }: Pick<ReframeProps, 'plan' | 'busy' | 
         </div>
       </div>
       <p id={`${id}-description`} className="mt-3 text-xs leading-relaxed text-[var(--cm-ink-2)]">
-        Briefly blend between camera shots for a softer change between people.
+        A subtle blend between camera shots.
       </p>
       {enabled && (
         <form
@@ -365,7 +366,7 @@ function SoftCuts({ plan, busy, onApply }: Pick<ReframeProps, 'plan' | 'busy' | 
                   }
                 }}
               />
-              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[10px] text-[var(--cm-ink-3)]">
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[11px] text-[var(--cm-ink-3)]">
                 ms
               </span>
             </div>
@@ -375,7 +376,7 @@ function SoftCuts({ plan, busy, onApply }: Pick<ReframeProps, 'plan' | 'busy' | 
           </div>
           <p
             id={`${id}-duration-help`}
-            className={`mt-1.5 text-[10px] leading-relaxed ${valid ? 'text-[var(--cm-ink-3)]' : 'text-[var(--cm-warning-ink)]'}`}
+            className={`mt-1.5 text-[11px] leading-relaxed ${valid ? 'text-[var(--cm-ink-3)]' : 'text-[var(--cm-warning-ink)]'}`}
           >
             {valid
               ? '40–250 ms · 120 ms is a gentle starting point.'
@@ -383,10 +384,13 @@ function SoftCuts({ plan, busy, onApply }: Pick<ReframeProps, 'plan' | 'busy' | 
           </p>
         </form>
       )}
-      <p className="mt-3 text-[10px] leading-relaxed text-[var(--cm-ink-3)]">
-        Short shots use shorter blends. Audio and caption timing stay unchanged.
-        {plan.segments.length < 2 && ' This clip has no cuts to blend.'}
-      </p>
+      <details className="editor-details editor-soft-cut-note">
+        <summary>How blends work</summary>
+        <p className="editor-help">
+          Short shots use shorter blends. Audio and caption timing stay unchanged.
+          {plan.segments.length < 2 && ' This clip has no cuts to blend.'}
+        </p>
+      </details>
       {enabled && plan.segments.length > 1 && plan.transitions?.length === 0 && (
         <p className="mt-2 text-xs leading-relaxed text-[var(--cm-ink-2)]" role="note">
           No cuts can be softened at this duration and framing.
