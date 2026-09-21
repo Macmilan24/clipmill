@@ -1,15 +1,7 @@
 /**
- * The chart surface: a themed container and a tooltip, over Recharts.
- *
- * Charts are drawn by a library rather than by hand. Axes, scales, hit testing
- * and tooltip placement are solved problems with a great many edge cases — an
- * SVG written here would be worse at all of them and would drift from the rest
- * of the interface the first time a value went negative or a label got long.
- *
- * What this file owns is the part a library cannot know: the design's colours and
- * type. Series colours arrive as CSS custom properties set on the container, so a
- * chart reads the same tokens every other surface does and follows the theme
- * without re-rendering.
+ * Themed Recharts container and tooltip.
+ * Series colors use CSS custom properties shared with the rest of the interface,
+ * so charts follow theme changes without re-rendering.
  */
 import type * as React from 'react';
 import { ResponsiveContainer } from 'recharts';

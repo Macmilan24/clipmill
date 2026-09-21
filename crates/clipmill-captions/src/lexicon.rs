@@ -1,24 +1,8 @@
-//! Word lists, and the normalization that makes matching against them honest.
+//! Caption word classification and normalization.
 //!
-//! Three lists, each doing one job.
-//!
-//! **Fillers** are tagged, never removed. A caption is a record of what was
-//! said, and a viewer reading "I mean, the thing is" while hearing it is being
-//! told the truth; a viewer reading a tidied sentence is being told what a
-//! program thought they should have heard. What the tag is for is emphasis: a
-//! filler may never carry it, because emphasising "um" is the clearest possible
-//! signal that nothing understood the sentence.
-//!
-//! **Words that may not end a line** are the book's "never orphan an article".
-//! An article, preposition or conjunction stranded at the end of a line makes
-//! the reader hold it in mind across a break for no reason — the phrase it
-//! belongs to is on the next line. This is the cheapest real improvement in
-//! captioning and it costs one list.
-//!
-//! **Terminators** are punctuation, not a list, and they come from the text
-//! itself rather than from a model: a break after a full stop is free, a break
-//! after a comma is cheap, a break inside a phrase is what the cost function is
-//! there to discourage.
+//! Fillers are preserved but cannot carry emphasis. Articles, prepositions, and
+//! conjunctions are discouraged at line ends. Punctuation determines break costs:
+//! full stops are free, commas are cheap, and breaks inside phrases cost more.
 
 /// The lexicon's identity, recorded in the artifact key. A different list is a
 /// different reading of the same words.

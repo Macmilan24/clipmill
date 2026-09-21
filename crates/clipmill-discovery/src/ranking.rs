@@ -1,18 +1,8 @@
-//! Which clips to show, in what order, cut where.
+//! Score candidates, choose boundaries, and select a diverse clip set.
 //!
-//! Three decisions discovery deliberately left open, taken here (book ch. 16):
-//! what each candidate is worth, where its boundaries actually fall, and which
-//! subset of the cohort a user should see. Each is *shown* rather than
-//! asserted — the score is a card with named axes and the evidence behind them,
-//! the chosen boundary ships beside the runner-up it beat, and a set smaller
-//! than the one requested says why.
-//!
-//! That last one is the rule most systems break. Asked for ten clips from a
-//! recording holding four good moments, the honest answer is four and a reason,
-//! not ten with six the system does not believe in. Padding a set is how a tool
-//! teaches a user to stop trusting its ordering.
-//!
-//! Nothing here does any I/O.
+//! Outputs include score axes with evidence, runner-up boundaries, and a reason
+//! when filtering and duplicate constraints leave fewer clips than requested.
+//! No I/O occurs here.
 
 use std::collections::{BTreeMap, BTreeSet};
 

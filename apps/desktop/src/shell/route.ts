@@ -1,32 +1,14 @@
 /**
- * Where the shell is, which is not quite the same question as which navigation
- * row is lit.
- *
- * Eight of the nine screens answer to a navigation section and the two questions
- * collapse into one. Analysis Progress does not. The design gives it no row —
- * the nine are fixed and must not be regrouped or added to — and shows it with
- * the row it was opened from still active and a two-part breadcrumb. It is also
- * about one particular run, so "which screen" carries an argument that a section
- * id has nowhere to put.
- *
- * So a route is what the shell holds and the active section is derived from it.
- * That keeps the sidebar out of the business of knowing which screens are
- * reachable from where, and lets a screen take an argument without the
- * navigation model growing a row nobody designed.
+ * Routes carry screen arguments independently of sidebar selection.
+ * Analysis Progress has no navigation row and retains its originating section
+ * while identifying the run and breadcrumb to display.
  */
 import { type NavSection, findSection } from './navigation.js';
 
 /**
- * One clip, named by everything a screen needs to open it.
- *
- * The editor and the export used to open "the newest document of the newest
- * project", which is right for one project with one approval and wrong the
- * moment a second of either exists: approving a clip in an older project
- * opened another project's edit. So the identity travels. The document is what
- * is opened; the project scopes every call about it; the source is where its
- * proxy and face tracks come from; the candidate and the run are which clip of
- * which analysis it was cut from, kept so a screen can say so and so a re-run
- * that renumbered the candidates cannot quietly swap the clip underneath.
+ * Clip identity shared by editor and export routes.
+ * The project scopes requests; the source identifies media; the run and candidate
+ * identify the analysis result so re-analysis cannot substitute another clip.
  */
 export interface ClipRef {
   readonly projectId: string;
@@ -42,13 +24,7 @@ export interface ClipRef {
 
 export type Route =
   /**
-   * A section, and optionally the project it was opened for.
-   *
-   * Results is the reason the argument exists. Opening a finished project from
-   * the Library used to navigate to the section and drop which project was
-   * clicked, so the screen fell back to the newest one and an editor who chose
-   * a recording was shown a different recording. A section id has nowhere to
-   * put that, so it goes here.
+   * Section route with an optional project so Results preserves the Library selection.
    */
   | {
       readonly kind: 'section';
@@ -72,13 +48,8 @@ export type Route =
       readonly from: string;
     }
   /**
-   * One clip, inspected.
-   *
-   * Like Analysis Progress this has no navigation row of its own: it is reached
-   * from Results, keeps that row lit, and carries the arguments a section id has
-   * nowhere to put. Unlike Analysis Progress it names three things, because
-   * judging a clip means naming which recording and which candidate as well as
-   * which project.
+   * Inspector route carrying project, source, and candidate identity while
+   * keeping Results selected in the sidebar.
    */
   | {
       readonly kind: 'inspector';

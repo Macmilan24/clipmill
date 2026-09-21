@@ -1,14 +1,7 @@
 /**
- * Every way a screen reaches the daemon, as one interface.
- *
- * The client module is a set of functions bound to the Tauri bridge, which is
- * exactly what a screen wants at runtime and exactly what a test cannot supply.
- * Naming the surface makes the seam: a loader takes this, the real one is the
- * bridge, and a test passes a daemon that answers from memory.
- *
- * It is one interface rather than one per screen because the screens overlap —
- * the Library and an analysis in progress ask most of the same questions — and
- * two interfaces that drift apart would mean two fakes to keep honest.
+ * Shared daemon interface for screen loaders.
+ * The runtime implementation uses the Tauri bridge; tests can provide an
+ * in-memory implementation through the same interface.
  */
 import {
   type AnalyzeRequest,

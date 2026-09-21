@@ -1,18 +1,9 @@
-//! Turning aligned words into the published caption document.
+//! Build the caption document from aligned words.
 //!
-//! Everything decided here is decided once. The tokens are built from the
-//! transcript and tagged against the lexicon and the topic index; the two
-//! intents are then two runs of the same segmenter over the same tokens with
-//! different numbers. That ordering is the design rule: there is no path
-//! through this module that produces words for one intent which the other
-//! cannot see.
-//!
-//! What the segmenter is told about the recording comes from documents that may
-//! not exist. Without the evidence index there are no sentence boundaries to
-//! break at and no salient terms to emphasise, and without shot detection there
-//! are no cuts to avoid. Both are optional and both are recorded as present or
-//! absent, because a cue set built without them is a weaker one and a reader
-//! should be able to tell which they are holding.
+//! Both intents segment the same tokens, preserving identical words across burn-in
+//! and sidecars. Optional evidence supplies sentence boundaries and salient terms;
+//! optional shots supply cuts to avoid. The document records whether each input
+//! was present.
 
 use std::num::NonZeroU64;
 

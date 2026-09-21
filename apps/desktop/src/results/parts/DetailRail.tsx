@@ -1,22 +1,7 @@
 /**
- * The selected clip, without leaving the board.
- *
- * The still is the filmstrip tile the ingest cut nearest this clip's first
- * frame — a real frame of the real recording, served over the media protocol.
- * There is no placeholder image anywhere in here: a card that cannot show a
- * frame says the run published no filmstrip, because a stock thumbnail would be
- * a picture of something that is not this clip.
- *
- * The four facts under the title are the design's four slots filled with what
- * this system actually publishes. "Confidence" is the ranker's band, which is
- * the word the book uses for it; "Risk" is what the ranker recorded against the
- * clip, or the fact that it recorded nothing. The design's "Format 9:16" was a
- * constant, and a constant is not a fact about a clip.
- *
- * "Why it ranked here" lists the axes that most moved the total, each with the
- * sentence it was read from and where in the recording that sentence is. That
- * ordering is by weighted contribution, so the reasons given are the reasons the
- * number is what it is.
+ * Selected clip details with the nearest source filmstrip tile and ranking evidence.
+ * Missing filmstrips are reported explicitly. Explanations are ordered by weighted
+ * contribution and retain source sentences and timestamps.
  */
 import { MediaStill } from '../../components/MediaStill.js';
 import {

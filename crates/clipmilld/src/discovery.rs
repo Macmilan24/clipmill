@@ -1,15 +1,8 @@
-//! The builtin that searches a recording for clips worth considering.
+//! Read inputs, key, and publish `clipmill-discovery` proposals.
 //!
-//! Third of the model-free builtins, and the same shape as the two before it:
-//! it loads nothing, reads published documents, and writes one more. Everything
-//! it decides lives in `clipmill-discovery`, which does no I/O — this module
-//! reads the inputs, keys the result, and publishes it.
-//!
-//! Its three documents arrive on the lease — declared by the plan when this runs
-//! standalone, delivered by a dependency inside the analyze DAG — and each is
-//! matched against the artifact kind its own manifest declares. A plan pointing
-//! at a transcript where an index belongs is refused rather than searched, and
-//! the key covers the addresses whichever route found them.
+//! Standalone plans and analysis dependencies provide the same leased input list.
+//! Manifest kinds validate each document, and input addresses enter the key
+//! regardless of how the inputs arrived.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::DiscoverStagePayloadV1;

@@ -1,16 +1,7 @@
-"""Language codes on the contract, language names in the model.
+"""Map contract BCP-47 codes to Qwen3 language names.
 
-Every artifact in the chain carries a BCP-47 code, because that is what
-consumers, caption files, and the edit document speak. Qwen3 was trained on
-English prose naming its languages. Somewhere the two have to meet, and doing
-it in one table beats doing it at four call sites.
-
-The table only proposes. What a model actually supports is a property of the
-weights, so the caller checks each name against the loaded model's own list and
-refuses a language it would otherwise silently mistranscribe — a recognizer
-asked for Welsh and quietly given English produces text that reads fine and is
-wrong.
-"""
+The table proposes names; callers verify support against the loaded model's
+language list to avoid silently recognizing a different language."""
 
 from __future__ import annotations
 

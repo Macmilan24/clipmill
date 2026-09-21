@@ -1,21 +1,8 @@
-"""Forced alignment: fitting known text to the audio that produced it.
+"""CTC Viterbi alignment of known text to per-frame model log-probabilities.
 
-The recognizer already decided *what* was said. This decides *when*, and it is
-a separate stage for a reason the book is explicit about: word timing taken
-from a decoder's token positions is timing nobody measured. Every word-snapped
-trim, every caption cue, and every boundary the optimizer refuses to cut
-inside ultimately rests on the frames chosen here.
-
-The algorithm is CTC Viterbi over the standard blank-extended label sequence.
-Given per-frame log-probabilities over the model's alphabet and the characters
-that were said, it finds the single most likely assignment of frames to
-characters — not the most likely transcription, which is a different and
-easier question the recognizer already answered.
-
-Pure NumPy and no model, so the parts that go wrong quietly — a path that
-cannot exist, a token squeezed to zero frames, text longer than the audio —
-are testable against emissions written by hand.
-"""
+The blank-extended label sequence assigns audio frames to recognized characters;
+it does not choose the transcription. Pure NumPy keeps impossible paths,
+zero-frame tokens, and text longer than the audio testable without a model."""
 
 from __future__ import annotations
 

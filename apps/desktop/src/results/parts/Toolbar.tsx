@@ -1,15 +1,6 @@
 /**
- * Search, the filter chips, the order, and how the rows are laid out.
- *
- * The chips are the design's four — All, Recommended, Approved, Flagged — plus
- * Needs review, because that band is a real state the ranker assigns and an
- * editor triaging a board wants it in reach. Every chip carries the count it
- * would leave behind, from rows already loaded, and disables itself at zero so
- * a filter cannot advertise a result nobody gets.
- *
- * The list/grid switch is real: the grid draws a card per clip with its still,
- * which is a different way of comparing than a table row and is what the design
- * offers the toggle for.
+ * Search, filtering, sorting, and layout controls for loaded candidates.
+ * Filter counts use loaded rows, and empty filters are disabled.
  */
 import { LayoutGrid, List, Search, X } from 'lucide-react';
 

@@ -1,12 +1,5 @@
 /**
- * What a new run is asked for, and what it may be started with.
- *
- * The design's setup card offers rather more than this: creative direction
- * compiled into scoring parameters, audience and tone, speaker-aware reframing,
- * burnt-in captions. None of those has anything behind it — there is no brief
- * compiler in the pipeline, reframing is a later workstream, and captions are
- * another. What is here maps one-to-one onto fields the analyze payload actually
- * carries, so every control changes what the daemon does.
+ * Import settings and validation mapped to the analysis payload.
  */
 const TICKS_PER_SECOND = 90_000;
 

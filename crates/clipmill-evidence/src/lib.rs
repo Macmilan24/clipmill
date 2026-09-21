@@ -1,27 +1,9 @@
-//! Reading structure out of a transcript.
+//! Derive transcript structure with provenance back to measured words.
 //!
-//! Discovery has to propose spans of a recording worth clipping. Without an
-//! index it would propose them over a flat list of words, which means every
-//! proposer re-deriving "where does a sentence end" slightly differently and
-//! none of them able to say why a boundary was chosen. This crate derives that
-//! structure once, states how each part of it was decided, and links every
-//! unit back to the words it came from (book ch. 14, Rule 14.1).
-//!
-//! Two levels, and the line between them is what the stage is willing to
-//! claim. **L1** is what the recording states about itself: utterances where
-//! voice activity heard a pause, sentences where the recognizer punctuated,
-//! and the edges a clip may start or end on. **L2** is topics, by lexical
-//! cohesion over the words rather than by any model that reads them — a real
-//! approximation, published under a name that says so.
-//!
-//! There is no L3 and no open-loop detection. Both would require understanding
-//! the words, and a stage that claimed it here would be handing the next stage
-//! a promise nobody kept.
-//!
-//! Nothing in this crate does any I/O. It takes two parsed documents and
-//! returns a third, which is what lets the whole level be tested against
-//! transcripts written by hand — including the ones no real recording
-//! produces.
+//! L1 records VAD utterances, punctuation-based sentences, and legal clip edges.
+//! L2 approximates topics using lexical cohesion; it makes no semantic or open-loop
+//! claims. Pure document transformations keep indexing reproducible and testable
+//! without model inference or I/O.
 
 pub mod confidence;
 mod stopwords;

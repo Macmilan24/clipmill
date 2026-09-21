@@ -1,9 +1,5 @@
 /**
- * Presentation helpers for the measured device profile.
- *
- * Pure and separately tested: these turn daemon measurements into the strings
- * the Models screen shows, and getting a unit wrong here would quietly
- * misreport someone's hardware.
+ * Presentation helpers for measured device profiles, preserving units for display.
  */
 import type { DeviceProfile } from '@clipmill/contracts';
 

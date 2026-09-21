@@ -1,16 +1,7 @@
-"""Recognition, on the universal fallback path.
+"""Portable recognition behind the shared ``asr`` contract.
 
-This worker lands before the accelerated primary and outlives it. Everything
-downstream — alignment, the transcript, discovery, captions — speaks to the
-`asr` contract and not to whisper.cpp, so the daemon can put a faster
-implementation behind the same contract on machines that have one, choose
-between them by measured benchmark rather than by brand, and still run the
-whole pipeline on a laptop with no accelerator at all.
-
-What this stage does not produce is word timing. The intervals it publishes
-are the decoder's own bookkeeping, named as hints, and the document states
-once at the top that forced alignment owns timing.
-"""
+The daemon selects implementations using device measurements. Decoder intervals
+are timing hints only; forced alignment supplies measured word timing."""
 
 from __future__ import annotations
 

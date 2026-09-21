@@ -1,28 +1,9 @@
-//! A ZIP writer that produces the same bytes twice.
+//! Deterministic ZIP output for project documents.
 //!
-//! The archive is the promise that a user's work outlives this application, so
-//! the format has to be one every operating system opens without being told
-//! how — which means ZIP, and means the bytes have to be right rather than
-//! nearly right.
-//!
-//! Written here rather than taken from a crate for one reason: **determinism**.
-//! An archive of the same project must be the same file, so it can be hashed,
-//! compared, and round-trip tested. Every general-purpose writer stamps the
-//! current time into each entry, and several also record the host platform and
-//! permission bits, all of which make two archives of identical content differ.
-//! Fixing that from the outside means overriding most of what the library does.
-//! So entries are stored (never deflated), timestamps are pinned to the epoch
-//! the format itself starts at, and the caller controls the order.
-//!
-//! Storing rather than deflating costs size on the JSON this archive holds. It
-//! buys a writer with no compression state to get wrong, and an archive whose
-//! entries can be read back by seeking — and the size is bounded by the
-//! documents a project actually contains, not by its media, which the archive
-//! references rather than copies.
-//!
-//! Zip64 is not implemented, and the two limits that would need it are refused
-//! with a reason rather than written as a file that some tools open and others
-//! do not.
+//! Entries are stored without compression, timestamps use the ZIP epoch, and the
+//! caller controls order. This avoids host metadata and compression state changing
+//! the archive bytes. Media is referenced rather than copied, limiting archive
+//! size to project documents. Unsupported Zip64 sizes and counts are rejected.
 
 /// The DOS timestamp the format's own epoch: 1980-01-01 00:00:00.
 ///

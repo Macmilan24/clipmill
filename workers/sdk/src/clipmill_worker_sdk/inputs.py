@@ -1,24 +1,9 @@
-"""Finding the artifacts a lease delivered, by what each one is.
+"""Resolve lease inputs by their manifest-declared artifact kinds.
 
-A stage's inputs reach it by one of two routes. Submitted as a standalone job,
-what it reads was published by earlier jobs, so the plan declares their content
-addresses. Run inside a larger plan, those same artifacts are the outputs of
-tasks it depends on, so a dependency carries them. Either way the daemon
-delivers one list on the lease, and this is how a worker reads it.
-
-That the routes converge before the worker sees them is the point. A stage that
-resolved an address out of its own payload on one route and a dependency on the
-other would compute two artifact keys for one piece of work — and a
-content-addressed store cannot notice two addresses for one observation after
-the fact. It is also the only route that *can* work: a worker may open exactly
-the artifacts its lease named, so an address that travelled only in the payload
-named something the worker was forbidden to read.
-
-Inputs are matched by the artifact kind each one's own manifest declares, never
-by position. A stage handed two artifacts of one kind has no basis for choosing
-between them and says so, rather than taking the first and being right most of
-the time.
-"""
+Standalone plans and dependency tasks deliver the same input list, keeping
+artifact keys consistent and reads within the lease's authorization. Duplicate
+inputs of one kind are rejected because their order cannot identify the right
+one."""
 
 from __future__ import annotations
 

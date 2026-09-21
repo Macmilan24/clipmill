@@ -1,20 +1,9 @@
-//! What the renderer is handed, and why it is not the wire type.
+//! Renderer-facing records for generated protobuf types that lack JSON serialization.
+//! Preserve contract enum values, progress units and counts, and failure classes.
+//! The renderer resolves enum labels through its generated types.
 //!
-//! The generated protobuf types do not serialize to JSON, and if they did the
-//! renderer would be coupled to field numbering it has no business knowing. So
-//! each thing a screen renders crosses this boundary as a plain record with the
-//! names TypeScript expects.
-//!
-//! Nothing is interpreted on the way. States stay the integers the contract
-//! defines rather than becoming strings this layer invented; progress keeps its
-//! unit and both counts; a failure keeps its class beside its detail. A screen
-//! that wants a word for `state` gets it from the generated enum on its own
-//! side, where the contract is still the authority.
-//!
-//! The one document that does not appear here is an artifact's contents. Those
-//! cross as the bytes the daemon published, parsed by the renderer with the
-//! generated schema type, so the JSON Schema stays the only contract between
-//! the two ends.
+//! Artifact contents pass through as published bytes and are parsed with generated
+//! schema types, keeping JSON Schema as their shared contract.
 
 use clipmill_contracts::proto::ipc::v1::{
     AnalyzeSourcePayloadV1, ClipDurationV1, ExportArchiveResponse, ExportRequestV1, ExportSeverity,
@@ -305,12 +294,8 @@ impl TryFrom<RegisterSourceResponse> for RegisteredSourceView {
     }
 }
 
-/// What a screen asks for when it starts an analysis.
-///
-/// Ticks are the contract's unit and the renderer speaks them, so nothing here
-/// converts seconds: a screen that offered "15 to 60 seconds" already turned
-/// that into the timebase the daemon keys against, and doing it twice is how the
-/// two ends come to disagree.
+/// Analysis request from the renderer. Durations are already in contract ticks;
+/// do not convert them from seconds again.
 #[derive(Debug, serde::Deserialize)]
 pub struct AnalyzeRequest {
     #[serde(rename = "sourceId")]
@@ -368,14 +353,9 @@ impl AnalyzeRequest {
 /// the shell composes the payload; a mismatch is refused at submit.
 const ANALYZE_SOURCE_KEY_VERSION: &str = "clipmill.analyze-source.v1";
 
-/// Permission to stream a media artifact, and what it holds.
-///
-/// The inventory is the point. A filmstrip names its tiles, a render names its
-/// outputs, and a screen cannot build a URL for a file it does not know the name
-/// of — guessing at `strip_00001.jpg` would be a renderer reimplementing a
-/// producer's naming convention. No bytes and no paths cross here: the URL a
-/// screen builds from this goes to the media protocol, which opens the object
-/// itself.
+/// Authorized media inventory. The renderer uses descriptor filenames to build
+/// media-protocol URLs rather than guessing producer naming conventions.
+/// Filesystem paths and file contents do not cross this boundary.
 #[derive(Debug, Serialize)]
 pub struct MediaArtifactView {
     #[serde(rename = "artifactId")]
@@ -658,9 +638,8 @@ impl From<clipmill_contracts::proto::ipc::v1::SolveCropPathResponse> for CropPat
     }
 }
 
-/// The plan the player applies. Everything that could be computed already was,
-/// by the code that renders — so nothing here is a number the renderer works
-/// out for itself.
+/// Precomputed rendering plan for the player. Crop and caption values come from
+/// the rendering code so the frontend does not duplicate its calculations.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewPlanView {
@@ -1177,12 +1156,9 @@ impl From<clipmill_contracts::proto::ipc::v1::GetReadinessResponse> for Readines
     }
 }
 
-/// What the Export screen asks for, in the shape the renderer sends it.
-///
-/// A deserializable twin of the wire message rather than the wire message
-/// itself: the generated proto types carry no serde derives, and giving the
-/// renderer its own struct keeps the field names camel-cased on the side that
-/// reads them and snake-cased on the side that transmits them.
+/// Deserializable export request matching the renderer's camelCase fields.
+/// Generated wire types lack serde derives; conversion supplies their `snake_case`
+/// fields before transmission.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportRequestInput {

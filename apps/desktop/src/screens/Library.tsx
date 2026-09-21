@@ -138,13 +138,7 @@ export function Library({
   );
 
   /**
-   * Where a card goes.
-   *
-   * A run that is still working, or one that failed, opens at its own progress
-   * screen — that is where the answer to "what is it doing" and "why did it
-   * stop" lives. A finished one opens at its results, which is the screen Phase
-   * 1 builds; until then that lands on the placeholder naming the phase, which
-   * is the truth rather than a card that swallows the click.
+   * Open active or failed jobs in Analysis Progress; open completed projects in Results.
    */
   const open = (entry: LibraryProject): void => {
     const watchable =

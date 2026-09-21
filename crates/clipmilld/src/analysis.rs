@@ -1,22 +1,9 @@
-//! The fan-in that closes an analysis.
+//! Root all analysis outputs through one fan-in manifest.
 //!
-//! A job roots exactly one artifact, and garbage collection walks recipe inputs
-//! from the roots. An analysis produces ten observations, so the last task names
-//! all of them: the manifest's recipe lists every stage, and reachability of the
-//! whole analysis follows from that one root. Delete the manifest and the
-//! analysis becomes collectable; keep it and nothing under it can be swept.
-//!
-//! It is also the document a shell reads to find out what a project has. One
-//! read instead of nine, and the nine addresses in it are what the reader opens
-//! next.
-//!
-//! Two things it refuses to guess. Coverage is the narrowest of what the stages
-//! that measured the recording actually examined, not the source's duration —
-//! a consumer reading a candidate outside that range is reading a claim nobody
-//! made. And a stage the plan never ran is listed as skipped with the property of
-//! the source that skipped it, because "this recording has no shot cuts" and
-//! "nobody looked for shot cuts" are different facts and the difference is
-//! invisible from an empty list.
+//! The job roots the manifest and garbage collection follows its recipe inputs to
+//! every included stage. Consumers use the manifest to locate analysis artifacts.
+//! Coverage is the intersection of measured coverage, not the source duration;
+//! stages the plan did not run are marked skipped with a reason.
 
 use std::collections::BTreeMap;
 

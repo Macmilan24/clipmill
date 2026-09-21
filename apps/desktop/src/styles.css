@@ -1,10 +1,6 @@
 /*
- * Shell styling.
- *
- * Three layers, in order: Tailwind, the design primitives, and the shadcn
- * semantic aliases that map onto them. Components are shadcn/ui restyled
- * through those tokens — what remains here is only the chrome the library has
- * no opinion about: shared surfaces and the fixed shell geometry.
+ * Shell styles layered over Tailwind, design primitives, and shadcn semantic aliases.
+ * Shared tokens define component surfaces and fixed shell geometry.
  */
 @import 'tailwindcss';
 @import 'tw-animate-css';

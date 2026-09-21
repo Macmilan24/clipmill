@@ -1,30 +1,12 @@
-"""Where the camera changed, and how much the detector believes it.
+"""PySceneDetect content cuts, confidence distributions, and shot spans.
 
-The detection itself is PySceneDetect's content detector: consecutive frames
-are compared in HSV, and a boundary is called where the mean per-pixel distance
-crosses a threshold. That algorithm is not reimplemented here — what is here is
-everything around it that the observation contract needs and the library does
-not provide.
+Consecutive frames are compared in HSV. Each cut retains its score and
+confidence; the resulting shot spans tile coverage for the boundary lattice.
+Detection is a pure function of frames and parameters.
 
-    the score       kept per cut, because it is the only number a re-tune can
-                    be reasoned about from without decoding the video again
-    the confidence  a distribution rather than a flag; a cut two points over
-                    the bar and a cut three times over it are both "a cut" to
-                    the library and must not be to anything downstream
-    the spans       the shots between cuts, tiling coverage exactly, because
-                    that is what the boundary lattice consumes
-
-Everything in this module is a pure function of frames and parameters, so the
-cases real footage does not contain — a cut on the first frame, a flash, a
-recording that never changes — are tested against arrays written by hand.
-
-One limit is worth stating rather than discovering: the minimum shot enforces a
-minimum *length*, not a rejection. A camera flash is two large content changes
-a frame apart, and the minimum shot collapses them into one boundary rather
-than none, because a flash really is a change and this detector has no way to
-know it was not a cut. Rejecting them belongs to a detector that models motion,
-which is a Phase 2 question.
-"""
+Minimum shot length merges closely spaced changes rather than rejecting them.
+A flash may therefore become one boundary; rejecting flashes requires evidence
+beyond this content detector."""
 
 from __future__ import annotations
 

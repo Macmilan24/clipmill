@@ -1,16 +1,8 @@
-//! The virtual camera.
+//! Select a focus subject and propose a smoothed virtual-camera path.
 //!
-//! Two decisions, kept apart because they fail differently. **Who to follow** is
-//! a judgement over evidence that can be wrong in a way nobody sees — a
-//! confident crop of the wrong person — so it is gated, and falling short of the
-//! gate produces a fitted frame and a sentence saying why. **How to follow** is
-//! arithmetic: a least-squares path whose damping terms exist to stop the camera
-//! chasing detection flicker, solved as a banded system in microseconds so an
-//! interactive nudge costs nothing.
-//!
-//! Nothing here writes anything. A solve returns a proposal; whether it becomes
-//! part of an edit is the caller's decision, which is what makes re-solving free
-//! and what keeps an accepted edit from being mutated by a re-run.
+//! Insufficient focus evidence yields `Fit` with a reason. Accepted tracks drive a
+//! banded least-squares solve whose damping suppresses detection jitter. Solving
+//! returns a proposal without mutating an accepted edit or performing I/O.
 
 mod banded;
 mod solver;

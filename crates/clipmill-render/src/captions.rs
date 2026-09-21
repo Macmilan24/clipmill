@@ -1,20 +1,8 @@
-//! Where the caption document becomes something the writers can render.
+//! Project caption documents into Edit IR without re-segmenting words.
 //!
-//! The caption engine publishes one document holding two groupings of one token
-//! array. This is the only place either of them turns into an Edit IR caption
-//! track, and it is deliberately a projection rather than a derivation: no
-//! decision is taken here that was not already taken upstream. Line breaks
-//! arrive decided, cue windows arrive decided, and what this module does is
-//! choose an intent, shift source time into program time, and copy.
-//!
-//! That matters because the alternative is the failure the book names by name.
-//! If the renderer could re-segment, a preview and an export could disagree
-//! about where a line broke; if it could re-group, a burn-in and a sidecar
-//! could disagree about which words were said. Neither is reachable from here.
-//!
-//! Which intent a surface takes is not a preference. The burned-in track may
-//! take the kinetic grouping. Every sidecar takes the accessibility grouping,
-//! always, because a sidecar is what a deaf viewer is left with.
+//! Select an intent, shift source time to program time, and preserve decided cue
+//! windows and line breaks. Burn-in may use kinetic cues; every sidecar uses the
+//! accessibility grouping.
 
 use clipmill_captions::{
     Animation, Border, Preset,
