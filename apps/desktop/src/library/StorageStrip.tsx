@@ -36,12 +36,10 @@ export function StorageStrip({
           .join(' · ');
 
   return (
-    <div className="glass mt-4 flex h-10 items-center justify-between rounded-xl px-3">
+    <div className="mt-6 flex min-h-10 flex-wrap items-center justify-between gap-3 border-t border-[var(--cm-glass-border)] pt-4">
       <div className="flex min-w-0 items-center gap-2">
         <HardDrive className="size-4 shrink-0 text-[var(--cm-text-muted)]" />
-        <span className="mono truncate text-technical text-[var(--cm-text-secondary)]">
-          {summary}
-        </span>
+        <span className="truncate text-meta text-[var(--cm-text-secondary)]">{summary}</span>
       </div>
       <div className="flex items-center gap-4">
         {/* Absent is not zero. A disk whose free space could not be read says

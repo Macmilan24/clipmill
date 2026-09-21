@@ -127,10 +127,11 @@ export function Player({
 
   if (!src) {
     return (
-      <div className="grid min-h-0 w-full flex-1 place-items-center rounded-[var(--cm-radius-panel)] border border-dashed border-[var(--cm-recessed-border)] p-6 text-center">
-        <p className="text-[12px] text-[var(--cm-text-muted)]">
-          This project published no proxy, so there is nothing to preview.
-        </p>
+      <div className="clip-review-unavailable">
+        <div>
+          <p className="clip-review-unavailable-title">Preview unavailable</p>
+          <p>This project published no proxy, so there is nothing to preview.</p>
+        </div>
       </div>
     );
   }
@@ -179,6 +180,11 @@ export function Player({
 
   return (
     <div className="inspector-player">
+      <div className="clip-review-viewer-bar">
+        <span>Clip preview</span>
+        <span className="mono">Source {timecode(positionTicks)}</span>
+        <span className="mono">9:16</span>
+      </div>
       <div className="inspector-stage-wrap">
         <div className="video-stage">
           <div className="absolute inset-0 flex items-center justify-center">
@@ -221,24 +227,23 @@ export function Player({
             />
           </div>
 
-          <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-between">
-            <span className="mono rounded bg-black/55 px-2 py-1 text-[10px] text-white backdrop-blur-sm">
-              {timecode(positionTicks)}
-            </span>
-            <span className="rounded bg-black/55 px-2 py-1 text-[10px] tracking-wide text-white uppercase backdrop-blur-sm">
-              9:16
-            </span>
-          </div>
-
           {caption && (
             <p className="pointer-events-none absolute inset-x-4 bottom-16 text-center text-[17px] leading-tight font-bold text-white uppercase drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
               {caption.text}
             </p>
           )}
         </div>
+        {problem && (
+          <div role="alert" className="clip-review-player-problem clip-review-unavailable">
+            <div>
+              <p className="clip-review-unavailable-title">Preview needs attention</p>
+              <p>{problem}</p>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="flex w-full shrink-0 items-center justify-center gap-1">
+      <div className="clip-review-transport">
         {step('Jump to the in point', 'In point', <ChevronFirst className="size-4" />, startTicks)}
         {step(
           'Back one second',
@@ -284,11 +289,6 @@ export function Player({
         </Button>
       </div>
 
-      {problem && (
-        <p role="alert" className="text-xs text-[var(--cm-danger-ink)]">
-          {problem}
-        </p>
-      )}
       <p className="shrink-0 text-[11px] text-[var(--cm-text-muted)]">
         {fitted
           ? `Fitted${crop?.fitReason ? ` — ${crop.fitReason}` : ''}`
