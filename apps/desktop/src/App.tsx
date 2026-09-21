@@ -1,7 +1,15 @@
-import { type CSSProperties, type JSX, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type CSSProperties,
+  type JSX,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
-import { type Theme, ThemeController } from '@clipmill/tokens';
+import { type Theme, type WorkspaceTheme, ThemeController } from '@clipmill/tokens';
 
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -54,6 +62,9 @@ export function App(): JSX.Element {
       typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches,
     ),
   );
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(() =>
+    ThemeController.resolveWorkspace(typeof localStorage === 'undefined' ? null : localStorage),
+  );
 
   // Where the shell was, and which clip it was on, put back from the last
   // launch. The clip is what the Editor and Export rows open when reached from
@@ -70,10 +81,11 @@ export function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Apply the resolved theme before the user touches anything.
-  useEffect(() => {
+  // Restore both choices before the first React paint.
+  useLayoutEffect(() => {
     controller.apply(theme);
-  }, [controller, theme]);
+    controller.applyWorkspace(workspaceTheme);
+  }, [controller, theme, workspaceTheme]);
 
   const toggleTheme = useCallback(() => {
     setTheme(controller.toggle());
@@ -231,10 +243,12 @@ export function App(): JSX.Element {
                   openClip(next, 'export');
                 },
               },
-              // Reads the daemon directly and takes nothing from the shell, so
-              // the entry exists to satisfy the registry rather than to carry
-              // anything.
-              settings: { theme, onThemeChange: setTheme },
+              settings: {
+                theme,
+                onThemeChange: setTheme,
+                workspaceTheme,
+                onWorkspaceThemeChange: setWorkspaceTheme,
+              },
               models: {
                 state,
                 profile,

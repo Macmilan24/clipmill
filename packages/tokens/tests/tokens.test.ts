@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_THEME,
+  DEFAULT_WORKSPACE_THEME,
+  WORKSPACE_THEMES,
   ThemeController,
   type ThemeStorage,
   type ThemeTarget,
   isTheme,
+  isWorkspaceTheme,
+  workspacePalette,
   tokens,
 } from '../src/index.js';
 
@@ -55,14 +59,43 @@ describe('token document', () => {
   });
 
   it('keeps text readable on each theme’s surfaces and primary actions', () => {
-    for (const theme of Object.values(tokens.themes)) {
-      for (const surface of [theme.glass, theme['bg-top'], theme['glass-elevated']]) {
-        expect(contrast(theme['text-primary'], surface)).toBeGreaterThanOrEqual(4.5);
-        expect(contrast(theme['text-muted'], surface)).toBeGreaterThanOrEqual(4.5);
+    for (const option of WORKSPACE_THEMES) {
+      for (const mode of ['light', 'dark'] as const) {
+        const theme = workspacePalette(option.id, mode);
+        for (const surface of [
+          theme.glass,
+          theme['bg-top'],
+          theme['glass-elevated'],
+          theme.recessed,
+        ]) {
+          expect(contrast(theme['text-primary'], surface)).toBeGreaterThanOrEqual(4.5);
+          expect(contrast(theme['text-muted'], surface)).toBeGreaterThanOrEqual(4.5);
+        }
+        for (const accent of [theme.accent, theme['accent-hover'], theme['accent-pressed']]) {
+          expect(contrast(theme['accent-foreground'], accent)).toBeGreaterThanOrEqual(4.5);
+        }
+        expect(contrast(theme['viewer-ink'], theme.viewer)).toBeGreaterThanOrEqual(4.5);
       }
-      expect(contrast(theme['accent-foreground'], theme.accent)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme['viewer-ink'], theme.viewer)).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it('keeps Classic identical to the original palettes', () => {
+    for (const mode of ['light', 'dark'] as const) {
+      expect(workspacePalette('classic', mode)).toEqual(tokens.themes[mode]);
+    }
+  });
+
+  it('defines a complete, consistent catalog with Paper & Ink as the default', () => {
+    expect(DEFAULT_WORKSPACE_THEME).toBe('paper-ink');
+    expect(WORKSPACE_THEMES.map((entry) => entry.id)).toContain(DEFAULT_WORKSPACE_THEME);
+    const keys = Object.keys(WORKSPACE_THEMES[0]!.tokens).toSorted();
+    for (const option of WORKSPACE_THEMES) {
+      expect(Object.keys(option.tokens).toSorted()).toEqual(keys);
+      expect(Object.keys(option.light).toSorted()).toEqual(Object.keys(option.dark).toSorted());
+      expect(['ink', 'soft']).toContain(option.chrome);
+    }
+    expect(isWorkspaceTheme('toString')).toBe(false);
+    expect(isWorkspaceTheme('__proto__')).toBe(false);
   });
 
   it('carries the reserved outbound-network colour', () => {
@@ -102,5 +135,51 @@ describe('ThemeController', () => {
     storage.setItem('clipmill.theme', 'chartreuse');
     expect(ThemeController.resolveInitial(storage, false)).toBe(DEFAULT_THEME);
     expect(isTheme('chartreuse')).toBe(false);
+  });
+
+  it('upgrades old preferences to Paper & Ink without changing light/dark', () => {
+    const storage = new FakeStorage();
+    storage.setItem('clipmill.theme', 'light');
+    expect(ThemeController.resolveWorkspace(storage)).toBe('paper-ink');
+    expect(ThemeController.resolveInitial(storage, false)).toBe('light');
+    storage.setItem('clipmill.workspace-theme', 'removed-theme');
+    expect(ThemeController.resolveWorkspace(storage)).toBe('paper-ink');
+  });
+
+  it('restores the named theme separately and keeps it when appearance toggles', () => {
+    const storage = new FakeStorage();
+    const root = new FakeRoot();
+    const controller = new ThemeController(root, storage);
+    controller.applyWorkspace('soft-slate');
+    controller.apply('light');
+    controller.toggle();
+    expect(ThemeController.resolveWorkspace(storage)).toBe('soft-slate');
+    expect(ThemeController.resolveInitial(storage, true)).toBe('dark');
+    expect(root.getAttribute('data-workspace-theme')).toBe('soft-slate');
+    expect(root.getAttribute('data-theme-chrome')).toBe('soft');
+    controller.applyWorkspace('paper-ink');
+    expect(root.getAttribute('data-theme-chrome')).toBe('ink');
+    expect(controller.current()).toBe('dark');
+  });
+
+  it('continues switching when preference storage is unavailable', () => {
+    const unavailable = {
+      getItem(): never {
+        throw new Error('Storage denied');
+      },
+      setItem(): never {
+        throw new Error('Storage full');
+      },
+    };
+    const root = new FakeRoot();
+    const controller = new ThemeController(root, unavailable);
+    expect(ThemeController.resolveWorkspace(unavailable)).toBe('paper-ink');
+    expect(ThemeController.resolveInitial(unavailable, true)).toBe('light');
+    expect(() => {
+      controller.applyWorkspace('classic');
+      controller.apply('dark');
+    }).not.toThrow();
+    expect(root.getAttribute('data-workspace-theme')).toBe('classic');
+    expect(controller.current()).toBe('dark');
   });
 });

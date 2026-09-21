@@ -13,6 +13,7 @@
 @import '@fontsource-variable/dm-sans';
 @import '@fontsource/ibm-plex-mono/latin-400.css';
 @import '@fontsource/ibm-plex-mono/latin-500.css';
+@import './theme-chrome.css';
 
 /* The renderer never toggles a `dark` class; the data-theme attribute on the
  * root drives every value. This keeps Tailwind's dark: variant in agreement
@@ -80,7 +81,7 @@
   position: relative;
 }
 .studio-sidebar .nav-row[data-active='true'] {
-  background: var(--cm-accent-selected);
+  background: var(--cm-nav-active);
   color: var(--cm-text-primary);
   font-weight: 500;
 }
@@ -93,9 +94,13 @@
   width: 2px;
   background: var(--cm-accent);
   border-radius: 2px;
+  opacity: var(--cm-nav-marker-opacity);
 }
 .studio-sidebar .nav-row[data-active='true'] svg {
-  color: var(--cm-accent-ink);
+  color: var(--cm-nav-icon-ink);
+  background: var(--cm-nav-icon-background);
+  box-shadow: 0 0 0 4px var(--cm-nav-icon-background);
+  border-radius: 2px;
 }
 .sidebar-brand-mark {
   display: grid;
@@ -103,13 +108,13 @@
   width: 30px;
   height: 30px;
   border: 1px solid var(--cm-glass-border);
-  border-radius: 7px;
+  border-radius: var(--cm-radius-control);
   color: var(--cm-accent-ink);
   background: var(--cm-glass);
   flex: none;
 }
 .studio-sidebar {
-  background: var(--cm-bg-top);
+  background: var(--cm-rail);
 }
 .studio-topbar {
   background: var(--cm-bg-top);
@@ -228,7 +233,7 @@
 }
 .workspace-panel {
   border: 1px solid var(--cm-glass-border);
-  border-radius: 10px;
+  border-radius: var(--cm-radius-card);
   background: var(--cm-glass);
 }
 .results-layout {

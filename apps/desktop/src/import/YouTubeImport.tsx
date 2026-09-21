@@ -247,7 +247,7 @@ export function YouTubeImport({
     record && total && total > 0 ? Math.min(100, (record.downloadedBytes / total) * 100) : null;
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-4">
+      <div className="youtube-import-form rounded-xl border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-4">
         <div className="mb-4 flex items-start gap-3">
           <div className="grid size-9 shrink-0 place-items-center rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-surface-1)]">
             <Video className="size-4" />
