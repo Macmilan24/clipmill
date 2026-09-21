@@ -1,30 +1,14 @@
-//! Where the clip is actually cut.
-//!
-//! Boundaries get their own stage because they are where a viewer measures the
-//! product's competence in the first five seconds (book ch. 16). Discovery
-//! deliberately declined to choose — it published the whole legal lattice — and
-//! this is the stage with enough information to pick from it.
-//!
-//! Every legal pair is scored:
+//! Choose clip boundaries by exhaustively scoring the legal lattice.
 //!
 //! ```text
 //! J(i,j) = w1·completeness + w2·hook + w3·payoff + w4·continuity
 //!        − w5·deadair − w6·abrupt − w7·contextdebt
 //! ```
 //!
-//! Exhaustively, because the lattice is small — the design expects
-//! `|A|×|B| < 400`, and a search that small should not be approximated. The
-//! runner-up is published beside the winner: the optimizer's second choice is
-//! frequently the editor's first, and a boundary alternative one click away is
-//! cheaper than re-running anything.
-//!
-//! The speech rules the design names are here as terms rather than as filters,
-//! with one exception. "Never start mid-word" is structural and was already
-//! enforced in discovery, so no pair reaching this module can break it. The
-//! others — never open on an unresolvable pronoun, never open an answer without
-//! its question, end after closure rather than before the re-explanation — are
-//! preferences a strong enough hook can outweigh, which is exactly what the
-//! design's own worked example does when it prefers a cold open.
+//! The lattice is small (the design expects `|A|×|B| < 400`), so every pair is
+//! scored and the runner-up is published beside the winner. Discovery already
+//! excludes mid-word starts. Pronoun resolution, question context, and closure
+//! remain scoring preferences that a strong hook can outweigh.
 
 use clipmill_contracts::schemas::index_transcript as index;
 use clipmill_contracts::schemas::ranking_set as contract;

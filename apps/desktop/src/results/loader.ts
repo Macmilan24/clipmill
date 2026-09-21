@@ -1,13 +1,7 @@
 /**
- * Gathering what the Results board and the Clip Inspector show.
- *
- * The artifact addresses come off the analyze job's own tasks rather than from
- * a lookup: a task that succeeded names what it published, so the job is the
- * index. That also means a board can only show a run that finished, which is
- * the honest state — a half-finished analysis has no ranking to rank.
- *
- * Nothing here interprets. It fetches and assembles; what any of it means is
- * `model.ts`, which is pure and tested without a window.
+ * Load Results and Inspector artifacts from the completed analysis job's tasks.
+ * Successful tasks supply published artifact addresses. Assemble documents here;
+ * derive presentation values in `model.ts`.
  */
 import type {
   DiscoveryCandidates,
@@ -92,15 +86,9 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
 };
 
 /**
- * The analysis these clips are read from.
- *
- * The run the route named, when it named one: a candidate id belongs to the
- * run that minted it, and a re-analysis that renumbered them must not swap
- * the clip underneath an open Inspector. Otherwise the newest job that ran
- * over this source and published a ranking. A job that does not say which
- * source it ran over — one recorded before jobs carried that — is still a
- * candidate, and the ranking's own fingerprint is what the caller checks it
- * against in either case.
+ * Prefer the route's run so re-analysis cannot change an open candidate's identity.
+ * Otherwise use the newest ranking-producing job for this source. Legacy jobs
+ * without source IDs remain eligible; the caller checks the ranking fingerprint.
  */
 function analyzed(jobs: readonly Job[], sourceId: string, jobId: string | null): Job | null {
   if (jobId) {

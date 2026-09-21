@@ -1,17 +1,8 @@
-"""Loading pinned model weights, after checking they are still what was pinned.
+"""Verify pinned model files immediately before loading them.
 
-A model is a versioned input to an artifact, not an ambient capability (book
-ch. 11): its digest joins the artifact key, so a transcript produced by other
-weights is a different transcript and must not share an address with this one.
-That guarantee is only worth what the check behind it is worth, and the daemon
-having verified the download at some earlier point is not a statement about
-the bytes on disk at load time.
-
-So the worker verifies again, immediately before loading. The cost is a hash
-of files that are about to be read from that same disk anyway; the failure it
-prevents is a corrupt or swapped weight file being read by an ONNX parser and
-its output published under an address asserting the pinned model produced it.
-"""
+The model digest enters the artifact key. Rechecking against the manifest catches
+corruption or substitution after download, before a parser consumes the files
+or a result is attributed to the wrong weights."""
 
 from __future__ import annotations
 

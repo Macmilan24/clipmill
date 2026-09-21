@@ -1,27 +1,12 @@
-//! The `clipmill-media://` protocol.
+//! The `clipmill-media://` protocol for seekable media outside the control socket.
 //!
-//! A player seeks; a filmstrip loads forty tiles. Neither can go through the
-//! control socket — a proxy is hundreds of megabytes and every read would take a
-//! whole frame — so media has its own door, and this is it.
+//! The daemon authorizes project ownership, artifact kind, and descriptor files.
+//! This host derives object paths from content addresses and serves only listed
+//! files with declared media types; it never accepts filesystem paths from the
+//! daemon. Invalid requests are rejected before opening a file.
 //!
-//! The split of responsibility is the point. **The daemon decides**: it says
-//! whether this project produced the artifact, whether its kind may be streamed
-//! at all, and which files the artifact's own descriptor named. **This process
-//! serves**: it opens exactly one of those files and answers the byte range the
-//! WebView asked for. Nothing here decides who may read what, and nothing here
-//! learns a path from the daemon — the object directory is derived from the
-//! content address the same way the store derives it, so a compromised answer
-//! could not point at somewhere else on disk.
-//!
-//! What the renderer can reach through this scheme is therefore exactly: files
-//! named by the descriptor of an artifact its own project published, whose kind
-//! is on the media allowlist, whose extension has a declared media type. A URL
-//! naming anything else is refused before a file is opened.
-//!
-//! The inventory is cached per artifact. Artifacts are immutable and a project's
-//! ownership of one does not change, so caching authorization is caching a fact
-//! rather than a guess — and without it a filmstrip would make one control-socket
-//! round trip per tile.
+//! Cache authorized inventories because artifacts and project ownership are
+//! immutable, avoiding one control-socket round trip per filmstrip tile.
 
 use std::{
     collections::HashMap,

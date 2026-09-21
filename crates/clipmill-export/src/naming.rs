@@ -218,13 +218,10 @@ fn short_address(address: &str) -> String {
     address.chars().take(8).collect()
 }
 
-/// Reduce a resolved name to something every target filesystem accepts.
+/// Limit a resolved name to letters, digits, and three separators.
 ///
-/// Deliberately narrow rather than clever: letters, digits, and three
-/// separators. Windows is a Phase 2 target and its reserved names (`CON`,
-/// `NUL`, trailing dots) are the reason a name is never allowed to be pure
-/// punctuation or to end in one — dealing with that here costs nothing and
-/// dealing with it later would mean renaming files a user already has.
+/// Collapse repeated separators, trim them at both ends, and bound the stem
+/// length. Path separators and other punctuation become hyphens.
 fn sanitize(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut last_was_separator = false;

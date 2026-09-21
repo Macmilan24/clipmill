@@ -1,18 +1,7 @@
 /**
- * Every candidate, dense enough to compare and quiet enough to scan.
- *
- * A row is a control in a grid rather than a table cell: pressing it selects
- * that clip for the rail, ticking it adds it to the set the footer will act on,
- * and the chevron opens it. Three different acts, three different targets,
- * because a click that did all of them would leave an editor unable to look at
- * a clip without also committing to it.
- *
- * The columns share one grid template with the header, so the header cannot
- * drift out of alignment with what it labels.
- *
- * Arrow keys move the selection, Space ticks it and Enter opens it, because a
- * board whose rows can only be reached with a pointer is a board an editor
- * cannot work quickly.
+ * Candidate rows with separate focus, batch selection, and open actions.
+ * Rows and headers share a grid template. Arrow keys move focus, Space toggles
+ * selection, and Enter opens the inspector.
  */
 import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';

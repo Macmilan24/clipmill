@@ -1,12 +1,7 @@
-//! The one definition of a confidence pair, shared by everything that
-//! summarizes an observation.
+//! Shared confidence-pair aggregation for Rust observation consumers.
 //!
-//! There is a second implementation of this in Python
-//! (`clipmill_worker_sdk.confidence`), on the far side of the worker boundary,
-//! and the two must agree to the last digit: a transcript whose confidence
-//! depended on which language happened to summarize it would be a transcript
-//! nobody could reproduce. Keeping a third copy in the daemon was how that
-//! would have started going wrong, so the daemon calls this.
+//! Results must agree exactly with `clipmill_worker_sdk.confidence` in Python so
+//! confidence does not depend on which side of the worker boundary computes it.
 
 /// Nearest-rank `(p50, p10)` over a set of scores.
 ///

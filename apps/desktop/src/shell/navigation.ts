@@ -12,9 +12,7 @@ import {
 } from 'lucide-react';
 
 /**
- * Either the section is backed by something real today, or it names the phase
- * that will build it. Phase 0 ships one working screen; the honest thing is to
- * say so on the other eight rather than mock up features that do not exist.
+ * Section availability, including placeholder metadata for planned destinations.
  */
 export type Availability =
   | { readonly kind: 'live' }

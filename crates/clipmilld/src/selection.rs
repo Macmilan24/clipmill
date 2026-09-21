@@ -1,20 +1,9 @@
-//! Turning a speech benchmark into a binding (D19).
+//! Validate speech benchmarks and select device-specific implementations.
 //!
-//! The daemon cannot run the benchmark itself. Every candidate implementation
-//! lives in a Python worker family with its own environment, and the only
-//! place a model's real cost can be observed is inside the environment that
-//! loads it — a number measured anywhere else would be a guess wearing a
-//! measurement's clothes. So `tools/bench/speech-benchmark.py` runs each
-//! installed implementation over the pinned fixture and writes what it saw
-//! into the daemon's private state directory, and this module decides whether
-//! to believe it.
-//!
-//! Belief is not a matter of trust. The measurement is accepted only when it
-//! names *this* hardware fingerprint and the model digests the registry pins
-//! right now, so a benchmark survives neither a hardware change nor a
-//! re-pinned weight. When it is missing or stale the profile says so and the
-//! binding falls back to the portable implementation — stated as a fallback,
-//! never presented as a choice somebody measured.
+//! `tools/bench/speech-benchmark.py` measures each installed worker in its own
+//! environment. Results are accepted only for the current hardware fingerprint
+//! and pinned model digests. Missing or stale measurements select the portable
+//! implementation and explicitly mark the profile as a fallback.
 
 use std::{
     collections::{BTreeMap, BTreeSet},

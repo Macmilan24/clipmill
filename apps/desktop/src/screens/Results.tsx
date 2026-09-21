@@ -1,22 +1,7 @@
 /**
- * The Results board: every clip the ranking believes in, and what it believed.
- *
- * The board shows counts rather than adjectives. "Four asked for, one
- * recommended" is a sentence a person can act on; "great results!" is not, and
- * the shortfall reasons are shown rather than padded away — a recording that
- * holds three good moments should return three and say so, because the fourth
- * would be a clip the system does not believe in.
- *
- * Three acts on a row, kept apart on purpose. Focusing a row moves the detail
- * rail so an editor can compare without losing their place. Ticking it adds it
- * to the set the footer and the header act on. Opening it is a third, deliberate
- * step into the inspector. A click that did all three would make looking at a
- * clip the same gesture as committing to it.
- *
- * Filtering, search and ordering are client-side because the answer is already
- * here. Every row was fetched to draw the summary, so asking the daemon again to
- * hide some of them would be a round trip that can only produce what is already
- * on screen.
+ * Results board with recommendation counts and shortfall reasons.
+ * Focus, batch selection, and opening the inspector are separate actions.
+ * Filtering, search, and ordering use the rows already loaded for the summary.
  */
 import { JobState } from '@clipmill/contracts';
 import { AlertCircle, ArrowRight, Scissors } from 'lucide-react';

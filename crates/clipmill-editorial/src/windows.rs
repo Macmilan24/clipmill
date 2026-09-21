@@ -1,18 +1,9 @@
-//! Cutting a transcript into the windows a model reads.
+//! Partition indexed sentences into overlapping editorial windows.
 //!
-//! A model that reads a whole hour at once proposes worse moments than one
-//! that reads it a few minutes at a time with the neighbourhood in view, and
-//! it cannot cite what it read with any precision. So the index's sentences
-//! are cut into windows of about a target size, on sentence boundaries only,
-//! each overlapping the last so that a moment on the seam is seen whole by
-//! one of them, with a little context on either side that the model may read
-//! but not propose from. Where a topic boundary the index found falls near
-//! the end of a window, the window ends there instead: a topic is where a
-//! moment is likeliest to close.
-//!
-//! Everything is arithmetic over the index and reproducible from it; the
-//! budget reaches the artifact key, so a re-cut is a different reading of the
-//! same transcript rather than a correction of this one.
+//! Windows target a size without splitting sentences, prefer nearby topic
+//! boundaries, and expose surrounding context the model may read but not propose
+//! from. The budget enters the artifact key, making each partition reproducible
+//! and distinct from partitions built with other budgets.
 
 use std::num::NonZeroU64;
 

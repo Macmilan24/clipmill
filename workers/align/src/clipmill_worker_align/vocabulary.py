@@ -1,17 +1,8 @@
-"""Turning recognized text into the alphabet the acoustic model can score.
+"""Normalize recognized words into the CTC model's thirty-two-label alphabet.
 
-The CTC model knows thirty-two labels: uppercase English, an apostrophe, a
-word delimiter, and a blank. Recognized text contains rather more than that —
-punctuation, digits, casing, the occasional emoji — and every character that
-is not in the alphabet has to be dealt with explicitly, because the two silent
-options are both wrong. Dropping a word loses what was said; pretending it was
-aligned invents a measurement.
-
-So a word that survives normalization is aligned, and a word that does not is
-reported unaligned with a reason. Assembly then carries its text with
-interpolated timing and marks the span, and the boundary optimizer refuses to
-cut there.
-"""
+Words that cannot be normalized are reported unaligned with a reason. Assembly
+preserves their text with marked, interpolated timing, and the boundary
+optimizer refuses to cut inside those spans."""
 
 from __future__ import annotations
 

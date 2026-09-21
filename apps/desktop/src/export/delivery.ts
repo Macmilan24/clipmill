@@ -1,16 +1,7 @@
 /**
- * Following an export from queued to delivered.
- *
- * Queuing an export answers with a job, and a job is two tasks: the render,
- * then the delivery. What a person needs from that is not a job id but
- * whether the file is there yet, where it is, and — if it is not — why. So
- * this reads the job until it settles and turns it into those three things:
- * the stages with what each is doing, the files once the package has been
- * written, and the failure in the daemon's own words when there is one.
- *
- * The files come from the delivered package, which is the daemon's record
- * of what it actually wrote — names, sizes, digests — rather than from the
- * names the plan predicted. The plan is a promise; the package is a receipt.
+ * Follow export render and delivery tasks until completion or failure.
+ * Delivered filenames, sizes, and digests come from the published export package,
+ * which records the files actually written rather than the plan's predictions.
  */
 import { JobState, TaskState } from '@clipmill/contracts';
 import type { ExportPackage } from '@clipmill/contracts';
@@ -28,13 +19,8 @@ const POLL_MILLIS = 750;
 const RETRY_MILLIS = 2_000;
 
 /**
- * The export a document most recently queued, from the daemon's own jobs.
- *
- * An export job carries what it is delivering, so a screen reopened on the
- * document — after navigating away, or after the application relaunched —
- * finds the export where it durably is rather than in state a remount
- * started without. Newest first, because that is the one somebody is
- * waiting on; an older one has already been looked at.
+ * Find a document's newest export in durable daemon jobs so delivery state
+ * can be restored after navigation or application restart.
  */
 export function latestExportOf(jobs: readonly Job[], docId: string): QueuedExport | null {
   const mine = jobs
@@ -199,16 +185,9 @@ export function failureOf(job: Job | null): string | null {
 }
 
 /**
- * Follow a queued export until it settles.
- *
- * Polls rather than subscribing, because the whole job is two tasks on a
- * local socket and a subscription's cursor bookkeeping would be more code
- * than the thing it saves. Stops when the job settles or the export changes.
- *
- * A read that fails — the daemon restarting, a socket that dropped — is not
- * an outcome. The job is durable and goes on without this screen, so the
- * failure is shown and the read is tried again, until the job itself says
- * how it ended.
+ * Poll the two-task export job until it settles or the selected export changes.
+ * Retry failed reads: a lost socket or daemon restart does not determine the
+ * durable job's outcome.
  */
 export function useDelivery(
   projectId: string | null,

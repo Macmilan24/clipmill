@@ -1,15 +1,7 @@
 /**
- * What the Library knows about a project, derived rather than fetched.
- *
- * The daemon has no notion of a "project status": it has jobs, and jobs have
- * states. A status is a reading of those, and readings belong somewhere they can
- * be tested without a socket, a window, or a render. So everything here is a
- * pure function of what the daemon returned.
- *
- * The design's card carries a score ring, a speaker count, and a clip count.
- * None of those exist yet — a project-level score is not a thing the ranker
- * produces, and diarization is not implemented — so they are absent rather than
- * invented. What is here was measured.
+ * Pure presentation helpers for Library data.
+ * Project status is derived from job states. Display only available measurements;
+ * do not infer project scores or speaker counts that the daemon does not provide.
  */
 import type { SourceMap } from '@clipmill/contracts';
 import { JobState, TaskState } from '@clipmill/contracts';

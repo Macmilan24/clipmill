@@ -1,17 +1,8 @@
-//! The builtin that turns aligned words into captions.
+//! Read inputs, key, and publish the model-free caption derivation.
 //!
-//! Fifth of the model-free builtins, and the same shape as the four before it:
-//! it reads published documents and writes another. Everything it decides lives
-//! in `clipmill-captions`, which does no I/O — this module reads the inputs,
-//! keys the result, and publishes it.
-//!
-//! Two of its three inputs are optional, and that is a decision rather than
-//! leniency. Without the evidence index there are no sentence boundaries to
-//! prefer breaking at and no salient terms emphasis may come from; without shot
-//! detection there is nothing known about where the picture changes. A caption
-//! set built without either is a weaker one, so both are recorded in the key
-//! and in the document — the alternative is two different readings of a
-//! recording sharing one content address.
+//! `clipmill-captions` owns segmentation. Optional evidence supplies sentence
+//! boundaries and salient terms; optional shots supply cuts. Their presence or
+//! absence is recorded in both the key and document.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_captions::{DeriveRequest, Inputs, Span, Weights};

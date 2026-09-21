@@ -1,22 +1,8 @@
-"""The whisper.cpp session: audio in, text and per-token confidence out.
+"""CPU whisper.cpp recognition with per-token confidence.
 
-This is the universal fallback (book ch. 13). It lands before the accelerated
-primary and stays after it, because "runs on any machine" is the property the
-phase's offline exit gate actually rests on — an accelerated recognizer is a
-speed decision, never an availability one.
-
-Two settings here are not tuning:
-
-Greedy at temperature zero, with the temperature fallback disabled. Whisper's
-default is to retry a low-confidence window at rising temperatures, which is
-sampling, which means the same audio can decode to different text on two runs.
-A cached transcript is only worth caching if that cannot happen.
-
-The CPU backend, explicitly. whisper.cpp will reach for Metal or CUDA if it
-finds one, and the pinned manifest declares this model runs on the CPU —
-admission budgets against that declaration, and a runtime that quietly used an
-accelerator would make the declaration false in both directions.
-"""
+Greedy decoding at temperature zero disables temperature fallback so repeated
+runs do not sample different text. The CPU backend is explicit: model admission
+budgets against the pinned manifest and must not silently switch accelerators."""
 
 from __future__ import annotations
 

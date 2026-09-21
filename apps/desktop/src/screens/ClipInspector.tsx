@@ -1,18 +1,7 @@
 /**
- * One clip, and everything the system can say about why it is here.
- *
- * Three panes, and the order is the argument: the other candidates, the clip
- * itself, and the reasons. A decision made without the first pane is a decision
- * made without comparison; a decision made without the third is a decision made
- * on a number. Both are the failure this screen exists to prevent.
- *
- * Nothing here is a summary of a summary. The bars are the ranking document's
- * own factors, the quotes are the sentences those factors were read from
- * resolved through the evidence index — with the position each was said at, so
- * a quote is a place the player can jump to — and the boundary strip is the
- * real lattice the optimizer chose between, over the recording's own waveform.
- * Where a value is missing the panel says which and why, because an axis nobody
- * measured is a different fact from an axis that scored nothing.
+ * Inspect a candidate alongside alternatives, ranking factors, and source evidence.
+ * Evidence timestamps support seeking; the boundary lattice overlays the source
+ * waveform. Unmeasured axes retain their reasons rather than appearing as zero.
  */
 import {
   ArrowLeft,

@@ -1,21 +1,9 @@
-"""Which detections are the same face, frame after frame.
+"""Deterministic two-pass face association in the ByteTrack manner.
 
-Association in the ByteTrack manner, written out rather than imported: two
-passes over each frame, the confident detections first and the weak ones after.
-That ordering is the whole idea. A face that turns away, gets half-lit, or is
-briefly occluded drops below the score a detection needs to *start* a track, but
-not below what it needs to *continue* one — and letting it continue is the
-difference between one person and a stream of one-frame strangers.
-
-It matters more here than in the tracking literature's own setting. Downstream,
-a track's length is what decides whether the camera follows it. A face that
-fragments into six short tracks is a face nothing will follow, and the clip
-comes back centred with a reason that is true but unhelpful: "the clearest face
-appears in too little of this clip".
-
-Everything here is arithmetic over boxes and is deterministic by construction:
-candidates are considered in a fixed order and ties resolve the same way twice.
-"""
+Confident detections start tracks; weaker detections may continue them through
+occlusion or pose changes. This avoids fragmenting the presence evidence used
+by the reframe gate. Fixed candidate order and tie-breaking make association
+reproducible."""
 
 from __future__ import annotations
 

@@ -49,8 +49,8 @@ now derives permitted network task kinds from the implementation registry and
 rejects recipe/task policy mismatches at planning and leasing. Resource accounting includes these tasks. Consent/model/cap validation
 remains at submission and inside the worker.
 
-The user chose Qwen3.5, skipped the dedicated M0 work, and asked not to focus
-this pass on benchmarking. Functional delivery proceeded on that basis. This
+The revised scope selected Qwen3.5 and deferred dedicated M0 and
+benchmark-focused work. Functional delivery proceeded on that basis. This
 does not waive the original quality goal: measured acceptance gain and repair
 burden remain unverified. Platform scope is the current Apple-silicon build. No comparative
 quality, speed, Linux/Windows, or live cloud compatibility claim is made.
@@ -111,15 +111,15 @@ No fake editorial response or cloud call was used in the functional gate.
 
 Evidence:
 
-- [M2 machine-readable result](/private/tmp/cm-editorial-delivery/result.json)
-- [M2 rendered clip](/private/tmp/cm-editorial-delivery/delivered/01-editorial-smoke.mp4)
-- [M2 ranking and visible review warning](/private/tmp/cm-editorial-delivery/ranking.json)
-- [M1 rendered clip](/private/tmp/clipmill-m2-readiness-work/delivered/01-older-clip.mp4)
+- M2 machine-readable result (local evidence, not included in this repository: `/private/tmp/cm-editorial-delivery/result.json`)
+- M2 rendered clip (local evidence, not included in this repository: `/private/tmp/cm-editorial-delivery/delivered/01-editorial-smoke.mp4`)
+- M2 ranking and visible review warning (local evidence, not included in this repository: `/private/tmp/cm-editorial-delivery/ranking.json`)
+- M1 rendered clip (local evidence, not included in this repository: `/private/tmp/clipmill-m2-readiness-work/delivered/01-older-clip.mp4`)
 
 Logs are local under `/private/tmp/clipmill-m2-*.log`. The implementation and
 functional evidence demonstrate the implemented M2 path. Human editorial
-quality remains unmeasured; the user deferred benchmark-focused work, not the
-product goal of better accepted clips. Native-window interaction and a live cloud-provider
+quality remains unmeasured; benchmark-focused work is deferred while the
+product goal of better accepted clips remains. Native-window interaction and a live cloud-provider
 call remain unverified; neither is claimed by these tests. Milestone 3's
 framing, caption polish and audio work remains separate.
 
@@ -195,7 +195,7 @@ Updated local verification:
 The existing database was backed up to
 `/private/tmp/clipmill-before-editorial-repair-98ux_5p5/clipmill.db`. The corrected
 backend, six local workers, frontend server and desktop shell were started.
-A fresh local analysis, `job_01M2TZDWS7HC5W7FC9YQTKECDC`, uses the user's original
+A fresh local analysis, `job_01M2TZDWS7HC5W7FC9YQTKECDC`, uses the original analysis request’s
 15–60-second duration range and requested count of six. Its original failed
 run remains unchanged. Fresh run evidence is saved under
 `/private/tmp/clipmill-reacher-recheck`. The fresh run **succeeded through every

@@ -1,18 +1,8 @@
-//! The builtin that cuts a transcript into the windows an editorial model reads.
+//! Publish editorial windows computed by `clipmill-editorial`.
 //!
-//! The first of the editorial stages (plan, Milestone 2), and the one that
-//! runs no model: like the evidence index beside it, this is arithmetic over
-//! published documents, so the two-lifecycle rule puts it in the daemon where
-//! the artifacts already are. Everything it decides lives in
-//! `clipmill-editorial`, which does no I/O — this module reads the inputs,
-//! keys the result, and publishes it.
-//!
-//! Both documents arrive on the lease, delivered by the index and transcript
-//! tasks inside the analyze DAG, and each is matched against the artifact
-//! kind its manifest declares. The transcript is read for one thing only: its
-//! address, which the index names as the document it was built over. An index
-//! and a transcript that do not belong to each other are refused rather than
-//! cut into windows that cite words the transcript never held.
+//! The builtin uses no model. It validates leased input kinds and checks that the
+//! index names the supplied transcript before producing windows, preventing
+//! sentence citations from crossing transcript versions.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::EditorialStagePayloadV1;

@@ -1,14 +1,8 @@
-"""Loading pinned MLX weights, and saying so when the runtime is not here.
+"""Load pinned MLX models or report an unsupported runtime.
 
-MLX is Apple silicon and nothing else. This module is the one place that knows
-it: everywhere else imports from here and gets either a loaded model or an
-error that names the reason, rather than an `ImportError` traceback the
-scheduler would have to interpret.
-
-Nothing is downloaded. `base_load_model` will happily fetch from Hugging Face
-when handed a repository id, which is exactly what the Local Lock forbids, so
-it is only ever handed a `Path` that `verify_model` has already hashed.
-"""
+MLX requires Apple silicon. Loading receives only a local ``Path`` already
+checked by ``verify_model``; repository IDs would let ``base_load_model`` download
+weights and violate Local Lock."""
 
 from __future__ import annotations
 

@@ -1,16 +1,6 @@
 /**
- * The run, in the five numbers the design puts above the board.
- *
- * Every figure is one the documents state. "Candidates" is the cohort the
- * ranker scored; "Recommended" is its selected set — the one opinion the ranker
- * holds, and the figure the design leads with; "Approved" and "Flagged" are the
- * rows a person decided on and the rows the ranker warned about. The design's
- * strip carries exactly these labels, and every one of them has a real number
- * behind it here.
- *
- * The shortfall is why this strip is not decoration. "Four asked for, one
- * recommended" is a claim a person can act on, and the sentence under it says
- * why the other three are missing instead of leaving them to assume a bug.
+ * Run counts from ranking results and recorded decisions, with shortfall reasons
+ * when the recommended set is smaller than requested.
  */
 import { AlertTriangle } from 'lucide-react';
 

@@ -1,10 +1,9 @@
 # Milestone 2 — complete moments from the selected Qwen model
 
-Revised 18 September 2026. The user selected Qwen3.5, asked to skip M0,
-and asked not to focus this implementation pass on benchmarking. We proceeded
-with functional delivery using the propose → validate → review pipeline.
-Editorial quality remains unverified: the original acceptance-gain objective
-is retained, not attributed to an explicit waiver by the user.
+Revised 18 September 2026. The selected model is Qwen3.5; M0 and
+benchmark-focused work are deferred for this implementation pass. Functional
+delivery uses the propose → validate → review pipeline. Editorial quality
+remains unverified, and the original acceptance-gain objective is retained.
 
 ## Scope and finish line
 

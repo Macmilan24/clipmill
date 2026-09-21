@@ -1,21 +1,9 @@
-"""The accelerated speech path, behind the contracts the portable one publishes.
+"""Qwen3 recognition and forced alignment on Apple silicon.
 
-One family rather than two. The plan sketched `workers/asr-mlx/` and an MLX
-aligner inside `workers/align/`, written before it was clear that one library
-ships both Qwen3 speech models: splitting them would duplicate a fifteen-package
-macOS-only dependency tree across two environments to serve one model family,
-which is the opposite of what per-family environments are for (book ch. 9).
-So this worker declares two capabilities and the daemon leases it either.
-
-Nothing downstream can tell which implementation ran. `speech.asr.v1` and
-`speech.alignment.v1` say the same things here as they do on whisper.cpp and
-the CTC aligner — rational ticks, a confidence distribution, an explicit
-coverage statement, and timing that belongs to alignment rather than to a
-decoder. What differs is the producer identity and the model digest, which is
-exactly the difference that must reach the artifact key: a transcript
-recognized by Qwen3 is not the same observation as one recognized by whisper,
-and the two must never share a content address.
-"""
+One worker family serves both capabilities through the shared MLX dependency
+environment. Outputs use the same ASR and alignment contracts as the portable
+workers: rational ticks, confidence distributions, and explicit coverage. The
+implementation identity and model digest distinguish their artifact keys."""
 
 from __future__ import annotations
 

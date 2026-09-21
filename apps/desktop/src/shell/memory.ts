@@ -1,18 +1,7 @@
 /**
- * What the shell remembers between launches: where it was, and which clip.
- *
- * Reopening the app used to land on Models & Device with no memory of the clip
- * somebody had been editing, and the Editor row then opened whichever document
- * the daemon had written last. Both are answered here. The route is put back
- * as it was, and the last clip opened in the editor or on the export screen is
- * what those rows open when reached from the sidebar with nothing named.
- *
- * Only the identity is remembered — ids and the labels that make them
- * readable — never a document or a plan. Those are the daemon's, and a copy of
- * them here would be a copy that could disagree with it. What comes back is
- * checked field by field before it is believed: this is a string in local
- * storage, and a route with a missing id would send a screen to ask the daemon
- * about nothing.
+ * Persist the route and last opened clip across launches.
+ * Store only identifiers and labels; documents and plans remain daemon-owned.
+ * Validate every restored field before using local storage to construct a route.
  */
 import { type ClipRef, DEFAULT_ROUTE, type Route } from './route.js';
 

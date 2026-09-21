@@ -1,20 +1,9 @@
-"""Forced alignment with Qwen3-ForcedAligner, boundary by boundary.
+"""Qwen3 forced alignment with timestamp-token confidence.
 
-The aligner is handed the text and asked where each word sits. It answers by
-predicting a timestamp token at each of two reserved positions per word — one
-for the start, one for the end — so a word's timing is two classifications and
-its confidence is how sure the model was of them.
-
-`mlx-audio`'s own `generate()` takes the argmax of those positions and throws
-the distribution away. This module runs the same forward pass and keeps both,
-because "forced" means an aligner always produces an answer: the failure mode
-is never an exception, it is a confident-looking number that is wrong, and the
-only defence is publishing the score beside it (book ch. 13).
-
-Everything except that one step is the library's: its tokenizer, its
-per-language word splitting, and its monotonicity repair. Reimplementing those
-would be a second, subtly different aligner wearing the same model's name.
-"""
+Each word's start and end are classifications at reserved token positions. The
+forward pass retains their scores, which the library's ``generate()`` discards,
+so incorrect alignments can be identified downstream. Tokenization, language
+splitting, and monotonicity repair remain the library's implementations."""
 
 from __future__ import annotations
 

@@ -46,7 +46,7 @@ use crate::{
 };
 
 pub(crate) const KIND_RENDER_CLIP: &str = "render-clip";
-/// The disclosure vocabulary Phase 1 accepts. An unrecognised token is refused
+/// The accepted disclosure vocabulary. An unrecognised token is refused
 /// rather than passed through: a manifest is a rights document, and a typo in
 /// one is a false statement about the work.
 pub(crate) const AI_ASSISTANCE_VOCABULARY: [&str; 4] =

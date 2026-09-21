@@ -1,18 +1,10 @@
-//! The numbers a grouping is held to, and where they come from.
+//! Language-specific caption limits.
 //!
-//! Captioning has a published standard and there is no reason to invent one.
-//! The accessibility profile below is Netflix's English timed-text guidance —
-//! 42 characters a line, at most two lines, twenty characters a second for
-//! adult programming, five sixths of a second on screen at the shortest and
-//! seven at the longest, two frames of blank between cues. Those are the
-//! numbers a professional captioner works to, and a viewer who relies on
-//! captions has already learned to read at them.
-//!
-//! They are values rather than constants because the reason they are right is
-//! English. A line ceiling counted in Latin characters says nothing useful
-//! about a CJK cue, where each glyph carries far more, and reading-rate norms
-//! move with the script. The segmenter therefore never sees a literal — it sees
-//! a profile, and a language that has no entry here is handled by saying so.
+//! The English accessibility profile uses Netflix timed-text guidance: 42
+//! characters per line, two lines, 20 characters per second, durations from five
+//! sixths of a second to seven seconds, and two blank frames between cues.
+//! Profiles remain data because character counts and reading rates vary by script;
+//! unsupported languages are reported explicitly.
 
 /// Ticks per second. The daemon's timebase throughout.
 pub const TICKS_PER_SECOND: i64 = 90_000;

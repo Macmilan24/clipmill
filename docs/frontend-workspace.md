@@ -1,9 +1,8 @@
-# Desktop workspace refresh
+# Desktop workspace
 
-The interface follows the original Stitch direction's compact type, restrained
-indigo accent, and focus on footage. The working application now determines the
-layout: opaque neutral surfaces, fewer nested cards, and one owner for page
-padding. Shared tokens cover light and dark modes, including readable accent
+The interface uses compact typography, a restrained indigo accent, and opaque
+neutral surfaces. Screen containers own page padding, and footage remains the
+main focus of review and editing layouts. Shared tokens cover light and dark modes, including readable accent
 text independently of button fills. Standard borders have a defined color rather
 than falling back to text color.
 
@@ -20,7 +19,7 @@ properties, and a timeline whose tracks use one coordinate system. Export keeps
 file naming, validation and the delivery format together, with a return to the
 same edit.
 
-Behavior corrected with the refresh:
+Interaction rules:
 
 - Returning to Results preserves project, recording and analysis run, including
   after relaunch. An unavailable project does not open a different one.
@@ -52,18 +51,12 @@ remain covered by the renderer's tests over the host API.
 ## Verification
 
 Renderer tests cover identity through Results → Inspector → Editor → Export,
-caption/trim commands, export revisions and delivery recovery. New regressions
+caption/trim commands, export revisions and delivery recovery. Regression tests
 cover delayed result/crop answers, text-field keyboard isolation, playback
 rejection, errors across property tabs, end-of-program timecodes, reframe setup,
 model-readiness reporting and export while validation is pending.
 
-The desktop suite passes 327 tests. Type checking, token-generation drift checks,
-the eight token tests and the production renderer build pass. Device charts load
-with Models & Device, reducing the main JavaScript chunk from 952 kB to 579 kB
-(minified); Vite still reports its 500 kB advisory for that chunk.
-
-Browser checks use the real React components with synthetic data and a local
-video, in both themes at 1440×900 and 960×720. They exercise playback, caption
-correction, search/filter/grid views, and review/edit/export navigation, and
-check viewport and panel bounds. Native Tauri interaction and a new render
-through the live worker fleet have not been rerun for this UI-only refresh.
+Run `just gate-tokens` for renderer type checks, tests, token drift checks, and a
+production build. Verify layout and interaction in both themes at wide and narrow
+desktop sizes. Browser checks cover visual behavior with synthetic data; native
+Tauri checks are needed for actual persistence, worker processing, and export.

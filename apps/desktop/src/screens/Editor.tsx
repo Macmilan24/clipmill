@@ -1,17 +1,7 @@
 /**
- * The editor: a player that shows what the export will look like, and the
- * timeline that says what it is made of.
- *
- * The player **applies** a plan and computes nothing. The crop at a frame, the
- * caption on screen, which word carries the highlight — all of it was decided
- * by the code that renders and arrives ready. That is the workstream's binding
- * rule, and it is the reason this file has no arithmetic in it beyond turning a
- * media element's seconds into a frame index.
- *
- * Four lanes, because those are the four things an edit is made of: the
- * pictures, where the camera points, what is said, and how loud. Each one draws
- * from the same plan, so a playhead is in the same place on all four by
- * construction rather than by four pieces of code agreeing.
+ * Render the preview plan and its picture, crop, caption, and audio lanes.
+ * All lanes share the plan's clock. Crop and caption decisions come from the
+ * rendering code; the player maps media time to the corresponding program frame.
  */
 import {
   ArrowLeft,

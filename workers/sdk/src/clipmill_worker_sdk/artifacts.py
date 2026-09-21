@@ -1,11 +1,7 @@
 """Read-only verification of daemon-published CAS artifacts.
 
-A worker reads its inputs out of the daemon's content-addressed store. The
-store belongs to the daemon, not the worker, so nothing here trusts it: every
-payload is checked against the manifest's digest before a byte of it is used.
-A worker that read blindly would turn a corrupt object into a corrupt result
-and publish it under a content address that says it is fine.
-"""
+Every payload is checked against its manifest digest before use, preventing a
+corrupt input from producing a result under the expected content address."""
 
 from __future__ import annotations
 
