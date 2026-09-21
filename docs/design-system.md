@@ -11,14 +11,31 @@ upstream copyright and license notices are kept in
 production bundle's `licenses/` directory with the other public assets. Preserve
 these notices when updating or redistributing the fonts.
 
-The light theme uses warm paper surfaces and a sage accent. The dark theme uses
-cool charcoal surfaces and a slate-blue accent. Each palette defines its own
-accent foreground, hover, pressed, selection and focus colors. Error, warning and
-outbound-network indicators retain their semantic meanings.
+Settings → Appearance offers four workspace themes, each with light and dark
+palettes. Paper & Ink is the default: warm surfaces, ink accents, compact corners,
+underlined tabs and quiet dividers. Classic preserves the original sage light
+palette and slate-blue dark palette. Warm Graphite uses stone neutrals; Soft Slate
+uses cool neutrals and blue accents. All themes share the same fonts, spacing,
+navigation and editing behavior. Error, warning and outbound-network indicators
+retain their semantic meanings.
 
-`packages/tokens/src/tokens.json` is the source of truth. Run
-`pnpm --filter @clipmill/tokens build` after changing it. The generated CSS supplies
-both the component aliases and the workspace styles; do not edit generated files.
+`packages/tokens/src/tokens.json` holds shared tokens and the original palettes.
+`packages/tokens/src/workspace-themes.json` defines the theme catalog: stable IDs,
+names, descriptions, component treatment, corner sizes and palette overrides.
+Run `pnpm --filter @clipmill/tokens build` after changing either. The generated CSS
+supplies component aliases and workspace styles; do not edit generated files.
+
+Theme selection uses `data-workspace-theme`; light/dark uses `data-theme`.
+`data-theme-chrome` selects shared component treatment (`soft` or `ink`). Stored
+light/dark preferences remain valid. New or unrecognized theme preferences fall
+back to Paper & Ink, and switching light/dark never changes the named theme.
+Preferences are local to the device and do not change media or saved projects.
+
+To add a theme, add a catalog entry with the same token keys and both palette
+overrides. It appears in Settings automatically; miniature previews use the same
+palette definitions as the app. Reuse a component treatment instead of creating
+theme-specific copies of screens. Run token generation, contrast tests and visual
+checks before publishing a new palette.
 
 ## Interface hierarchy
 
@@ -37,10 +54,13 @@ both the component aliases and the workspace styles; do not edit generated files
 ## Verification
 
 Use `apps/desktop/preview.html` through Vite for synthetic, non-destructive screen
-inspection. `screen` selects the page and `theme` accepts `light` or `dark`. The
-preview does not replace native media or daemon integration checks.
+inspection. `screen` selects the page, `theme` accepts `light` or `dark`, and
+`workspaceTheme` accepts a catalog ID such as `paper-ink` or `classic`. Preview
+choices do not overwrite app preferences. The preview does not replace native
+media or daemon integration checks.
 
-Check the workspace at 1280 × 900 and 1024 × 768, in both themes. Test navigation,
+Check the workspace at 1280 × 900 and 1024 × 768, in both appearances. Test navigation,
 focus indicators, disclosures and disabled/error states. Token tests check text
-contrast on the working surfaces and primary buttons; UI tests retain the real
+contrast on the working surfaces and primary button states for every palette;
+preference tests cover restoration, invalid values and unavailable storage. UI tests retain the real
 selection, approval, edit and export contracts.

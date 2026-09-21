@@ -83,12 +83,12 @@ export function TopBar({ trail, theme, onToggleTheme, state }: TopBarProps): JSX
               variant="ghost"
               size="icon-sm"
               onClick={onToggleTheme}
-              aria-label={`Switch to ${nextTheme} theme`}
+              aria-label={`Switch to ${nextTheme} mode`}
             >
               {theme === 'dark' ? <Sun /> : <Moon />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Switch to {nextTheme} theme</TooltipContent>
+          <TooltipContent>Switch to {nextTheme} mode</TooltipContent>
         </Tooltip>
       </div>
     </header>

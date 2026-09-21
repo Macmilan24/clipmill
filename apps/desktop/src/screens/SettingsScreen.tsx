@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import type { Theme } from '@clipmill/tokens';
+import type { Theme, WorkspaceTheme } from '@clipmill/tokens';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { LocalLock, StorageStats } from '../daemon/client.js';
@@ -11,6 +11,8 @@ export interface SettingsScreenProps {
   readonly api?: ShellApi;
   readonly theme?: Theme;
   readonly onThemeChange?: (theme: Theme) => void;
+  readonly workspaceTheme?: WorkspaceTheme;
+  readonly onWorkspaceThemeChange?: (theme: WorkspaceTheme) => void;
   readonly integrations?: ReactNode;
 }
 
