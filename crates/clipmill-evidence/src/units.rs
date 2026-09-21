@@ -1,20 +1,9 @@
-//! L1: the structure the recording states about itself.
+//! Build L1 utterances, sentences, and clip edges from measured evidence.
 //!
-//! Nothing here is inferred. An utterance is where voice activity heard a
-//! pause; a sentence is where the recognizer put a full stop, or where the
-//! speaker stopped; an edge is a silence somebody measured or a cut somebody
-//! detected. That is the whole level, and it is deliberately the whole level —
-//! everything that requires reading meaning into the words belongs to L2,
-//! where it can be labelled as the approximation it is.
-//!
-//! The one subtlety is punctuation. Forced alignment scores acoustic tokens,
-//! so the aligner returns `tick` where the recognizer wrote `tick.` — the
-//! transcript's word list has had the punctuation stripped out of it. The full
-//! stop still exists, in the recognizer segment's own text, and pairing the
-//! two back up is what lets a sentence boundary be an observation rather than
-//! a guess. Where the two disagree about how many tokens a segment holds, that
-//! pairing is refused rather than approximated, and the utterance's end
-//! carries the boundary instead.
+//! Forced alignment may strip punctuation retained in recognizer segment text.
+//! Sentence boundaries recover it by pairing segment tokens with aligned words.
+//! When token counts disagree, pairing is refused and the utterance end supplies
+//! the boundary instead.
 
 use clipmill_contracts::schemas::index_transcript as index;
 use clipmill_contracts::schemas::speech_transcript as transcript;

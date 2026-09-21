@@ -1,21 +1,9 @@
-//! The mesh: three ways of noticing that something is worth clipping.
+//! Independent heuristic proposers sharing one candidate contract.
 //!
-//! Genre diversity defeats any single model (book ch. 15). What makes a Q&A
-//! moment complete is discourse structure; what makes a strong opinion
-//! memorable is phrasing and delivery; neither shares features with the other.
-//! So discovery is a portfolio of independent proposers emitting one common
-//! contract, and a proposer that finds nothing is a fact about the recording
-//! rather than a gap in the mesh.
-//!
-//! Three of the design's ten run here. The other seven need signals this phase
-//! does not have — face affect, motion, OCR, speaker turns — and a proposer
-//! that guessed at them would be nominating on evidence it never measured.
-//!
-//! Every one of these three is an approximation, and each says so in its
-//! rubric string. That string reaches the artifact key, so a proposer whose
-//! method changes cannot quietly reuse a cached candidate set, and a reader of
-//! a published document can tell that `topic-span-open-close.v1` is a topic
-//! span rather than a narrative model.
+//! The three implemented proposers use measured transcript and topic signals.
+//! Methods requiring face affect, motion, OCR, or speaker turns are not inferred
+//! from missing evidence. Each proposer publishes its approximation in a rubric
+//! string covered by the artifact key.
 
 use std::collections::{BTreeMap, BTreeSet};
 

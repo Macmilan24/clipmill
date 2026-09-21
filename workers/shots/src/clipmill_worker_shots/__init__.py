@@ -1,19 +1,8 @@
-"""Shot detection: the boundaries an editor never has to justify.
+"""Model-free shot detection over the ingest proxy.
 
-A cut is the one place a clip can start or end without anybody defending the
-choice, which is why the boundary lattice is later allowed to snap to these
-positions and why being wrong here is not merely a cosmetic problem. The stage
-runs no model — it is arithmetic over decoded pixels — so nothing here loads
-weights, and the only versioned input besides the proxy is the decoder that
-produced the frames.
-
-That decoder is the reason this worker is unlike the speech family. It does not
-resolve FFmpeg; the daemon names one on the lease, having fetched it against
-the bill of materials, and the build identity travels separately into the
-payload so it reaches the artifact key. A stage that found its own decoder
-would publish observations that two machines could disagree about while sharing
-one content address.
-"""
+Detected cuts supply legal boundary candidates. The worker uses the decoder
+named on the lease; its build identity enters the payload and artifact key so
+different decoder builds cannot share an observation address."""
 
 from __future__ import annotations
 

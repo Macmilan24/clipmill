@@ -2,7 +2,7 @@
 //!
 //! The profile is part of the render recipe, so changing any of it produces a
 //! different artifact rather than quietly different pixels under the same
-//! content address. Phase 1 ships exactly one profile; it is a value rather
+//! content address. The default profile is a value rather
 //! than a constant so the recipe can carry it and the manifest can state it.
 
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ impl Colour {
     }
 }
 
-/// The subset of ASS styling Phase 1 exposes. Line *breaking* is deliberately
+/// The supported subset of ASS styling. Line *breaking* is deliberately
 /// absent: breaks are decided once and stored in the Edit IR, and the renderer
 /// is configured never to re-wrap (book ch. 17, ch. 19).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

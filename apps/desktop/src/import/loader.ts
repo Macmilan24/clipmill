@@ -1,20 +1,8 @@
 /**
- * Choosing a file, and starting the run it becomes.
- *
- * Two sequences, both behind the same seam every other screen uses, so the whole
- * import can be exercised without a window or a daemon.
- *
- * The ordering is forced by the daemon's model rather than chosen: probing is
- * registering, registering needs a project, and a project needs a name — which
- * is why the name comes from the file rather than from a field. A project is
- * therefore created the moment a file is chosen, and reused if the choice
- * changes, so abandoning the screen leaves at most one empty project rather than
- * one per attempt. The Library lists it honestly as not analyzed.
- *
- * The probe arrives inline with the registration rather than being read by
- * address, because the artifact that carries it is published by the analysis
- * DAG's first task — which has not run yet, and cannot be made to run just so a
- * screen can print a duration.
+ * Source registration and analysis submission through `ShellApi`.
+ * Registration requires a project, created from the chosen file's name and reused
+ * if the selection changes. Registration returns probe data inline because the
+ * analysis DAG has not yet published the probe artifact.
  */
 import type { SourceMap } from '@clipmill/contracts';
 

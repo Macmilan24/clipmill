@@ -1,15 +1,8 @@
-"""Reading the mezzanine proxy the ingest fan-out already derived.
+"""Read the ingest proxy's declared geometry and constant frame rate.
 
-Ingest decoded the source once and published a constant-frame-rate proxy (book
-ch. 12). Every analysis surface reads that rather than the original, which is
-what stops two stages disagreeing about which frame is which — and it is why
-this worker never sees a user's file.
-
-The descriptor is read for its geometry and its frame rate, not for the
-convenience of it: the frame rate is the resolution of every position this
-stage publishes, so taking it from the container's own claim rather than from
-the artifact that states it would put a guess in the artifact key.
-"""
+All analysis uses the derived proxy rather than the source file. Frame rate
+comes from its artifact descriptor, which defines the resolution of published
+shot positions."""
 
 from __future__ import annotations
 

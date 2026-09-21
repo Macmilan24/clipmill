@@ -1,17 +1,8 @@
-//! The stage registry: every task kind the daemon will run, declared with the
-//! artifact it produces.
+//! Register task kinds and the recipes for their output artifacts.
 //!
-//! Phase 0 keyed every worker artifact through one hardcoded recipe, which
-//! meant a new stage could be planned, leased, and published without anyone
-//! deciding what its cache key should be — and two stages could collide on one
-//! address by accident. A kind now exists only if it is registered here, and
-//! registration states the artifact kind, the semantic version that
-//! invalidates cached outputs when the stage's meaning changes, whether a
-//! model's identity belongs in the key, and which pinned binaries the stage
-//! may be handed.
-//!
-//! Plan validation consults this table, so an unregistered kind is refused at
-//! submit rather than discovered by a worker that cannot serve it.
+//! Each entry specifies the artifact kind, cache-invalidating semantic version,
+//! model-key participation, and allowed pinned tools. Submission validation rejects
+//! unregistered kinds before a task can be leased.
 
 use clipmill_artifacts::{
     ArtifactRecipe, NetworkPolicy, Producer, RecipeError, RecipeSpec, Timebase,
@@ -107,7 +98,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W11 ingest fan-out (book ch. 12).
+    // Ingest fan-out.
     Recipe {
         kind: "ingest-proxy",
         output_kind: "media.proxy.v1",
@@ -189,7 +180,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W13 render compiler (book ch. 17).
+    // Render compiler.
     Recipe {
         kind: "render-clip",
         output_kind: "render.clip.v1",
@@ -199,7 +190,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W25 delivery (book ch. 10). Runs FFmpeg for one thumbnail frame and
+    // Delivery. Runs FFmpeg for one thumbnail frame and
     // otherwise copies bytes it verified on the way out. It declares no tools
     // for the same reason the render does not: a builtin reaches the pinned
     // binaries through the daemon's own supervised runner, and `tools` is the
@@ -213,7 +204,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W15 speech chain (book ch. 13). Three leased stages that each run a
+    // Speech chain. Three leased stages that each run a
     // model, and one builtin that runs none.
     //
     // The capabilities below are what put a model's digest into an artifact
@@ -257,7 +248,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W17 evidence index (book ch. 14). Builtin and modelless, like the
+    // Evidence index. Builtin and modelless, like the
     // speech assembly: it reads two published documents and writes a third.
     Recipe {
         kind: "index-transcript",
@@ -268,7 +259,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The editorial windows (plan, Milestone 2). Builtin and modelless: the
+    // Editorial windows. Builtin and modelless: the
     // cut an editorial model reads, arithmetic over the index and keyed on
     // the budget, so the model's own stages read a published artifact.
     Recipe {
@@ -334,7 +325,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::NetworkAllowed,
         tools: &[],
     },
-    // The W18 proposer mesh (book ch. 15). Builtin and modelless: it reads
+    // Proposer mesh. Builtin and modelless: it reads
     // three published documents and writes a fourth.
     Recipe {
         kind: "discover-candidates",
@@ -345,7 +336,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W19 ranking baseline (book ch. 16), and the fan-in that roots a
+    // Ranking baseline, and the fan-in that roots a
     // whole analysis.
     Recipe {
         kind: "rank-candidates",
@@ -356,7 +347,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W21 caption engine (book ch. 19). Builtin and modelless: it reads a
+    // Caption engine. Builtin and modelless: it reads a
     // transcript, and the index and shot cuts when they exist, and writes one
     // document holding both rendering intents.
     Recipe {
@@ -377,7 +368,7 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
-    // The W16 shot detector (book ch. 13). Leased, but modelless: it is
+    // Shot detector. Leased, but modelless: it is
     // arithmetic over decoded pixels, so there is no capability to bind and no
     // model digest to key against. What makes its output reproducible is the
     // decoder, and that identity travels in the payload — which the key
@@ -391,9 +382,8 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &["ffmpeg"],
     },
-    // The W20 face detector (book ch. 18). Leased, and the first vision stage
-    // with a model: the capability binds the pinned weights onto the lease, so
-    // the model digest reaches the artifact key and a re-pinned detector
+    // Face detection binds pinned weights onto the lease, so the model digest
+    // reaches the artifact key and a re-pinned detector
     // invalidates face tracks and nothing else. The decoder is a tool for the
     // same reason it is one for shot detection — it hands the model its pixels.
     Recipe {

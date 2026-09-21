@@ -1,14 +1,7 @@
 /**
- * Turning an editor gesture into a command the daemon can replay.
- *
- * Every edit is a command, and every command comes back with its inverse. That
- * is why there is no mutation anywhere in the editor: dragging a keyframe does
- * not change a document, it *describes* a change, and what makes it real is the
- * daemon applying it and handing back the way out.
- *
- * The builders here are deliberately thin. The authority on what a command
- * means is the Rust crate that applies it; this file only has to name the
- * operation and put the fields where the deserializer expects them.
+ * Build replayable daemon commands from editor gestures.
+ * The daemon applies each command and returns its inverse for undo. Builders
+ * supply operation names and fields; the Rust implementation defines semantics.
  */
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
 import { secondsAt, segmentAt, sourceTicksAt } from './player.js';
@@ -141,16 +134,10 @@ export function trimEndAt(plan: PreviewPlan, frame: number): EditCommandJson | n
 }
 
 /**
- * A solved keyframe as the crop keyframe the document stores.
- *
- * The solver answers in shares of the source frame at source ticks; the
- * document holds source pixels at segment-local ticks. This is the director's
- * own conversion, repeated here so a path the editor re-solves is the path the
- * director would have written: the height is what the solver decided, the
- * width follows the output aspect, both are even for the encoder's chroma
- * planes, and the rectangle is kept inside the frame. Converted against the
- * *output's* dimensions instead, as it was, a landscape source got a crop
- * measured in a frame it is not in.
+ * Convert normalized source coordinates and source ticks to source pixels and
+ * segment-local ticks, matching the director. Preserve solver height, derive
+ * width from output aspect, round dimensions to even values for chroma planes,
+ * and clamp to the source frame. Use source dimensions, not output dimensions.
  */
 export function solvedKeyframe(
   keyframe: {
@@ -323,16 +310,8 @@ export function snapToWord(plan: PreviewPlan, frame: number): number {
 }
 
 /**
- * A One-Euro filter, for the value under a live drag.
- *
- * A pointer is noisy and a crop that jitters while being dragged reads as a
- * broken control, so the value shown while the hand is moving is smoothed. What
- * gets **committed** is the smoothed value too — the alternative is a preview
- * that disagrees with the command it produced, which is the divergence this
- * whole workstream exists to prevent.
- *
- * The filter is the book's own choice (ch. 18) and is display-side by design:
- * nothing upstream of the drag ever sees it.
+ * Smooth live drag values with a One-Euro filter. Commit the smoothed value
+ * so the resulting command matches the preview. Upstream crop solving is unaffected.
  */
 export class OneEuro {
   private previous: number | null = null;

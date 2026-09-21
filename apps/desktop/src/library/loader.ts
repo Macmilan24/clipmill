@@ -1,14 +1,6 @@
 /**
- * Gathering what the Library shows, in one place and behind one seam.
- *
- * Four questions per project — its jobs, its sources, the probe document, and
- * the filmstrip's inventory — and no screen should be writing that sequence
- * inline. Putting it here also gives it a shape a test can drive: everything
- * reaches the daemon through `ShellApi`, so the whole gathering can be exercised
- * without a window, a socket, or a running daemon.
- *
- * Nothing here interprets. It fetches and assembles; what any of it *means* is
- * `model.ts`, which is pure.
+ * Load each project's jobs, sources, probe, and filmstrip inventory through
+ * `ShellApi`. Assemble the data here; derive presentation values in `model.ts`.
  */
 import type { SourceMap } from '@clipmill/contracts';
 

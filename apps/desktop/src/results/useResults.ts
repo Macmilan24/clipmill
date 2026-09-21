@@ -1,11 +1,7 @@
 /**
- * The Results board's and the Inspector's state, in one place.
- *
- * Both screens read the same snapshot — the Inspector is the board with one row
- * opened — so they share a hook rather than each fetching. That also makes the
- * decision path obvious: deciding writes to the daemon and then reloads, so what
- * a screen shows is always what the store holds rather than what the screen
- * hoped it wrote.
+ * Shared Results and Inspector state.
+ * Decisions are written to the daemon, then reloaded so both views reflect
+ * persisted state.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 

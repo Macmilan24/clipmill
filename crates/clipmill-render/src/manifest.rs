@@ -1,11 +1,7 @@
-//! The render manifest: what was produced, from what, under which rules.
+//! Record render inputs, measured output, rights, and model assistance.
 //!
-//! The manifest is the artifact a creator can hand to a platform, a client, or
-//! a future self and have it answer questions without anyone re-deriving them:
-//! which IR produced these pixels, which engine and font, what the loudness
-//! actually measured, what rights position was attested, and what part of the
-//! work a model touched. Book appendix B fixes its shape; this is that shape,
-//! with the measured values that make it evidence rather than a claim.
+//! The manifest identifies the Edit IR, engine, font, measured loudness, rights
+//! attestation, and model contributions needed to audit a delivered render.
 
 use serde::{Deserialize, Serialize};
 
@@ -26,16 +22,13 @@ pub struct EngineIdentity {
 
 /// Where a model's work appears in the result.
 ///
-/// Phase 1 renders hand-authored and director-authored documents; the lists
-/// are supplied by whoever built the document rather than guessed here,
-/// because a disclosure that a renderer inferred is a disclosure nobody
-/// checked. W15 and W21 populate `assistance` from caption and reframe
-/// provenance once models produce them.
+/// The document author supplies these lists from provenance. The renderer
+/// records them without inferring model use from the finished media.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AiUseSummary {
     /// Model work that shaped existing footage: `asr_captions`, `reframe`, …
     pub assistance: Vec<String>,
-    /// Synthesised imagery or audio. Empty is the Phase 1 truth.
+    /// Synthesised imagery or audio; empty when none was used.
     pub generated: Vec<String>,
     pub requires_youtube_ai_disclosure: bool,
 }

@@ -38,14 +38,7 @@ function statusLabel(state: ConnectionState): { text: string; tone: string } {
 }
 
 /**
- * The design's top-right cluster shows live GPU load and temperature. Phase 0
- * measures memory but samples nothing continuously, so this renders the memory
- * it genuinely knows and leaves the rest out rather than animating a fiction.
- *
- * The design's account avatar is gone for the same reason. There are no
- * accounts — ClipMill runs on one machine for one person — so an initial in a
- * circle was a badge for something that does not exist, and a letter nobody
- * chose is worse than the space it occupied.
+ * Breadcrumbs, daemon connection status, and theme controls.
  */
 export function TopBar({ trail, theme, onToggleTheme, state }: TopBarProps): JSX.Element {
   const status = statusLabel(state);

@@ -1,10 +1,7 @@
 /**
- * The list a clip-less Editor or Export screen offers instead of guessing.
- *
- * Newest edited first. Each row names the recording, the project, how far the
- * edit has gone and when it was last touched — the facts the daemon keeps
- * beside a document — and opening one hands the full clip identity to the
- * screen, so what opens is what was clicked.
+ * Document picker for Editor and Export routes without a clip.
+ * Rows show source, project, revision, and edit time, newest edited first.
+ * Opening a row passes the full clip identity.
  */
 import { Scissors } from 'lucide-react';
 

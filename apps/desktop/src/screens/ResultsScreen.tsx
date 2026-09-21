@@ -1,21 +1,8 @@
 /**
- * The container both result screens share.
- *
- * Results and the Clip Inspector are one dataset seen two ways — the Inspector
- * is the board with a row opened — so one hook loads it and the route decides
- * which view renders. That keeps a decision made in the Inspector visible on the
- * board without either screen knowing about the other.
- *
- * Which recording is shown is the one the route named — the project clicked in
- * the Library, or the clip's own project, source and run when the Inspector is
- * open. Falling back to the newest project is what happens when nothing named
- * one, which is the sidebar entry; the picker in the header is how that stops
- * being a dead end, since a screen reachable from the navigation must be able
- * to reach every recording rather than whichever the daemon wrote last.
- *
- * Approving hands the clip on. The document the daemon answers with — built,
- * or reopened if the clip already had one — is named in full to the editor:
- * project, source, run, candidate, document. Nothing downstream has to find it.
+ * Shared data container for Results and Clip Inspector.
+ * The route selects the project, source, and run; sidebar entry defaults to the
+ * newest project and provides a picker. Approval passes the returned document's
+ * full clip identity to the editor.
  */
 import { useEffect, useRef, useState } from 'react';
 

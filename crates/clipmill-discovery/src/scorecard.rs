@@ -1,28 +1,18 @@
-//! What a clip is worth, decomposed into axes a user can argue with.
+//! Score candidates on explicit axes with evidence and availability.
 //!
 //! ```text
 //! q(c) = f(H, F, V, P, N, E, A, R) − U − C
 //! ```
 //!
-//! Hook, flow, value, prompt relevance, novelty, evidence, craft, feasibility;
-//! minus uncertainty and penalties (book ch. 16). The displayed number is a
-//! 0–99 percentile *within this recording's cohort* — an editorial index, not a
-//! probability, and not comparable across recordings. It is named
-//! `display_score` in the contract for that reason.
+//! Axes are hook, flow, value, prompt relevance, novelty, evidence, craft, and
+//! feasibility, minus uncertainty and penalties. `display_score` is a 0–99
+//! percentile within the recording's cohort, not a probability or a score
+//! comparable across recordings.
 //!
-//! Three of the eight axes cannot be measured at this phase, and each is
-//! reported `available: false` with a stated reason rather than scored:
-//!
-//! - **prompt relevance** has no prompt — prompt mode is a later proposer
-//! - **craft** needs the loudness envelope, and a source with no audio has none
-//! - **feasibility** is `1.0` and *is* available, because fit is always legal
-//!   and that is a real measurement rather than a missing one
-//!
-//! The distinction matters more than it looks. A factor scored zero reads as a
-//! measurement of badness; a factor given a neutral default reads as a
-//! measurement at all. Both would let an axis nobody evaluated move a number a
-//! user is asked to trust, and the whole point of decomposing the score is that
-//! each part of it can be traced to something that happened.
+//! Prompt relevance is unavailable without a prompt; craft is unavailable without
+//! a loudness envelope. Feasibility is available at 1.0 because fit is always
+//! legal. Missing evidence is reported explicitly rather than scored as zero or
+//! replaced by a neutral measurement.
 
 use std::collections::BTreeMap;
 

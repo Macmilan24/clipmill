@@ -1,18 +1,7 @@
 /**
- * Every edit document this installation holds, named well enough to pick one.
- *
- * The editor and the export screen each have a row in the sidebar, and a row
- * reached with no clip named has to lead somewhere. Falling back to the newest
- * document is what this replaces: it was right for one project with one
- * approval and silently wrong otherwise. So the fallback is a list, and the
- * person chooses.
- *
- * A document is named by the recording it was cut from and the project it is
- * in — the two facts the daemon records beside it — plus how far it has been
- * edited and when. Its rank on the Results board is not here, because that
- * lives in a ranking this list would have to fetch per project to know; the
- * board is where a clip is chosen by what it says, and this is where an edit
- * is found again by where it came from.
+ * Load edit documents for Editor and Export pickers.
+ * Identify documents by source, project, revision, and edit time. Ranking data is
+ * not loaded here; Results provides selection by clip content and rank.
  */
 import { useEffect, useState } from 'react';
 

@@ -1,23 +1,8 @@
-//! What can serve a capability here, and which one this device chose.
+//! Register capability implementations and resolve planned producer identities.
 //!
-//! A stage used to name one model. That is a static per-platform default in
-//! disguise: it says "whisper on every machine" in a place nobody reads, and
-//! the machine with an accelerator sitting idle has no way to say so. D19 is
-//! the decision that selection comes from measurement instead, and this module
-//! is where the candidates it chooses between are declared.
-//!
-//! An *implementation* is the triple that actually decides an answer: a worker
-//! family, the model it loads, and the backend it loads it on. Two
-//! implementations of one capability produce different bytes from the same
-//! audio, so they are different producers of different observations — which is
-//! why the chosen one reaches the artifact key rather than being an invisible
-//! runtime detail. A transcript recognized by Qwen3 on Metal and one
-//! recognized by whisper.cpp on a CPU are not interchangeable and must not
-//! share a content address.
-//!
-//! Selection is resolved once, when a job is planned, and written into the
-//! task row. Re-measuring the device later changes what the *next* plan
-//! chooses and leaves every published artifact exactly where it is.
+//! Worker family, model, and backend identify an implementation and enter the
+//! artifact key. Selection is fixed in the task row when a job is planned;
+//! subsequent device measurements affect only future plans.
 
 use std::collections::BTreeSet;
 

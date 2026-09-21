@@ -1,12 +1,7 @@
-"""Voice activity detection: the first link in the speech chain.
+"""Voice activity detection for speech decoding and legal cut boundaries.
 
-Nothing transcribes before this runs. Recognition is the expensive stage, and
-handing it the silence between utterances costs real time and invites the
-hallucinated text that recognizers produce when asked what was said in a room
-where nobody spoke. The silence edges this publishes are also where the
-boundary optimizer is later allowed to cut, so being wrong here is not only a
-throughput problem.
-"""
+Excluding silence reduces recognition cost and hallucinated text. Published
+silence edges also supply candidates for the boundary optimizer."""
 
 from __future__ import annotations
 

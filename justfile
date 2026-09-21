@@ -19,7 +19,7 @@ setup:
     cd eval/harness && uv sync
     pnpm install
 
-# Optional online source acquisition. Analysis remains local after import.
+# Verify the optional YouTube source importer and its runtime.
 setup-youtube:
     cd integrations/youtube-import && uv sync --frozen
     ./tools/import-youtube.sh --check --ffmpeg "{{justfile_directory()}}/.cache/bin/ffmpeg"
@@ -57,9 +57,9 @@ test:
     pnpm typecheck
     pnpm test
 
-# ---- Phase 0 exit gates (the book's ch. 24 harness gates) ----
+# Integration and recovery checks
 
-# Exit gate: contracts compile to Rust/Python/TS and fixtures round-trip.
+# Regenerate contracts and verify fixture round-trips across languages.
 gate-contracts:
     ./tools/codegen/generate.sh
     git diff --exit-code -- crates/clipmill-contracts/src/gen packages/contracts/src/gen workers/sdk/src/clipmill workers/sdk/src/clipmill_worker_sdk/gen
@@ -68,89 +68,52 @@ gate-contracts:
     cd workers/sdk && uv run pytest tests/test_contracts.py tests/test_speech_contracts.py tests/test_shots_contracts.py tests/test_index_contracts.py tests/test_discovery_contracts.py tests/test_ranking_contracts.py tests/test_editorial_contracts.py
     pnpm --filter @clipmill/contracts test
 
-# W2 coverage: acknowledged project mutations survive forced termination.
-# W4 extends this drill with task leases and interrupted-job recovery.
+# Verify acknowledged project mutations and task recovery after forced termination.
 gate-kill:
     ./tools/drills/kill-drill.sh 50
 
-# W3 coverage: acknowledged filesystem + SQLite artifact publications survive
-# forced termination and every visible cache object verifies after recovery.
+# Verify artifact publication and cache integrity after forced termination.
 gate-cache:
     ./tools/drills/cache-drill.sh 50
 
-# W5 coverage: pinned FFprobe, immutable source observations, source maps,
-# deterministic warm hits, hostile input rejection, and mutation detection.
+# Check pinned probing, source timing, cache identity, and hostile input refusal.
 gate-media:
     ./tools/drills/media-drill.sh 1
 
-# W6 coverage: authenticated external workers, durable completion replay,
-# shared-memory validation/cleanup, cancellation, and worker/daemon recovery.
+# Check worker authentication, durable completion, cancellation, and recovery.
 gate-workers:
     ./tools/drills/worker-drill.sh 50
 
-# W12 coverage: every edit command inverts exactly, a command log replays onto
-# the live document byte for byte, acknowledged edits survive a killed daemon,
-# and render snapshots are content-addressed without their rationale.
+# Verify edit inversion, command replay, durable edits, and immutable snapshots.
 gate-ir:
     ./tools/drills/ir-drill.sh 1
 
-# W11 coverage: the ingest fan-out derives every media derivative through
-# sandboxed FFmpeg, all artifacts verify, warm re-ingest is a cache identity,
-# mutated sources refuse deterministically, and kill recovery meets the SLO.
+# Verify ingest derivatives, deterministic caching, and interrupted-job recovery.
 gate-ingest:
     ./tools/drills/ingest-drill.sh 1
 
-# W14 coverage: a stage exists only if it is registered; a worker is admitted
-# against the device the machine actually has rather than its own claim; a
-# worker reads the daemon's store without trusting it; and weights that forbid
-# what users do with the output are refused by policy.
+# Check registered stages, device admission, artifact validation, and model policy.
 gate-worker2:
     ./tools/drills/worker2-drill.sh 1
 
-# W15 coverage: the speech chain. Stage algorithms against hand-written inputs
-# — the cases no real recording contains — then the pinned models over a
-# fixture whose word timing is known by construction rather than by
-# annotation: voice activity finds the utterances the fixture was built from,
-# recognition returns its words, alignment places them within 120 ms, and a
-# second run produces byte-identical output.
+# Check speech models against timed fixtures and byte-identical repeat output.
 gate-speech iterations="1":
     ./tools/drills/speech-drill.sh {{iterations}}
 
-# W15 coverage on hardware CI does not have: the accelerated speech path.
-# Measures every implementation the daemon can plan, asserts this device binds
-# recognition and alignment to MLX *by measurement* rather than by default,
-# holds the accelerated aligner to the same 120 ms bar, and signs the result.
-# The private key never enters Git; only the public half and the signed
-# document do, and CI verifies those without pretending to have measured
-# anything (R18's pattern, applied to D19).
+# Measure accelerated speech selection and alignment, then sign the result.
+# Keep the signing key private; only the public key and signed report are committed.
 gate-asr-mlx signing_key output_dir="models/attestations/mlx-selection":
     ./tools/drills/asr-mlx-drill.sh --signing-key "{{signing_key}}" --output-dir "{{output_dir}}"
 
-# W16 coverage: shot detection. Stage arithmetic against frames written by hand
-# — a cut on the first frame, a flash, a recording that never changes — then the
-# detector over a fixture whose cuts are known by construction and encoded
-# exactly as the ingest proxy is: every cut found and none invented, a pan
-# faster than a screen width per second not mistaken for one, a second pass
-# byte-identical, and a proxy that is not video refused with a reason.
+# Check shot detection against known cuts, motion, flashes, and invalid proxies.
 gate-shots iterations="1":
     ./tools/drills/shots-drill.sh {{iterations}}
 
-# W17 coverage: the structure read out of a transcript. The levels against
-# transcripts written by hand — a speaker who never pauses, a recognizer that
-# punctuates nothing, a segment whose text and word count disagree — then every
-# committed transcript indexed against a reviewed golden, the invariants
-# discovery never rechecks (units tile the words, topics tile the sentences,
-# every unit resolves to words somebody measured), and a second pass producing
-# the same bytes.
+# Check transcript structure, word coverage, reviewed goldens, and determinism.
 gate-evidence iterations="1":
     ./tools/drills/evidence-drill.sh {{iterations}}
 
-# W18 coverage: the proposer mesh and the lattice under it. The three
-# proposers against recordings written by hand — a topic of one sentence, a
-# question nobody answered, a shot cut inside a word — then every committed
-# index searched against a reviewed golden, every lattice point paired with
-# something legal, every candidate explicable and grouped, and a second pass
-# producing the same bytes.
+# Check proposals, legal boundaries, deduplication, and deterministic discovery.
 gate-discovery iterations="1":
     ./tools/drills/discovery-drill.sh {{iterations}}
 
@@ -165,44 +128,29 @@ gate-editorial iterations="1":
     cargo build -p clipmilld --bin clipmilld
     workers/editorial/.venv/bin/python tools/drills/editorial-live.py
 
-# W19 coverage: what a clip is worth, where it is cut, which to show, and the
-# one job that produces all of it. The score card against cards written by hand
-# — an axis nobody measured must be distinguishable from one measured at zero —
-# then J verified against brute force over the whole lattice, a set that comes
-# back short rather than padded, and every committed cohort ranked against a
-# reviewed golden. Then the analyze DAG against a real daemon and a real worker:
-# the addresses the plan declared reach the lease, the fan-in names every stage
-# that ran and accounts for the ones it skipped, a warm re-submit resolves to
-# the same identities, and a killed daemon finishes inside the 30-second SLO.
-# Needs the pinned FFmpeg sidecars and `uv sync --project workers/shots`.
+# Verify ranking, boundary optimization, analysis dependencies, and restart recovery.
+# Requires pinned FFmpeg sidecars and the shots worker environment.
 gate-ranking iterations="1":
     ./tools/drills/ranking-drill.sh {{iterations}}
 
-# W13 coverage — the first-slice milestone: the published Edit IR renders to a
-# 1080x1920 clip with burned karaoke captions, matching sidecars, normalised
-# loudness, and a manifest whose digests match its files; the same document
-# renders to the same bytes in a fresh store; a repeat is a cache identity; an
-# unattested render is refused; a killed daemon recovers.
+# Verify rendered captions, sidecars, loudness, digests, cache identity, and recovery.
 gate-render:
     ./tools/drills/render-drill.sh 1
 
-# W7 coverage: measured runtime/capacity, bounded codec/shared-memory probes,
-# Ed25519 attestation, durable caching, and fingerprint generations.
+# Check device measurements, bounded probes, attestation, and profile caching.
 gate-device:
     ./tools/drills/device-drill.sh 1
 
-# W7 coverage: signed public corpus, real daemon IPC, cold/warm source-map
-# cache identity, device-profile verification, CAS verification, hostile media.
+# Check signed public fixtures, source maps, device profiles, and artifact integrity.
 gate-eval-smoke:
     ./tools/drills/eval-smoke.sh 1
 
-# W8 rights-holder gate. The media, full signed manifest, license records, and
-# private Ed25519 key remain outside Git. Only OUTPUT_DIR is safe to commit.
+# Evaluate private rights-cleared media. Only the output report is safe to commit;
+# keep source media, license records, the full manifest, and signing keys private.
 gate-seed40 corpus_dir manifest license_attestation signing_key output_dir="eval/seed40" corpus_public_key="":
     ./tools/drills/seed40-drill.sh "{{corpus_dir}}" "{{manifest}}" "{{license_attestation}}" "{{signing_key}}" "{{output_dir}}" "{{corpus_public_key}}"
 
-# Exit gate: Local Lock. Replays the CI namespace job in a no-network
-# container (Docker/OrbStack); the egress canary must be blocked.
+# Run offline tests in a denied-network container and verify the egress canary.
 gate-lock:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -214,12 +162,11 @@ gate-lock:
         exit 1
     fi
 
-# W8 public security and supply-chain policy checks.
+# Run security, dependency-license, and supply-chain policy checks.
 gate-security:
     ./tools/security/security-gate.sh
 
-# W9 coverage: design tokens generate their CSS reproducibly, and the shell
-# renderer typechecks, tests, and builds.
+# Check reproducible token CSS and the renderer types, tests, and build.
 gate-tokens:
     pnpm --filter @clipmill/tokens check-drift
     pnpm --filter @clipmill/tokens test
@@ -227,73 +174,47 @@ gate-tokens:
     pnpm --filter @clipmill/desktop test
     pnpm --filter @clipmill/desktop build
 
-# W10 coverage: the shell reads real measured hardware over the real socket,
-# then reports the loss when the daemon is killed underneath it.
+# Verify native daemon queries and disconnect reporting after forced termination.
 gate-shell:
     cargo build -p clipmilld
     cargo test -p clipmill-shell --test daemon_link -- --ignored --nocapture
 
-# W22 coverage: the whole data plane the screens sit on, out of process —
-# import, probe, transitions, documents, ranged media, and the refusals.
+# Check native import, probe, job events, documents, media ranges, and access refusals.
 gate-shell-pipeline iterations="1":
     ./tools/drills/shell-drill.sh {{iterations}}
 
-# W20 coverage: the crop solver's goldens and projections, the gate that refuses
-# to follow a face nobody can follow, and the detector's determinism.
+# Check crop solver goldens, projection constraints, and face detector determinism.
 gate-reframe iterations="1":
     ./tools/drills/reframe-drill.sh {{iterations}}
 
-# W21 coverage: the exact cue segmentation and its goldens, zero reading-speed
-# violations in the intent every sidecar is written from, no cue over a cut,
-# and the round trip through the render's own writers.
+# Check cue boundaries, reading speed, sidecars, and render-writer round-trips.
 gate-captions iterations="1":
     ./tools/drills/captions-drill.sh {{iterations}}
 
-# W23 coverage: the director's goldens, the boundary swap, the lattice snapping
-# a dragged handle lands on, decisions that survive a kill, and the joins the
-# board renders from.
+# Check editorial decisions, boundary snapping, persistence, and result joins.
 gate-inspector iterations="1":
     ./tools/drills/inspector-drill.sh {{iterations}}
 
-# W24 coverage: the preview plan against the renderer that produces the file —
-# per-frame crops, cue windows, the words visible in them, and the karaoke
-# holds read back out of the ASS the encoder would be handed.
+# Compare preview crops and captions with the render presentation.
 gate-editor iterations="1":
     ./tools/drills/editor-drill.sh {{iterations}}
 
-# W25 coverage: the validation strip's refusals, one implementation of the
-# naming pattern, and an archive round-trip verified by a reader that has never
-# heard of this project.
+# Check export validation, naming, and archive round-trips.
 gate-export iterations="1":
     ./tools/drills/export-drill.sh {{iterations}}
 
-# Milestone 1 (upload-ready plan): one selected clip survives the complete
-# workflow, run for real through the shell's bridge against a spawned daemon
-# and the worker fleet, and the delivered file decoded to prove it. Local
-# only: it needs the macOS voice, the worker environments and the weights.
+# Exercise selected-clip edits, restart recovery, and decoded export through the host.
+# Requires macOS speech synthesis, worker environments, and model weights.
 gate-milestone-1:
     ./tools/drills/milestone-1-drill.sh
 
-# W26 coverage: the recall arithmetic against hand-worked numbers, and the real
-# engine over a recording whose three moments were planted on purpose.
+# Check recall metrics against known values and a recording with planted moments.
 gate-recall-smoke:
     ./tools/drills/recall-drill.sh
 
-# W26 private gate: the real corpus, an editor's annotations, and a signed
-# report. Needs media and annotations that never enter Git.
-#
-# The bar defaults to the corpus's own, not the synthetic one. `planted-bar.json`
-# demands perfect recall because its moments were planted there on purpose;
-# asking that of a real recording would be asking a model-free proposer never to
-# miss anything a person thought was worth keeping. Before the corpus has been
-# measured once there is no honest bar to default to, so this names a file that
-# does not exist yet and the gate says so rather than substituting one. Pass
-# `bar=""` for that first measurement, which is the run that produces it.
-#
-# Reached with `--project` rather than by changing directory: every path here is
-# the caller's, and a `cd` into the harness silently reinterpreted each one
-# against `eval/harness/` — which is why the default bar could never have
-# resolved from where this recipe used to stand.
+# Evaluate private media and annotations and produce a signed recall report.
+# The default corpus bar must already exist; use bar="" for the first measurement.
+# Paths resolve from the caller's directory, not from eval/harness.
 gate-recall corpus_dir manifest license_attestation annotations socket output bar="eval/recall/corpus-bar.json" public_key="":
     uv run --project eval/harness clipmill-eval recall \
       --corpus-dir {{corpus_dir}} --manifest {{manifest}} \
@@ -303,30 +224,21 @@ gate-recall corpus_dir manifest license_attestation annotations socket output ba
       {{ if bar == "" { "" } else { "--bar " + bar } }} \
       {{ if public_key == "" { "" } else { "--public-key " + public_key } }}
 
-# W26: 1.5x real time at 1080x1920, attested on the machine that measured it.
+# Measure render throughput on the reference device and attest the result.
 gate-render-slo minimum="1.5":
     ./tools/drills/render-slo.sh {{minimum}}
 
-# W26: every stage's goldens at one commit. The cheapest evidence there is.
+# Run the stage golden tests together at the current revision.
 gate-golden:
     ./tools/drills/gate-golden.sh
 
-# All reproducible Phase 0 gates plus the committed private-run attestation.
-# Running Seed-40 itself requires private rights-holder inputs via gate-seed40.
+# Run the foundation checks and verify committed private-run evidence.
+# Re-running gate-seed40 requires private rights-holder inputs.
 gate-phase0: gate-contracts gate-kill gate-cache gate-media gate-workers gate-device gate-eval-smoke gate-tokens gate-shell gate-security gate-lock
     ./tools/drills/verify-phase0-attestation.sh
 
-# W27: the whole product with no network and a live worker fleet.
-#
-# Every other Lock proof stops before the stages that would actually phone
-# home — the analyze gate detects shots on a silent video, the shell gate stops
-# at ingest, and the speech harness imports the model classes in-process. This
-# runs analyze, direct and render against a real daemon and five real worker
-# processes, inside a denied namespace, with the egress canary either side.
-#
-# The weights and the sidecars are fetched *before* the namespace, because
-# acquisition is a deliberate act outside the Lock and the app is never the
-# thing that downloads. The drill refuses rather than fetches.
+# Run analysis, clip direction, and rendering with workers in a denied namespace.
+# Fetch weights and sidecars beforehand; this drill never downloads them.
 gate-lock-phase1:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -338,38 +250,18 @@ gate-lock-phase1:
         exit 1
     fi
 
-# Every reproducible Phase 1 gate, plus the committed private-run attestations.
-#
-# The three private gates cannot run here: recall needs the annotated corpus,
-# the render SLO needs the reference Mac, and the accelerated speech selection
-# needs an Apple GPU no hosted runner has. What this checks is their signed
-# evidence, exactly as `gate-phase0` checks Seed-40's.
+# Run the full processing checks and verify committed private-run evidence.
+# Recall, render throughput, and accelerated speech measurements require their
+# original media or hardware and are verified here through committed reports.
 gate-phase1: gate-phase0 gate-ingest gate-ir gate-render gate-worker2 gate-speech gate-shots gate-evidence gate-discovery gate-ranking gate-reframe gate-captions gate-inspector gate-editor gate-export gate-golden gate-recall-smoke gate-lock-phase1
     ./tools/drills/verify-phase1-attestation.sh
 
-# Launch the desktop shell against a live daemon.
-#
-# Three things happen before the shell starts, and none is convenience.
-#
-# The pinned FFmpeg sidecar is named: `ffprobe` is not on anybody's PATH, the
-# daemon falls back to a bare name when nothing tells it otherwise, and the font
-# and weights directories are derived from that path — so without it the probe
-# fails and the caption font resolves to nowhere.
-#
-# The model registry is named for the same reason: it defaults to the relative
-# path `models/registry`, which resolves against whatever directory the daemon
-# was spawned in rather than the checkout. An empty registry does not fail
-# loudly — every stage falls back to a 512 MiB memory estimate, and a worker
-# that honestly declares less can never be handed the task. Voice activity then
-# sits planned forever with nothing to say why.
-#
-# And the workers are enrolled: the daemon reads its trust directory once at
-# startup, so a key created afterwards is a key it never sees.
-#
-# Run `just workers` in a second terminal to actually start them.
+# Build the daemon, enroll workers, and launch the native application.
+# Explicit sidecar and registry paths keep spawned processes independent of cwd.
+# Enrollment precedes startup because the daemon reads its trust store once.
+# Start processing with just workers in a second terminal.
 app:
-    # The shell spawns this binary; `tauri dev` builds the shell and would
-    # happily start it beside a daemon compiled from an older commit.
+    # Build the daemon explicitly; tauri dev only rebuilds the shell.
     cargo build -p clipmilld --bin clipmilld
     ./tools/run-workers.sh --enrol-only
     CLIPMILL_FFPROBE="{{justfile_directory()}}/.cache/bin/ffprobe" \

@@ -1,4 +1,8 @@
-# Connect your own YouTube channel
+# YouTube channel setup (planned)
+
+Channel connection and publishing are not yet merged into `main`. This guide
+describes the proposed setup; the connection and upload controls below are not
+available in the current merged application.
 
 These steps are for channel connection and publishing. Downloading a permitted
 source video through **New project → YouTube** does not require this setup.
@@ -19,7 +23,7 @@ source video through **New project → YouTube** does not require this setup.
    browser. Check the actual channel name and ID shown after connection before
    choosing an export to upload.
 
-The app uses the desktop authorization flow with a loopback callback, random
+The planned integration uses the desktop authorization flow with a loopback callback, random
 state and PKCE. Google account passwords remain in the browser; channel tokens
 belong in the operating system credential store. Google's authoritative
 [desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)

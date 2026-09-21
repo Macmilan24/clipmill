@@ -2,10 +2,8 @@
 # Fetch the pinned models per models/registry/ into .cache/models/, verifying
 # every file's sha256 before it is installed.
 #
-# Acquisition happens here, outside the Local Lock, and never inside the app:
-# a creator tool that downloads weights while editing is a creator tool that
-# phones home while editing. The daemon only ever reads what this script left
-# behind, and refuses anything whose digest does not match.
+# Model acquisition is explicit and separate from analysis. The daemon reads
+# installed weights and rejects files whose digests do not match the registry.
 #
 #   ./tools/fetch-models.sh                 # fetch everything pinned
 #   ./tools/fetch-models.sh silero-vad ...  # fetch named models only
@@ -30,8 +28,7 @@ REGISTRY="models/registry"
 INSTALL_ROOT=".cache/models"
 [ -d "$REGISTRY" ] || { echo "fetch-models: no registry at $REGISTRY" >&2; exit 2; }
 
-# The licence policy runs first. A model whose terms forbid what users do with
-# the output should never reach the disk in the first place.
+# Validate the model license policy before downloading weights.
 python3 tools/security/check-models.py --registry "$REGISTRY"
 
 sha256() {

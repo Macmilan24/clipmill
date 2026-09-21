@@ -1,21 +1,8 @@
-//! L2: where the vocabulary changed.
+//! Approximate topic boundaries using TextTiling-style lexical cohesion.
 //!
-//! This is the honest P1 approximation of "scenes and topics", and the honesty
-//! is the point. No model reads these words. What is measured is lexical
-//! cohesion — whether the sentences on either side of a gap draw on the same
-//! vocabulary — by the method Hearst called `TextTiling`: score every gap, find
-//! the valleys, and keep the ones deep enough to be worth calling a boundary.
-//!
-//! That finds where the words changed. Usually the subject changed too, which
-//! is why it is useful; sometimes it did not, which is why the published unit
-//! is described as a lexical neighbourhood rather than as a topic the system
-//! understood. A stage that claimed comprehension here would be making a
-//! promise the next stage would then rely on.
-//!
-//! Everything is ordered explicitly. Token counts live in a `BTreeMap`, ties
-//! break alphabetically, and the greedy boundary selection sorts by depth with
-//! the gap index as the tiebreak — because a topic list that depended on hash
-//! iteration order would be a different document on every run.
+//! Vocabulary valleys identify lexical neighbourhoods, not semantic understanding.
+//! Token counts use `BTreeMap`, lexical ties break alphabetically, and boundary
+//! selection sorts by depth then gap index for deterministic output.
 
 use std::collections::{BTreeMap, BTreeSet};
 
