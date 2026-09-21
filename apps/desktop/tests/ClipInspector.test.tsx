@@ -135,6 +135,7 @@ describe('the score panel', () => {
     fireEvent.loadedMetadata(video);
     // The hook was said at 10s; the ranker's evidence at 12s. Jumping to the
     // evidence must move the player there.
+    fireEvent.click(screen.getByText('Why selected'));
     fireEvent.click(screen.getAllByRole('button', { name: '0:12' })[0]!);
     expect(video.currentTime).toBeCloseTo(12, 3);
   });
@@ -202,6 +203,22 @@ describe('the risk panel', () => {
     openTab(/checks/i);
     expect(screen.getByText('repetition')).toBeTruthy();
     expect(screen.getByText('−7')).toBeTruthy();
+  });
+});
+
+describe('clip navigation', () => {
+  it('opens the clip navigator on demand without changing the selected clip', () => {
+    const selected: string[] = [];
+    show({
+      rows: [row(), row({ candidateId: 'cand_2', headline: 'Another clip' })],
+      onSelect: (candidateId) => selected.push(candidateId),
+    });
+    expect(screen.queryByRole('navigation', { name: 'Candidates' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Clips' }));
+    expect(selected).toEqual([]);
+    expect(screen.getByRole('navigation', { name: 'Candidates' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /another clip/i }));
+    expect(selected).toEqual(['cand_2']);
   });
 });
 

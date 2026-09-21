@@ -827,3 +827,25 @@ it('uses the renderer’s caption style and placement while labelling proxy audi
   expect(caption.style.top).toBe('12.5%');
   expect(screen.getByText(/Fast proxy preview with your gain edits/)).toBeTruthy();
 });
+
+it('keeps the current media and playhead when focusing the preview and returning with Escape', () => {
+  show(program(900, 600));
+  const originalVideo = video();
+  fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
+    target: { value: '450' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Focus preview' }));
+  expect(
+    screen.getByRole('button', { name: 'Restore editing panels' }).getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(video()).toBe(originalVideo);
+  expect(video().currentTime).toBe(615);
+
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.getByRole('button', { name: 'Focus preview' }).getAttribute('aria-pressed')).toBe(
+    'false',
+  );
+  expect(video()).toBe(originalVideo);
+  expect(screen.getByTestId('timecode').textContent).toContain('frame 450');
+  expect(screen.getByRole('tab', { name: 'Captions' }).getAttribute('aria-selected')).toBe('true');
+});

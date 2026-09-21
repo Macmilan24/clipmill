@@ -100,11 +100,20 @@ describe('the board', () => {
     expect(screen.getByRole('heading', { name: /2 clip candidates/i })).toBeTruthy();
   });
 
-  it('shows the shortfall rather than padding it away', () => {
+  it('shows the shortfall and its reason while analysis details are collapsed', () => {
     board({ summary: { ...SUMMARY, selected: 3, shortfall: ['2 duplicate cuts refused.'] } });
-    expect(screen.getByText(/2 duplicate cuts refused/).textContent).toBe(
+    const notice = screen.getByRole('status', { name: 'Clip selection' });
+    expect(within(notice).getByText(/2 duplicate cuts refused/).textContent).toBe(
       '4 asked for, 3 recommended: 2 duplicate cuts refused.',
     );
+    expect(notice.closest('details')).toBeNull();
+    expect(screen.getByText('Analysis details').closest('details')).toHaveProperty('open', false);
+  });
+
+  it('shows a lower returned count even when no shortfall reason was recorded', () => {
+    board();
+    const notice = screen.getByRole('status', { name: 'Clip selection' });
+    expect(within(notice).getByText('4 asked for, 2 recommended.')).toBeTruthy();
   });
 
   it('shows missing coverage when the requested count was met', () => {
@@ -204,8 +213,13 @@ describe('the board', () => {
     expect(approved).toEqual([['cand_1', 'cand_2']]);
   });
 
-  it('switches to cards without changing what any card says', () => {
+  it('switches from the thumbnail grid to the list and back without changing the clips', () => {
     board();
+    expect(screen.getByRole('button', { name: /grid view/i }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /list view/i }));
+    expect(rowsOnScreen()).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: /grid view/i }));
     // The same two clips, the same states — only the layout moved.
     const cards = screen.getAllByRole('option');

@@ -25,6 +25,9 @@ ALLOWED_TERMS = {
     # MIT without the attribution clause; strictly more permissive than MIT.
     "MIT-0",
     "MPL-2.0",
+    # Bundled DM Sans and IBM Plex Mono permit redistribution with their
+    # copyright and OFL notices, preserved in apps/desktop/public/licenses/.
+    "OFL-1.1",
     "Python-2.0",
     "Unlicense",
 }

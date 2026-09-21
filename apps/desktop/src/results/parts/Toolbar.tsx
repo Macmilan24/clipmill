@@ -1,16 +1,3 @@
-/**
- * Search, the filter chips, the order, and how the rows are laid out.
- *
- * The chips are the design's four — All, Recommended, Approved, Flagged — plus
- * Needs review, because that band is a real state the ranker assigns and an
- * editor triaging a board wants it in reach. Every chip carries the count it
- * would leave behind, from rows already loaded, and disables itself at zero so
- * a filter cannot advertise a result nobody gets.
- *
- * The list/grid switch is real: the grid draws a card per clip with its still,
- * which is a different way of comparing than a table row and is what the design
- * offers the toggle for.
- */
 import { LayoutGrid, List, Search, X } from 'lucide-react';
 
 import { Button } from '../../components/ui/button.js';
@@ -101,7 +88,7 @@ export function Toolbar({
     filters.band !== 'any' || filters.decision !== 'any' || (filters.query ?? '') !== '';
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-3" role="search">
+    <div className="results-toolbar" role="search">
       <label className="relative">
         <span className="sr-only">Search clips by their opening line or timecode</span>
         <Search
@@ -127,11 +114,7 @@ export function Toolbar({
         )}
       </label>
 
-      <div
-        className="glass flex h-[var(--cm-control-standard)] items-center gap-0.5 rounded-[var(--cm-radius-control)] p-1"
-        role="group"
-        aria-label="Filter the board"
-      >
+      <div className="results-filters" role="group" aria-label="Filter the board">
         {chips.map((chip) => (
           <button
             key={chip.id}

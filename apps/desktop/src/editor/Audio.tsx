@@ -31,7 +31,7 @@ export function Audio({ plan, frame, busy, onApply }: AudioProps) {
   const atThisFrame = plan.gain.some((point) => point.frame === frame);
 
   return (
-    <div className="flex flex-col gap-4 p-4 text-sm">
+    <div className="editor-panel editor-audio-panel">
       <section>
         <p className="mb-2 text-xs text-[var(--cm-ink-2)]">Gain curve</p>
         <div className="relative h-20 rounded-lg bg-[var(--cm-surface-2)]">
@@ -88,8 +88,8 @@ export function Audio({ plan, frame, busy, onApply }: AudioProps) {
         </div>
       </section>
 
-      <section>
-        <p className="mb-2 text-xs text-[var(--cm-ink-2)]">Loudness</p>
+      <details className="editor-details">
+        <summary>Export loudness</summary>
         <dl className="space-y-1 text-xs">
           <Row label="Delivery target" value={`${TARGET_LUFS.toFixed(1)} LUFS`} />
           <Row label="Curve offset here" value={`${here >= 0 ? '+' : ''}${here.toFixed(1)} dB`} />
@@ -98,7 +98,7 @@ export function Audio({ plan, frame, busy, onApply }: AudioProps) {
           Export normalizes the final audio to −14 LUFS. These adjustments change the level before
           normalization.
         </p>
-      </section>
+      </details>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Cpu, Eye, MessageSquareText, RefreshCw, Workflow } from 'lucide-react';
+import { ChevronDown, Eye, MessageSquareText, RefreshCw, Workflow } from 'lucide-react';
 
 import { useReadiness } from '../analysis/readiness.js';
 import { StatusBadge } from '../components/StatusBadge.js';
@@ -23,8 +23,7 @@ function roleOf(stages: readonly StageReadiness[]) {
     return {
       icon: <MessageSquareText className="size-5" />,
       role: 'Editorial intelligence',
-      description:
-        'Finds moments with a hook, context and payoff. Reviews their meaning before ranking.',
+      description: 'Finds and reviews complete moments.',
     };
   }
   if (stages.some((stage) => stage.stage.startsWith('speech-'))) {
@@ -69,12 +68,9 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
   });
   const installed = models.filter((model) => model.installed).length;
   return (
-    <Card className="gap-0 overflow-hidden py-0">
+    <Card className="preference-section model-readiness gap-0 overflow-hidden py-0">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 border-b border-[var(--cm-glass-border)] px-5 py-5">
         <div>
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--cm-text-muted)]">
-            Analysis engine
-          </div>
           <CardTitle className="text-base">Local models</CardTitle>
           <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">
             {readiness
@@ -82,13 +78,6 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
               : problem
                 ? 'Status unavailable'
                 : 'Checking installation…'}
-            {readiness && (
-              <span>
-                {' '}
-                · {readiness.workers.length} connected{' '}
-                {readiness.workers.length === 1 ? 'worker' : 'workers'}
-              </span>
-            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -104,7 +93,7 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
             aria-label="Refresh model readiness"
           >
             <RefreshCw />
-            Refresh status
+            Refresh
           </Button>
         </div>
       </CardHeader>
@@ -121,25 +110,21 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
         {!readiness && !problem && (
           <div className="flex items-center gap-3 px-5 py-8 text-xs text-[var(--cm-text-secondary)]">
             <Spinner />
-            Reading installed weights and connected workers…
+            Checking model availability…
           </div>
         )}
         <ul className="divide-y divide-[var(--cm-glass-border)]">
           {models.map((model) => (
-            <li key={model.name} className="px-5 py-5">
+            <li key={model.name} className="model-readiness-row px-5 py-4">
               <div className="flex items-start gap-3.5">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] text-[var(--cm-text-secondary)]">
-                  {model.icon}
-                </div>
+                <div className="model-role-icon">{model.icon}</div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[var(--cm-text-muted)]">
-                        {model.role}
-                      </p>
                       <h3 className="break-words text-sm font-semibold leading-relaxed">
                         {model.name}
                       </h3>
+                      <p className="mt-1 text-xs text-[var(--cm-text-secondary)]">{model.role}</p>
                     </div>
                     <StatusBadge tone={problem ? 'neutral' : model.ready ? 'success' : 'warning'}>
                       {problem
@@ -150,25 +135,6 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
                             ? 'Needs attention'
                             : 'Not installed'}
                     </StatusBadge>
-                  </div>
-                  <p className="mt-1.5 max-w-[660px] text-xs leading-relaxed text-[var(--cm-text-secondary)]">
-                    {model.description}
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[var(--cm-text-secondary)]">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Check
-                        className={`size-3 ${model.installed ? 'text-[var(--cm-success-ink)]' : 'invisible'}`}
-                      />
-                      {model.installed ? 'Weights on device' : 'Weights missing'}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Cpu className="size-3" />
-                      {[...new Set(model.uses.map((stage) => stage.backend))].join(' / ') ||
-                        'Backend not reported'}
-                    </span>
-                    <span>
-                      {model.uses.length} {model.uses.length === 1 ? 'stage' : 'stages'}
-                    </span>
                   </div>
                   {model.remedies.length > 0 && (
                     <div className="mt-3 rounded-lg border border-[color-mix(in_srgb,var(--color-warning)_30%,transparent)] bg-[var(--cm-recessed)] px-3 py-2.5">
@@ -182,11 +148,19 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
                       </ul>
                     </div>
                   )}
-                  <details className="group mt-3 text-xs">
-                    <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded text-[var(--cm-text-secondary)] transition-colors hover:text-[var(--cm-text-primary)] [&::-webkit-details-marker]:hidden">
-                      <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
+                  <details className="preference-disclosure mt-3 text-xs">
+                    <summary>
+                      <ChevronDown className="size-3" />
                       Runtime details<span className="sr-only"> for {model.name}</span>
                     </summary>
+                    <p className="mt-3 text-xs leading-relaxed text-[var(--cm-text-secondary)]">
+                      {model.description}
+                    </p>
+                    <p className="mt-2 text-[11px] text-[var(--cm-text-muted)]">
+                      {model.installed ? 'Weights on device' : 'Weights missing'} ·{' '}
+                      {[...new Set(model.uses.map((stage) => stage.backend))].join(' / ') ||
+                        'Backend not reported'}
+                    </p>
                     <div className="mt-3 overflow-hidden rounded-lg border border-[var(--cm-glass-border)]">
                       {model.uses.map((stage) => (
                         <div
@@ -201,7 +175,7 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
                               {stage.workerPresent ? 'Worker connected' : 'Worker disconnected'}
                             </span>
                           </div>
-                          <p className="mt-1 break-all font-mono text-[10px] leading-relaxed text-[var(--cm-text-muted)]">
+                          <p className="mt-1 break-all font-mono text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
                             {stage.implementation} · {stage.capability}
                           </p>
                           {stage.missingFiles.length > 0 && (
@@ -209,7 +183,7 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
                               <p className="text-[11px] font-medium text-[var(--cm-warning-ink)]">
                                 Missing files
                               </p>
-                              <ul className="mt-1 space-y-1 break-all font-mono text-[10px] text-[var(--cm-text-secondary)]">
+                              <ul className="mt-1 space-y-1 break-all font-mono text-[11px] text-[var(--cm-text-secondary)]">
                                 {stage.missingFiles.map((path) => (
                                   <li key={path}>{path}</li>
                                 ))}
@@ -233,8 +207,9 @@ export function ModelReadiness({ api = daemonApi }: { readonly api?: ShellApi })
         {readiness && (
           <div className="flex flex-wrap items-start justify-between gap-3 border-t border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-5 py-3">
             <p className="max-w-[640px] text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-              Model files are pinned by the engine. Installation and a connected worker are both
-              required; readiness does not guarantee enough free memory for every job.
+              {readiness.workers.length} connected{' '}
+              {readiness.workers.length === 1 ? 'worker' : 'workers'}. Job capacity depends on
+              available memory.
             </p>
             <StatusBadge tone={readiness.decoderPresent ? 'neutral' : 'warning'}>
               {readiness.decoderPresent ? 'Decoder installed' : 'Decoder missing'}

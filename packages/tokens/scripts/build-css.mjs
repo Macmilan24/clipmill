@@ -34,6 +34,7 @@ const SHADCN_ALIASES = {
     popover: 'glass-elevated',
     'popover-foreground': 'text-primary',
     primary: 'accent',
+    'primary-foreground': 'accent-foreground',
     secondary: 'glass-elevated',
     'secondary-foreground': 'text-primary',
     muted: 'recessed',
@@ -48,6 +49,7 @@ const SHADCN_ALIASES = {
     sidebar: 'glass',
     'sidebar-foreground': 'text-secondary',
     'sidebar-primary': 'accent',
+    'sidebar-primary-foreground': 'accent-foreground',
     'sidebar-accent': 'accent-selected',
     'sidebar-accent-foreground': 'text-primary',
     'sidebar-border': 'glass-border',
@@ -60,9 +62,7 @@ const SHADCN_ALIASES = {
 
 /** Semantic names with no primitive behind them: text that sits on the accent. */
 const SHADCN_LITERALS = {
-    'primary-foreground': '#ffffff',
     'destructive-foreground': '#ffffff',
-    'sidebar-primary-foreground': '#ffffff',
 };
 
 /** Groups that are identical in both themes and therefore emitted once. */
@@ -179,7 +179,7 @@ ${TokenSheetBuilder.#declarations(this.#themeEntries('light'))}
 ${TokenSheetBuilder.#declarations(aliases, '')}
 ${TokenSheetBuilder.#declarations(literals, '')}
 
-  /* shadcn derives sm/md/lg/xl from this; 12px yields 8px controls and 16px cards. */
+  /* Component corner sizes share the panel radius. */
   --radius: var(${PREFIX}-radius-panel);
 }
 

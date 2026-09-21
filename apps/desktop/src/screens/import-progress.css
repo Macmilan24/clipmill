@@ -1,0 +1,224 @@
+.import-page,
+.analysis-page {
+  display: flex;
+  width: 100%;
+  max-width: 1120px;
+  min-width: 0;
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.import-page [data-slot='card'],
+.analysis-page [data-slot='card'] {
+  min-width: 0;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.import-page [data-slot='card-title'],
+.analysis-page [data-slot='card-title'] {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.import-page [data-slot='card-header'],
+.analysis-page [data-slot='card-header'] {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.import-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.85fr);
+  grid-template-areas:
+    'source options'
+    'start options'
+    'readiness options';
+  grid-template-rows: min-content min-content 1fr;
+  align-items: start;
+  gap: 20px 24px;
+}
+
+.import-source {
+  grid-area: source;
+}
+
+.import-options {
+  grid-area: options;
+}
+
+.import-start {
+  grid-area: start;
+}
+
+.import-readiness {
+  grid-area: readiness;
+}
+
+.import-dropzone {
+  padding: 32px 20px;
+  border: 1px dashed var(--cm-glass-border);
+  border-radius: 6px;
+  background: var(--cm-recessed);
+  text-align: center;
+}
+
+.import-change-file {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.import-change-file button {
+  margin-top: 0;
+}
+
+.import-page .import-start {
+  gap: 0;
+  padding: 20px 0;
+}
+
+.import-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.import-preset {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 12px 8px;
+}
+
+.import-preset-duration {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.import-preset > span > span:first-child {
+  font-size: 12px;
+}
+
+.import-page .import-readiness-ready {
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.import-readiness-ready > [data-slot='card-content'] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.import-readiness-ready > [data-slot='card-content'] button {
+  align-self: center;
+}
+
+.import-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 3px;
+  color: var(--cm-text-secondary);
+  font-size: 12px;
+}
+
+.import-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.import-disclosure > summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+}
+
+.import-disclosure > summary > svg {
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+}
+
+.import-disclosure[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.analysis-status {
+  padding: 18px 20px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: 8px;
+  background: var(--cm-surface-1);
+}
+
+.analysis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.analysis-source-preview {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--cm-recessed);
+}
+
+.analysis-stage [title] {
+  overflow-wrap: anywhere;
+}
+
+.analysis-diagnostics {
+  padding-top: 16px;
+  border-top: 1px solid var(--cm-glass-border);
+}
+
+@media (max-width: 800px) {
+  .import-layout,
+  .analysis-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .import-layout {
+    grid-template-areas: 'source' 'options' 'start' 'readiness';
+    grid-template-rows: auto;
+  }
+
+  .analysis-source-preview {
+    max-height: 240px;
+  }
+}
+
+@media (max-width: 430px) {
+  .import-presets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-stage {
+    gap: 8px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .import-disclosure > summary > svg {
+    transition: none;
+  }
+}
