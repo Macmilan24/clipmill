@@ -154,11 +154,13 @@ if [ "$ENROL_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-if echo "$FAMILIES" | tr ' ' '\n' | rg -q '^editorial:'; then
-  if ! workers/editorial/.venv/bin/python tools/editorial-runtime-check.py --data-dir "$DATA_DIR"; then
-    echo "run-workers: editorial runtime is not ready; its stages will show as unavailable" >&2
-  fi
-fi
+case " $FAMILIES " in
+  *" editorial:"*)
+    if ! workers/editorial/.venv/bin/python tools/editorial-runtime-check.py --data-dir "$DATA_DIR"; then
+      echo "run-workers: editorial runtime is not ready; its stages will show as unavailable" >&2
+    fi
+    ;;
+esac
 
 
 if [ ! -S "$WORKER_SOCKET" ]; then
