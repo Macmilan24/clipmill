@@ -105,13 +105,20 @@
 .sidebar-brand-mark {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
+  color: var(--cm-text-primary);
   border: 1px solid var(--cm-glass-border);
-  border-radius: var(--cm-radius-control);
-  color: var(--cm-accent-ink);
+  border-radius: 10px;
   background: var(--cm-glass);
   flex: none;
+}
+.brand-mark {
+  overflow: visible;
+}
+.brand-mark-blades {
+  transform-box: view-box;
+  transform-origin: center;
 }
 .studio-sidebar {
   background: var(--cm-rail);
