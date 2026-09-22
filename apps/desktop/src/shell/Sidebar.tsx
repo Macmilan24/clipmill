@@ -64,7 +64,7 @@ export function AppSidebar({ activeId, onSelect, state }: AppSidebarProps): JSX.
     >
       <SidebarHeader className="h-20 flex-col items-center justify-center gap-1.5 px-2">
         <span className="sidebar-brand-mark">
-          <BrandMark size={18} />
+          <BrandMark size={26} animated />
         </span>
         <span className="sidebar-wordmark text-[12px] font-medium tracking-tight">ClipMill</span>
       </SidebarHeader>
