@@ -24,6 +24,7 @@ import {
 import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
+import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
 import { recall, remember } from './shell/memory.js';
 import {
   type ClipRef,
@@ -80,6 +81,7 @@ export function App(): JSX.Element {
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const analysisActivity = useAnalysisActivity(state);
 
   // Restore both choices before the first React paint.
   useLayoutEffect(() => {
@@ -178,7 +180,12 @@ export function App(): JSX.Element {
         style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
         className="studio-shell relative h-full min-h-0"
       >
-        <AppSidebar activeId={section.id} onSelect={navigate} state={state} />
+        <AppSidebar
+          activeId={section.id}
+          onSelect={navigate}
+          state={state}
+          analysisBusy={analysisActivity.active}
+        />
         <SidebarInset className="min-h-0 min-w-0 bg-transparent">
           <TopBar
             trail={trail}
@@ -203,12 +210,16 @@ export function App(): JSX.Element {
               newProject: {
                 state,
                 onStarted: (projectId, jobId) => {
+                  analysisActivity.markStarted(jobId);
                   openAnalysis(projectId, jobId, 'new-project');
                 },
               },
               analysis: {
                 profile,
-                onRestarted: (projectId, jobId) => openAnalysis(projectId, jobId, 'library'),
+                onRestarted: (projectId, jobId) => {
+                  analysisActivity.markStarted(jobId);
+                  openAnalysis(projectId, jobId, 'library');
+                },
                 onBack: () => {
                   navigate(route.kind === 'analysis' ? route.from : 'library');
                 },
