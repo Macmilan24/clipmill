@@ -13,15 +13,16 @@ these notices when updating or redistributing the fonts.
 
 ## Brand
 
-The ClipMill mark is a compact mill seal: four curved blades, divided by clean
-cuts, within a square silhouette. Solid shapes and open negative space let it
-work in one color at small sizes. In the sidebar it inherits the theme's primary
-ink; the desktop icon uses ink on warm ivory. Keep the DM Sans wordmark alongside it.
+The ClipMill mark uses four tapered mill sails with open centers around a fixed
+hub. The negative space keeps the sails legible at sidebar size. In the sidebar
+it inherits the theme's primary ink; the desktop icon uses ink on warm ivory.
+Keep the DM Sans wordmark alongside it.
 
-The sidebar blades turn once every 30 seconds. Hover gently accelerates them to
-one turn every 15 seconds; leaving restores the slower pace without resetting
-the angle. Reduced motion keeps them still. Only the inner blade group moves;
-the outer frame and wordmark stay fixed.
+The sidebar blades turn once every 30 seconds. Hover accelerates them to one
+turn every 7.5 seconds. While any analysis job is planned or running, they turn
+once every 3 seconds, then ease back when the job settles. Speed changes keep
+the current angle. Reduced motion keeps the mark still. Only the sails move;
+the hub, frame and wordmark stay fixed.
 The native app icon is static.
 
 `apps/desktop/src/brand/mark.json` is the shared geometry for the React mark,
