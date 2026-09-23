@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { JobState } from '@clipmill/contracts';
+import { JobState, TaskState } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { type ConnectionState, type Job, subscribeTaskEvents } from '../daemon/client.js';
@@ -10,6 +10,14 @@ type ActivityApi = Pick<ShellApi, 'listProjects' | 'listJobs' | 'fetchJob'>;
 type Subscribe = typeof subscribeTaskEvents;
 
 function isProcessing(job: Job): boolean {
+  return (
+    job.kind === ANALYZE_KIND &&
+    (job.state === JobState.PLANNED || job.state === JobState.RUNNING) &&
+    job.tasks.some((task) => task.state === TaskState.ADMITTED || task.state === TaskState.RUNNING)
+  );
+}
+
+function isUnfinishedAnalysis(job: Job): boolean {
   return (
     job.kind === ANALYZE_KIND && (job.state === JobState.PLANNED || job.state === JobState.RUNNING)
   );
@@ -52,11 +60,11 @@ export function useAnalysisActivity(
       if (
         previous &&
         previous.updatedUnixMillis === job.updatedUnixMillis &&
-        !isProcessing(previous) &&
-        isProcessing(job)
+        !isUnfinishedAnalysis(previous) &&
+        isUnfinishedAnalysis(job)
       )
         return;
-      justStarted.delete(job.jobId);
+      if (!isUnfinishedAnalysis(job)) justStarted.delete(job.jobId);
       jobs.set(job.jobId, job);
       setActive(justStarted.size > 0 || [...jobs.values()].some(isProcessing));
     };

@@ -13,7 +13,7 @@ const connected: ConnectionState = {
 };
 const silentSubscribe = async () => () => undefined;
 
-function job(jobId: string, state: JobState, kind = 'analyze-source'): Job {
+function job(jobId: string, state: JobState, kind = 'analyze-source', taskState?: TaskState): Job {
   return {
     jobId,
     projectId: 'project',
@@ -22,7 +22,21 @@ function job(jobId: string, state: JobState, kind = 'analyze-source'): Job {
     state,
     createdUnixMillis: 1,
     updatedUnixMillis: Date.now(),
-    tasks: [],
+    tasks:
+      taskState === undefined
+        ? []
+        : [
+            {
+              taskId: `${jobId}-task`,
+              kind: 'editorial-propose',
+              outputKind: 'editorial.proposals.v1',
+              state: taskState,
+              attempt: 1,
+              maxAttempts: 3,
+              waitReason: '',
+              outputArtifactId: '',
+            },
+          ],
     outputArtifactIds: [],
     failureClass: 0,
     failureDetail: '',
@@ -33,10 +47,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it('follows durable analysis jobs from relaunch through completion across screens', async () => {
+it('follows executing analyses across screens without counting abandoned running jobs', async () => {
   vi.useFakeTimers();
   let onEvent: ((event: TaskEvent) => void) | undefined;
-  const current = new Map<string, Job>([['first', job('first', JobState.RUNNING)]]);
+  const current = new Map<string, Job>([
+    ['abandoned', job('abandoned', JobState.RUNNING)],
+    ['first', job('first', JobState.RUNNING, 'analyze-source', TaskState.RUNNING)],
+  ]);
   const api = {
     listProjects: vi.fn(async () => [{ projectId: 'project', name: 'Test', createdUnixMillis: 1 }]),
     listJobs: vi.fn(async () => [...current.values()]),
@@ -80,11 +97,21 @@ it('follows durable analysis jobs from relaunch through completion across screen
   await emit('first');
   expect(result.current.active).toBe(false);
 
+  current.set('abandoned', {
+    ...job('abandoned', JobState.RUNNING, 'analyze-source', TaskState.RUNNING),
+    updatedUnixMillis: current.get('abandoned')!.updatedUnixMillis,
+  });
+  await emit('abandoned');
+  expect(result.current.active).toBe(true);
+  current.set('abandoned', job('abandoned', JobState.SUCCEEDED));
+  await emit('abandoned');
+  expect(result.current.active).toBe(false);
+
   current.set('export', job('export', JobState.RUNNING, 'render-export'));
   await emit('export');
   expect(result.current.active).toBe(false);
 
-  current.set('second', job('second', JobState.PLANNED));
+  current.set('second', job('second', JobState.RUNNING, 'analyze-source', TaskState.ADMITTED));
   await emit('second');
   expect(result.current.active).toBe(true);
 
