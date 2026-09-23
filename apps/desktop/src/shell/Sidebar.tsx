@@ -20,6 +20,7 @@ interface AppSidebarProps {
   readonly activeId: string;
   readonly onSelect: (id: string) => void;
   readonly state: ConnectionState;
+  readonly analysisBusy?: boolean;
 }
 
 interface LockView {
@@ -54,7 +55,12 @@ function describeLock(state: ConnectionState): LockView {
       };
 }
 
-export function AppSidebar({ activeId, onSelect, state }: AppSidebarProps): JSX.Element {
+export function AppSidebar({
+  activeId,
+  onSelect,
+  state,
+  analysisBusy = false,
+}: AppSidebarProps): JSX.Element {
   const lock = describeLock(state);
 
   return (
@@ -63,8 +69,8 @@ export function AppSidebar({ activeId, onSelect, state }: AppSidebarProps): JSX.
       className="studio-sidebar glass h-full rounded-none border-y-0 border-l-0 shadow-none"
     >
       <SidebarHeader className="h-20 flex-col items-center justify-center gap-1.5 px-2">
-        <span className="sidebar-brand-mark">
-          <BrandMark size={18} />
+        <span className="sidebar-brand-mark" title={analysisBusy ? 'Analyzing video' : 'ClipMill'}>
+          <BrandMark size={26} animated processing={analysisBusy} />
         </span>
         <span className="sidebar-wordmark text-[12px] font-medium tracking-tight">ClipMill</span>
       </SidebarHeader>

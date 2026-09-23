@@ -11,6 +11,29 @@ upstream copyright and license notices are kept in
 production bundle's `licenses/` directory with the other public assets. Preserve
 these notices when updating or redistributing the fonts.
 
+## Brand
+
+The ClipMill mark uses four tapered mill sails with open centers around a fixed
+hub. The negative space keeps the sails legible at sidebar size. In the sidebar
+it inherits the theme's primary ink; the desktop icon uses ink on warm ivory.
+Keep the DM Sans wordmark alongside it.
+
+The sidebar blades turn once every 30 seconds. Hover accelerates them to one
+turn every 7.5 seconds. While any analysis job is planned or running, they turn
+once every 3 seconds, then ease back when the job settles. Speed changes keep
+the current angle. Reduced motion keeps the mark still. Only the sails move;
+the hub, frame and wordmark stay fixed.
+The native app icon is static.
+
+`apps/desktop/src/brand/mark.json` is the shared geometry for the React mark,
+public SVGs and native icons. After editing it, run
+`python3 apps/desktop/src-tauri/icons/generate.py` from the repository root with
+the locked pnpm dependencies installed. This generates PNG, ICNS and ICO files
+with the workspace's Tauri CLI. The macOS tile includes transparent outer padding;
+the sidebar mark and browser favicon use their own spacing for small sizes.
+
+## Workspace themes
+
 Settings → Appearance offers four workspace themes, each with light and dark
 palettes. Paper & Ink is the default: warm surfaces, ink accents, compact corners,
 underlined tabs and quiet dividers. Classic preserves the original sage light
