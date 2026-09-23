@@ -14,7 +14,7 @@ quantization = "int4"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Qwen3 Forced Aligner 0.6B"
-summary = "Word timing on the Apple silicon GPU."
+summary = "Faster word timing on the Apple silicon GPU."
 recommended = false
 
 [source]
