@@ -10,6 +10,13 @@ runtime = "whisper.cpp"
 backend = "cpu"
 quantization = "ggml-f16"
 
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Whisper Base"
+summary = "Fast, compact transcription that runs on any computer. Used until something else is chosen or measured faster."
+recommended = true
+
 [source]
 provider = "https://huggingface.co"
 repo = "ggerganov/whisper.cpp"

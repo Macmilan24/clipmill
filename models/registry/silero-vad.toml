@@ -10,6 +10,13 @@ runtime = "onnxruntime"
 backend = "onnx-cpu"
 quantization = "none"
 
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Silero VAD"
+summary = "Finds where people speak, so transcription skips silence and music. Tiny, and runs on any computer."
+recommended = true
+
 [source]
 provider = "https://huggingface.co"
 repo = "onnx-community/silero-vad"

@@ -10,6 +10,13 @@ runtime = "mlx"
 backend = "mlx"
 quantization = "int4"
 
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Qwen3-ASR 1.7B"
+summary = "Fast transcription on the Apple silicon GPU."
+recommended = false
+
 [source]
 provider = "https://huggingface.co"
 repo = "mlx-community/Qwen3-ASR-1.7B-4bit"

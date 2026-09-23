@@ -11,6 +11,13 @@ runtime = "onnxruntime"
 backend = "onnx-cpu"
 quantization = "none"
 
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Wav2Vec2 word timing (English)"
+summary = "Times every word against the audio so captions land exactly. Runs on any computer."
+recommended = true
+
 [source]
 provider = "https://huggingface.co"
 repo = "onnx-community/wav2vec2-base-960h-ONNX"
