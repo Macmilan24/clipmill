@@ -10,6 +10,13 @@ runtime = "onnxruntime"
 backend = "onnx-cpu"
 quantization = "none"
 
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "YuNet face detection"
+summary = "Finds faces so vertical crops follow the speaker. Tiny, and runs on any computer."
+recommended = true
+
 [source]
 provider = "https://huggingface.co"
 repo = "opencv/opencv_zoo"

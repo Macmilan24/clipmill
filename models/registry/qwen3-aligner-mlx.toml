@@ -10,6 +10,13 @@ runtime = "mlx"
 backend = "mlx"
 quantization = "int4"
 
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Qwen3 Forced Aligner 0.6B"
+summary = "Word timing on the Apple silicon GPU."
+recommended = false
+
 [source]
 provider = "https://huggingface.co"
 repo = "mlx-community/Qwen3-ForcedAligner-0.6B-4bit"

@@ -5,6 +5,14 @@ family = "qwen3.5"
 runtime = "mlx"
 backend = "mlx"
 quantization = "int4"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Qwen3.5 9B"
+summary = "Finds complete moments, reviews them in context, checks visual references and drafts titles. Runs on the Apple silicon GPU."
+recommended = true
+
 [source]
 provider = "https://huggingface.co"
 repo = "mlx-community/Qwen3.5-9B-4bit"
