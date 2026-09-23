@@ -25,9 +25,10 @@ export function BrandMark({
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let animation: Animation | undefined;
     let frame = 0;
+    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
     let previous = 0;
-    let hovered = false;
-    const desiredSpeed = () => (processingRef.current ? 10 : hovered ? 4 : 1);
+    let hoverBurst = false;
+    const desiredSpeed = () => (processingRef.current ? 40 : hoverBurst ? 4 : 1);
     let speed = desiredSpeed();
     let target = speed;
 
@@ -53,12 +54,22 @@ export function BrandMark({
       if (!frame && speed !== target) frame = requestAnimationFrame(easeSpeed);
     };
     const enter = () => {
-      hovered = true;
+      if (processingRef.current || reducedMotion.matches) return;
+      hoverBurst = true;
       target = desiredSpeed();
       run();
+      if (hoverTimer !== null) clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => {
+        hoverTimer = null;
+        hoverBurst = false;
+        target = desiredSpeed();
+        run();
+      }, 1800);
     };
     const leave = () => {
-      hovered = false;
+      if (hoverTimer !== null) clearTimeout(hoverTimer);
+      hoverTimer = null;
+      hoverBurst = false;
       target = desiredSpeed();
       run();
     };
@@ -66,6 +77,9 @@ export function BrandMark({
       if (reducedMotion.matches) {
         cancelAnimationFrame(frame);
         frame = 0;
+        if (hoverTimer !== null) clearTimeout(hoverTimer);
+        hoverTimer = null;
+        hoverBurst = false;
         animation?.pause();
       } else {
         target = desiredSpeed();
@@ -73,6 +87,11 @@ export function BrandMark({
       }
     };
     refreshSpeed.current = () => {
+      if (processingRef.current && hoverTimer !== null) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+        hoverBurst = false;
+      }
       target = desiredSpeed();
       run();
     };
@@ -83,6 +102,7 @@ export function BrandMark({
     return () => {
       refreshSpeed.current = null;
       cancelAnimationFrame(frame);
+      if (hoverTimer !== null) clearTimeout(hoverTimer);
       animation?.cancel();
       hoverTarget.removeEventListener('pointerenter', enter);
       hoverTarget.removeEventListener('pointerleave', leave);

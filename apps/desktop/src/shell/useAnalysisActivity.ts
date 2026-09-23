@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { JobState } from '@clipmill/contracts';
 
@@ -20,8 +20,10 @@ export function useAnalysisActivity(
   connection: ConnectionState,
   api: ActivityApi = daemonApi,
   subscribe: Subscribe = subscribeTaskEvents,
-): boolean {
+): { active: boolean; markStarted: (jobId: string) => void } {
   const [active, setActive] = useState(false);
+  const markStartedRef = useRef<(jobId: string) => void>(() => undefined);
+  const markStarted = useCallback((jobId: string) => markStartedRef.current(jobId), []);
   const daemonId =
     connection.status === 'connected'
       ? `${connection.daemonVersion}:${connection.startedUnixMillis}`
@@ -29,11 +31,13 @@ export function useAnalysisActivity(
 
   useEffect(() => {
     setActive(false);
+    markStartedRef.current = () => undefined;
     if (daemonId === null) return;
 
     let live = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const pending = new Set<string>();
+    const justStarted = new Set<string>();
     const jobs = new Map<string, Job>();
     const unrelated = new Set<string>();
 
@@ -52,8 +56,9 @@ export function useAnalysisActivity(
         isProcessing(job)
       )
         return;
+      justStarted.delete(job.jobId);
       jobs.set(job.jobId, job);
-      setActive([...jobs.values()].some(isProcessing));
+      setActive(justStarted.size > 0 || [...jobs.values()].some(isProcessing));
     };
 
     const refresh = (jobIds: readonly string[]) => {
@@ -66,6 +71,17 @@ export function useAnalysisActivity(
         ),
       );
     };
+    markStartedRef.current = (jobId) => {
+      if (!live) return;
+      justStarted.add(jobId);
+      setActive(true);
+      refresh([jobId]);
+    };
+    const poll = setInterval(() => {
+      const ids = new Set(justStarted);
+      for (const job of jobs.values()) if (isProcessing(job)) ids.add(job.jobId);
+      if (ids.size > 0) refresh([...ids]);
+    }, 1500);
     const flush = () => {
       timer = null;
       const ids = [...pending];
@@ -93,6 +109,8 @@ export function useAnalysisActivity(
 
     return () => {
       live = false;
+      markStartedRef.current = () => undefined;
+      clearInterval(poll);
       if (timer !== null) clearTimeout(timer);
       void pendingUnlisten
         .then((unlisten) => {
@@ -102,5 +120,5 @@ export function useAnalysisActivity(
     };
   }, [api, daemonId, subscribe]);
 
-  return active;
+  return { active, markStarted };
 }

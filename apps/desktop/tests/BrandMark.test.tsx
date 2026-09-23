@@ -36,7 +36,7 @@ function show(processing = false) {
   return { ...view, target: view.getByTestId('brand') };
 }
 
-it('turns slowly at rest, accelerates on hover and during analysis without moving the hub', () => {
+it('gives hover a brief burst, then returns to idle without moving the hub', () => {
   const { target, unmount, rerender } = show();
   expect(animate).toHaveBeenCalledWith(expect.any(Array), {
     duration: 30_000,
@@ -52,11 +52,15 @@ it('turns slowly at rest, accelerates on hover and during analysis without movin
   expect(animation.playbackRate).toBeLessThan(4);
   vi.advanceTimersByTime(1200);
   expect(animation.playbackRate).toBe(4);
+  vi.advanceTimersByTime(1700);
+  expect(animation.playbackRate).toBe(1);
 
   fireEvent.pointerLeave(target);
+  fireEvent.pointerEnter(target);
   vi.advanceTimersByTime(160);
   expect(animation.playbackRate).toBeGreaterThan(1);
   expect(animation.playbackRate).toBeLessThan(4);
+  fireEvent.pointerLeave(target);
   vi.advanceTimersByTime(1200);
   expect(animation.playbackRate).toBe(1);
 
@@ -65,22 +69,23 @@ it('turns slowly at rest, accelerates on hover and during analysis without movin
       <BrandMark animated processing />
     </span>,
   );
-  vi.advanceTimersByTime(1600);
-  expect(animation.playbackRate).toBe(10);
+  vi.advanceTimersByTime(1800);
+  expect(animation.playbackRate).toBe(40);
   fireEvent.pointerEnter(target);
-  vi.advanceTimersByTime(1600);
-  expect(animation.playbackRate).toBe(10);
+  vi.advanceTimersByTime(1800);
+  expect(animation.playbackRate).toBe(40);
   rerender(
     <span data-testid="brand">
       <BrandMark animated />
     </span>,
   );
-  vi.advanceTimersByTime(1600);
-  expect(animation.playbackRate).toBe(4);
+  vi.advanceTimersByTime(1800);
+  expect(animation.playbackRate).toBe(1);
   expect(animation.pause).not.toHaveBeenCalled();
   expect(animation.cancel).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
 
+  fireEvent.pointerLeave(target);
   fireEvent.pointerEnter(target);
   expect(animate).toHaveBeenCalledTimes(1);
   unmount();
