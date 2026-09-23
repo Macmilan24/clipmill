@@ -654,6 +654,159 @@ fn garbage_collection_can_yield_mid_hash_without_deleting_or_skipping_integrity(
     );
 }
 
+/// Two stores holding the same objects, so a pass on one can be measured
+/// against a pass on the other.
+fn twin_stores(temp: &TempDir) -> [(ArtifactStore, ArtifactId); 2] {
+    ["first", "second"].map(|name| {
+        let (mut store, _) = ArtifactStore::initialize(temp.path().join(name)).unwrap();
+        let small = recipe(67);
+        let small_id = small.artifact_id().unwrap();
+        drop(commit_payload(
+            &mut store,
+            small,
+            "small.bin",
+            b"verified early",
+        ));
+        let large = recipe_with(68, vec![small_id], None, Map::new());
+        let large_id = large.artifact_id().unwrap();
+        drop(commit_payload(
+            &mut store,
+            large,
+            "large.bin",
+            &vec![3; 4 * 1024 * 1024],
+        ));
+        drop(commit_payload(
+            &mut store,
+            recipe(69),
+            "orphan.bin",
+            b"unused",
+        ));
+        (store, large_id)
+    })
+}
+
+#[test]
+fn a_yielded_collection_resumes_the_verification_it_had_done() {
+    let temp = TempDir::new().unwrap();
+    let [(mut whole, root), (mut yielding, twin_root)] = twin_stores(&temp);
+    assert_eq!(root, twin_root);
+    let now = SystemTime::now() + Duration::from_hours(192);
+    let grace = Duration::from_hours(168);
+    let mut uninterrupted = 0;
+    let complete = whole
+        .collect_garbage_interruptible([root], now, grace, || {
+            uninterrupted += 1;
+            false
+        })
+        .unwrap();
+    assert_eq!(complete.deleted, 1);
+
+    // Yield about fifty reads into the large payload's 64-read hash.
+    let mut before = 0;
+    let deferred = yielding
+        .collect_garbage_interruptible([root], now, grace, || {
+            before += 1;
+            before == 60
+        })
+        .unwrap();
+    assert!(deferred.deferred);
+    assert_eq!(deferred.deleted, 0);
+    let mut after = 0;
+    let resumed = yielding
+        .collect_garbage_interruptible([root], now, grace, || {
+            after += 1;
+            false
+        })
+        .unwrap();
+    assert!(!resumed.deferred);
+    assert_eq!(resumed.deleted, 1, "the retry still collects the orphan");
+    assert!(
+        after + 40 <= uninterrupted,
+        "the retry resumed rather than restarting: {after} checkpoints after \
+         yielding, {uninterrupted} for a whole pass"
+    );
+}
+
+#[test]
+fn a_collection_yielding_more_often_than_one_object_takes_still_finishes() {
+    let temp = TempDir::new().unwrap();
+    let (mut store, _) = ArtifactStore::initialize(temp.path()).unwrap();
+    // One object of many payloads, as a filmstrip of tiles is.
+    let tiles = recipe(70);
+    let tiles_id = tiles.artifact_id().unwrap();
+    let staging = prepare_miss(&mut store, tiles);
+    let mut paths = Vec::new();
+    for tile in 0_u8..60 {
+        let path = format!("tile-{tile:02}.bin")
+            .parse::<ArtifactPath>()
+            .unwrap();
+        let mut file = staging.create_file(&path).unwrap();
+        file.write_all(&vec![tile; 100 * 1024]).unwrap();
+        file.sync_all().unwrap();
+        paths.push(path);
+    }
+    drop(store.commit(staging.id(), paths, BTreeMap::new()).unwrap());
+    drop(commit_payload(
+        &mut store,
+        recipe(71),
+        "orphan.bin",
+        b"unused",
+    ));
+    let now = SystemTime::now() + Duration::from_hours(192);
+    let grace = Duration::from_hours(168);
+
+    // Each attempt yields long before the object's roughly 400 checkpoints
+    // are through; restarting the object each time would never finish it.
+    let mut attempts = 0;
+    let finished = loop {
+        attempts += 1;
+        assert!(attempts <= 10, "the pass stalled on the object");
+        let mut checkpoints = 0;
+        let report = store
+            .collect_garbage_interruptible([tiles_id], now, grace, || {
+                checkpoints += 1;
+                checkpoints == 100
+            })
+            .unwrap();
+        if !report.deferred {
+            break report;
+        }
+    };
+    assert!(
+        attempts >= 3,
+        "attempts yielded part-way through the object"
+    );
+    assert_eq!(finished.deleted, 1);
+}
+
+#[test]
+fn a_completed_collection_verifies_everything_again_next_time() {
+    let temp = TempDir::new().unwrap();
+    let [(mut store, root), _] = twin_stores(&temp);
+    let now = SystemTime::now() + Duration::from_hours(192);
+    let grace = Duration::from_hours(168);
+    let deferred = store
+        .collect_garbage_interruptible([root], now, grace, {
+            let mut checkpoints = 0;
+            move || {
+                checkpoints += 1;
+                checkpoints == 50
+            }
+        })
+        .unwrap();
+    assert!(deferred.deferred);
+    assert!(!store.collect_garbage([root], now, grace).unwrap().deferred);
+
+    // Same-size corruption in a payload the finished pass had verified.
+    let path = store.paths().object_dir(root).join("large.bin");
+    make_writable(&path);
+    fs::write(&path, vec![4; 4 * 1024 * 1024]).unwrap();
+    assert!(matches!(
+        store.collect_garbage([root], now, grace),
+        Err(ArtifactError::ReachableCorrupt { artifact_id, .. }) if artifact_id == root
+    ));
+}
+
 #[test]
 fn interruption_after_quarantine_reports_progress_and_idle_retry_finishes_cleanup() {
     let temp = TempDir::new().unwrap();

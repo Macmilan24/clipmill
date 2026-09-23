@@ -56,6 +56,111 @@ pub struct ArtifactStore {
     catalog: BTreeMap<ArtifactId, CatalogEntry>,
     active: BTreeMap<ArtifactId, StagingState>,
     pins: Arc<Mutex<BTreeMap<ArtifactId, usize>>>,
+    mark: MarkProgress,
+}
+
+/// The verification a collection had done when it yielded to foreground work.
+///
+/// A mark reads every reachable manifest and hashes every reachable payload.
+/// On a large store that takes long enough that foreground work nearly always
+/// arrives first, and a retry that started again from the first byte would
+/// never finish; nor would one that restarted an object of thousands of files
+/// each time. The retry still marks from fresh roots and reader pins, but
+/// resumes where this pass stopped: past the objects it verified, and inside
+/// the object it was verifying, at the payload and byte it had reached. A pass
+/// that completes or fails forgets all of it, so every pass verifies every
+/// reachable byte once.
+#[derive(Debug, Default)]
+struct MarkProgress {
+    /// Objects this pass verified, with the inputs their manifests name.
+    verified: BTreeMap<ArtifactId, Vec<ArtifactId>>,
+    /// Objects this pass began verifying and had not finished.
+    partial: BTreeMap<ArtifactId, PartialObject>,
+}
+
+/// An object part-way through verification: its manifest read, whether the
+/// files on disk were found to be exactly those it declares, the payloads
+/// `records[..next]` hashed as declared, and `hashing` the progress through
+/// `records[next]`.
+#[derive(Debug)]
+struct PartialObject {
+    dir: PathBuf,
+    records: Vec<FileRecord>,
+    inputs: Vec<ArtifactId>,
+    listed: bool,
+    next: usize,
+    hashing: PartialHash,
+}
+
+impl PartialObject {
+    /// Read a reachable object's manifest, the one step of its verification
+    /// that cannot yield part-way, and so is done once per pass.
+    fn read(
+        dir: &Path,
+        artifact_id: ArtifactId,
+        interrupted: &mut impl FnMut() -> bool,
+    ) -> Result<Self, ArtifactError> {
+        let manifest = read_object_manifest(dir, artifact_id, interrupted)?;
+        manifest.recipe()?;
+        Ok(Self {
+            dir: dir.to_path_buf(),
+            records: manifest.file_records()?,
+            inputs: manifest.input_ids()?,
+            listed: false,
+            next: 0,
+            hashing: PartialHash::default(),
+        })
+    }
+
+    /// Check the file set, then hash the payloads not yet verified, from
+    /// where the last call stopped.
+    fn verify(&mut self, interrupted: &mut impl FnMut() -> bool) -> Result<(), ArtifactError> {
+        if !self.listed {
+            // A listing cannot resume part-way, so it runs without yielding:
+            // one directory's metadata, bounded by the object's file count.
+            // Yielding inside it would restart it, and an object of thousands
+            // of files would never get past it while the engine is busy.
+            check_declared_files(&self.dir, &self.records, &mut || false)?;
+            self.listed = true;
+        }
+        while let Some(record) = self.records.get(self.next) {
+            checkpoint(interrupted)?;
+            let payload = self.dir.join(record.path.as_path());
+            let metadata = fs::symlink_metadata(&payload)
+                .map_err(|source| ArtifactError::io(&payload, source))?;
+            if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+                return Err(ArtifactError::NonRegularFile);
+            }
+            let mut file =
+                File::open(&payload).map_err(|source| ArtifactError::io(&payload, source))?;
+            if metadata.len() != record.bytes {
+                return Err(ArtifactError::PayloadSizeMismatch);
+            }
+            let from = std::mem::take(&mut self.hashing);
+            match hash_open_file_resumable(&mut file, &payload, from, interrupted)? {
+                Hashed::Done(digest) if digest == record.digest => self.next += 1,
+                Hashed::Done(_) => return Err(ArtifactError::PayloadHashMismatch),
+                Hashed::Yielded(progress) => {
+                    self.hashing = progress;
+                    return Err(ArtifactError::CollectionInterrupted);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A payload hashed up to `offset`.
+#[derive(Clone, Debug, Default)]
+struct PartialHash {
+    offset: u64,
+    hasher: Sha256,
+}
+
+/// Whether a resumable hash reached the end of its file.
+enum Hashed {
+    Done(Sha256Digest),
+    Yielded(PartialHash),
 }
 
 #[derive(Clone, Debug)]
@@ -96,6 +201,7 @@ impl ArtifactStore {
                 catalog,
                 active: BTreeMap::new(),
                 pins: Arc::new(Mutex::new(BTreeMap::new())),
+                mark: MarkProgress::default(),
             },
             recovery,
         ))
@@ -399,7 +505,8 @@ impl ArtifactStore {
     }
 
     /// Yield to foreground work without treating an incomplete integrity scan
-    /// as permission to delete. Callers must retry with fresh roots and pins.
+    /// as permission to delete. Callers must retry with fresh roots and pins;
+    /// the retry resumes the verification this pass had already done.
     pub fn collect_garbage_interruptible(
         &mut self,
         roots: impl IntoIterator<Item = ArtifactId>,
@@ -409,12 +516,18 @@ impl ArtifactStore {
     ) -> Result<GcReport, ArtifactError> {
         let mut report = GcReport::default();
         match self.collect_garbage_inner(roots, now, grace, &mut interrupted, &mut report) {
-            Ok(()) => Ok(report),
+            Ok(()) => {
+                self.mark = MarkProgress::default();
+                Ok(report)
+            }
             Err(ArtifactError::CollectionInterrupted) => {
                 report.deferred = true;
                 Ok(report)
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.mark = MarkProgress::default();
+                Err(error)
+            }
         }
     }
 
@@ -440,18 +553,34 @@ impl ArtifactStore {
                 .catalog
                 .get(&artifact_id)
                 .ok_or(ArtifactError::ReachableMissing(artifact_id))?;
-            let inputs =
-                load_reachable_inputs(&entry.dir, artifact_id, interrupted).map_err(|error| {
-                    if matches!(error, ArtifactError::CollectionInterrupted) {
-                        error
-                    } else {
-                        ArtifactError::ReachableCorrupt {
-                            artifact_id,
-                            detail: error.to_string(),
-                        }
+            if let Some(inputs) = self.mark.verified.get(&artifact_id) {
+                pending.extend(inputs.iter().copied());
+                continue;
+            }
+            let corrupt = |error: ArtifactError| {
+                if matches!(error, ArtifactError::CollectionInterrupted) {
+                    error
+                } else {
+                    ArtifactError::ReachableCorrupt {
+                        artifact_id,
+                        detail: error.to_string(),
                     }
-                })?;
-            pending.extend(inputs);
+                }
+            };
+            let mut object = match self.mark.partial.remove(&artifact_id) {
+                Some(object) => object,
+                None => {
+                    PartialObject::read(&entry.dir, artifact_id, interrupted).map_err(corrupt)?
+                }
+            };
+            if let Err(error) = object.verify(interrupted) {
+                if matches!(error, ArtifactError::CollectionInterrupted) {
+                    self.mark.partial.insert(artifact_id, object);
+                }
+                return Err(corrupt(error));
+            }
+            pending.extend(object.inputs.iter().copied());
+            self.mark.verified.insert(artifact_id, object.inputs);
         }
 
         let candidates = self
@@ -488,6 +617,8 @@ impl ArtifactStore {
             checkpoint(interrupted)?;
             let quarantine = quarantine_entry(&self.paths, &path, "gc")?;
             self.catalog.remove(&artifact_id);
+            self.mark.verified.remove(&artifact_id);
+            self.mark.partial.remove(&artifact_id);
             // Once quarantined, this object is safely removed from the store.
             // An interrupted unlink leaves only recoverable quarantine bytes.
             report.deleted += 1;
@@ -707,7 +838,9 @@ pub struct GcReport {
     pub deleted_bytes: u64,
     pub quarantine_deleted: usize,
     /// Foreground work interrupted this pass. Counts include only completed
-    /// mutations; a fresh mark is required before collecting anything else.
+    /// mutations; a fresh mark from fresh roots and pins is required before
+    /// collecting anything else, though it resumes the verification this pass
+    /// had already done.
     pub deferred: bool,
 }
 
@@ -780,17 +913,44 @@ fn load_catalog_entry_interruptible(
     artifact_id: ArtifactId,
     interrupted: &mut impl FnMut() -> bool,
 ) -> Result<CatalogEntry, ArtifactError> {
+    let manifest = read_object_manifest(path, artifact_id, interrupted)?;
+    check_declared_files(path, &manifest.file_records()?, interrupted)?;
+    let manifest_metadata = fs::metadata(path.join(MANIFEST_NAME))
+        .map_err(|source| ArtifactError::io(path.join(MANIFEST_NAME), source))?;
+    let published_at = manifest_metadata.modified().ok();
+    let legacy = manifest.recipe()?.is_none();
+    Ok(CatalogEntry {
+        dir: path.to_path_buf(),
+        manifest,
+        published_at,
+        legacy,
+    })
+}
+
+fn read_object_manifest(
+    path: &Path,
+    artifact_id: ArtifactId,
+    interrupted: &mut impl FnMut() -> bool,
+) -> Result<StoredManifest, ArtifactError> {
     checkpoint(interrupted)?;
     let metadata = fs::symlink_metadata(path).map_err(|source| ArtifactError::io(path, source))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(ArtifactError::NonRegularFile);
     }
     let bytes = read_manifest_bytes(path)?;
-    let manifest = StoredManifest::from_bytes(&bytes, artifact_id)?;
-    let declared = manifest
-        .file_records()?
-        .into_iter()
-        .map(|file| (file.path, file.bytes))
+    Ok(StoredManifest::from_bytes(&bytes, artifact_id)?)
+}
+
+/// The files in an object's directory are exactly those its manifest
+/// declares, each at its declared size.
+fn check_declared_files(
+    path: &Path,
+    records: &[FileRecord],
+    interrupted: &mut impl FnMut() -> bool,
+) -> Result<(), ArtifactError> {
+    let declared = records
+        .iter()
+        .map(|file| (file.path.clone(), file.bytes))
         .collect::<BTreeMap<_, _>>();
     let actual = scan_payload_paths_interruptible(path, true, interrupted)?;
     if actual != declared.keys().cloned().collect() {
@@ -805,42 +965,7 @@ fn load_catalog_entry_interruptible(
             return Err(ArtifactError::PayloadSizeMismatch);
         }
     }
-    let manifest_metadata = fs::metadata(path.join(MANIFEST_NAME))
-        .map_err(|source| ArtifactError::io(path.join(MANIFEST_NAME), source))?;
-    let published_at = manifest_metadata.modified().ok();
-    let legacy = manifest.recipe()?.is_none();
-    Ok(CatalogEntry {
-        dir: path.to_path_buf(),
-        manifest,
-        published_at,
-        legacy,
-    })
-}
-
-fn load_reachable_inputs(
-    path: &Path,
-    artifact_id: ArtifactId,
-    interrupted: &mut impl FnMut() -> bool,
-) -> Result<Vec<ArtifactId>, ArtifactError> {
-    let entry = load_catalog_entry_interruptible(path, artifact_id, interrupted)?;
-    for record in entry.manifest.file_records()? {
-        checkpoint(interrupted)?;
-        let payload = entry.dir.join(record.path.as_path());
-        let metadata =
-            fs::symlink_metadata(&payload).map_err(|source| ArtifactError::io(&payload, source))?;
-        if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
-            return Err(ArtifactError::NonRegularFile);
-        }
-        let mut file =
-            File::open(&payload).map_err(|source| ArtifactError::io(&payload, source))?;
-        if metadata.len() != record.bytes {
-            return Err(ArtifactError::PayloadSizeMismatch);
-        }
-        if hash_open_file_interruptible(&mut file, &payload, interrupted)? != record.digest {
-            return Err(ArtifactError::PayloadHashMismatch);
-        }
-    }
-    entry.manifest.input_ids().map_err(Into::into)
+    Ok(())
 }
 
 fn read_manifest_bytes(object_dir: &Path) -> Result<Vec<u8>, ArtifactError> {
@@ -933,30 +1058,43 @@ fn hash_and_sync_file(path: &Path) -> Result<(Sha256Digest, u64), ArtifactError>
 }
 
 fn hash_open_file(file: &mut File, path: &Path) -> Result<Sha256Digest, ArtifactError> {
-    hash_open_file_interruptible(file, path, &mut || false)
+    match hash_open_file_resumable(file, path, PartialHash::default(), &mut || false)? {
+        Hashed::Done(digest) => Ok(digest),
+        Hashed::Yielded(_) => Err(ArtifactError::CollectionInterrupted),
+    }
 }
 
-fn hash_open_file_interruptible(
+/// Hash a file from where `from` stopped, yielding between reads when
+/// `interrupted` says so, with the state a later call resumes from.
+fn hash_open_file_resumable(
     file: &mut File,
     path: &Path,
+    from: PartialHash,
     interrupted: &mut impl FnMut() -> bool,
-) -> Result<Sha256Digest, ArtifactError> {
-    file.seek(SeekFrom::Start(0))
+) -> Result<Hashed, ArtifactError> {
+    let PartialHash {
+        mut offset,
+        mut hasher,
+    } = from;
+    file.seek(SeekFrom::Start(offset))
         .map_err(|source| ArtifactError::io(path, source))?;
     let mut reader = BufReader::new(file);
-    let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
     loop {
-        checkpoint(interrupted)?;
+        if interrupted() {
+            return Ok(Hashed::Yielded(PartialHash { offset, hasher }));
+        }
         let read = reader
             .read(&mut buffer)
             .map_err(|source| ArtifactError::io(path, source))?;
         if read == 0 {
-            break;
+            return Ok(Hashed::Done(Sha256Digest::from_bytes(
+                hasher.finalize().into(),
+            )));
         }
         hasher.update(&buffer[..read]);
+        offset = offset.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
     }
-    Ok(Sha256Digest::from_bytes(hasher.finalize().into()))
 }
 
 fn write_private_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), ArtifactError> {
