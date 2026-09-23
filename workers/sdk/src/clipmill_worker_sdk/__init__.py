@@ -14,6 +14,7 @@ from .confidence import distribution
 from .documents import canonical_bytes
 from .identity import SUPPORTED_PROTOCOLS, WorkerIdentity
 from .inputs import LeaseInputs, MissingInputError, ResolvedInput, require_input
+from .resources import memory_ceiling
 from .shared_memory import MappedBuffer, map_shared_buffer
 from .staging import StagingArea, validate_artifact_path
 from .ticks import TICKS_PER_SECOND, samples_to_ticks, samples_to_ticks_ceil, ticks_to_samples
@@ -43,6 +44,7 @@ __all__ = [
     "canonical_bytes",
     "distribution",
     "map_shared_buffer",
+    "memory_ceiling",
     "read_pcm_audio",
     "require_input",
     "require_model",

@@ -3846,7 +3846,12 @@ impl Service {
                 missing,
                 roster.values().any(|worker| worker.serves(&binding.stage)),
             );
-            check_worker_ceiling(&mut readiness, &roster, resident);
+            check_worker_ceiling(
+                &mut readiness,
+                &roster,
+                resident,
+                capacity.map(|capacity| capacity.ram_bytes),
+            );
             if binding.capability == "editorial" {
                 check_editorial_capacity(&mut readiness, capacity, resident);
             }
@@ -3967,17 +3972,15 @@ fn local_analysis_stages_ready(stages: &[StageReadinessV1]) -> bool {
 }
 
 /// A connected worker takes only tasks whose model fits the memory ceiling
-/// it declared and signed. When every worker serving the stage declared less
-/// than the chosen model needs, the task would wait for a worker that can
-/// never take it — so the stage is not ready, and says why.
+/// it declared and signed, and is given nothing at all while that ceiling is
+/// above the device's processing budget. Either way a task would wait for a
+/// worker that can never take it — so the stage is not ready, and says why.
 fn check_worker_ceiling(
     readiness: &mut StageReadinessV1,
     roster: &std::collections::BTreeMap<String, crate::worker::WorkerPresence>,
     required: Option<u64>,
+    budget: Option<u64>,
 ) {
-    let Some(required) = required else {
-        return;
-    };
     if !readiness.ready {
         return;
     }
@@ -3985,13 +3988,34 @@ fn check_worker_ceiling(
         .values()
         .filter(|worker| worker.serves(&readiness.stage))
         .collect::<Vec<_>>();
-    if serving
+    let admitted = serving
+        .iter()
+        .filter(|worker| budget.is_none_or(|budget| worker.max_memory_bytes <= budget))
+        .collect::<Vec<_>>();
+    if admitted.is_empty() {
+        let declared = serving
+            .iter()
+            .map(|worker| worker.max_memory_bytes)
+            .min()
+            .unwrap_or(0);
+        readiness.ready = false;
+        readiness.remedy = format!(
+            "The connected worker for this stage offered {} MiB, more than this device's processing budget of {} MiB, so it is never given work. Rescan the device in Models, then restart the workers.",
+            declared / (1024 * 1024),
+            budget.unwrap_or(0) / (1024 * 1024)
+        );
+        return;
+    }
+    let Some(required) = required else {
+        return;
+    };
+    if admitted
         .iter()
         .any(|worker| worker.max_memory_bytes >= required)
     {
         return;
     }
-    let largest = serving
+    let largest = admitted
         .iter()
         .map(|worker| worker.max_memory_bytes)
         .max()
@@ -4260,6 +4284,59 @@ mod tests {
         let mut stage = ready();
         super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
         assert!(stage.ready);
+    }
+
+    /// A worker is only useful for a model it will be handed: one within its
+    /// declared ceiling, while that ceiling is within the device's budget.
+    #[test]
+    fn readiness_names_a_worker_that_can_never_take_the_chosen_model() {
+        let ready = || {
+            super::stage_readiness(
+                "speech-asr",
+                "asr",
+                "clipmill-worker-asr@0.1.0/whisper-large-v3-turbo",
+                "whisper-large-v3-turbo",
+                "cpu",
+                true,
+                vec![],
+                true,
+            )
+        };
+        let roster = |ceiling: u64| {
+            std::collections::BTreeMap::from([(
+                "wrk".to_owned(),
+                crate::worker::WorkerPresence {
+                    family: "speech-asr".to_owned(),
+                    capabilities: vec!["speech-asr".to_owned()],
+                    backend: "cpu".to_owned(),
+                    since_unix_millis: 1,
+                    max_memory_bytes: ceiling,
+                },
+            )])
+        };
+
+        let mut small = ready();
+        super::check_worker_ceiling(
+            &mut small,
+            &roster(768 << 20),
+            Some(3 << 30),
+            Some(12 << 30),
+        );
+        assert!(!small.ready);
+        assert!(
+            small.remedy.contains("accepts models up to 768 MiB"),
+            "{}",
+            small.remedy
+        );
+
+        let mut over = ready();
+        super::check_worker_ceiling(&mut over, &roster(16 << 30), Some(3 << 30), Some(12 << 30));
+        assert!(!over.ready, "a worker above the budget is never given work");
+        assert!(over.remedy.contains("processing budget"), "{}", over.remedy);
+
+        let mut sized = ready();
+        super::check_worker_ceiling(&mut sized, &roster(8 << 30), Some(3 << 30), Some(12 << 30));
+        assert!(sized.ready);
     }
 
     #[test]
