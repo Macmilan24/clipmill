@@ -1446,6 +1446,18 @@ mod tests {
     }
 
     #[test]
+    fn macos_model_admission_uses_physical_budget_instead_of_free_snapshot() {
+        let required = 5_977_071_067 + (2 << 30);
+        let mut apple =
+            crate::jobs::ResourceCapacity::for_device("macos", 4, 24 << 30, 1 << 30, 10 << 30);
+        apple.accelerator_mask = METAL;
+        let admitted = admit_capacity(&declaring("mlx", 1, required, 0), apple)
+            .expect("macOS can reclaim memory before allocating the model");
+        assert_eq!(admitted.ram_bytes, required);
+        assert!(admit_capacity(&declaring("mlx", 1, 24 << 30, 0), apple).is_err());
+    }
+
+    #[test]
     fn opted_in_cloud_adapter_requires_only_its_declared_local_resources() {
         let admitted = admit_capacity(
             &declaring("cloud", 1, 128 << 20, 0),

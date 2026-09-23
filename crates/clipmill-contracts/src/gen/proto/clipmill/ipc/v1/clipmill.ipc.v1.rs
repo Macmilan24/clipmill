@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -107,6 +107,26 @@ pub mod request {
         ListYoutubeImports(super::ListYoutubeImportsRequest),
         #[prost(message, tag = "49")]
         UpdateYoutubeImport(super::UpdateYoutubeImportRequest),
+        #[prost(message, tag = "50")]
+        ConfigureYoutubePublishing(super::ConfigureYoutubePublishingRequest),
+        #[prost(message, tag = "51")]
+        ConnectYoutubeChannel(super::ConnectYoutubeChannelRequest),
+        #[prost(message, tag = "52")]
+        GetYoutubePublishingStatus(super::GetYoutubePublishingStatusRequest),
+        #[prost(message, tag = "53")]
+        UpdateYoutubeConnection(super::UpdateYoutubeConnectionRequest),
+        #[prost(message, tag = "54")]
+        StartYoutubeUpload(super::StartYoutubeUploadRequest),
+        #[prost(message, tag = "55")]
+        GetYoutubeUpload(super::GetYoutubeUploadRequest),
+        #[prost(message, tag = "56")]
+        ListYoutubeUploads(super::ListYoutubeUploadsRequest),
+        #[prost(message, tag = "57")]
+        UpdateYoutubeUpload(super::UpdateYoutubeUploadRequest),
+        #[prost(message, tag = "58")]
+        PublishYoutubeUpload(super::PublishYoutubeUploadRequest),
+        #[prost(message, tag = "59")]
+        DraftYoutubeMetadata(super::DraftYoutubeMetadataRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -117,7 +137,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -203,6 +223,16 @@ pub mod response {
         YoutubeImport(super::YoutubeImportResponse),
         #[prost(message, tag = "47")]
         ListYoutubeImports(super::ListYoutubeImportsResponse),
+        #[prost(message, tag = "48")]
+        YoutubePublishingStatus(super::YoutubePublishingStatusResponse),
+        #[prost(message, tag = "49")]
+        YoutubeConnect(super::YoutubeConnectResponse),
+        #[prost(message, tag = "50")]
+        YoutubeUpload(super::YoutubeUploadResponse),
+        #[prost(message, tag = "51")]
+        ListYoutubeUploads(super::ListYoutubeUploadsResponse),
+        #[prost(message, tag = "52")]
+        DraftYoutubeMetadata(super::DraftYoutubeMetadataResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2129,6 +2159,183 @@ pub struct YoutubeImportResponse {
 pub struct ListYoutubeImportsResponse {
     #[prost(message, repeated, tag = "1")]
     pub imports: ::prost::alloc::vec::Vec<YoutubeImportV1>,
+}
+/// Channel credentials and resumable session URLs are never IPC data.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ConfigureYoutubePublishingRequest {
+    #[prost(string, tag = "1")]
+    pub client_config_path: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ConnectYoutubeChannelRequest {}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetYoutubePublishingStatusRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateYoutubeConnectionRequest {
+    #[prost(string, tag = "1")]
+    pub connection_id: ::prost::alloc::string::String,
+    /// cancel an unfinished connection, or disconnect an established channel.
+    #[prost(string, tag = "2")]
+    pub action: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeConnectionV1 {
+    #[prost(string, tag = "1")]
+    pub connection_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub channel_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub title: ::prost::alloc::string::String,
+    /// connecting, connected, interrupted, failed, disconnected.
+    #[prost(string, tag = "4")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub error: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "6")]
+    pub created_unix_millis: u64,
+    #[prost(uint64, tag = "7")]
+    pub updated_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct YoutubePublishingStatusResponse {
+    #[prost(bool, tag = "1")]
+    pub configured: bool,
+    #[prost(message, repeated, tag = "2")]
+    pub connections: ::prost::alloc::vec::Vec<YoutubeConnectionV1>,
+    #[prost(bool, tag = "3")]
+    pub available: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeConnectResponse {
+    #[prost(string, tag = "1")]
+    pub connection_id: ::prost::alloc::string::String,
+    /// The trusted desktop host opens this; never store it in renderer state.
+    #[prost(string, tag = "2")]
+    pub authorization_url: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeVideoMetadataV1 {
+    #[prost(string, tag = "1")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "3")]
+    pub tags: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag = "4")]
+    pub made_for_kids: bool,
+    #[prost(bool, tag = "5")]
+    pub contains_synthetic_media: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StartYoutubeUploadRequest {
+    #[prost(string, tag = "1")]
+    pub export_job_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub connection_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub expected_revision: u64,
+    #[prost(message, optional, tag = "4")]
+    pub metadata: ::core::option::Option<YoutubeVideoMetadataV1>,
+    #[prost(bool, tag = "5")]
+    pub rights_confirmed: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetYoutubeUploadRequest {
+    #[prost(string, tag = "1")]
+    pub upload_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListYoutubeUploadsRequest {
+    /// Empty returns all local publishing operations, including recovery history.
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateYoutubeUploadRequest {
+    #[prost(string, tag = "1")]
+    pub upload_id: ::prost::alloc::string::String,
+    /// pause, resume, or reconcile. No action creates a replacement remote video.
+    #[prost(string, tag = "2")]
+    pub action: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PublishYoutubeUploadRequest {
+    #[prost(string, tag = "1")]
+    pub upload_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeUploadV1 {
+    #[prost(string, tag = "1")]
+    pub upload_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub doc_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "4")]
+    pub revision: u64,
+    #[prost(string, tag = "5")]
+    pub export_job_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub ir_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub render_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub connection_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "9")]
+    pub channel_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "10")]
+    pub channel_title: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "11")]
+    pub metadata: ::core::option::Option<YoutubeVideoMetadataV1>,
+    /// queued, verifying, starting, uploading, paused, auth_required, reconciling,
+    /// completion_uncertain, private, publishing, public, failed.
+    #[prost(string, tag = "12")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "13")]
+    pub acknowledged_bytes: u64,
+    #[prost(uint64, tag = "14")]
+    pub total_bytes: u64,
+    #[prost(string, tag = "15")]
+    pub video_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "16")]
+    pub visibility: ::prost::alloc::string::String,
+    #[prost(string, tag = "17")]
+    pub error_code: ::prost::alloc::string::String,
+    #[prost(string, tag = "18")]
+    pub error: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "19")]
+    pub created_unix_millis: u64,
+    #[prost(uint64, tag = "20")]
+    pub updated_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct YoutubeUploadResponse {
+    #[prost(message, optional, tag = "1")]
+    pub record: ::core::option::Option<YoutubeUploadV1>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListYoutubeUploadsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub uploads: ::prost::alloc::vec::Vec<YoutubeUploadV1>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DraftYoutubeMetadataRequest {
+    #[prost(string, tag = "1")]
+    pub export_job_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub expected_revision: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DraftYoutubeMetadataResponse {
+    #[prost(message, optional, tag = "1")]
+    pub metadata: ::core::option::Option<YoutubeVideoMetadataV1>,
+    #[prost(string, tag = "2")]
+    pub render_artifact_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub revision: u64,
+    /// A bounded transcript excerpt from the immutable rendered snapshot.
+    #[prost(string, tag = "4")]
+    pub transcript_excerpt: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

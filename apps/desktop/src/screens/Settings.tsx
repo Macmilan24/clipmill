@@ -325,8 +325,9 @@ export function Settings({
                       />
                     </dl>
                     <p className="mt-2 text-xs text-[var(--cm-text-muted)]">
-                      Includes enabled cloud analysis and YouTube imports. Importing a video does
-                      not enable cloud AI. Model downloads are managed separately.
+                      Includes enabled cloud analysis, YouTube imports, channel sign-in and
+                      publishing. Importing a video does not enable cloud AI. Model downloads are
+                      managed separately.
                     </p>
                     <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
                       Cloud-capable stages may be installed without being used. These counts

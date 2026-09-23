@@ -9,6 +9,7 @@
 mod daemon;
 mod media;
 mod views;
+mod youtube;
 
 use std::{sync::Arc, time::Duration};
 
@@ -740,6 +741,17 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             },
         )
         .invoke_handler(tauri::generate_handler![
+            youtube::youtube_publishing_status,
+            youtube::choose_youtube_client_config,
+            youtube::connect_youtube_channel,
+            youtube::update_youtube_connection,
+            youtube::draft_youtube_metadata,
+            youtube::start_youtube_upload,
+            youtube::get_youtube_upload,
+            youtube::list_youtube_uploads,
+            youtube::update_youtube_upload,
+            youtube::publish_youtube_upload,
+            youtube::open_youtube_page,
             daemon_state,
             reconnect_daemon,
             device_profile,

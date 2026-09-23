@@ -283,6 +283,12 @@ impl Daemon {
         service.recover_youtube_imports().await.map_err(|error| {
             DaemonError::Ipc(format!("cannot recover YouTube imports: {error}"))
         })?;
+        service
+            .recover_youtube_publishing()
+            .await
+            .map_err(|error| {
+                DaemonError::Ipc(format!("cannot recover YouTube publishing: {error}"))
+            })?;
         service.resume_export_batches().await;
         Ok(Self {
             listener,
@@ -475,6 +481,7 @@ impl Daemon {
         drop(shm_listener);
         worker_service.stop_scheduling();
         service.stop_youtube_imports().await;
+        service.stop_youtube_publishing().await;
         scheduler.shutdown().await;
         let _stop_sent = maintenance_stop.send(());
         if timeout(DRAIN_TIMEOUT, &mut maintenance).await.is_err() {
@@ -629,8 +636,10 @@ async fn startup_profile_capacity(
     }
     // Disk comes from the live measurement, not the profile: a profile records
     // what a machine *is*, and free space is what it *has right now*.
-    let measured = ResourceCapacity::measured(
+    let measured = ResourceCapacity::for_device(
+        &verified.platform_os,
         verified.logical_cores,
+        verified.total_memory_bytes,
         verified.available_memory_bytes,
         live.disk_bytes,
     )
