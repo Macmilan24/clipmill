@@ -1,6 +1,6 @@
 /** Synthetic device data for browser styling checks. Never imported by the app entrypoint. */
 import type { DeviceProfile } from '@clipmill/contracts';
-import type { LocalLock, Readiness, StorageStats } from '../src/daemon/client.js';
+import type { LocalLock, Readiness } from '../src/daemon/client.js';
 export const device: DeviceProfile = {
   schema_version: 'clipmill.device_profile.v1',
   platform: { os: 'macos', arch: 'arm64', os_version: '15.5' },
@@ -64,30 +64,6 @@ export const readiness: Readiness = {
     missingFiles: [],
     remedy: '',
   })),
-};
-export const storage: StorageStats = {
-  categories: [
-    {
-      key: 'artifacts',
-      bytes: 20_078_895_104,
-      items: 412,
-      path: '/Users/demo/Library/Application Support/dev.clipmill.ClipMill/artifacts',
-    },
-    {
-      key: 'models',
-      bytes: 24_588_615_680,
-      items: 6,
-      path: '/Users/demo/Library/Application Support/dev.clipmill.ClipMill/models',
-    },
-    {
-      key: 'state',
-      bytes: 43_008_000,
-      items: 4,
-      path: '/Users/demo/Library/Application Support/dev.clipmill.ClipMill/state',
-    },
-  ],
-  availableBytes: 335_007_449_088,
-  retentionGraceSeconds: 604_800,
 };
 export const lock: LocalLock = {
   engaged: true,

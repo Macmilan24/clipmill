@@ -213,6 +213,9 @@ export function App(): JSX.Element {
                   analysisActivity.markStarted(jobId);
                   openAnalysis(projectId, jobId, 'new-project');
                 },
+                onOpenModels: () => {
+                  navigate('models');
+                },
               },
               analysis: {
                 profile,
@@ -259,6 +262,9 @@ export function App(): JSX.Element {
                 onThemeChange: setTheme,
                 workspaceTheme,
                 onWorkspaceThemeChange: setWorkspaceTheme,
+                onOpenModels: () => {
+                  navigate('models');
+                },
               },
               models: {
                 state,

@@ -10,6 +10,7 @@
  * the Library and an analysis in progress ask most of the same questions — and
  * two interfaces that drift apart would mean two fakes to keep honest.
  */
+import { modelLibraryApi, type ModelLibraryApi } from './models.js';
 import { publishingApi, type PublishingApi } from './publishing.js';
 import {
   type AnalyzeRequest,
@@ -74,7 +75,7 @@ import {
   revealPath,
 } from './client.js';
 
-export interface ShellApi extends PublishingApi {
+export interface ShellApi extends PublishingApi, ModelLibraryApi {
   listProjects(): Promise<readonly Project[]>;
   listJobs(projectId: string): Promise<readonly Job[]>;
   fetchJob(jobId: string): Promise<Job>;
@@ -139,6 +140,7 @@ export interface ShellApi extends PublishingApi {
 
 export const daemonApi: ShellApi = {
   ...publishingApi,
+  ...modelLibraryApi,
   listProjects,
   listJobs,
   fetchJob,
