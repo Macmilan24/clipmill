@@ -628,3 +628,60 @@ async fn names_that_could_escape_are_refused_before_any_request() {
     assert!(hub.repository(REPO, "feature/branch").await.is_err());
     assert!(fixture.seen().is_empty(), "nothing was sent");
 }
+
+/// The real hub: its CDN redirects, its TLS and its listing format. Skipped
+/// everywhere a test must not reach the network; run it by hand with
+/// `cargo test -p clipmill-hub -- --ignored` after touching the transport.
+#[tokio::test]
+#[ignore = "reaches huggingface.co; run by hand"]
+async fn the_real_hub_serves_a_pinned_weight_that_verifies() {
+    let hub = Hub::new().expect("client");
+    let repository = hub
+        .repository(
+            "opencv/opencv_zoo",
+            "d4938dfc9d4ec5d098bfa33e98b3f3345a236586",
+        )
+        .await
+        .expect("listing");
+    let yunet = repository
+        .files
+        .iter()
+        .find(|file| file.path == "models/face_detection_yunet/face_detection_yunet_2023mar.onnx")
+        .expect("the pinned face detector is listed");
+    assert_eq!(yunet.bytes, 232_589);
+
+    let directory = TempDir::new().unwrap();
+    let partial = directory.path().join("yunet.part");
+    let digest = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4";
+    let (result, reports) = fetch(
+        &hub,
+        PinnedFile {
+            repo: "opencv/opencv_zoo",
+            revision: "d4938dfc9d4ec5d098bfa33e98b3f3345a236586",
+            path: "models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+            sha256: digest,
+            bytes: 232_589,
+        },
+        &partial,
+    )
+    .await;
+    result.expect("the pinned bytes arrive and verify");
+    assert_eq!(reports.last(), Some(&232_589));
+    assert_eq!(sha256_hex(&std::fs::read(&partial).unwrap()), digest);
+
+    // A small file kept in git takes a relative redirect; pinning hashes it.
+    let config = hub
+        .fetch_small(
+            "mlx-community/Qwen3.5-9B-4bit",
+            "8b2b98c00a6b4d291155e4890773ca8f769aee53",
+            "config.json",
+            3331,
+        )
+        .await
+        .expect("the config arrives whole");
+    assert_eq!(
+        sha256_hex(&config),
+        "a96942cb6a8a1d3f1d17514d81a1925d04362a6a3233b389d13012211baaa9f8",
+        "the digest pinning computes is the registry's pin"
+    );
+}
