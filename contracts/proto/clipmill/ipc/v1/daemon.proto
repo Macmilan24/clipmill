@@ -1821,6 +1821,13 @@ message ModelV1 {
   ModelDownloadV1 download = 20;
   // The next analysis plans this model for its job.
   bool in_use = 21;
+  // The worker family that runs it. A task planned with this model is only
+  // ever handed to a worker of this family, whichever others serve the job.
+  string worker = 22;
+  // What a person calls that worker, such as "MLX speech worker".
+  string worker_title = 23;
+  // A worker of that family is connected now.
+  bool worker_connected = 24;
 }
 
 message ModelDownloadV1 {

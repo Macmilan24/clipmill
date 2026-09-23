@@ -10,10 +10,39 @@ import {
   progressText,
   recommendedTitles,
   runsOn,
+  workerWarning,
 } from '../src/models/describe.js';
 import { freshLibrary, libraryModel, modelJob } from './support/models.js';
 
 const GIB = 1024 ** 3;
+
+describe('the worker a model needs', () => {
+  const job = modelJob('forced-align', { title: 'Word timing', model: 'wav2vec2-ctc-en' });
+  const current = libraryModel('wav2vec2-ctc-en', { worker: 'speech-align' });
+  const aligner = libraryModel('qwen3-aligner-mlx', {
+    worker: 'speech-mlx',
+    workerTitle: 'MLX speech worker',
+    workerConnected: false,
+  });
+
+  it('warns before a person chooses a model whose worker is not running', () => {
+    expect(workerWarning(aligner, job, current)).toBe(
+      "Runs in the MLX speech worker, which isn't running, so word timing would wait for it. Restart the workers before choosing it.",
+    );
+  });
+
+  it('says nothing once that worker is connected, or for the model the job already uses', () => {
+    expect(workerWarning({ ...aligner, workerConnected: true }, job, current)).toBeNull();
+    expect(
+      workerWarning(aligner, { ...job, model: 'qwen3-aligner-mlx' }, aligner),
+      'the job says that once, from readiness',
+    ).toBeNull();
+  });
+
+  it('leaves it to the job when its current model has no worker either', () => {
+    expect(workerWarning(aligner, job, { ...current, workerConnected: false })).toBeNull();
+  });
+});
 
 describe('model library wording', () => {
   it('says where a model runs in words, not backend names', () => {

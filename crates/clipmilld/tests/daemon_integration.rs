@@ -634,6 +634,18 @@ async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
     );
     assert_eq!(library.jobs.len(), 5);
     assert!(library.recommended_missing_bytes > 0);
+    assert!(
+        library.models.iter().all(|model| !model.worker.is_empty()),
+        "every model names the worker that runs it"
+    );
+    let aligner = library
+        .models
+        .iter()
+        .find(|model| model.name == "qwen3-aligner-mlx")
+        .expect("the MLX aligner is listed");
+    assert_eq!(aligner.worker, "speech-mlx");
+    assert_eq!(aligner.worker_title, "MLX speech worker");
+    assert!(!aligner.worker_connected, "no worker is connected here");
 
     let refused = ask(
         "choose-missing",

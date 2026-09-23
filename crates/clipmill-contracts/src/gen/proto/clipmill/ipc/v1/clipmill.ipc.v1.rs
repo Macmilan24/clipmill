@@ -2473,6 +2473,16 @@ pub struct ModelV1 {
     /// The next analysis plans this model for its job.
     #[prost(bool, tag = "21")]
     pub in_use: bool,
+    /// The worker family that runs it. A task planned with this model is only
+    /// ever handed to a worker of this family, whichever others serve the job.
+    #[prost(string, tag = "22")]
+    pub worker: ::prost::alloc::string::String,
+    /// What a person calls that worker, such as "MLX speech worker".
+    #[prost(string, tag = "23")]
+    pub worker_title: ::prost::alloc::string::String,
+    /// A worker of that family is connected now.
+    #[prost(bool, tag = "24")]
+    pub worker_connected: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ModelDownloadV1 {

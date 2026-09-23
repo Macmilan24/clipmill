@@ -43,6 +43,9 @@ export function libraryModel(name: string, overrides: Partial<LibraryModel> = {}
     installState: 'missing',
     installedBytes: 0,
     inUse: false,
+    worker: 'speech-asr',
+    workerTitle: 'whisper.cpp worker',
+    workerConnected: true,
     ...overrides,
   };
 }
@@ -76,6 +79,8 @@ export function freshLibrary(overrides: Partial<ModelLibrary> = {}): ModelLibrar
       memoryBytes: 5_977_071_067 + 2 * GIB,
       recommended: true,
       inUse: true,
+      worker: 'editorial',
+      workerTitle: 'editorial worker',
     }),
     libraryModel('whisper-base', {
       title: 'Whisper Base',
@@ -101,6 +106,8 @@ export function freshLibrary(overrides: Partial<ModelLibrary> = {}): ModelLibrar
       memoryBytes: 2_243_022 + 64 * 1024 ** 2,
       recommended: true,
       inUse: true,
+      worker: 'speech-vad',
+      workerTitle: 'speech-detection worker',
     }),
   ];
   const jobs = [

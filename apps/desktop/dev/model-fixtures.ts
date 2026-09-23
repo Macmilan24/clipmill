@@ -39,6 +39,9 @@ function model(name: string, fields: Partial<LibraryModel>): LibraryModel {
     installState: 'missing',
     installedBytes: 0,
     inUse: false,
+    worker: 'speech-asr',
+    workerTitle: 'whisper.cpp worker',
+    workerConnected: true,
     ...fields,
   };
 }
@@ -58,6 +61,8 @@ const CATALOG: readonly LibraryModel[] = [
     memoryBytes: 5_977_071_067 + 2 * GIB,
     recommended: true,
     inUse: true,
+    worker: 'editorial',
+    workerTitle: 'editorial worker',
   }),
   model('whisper-base', {
     title: 'Whisper Base',
@@ -85,6 +90,8 @@ const CATALOG: readonly LibraryModel[] = [
     sourceRepo: 'mlx-community/Qwen3-ASR-1.7B-4bit',
     downloadBytes: 1_607_551_611,
     memoryBytes: 1_607_551_611 + 2 * GIB,
+    worker: 'speech-mlx',
+    workerTitle: 'MLX speech worker',
   }),
   model('wav2vec2-ctc-en', {
     title: 'Wav2Vec2 word timing (English)',
@@ -97,6 +104,8 @@ const CATALOG: readonly LibraryModel[] = [
     memoryBytes: 377_912_464 + 768 * MIB,
     recommended: true,
     inUse: true,
+    worker: 'speech-align',
+    workerTitle: 'word-timing worker',
   }),
   model('qwen3-aligner-mlx', {
     title: 'Qwen3 Forced Aligner 0.6B',
@@ -108,6 +117,8 @@ const CATALOG: readonly LibraryModel[] = [
     licenseSpdx: 'Apache-2.0',
     downloadBytes: 975_775_725,
     memoryBytes: 975_775_725 + GIB,
+    worker: 'speech-mlx',
+    workerTitle: 'MLX speech worker',
   }),
   model('silero-vad', {
     title: 'Silero VAD',
@@ -119,6 +130,8 @@ const CATALOG: readonly LibraryModel[] = [
     memoryBytes: 2_243_022 + 64 * MIB,
     recommended: true,
     inUse: true,
+    worker: 'speech-vad',
+    workerTitle: 'speech-detection worker',
   }),
   model('yunet-face', {
     title: 'YuNet face detection',
@@ -130,6 +143,8 @@ const CATALOG: readonly LibraryModel[] = [
     memoryBytes: 232_589 + 64 * MIB,
     recommended: true,
     inUse: true,
+    worker: 'detect-faces',
+    workerTitle: 'face-tracking worker',
   }),
 ];
 
