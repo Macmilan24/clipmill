@@ -57,6 +57,15 @@ allow = [
 ]
 confidence-threshold = 0.9
 
+# Mozilla certificate data pulled by rustls-platform-verifier on wasm targets.
+# CDLA permits redistribution with its license text; this is a data-only,
+# crate/version-specific exception, not a new workspace-wide license allowance.
+# https://cdla.dev/permissive-2-0/ (section 2.1)
+[[licenses.exceptions]]
+name = "webpki-root-certs"
+version = "=1.0.9"
+allow = ["CDLA-Permissive-2.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

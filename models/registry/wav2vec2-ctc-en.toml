@@ -2,14 +2,22 @@
 # posteriors, never from a decoder's token positions (book ch. 13).
 #
 # Every file is pinned by digest and the revision is pinned by commit, so
-# `fetch-models.sh` verifies rather than trusts. The licence class is what
-# `check-models.py` enforces: weights ship inside what users publish.
+# the model library and `fetch-models.sh` verify rather than trust. The
+# licence class is what `check-models.py` enforces: weights ship inside
+# what users publish.
 name = "wav2vec2-ctc-en"
 capability = "forced-align"
 family = "wav2vec2-ctc"
 runtime = "onnxruntime"
 backend = "onnx-cpu"
 quantization = "none"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Wav2Vec2 word timing (English)"
+summary = "English only. Runs on any computer."
+recommended = true
 
 [source]
 provider = "https://huggingface.co"

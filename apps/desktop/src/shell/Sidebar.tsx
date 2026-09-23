@@ -20,6 +20,7 @@ interface AppSidebarProps {
   readonly activeId: string;
   readonly onSelect: (id: string) => void;
   readonly state: ConnectionState;
+  readonly analysisBusy?: boolean;
 }
 
 interface LockView {
@@ -54,26 +55,28 @@ function describeLock(state: ConnectionState): LockView {
       };
 }
 
-export function AppSidebar({ activeId, onSelect, state }: AppSidebarProps): JSX.Element {
+export function AppSidebar({
+  activeId,
+  onSelect,
+  state,
+  analysisBusy = false,
+}: AppSidebarProps): JSX.Element {
   const lock = describeLock(state);
 
   return (
     <Sidebar
       collapsible="none"
-      // One continuous glass surface touching the viewport edges: square outer
-      // corners, a single hairline on the right, and no floating-island shadow.
       className="studio-sidebar glass h-full rounded-none border-y-0 border-l-0 shadow-none"
     >
-      <SidebarHeader className="h-16 flex-row items-center gap-2.5 px-5">
-        <BrandMark />
-        <span className="sidebar-wordmark text-[15px] font-semibold tracking-tight">ClipMill</span>
+      <SidebarHeader className="h-20 flex-col items-center justify-center gap-1.5 px-2">
+        <span className="sidebar-brand-mark" title={analysisBusy ? 'Analyzing video' : 'ClipMill'}>
+          <BrandMark size={26} animated processing={analysisBusy} />
+        </span>
+        <span className="sidebar-wordmark text-[12px] font-medium tracking-tight">ClipMill</span>
       </SidebarHeader>
 
-      <SidebarContent className="px-3">
-        <span className="sidebar-label px-2.5 pb-3 pt-4 text-[10px] font-medium tracking-widest text-[var(--cm-text-muted)] uppercase">
-          Workspace
-        </span>
-        <SidebarMenu className="gap-1">
+      <SidebarContent className="px-2">
+        <SidebarMenu className="gap-1 pt-3">
           {['library', 'new-project', 'results', 'editor', 'export', 'models', 'settings']
             .map((id) => NAV_SECTIONS.find((section) => section.id === id)!)
             .map((section) => {
@@ -84,7 +87,7 @@ export function AppSidebar({ activeId, onSelect, state }: AppSidebarProps): JSX.
                   key={section.id}
                   className={
                     section.id === 'models'
-                      ? 'mt-7 border-t border-[var(--cm-glass-border)] pt-4'
+                      ? 'mt-5 border-t border-[var(--cm-glass-border)] pt-3'
                       : undefined
                   }
                 >
@@ -96,9 +99,8 @@ export function AppSidebar({ activeId, onSelect, state }: AppSidebarProps): JSX.
                     onClick={() => {
                       onSelect(section.id);
                     }}
-                    // 36px rows with a 2px indigo indicator inset on the left.
                     className={cn(
-                      'nav-row h-9 gap-2.5 px-2.5 text-body font-(--cm-weight-label)',
+                      'nav-row h-14 flex-col justify-center gap-1.5 rounded-md px-1 text-[11px] font-normal',
                       active ? 'text-[var(--cm-text-primary)]' : 'text-[var(--cm-text-secondary)]',
                     )}
                   >
@@ -113,19 +115,18 @@ export function AppSidebar({ activeId, onSelect, state }: AppSidebarProps): JSX.
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="mx-4 mb-4 gap-0 border-t border-[var(--cm-glass-border)] px-0 pt-3">
+      <SidebarFooter className="mx-2 mb-4 gap-0 border-t border-[var(--cm-glass-border)] px-0 pt-3">
         <div
+          title={`${lock.headline}. ${lock.caption}`}
           className={cn(
-            'flex items-center gap-1.5 text-meta font-(--cm-weight-heading)',
+            'flex flex-col items-center gap-1.5 text-center text-[10px] font-(--cm-weight-heading)',
             lock.tone,
           )}
         >
           <ShieldCheck className="size-3.5" />
           <span className="sidebar-label">{lock.headline}</span>
         </div>
-        <span className="sidebar-label mt-1 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
-          {lock.caption}
-        </span>
+        <span className="sr-only">{lock.caption}</span>
       </SidebarFooter>
     </Sidebar>
   );

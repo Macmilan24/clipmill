@@ -18,7 +18,7 @@ use clipmill_contracts::proto::{
         IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1,
         RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1,
         SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1,
-        TranscribeSourcePayloadV1,
+        TranscribeSourcePayloadV1, YoutubeMetadataTaskPayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -58,6 +58,16 @@ pub(crate) const INDEX_STAGE_KEY_VERSION: &str = "clipmill.index-stage.v1";
 
 /// Key version the editorial stage payloads carry.
 pub(crate) const EDITORIAL_STAGE_KEY_VERSION: &str = "clipmill.editorial-stage.v1";
+
+pub(crate) const YOUTUBE_METADATA_KEY_VERSION: &str = "clipmill.youtube-metadata.v1";
+pub(crate) const YOUTUBE_METADATA_MAX_OUTPUT_TOKENS: u32 = 1024;
+
+pub(crate) fn youtube_metadata_prompt_digest() -> String {
+    let prompt = include_str!(
+        "../../../workers/editorial/src/clipmill_worker_editorial/prompts/metadata.v1.txt"
+    );
+    format!("sha256:{}", hex::encode(Sha256::digest(prompt.as_bytes())))
+}
 
 /// Key version the discovery stage payload carries.
 pub(crate) const DISCOVER_STAGE_KEY_VERSION: &str = "clipmill.discover-stage.v1";
@@ -133,7 +143,7 @@ impl ResourceCapacity {
         }
     }
 
-    /// What this machine can actually lend a task right now.
+    /// Apply headroom to a memory budget and bound built-in parallelism.
     ///
     /// Disk is a parameter rather than a constant because it used to be one:
     /// a flat 512 MiB, on every machine, whatever it had free. Delivery
@@ -159,6 +169,25 @@ impl ResourceCapacity {
             accelerator_mask: 0,
             vram_bytes: 0,
         }
+    }
+
+    /// macOS can reclaim pageable memory and compress inactive applications.
+    /// A free-memory snapshot (often taken before a model was loaded) is not a
+    /// hardware ceiling. Bound each admission by 75% of physical RAM instead;
+    /// never add swap to the budget. Linux retains `MemAvailable`.
+    pub(crate) fn for_device(
+        platform: &str,
+        logical_cores: u32,
+        total_memory_bytes: u64,
+        available_memory_bytes: u64,
+        available_disk_bytes: u64,
+    ) -> Self {
+        let memory = if platform == "macos" {
+            total_memory_bytes
+        } else {
+            available_memory_bytes.min(total_memory_bytes)
+        };
+        Self::measured(logical_cores, memory, available_disk_bytes)
     }
 
     pub(crate) fn with_available_backends(mut self, backends: &BTreeSet<String>) -> Self {
@@ -281,6 +310,54 @@ pub(crate) struct JobPlan {
 }
 
 impl JobPlan {
+    /// Optional publishing copy over a saved edit. The task key excludes job
+    /// and export identities, so exporting the same snapshot reuses its draft.
+    pub(crate) fn youtube_metadata(
+        project_id: &ProjectId,
+        job_payload: Vec<u8>,
+        ir_id: ArtifactId,
+        models: &crate::models::ModelRegistry,
+        implementation: &crate::implementations::Implementation,
+        now: u64,
+    ) -> Result<Self, &'static str> {
+        if implementation.stage != "youtube-metadata" {
+            return Err("YouTube metadata implementation missing");
+        }
+        if models.get(implementation.model).is_none() {
+            return Err("The editorial model is not registered");
+        }
+        Ok(Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "youtube-metadata".into(),
+            source_id: None,
+            payload: job_payload,
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: "youtube-metadata".into(),
+                input_kinds: vec![],
+                output_kind: "publishing.metadata.v1".into(),
+                payload: YoutubeMetadataTaskPayloadV1 {
+                    key_version: YOUTUBE_METADATA_KEY_VERSION.into(),
+                    ir_artifact_id: ir_id.to_string(),
+                    prompt_digest: youtube_metadata_prompt_digest(),
+                    max_output_tokens: YOUTUBE_METADATA_MAX_OUTPUT_TOKENS,
+                }
+                .encode_to_vec(),
+                dependencies: vec![],
+                input_artifact_ids: vec![ir_id.to_string()],
+                resources: speech_resources(implementation, models, 1),
+                implementation: implementation.name.into(),
+                // Malformed writing should be an explicit retry, not three
+                // identical model calls that hold up other local work.
+                max_attempts: 1,
+                is_final: true,
+            }],
+        })
+    }
+
     pub(crate) fn demo(project_id: &ProjectId, payload: Vec<u8>, now: u64) -> Self {
         let job_id = JobId::new().to_string();
         let seed = TaskId::new().to_string();
@@ -1600,6 +1677,7 @@ impl JobPlan {
                             vec!["editorial.windows.v1".into()],
                             request,
                             models,
+                            bindings,
                         )?;
                         let propose_id = propose.task_id.clone();
                         stages.push((propose.output_kind.clone(), propose_id.clone()));
@@ -1638,6 +1716,7 @@ impl JobPlan {
                             ],
                             request,
                             models,
+                            bindings,
                         )?;
                         let review_id = review.task_id.clone();
                         stages.push((review.output_kind.clone(), review_id.clone()));
@@ -1653,6 +1732,7 @@ impl JobPlan {
                                 ],
                                 request,
                                 models,
+                                bindings,
                             )?;
                             let id = look.task_id.clone();
                             stages.push((look.output_kind.clone(), id.clone()));
@@ -1984,6 +2064,7 @@ fn editorial_worker_task(
     input_kinds: Vec<String>,
     request: &AnalyzeSourcePayloadV1,
     models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
 ) -> Result<TaskSpec, &'static str> {
     use sha2::{Digest, Sha256};
     let cloud = if operation == "look" {
@@ -1995,10 +2076,16 @@ fn editorial_worker_task(
         "editorial-{operation}{}",
         if cloud.is_some() { "-cloud" } else { "" }
     );
-    let implementation =
-        crate::implementations::candidates_for_stage(&format!("editorial-{operation}"))
-            .next()
-            .ok_or("editorial implementation missing")?;
+    // The model the library resolved for the job — the person's choice, or
+    // the bundled one — and only then the first registered candidate, which
+    // is what a plan built without a library (the tests) has always taken.
+    let stage = format!("editorial-{operation}");
+    let implementation = bindings
+        .for_stage(&stage)
+        .and_then(|binding| crate::implementations::lookup(&binding.implementation))
+        .filter(|implementation| implementation.stage == stage)
+        .or_else(|| crate::implementations::candidates_for_stage(&stage).next())
+        .ok_or("editorial implementation missing")?;
     let prompt = match operation {
         "propose" => include_str!(
             "../../../workers/editorial/src/clipmill_worker_editorial/prompts/propose.v1.txt"
@@ -2418,6 +2505,10 @@ pub(crate) struct LeaseRequest {
     pub capacity: ResourceCapacity,
     pub worker_id: String,
     pub capabilities: Vec<String>,
+    /// Implementations of the declared stages that another worker family
+    /// runs. A task planned with one of them is never this worker's, however
+    /// well its stage matches: it would be handed weights it cannot load.
+    pub foreign_implementations: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -2439,7 +2530,7 @@ pub(crate) struct SchedulerHandle {
     capacity_update: Arc<Mutex<Option<ResourceCapacity>>>,
     verified_capacity: Arc<Mutex<Option<ResourceCapacity>>>,
     /// Startup resource observations, not user-configured RAM limits.
-    /// Free memory is replaced by each verified profile; CPU/disk stay bounded.
+    /// The memory budget is replaced by each verified profile; CPU/disk stay bounded.
     startup_capacity: ResourceCapacity,
     /// Which implementation each speech stage is bound to, as last verified
     /// (D19). Read when a job is planned, never when a task is leased: a
@@ -2456,8 +2547,10 @@ impl SchedulerHandle {
     pub(crate) fn apply_device_profile(&self, profile: &VerifiedDeviceProfile) {
         // As in `daemon.rs`: the profile says nothing about free space, so the
         // figure measured when this scheduler started is the one to keep.
-        let measured = ResourceCapacity::measured(
+        let measured = ResourceCapacity::for_device(
+            &profile.platform_os,
             profile.logical_cores,
+            profile.total_memory_bytes,
             profile.available_memory_bytes,
             self.startup_capacity.disk_bytes,
         )
@@ -2467,8 +2560,8 @@ impl SchedulerHandle {
                 .cpu_threads
                 .min(self.startup_capacity.cpu_threads)
                 .max(1),
-            // Free memory is a fresh observation, not a permanent boot-time
-            // ceiling. A new profile may observe memory released since startup.
+            // Apply the same platform policy as startup and readiness. A
+            // cached available-memory observation cannot cap macOS admission.
             ram_bytes: measured.ram_bytes,
             disk_bytes: measured.disk_bytes.min(self.startup_capacity.disk_bytes),
             accelerator_mask: measured.accelerator_mask,
@@ -2676,6 +2769,7 @@ async fn run_scheduler(
                     capacity: available_capacity,
                     worker_id: "builtin-fixture".to_owned(),
                     capabilities: builtin_capabilities.clone(),
+                    foreign_implementations: Vec::new(),
                 })
                 .await;
             let Ok(selection) = leased else {
@@ -3408,7 +3502,9 @@ mod resource_tests {
         handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
             hardware_fingerprint: String::new(),
             measurement_generation: 1,
+            platform_os: "linux".to_owned(),
             logical_cores: 4,
+            total_memory_bytes: 24 << 30,
             available_memory_bytes: 16 << 30,
             available_backends: BTreeSet::from(["metal".to_owned()]),
             bindings: crate::selection::Bindings::portable(),
@@ -3436,7 +3532,9 @@ mod resource_tests {
             handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
                 hardware_fingerprint: String::new(),
                 measurement_generation: free_gib,
+                platform_os: "linux".to_owned(),
                 logical_cores: 64,
+                total_memory_bytes: 24 << 30,
                 available_memory_bytes: free_gib << 30,
                 available_backends: BTreeSet::new(),
                 bindings: crate::selection::Bindings::portable(),
@@ -3446,6 +3544,44 @@ mod resource_tests {
             assert_eq!(measured.cpu_threads, 4);
             assert_eq!(measured.disk_bytes, 10 << 30);
         }
+    }
+
+    #[test]
+    fn macos_admission_survives_low_free_memory_and_profile_refresh() {
+        let startup = ResourceCapacity::for_device("macos", 4, 24 << 30, 2 << 30, 10 << 30);
+        let handle = super::SchedulerHandle {
+            notify: Arc::new(tokio::sync::Notify::new()),
+            capacity_update: Arc::new(Mutex::new(None)),
+            verified_capacity: Arc::new(Mutex::new(None)),
+            startup_capacity: startup,
+            bindings: Arc::new(Mutex::new(crate::selection::Bindings::portable())),
+        };
+        assert_eq!(handle.machine_capacity().ram_bytes, 18 << 30);
+        for free_gib in [16, 1, 0] {
+            handle.apply_device_profile(&crate::device::VerifiedDeviceProfile {
+                hardware_fingerprint: String::new(),
+                measurement_generation: 1,
+                platform_os: "macos".to_owned(),
+                logical_cores: 4,
+                total_memory_bytes: 24 << 30,
+                available_memory_bytes: free_gib << 30,
+                available_backends: BTreeSet::from(["metal".to_owned()]),
+                bindings: crate::selection::Bindings::portable(),
+            });
+            let mut capacity = handle.machine_capacity();
+            assert_eq!(capacity.ram_bytes, 18 << 30);
+            let mut model = ResourceDeclaration::demo();
+            model.cpu_threads = 1;
+            model.ram_bytes = 5_977_071_067 + (2 << 30);
+            assert!(capacity.reserve(&model));
+            assert!(capacity.reserve(&model));
+            assert!(
+                !capacity.reserve(&model),
+                "declared reservations still bind"
+            );
+        }
+        let small_mac = ResourceCapacity::for_device("macos", 4, 8 << 30, 7 << 30, 10 << 30);
+        assert_eq!(small_mac.ram_bytes, 6 << 30);
     }
 
     #[test]
@@ -3828,6 +3964,80 @@ mod discovery_tests {
         let encoded = plan(Some(LOUDNESS), None).tasks[0].payload.clone();
         let text = String::from_utf8_lossy(&encoded);
         assert!(!text.contains('/'), "a path reached the artifact key");
+    }
+}
+
+#[cfg(test)]
+mod youtube_metadata_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use super::*;
+
+    fn plan(ir: ArtifactId, context: &[u8], now: u64) -> (JobPlan, crate::models::ModelRegistry) {
+        let models = crate::models::ModelRegistry::load(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry"),
+        )
+        .unwrap();
+        let plan = JobPlan::youtube_metadata(
+            &ProjectId::new(),
+            context.to_vec(),
+            ir,
+            &models,
+            crate::implementations::candidates_for_stage("youtube-metadata")
+                .next()
+                .unwrap(),
+            now,
+        )
+        .unwrap();
+        (plan, models)
+    }
+
+    fn address(plan: &JobPlan, models: &crate::models::ModelRegistry) -> ArtifactId {
+        let task = &plan.tasks[0];
+        crate::recipes::worker_recipe(
+            &LeasedTask {
+                project_id: plan.project_id.clone(),
+                job_id: plan.job_id.clone(),
+                source_id: None,
+                task_id: task.task_id.clone(),
+                lease_id: LeaseId::new().to_string(),
+                kind: task.kind.clone(),
+                output_kind: task.output_kind.clone(),
+                payload: task.payload.clone(),
+                implementation: task.implementation.clone(),
+                attempt: 1,
+                input_artifact_ids: task
+                    .input_artifact_ids
+                    .iter()
+                    .map(|id| id.parse().unwrap())
+                    .collect(),
+                resources: task.resources.clone(),
+            },
+            models,
+        )
+        .unwrap()
+        .artifact_id()
+        .unwrap()
+    }
+
+    #[test]
+    fn reexports_share_copy_but_corrected_snapshots_do_not() {
+        let ir = format!("sha256:{}", "a".repeat(64)).parse().unwrap();
+        let other = format!("sha256:{}", "b".repeat(64)).parse().unwrap();
+        let (first, models) = plan(ir, b"export-one", 1);
+        let (second, _) = plan(ir, b"export-two", 2);
+        let (corrected, _) = plan(other, b"export-three", 3);
+        assert_ne!(first.job_id, second.job_id);
+        assert_eq!(address(&first, &models), address(&second, &models));
+        assert_ne!(address(&first, &models), address(&corrected, &models));
+        let task = &first.tasks[0];
+        assert_eq!(task.resources.network_policy, "local-lock");
+        assert!(task.is_final);
+        assert_eq!(task.max_attempts, 1);
+        assert_eq!(
+            crate::recipes::model_for(&task.kind, "editorial", &task.implementation).unwrap(),
+            "qwen3-5-editorial-mlx"
+        );
     }
 }
 

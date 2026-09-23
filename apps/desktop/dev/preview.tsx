@@ -1,5 +1,11 @@
 /** Deliberately separate from main.tsx and the production build. No daemon calls. */
-import { useState, type CSSProperties } from 'react';
+import { useLayoutEffect, useState, type CSSProperties } from 'react';
+import {
+  DEFAULT_WORKSPACE_THEME,
+  ThemeController,
+  isWorkspaceTheme,
+  type WorkspaceTheme,
+} from '@clipmill/tokens';
 import { createRoot, type Root } from 'react-dom/client';
 import { JobState } from '@clipmill/contracts';
 import { SidebarInset, SidebarProvider } from '../src/components/ui/sidebar.js';
@@ -14,10 +20,15 @@ import { Editor } from '../src/screens/Editor.js';
 import { Export } from '../src/screens/Export.js';
 import { BatchExportScreen } from '../src/screens/BatchExportScreen.js';
 import { batchApi } from './batch-fixtures.js';
+import { publishingFixture } from './publishing-fixtures.js';
+import { ConnectionCard } from '../src/youtube/ConnectionCard.js';
+import { UploadPanel } from '../src/youtube/UploadPanel.js';
+import { UploadHistory } from '../src/youtube/UploadHistory.js';
 import { Library } from '../src/screens/Library.js';
 import { Settings } from '../src/screens/Settings.js';
 import { ModelsDevice } from '../src/screens/ModelsDevice.js';
-import { device, readiness, storage, lock } from './settings-fixtures.js';
+import { device, readiness, lock } from './settings-fixtures.js';
+import { previewClean, previewModelApi, storageWithCleanUp } from './model-fixtures.js';
 import { NewProject } from '../src/screens/NewProject.js';
 import { LibraryLoader } from '../src/library/loader.js';
 import { ImportLoader } from '../src/import/loader.js';
@@ -26,7 +37,13 @@ import { connection, rows as fixtures, plan as previewPlan } from './fixtures.js
 import '../src/styles.css';
 
 const noAction = () => {};
-const modelApi = { ...daemonApi, fetchReadiness: async () => readiness };
+const modelScenario =
+  new URLSearchParams(location.search).get('models') === 'installed' ? 'installed' : 'fresh';
+const modelApi = {
+  ...daemonApi,
+  ...previewModelApi(modelScenario),
+  fetchReadiness: async () => readiness,
+};
 const project = {
   projectId: 'preview',
   name: 'The creative process · Episode 12',
@@ -52,6 +69,15 @@ class PreviewLibrary extends LibraryLoader {
   }
 }
 const libraryLoader = new PreviewLibrary();
+const publishingScenario = new URLSearchParams(location.search).get('publishing');
+const publishingApi = {
+  ...daemonApi,
+  ...publishingFixture(
+    publishingScenario === 'connected' || publishingScenario === 'history',
+    publishingScenario === 'history',
+  ),
+  listProjects: async () => [project],
+};
 const importLoader = new ImportLoader({
   ...daemonApi,
   fetchReadiness: async () => ({
@@ -62,13 +88,23 @@ const importLoader = new ImportLoader({
     workers: [],
   }),
   chooseSourceFile: async () => null,
+  listYoutubeImports: async () => [],
 });
+const appearanceController = new ThemeController(document.documentElement);
 function Preview() {
   const search = new URLSearchParams(location.search);
   const [page, setPage] = useState(search.get('screen') ?? 'results');
   const [theme, setTheme] = useState<'dark' | 'light'>(
     search.get('theme') === 'light' ? 'light' : 'dark',
   );
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(() => {
+    const requested = search.get('workspaceTheme');
+    return isWorkspaceTheme(requested) ? requested : DEFAULT_WORKSPACE_THEME;
+  });
+  useLayoutEffect(() => {
+    appearanceController.apply(theme);
+    appearanceController.applyWorkspace(workspaceTheme);
+  }, [theme, workspaceTheme]);
   const [rows, setRows] = useState<ClipRow[]>(() => {
     const scenario = search.get('scenario');
     if (scenario === 'empty') return [];
@@ -109,7 +145,6 @@ function Preview() {
   const [destination, setDestination] = useState('/Users/demo/Movies/ClipMill');
   const [pattern, setPattern] = useState('{index}-{clip}');
   const media = search.get('media');
-  document.documentElement.dataset['theme'] = theme;
   const labels = { project: project.name, clip: 'A better question' };
   const inspect = (id: string) => {
     setCandidate(id);
@@ -277,6 +312,19 @@ function Preview() {
               )}
               {page === 'export' && (
                 <Export
+                  publishing={
+                    <UploadPanel
+                      api={publishingApi}
+                      projectId="preview"
+                      docId="preview-edit"
+                      exportJobId="preview-export"
+                      revision={plan.revision}
+                      renderArtifactId="preview-render"
+                      currentRevision={plan.revision}
+                      delivered
+                      onSetup={() => setPage('settings')}
+                    />
+                  }
                   onEdit={() => setPage('editor')}
                   docId="preview-edit"
                   labels={labels}
@@ -345,13 +393,24 @@ function Preview() {
               )}
               {page === 'settings' && (
                 <Settings
-                  storage={storage}
+                  integrations={
+                    <div className="space-y-5">
+                      <ConnectionCard api={publishingApi} />
+                      <UploadHistory api={publishingApi} />
+                    </div>
+                  }
+                  storage={storageWithCleanUp}
                   lock={lock}
                   loading={false}
                   error={null}
                   theme={theme}
                   onThemeChange={setTheme}
+                  workspaceTheme={workspaceTheme}
+                  onWorkspaceThemeChange={setWorkspaceTheme}
                   onRefresh={noAction}
+                  onCleanStorage={previewClean}
+                  onOpenStorage={async () => undefined}
+                  onOpenModels={() => setPage('models')}
                 />
               )}
             </main>

@@ -23,8 +23,8 @@ export function CandidateRail({ rows, candidateId, onSelect, busy = false }: Can
       className="inspector-candidates glass flex shrink-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]"
       aria-label="Candidates"
     >
-      <h2 className="shrink-0 border-b border-[var(--cm-glass-border)] px-3 py-2.5 text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-        Candidates ({rows.length})
+      <h2 className="shrink-0 border-b border-[var(--cm-glass-border)] px-3 py-2.5 text-[11px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
+        Clips ({rows.length})
       </h2>
       <ul className="min-h-0 flex-1 overflow-y-auto p-2">
         {rows.map((row) => {
@@ -57,7 +57,7 @@ export function CandidateRail({ rows, candidateId, onSelect, busy = false }: Can
                     {row.headline || 'Untitled clip'}
                   </span>
                 </span>
-                <span className="flex items-center gap-1.5 text-[10px] text-[var(--cm-text-muted)]">
+                <span className="flex items-center gap-1.5 text-[11px] text-[var(--cm-text-muted)]">
                   <span className="mono">{duration(row.durationSeconds)}</span>
                   <span aria-hidden>•</span>
                   <span className="truncate">{row.bandLabel}</span>

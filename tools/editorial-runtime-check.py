@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Verify one local Qwen JSON generation before admitting Metal workers.
+"""Verify one local editorial JSON generation before admitting Metal workers.
+
+The model checked is the one the daemon plans for editorial work: the person's
+choice in Models, or the bundled Qwen3.5 9B.
 
 This is a runtime readiness check, not a model comparison or quality benchmark.
 Run with workers/editorial/.venv/bin/python while the daemon is running.
@@ -27,11 +30,36 @@ from clipmill_worker_editorial.runtime import LocalModel
 from clipmill_worker_sdk import CancellationToken
 from clipmill_worker_sdk.weights import verify_model
 
+DEFAULT_MODEL = "qwen3-5-editorial-mlx"
 
-def binding():
+
+def chosen_manifest(data_dir):
+    """The editorial model the daemon plans: the person's choice, else Qwen.
+
+    A choice names either a bundled manifest or one pinned in the app, which
+    the daemon keeps as JSON under the state directory.
+    """
+
     registry = Path(os.environ.get("CLIPMILL_MODELS_DIR", ROOT / "models/registry"))
+    name = DEFAULT_MODEL
+    try:
+        choices = json.loads((data_dir / "state/model-choices.json").read_text())
+        if choices.get("schema_version") == "clipmill.model_choices.v1":
+            name = choices.get("choices", {}).get("editorial") or DEFAULT_MODEL
+    except (OSError, ValueError, AttributeError):
+        name = DEFAULT_MODEL
+    pinned = data_dir / "state/models" / f"{name}.json"
+    if pinned.is_file():
+        return json.loads(pinned.read_text())
+    bundled = registry / f"{name}.toml"
+    if bundled.is_file():
+        return tomllib.loads(bundled.read_text())
+    return tomllib.loads((registry / f"{DEFAULT_MODEL}.toml").read_text())
+
+
+def binding(data_dir):
     weights = Path(os.environ.get("CLIPMILL_WEIGHTS_DIR", ROOT / ".cache/models"))
-    manifest = tomllib.loads((registry / "qwen3-5-editorial-mlx.toml").read_text())
+    manifest = chosen_manifest(data_dir)
     digest = hashlib.sha256(b"clipmill.model.identity.v1\0")
     for field in [
         manifest["name"],
@@ -62,7 +90,7 @@ def main():
     )
     client = DaemonClient(socket, timeout_seconds=180)
     profile = verify_device_profile(client.get_device_profile().profile_json)
-    model_binding = binding()
+    model_binding = binding(args.data_dir)
     destination = args.data_dir / "state/editorial-runtime.json"
     try:
         previous = json.loads(destination.read_text())
@@ -102,7 +130,8 @@ def main():
         )
         client.get_device_profile(remeasure=True)
         print(
-            "editorial-runtime: real Qwen JSON generation passed; Metal worker admission refreshed"
+            f"editorial-runtime: a real JSON generation by {model_binding.name} passed; "
+            "Metal worker admission refreshed"
         )
         return
     model = verify_model(model_binding)

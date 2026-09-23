@@ -92,7 +92,7 @@ export function Toolbar({
     filters.band !== 'any' || filters.decision !== 'any' || (filters.query ?? '') !== '';
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-3" role="search">
+    <div className="results-toolbar" role="search">
       <label className="relative">
         <span className="sr-only">Search clips by their opening line or timecode</span>
         <Search
@@ -118,11 +118,7 @@ export function Toolbar({
         )}
       </label>
 
-      <div
-        className="glass flex h-[var(--cm-control-standard)] items-center gap-0.5 rounded-[var(--cm-radius-control)] p-1"
-        role="group"
-        aria-label="Filter the board"
-      >
+      <div className="results-filters" role="group" aria-label="Filter the board">
         {chips.map((chip) => (
           <button
             key={chip.id}

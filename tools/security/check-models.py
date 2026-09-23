@@ -96,10 +96,36 @@ def _check(path: Path) -> list[str]:
     if not isinstance(manifest.get("quantization"), str) or not manifest["quantization"]:
         problems.append("quantization must be stated, even when it is 'none'")
 
+    problems.extend(_check_catalog(manifest.get("catalog")))
     problems.extend(_check_source(manifest.get("source")))
     problems.extend(_check_license(manifest.get("license")))
     problems.extend(_check_memory(manifest.get("memory"), manifest.get("files")))
     problems.extend(_check_files(manifest.get("files")))
+    return problems
+
+
+def _check_catalog(catalog: object) -> list[str]:
+    """The model library lists every bundled model; each must say what it is.
+
+    Prose rather than identity - the daemon's digest ignores this table - but a
+    model shown to people under its registry name, with nothing saying what it
+    does, is a download nobody can decide about.
+    """
+
+    if not isinstance(catalog, dict):
+        return ["catalog table is missing; the model library needs a title and summary"]
+    problems: list[str] = []
+    title = catalog.get("title")
+    if not isinstance(title, str) or not title.strip() or len(title) > 64:
+        problems.append("catalog title must be a short, non-empty name")
+    summary = catalog.get("summary")
+    if not isinstance(summary, str) or not summary.strip() or len(summary) > 240:
+        problems.append("catalog summary must be one sentence or two, under 240 characters")
+    if not isinstance(catalog.get("recommended", False), bool):
+        problems.append("catalog recommended must be true or false")
+    unknown = set(catalog) - {"title", "summary", "recommended"}
+    if unknown:
+        problems.append(f"catalog has unknown keys: {', '.join(sorted(unknown))}")
     return problems
 
 

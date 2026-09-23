@@ -1,50 +1,31 @@
 import {
+  ChevronDown,
   Database,
   HardDrive,
   Lock,
-  Moon,
   Palette,
   Plug,
   RefreshCw,
   ShieldCheck,
   ShieldOff,
-  Sun,
   TriangleAlert,
 } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
-import type { Theme } from '@clipmill/tokens';
+import type { Theme, WorkspaceTheme } from '@clipmill/tokens';
 
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+import { AppearancePreferences } from './AppearancePreferences.js';
+
+import './preferences.css';
 
 import type { LocalLock, StorageStats } from '../daemon/client.js';
+import type { CleanAction, CleanResult } from '../daemon/models.js';
 import { formatBytes } from '../deviceProfile.js';
-
-const CATEGORY_LABELS: Readonly<Record<string, string>> = {
-  artifacts: 'Generated media',
-  models: 'Model weights',
-  state: 'Project state',
-  imports: 'Imported originals',
-};
-const CATEGORY_NOTES: Readonly<Record<string, string>> = {
-  artifacts:
-    'Proxies, transcripts, analysis and rendered media. Unreferenced files follow the retention policy.',
-  models: 'Pinned model files, downloaded once and reused across projects.',
-  state: 'Projects, saved edits and decisions. Keep these files to preserve your work.',
-  imports:
-    'Downloaded originals are kept with their project. Deleting the project removes its managed copies.',
-};
-const CATEGORY_COLORS: Readonly<Record<string, string>> = {
-  artifacts: 'var(--cm-text-secondary)',
-  models: 'var(--cm-text-muted)',
-  state: 'var(--cm-text-primary)',
-  imports: 'var(--color-primary)',
-};
+import { CATEGORY_COLORS, StorageCategories } from './StorageSection.js';
 
 export interface SettingsProps {
   readonly storage: StorageStats | null;
@@ -56,7 +37,15 @@ export interface SettingsProps {
   readonly onRefresh?: () => void;
   readonly theme?: Theme;
   readonly onThemeChange?: (theme: Theme) => void;
+  readonly workspaceTheme?: WorkspaceTheme;
+  readonly onWorkspaceThemeChange?: (theme: WorkspaceTheme) => void;
   readonly integrations?: ReactNode;
+  /** Free what nobody uses. Absent where the screen only reports. */
+  readonly onCleanStorage?: (action: CleanAction) => Promise<CleanResult>;
+  /** Show a category's folder; the host resolves the key to a path. */
+  readonly onOpenStorage?: (key: string) => Promise<void>;
+  /** Go to Models, where weights are downloaded and removed. */
+  readonly onOpenModels?: () => void;
 }
 
 function SectionHeading({
@@ -89,21 +78,23 @@ export function Settings({
   onRefresh,
   theme,
   onThemeChange,
+  workspaceTheme,
+  onWorkspaceThemeChange,
   integrations,
+  onCleanStorage,
+  onOpenStorage,
+  onOpenModels,
 }: SettingsProps): JSX.Element {
   const total =
     storage?.categories.reduce((sum, category) => sum + Math.max(0, category.bytes), 0) ?? 0;
   const appearance = theme !== undefined && onThemeChange !== undefined;
   return (
-    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6">
+    <div className="preferences-page settings-page">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cm-text-muted)]">
-            Your workspace
-          </p>
           <h1 className="workspace-title">Settings &amp; privacy</h1>
           <p className="workspace-subtitle mt-1">
-            Make the studio yours. Know where your work lives.
+            Appearance, connected accounts and local storage.
           </p>
         </div>
         {onRefresh && (
@@ -132,119 +123,23 @@ export function Settings({
           )}
           <SectionLink href="#settings-privacy" icon={<ShieldCheck />} label="Privacy & cloud" />
           <SectionLink href="#settings-storage" icon={<HardDrive />} label="Storage" />
-          <p className="mt-5 hidden px-2 text-[11px] leading-relaxed text-[var(--cm-text-muted)] xl:block">
-            Preferences apply to this installation. Local files stay in their original location;
-            imported YouTube copies are managed below.
-          </p>
         </nav>
-        <div className="min-w-0 space-y-5">
+        <div className="settings-sections min-w-0">
           {appearance && (
             <section id="settings-appearance" className="scroll-mt-6" aria-label="Appearance">
-              <Card className="gap-0 overflow-hidden py-0">
+              <Card className="preference-section gap-0 overflow-hidden py-0">
                 <SectionHeading
                   icon={<Palette />}
                   title="Appearance"
-                  detail="Choose the workspace that feels right for your editing session."
+                  detail="Make the workspace feel like yours."
                 />
                 <CardContent className="px-5 py-5">
-                  <RadioGroup
-                    value={theme}
-                    onValueChange={(value) => {
-                      if (value === 'dark' || value === 'light') onThemeChange(value);
-                    }}
-                    aria-label="Workspace theme"
-                    className="grid grid-cols-2 gap-3"
-                  >
-                    {(['dark', 'light'] as const).map((option) => (
-                      <label
-                        key={option}
-                        htmlFor={`theme-${option}`}
-                        className={cn(
-                          'cursor-pointer rounded-xl border p-3 transition-colors',
-                          theme === option
-                            ? 'border-[var(--color-primary)] bg-[var(--cm-accent-selected)]'
-                            : 'border-[var(--cm-glass-border)] hover:bg-[var(--cm-recessed)]',
-                        )}
-                      >
-                        <div
-                          aria-hidden="true"
-                          className={cn(
-                            'flex h-[82px] overflow-hidden rounded-md border',
-                            option === 'dark'
-                              ? 'border-slate-700 bg-slate-900'
-                              : 'border-slate-200 bg-slate-50',
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              'w-1/4 space-y-2 border-r p-2.5',
-                              option === 'dark'
-                                ? 'border-slate-700 bg-slate-950'
-                                : 'border-slate-200 bg-white',
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                'h-1.5 w-5 rounded-sm',
-                                option === 'dark' ? 'bg-slate-400' : 'bg-slate-400',
-                              )}
-                            />
-                            <div
-                              className={cn(
-                                'h-1 w-full rounded-sm',
-                                option === 'dark' ? 'bg-slate-700' : 'bg-slate-200',
-                              )}
-                            />
-                            <div
-                              className={cn(
-                                'h-1 w-3/4 rounded-sm',
-                                option === 'dark' ? 'bg-slate-700' : 'bg-slate-200',
-                              )}
-                            />
-                          </div>
-                          <div className="flex-1 p-3">
-                            <div
-                              className={cn(
-                                'h-1.5 w-2/3 rounded-sm',
-                                option === 'dark' ? 'bg-slate-400' : 'bg-slate-500',
-                              )}
-                            />
-                            <div className="mt-3 flex gap-1.5">
-                              {[0, 1, 2].map((key) => (
-                                <div
-                                  key={key}
-                                  className={cn(
-                                    'h-8 flex-1 rounded-sm border',
-                                    option === 'dark'
-                                      ? 'border-slate-700 bg-slate-800'
-                                      : 'border-slate-200 bg-white',
-                                  )}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2 text-xs font-medium">
-                            {option === 'dark' ? (
-                              <Moon className="size-3.5" />
-                            ) : (
-                              <Sun className="size-3.5" />
-                            )}
-                            {option === 'dark' ? 'Dark studio' : 'Light studio'}
-                          </span>
-                          <RadioGroupItem
-                            id={`theme-${option}`}
-                            value={option}
-                            aria-label={option === 'dark' ? 'Dark studio' : 'Light studio'}
-                          />
-                        </div>
-                      </label>
-                    ))}
-                  </RadioGroup>
-                  <p className="mt-3 text-[11px] text-[var(--cm-text-muted)]">
-                    Saved automatically on this device. Change it any time from the toolbar.
-                  </p>
+                  <AppearancePreferences
+                    theme={theme}
+                    onThemeChange={onThemeChange}
+                    {...(workspaceTheme === undefined ? {} : { workspaceTheme })}
+                    {...(onWorkspaceThemeChange === undefined ? {} : { onWorkspaceThemeChange })}
+                  />
                 </CardContent>
               </Card>
             </section>
@@ -263,11 +158,11 @@ export function Settings({
             className="scroll-mt-6"
             aria-label="Privacy and cloud processing"
           >
-            <Card className="gap-0 overflow-hidden py-0">
+            <Card className="preference-section gap-0 overflow-hidden py-0">
               <SectionHeading
                 icon={<ShieldCheck />}
                 title="Privacy & cloud"
-                detail="Local processing is the default. Cloud analysis requires your explicit consent."
+                detail="Local processing is the default. Cloud AI requires your consent."
               />
               <CardContent className="px-5 py-5">
                 {lockError && (
@@ -313,37 +208,42 @@ export function Settings({
                         </p>
                       </div>
                     </div>
-                    <dl className="mt-5 grid grid-cols-3 gap-3 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-3.5">
-                      <Count label="Stages registered" value={lock.stages} />
-                      <Count
-                        label="Stages allowed to use the network"
-                        value={lock.networkAllowedStages}
-                      />
-                      <Count
-                        label="Network operations started this session"
-                        value={lock.egressAttempts}
-                      />
-                    </dl>
-                    <p className="mt-2 text-xs text-[var(--cm-text-muted)]">
-                      Includes enabled cloud analysis and YouTube imports. Importing a video does
-                      not enable cloud AI. Model downloads are managed separately.
-                    </p>
-                    <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
-                      Cloud-capable stages may be installed without being used. These counts
-                      describe task policy and execution, not measured network traffic. Publishing
-                      to a connected channel is a separate action from AI processing.
-                    </p>
+                    <details className="preference-disclosure mt-4">
+                      <summary>
+                        <ChevronDown className="size-3.5" /> Network activity details
+                      </summary>
+                      <dl className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-[var(--cm-recessed)] p-3.5">
+                        <Count label="Stages registered" value={lock.stages} />
+                        <Count
+                          label="Stages allowed to use the network"
+                          value={lock.networkAllowedStages}
+                        />
+                        <Count
+                          label="Network operations started this session"
+                          value={lock.egressAttempts}
+                        />
+                      </dl>
+                      <p className="mt-2 text-xs text-[var(--cm-text-muted)]">
+                        Includes enabled cloud analysis, YouTube imports, channel sign-in,
+                        publishing, and model downloads and look-ups started in Models. Importing a
+                        video does not enable cloud AI.
+                      </p>
+                      <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
+                        These counts describe task execution, not measured network traffic.
+                        Installed cloud stages are only used when enabled.
+                      </p>
+                    </details>
                   </>
                 )}
               </CardContent>
             </Card>
           </section>
           <section id="settings-storage" className="scroll-mt-6" aria-label="Storage">
-            <Card className="gap-0 overflow-hidden py-0">
+            <Card className="preference-section gap-0 overflow-hidden py-0">
               <SectionHeading
                 icon={<HardDrive />}
                 title="Storage"
-                detail="A clear account of the files ClipMill manages on this device."
+                detail="Files managed on this device."
               />
               <CardContent className="px-5 py-5">
                 {storageError && (
@@ -399,40 +299,12 @@ export function Settings({
                         />
                       ))}
                     </div>
-                    <ul className="mt-4 divide-y divide-[var(--cm-glass-border)]">
-                      {storage.categories.map((category) => (
-                        <li key={category.key} className="py-4 first:pt-0">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <h3 className="flex items-center gap-2 text-xs font-semibold">
-                                <span
-                                  aria-hidden="true"
-                                  className="size-1.5 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      CATEGORY_COLORS[category.key] ?? 'var(--cm-text-muted)',
-                                  }}
-                                />
-                                {CATEGORY_LABELS[category.key] ?? category.key}
-                              </h3>
-                              <p className="mt-1.5 max-w-[530px] text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-                                {CATEGORY_NOTES[category.key] ??
-                                  'Files managed by the local engine.'}
-                              </p>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <p className="font-mono text-xs">{formatBytes(category.bytes)}</p>
-                              <p className="mt-1 text-[10px] text-[var(--cm-text-muted)]">
-                                {category.items} {category.items === 1 ? 'item' : 'items'}
-                              </p>
-                            </div>
-                          </div>
-                          <p className="mt-2 select-all break-all rounded-md bg-[var(--cm-recessed)] px-2.5 py-2 font-mono text-[10px] leading-relaxed text-[var(--cm-text-muted)]">
-                            {category.path}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
+                    <StorageCategories
+                      storage={storage}
+                      onClean={onCleanStorage}
+                      onOpen={onOpenStorage}
+                      onOpenModels={onOpenModels}
+                    />
                     <div className="flex items-start gap-3 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-3.5 py-3.5">
                       <Database className="mt-0.5 size-4 shrink-0 text-[var(--cm-text-secondary)]" />
                       <div>
@@ -443,8 +315,12 @@ export function Settings({
                           </StatusBadge>
                         </div>
                         <p className="mt-2 text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-                          Unreferenced generated files become eligible for cleanup after this
-                          retention period. Your source recordings and saved edits are kept.
+                          Unused generated files are cleaned up automatically after this period.
+                          Source recordings and saved edits are kept.
+                          {storage.reclaimableBytes !== undefined &&
+                            (storage.reclaimableBytes > 0
+                              ? ` About ${formatBytes(storage.reclaimableBytes)} can be freed now with Clean up.`
+                              : ' Nothing is waiting to be cleaned up.')}
                         </p>
                       </div>
                     </div>
@@ -485,7 +361,7 @@ function Count({ label, value }: { readonly label: string; readonly value: numbe
   return (
     <div>
       <dd className="font-mono text-lg">{value}</dd>
-      <dt className="mt-1 max-w-[155px] text-[10px] leading-relaxed text-[var(--cm-text-secondary)]">
+      <dt className="mt-1 max-w-[155px] text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
         {label}
       </dt>
     </div>

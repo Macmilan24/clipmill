@@ -61,7 +61,7 @@ type View = 'grid' | 'list';
  * frame. `auto-fill` against a floor keeps the card legible and drops a column
  * instead, which is the trade the design would make if it had been drawn twice.
  */
-const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4';
+const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-5';
 
 function ViewToggle({
   view,
@@ -175,8 +175,8 @@ export function Library({
   }
 
   return (
-    <>
-      <div className="mb-6 flex min-h-12 flex-wrap items-center justify-between gap-4">
+    <div className="page-frame library-page">
+      <div className="page-header">
         <div className="flex items-baseline gap-3">
           <h1 className="workspace-title">Library</h1>
           <span className="text-meta text-[var(--cm-text-secondary)]">
@@ -184,8 +184,8 @@ export function Library({
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="relative w-[240px]">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-[220px]">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--cm-text-muted)]" />
             <Input
               value={query}
@@ -229,9 +229,9 @@ export function Library({
                   setFilter(entry.filter);
                 }}
                 className={cn(
-                  'h-7 rounded-[var(--cm-radius-control)] border border-[var(--cm-glass-border)] text-meta',
+                  'h-8 rounded-[var(--cm-radius-control)] border border-transparent text-meta text-[var(--cm-text-secondary)]',
                   filter === entry.filter &&
-                    'border-[color-mix(in_srgb,var(--color-primary)_45%,transparent)] bg-[var(--cm-accent-selected)] text-[var(--color-primary)]',
+                    'bg-[var(--cm-accent-selected)] text-[var(--cm-accent-ink)]',
                 )}
               >
                 {entry.label}
@@ -345,6 +345,6 @@ export function Library({
           onNavigate('settings');
         }}
       />
-    </>
+    </div>
   );
 }

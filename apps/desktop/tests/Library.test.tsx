@@ -102,7 +102,9 @@ describe('the Library screen', () => {
     expect(screen.getByText('2 projects')).toBeTruthy();
     // Duration, resolution and size come from the probe and the source record.
     expect(screen.getAllByText('1:42:07').length).toBeGreaterThan(0);
-    expect(screen.getByText('1920×1080 · 29.97 fps · 7.8 GB')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    expect(screen.getAllByText('1920×1080 · 29.97 fps').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('7.8 GB').length).toBeGreaterThan(0);
   });
 
   /**

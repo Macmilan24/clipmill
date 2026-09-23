@@ -1,7 +1,15 @@
-import { type CSSProperties, type JSX, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type CSSProperties,
+  type JSX,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
-import { type Theme, ThemeController } from '@clipmill/tokens';
+import { type Theme, type WorkspaceTheme, ThemeController } from '@clipmill/tokens';
 
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -16,6 +24,7 @@ import {
 import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
+import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
 import { recall, remember } from './shell/memory.js';
 import {
   type ClipRef,
@@ -54,6 +63,9 @@ export function App(): JSX.Element {
       typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches,
     ),
   );
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(() =>
+    ThemeController.resolveWorkspace(typeof localStorage === 'undefined' ? null : localStorage),
+  );
 
   // Where the shell was, and which clip it was on, put back from the last
   // launch. The clip is what the Editor and Export rows open when reached from
@@ -69,11 +81,13 @@ export function App(): JSX.Element {
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const analysisActivity = useAnalysisActivity(state);
 
-  // Apply the resolved theme before the user touches anything.
-  useEffect(() => {
+  // Restore both choices before the first React paint.
+  useLayoutEffect(() => {
     controller.apply(theme);
-  }, [controller, theme]);
+    controller.applyWorkspace(workspaceTheme);
+  }, [controller, theme, workspaceTheme]);
 
   const toggleTheme = useCallback(() => {
     setTheme(controller.toggle());
@@ -166,7 +180,12 @@ export function App(): JSX.Element {
         style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
         className="studio-shell relative h-full min-h-0"
       >
-        <AppSidebar activeId={section.id} onSelect={navigate} state={state} />
+        <AppSidebar
+          activeId={section.id}
+          onSelect={navigate}
+          state={state}
+          analysisBusy={analysisActivity.active}
+        />
         <SidebarInset className="min-h-0 min-w-0 bg-transparent">
           <TopBar
             trail={trail}
@@ -191,12 +210,19 @@ export function App(): JSX.Element {
               newProject: {
                 state,
                 onStarted: (projectId, jobId) => {
+                  analysisActivity.markStarted(jobId);
                   openAnalysis(projectId, jobId, 'new-project');
+                },
+                onOpenModels: () => {
+                  navigate('models');
                 },
               },
               analysis: {
                 profile,
-                onRestarted: (projectId, jobId) => openAnalysis(projectId, jobId, 'library'),
+                onRestarted: (projectId, jobId) => {
+                  analysisActivity.markStarted(jobId);
+                  openAnalysis(projectId, jobId, 'library');
+                },
                 onBack: () => {
                   navigate(route.kind === 'analysis' ? route.from : 'library');
                 },
@@ -225,15 +251,21 @@ export function App(): JSX.Element {
                 },
               },
               export: {
+                onOpenChannelSettings: () => setRoute({ kind: 'section', sectionId: 'settings' }),
                 onEdit: (next) => openClip(next, 'editor'),
                 onOpen: (next) => {
                   openClip(next, 'export');
                 },
               },
-              // Reads the daemon directly and takes nothing from the shell, so
-              // the entry exists to satisfy the registry rather than to carry
-              // anything.
-              settings: { theme, onThemeChange: setTheme },
+              settings: {
+                theme,
+                onThemeChange: setTheme,
+                workspaceTheme,
+                onWorkspaceThemeChange: setWorkspaceTheme,
+                onOpenModels: () => {
+                  navigate('models');
+                },
+              },
               models: {
                 state,
                 profile,

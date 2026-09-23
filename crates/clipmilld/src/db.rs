@@ -6,7 +6,7 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectResponse, DeleteProjectResponse, Project, Response, response,
+    CreateProjectResponse, DeleteProjectResponse, Project, Response, TaskState, response,
 };
 use clipmill_core::{ArtifactId, ProjectId};
 use prost::Message;
@@ -23,7 +23,9 @@ use crate::jobs::{
     EventFilter, JobPlan, JobRecord, LeaseRequest, LeaseSelection, TaskCompletion, TaskEventRecord,
 };
 
+mod youtube_publish_store;
 mod youtube_store;
+pub(crate) use youtube_publish_store::{Publication, PublishingCommand, PublishingReply};
 pub(crate) use youtube_store::YoutubeCommand;
 mod batch_store;
 pub(crate) use batch_store::BatchCommand;
@@ -41,7 +43,7 @@ mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 13;
+const SCHEMA_VERSION: i64 = 14;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -70,6 +72,8 @@ pub(crate) enum StoreError {
         "This project already has this video at a different quality. Use its existing import, or create a new project for the selected quality."
     )]
     ImportQualityConflict,
+    #[error("{0}")]
+    PublishingConflict(&'static str),
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("database contains invalid data: {0}")]
@@ -107,6 +111,12 @@ impl DbActor {
                         let _result = ready_sender.send(Ok(()));
                         while let Some(command) = receiver.blocking_recv() {
                             match command {
+                                Command::Publishing { command, reply } => {
+                                    let _result = reply.send(youtube_publish_store::execute(
+                                        &mut connection,
+                                        *command,
+                                    ));
+                                }
                                 Command::Youtube { command, reply } => {
                                     let _result = reply
                                         .send(youtube_store::execute(&mut connection, command));
@@ -170,6 +180,10 @@ impl DbActor {
                                 }
                                 Command::ListArtifactRoots { reply } => {
                                     let _result = reply.send(list_artifact_roots(&connection));
+                                }
+                                Command::UnfinishedImplementations { reply } => {
+                                    let _result =
+                                        reply.send(unfinished_implementations(&connection));
                                 }
                                 Command::ArtifactIsProjectOutput {
                                     project_id,
@@ -657,6 +671,21 @@ impl DbActor {
 }
 
 impl DbHandle {
+    pub(crate) async fn publishing(
+        &self,
+        command: PublishingCommand,
+    ) -> Result<PublishingReply, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Publishing {
+                command: Box::new(command),
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn youtube_imports(
         &self,
         command: YoutubeCommand,
@@ -798,6 +827,17 @@ impl DbHandle {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListArtifactRoots { reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Every implementation an unfinished task was planned with: what the
+    /// model library must not remove from under a running analysis.
+    pub(crate) async fn unfinished_implementations(&self) -> Result<Vec<String>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::UnfinishedImplementations { reply })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1449,6 +1489,10 @@ impl DbHandle {
 
 #[derive(Debug)]
 enum Command {
+    Publishing {
+        command: Box<PublishingCommand>,
+        reply: oneshot::Sender<Result<PublishingReply, StoreError>>,
+    },
     Youtube {
         command: YoutubeCommand,
         reply: oneshot::Sender<
@@ -1546,6 +1590,9 @@ enum Command {
     },
     ListArtifactRoots {
         reply: oneshot::Sender<Result<Vec<ArtifactId>, StoreError>>,
+    },
+    UnfinishedImplementations {
+        reply: oneshot::Sender<Result<Vec<String>, StoreError>>,
     },
     SubmitJob {
         request_id: String,
@@ -1855,8 +1902,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(edit_store::CREATE_V11_TABLES)?;
         transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
         transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
+        transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 13;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 14;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -1904,7 +1952,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 13 {
             transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 13;")?;
+        if version < 14 {
+            transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 14;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -2143,6 +2194,26 @@ fn attach_artifact_root(
     Ok(())
 }
 
+/// Planned, admitted, running or waiting to retry: every state a task can
+/// still lease a model from. A finished task never loads its weights again.
+fn unfinished_implementations(connection: &Connection) -> Result<Vec<String>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT implementation FROM tasks
+         WHERE state IN (?1, ?2, ?3, ?4) AND implementation <> ''
+         ORDER BY implementation ASC",
+    )?;
+    let rows = statement.query_map(
+        params![
+            TaskState::Planned as i32,
+            TaskState::Admitted as i32,
+            TaskState::Running as i32,
+            TaskState::Retryable as i32,
+        ],
+        |row| row.get::<_, String>(0),
+    )?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
 fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, StoreError> {
     let mut statement = connection.prepare(
         "SELECT artifact_id FROM project_artifact_roots
@@ -2152,6 +2223,8 @@ fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, Store
          SELECT artifact_id FROM source_artifact_roots
          UNION
          SELECT artifact_id FROM system_artifact_roots
+         UNION
+         SELECT artifact_id FROM youtube_upload_roots
          ORDER BY artifact_id ASC",
     )?;
     let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
@@ -4164,6 +4237,7 @@ mod tests {
                     "demo-seed".into(),
                     "propose-cloud".into(),
                 ],
+                foreign_implementations: Vec::new(),
             };
             // Even an older or corrupted persisted task cannot lease with a
             // false policy, or with a partial match of a registered kind.
@@ -4206,6 +4280,66 @@ mod tests {
                 selection.task.unwrap().resources.network_policy,
                 "network-allowed"
             );
+        }
+    }
+
+    /// Two families serve word timing: the ONNX aligner and the MLX speech
+    /// worker. Each is handed only the tasks planned for its own model; a
+    /// task for the other's would bind weights it cannot load.
+    #[test]
+    fn a_task_is_leased_only_to_the_family_its_implementation_names() {
+        let temp = TempDir::new().unwrap();
+        let (_, mut connection) = database(&temp);
+        let p = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "routing", 10);
+        create_project(&mut connection, "p", &[1; 32], &p).unwrap();
+        let mut plan = JobPlan::demo(&p.project_id.parse().unwrap(), b"route".to_vec(), 20);
+        plan.tasks.truncate(1);
+        plan.tasks[0].is_final = true;
+        job_store::submit_job(&mut connection, "job", &[2; 32], &plan).unwrap();
+        let worker = |family: &str| {
+            let stages = vec!["speech-align".to_owned()];
+            crate::jobs::LeaseRequest {
+                lease_id: LeaseId::new().to_string(),
+                daemon_epoch: "01ARZ3NDEKTSV4RRFFQ69G5FAV".into(),
+                now_unix_millis: 31,
+                expires_unix_millis: 15031,
+                capacity: ResourceCapacity::w4_builtin(),
+                worker_id: format!("{family}-worker"),
+                foreign_implementations: crate::implementations::foreign_to(family, &stages)
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+                capabilities: stages,
+            }
+        };
+        for (implementation, runs_it, other) in [
+            (
+                "clipmill-worker-speech-mlx@0.1.0/align",
+                "speech-mlx",
+                "speech-align",
+            ),
+            ("clipmill-worker-align@0.1.0", "speech-align", "speech-mlx"),
+        ] {
+            connection.execute("DELETE FROM task_leases", []).unwrap();
+            connection
+                .execute(
+                    "UPDATE tasks SET kind='speech-align', network_policy='local-lock', \
+                     implementation=?1, state=?2",
+                    rusqlite::params![implementation, TaskState::Planned as i32],
+                )
+                .unwrap();
+            assert!(
+                job_store::lease_next_task_for_worker(&mut connection, &worker(other))
+                    .unwrap()
+                    .task
+                    .is_none(),
+                "{other} was offered a task planned for {runs_it}"
+            );
+            let leased = job_store::lease_next_task_for_worker(&mut connection, &worker(runs_it))
+                .unwrap()
+                .task
+                .unwrap_or_else(|| panic!("{runs_it} was not offered its own task"));
+            assert_eq!(leased.implementation, implementation);
         }
     }
 

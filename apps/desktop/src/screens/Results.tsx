@@ -3,6 +3,8 @@
  * Focus, batch selection, and opening the inspector are separate actions.
  * Filtering, search, and ordering use the rows already loaded for the summary.
  */
+import '../results/workspace.css';
+
 import { JobState } from '@clipmill/contracts';
 import { AlertCircle, ArrowRight, Scissors } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -109,7 +111,7 @@ export function Results({
   );
   const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, query: '' });
   const [sort, setSort] = useState<SortKey>('rank');
-  const [view, setView] = useState<BoardView>('list');
+  const [view, setView] = useState<BoardView>('grid');
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
 
@@ -150,7 +152,7 @@ export function Results({
 
   if (loading) {
     return (
-      <div className="workspace-page" role="status" aria-busy="true">
+      <div className="workspace-page results-workspace" role="status" aria-busy="true">
         <p className="text-xs text-[var(--cm-text-secondary)]">Loading results…</p>
         <Skeleton className="h-[92px] w-full rounded-[var(--cm-radius-card)]" />
         <Skeleton className="h-[var(--cm-control-standard)] w-full rounded-[var(--cm-radius-control)]" />
@@ -160,7 +162,7 @@ export function Results({
   }
 
   return (
-    <div className="workspace-page">
+    <div className="workspace-page results-workspace">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-3">
@@ -171,7 +173,7 @@ export function Results({
             </h1>
             {badge && !problem && (
               <span
-                className="rounded px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
+                className="results-run-state"
                 style={{ color: TONE_INK[badge.tone], background: wash(badge.tone) }}
               >
                 {badge.label}
@@ -333,7 +335,7 @@ export function Results({
             onView={setView}
           />
 
-          <div className="results-layout">
+          <div className="results-layout" data-view={view}>
             {shown.length === 0 ? (
               <div className="glass grid place-items-center rounded-[var(--cm-radius-card)] p-10">
                 <p className="text-[13px] text-[var(--cm-text-secondary)]">
@@ -342,6 +344,7 @@ export function Results({
               </div>
             ) : view === 'list' ? (
               <CandidateTable
+                tileUrl={tileUrl}
                 rows={shown}
                 focusedId={focused?.candidateId ?? null}
                 checked={checked}

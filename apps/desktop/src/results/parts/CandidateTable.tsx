@@ -6,6 +6,7 @@
 import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 
+import { MediaStill } from '../../components/MediaStill.js';
 import { Checkbox } from '../../components/ui/checkbox.js';
 import { type ClipRow, clock, duration } from '../model.js';
 import { bandInk } from './ScoreRing.js';
@@ -15,6 +16,7 @@ const COLUMNS = 'candidate-columns';
 
 export interface CandidateTableProps {
   readonly rows: readonly ClipRow[];
+  readonly tileUrl?: (atTicks: number) => string | null;
   /** The row the rail describes. */
   readonly focusedId: string | null;
   /** The rows ticked for a batch action. */
@@ -26,6 +28,7 @@ export interface CandidateTableProps {
 
 export function CandidateTable({
   rows,
+  tileUrl,
   focusedId,
   checked,
   onFocus,
@@ -65,7 +68,7 @@ export function CandidateTable({
   );
 
   return (
-    <div className="glass flex min-h-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]">
+    <div className="results-table glass flex min-h-0 flex-col overflow-hidden rounded-[var(--cm-radius-card)]">
       <div
         className={`grid ${COLUMNS} shrink-0 items-center gap-2 border-b border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-3 py-2.5 text-[10px] font-medium tracking-[0.09em] text-[var(--cm-text-muted)] uppercase`}
         aria-hidden="true"
@@ -125,43 +128,48 @@ export function CandidateTable({
                 />
               </span>
 
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span
-                  className={`line-clamp-2 text-[13px] leading-relaxed font-medium text-[var(--cm-text-primary)] ${row.decision === 'rejected' ? 'line-through decoration-[var(--cm-text-muted)]' : ''}`}
-                >
-                  {row.headline || (
-                    <em className="text-[var(--cm-text-muted)]">No opening line indexed</em>
-                  )}
+              <span className="results-table-clip">
+                <span className="results-table-still">
+                  <MediaStill src={tileUrl?.(row.startTicks) ?? null} />
                 </span>
-                <span className="mono flex items-center gap-2 truncate text-[10px] text-[var(--cm-text-muted)]">
-                  {clock(row.startTicks)} – {clock(row.endTicks)}
-                  {row.review ? (
-                    <span className="font-sans text-[10px] text-[var(--cm-text-secondary)]">
-                      Editorial review
-                    </span>
-                  ) : (
-                    <span
-                      className="flex items-center gap-1 ml-1"
-                      role="group"
-                      aria-label={
-                        signals.length === 0 ? 'No signals recorded' : `${signals.length} signals`
-                      }
-                    >
-                      {signals.slice(0, 4).map((signal) => (
-                        <span
-                          key={signal.key}
-                          title={signal.label}
-                          className="size-2 rounded-full"
-                          style={{ background: TONE_INK[signal.tone] }}
-                        />
-                      ))}
-                      {signals.length > 4 && (
-                        <span className="mono text-[9px] text-[var(--cm-text-muted)]">
-                          +{signals.length - 4}
-                        </span>
-                      )}
-                    </span>
-                  )}
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span
+                    className={`line-clamp-2 text-[13px] leading-relaxed font-medium text-[var(--cm-text-primary)] ${row.decision === 'rejected' ? 'line-through decoration-[var(--cm-text-muted)]' : ''}`}
+                  >
+                    {row.headline || (
+                      <em className="text-[var(--cm-text-muted)]">No opening line indexed</em>
+                    )}
+                  </span>
+                  <span className="mono flex items-center gap-2 truncate text-[10px] text-[var(--cm-text-muted)]">
+                    {clock(row.startTicks)} – {clock(row.endTicks)}
+                    {row.review ? (
+                      <span className="font-sans text-[10px] text-[var(--cm-text-secondary)]">
+                        Editorial review
+                      </span>
+                    ) : (
+                      <span
+                        className="flex items-center gap-1 ml-1"
+                        role="group"
+                        aria-label={
+                          signals.length === 0 ? 'No signals recorded' : `${signals.length} signals`
+                        }
+                      >
+                        {signals.slice(0, 4).map((signal) => (
+                          <span
+                            key={signal.key}
+                            title={signal.label}
+                            className="size-2 rounded-full"
+                            style={{ background: TONE_INK[signal.tone] }}
+                          />
+                        ))}
+                        {signals.length > 4 && (
+                          <span className="mono text-[9px] text-[var(--cm-text-muted)]">
+                            +{signals.length - 4}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </span>
                 </span>
               </span>
 

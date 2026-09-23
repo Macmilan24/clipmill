@@ -32,8 +32,18 @@ IDENTITY_DIR="$STATE_DIR/worker-dev-identity"
 WORKER_SOCKET="$RUN_DIR/clipmill-workers.sock"
 
 # Default analysis workers, with explicit directory and entry-point names.
-# speech-mlx requires measured per-device selection and is not launched here.
 FAMILIES="vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr align:clipmill-worker-align shots:clipmill-worker-shots faces:clipmill-worker-faces"
+
+# On Apple silicon the MLX speech worker runs beside them. The daemon leases a
+# task only to the family that runs its model, so the two never compete.
+if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+  if [ -d workers/speech-mlx/.venv ]; then
+    FAMILIES="$FAMILIES speech-mlx:clipmill-worker-speech-mlx"
+  else
+    echo "run-workers: the MLX speech worker is not installed, so MLX speech models" >&2
+    echo "run-workers: will wait for it; install it with uv sync --locked --directory workers/speech-mlx" >&2
+  fi
+fi
 
 # Editorial inference is explicitly selected and initially supported on Apple silicon.
 if [ "${CLIPMILL_EDITORIAL:-1}" = 1 ] && [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] && [ -d workers/editorial/.venv ]; then
@@ -129,11 +139,13 @@ if [ "$ENROL_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-if echo "$FAMILIES" | tr ' ' '\n' | rg -q '^editorial:'; then
-  if ! workers/editorial/.venv/bin/python tools/editorial-runtime-check.py --data-dir "$DATA_DIR"; then
-    echo "run-workers: editorial runtime is not ready; its stages will show as unavailable" >&2
-  fi
-fi
+case " $FAMILIES " in
+  *" editorial:"*)
+    if ! workers/editorial/.venv/bin/python tools/editorial-runtime-check.py --data-dir "$DATA_DIR"; then
+      echo "run-workers: editorial runtime is not ready; its stages will show as unavailable" >&2
+    fi
+    ;;
+esac
 
 
 if [ ! -S "$WORKER_SOCKET" ]; then

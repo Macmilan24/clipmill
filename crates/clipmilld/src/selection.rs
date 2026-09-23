@@ -89,6 +89,21 @@ impl Binding {
     pub(crate) fn was_measured(&self) -> bool {
         SelectedBy::parse(&self.selected_by) == Some(SelectedBy::Measured)
     }
+
+    /// A binding the model library decided rather than a benchmark:
+    /// `chosen` for a person's choice, `installed_fallback` when the default
+    /// is not installed and another candidate is, `default` for a job with
+    /// one bundled model. Never written into a signed profile.
+    pub(crate) fn decided(implementation: &Implementation, selected_by: &str) -> Self {
+        Binding {
+            capability: implementation.capability.to_owned(),
+            stage: implementation.stage.to_owned(),
+            implementation: implementation.name.to_owned(),
+            model: implementation.model.to_owned(),
+            backend: implementation.backend.to_owned(),
+            selected_by: selected_by.to_owned(),
+        }
+    }
 }
 
 /// Every stage's chosen implementation, keyed by stage kind.
@@ -111,9 +126,11 @@ impl Bindings {
     pub(crate) fn portable() -> Self {
         let mut by_stage = BTreeMap::new();
         for capability in implementations::candidates_for_capability_names() {
-            let candidates = implementations::candidates_for_capability(capability).count();
-            let Some(implementation) = implementations::candidates_for_capability(capability)
-                .find(|candidate| candidate.portable)
+            let candidates =
+                implementations::measured_candidates_for_capability(capability).count();
+            let Some(implementation) =
+                implementations::measured_candidates_for_capability(capability)
+                    .find(|candidate| candidate.portable)
             else {
                 continue;
             };
@@ -149,6 +166,11 @@ impl Bindings {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.by_stage.is_empty()
+    }
+
+    /// Replace one stage's binding.
+    pub(crate) fn set(&mut self, binding: Binding) {
+        self.by_stage.insert(binding.stage.clone(), binding);
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Binding> {
@@ -218,7 +240,11 @@ pub(crate) fn measure(
     let mut candidates = Vec::new();
     let mut proven_accelerators = BTreeSet::new();
     for capability in implementations::candidates_for_capability_names() {
-        let registered = implementations::candidates_for_capability(capability).collect::<Vec<_>>();
+        // Opt-in candidates are a person's choice, not a ranking's: leaving
+        // them out keeps the signed profile a statement about what was
+        // measured, and keeps it the same whatever a person has pinned.
+        let registered =
+            implementations::measured_candidates_for_capability(capability).collect::<Vec<_>>();
         let mut runnable: Vec<(&Implementation, f64, u64)> = Vec::new();
         for implementation in &registered {
             // A candidate whose model the registry no longer pins cannot be
@@ -326,9 +352,11 @@ pub(crate) fn measure(
             bindings.push(entry);
         }
     }
-    // The user's fixed editorial model still has to execute successfully on
-    // this device before its Metal worker is admitted. This is runtime proof,
+    // The chosen editorial model still has to execute successfully on this
+    // device before its Metal worker is admitted. This is runtime proof,
     // deliberately separate from speech-model ranking and editorial quality.
+    // Any pinned editorial model counts: the receipt names the digest it ran,
+    // and a digest the registry pins is a model this daemon could plan.
     let receipt = benchmark_path.with_file_name("editorial-runtime.json");
     if let Ok(bytes) = fs::read(receipt)
         && let Ok(proof) = serde_json::from_slice::<Value>(&bytes)
@@ -338,9 +366,10 @@ pub(crate) fn measure(
         && proof["validated"] == true
         && proof["elapsed_millis"].as_u64().is_some_and(|n| n > 0)
         && proof["peak_resident_bytes"].as_u64().is_some_and(|n| n > 0)
-        && models
-            .get("qwen3-5-editorial-mlx")
-            .is_some_and(|m| proof["model_digest"] == format!("sha256:{}", m.digest()))
+        && models.manifests().iter().any(|model| {
+            model.capability == "editorial"
+                && proof["model_digest"] == format!("sha256:{}", model.digest())
+        })
     {
         proven_accelerators.insert("metal");
     }

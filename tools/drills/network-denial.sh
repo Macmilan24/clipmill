@@ -13,6 +13,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+# OAuth callback and HTTP protocol fixtures use loopback only. The isolated
+# namespace still has no external interface or route; the canary below must
+# continue to fail. Never change the host's interface state outside this gate.
+ip link set lo up
+
 echo "==> egress canary (must fail)"
 if curl --silent --max-time 5 --output /dev/null https://example.com 2>/dev/null; then
   echo "network-denial: FAILED - the egress canary reached the internet;" >&2

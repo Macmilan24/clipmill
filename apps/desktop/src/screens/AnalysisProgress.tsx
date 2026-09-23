@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   CircleAlert,
   CircleDashed,
   CircleSlash,
@@ -50,6 +51,8 @@ import {
   formatVideoSpec,
   readStatus,
 } from '../library/model.js';
+import './import-progress.css';
+
 import { stageFor } from '../pipeline/stages.js';
 
 export interface AnalysisProgressProps {
@@ -98,22 +101,23 @@ function StageLine({
     <div
       role="listitem"
       className={cn(
-        'flex items-center gap-3 border-b border-[var(--cm-glass-border)] px-3 py-2.5 last:border-b-0',
-        // The active row is marked by a left edge and a fill, not by colour
-        // alone: the icon and the counted progress say it too.
+        'analysis-stage flex items-center gap-3 border-b border-[var(--cm-glass-border)] px-4 py-2.5 last:border-b-0',
         active && 'border-l-2 border-l-[var(--color-primary)] bg-[var(--cm-accent-selected)]',
       )}
     >
       <span className="flex size-6 shrink-0 items-center justify-center">{style.icon}</span>
       <div className="min-w-0 flex-1">
-        <div className={cn('truncate text-body font-(--cm-weight-label)', style.text)}>
+        <div
+          className={cn('text-body font-(--cm-weight-label)', style.text)}
+          title={row.stage.detail}
+        >
           {row.stage.label}
         </div>
-        <div className={cn('truncate text-meta', SECONDARY)}>
-          {row.state === 'skipped' ? 'Not needed for this recording' : row.stage.detail}
-        </div>
-        {/* A wait with a name and a command beside it, in place of a spinner
-            that would sit there until someone guessed. */}
+        {(active || row.state === 'failed' || row.state === 'skipped') && (
+          <div className={cn('mt-0.5 text-meta', SECONDARY)}>
+            {row.state === 'skipped' ? 'Not needed for this recording' : row.stage.detail}
+          </div>
+        )}
         {waitingFor !== null && (
           <div
             className="mt-0.5 text-meta text-[var(--cm-warning-ink)]"
@@ -151,15 +155,15 @@ function SourceCard({
   readonly thumbnail: string | null;
 }): JSX.Element {
   return (
-    <Card className="glass rounded-xl">
+    <Card className="analysis-source">
       <CardHeader>
         <CardTitle className="text-section-title">Source</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex gap-3">
-          <div className="h-[54px] w-24 shrink-0 overflow-hidden rounded-[8px] bg-[var(--cm-recessed)]">
+        <div className="grid gap-3">
+          <div className="analysis-source-preview">
             {thumbnail === null ? null : (
-              <img src={thumbnail} alt="" className="size-full object-cover saturate-[0.72]" />
+              <img src={thumbnail} alt="" className="size-full object-cover" />
             )}
           </div>
           <div className="min-w-0">
@@ -187,12 +191,7 @@ function SourceCard({
   );
 }
 
-/**
- * The design shows live GPU load and temperature. Nothing samples either, so
- * this reports what the last device profile measured and says that is what it
- * is. An animated meter reading a number nobody took would be the one thing this
- * screen exists to avoid.
- */
+/** Last measured device profile, not a live resource monitor. */
 function DeviceCard({
   profile,
   cloud,
@@ -248,14 +247,7 @@ function clock(atUnixMillis: number): string {
   return new Date(atUnixMillis).toLocaleTimeString(undefined, { hour12: false });
 }
 
-/**
- * The daemon's own record of what moved, in the order it moved.
- *
- * It begins when this screen opens. The host holds one subscription for the
- * application and replays from its cursor across reconnects, so a screen opened
- * later sees transitions from that point — which is why the empty state says so
- * rather than implying the run has been silent.
- */
+/** Task transitions received since this screen opened. */
 function LiveLog({
   events,
   job,
@@ -290,7 +282,7 @@ function LiveLog({
               {events.map((event) => (
                 <li key={event.eventId} className={cn('mono flex gap-2 text-technical', SECONDARY)}>
                   <span className={MUTED}>{clock(event.atUnixMillis)}</span>
-                  <span className="truncate">{stateWord(event)}</span>
+                  <span className="min-w-0 break-words">{stateWord(event)}</span>
                 </li>
               ))}
             </ul>
@@ -372,41 +364,42 @@ export function AnalysisProgress({
   const elapsed = formatElapsed((running ? now : job.updatedUnixMillis) - job.createdUnixMillis);
 
   return (
-    <>
-      <div className="mb-4 flex items-start justify-between gap-4">
+    <div className="analysis-page">
+      <header className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <h1 className="truncate text-page-title font-(--cm-weight-heading) tracking-[-0.01em]">
+            <h1 className="workspace-title min-w-0 break-words">
               {running ? `Analyzing ${projectName}` : projectName}
             </h1>
             <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
           </div>
-          <p className={cn('mono mt-1 truncate text-meta', SECONDARY)}>
-            {source === null ? EM_DASH : source.absolutePath.split(/[/\\]/).pop()}
+          <p className={cn('mt-1 text-meta', SECONDARY)}>
+            {cloud ? 'Cloud-assisted analysis · transcript sharing enabled' : 'Local analysis'}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onBack}>
           <ArrowLeft />
           Back
         </Button>
-      </div>
+      </header>
 
-      {/* Stages finished over stages planned — a real fraction with a real
-          denominator, which is why it may be drawn. It is not a time estimate,
-          and the label counts rather than claiming a percentage. */}
-      <ProgressBar
-        value={counts.planned === 0 ? 0 : (counts.done / counts.planned) * 100}
-        className="h-1.5"
-      />
-      <div className="mt-2 mb-4 flex items-center justify-between">
-        <span className="text-meta">{active?.stage.label ?? badge.label}</span>
-        <span className={cn('mono text-technical', SECONDARY)}>
-          {counts.done} of {counts.planned} stages · {elapsed} elapsed
-        </span>
-      </div>
+      <section className="analysis-status" aria-label="Analysis progress">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-medium">{active?.stage.label ?? badge.label}</span>
+          <span className={cn('mono text-technical', SECONDARY)}>
+            {counts.done} of {counts.planned} stages · {elapsed} elapsed
+          </span>
+        </div>
+        <ProgressBar
+          aria-label="Analysis stages complete"
+          aria-valuetext={`${counts.done} of ${counts.planned} stages complete`}
+          value={counts.planned === 0 ? 0 : (counts.done / counts.planned) * 100}
+          className="h-1.5"
+        />
+      </section>
 
       {status.kind === 'failed' ? (
-        <Alert className="glass mb-4 rounded-xl">
+        <Alert variant="destructive">
           <CircleAlert className="text-[var(--color-destructive)]" />
           <AlertDescription>
             {job.failureDetail === '' ? 'The run failed.' : job.failureDetail}
@@ -414,15 +407,10 @@ export function AnalysisProgress({
         </Alert>
       ) : null}
 
-      <div className="grid grid-cols-[minmax(0,744fr)_minmax(0,400fr)] items-start gap-4">
-        <Card className="glass rounded-xl">
+      <div className="analysis-layout">
+        <Card className="analysis-pipeline">
           <CardHeader>
-            <CardTitle className="text-section-title">
-              {cloud ? 'Cloud-assisted analysis pipeline' : 'Local analysis pipeline'}
-            </CardTitle>
-            <span className={cn('mono text-technical', SECONDARY)}>
-              {counts.planned} stages · durable
-            </span>
+            <CardTitle className="text-section-title">Analysis steps</CardTitle>
           </CardHeader>
           <CardContent className="px-0" role="list" aria-label="Pipeline stages">
             {rows.map((row) => (
@@ -448,8 +436,6 @@ export function AnalysisProgress({
             spec={formatVideoSpec(sourceMap)}
             thumbnail={thumbnail}
           />
-          <DeviceCard profile={profile} cloud={cloud} />
-          <LiveLog events={events} job={job} />
           <Button
             className="w-full"
             disabled={status.kind !== 'analyzed'}
@@ -493,14 +479,20 @@ export function AnalysisProgress({
               {restartError && <p role="alert">{restartError}</p>}
             </>
           )}
-          {/* kill_on_drop: the daemon is this shell's child, so closing the app
-              stops the run. Jobs are durable and artifacts are content-addressed,
-              so reopening resumes from where it stopped rather than restarting. */}
           <p className={cn('-mt-2 text-center text-technical', MUTED)}>
             Closing ClipMill pauses the run; it resumes when you reopen.
           </p>
+          <details className="import-disclosure analysis-diagnostics">
+            <summary>
+              <ChevronDown className="size-4" /> Run details
+            </summary>
+            <div className="mt-4 grid gap-4">
+              <DeviceCard profile={profile} cloud={cloud} />
+              <LiveLog events={events} job={job} />
+            </div>
+          </details>
         </div>
       </div>
-    </>
+    </div>
   );
 }

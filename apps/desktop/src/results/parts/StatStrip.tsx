@@ -12,94 +12,62 @@ export interface StatStripProps {
   readonly bestScore: number | null;
 }
 
-interface Stat {
-  readonly label: string;
-  readonly value: number;
-  readonly ink: string;
-  readonly title: string;
-}
-
 export function StatStrip({ summary, tallies, bestScore }: StatStripProps) {
-  const stats: readonly Stat[] = [
-    {
-      label: 'Candidates',
-      value: summary.cohort,
-      ink: 'var(--cm-text-primary)',
-      title: 'Candidates available for review; model declines are listed separately.',
-    },
-    {
-      label: 'Recommended',
-      value: tallies.recommended,
-      ink: tallies.recommended > 0 ? 'var(--cm-success-ink)' : 'var(--cm-text-muted)',
-      title: `The ranker's selected set — ${summary.requested} were asked for.`,
-    },
-    {
-      label: 'Approved',
-      value: tallies.approved,
-      ink: tallies.approved > 0 ? 'var(--cm-accent)' : 'var(--cm-text-muted)',
-      title: 'Clips a person approved and sent to the editor.',
-    },
-    {
-      label: 'Flagged',
-      value: tallies.flagged,
-      ink: tallies.flagged > 0 ? 'var(--cm-danger-ink)' : 'var(--cm-text-muted)',
-      title: 'Clips the ranker recorded a warning or penalty against.',
-    },
-  ];
-
   return (
-    <section
-      className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3 border-y border-[var(--cm-glass-border)] py-3"
-      aria-label="Run summary"
-    >
-      {stats.map((stat, index) => (
-        <div key={stat.label} className="flex items-center gap-6">
-          {index > 0 && <span aria-hidden className="h-4 w-px bg-[var(--cm-glass-border)]" />}
-          <div className="flex items-baseline gap-2" title={stat.title}>
-            <span className="text-[12px] text-[var(--cm-text-secondary)]">{stat.label}</span>
-            <span className="mono text-[13px] font-medium leading-none" style={{ color: stat.ink }}>
-              {stat.value}
-            </span>
-          </div>
-        </div>
-      ))}
-
-      {(summary.declined ?? 0) > 0 && (
-        <div
-          className="flex items-baseline gap-2"
-          title="Model-declined moments remain inspectable, but are not recommendations."
-        >
-          <span className="text-[12px] text-[var(--cm-text-secondary)]">Declined</span>
-          <span className="mono text-[13px] text-[var(--cm-warning-ink)]">{summary.declined}</span>
-        </div>
-      )}
-      {bestScore !== null && (
-        <div className="ml-auto flex flex-col items-end gap-1 border-l border-[var(--cm-glass-border)] pl-8">
-          <span className="text-[12px] text-[var(--cm-text-secondary)]">Best score</span>
-          <span className="mono text-xl leading-none text-[var(--cm-text-primary)]">
-            {bestScore}
-          </span>
-        </div>
-      )}
-
-      {summary.shortfall.length > 0 && (
-        <p className="flex w-full items-start gap-2 border-t border-[var(--cm-glass-border)] pt-3 text-[12px] text-[var(--cm-warning-ink)]">
-          <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
+    <section className="results-summary" aria-label="Run summary">
+      <details className="results-summary-details">
+        <summary>
+          Analysis details{' '}
           <span>
-            {summary.requested} asked for, {summary.selected} recommended:{' '}
-            {summary.shortfall.join('; ')}
+            {tallies.recommended} recommended · {tallies.approved} approved
           </span>
-        </p>
+        </summary>
+        <div className="results-summary-content">
+          <dl>
+            <div>
+              <dt>Candidates</dt>
+              <dd>{summary.cohort}</dd>
+            </div>
+            <div>
+              <dt>Recommended</dt>
+              <dd>{tallies.recommended}</dd>
+            </div>
+            <div>
+              <dt>Approved</dt>
+              <dd>{tallies.approved}</dd>
+            </div>
+            <div>
+              <dt>Flagged</dt>
+              <dd>{tallies.flagged}</dd>
+            </div>
+            {(summary.declined ?? 0) > 0 && (
+              <div>
+                <dt>Declined</dt>
+                <dd>{summary.declined}</dd>
+              </div>
+            )}
+            {bestScore !== null && (
+              <div>
+                <dt>Best score</dt>
+                <dd>{bestScore}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      </details>
+      {(summary.selected < summary.requested || summary.shortfall.length > 0) && (
+        <div role="status" aria-label="Clip selection" className="results-caution">
+          <AlertTriangle size={15} aria-hidden />
+          <p>
+            {summary.requested} asked for, {summary.selected} recommended
+            {summary.shortfall.length > 0 ? `: ${summary.shortfall.join('; ')}` : '.'}
+          </p>
+        </div>
       )}
-
       {(summary.warnings?.length ?? 0) > 0 && (
-        <div
-          role="status"
-          aria-label="Incomplete analysis"
-          className="flex w-full items-start gap-2 border-t border-[var(--cm-glass-border)] pt-3 text-[12px] text-[var(--cm-warning-ink)]"
-        >
-          <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
-          <div className="space-y-1">
+        <div role="status" aria-label="Incomplete analysis" className="results-caution">
+          <AlertTriangle size={15} aria-hidden />
+          <div>
             <p className="font-medium">Some analysis is incomplete</p>
             {summary.warnings?.map((warning) => (
               <p key={warning}>{warning}</p>

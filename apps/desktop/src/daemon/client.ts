@@ -203,10 +203,16 @@ export interface StorageStats {
   readonly availableBytes?: number;
   /** How long an unreferenced artifact is kept. Shown, not adjustable. */
   readonly retentionGraceSeconds: number;
+  /**
+   * What cleaning up unused generated files would free now. Absent when the
+   * estimate could not be made; the clean-up re-checks everything anyway.
+   */
+  readonly reclaimableBytes?: number;
+  readonly reclaimableItems?: number;
 }
 
 export interface StorageCategory {
-  /** `artifacts`, `models`, or `state`. */
+  /** `artifacts`, `models`, `state`, `imports`, `backups` or `temporary`. */
   readonly key: string;
   readonly bytes: number;
   readonly items: number;

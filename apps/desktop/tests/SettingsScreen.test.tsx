@@ -70,17 +70,33 @@ describe('settings reads and preferences', () => {
     api.fetchStorageStats = async () => measured;
     api.fetchLocalLock = async () => locked;
     const changed = vi.fn();
+    const workspaceChanged = vi.fn();
     render(
       <SettingsScreen
         api={api}
         theme="dark"
         onThemeChange={changed}
+        workspaceTheme="paper-ink"
+        onWorkspaceThemeChange={workspaceChanged}
         integrations={<button>Connect YouTube</button>}
       />,
     );
-    const light = screen.getByRole('radio', { name: 'Light studio' });
+    const light = screen.getByRole('radio', { name: 'Light appearance' });
     fireEvent.click(light);
     expect(changed).toHaveBeenCalledWith('light');
+    expect(workspaceChanged).not.toHaveBeenCalled();
+    expect(screen.getByRole('radio', { name: 'Paper & Ink' }).getAttribute('data-state')).toBe(
+      'checked',
+    );
+    for (const [name, value] of [
+      ['Classic', 'classic'],
+      ['Warm Graphite', 'warm-graphite'],
+      ['Soft Slate', 'soft-slate'],
+    ] as const) {
+      fireEvent.click(screen.getByRole('radio', { name }));
+      expect(workspaceChanged).toHaveBeenLastCalledWith(value);
+    }
+    expect(changed).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Connect YouTube' })).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Refresh status' })).toBeTruthy(),

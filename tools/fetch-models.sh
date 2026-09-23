@@ -2,8 +2,9 @@
 # Fetch the pinned models per models/registry/ into .cache/models/, verifying
 # every file's sha256 before it is installed.
 #
-# Model acquisition is explicit and separate from analysis. The daemon reads
-# installed weights and rejects files whose digests do not match the registry.
+# Model acquisition is explicit and separate from analysis; the app's model
+# library downloads the same pins and verifies them the same way. The daemon
+# reads installed weights and rejects files whose digests do not match.
 #
 #   ./tools/fetch-models.sh                 # fetch everything pinned
 #   ./tools/fetch-models.sh silero-vad ...  # fetch named models only

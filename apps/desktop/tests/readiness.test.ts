@@ -37,7 +37,7 @@ describe('what readiness blocks and what it only names', () => {
       stageReadiness('detect-shots', { workerPresent: false }),
     ]);
     expect(submissionBlocker(report)).toBe(
-      'Models are not installed (speech-asr-weights, speech-vad-weights); run `tools/fetch-models.sh` to fetch the pinned weights.',
+      'Models are not installed (speech-asr-weights, speech-vad-weights). Download them in Models.',
     );
     expect(missingModels(report).map((stage) => stage.stage)).toEqual(['speech-asr', 'speech-vad']);
     // A stage whose model is missing is not also counted as short a worker;
