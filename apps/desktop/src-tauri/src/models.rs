@@ -5,13 +5,13 @@
 //! opening a storage folder, and even that is chosen by the category key the
 //! daemon reported rather than by a path the page supplies.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use clipmill_contracts::proto::ipc::v1::{self as ipc, request, response};
 use serde::Serialize;
 use tauri::State;
 
-use crate::{DaemonClient, DaemonSupervisor, views::StorageStatsView};
+use crate::{DaemonClient, DaemonLinkError, DaemonSupervisor, views::StorageStatsView};
 
 type Host<'a> = State<'a, Arc<DaemonSupervisor>>;
 
@@ -353,6 +353,11 @@ pub async fn forget_model(supervisor: Host<'_>, name: String) -> Result<LibraryV
     .await
 }
 
+/// How long Settings waits for a clean-up. Removing unused generated files
+/// re-verifies every file a project uses first: seconds for a small library,
+/// minutes for a large one, longer while analysis keeps the engine busy.
+const CLEAN_UP_LIMIT: Duration = Duration::from_mins(30);
+
 #[tauri::command]
 pub async fn clean_storage(supervisor: Host<'_>, action: String) -> Result<CleanView, String> {
     if !matches!(action.as_str(), "unused_files" | "temporary" | "backups") {
@@ -360,11 +365,19 @@ pub async fn clean_storage(supervisor: Host<'_>, action: String) -> Result<Clean
     }
     let reply = supervisor
         .client()
-        .call(request::Body::CleanStorage(ipc::CleanStorageRequest {
-            action,
-        }))
+        .call_within(
+            request::Body::CleanStorage(ipc::CleanStorageRequest { action }),
+            CLEAN_UP_LIMIT,
+        )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| match error {
+            // The engine finishes a clean-up it has started whether or not
+            // anyone is still waiting for the answer.
+            DaemonLinkError::TimedOut(_) => "The clean-up is still running. It finishes on its \
+                own; refresh Storage later to see the space it freed."
+                .to_owned(),
+            other => other.to_string(),
+        })?;
     match reply {
         response::Body::CleanStorage(cleaned) => Ok(CleanView {
             freed_bytes: cleaned.freed_bytes,

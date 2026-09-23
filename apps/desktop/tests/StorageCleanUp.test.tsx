@@ -46,6 +46,33 @@ describe('storage clean-up', () => {
     expect(screen.getByText(/About 3 GB can be freed now with Clean up/)).toBeTruthy();
   });
 
+  it('says what it is doing while the engine checks every file a project uses', async () => {
+    let finish: ((result: CleanResult) => void) | undefined;
+    const onCleanStorage = vi.fn(
+      () =>
+        new Promise<CleanResult>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    show({ onCleanStorage });
+
+    const media = category('Generated media');
+    fireEvent.click(within(media).getByRole('button', { name: 'Free 3 GB in Generated media' }));
+    fireEvent.click(within(media).getByRole('button', { name: 'Delete' }));
+    expect(
+      await within(media).findByText(/Checking every file your projects use before removing/),
+    ).toBeTruthy();
+    expect(
+      within(category('Database backups'))
+        .getByRole('button', { name: 'Delete old backups in Database backups' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+
+    finish?.({ freedBytes: 3 * GIB, removedItems: 41 });
+    expect(await within(media).findByText('Freed 3 GB (41 items).')).toBeTruthy();
+    expect(within(media).queryByText(/Checking every file/)).toBeNull();
+  });
+
   it('keeps the newest database backup and says so', async () => {
     const onCleanStorage = vi.fn(async () => ({ freedBytes: 300 * 1024 ** 2, removedItems: 4 }));
     show({ onCleanStorage });
