@@ -4,10 +4,17 @@ import mark from '../brand/mark.json';
 export function BrandMark({
   size = 20,
   animated = false,
+  processing = false,
   ...props
-}: SVGProps<SVGSVGElement> & { size?: number; animated?: boolean }): JSX.Element {
+}: SVGProps<SVGSVGElement> & {
+  size?: number;
+  animated?: boolean;
+  processing?: boolean;
+}): JSX.Element {
   const svg = useRef<SVGSVGElement>(null);
   const blades = useRef<SVGGElement>(null);
+  const processingRef = useRef(processing);
+  const refreshSpeed = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const element = blades.current;
@@ -19,9 +26,10 @@ export function BrandMark({
     let animation: Animation | undefined;
     let frame = 0;
     let previous = 0;
-    let speed = 1;
-    let target = 1;
     let hovered = false;
+    const desiredSpeed = () => (processingRef.current ? 10 : hovered ? 4 : 1);
+    let speed = desiredSpeed();
+    let target = speed;
 
     const easeSpeed = (now: number) => {
       const elapsed = previous ? Math.min(now - previous, 64) : 16;
@@ -46,12 +54,12 @@ export function BrandMark({
     };
     const enter = () => {
       hovered = true;
-      target = 2;
+      target = desiredSpeed();
       run();
     };
     const leave = () => {
       hovered = false;
-      target = 1;
+      target = desiredSpeed();
       run();
     };
     const motionChanged = () => {
@@ -60,15 +68,20 @@ export function BrandMark({
         frame = 0;
         animation?.pause();
       } else {
-        target = hovered ? 2 : 1;
+        target = desiredSpeed();
         run();
       }
+    };
+    refreshSpeed.current = () => {
+      target = desiredSpeed();
+      run();
     };
     hoverTarget.addEventListener('pointerenter', enter);
     hoverTarget.addEventListener('pointerleave', leave);
     reducedMotion.addEventListener('change', motionChanged);
     run();
     return () => {
+      refreshSpeed.current = null;
       cancelAnimationFrame(frame);
       animation?.cancel();
       hoverTarget.removeEventListener('pointerenter', enter);
@@ -76,6 +89,11 @@ export function BrandMark({
       reducedMotion.removeEventListener('change', motionChanged);
     };
   }, [animated]);
+
+  useEffect(() => {
+    processingRef.current = processing;
+    refreshSpeed.current?.();
+  }, [processing]);
 
   return (
     <svg
@@ -90,10 +108,16 @@ export function BrandMark({
       {...props}
     >
       <g ref={blades} className="brand-mark-blades">
-        {mark.paths.map((path) => (
-          <path key={path} d={path} />
+        {[0, 90, 180, 270].map((angle) => (
+          <path
+            key={angle}
+            d={mark.blade}
+            transform={`rotate(${angle} 50 50)`}
+            fillRule="evenodd"
+          />
         ))}
       </g>
+      <circle cx="50" cy="50" r={mark.hubRadius} />
     </svg>
   );
 }

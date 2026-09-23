@@ -27,37 +27,56 @@ afterEach(() => {
   else Reflect.deleteProperty(Element.prototype, 'animate');
 });
 
-function show() {
+function show(processing = false) {
   const view = render(
     <span data-testid="brand">
-      <BrandMark animated />
+      <BrandMark animated processing={processing} />
     </span>,
   );
   return { ...view, target: view.getByTestId('brand') };
 }
 
-it('turns slowly at rest and smoothly changes speed without moving the frame', () => {
-  const { target, unmount } = show();
+it('turns slowly at rest, accelerates on hover and during analysis without moving the hub', () => {
+  const { target, unmount, rerender } = show();
   expect(animate).toHaveBeenCalledWith(expect.any(Array), {
     duration: 30_000,
     iterations: Infinity,
   });
   expect(animate.mock.contexts[0]).toBe(target.querySelector('.brand-mark-blades'));
+  expect(target.querySelector('circle')).not.toBe(animate.mock.contexts[0]);
   expect(animation.playbackRate).toBe(1);
   expect(vi.getTimerCount()).toBe(0);
   fireEvent.pointerEnter(target);
   vi.advanceTimersByTime(160);
   expect(animation.playbackRate).toBeGreaterThan(1);
-  expect(animation.playbackRate).toBeLessThan(2);
+  expect(animation.playbackRate).toBeLessThan(4);
   vi.advanceTimersByTime(1200);
-  expect(animation.playbackRate).toBe(2);
+  expect(animation.playbackRate).toBe(4);
 
   fireEvent.pointerLeave(target);
   vi.advanceTimersByTime(160);
   expect(animation.playbackRate).toBeGreaterThan(1);
-  expect(animation.playbackRate).toBeLessThan(2);
+  expect(animation.playbackRate).toBeLessThan(4);
   vi.advanceTimersByTime(1200);
   expect(animation.playbackRate).toBe(1);
+
+  rerender(
+    <span data-testid="brand">
+      <BrandMark animated processing />
+    </span>,
+  );
+  vi.advanceTimersByTime(1600);
+  expect(animation.playbackRate).toBe(10);
+  fireEvent.pointerEnter(target);
+  vi.advanceTimersByTime(1600);
+  expect(animation.playbackRate).toBe(10);
+  rerender(
+    <span data-testid="brand">
+      <BrandMark animated />
+    </span>,
+  );
+  vi.advanceTimersByTime(1600);
+  expect(animation.playbackRate).toBe(4);
   expect(animation.pause).not.toHaveBeenCalled();
   expect(animation.cancel).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
