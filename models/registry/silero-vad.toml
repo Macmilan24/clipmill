@@ -14,7 +14,7 @@ quantization = "none"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Silero VAD"
-summary = "Finds where people speak, so transcription skips silence and music. Tiny, and runs on any computer."
+summary = "Tiny and fast. Runs on any computer."
 recommended = true
 
 [source]

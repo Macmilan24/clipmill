@@ -14,7 +14,7 @@ quantization = "ggml-f16"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Whisper Large v3 Turbo"
-summary = "More accurate transcription for accents, crosstalk and noisy rooms. Slower than Whisper Base and needs more memory."
+summary = "More accurate on accents, crosstalk and noisy rooms. Slower than Whisper Base and needs more memory."
 recommended = false
 
 [source]

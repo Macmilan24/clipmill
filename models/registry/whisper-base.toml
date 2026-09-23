@@ -14,7 +14,7 @@ quantization = "ggml-f16"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Whisper Base"
-summary = "Fast, compact transcription that runs on any computer. Used until something else is chosen or measured faster."
+summary = "Fast and compact. Runs on any computer, and is used until something else is chosen or measured faster."
 recommended = true
 
 [source]

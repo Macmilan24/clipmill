@@ -14,7 +14,7 @@ quantization = "none"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "YuNet face detection"
-summary = "Finds faces so vertical crops follow the speaker. Tiny, and runs on any computer."
+summary = "Tiny and fast. Runs on any computer."
 recommended = true
 
 [source]

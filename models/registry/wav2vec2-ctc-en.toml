@@ -15,7 +15,7 @@ quantization = "none"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Wav2Vec2 word timing (English)"
-summary = "Times every word against the audio so captions land exactly. Runs on any computer."
+summary = "English only. Runs on any computer."
 recommended = true
 
 [source]

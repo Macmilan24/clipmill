@@ -10,7 +10,7 @@ quantization = "int4"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Qwen3.5 9B"
-summary = "Finds complete moments, reviews them in context, checks visual references and drafts titles. Runs on the Apple silicon GPU."
+summary = "A 9-billion-parameter vision-language model, quantized to 4 bits, that reads the transcript and looks at frames. Runs on the Apple silicon GPU."
 recommended = true
 
 [source]
