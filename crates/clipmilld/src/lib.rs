@@ -19,6 +19,7 @@ mod inspector;
 #[cfg(unix)]
 mod ipc;
 mod jobs;
+mod library;
 mod lock;
 mod media;
 mod models;

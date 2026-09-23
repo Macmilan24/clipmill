@@ -571,10 +571,197 @@ async fn readiness_names_every_stage_an_analysis_needs_and_what_each_is_missing(
         } else {
             assert!(!stage.model_present, "{} has no weights here", stage.stage);
             assert!(!stage.missing_files.is_empty());
-            assert!(stage.remedy.contains("fetch-models"), "{}", stage.remedy);
+            assert!(
+                stage.remedy.contains("Download it in Models"),
+                "{}",
+                stage.remedy
+            );
             assert!(!stage.implementation.is_empty());
         }
     }
+
+    stop(shutdown, task).await;
+}
+
+/// The model library over the real socket: a fresh install lists every
+/// bundled model as missing, a choice needs installed weights, readiness
+/// judges the model a choice selects, and removing it returns the job to
+/// automatic. Nothing here reaches the network.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one conversation with one daemon, read top to bottom"
+)]
+async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
+    use clipmill_contracts::proto::ipc::v1::{
+        CleanStorageRequest, GetLocalLockRequest, InspectHubModelRequest, ListModelsRequest,
+        RemoveModelRequest, SetModelChoiceRequest,
+    };
+
+    let temp = workspace_tempdir();
+    let mut config = config(&temp);
+    config.models_dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+    config.weights_dir = temp.path().join("weights");
+    let weights = config.weights_dir.clone();
+    let (socket, shutdown, task) = running(config).await;
+    let ask = |id: &str, body: request::Body| {
+        let socket = socket.clone();
+        let id = id.to_owned();
+        async move {
+            send(
+                &socket,
+                Request {
+                    request_id: id,
+                    body: Some(body),
+                },
+            )
+            .await
+            .expect("response")
+        }
+    };
+
+    let listed = ask("models", request::Body::ListModels(ListModelsRequest {})).await;
+    let Some(response::Body::ModelLibrary(library)) = listed.body else {
+        panic!("expected the library, got {:?}", listed.body);
+    };
+    assert_eq!(library.models.len(), 8, "every bundled model is listed");
+    assert!(
+        library
+            .models
+            .iter()
+            .all(|model| model.install_state == "missing")
+    );
+    assert_eq!(library.jobs.len(), 5);
+    assert!(library.recommended_missing_bytes > 0);
+
+    let refused = ask(
+        "choose-missing",
+        request::Body::SetModelChoice(SetModelChoiceRequest {
+            capability: "asr".to_owned(),
+            model: "whisper-large-v3-turbo".to_owned(),
+        }),
+    )
+    .await;
+    let Some(response::Body::Error(error)) = refused.body else {
+        panic!("a model that is not installed cannot be chosen");
+    };
+    assert_eq!(error.code, ErrorCode::Conflict as i32);
+
+    // Place the pinned files at their pinned sizes: what install state reads.
+    let file = weights.join("whisper-large-v3-turbo/ggml-large-v3-turbo.bin");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::File::create(&file)
+        .unwrap()
+        .set_len(1_624_555_275)
+        .unwrap();
+    let chosen = ask(
+        "choose",
+        request::Body::SetModelChoice(SetModelChoiceRequest {
+            capability: "asr".to_owned(),
+            model: "whisper-large-v3-turbo".to_owned(),
+        }),
+    )
+    .await;
+    let Some(response::Body::ModelLibrary(library)) = chosen.body else {
+        panic!("expected the library after choosing, got {:?}", chosen.body);
+    };
+    let transcription = library
+        .jobs
+        .iter()
+        .find(|job| job.capability == "asr")
+        .expect("transcription job");
+    assert_eq!(transcription.choice, "whisper-large-v3-turbo");
+    assert_eq!(transcription.model, "whisper-large-v3-turbo");
+    assert_eq!(transcription.selected_by, "chosen");
+
+    let readiness = ask(
+        "readiness",
+        request::Body::GetReadiness(GetReadinessRequest {}),
+    )
+    .await;
+    let Some(response::Body::GetReadiness(readiness)) = readiness.body else {
+        panic!("expected readiness");
+    };
+    let asr = readiness
+        .stages
+        .iter()
+        .find(|stage| stage.stage == "speech-asr")
+        .expect("transcription stage");
+    assert_eq!(
+        asr.model, "whisper-large-v3-turbo",
+        "readiness judges the choice"
+    );
+    assert!(asr.model_present);
+
+    let removed = ask(
+        "remove",
+        request::Body::RemoveModel(RemoveModelRequest {
+            name: "whisper-large-v3-turbo".to_owned(),
+        }),
+    )
+    .await;
+    let Some(response::Body::ModelLibrary(library)) = removed.body else {
+        panic!(
+            "expected the library after removing, got {:?}",
+            removed.body
+        );
+    };
+    assert!(!file.exists());
+    let transcription = library
+        .jobs
+        .iter()
+        .find(|job| job.capability == "asr")
+        .expect("transcription job");
+    assert!(transcription.choice.is_empty(), "back to automatic");
+
+    let lock_before = ask(
+        "lock",
+        request::Body::GetLocalLock(GetLocalLockRequest::default()),
+    )
+    .await;
+    let inspected = ask(
+        "inspect",
+        request::Body::InspectHubModel(InspectHubModelRequest {
+            repo: "onnx-community/silero-vad".to_owned(),
+            revision: String::new(),
+            capability: "vad".to_owned(),
+        }),
+    )
+    .await;
+    let Some(response::Body::InspectHubModel(inspection)) = inspected.body else {
+        panic!("expected an inspection");
+    };
+    assert!(inspection.problem.contains("transcription and editorial"));
+    let lock_after = ask(
+        "lock",
+        request::Body::GetLocalLock(GetLocalLockRequest::default()),
+    )
+    .await;
+    assert_eq!(
+        lock_before, lock_after,
+        "a refusal that needed no network is not a network operation"
+    );
+
+    let cleaned = ask(
+        "clean",
+        request::Body::CleanStorage(CleanStorageRequest {
+            action: "backups".to_owned(),
+        }),
+    )
+    .await;
+    let Some(response::Body::CleanStorage(cleaned)) = cleaned.body else {
+        panic!("expected a clean-up report");
+    };
+    assert!(cleaned.storage.is_some(), "measured again after cleaning");
+    let unknown = ask(
+        "clean-unknown",
+        request::Body::CleanStorage(CleanStorageRequest {
+            action: "everything".to_owned(),
+        }),
+    )
+    .await;
+    assert!(matches!(unknown.body, Some(response::Body::Error(_))));
 
     stop(shutdown, task).await;
 }
@@ -598,7 +785,18 @@ async fn storage_is_reported_by_category_and_grows_with_what_is_published() {
             .iter()
             .map(|category| category.key.as_str())
             .collect::<Vec<_>>(),
-        vec!["artifacts", "models", "state", "imports"]
+        vec![
+            "artifacts",
+            "models",
+            "state",
+            "imports",
+            "backups",
+            "temporary"
+        ]
+    );
+    assert!(
+        before.reclaimable_known,
+        "the clean-up estimate went unread"
     );
     // A daemon that has finished starting has written its database, so a state
     // figure of zero would mean the walk found nothing rather than that nothing

@@ -136,8 +136,18 @@ impl Service {
             .ir_id
             .parse::<ArtifactId>()
             .map_err(|_| Error::Protocol)?;
-        let plan = JobPlan::youtube_metadata(&project, payload.into(), ir, &self.models, now())
-            .map_err(Error::Invalid)?;
+        let implementation = self
+            .editorial_implementation(KIND)
+            .ok_or(Error::Invalid("YouTube metadata implementation missing"))?;
+        let plan = JobPlan::youtube_metadata(
+            &project,
+            payload.into(),
+            ir,
+            &self.models,
+            implementation,
+            now(),
+        )
+        .map_err(Error::Invalid)?;
         let submitted = self
             .database
             .publishing(PublishingCommand::MetadataJob {
@@ -164,7 +174,7 @@ impl Service {
     }
 
     fn metadata_identity(&self, ir_id: &str) -> Option<GenerationIdentity> {
-        let implementation = crate::implementations::candidates_for_stage(KIND).next()?;
+        let implementation = self.editorial_implementation(KIND)?;
         let model = self.models.get(implementation.model)?;
         Some(GenerationIdentity {
             key_version: crate::jobs::YOUTUBE_METADATA_KEY_VERSION,
@@ -177,7 +187,7 @@ impl Service {
     }
 
     fn metadata_unavailable(&self) -> Option<String> {
-        let implementation = crate::implementations::candidates_for_stage(KIND).next()?;
+        let implementation = self.editorial_implementation(KIND)?;
         if self.scheduler.is_none() {
             return Some("The local task scheduler is unavailable. Restart ClipMill or keep editing manually.".into());
         }

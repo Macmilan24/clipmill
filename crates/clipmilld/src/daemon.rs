@@ -107,7 +107,10 @@ impl Daemon {
         // against different model identities. It has to exist before the
         // profiler, which measures nothing about a model it cannot identify.
         let models = Arc::new(
-            match crate::models::ModelRegistry::load(&config.models_dir) {
+            match crate::models::ModelRegistry::load_with_custom(
+                &config.models_dir,
+                &config.paths.custom_models_dir,
+            ) {
                 Ok(registry) => {
                     for summary in registry.summaries() {
                         tracing::info!(model = summary, "pinned model");
@@ -259,6 +262,17 @@ impl Daemon {
                 "one or more daemon sockets disappeared during startup".to_owned(),
             ));
         }
+        let library = crate::library::ModelLibrary::start(
+            Arc::clone(&models),
+            crate::library::LibraryPaths {
+                weights: config.weights_dir.clone(),
+                custom: config.paths.custom_models_dir.clone(),
+                choices: config.paths.model_choices.clone(),
+            },
+            Some(database.handle()),
+            Arc::clone(&policy),
+            crate::device::total_memory().await,
+        );
         let service = Service::with_scheduler(
             database.handle(),
             started_unix_millis,
@@ -273,12 +287,19 @@ impl Daemon {
                 artifacts: config.paths.artifacts_dir.clone(),
                 state: config.paths.state_dir.clone(),
                 weights: config.weights_dir.clone(),
+                backups: config.paths.backups_dir.clone(),
+                scratch: vec![
+                    config.paths.probe_scratch_dir.clone(),
+                    config.paths.media_scratch_dir.clone(),
+                    config.paths.device_profile_scratch_dir.clone(),
+                ],
             },
             config.artifact_gc_grace,
             Arc::clone(&policy),
             roster,
             decoder,
-        );
+        )
+        .with_library(library);
 
         service.recover_youtube_imports().await.map_err(|error| {
             DaemonError::Ipc(format!("cannot recover YouTube imports: {error}"))
@@ -482,6 +503,7 @@ impl Daemon {
         worker_service.stop_scheduling();
         service.stop_youtube_imports().await;
         service.stop_youtube_publishing().await;
+        service.stop_model_library().await;
         scheduler.shutdown().await;
         let _stop_sent = maintenance_stop.send(());
         if timeout(DRAIN_TIMEOUT, &mut maintenance).await.is_err() {
@@ -707,6 +729,7 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
         &config.paths.media_scratch_dir,
         &config.paths.device_profile_scratch_dir,
         &config.paths.worker_trust_dir,
+        &config.paths.custom_models_dir,
         &config.paths.run_dir,
     ] {
         fs::create_dir_all(path).map_err(|source| DaemonError::io(path, source))?;

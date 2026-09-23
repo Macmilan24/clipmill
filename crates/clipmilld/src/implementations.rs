@@ -19,7 +19,7 @@
 //! task row. Re-measuring the device later changes what the *next* plan
 //! chooses and leaves every published artifact exactly where it is.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::RwLock};
 
 /// One way to serve one capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,6 +45,12 @@ pub(crate) struct Implementation {
     /// one candidate per capability is portable: it is what an unmeasured
     /// device falls back to, and what the offline exit gate rests on.
     pub portable: bool,
+    /// Never chosen by measurement; planned only when a person picks its
+    /// model. A benchmark ranks speed, and these candidates are here for
+    /// something else — accuracy, or a model the person pinned themselves —
+    /// so ranking them by speed would choose against the reason they exist.
+    /// They stay out of the signed device profile for the same reason.
+    pub opt_in: bool,
 }
 
 /// Every implementation the daemon knows how to plan.
@@ -63,6 +69,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "onnx-cpu",
         accelerator_class: "",
         portable: true,
+        opt_in: false,
     },
     Implementation {
         name: "clipmill-worker-asr@0.1.0",
@@ -72,6 +79,20 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "cpu",
         accelerator_class: "",
         portable: true,
+        opt_in: false,
+    },
+    // The accurate end of the whisper.cpp family, on the same worker as the
+    // base model. Slower on every machine, so a benchmark that ranks speed
+    // would never pick it; it runs when a person chooses accuracy.
+    Implementation {
+        name: "clipmill-worker-asr@0.1.0/whisper-large-v3-turbo",
+        capability: "asr",
+        stage: "speech-asr",
+        model: "whisper-large-v3-turbo",
+        backend: "cpu",
+        accelerator_class: "",
+        portable: false,
+        opt_in: true,
     },
     Implementation {
         name: "clipmill-worker-speech-mlx@0.1.0/asr",
@@ -81,6 +102,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
+        opt_in: false,
     },
     Implementation {
         name: "clipmill-worker-align@0.1.0",
@@ -90,6 +112,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "onnx-cpu",
         accelerator_class: "",
         portable: true,
+        opt_in: false,
     },
     Implementation {
         name: "clipmill-worker-speech-mlx@0.1.0/align",
@@ -99,6 +122,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
+        opt_in: false,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/propose",
@@ -108,6 +132,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
+        opt_in: false,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/review",
@@ -117,6 +142,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
+        opt_in: false,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/look",
@@ -126,6 +152,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
+        opt_in: false,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/metadata",
@@ -135,6 +162,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
+        opt_in: false,
     },
     // The face detector. One candidate and no accelerated sibling: YuNet is a
     // 230 kB CPU graph whose whole appeal is having no runtime tail, and an
@@ -148,13 +176,123 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         backend: "onnx-cpu",
         accelerator_class: "",
         portable: true,
+        opt_in: false,
     },
 ];
 
-/// Every implementation registered for a stage.
-pub(crate) fn candidates_for_stage(stage: &str) -> impl Iterator<Item = &'static Implementation> {
+/// Implementations for models a person pinned, added while the daemon runs.
+///
+/// Held as `&'static` like the table above, so every consumer keeps one type
+/// and a task row can name a person's model exactly as it names a bundled one.
+/// Each entry is allocated once per model name for the life of the process —
+/// forgetting a model and pinning it again reuses what is here — so the memory
+/// is bounded by how many distinct models were ever pinned in this session.
+/// An entry whose model is no longer registered is inert: nothing can be keyed
+/// against a model the registry does not pin.
+static CUSTOM: RwLock<Vec<&'static Implementation>> = RwLock::new(Vec::new());
+
+/// The worker a person's own model can run on, per capability.
+///
+/// Only families whose worker loads whatever the lease binds: whisper.cpp
+/// reads the one GGML file a manifest pins, and the editorial worker loads an
+/// MLX model directory. The other capabilities read fixed graph formats with
+/// fixed label sets, where a different file is a different program.
+pub(crate) fn custom_runtime(capability: &str) -> Option<CustomRuntime> {
+    match capability {
+        "asr" => Some(CustomRuntime {
+            family: "whisper.cpp",
+            runtime: "whisper.cpp",
+            backend: "cpu",
+            quantization: "ggml",
+        }),
+        "editorial" => Some(CustomRuntime {
+            family: "mlx-vlm",
+            runtime: "mlx",
+            backend: "mlx",
+            quantization: "mlx",
+        }),
+        _ => None,
+    }
+}
+
+/// How a person's model for one capability is loaded.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct CustomRuntime {
+    pub family: &'static str,
+    pub runtime: &'static str,
+    pub backend: &'static str,
+    pub quantization: &'static str,
+}
+
+/// Make a person's model plannable: one implementation per stage its worker
+/// runs, each opt-in, so measurement never picks it and only a choice does.
+pub(crate) fn register_custom(model: &str, capability: &str) -> Result<(), &'static str> {
+    let runtime = custom_runtime(capability)
+        .ok_or("ClipMill has no worker that runs your own model for this job")?;
+    let mut custom = CUSTOM
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if custom
+        .iter()
+        .any(|implementation| implementation.model == model)
+    {
+        return Ok(());
+    }
+    let model: &'static str = Box::leak(model.to_owned().into_boxed_str());
+    let stages: &[(&str, &'static str)] = match capability {
+        "asr" => &[("clipmill-worker-asr@0.1.0", "speech-asr")],
+        _ => &[
+            (
+                "clipmill-worker-editorial@0.2.0/propose",
+                "editorial-propose",
+            ),
+            ("clipmill-worker-editorial@0.2.0/review", "editorial-review"),
+            ("clipmill-worker-editorial@0.2.0/look", "editorial-look"),
+            (
+                "clipmill-worker-editorial@0.2.0/metadata",
+                "youtube-metadata",
+            ),
+        ],
+    };
+    for (prefix, stage) in stages {
+        let name: &'static str = Box::leak(format!("{prefix}/custom/{model}").into_boxed_str());
+        custom.push(Box::leak(Box::new(Implementation {
+            name,
+            capability: if capability == "asr" {
+                "asr"
+            } else {
+                "editorial"
+            },
+            stage,
+            model,
+            backend: runtime.backend,
+            accelerator_class: if runtime.backend == "mlx" {
+                "metal"
+            } else {
+                ""
+            },
+            portable: false,
+            opt_in: true,
+        })));
+    }
+    Ok(())
+}
+
+/// The bundled table, then every implementation added for a pinned model.
+fn all() -> Vec<&'static Implementation> {
+    let custom = CUSTOM
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     IMPLEMENTATIONS
         .iter()
+        .chain(custom.iter().copied())
+        .collect()
+}
+
+/// Every implementation registered for a stage.
+pub(crate) fn candidates_for_stage(stage: &str) -> impl Iterator<Item = &'static Implementation> {
+    all()
+        .into_iter()
         .filter(move |implementation| implementation.stage == stage)
 }
 
@@ -162,9 +300,16 @@ pub(crate) fn candidates_for_stage(stage: &str) -> impl Iterator<Item = &'static
 pub(crate) fn candidates_for_capability(
     capability: &str,
 ) -> impl Iterator<Item = &'static Implementation> {
-    IMPLEMENTATIONS
-        .iter()
+    all()
+        .into_iter()
         .filter(move |implementation| implementation.capability == capability)
+}
+
+/// The candidates a benchmark may rank: everything but the opt-in ones.
+pub(crate) fn measured_candidates_for_capability(
+    capability: &str,
+) -> impl Iterator<Item = &'static Implementation> {
+    candidates_for_capability(capability).filter(|implementation| !implementation.opt_in)
 }
 
 /// The implementation a task was planned with.
@@ -173,9 +318,14 @@ pub(crate) fn candidates_for_capability(
 /// daemon computed and the weights it hands the worker cannot disagree: both
 /// are derived from the one string the plan committed to.
 pub(crate) fn lookup(name: &str) -> Option<&'static Implementation> {
-    IMPLEMENTATIONS
-        .iter()
+    all()
+        .into_iter()
         .find(|implementation| implementation.name == name)
+}
+
+/// The implementation of a stage that loads a given model, if any does.
+pub(crate) fn for_stage_and_model(stage: &str, model: &str) -> Option<&'static Implementation> {
+    candidates_for_stage(stage).find(|implementation| implementation.model == model)
 }
 
 /// The candidate that runs anywhere.
@@ -204,7 +354,8 @@ mod tests {
 
     use super::{
         IMPLEMENTATIONS, candidates_for_capability, candidates_for_capability_names,
-        candidates_for_stage, lookup, portable_for_stage,
+        candidates_for_stage, custom_runtime, for_stage_and_model, lookup,
+        measured_candidates_for_capability, portable_for_stage, register_custom,
     };
 
     #[test]
@@ -252,7 +403,9 @@ mod tests {
     #[test]
     fn an_accelerated_candidate_names_the_class_it_needs() {
         for implementation in IMPLEMENTATIONS {
-            if implementation.portable {
+            // An opt-in candidate is chosen by a person, never by measurement,
+            // and one of them runs on the CPU on purpose.
+            if implementation.portable || implementation.opt_in {
                 continue;
             }
             assert!(
@@ -331,7 +484,25 @@ mod tests {
 
     #[test]
     fn a_stage_resolves_to_its_candidates_and_its_fallback() {
-        assert_eq!(candidates_for_stage("speech-asr").count(), 2);
+        // Counted against the bundled table: other tests in this process may
+        // register a person's model for the same stage.
+        assert_eq!(
+            IMPLEMENTATIONS
+                .iter()
+                .filter(|implementation| implementation.stage == "speech-asr")
+                .count(),
+            3
+        );
+        assert_eq!(
+            IMPLEMENTATIONS
+                .iter()
+                .filter(
+                    |implementation| implementation.stage == "speech-asr" && !implementation.opt_in
+                )
+                .count(),
+            2,
+            "a benchmark ranks the base model against the accelerated one"
+        );
         assert_eq!(
             portable_for_stage("speech-asr").expect("a fallback").model,
             "whisper-base"
@@ -345,5 +516,63 @@ mod tests {
                 .model,
             "wav2vec2-ctc-en"
         );
+    }
+
+    /// The larger whisper model is on the table so a person can choose it,
+    /// and off the benchmark so speed never chooses against accuracy.
+    #[test]
+    fn opt_in_candidates_are_never_ranked() {
+        let large = lookup("clipmill-worker-asr@0.1.0/whisper-large-v3-turbo")
+            .expect("the accurate whisper model is plannable");
+        assert!(large.opt_in);
+        assert!(!large.portable);
+        assert!(
+            measured_candidates_for_capability("asr")
+                .all(|implementation| implementation.model != "whisper-large-v3-turbo")
+        );
+        assert_eq!(
+            for_stage_and_model("speech-asr", "whisper-large-v3-turbo").map(|found| found.name),
+            Some(large.name)
+        );
+    }
+
+    /// A person's model becomes plannable under its own implementation names,
+    /// once, and only for the families whose worker can load it.
+    #[test]
+    fn a_pinned_model_is_registered_for_every_stage_its_worker_runs() {
+        register_custom("test-whisper-pinned", "asr").expect("whisper.cpp takes any GGML model");
+        register_custom("test-whisper-pinned", "asr").expect("registering twice is harmless");
+        let transcription = candidates_for_stage("speech-asr")
+            .filter(|implementation| implementation.model == "test-whisper-pinned")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            transcription.len(),
+            1,
+            "one entry, however often registered"
+        );
+        assert_eq!(
+            transcription[0].name,
+            "clipmill-worker-asr@0.1.0/custom/test-whisper-pinned"
+        );
+        assert!(transcription[0].opt_in);
+        assert!(transcription[0].accelerator_class.is_empty());
+        assert!(lookup(transcription[0].name).is_some());
+
+        register_custom("test-editorial-pinned", "editorial").expect("MLX loads a model directory");
+        for stage in [
+            "editorial-propose",
+            "editorial-review",
+            "editorial-look",
+            "youtube-metadata",
+        ] {
+            let found = for_stage_and_model(stage, "test-editorial-pinned")
+                .unwrap_or_else(|| panic!("{stage} cannot run the pinned model"));
+            assert_eq!(found.accelerator_class, "metal");
+            assert_eq!(found.backend, "mlx");
+            assert!(found.opt_in);
+        }
+
+        assert!(register_custom("test-vad-pinned", "vad").is_err());
+        assert!(custom_runtime("detect-faces").is_none());
     }
 }

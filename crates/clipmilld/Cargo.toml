@@ -19,6 +19,7 @@ clipmill-edit-ir.workspace = true
 clipmill-editorial.workspace = true
 clipmill-evidence.workspace = true
 clipmill-export.workspace = true
+clipmill-hub.workspace = true
 clipmill-reframe.workspace = true
 clipmill-render.workspace = true
 clipmill-youtube.workspace = true
