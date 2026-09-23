@@ -1,4 +1,12 @@
-import { Boxes, Check, ChevronDown, FolderOpen, Trash2, TriangleAlert } from 'lucide-react';
+import {
+  Boxes,
+  Check,
+  ChevronDown,
+  FolderOpen,
+  Hourglass,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react';
 import { type JSX, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -38,11 +46,17 @@ export const CATEGORY_COLORS: Readonly<Record<string, string>> = {
   temporary: 'color-mix(in srgb, var(--cm-text-secondary) 45%, transparent)',
 };
 
+interface CleanUp {
+  readonly action: CleanAction;
+  readonly label: string;
+  readonly question: string;
+  readonly freeable: boolean;
+  /** Said while a clean-up that takes more than a moment runs. */
+  readonly working?: string;
+}
+
 /** What each category's clean-up is called, and what it would free now. */
-function cleanUpFor(
-  category: StorageCategory,
-  storage: StorageStats,
-): { action: CleanAction; label: string; question: string; freeable: boolean } | null {
+function cleanUpFor(category: StorageCategory, storage: StorageStats): CleanUp | null {
   switch (category.key) {
     case 'artifacts': {
       const bytes = storage.reclaimableBytes;
@@ -55,6 +69,8 @@ function cleanUpFor(
             ? `Remove ${items} generated ${items === 1 ? 'file' : 'files'} no project uses (${formatBytes(bytes)})? Files your projects use are kept, and anything removed can be made again by analysing.`
             : 'Remove generated files no project uses? Files your projects use are kept, and anything removed can be made again by analysing.',
         freeable: bytes === undefined || bytes > 0,
+        working:
+          'Checking every file your projects use before removing anything. On a large library this can take a few minutes.',
       };
     }
     case 'backups':
@@ -219,6 +235,12 @@ export function StorageCategories({
                   </Button>
                 </div>
               </div>
+            )}
+            {cleanUp?.working !== undefined && pending === cleanUp.action && (
+              <p role="status" className="storage-outcome text-[var(--cm-text-secondary)]">
+                <Hourglass aria-hidden="true" />
+                {cleanUp.working}
+              </p>
             )}
             {outcome !== null && outcome.key === category.key && (
               <p

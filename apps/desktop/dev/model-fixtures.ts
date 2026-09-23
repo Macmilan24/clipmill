@@ -408,12 +408,19 @@ export const storageWithCleanUp: StorageStats = {
   reclaimableItems: 41,
 };
 
-/** A clean-up that reports what a real one would, for the preview only. */
+/**
+ * A clean-up that reports what a real one would, for the preview only. Unused
+ * generated files take a few seconds, as the engine's check of every file a
+ * project uses does on a small library.
+ */
 export async function previewClean(action: CleanAction): Promise<CleanResult> {
   const freed: Record<CleanAction, CleanResult> = {
     unused_files: { freedBytes: 3_221_225_472, removedItems: 41 },
     backups: { freedBytes: 324_639_130, removedItems: 4 },
     temporary: { freedBytes: 12_582_912, removedItems: 4 },
   };
+  if (action === 'unused_files') {
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+  }
   return freed[action];
 }
