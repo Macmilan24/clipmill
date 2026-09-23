@@ -28,6 +28,7 @@ from clipmill_worker_sdk import (
     WorkerClient,
     WorkerConfiguration,
     WorkerIdentity,
+    memory_ceiling,
 )
 from clipmill_worker_sdk.artifacts import ArtifactVerificationError, artifact_file
 from clipmill_worker_sdk.audio import AUDIO_DESCRIPTOR, AUDIO_PAYLOAD, PcmAudio, read_pcm_audio
@@ -334,8 +335,11 @@ def main() -> int:
             capabilities=CAPABILITIES,
             backend="cpu",
             cpu_threads=1,
-            # The base model's weights plus whisper.cpp's compute buffers.
-            max_memory_bytes=768 * 1024 * 1024,
+            # Loads whichever GGML model the lease binds — the base model,
+            # the large one a person chose, or one they pinned — so the
+            # ceiling follows the machine. The floor is the base model's
+            # weights plus whisper.cpp's compute buffers.
+            max_memory_bytes=memory_ceiling(768 * 1024 * 1024),
         )
     )
     if arguments.once:
