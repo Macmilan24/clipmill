@@ -15,6 +15,9 @@ fn metadata_plan(payload: &[u8], time: u64) -> crate::jobs::JobPlan {
         payload.to_vec(),
         format!("sha256:{}", "44".repeat(32)).parse().unwrap(),
         &models,
+        crate::implementations::candidates_for_stage("youtube-metadata")
+            .next()
+            .unwrap(),
         time,
     )
     .unwrap()

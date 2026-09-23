@@ -226,6 +226,9 @@ async fn actual_repeated_deterministic_failures_stop_retry_and_keep_manual_metad
             payload.clone(),
             identity().ir_artifact_id.parse().unwrap(),
             &models,
+            crate::implementations::candidates_for_stage("youtube-metadata")
+                .next()
+                .unwrap(),
             at,
         )
         .unwrap();

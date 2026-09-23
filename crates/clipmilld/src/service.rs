@@ -1,4 +1,6 @@
 mod batch;
+mod models;
+mod storage;
 mod youtube;
 mod youtube_publish;
 
@@ -19,18 +21,17 @@ use clipmill_contracts::proto::ipc::v1::{
     ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity, ExportValidationV1,
     GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
     GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse,
-    GetReadinessResponse, GetSourceResponse, GetStorageStatsResponse, HealthResponse,
-    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
-    ListClipDecisionsResponse, ListEditDocsResponse, ListJobsResponse, ListProjectsResponse,
-    ListSourcesResponse, LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest,
-    PlanExportResponse, PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1,
-    PreviewSegmentV1, PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1,
-    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
-    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
-    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
-    SolveCropPathResponse, StageReadinessV1, StorageCategoryV1, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1,
-    WorkerPresenceV1, request, response,
+    GetReadinessResponse, GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1,
+    IngestSourcePayloadV1, ListClipDecisionsRequest, ListClipDecisionsResponse,
+    ListEditDocsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
+    LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest, PlanExportResponse,
+    PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1,
+    PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
+    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
+    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
+    StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
 };
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
@@ -94,6 +95,9 @@ pub(crate) struct Service {
     batch_admission: std::sync::Arc<tokio::sync::Mutex<()>>,
     youtube: Option<std::sync::Arc<youtube::YoutubeRuntime>>,
     publishing: std::sync::Arc<youtube_publish::PublishingRuntime>,
+    /// Which models are installed, which one does each job, and getting them.
+    /// Absent in the tests that build a service without a workspace.
+    library: Option<std::sync::Arc<crate::library::ModelLibrary>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,6 +159,7 @@ impl Service {
             batch_admission: std::sync::Arc::default(),
             youtube: None,
             publishing: std::sync::Arc::default(),
+            library: None,
         }
     }
 
@@ -202,6 +207,7 @@ impl Service {
             batch_admission: std::sync::Arc::default(),
             youtube,
             publishing: std::sync::Arc::default(),
+            library: None,
         }
     }
 
@@ -509,6 +515,20 @@ impl Service {
                 self.update_youtube_import(request_id, request_hash, asked)
                     .await
             }
+            request::Body::ListModels(_) => self.list_models(request_id),
+            request::Body::DownloadModels(asked) => self.download_models(request_id, &asked),
+            request::Body::CancelModelDownload(asked) => {
+                self.cancel_model_download(request_id, &asked)
+            }
+            request::Body::RemoveModel(asked) => self.remove_model(request_id, &asked).await,
+            request::Body::VerifyModel(asked) => self.verify_model(request_id, &asked),
+            request::Body::SetModelChoice(asked) => self.set_model_choice(request_id, &asked),
+            request::Body::InspectHubModel(asked) => {
+                self.inspect_hub_model(request_id, &asked).await
+            }
+            request::Body::AddCustomModel(asked) => self.add_custom_model(request_id, &asked).await,
+            request::Body::ForgetModel(asked) => self.forget_model(request_id, &asked).await,
+            request::Body::CleanStorage(asked) => self.clean_storage(request_id, &asked).await,
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -805,11 +825,7 @@ impl Service {
                 // from the last verified device profile — and written into the
                 // plan. A job's stages therefore agree with each other even if
                 // the device is re-measured while they run.
-                let bindings = self
-                    .scheduler
-                    .as_ref()
-                    .map(crate::jobs::SchedulerHandle::bindings)
-                    .unwrap_or_default();
+                let bindings = self.planning_bindings();
                 JobPlan::transcribe_source(
                     &project_id,
                     source_id.to_string(),
@@ -1302,11 +1318,7 @@ impl Service {
                         "this source has not been probed, so nothing knows which streams it has",
                     );
                 }
-                let bindings = self
-                    .scheduler
-                    .as_ref()
-                    .map(crate::jobs::SchedulerHandle::bindings)
-                    .unwrap_or_default();
+                let bindings = self.planning_bindings();
                 match JobPlan::analyze_source(
                     &project_id,
                     crate::jobs::AnalyzeSource {
@@ -1969,66 +1981,6 @@ impl Service {
             ),
             Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
         }
-    }
-
-    /// What this installation is using on disk, by category.
-    ///
-    /// The store answers for artifacts from manifests it already holds. The
-    /// other two are directory walks, so the whole measurement goes to a
-    /// blocking thread — small trees today, but a screen asking how much disk it
-    /// is using must never be the thing that stalls the event loop.
-    async fn get_storage_stats(&self, request_id: String) -> Reply {
-        let (Some(artifacts), Some(dirs)) = (self.artifacts.as_ref(), self.storage.clone()) else {
-            return error_reply(
-                request_id,
-                ErrorCode::Unavailable,
-                "this daemon measures no storage",
-            );
-        };
-        let Ok(usage) = artifacts.usage().await else {
-            return error_reply(
-                request_id,
-                ErrorCode::Unavailable,
-                "the artifact store is not answering",
-            );
-        };
-        let Ok(report) = tokio::task::spawn_blocking(move || dirs.measure(usage)).await else {
-            return error_reply(
-                request_id,
-                ErrorCode::Internal,
-                "the storage measurement did not finish",
-            );
-        };
-        let category = |key: &str, measured: crate::storage::Category, path: &std::path::Path| {
-            StorageCategoryV1 {
-                key: key.to_owned(),
-                bytes: measured.bytes,
-                items: measured.items,
-                path: path.to_string_lossy().into_owned(),
-            }
-        };
-        response_reply(
-            request_id,
-            response::Body::GetStorageStats(GetStorageStatsResponse {
-                categories: vec![
-                    category(
-                        crate::storage::ARTIFACTS,
-                        report.artifacts,
-                        &report.paths.artifacts,
-                    ),
-                    category(crate::storage::MODELS, report.models, &report.paths.models),
-                    category(crate::storage::STATE, report.state, &report.paths.state),
-                    category(
-                        crate::storage::IMPORTS,
-                        report.imports,
-                        &report.paths.imports,
-                    ),
-                ],
-                available_bytes: report.available_bytes.unwrap_or(0),
-                available_known: report.available_bytes.is_some(),
-                retention_grace_seconds: self.retention_grace.as_secs(),
-            }),
-        )
     }
 
     /// Authorize a media artifact and say what it holds.
@@ -3105,6 +3057,16 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ApplyEditCommand(_)) => "apply_edit_command",
         Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
+        Some(request::Body::ListModels(_)) => "list_models",
+        Some(request::Body::DownloadModels(_)) => "download_models",
+        Some(request::Body::CancelModelDownload(_)) => "cancel_model_download",
+        Some(request::Body::RemoveModel(_)) => "remove_model",
+        Some(request::Body::VerifyModel(_)) => "verify_model",
+        Some(request::Body::SetModelChoice(_)) => "set_model_choice",
+        Some(request::Body::InspectHubModel(_)) => "inspect_hub_model",
+        Some(request::Body::AddCustomModel(_)) => "add_custom_model",
+        Some(request::Body::ForgetModel(_)) => "forget_model",
+        Some(request::Body::CleanStorage(_)) => "clean_storage",
         None => "missing_body",
     }
 }
@@ -3846,24 +3808,35 @@ impl Service {
     /// The remedy names the command, because a status that says "not ready"
     /// and nothing else is a spinner with a label.
     fn get_readiness(&self, request_id: String) -> Reply {
-        let bindings = self
-            .scheduler
-            .as_ref()
-            .map(crate::jobs::SchedulerHandle::bindings)
-            .unwrap_or_default();
+        // The bindings an analysis submitted now would plan: the person's
+        // choices and the installed fallbacks included, so readiness judges
+        // the models that would actually run rather than the profile's.
+        let bindings = self.planning_bindings();
         let roster = self
             .roster
             .lock()
             .map(|workers| workers.clone())
             .unwrap_or_default();
         let weights = self.storage.as_ref().map(|dirs| dirs.weights.clone());
+        let capacity = self
+            .scheduler
+            .as_ref()
+            .map(crate::jobs::SchedulerHandle::machine_capacity);
         let mut stages = Vec::new();
         for binding in bindings.iter() {
+            // Publishing copy is not part of an analysis; its screen asks.
+            if binding.stage == "youtube-metadata" {
+                continue;
+            }
             let (present, missing) = weights.as_deref().map_or_else(
                 || (false, vec![binding.model.clone()]),
                 |root| self.model_files_present(&binding.model, root),
             );
-            stages.push(stage_readiness(
+            let resident = self
+                .models
+                .get(&binding.model)
+                .map(|model| model.memory.resident_bytes());
+            let mut readiness = stage_readiness(
                 &binding.stage,
                 &binding.capability,
                 &binding.implementation,
@@ -3872,37 +3845,12 @@ impl Service {
                 present,
                 missing,
                 roster.values().any(|worker| worker.serves(&binding.stage)),
-            ));
-        }
-        // Editorial is a user-selected Qwen model, independent of speech benchmarks.
-        for kind in ["editorial-propose", "editorial-review", "editorial-look"] {
-            if let Some(implementation) = crate::implementations::candidates_for_stage(kind).next()
-            {
-                let (present, missing) = weights.as_deref().map_or_else(
-                    || (false, vec![implementation.model.to_owned()]),
-                    |root| self.model_files_present(implementation.model, root),
-                );
-                let mut readiness = stage_readiness(
-                    kind,
-                    "editorial",
-                    implementation.name,
-                    implementation.model,
-                    implementation.backend,
-                    present,
-                    missing,
-                    roster.values().any(|worker| worker.serves(kind)),
-                );
-                check_editorial_capacity(
-                    &mut readiness,
-                    self.scheduler
-                        .as_ref()
-                        .map(crate::jobs::SchedulerHandle::machine_capacity),
-                    self.models
-                        .get(implementation.model)
-                        .map(|model| model.memory.resident_bytes()),
-                );
-                stages.push(readiness);
+            );
+            check_worker_ceiling(&mut readiness, &roster, resident);
+            if binding.capability == "editorial" {
+                check_editorial_capacity(&mut readiness, capacity, resident);
             }
+            stages.push(readiness);
         }
         // These stages need a connected worker but no local model files.
         for kind in crate::recipes::stages_with_network_policy(NetworkPolicy::NetworkAllowed)
@@ -4018,6 +3966,45 @@ fn local_analysis_stages_ready(stages: &[StageReadinessV1]) -> bool {
         .all(|stage| stage.ready)
 }
 
+/// A connected worker takes only tasks whose model fits the memory ceiling
+/// it declared and signed. When every worker serving the stage declared less
+/// than the chosen model needs, the task would wait for a worker that can
+/// never take it — so the stage is not ready, and says why.
+fn check_worker_ceiling(
+    readiness: &mut StageReadinessV1,
+    roster: &std::collections::BTreeMap<String, crate::worker::WorkerPresence>,
+    required: Option<u64>,
+) {
+    let Some(required) = required else {
+        return;
+    };
+    if !readiness.ready {
+        return;
+    }
+    let serving = roster
+        .values()
+        .filter(|worker| worker.serves(&readiness.stage))
+        .collect::<Vec<_>>();
+    if serving
+        .iter()
+        .any(|worker| worker.max_memory_bytes >= required)
+    {
+        return;
+    }
+    let largest = serving
+        .iter()
+        .map(|worker| worker.max_memory_bytes)
+        .max()
+        .unwrap_or(0);
+    readiness.ready = false;
+    readiness.remedy = format!(
+        "{} needs about {} MiB, and the connected worker accepts models up to {} MiB. Restart the workers so they size themselves for this device, or choose a smaller model in Models.",
+        readiness.model,
+        required.div_ceil(1024 * 1024),
+        largest / (1024 * 1024)
+    );
+}
+
 fn check_editorial_capacity(
     readiness: &mut StageReadinessV1,
     capacity: Option<crate::jobs::ResourceCapacity>,
@@ -4031,18 +4018,23 @@ fn check_editorial_capacity(
     };
     if capacity.accelerator_mask & crate::jobs::accelerator_bit("metal").unwrap_or(0) == 0 {
         readiness.ready = false;
-        "Qwen has not passed its local runtime check. Restart `just workers` to run the check, then refresh readiness.".clone_into(&mut readiness.remedy);
+        readiness.remedy = format!(
+            "{} has not passed its local runtime check. Restart `just workers` to run the check, then refresh readiness.",
+            readiness.model
+        );
     } else if capacity.ram_bytes < required {
         readiness.ready = false;
         readiness.remedy = if cfg!(target_os = "macos") {
             format!(
-                "Qwen needs {} MiB; this Mac's physical-memory processing budget is {} MiB. Use a smaller model or a Mac with more memory. Current free memory does not block admission.",
+                "{} needs {} MiB; this Mac's physical-memory processing budget is {} MiB. Choose a smaller editorial model in Models, or use a Mac with more memory. Current free memory does not block admission.",
+                readiness.model,
                 required.div_ceil(1024 * 1024),
                 capacity.ram_bytes / (1024 * 1024)
             )
         } else {
             format!(
-                "Qwen needs {} MiB of schedulable memory; {} MiB is available. Close memory-heavy applications, rescan in Models, then refresh readiness.",
+                "{} needs {} MiB of schedulable memory; {} MiB is available. Close memory-heavy applications, rescan in Models, then refresh readiness.",
+                readiness.model,
                 required.div_ceil(1024 * 1024),
                 capacity.ram_bytes / (1024 * 1024)
             )
@@ -4065,8 +4057,8 @@ fn stage_readiness(
     let remedy = match (model_present, worker_present) {
         (true, true) => String::new(),
         (false, _) => format!(
-            "The model {model} is not installed: run `tools/fetch-models.sh {model}` to fetch the \
-             pinned weights ({} file(s) missing).",
+            "{model} is not installed ({} file(s) missing). Download it in Models, or choose \
+             another model for this job there.",
             missing_files.len()
         ),
         (true, false)

@@ -6,7 +6,7 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectResponse, DeleteProjectResponse, Project, Response, response,
+    CreateProjectResponse, DeleteProjectResponse, Project, Response, TaskState, response,
 };
 use clipmill_core::{ArtifactId, ProjectId};
 use prost::Message;
@@ -180,6 +180,10 @@ impl DbActor {
                                 }
                                 Command::ListArtifactRoots { reply } => {
                                     let _result = reply.send(list_artifact_roots(&connection));
+                                }
+                                Command::UnfinishedImplementations { reply } => {
+                                    let _result =
+                                        reply.send(unfinished_implementations(&connection));
                                 }
                                 Command::ArtifactIsProjectOutput {
                                     project_id,
@@ -823,6 +827,17 @@ impl DbHandle {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListArtifactRoots { reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Every implementation an unfinished task was planned with: what the
+    /// model library must not remove from under a running analysis.
+    pub(crate) async fn unfinished_implementations(&self) -> Result<Vec<String>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::UnfinishedImplementations { reply })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1576,6 +1591,9 @@ enum Command {
     ListArtifactRoots {
         reply: oneshot::Sender<Result<Vec<ArtifactId>, StoreError>>,
     },
+    UnfinishedImplementations {
+        reply: oneshot::Sender<Result<Vec<String>, StoreError>>,
+    },
     SubmitJob {
         request_id: String,
         request_hash: [u8; 32],
@@ -2174,6 +2192,26 @@ fn attach_artifact_root(
     )?;
     transaction.commit()?;
     Ok(())
+}
+
+/// Planned, admitted, running or waiting to retry: every state a task can
+/// still lease a model from. A finished task never loads its weights again.
+fn unfinished_implementations(connection: &Connection) -> Result<Vec<String>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT implementation FROM tasks
+         WHERE state IN (?1, ?2, ?3, ?4) AND implementation <> ''
+         ORDER BY implementation ASC",
+    )?;
+    let rows = statement.query_map(
+        params![
+            TaskState::Planned as i32,
+            TaskState::Admitted as i32,
+            TaskState::Running as i32,
+            TaskState::Retryable as i32,
+        ],
+        |row| row.get::<_, String>(0),
+    )?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, StoreError> {

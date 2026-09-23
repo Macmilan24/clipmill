@@ -94,7 +94,7 @@ EXPORT_SEVERITY_BLOCKING: ExportSeverity
 EXPORT_SEVERITY_ADVISORY: ExportSeverity
 
 class Request(_message.Message):
-    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "submit_export_batch", "list_export_batches", "update_export_batch_item", "start_youtube_import", "get_youtube_import", "list_youtube_imports", "update_youtube_import", "configure_youtube_publishing", "connect_youtube_channel", "get_youtube_publishing_status", "update_youtube_connection", "start_youtube_upload", "get_youtube_upload", "list_youtube_uploads", "update_youtube_upload", "publish_youtube_upload", "draft_youtube_metadata")
+    __slots__ = ("request_id", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "subscribe_task_events", "get_device_profile", "get_job", "list_jobs", "cancel_job", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "submit_export_batch", "list_export_batches", "update_export_batch_item", "start_youtube_import", "get_youtube_import", "list_youtube_imports", "update_youtube_import", "configure_youtube_publishing", "connect_youtube_channel", "get_youtube_publishing_status", "update_youtube_connection", "start_youtube_upload", "get_youtube_upload", "list_youtube_uploads", "update_youtube_upload", "publish_youtube_upload", "draft_youtube_metadata", "list_models", "download_models", "cancel_model_download", "remove_model", "verify_model", "set_model_choice", "inspect_hub_model", "add_custom_model", "forget_model", "clean_storage")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
@@ -146,6 +146,16 @@ class Request(_message.Message):
     UPDATE_YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
     PUBLISH_YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
     DRAFT_YOUTUBE_METADATA_FIELD_NUMBER: _ClassVar[int]
+    LIST_MODELS_FIELD_NUMBER: _ClassVar[int]
+    DOWNLOAD_MODELS_FIELD_NUMBER: _ClassVar[int]
+    CANCEL_MODEL_DOWNLOAD_FIELD_NUMBER: _ClassVar[int]
+    REMOVE_MODEL_FIELD_NUMBER: _ClassVar[int]
+    VERIFY_MODEL_FIELD_NUMBER: _ClassVar[int]
+    SET_MODEL_CHOICE_FIELD_NUMBER: _ClassVar[int]
+    INSPECT_HUB_MODEL_FIELD_NUMBER: _ClassVar[int]
+    ADD_CUSTOM_MODEL_FIELD_NUMBER: _ClassVar[int]
+    FORGET_MODEL_FIELD_NUMBER: _ClassVar[int]
+    CLEAN_STORAGE_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     ping: _ping_pb2.PingRequest
     health: HealthRequest
@@ -197,10 +207,20 @@ class Request(_message.Message):
     update_youtube_upload: UpdateYoutubeUploadRequest
     publish_youtube_upload: PublishYoutubeUploadRequest
     draft_youtube_metadata: DraftYoutubeMetadataRequest
-    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessRequest, _Mapping]] = ..., submit_export_batch: _Optional[_Union[SubmitExportBatchRequest, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesRequest, _Mapping]] = ..., update_export_batch_item: _Optional[_Union[UpdateExportBatchItemRequest, _Mapping]] = ..., start_youtube_import: _Optional[_Union[StartYoutubeImportRequest, _Mapping]] = ..., get_youtube_import: _Optional[_Union[GetYoutubeImportRequest, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsRequest, _Mapping]] = ..., update_youtube_import: _Optional[_Union[UpdateYoutubeImportRequest, _Mapping]] = ..., configure_youtube_publishing: _Optional[_Union[ConfigureYoutubePublishingRequest, _Mapping]] = ..., connect_youtube_channel: _Optional[_Union[ConnectYoutubeChannelRequest, _Mapping]] = ..., get_youtube_publishing_status: _Optional[_Union[GetYoutubePublishingStatusRequest, _Mapping]] = ..., update_youtube_connection: _Optional[_Union[UpdateYoutubeConnectionRequest, _Mapping]] = ..., start_youtube_upload: _Optional[_Union[StartYoutubeUploadRequest, _Mapping]] = ..., get_youtube_upload: _Optional[_Union[GetYoutubeUploadRequest, _Mapping]] = ..., list_youtube_uploads: _Optional[_Union[ListYoutubeUploadsRequest, _Mapping]] = ..., update_youtube_upload: _Optional[_Union[UpdateYoutubeUploadRequest, _Mapping]] = ..., publish_youtube_upload: _Optional[_Union[PublishYoutubeUploadRequest, _Mapping]] = ..., draft_youtube_metadata: _Optional[_Union[DraftYoutubeMetadataRequest, _Mapping]] = ...) -> None: ...
+    list_models: ListModelsRequest
+    download_models: DownloadModelsRequest
+    cancel_model_download: CancelModelDownloadRequest
+    remove_model: RemoveModelRequest
+    verify_model: VerifyModelRequest
+    set_model_choice: SetModelChoiceRequest
+    inspect_hub_model: InspectHubModelRequest
+    add_custom_model: AddCustomModelRequest
+    forget_model: ForgetModelRequest
+    clean_storage: CleanStorageRequest
+    def __init__(self, request_id: _Optional[str] = ..., ping: _Optional[_Union[_ping_pb2.PingRequest, _Mapping]] = ..., health: _Optional[_Union[HealthRequest, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectRequest, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectRequest, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsRequest, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectRequest, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobRequest, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsRequest, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileRequest, _Mapping]] = ..., get_job: _Optional[_Union[GetJobRequest, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsRequest, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobRequest, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceRequest, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceRequest, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesRequest, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocRequest, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandRequest, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocRequest, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocRequest, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactRequest, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaRequest, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsRequest, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathRequest, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipRequest, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionRequest, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsRequest, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanRequest, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsRequest, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportRequest, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipRequest, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveRequest, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockRequest, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessRequest, _Mapping]] = ..., submit_export_batch: _Optional[_Union[SubmitExportBatchRequest, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesRequest, _Mapping]] = ..., update_export_batch_item: _Optional[_Union[UpdateExportBatchItemRequest, _Mapping]] = ..., start_youtube_import: _Optional[_Union[StartYoutubeImportRequest, _Mapping]] = ..., get_youtube_import: _Optional[_Union[GetYoutubeImportRequest, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsRequest, _Mapping]] = ..., update_youtube_import: _Optional[_Union[UpdateYoutubeImportRequest, _Mapping]] = ..., configure_youtube_publishing: _Optional[_Union[ConfigureYoutubePublishingRequest, _Mapping]] = ..., connect_youtube_channel: _Optional[_Union[ConnectYoutubeChannelRequest, _Mapping]] = ..., get_youtube_publishing_status: _Optional[_Union[GetYoutubePublishingStatusRequest, _Mapping]] = ..., update_youtube_connection: _Optional[_Union[UpdateYoutubeConnectionRequest, _Mapping]] = ..., start_youtube_upload: _Optional[_Union[StartYoutubeUploadRequest, _Mapping]] = ..., get_youtube_upload: _Optional[_Union[GetYoutubeUploadRequest, _Mapping]] = ..., list_youtube_uploads: _Optional[_Union[ListYoutubeUploadsRequest, _Mapping]] = ..., update_youtube_upload: _Optional[_Union[UpdateYoutubeUploadRequest, _Mapping]] = ..., publish_youtube_upload: _Optional[_Union[PublishYoutubeUploadRequest, _Mapping]] = ..., draft_youtube_metadata: _Optional[_Union[DraftYoutubeMetadataRequest, _Mapping]] = ..., list_models: _Optional[_Union[ListModelsRequest, _Mapping]] = ..., download_models: _Optional[_Union[DownloadModelsRequest, _Mapping]] = ..., cancel_model_download: _Optional[_Union[CancelModelDownloadRequest, _Mapping]] = ..., remove_model: _Optional[_Union[RemoveModelRequest, _Mapping]] = ..., verify_model: _Optional[_Union[VerifyModelRequest, _Mapping]] = ..., set_model_choice: _Optional[_Union[SetModelChoiceRequest, _Mapping]] = ..., inspect_hub_model: _Optional[_Union[InspectHubModelRequest, _Mapping]] = ..., add_custom_model: _Optional[_Union[AddCustomModelRequest, _Mapping]] = ..., forget_model: _Optional[_Union[ForgetModelRequest, _Mapping]] = ..., clean_storage: _Optional[_Union[CleanStorageRequest, _Mapping]] = ...) -> None: ...
 
 class Response(_message.Message):
-    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "export_batch", "list_export_batches", "youtube_import", "list_youtube_imports", "youtube_publishing_status", "youtube_connect", "youtube_upload", "list_youtube_uploads", "draft_youtube_metadata")
+    __slots__ = ("request_id", "error", "ping", "health", "create_project", "get_project", "list_projects", "delete_project", "submit_job", "task_event", "get_device_profile", "get_job", "list_jobs", "cancel_job", "subscribe_task_events", "register_source", "get_source", "list_sources", "create_edit_doc", "apply_edit_command", "get_edit_doc", "snapshot_edit_doc", "read_artifact", "resolve_media", "get_storage_stats", "solve_crop_path", "direct_clip", "set_clip_decision", "list_clip_decisions", "get_preview_plan", "list_edit_docs", "plan_export", "export_clip", "export_archive", "get_local_lock", "get_readiness", "export_batch", "list_export_batches", "youtube_import", "list_youtube_imports", "youtube_publishing_status", "youtube_connect", "youtube_upload", "list_youtube_uploads", "draft_youtube_metadata", "model_library", "inspect_hub_model", "clean_storage")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
     PING_FIELD_NUMBER: _ClassVar[int]
@@ -246,6 +266,9 @@ class Response(_message.Message):
     YOUTUBE_UPLOAD_FIELD_NUMBER: _ClassVar[int]
     LIST_YOUTUBE_UPLOADS_FIELD_NUMBER: _ClassVar[int]
     DRAFT_YOUTUBE_METADATA_FIELD_NUMBER: _ClassVar[int]
+    MODEL_LIBRARY_FIELD_NUMBER: _ClassVar[int]
+    INSPECT_HUB_MODEL_FIELD_NUMBER: _ClassVar[int]
+    CLEAN_STORAGE_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     error: Error
     ping: _ping_pb2.PingResponse
@@ -291,7 +314,10 @@ class Response(_message.Message):
     youtube_upload: YoutubeUploadResponse
     list_youtube_uploads: ListYoutubeUploadsResponse
     draft_youtube_metadata: DraftYoutubeMetadataResponse
-    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessResponse, _Mapping]] = ..., export_batch: _Optional[_Union[ExportBatchResponse, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesResponse, _Mapping]] = ..., youtube_import: _Optional[_Union[YoutubeImportResponse, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsResponse, _Mapping]] = ..., youtube_publishing_status: _Optional[_Union[YoutubePublishingStatusResponse, _Mapping]] = ..., youtube_connect: _Optional[_Union[YoutubeConnectResponse, _Mapping]] = ..., youtube_upload: _Optional[_Union[YoutubeUploadResponse, _Mapping]] = ..., list_youtube_uploads: _Optional[_Union[ListYoutubeUploadsResponse, _Mapping]] = ..., draft_youtube_metadata: _Optional[_Union[DraftYoutubeMetadataResponse, _Mapping]] = ...) -> None: ...
+    model_library: ListModelsResponse
+    inspect_hub_model: InspectHubModelResponse
+    clean_storage: CleanStorageResponse
+    def __init__(self, request_id: _Optional[str] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., ping: _Optional[_Union[_ping_pb2.PingResponse, _Mapping]] = ..., health: _Optional[_Union[HealthResponse, _Mapping]] = ..., create_project: _Optional[_Union[CreateProjectResponse, _Mapping]] = ..., get_project: _Optional[_Union[GetProjectResponse, _Mapping]] = ..., list_projects: _Optional[_Union[ListProjectsResponse, _Mapping]] = ..., delete_project: _Optional[_Union[DeleteProjectResponse, _Mapping]] = ..., submit_job: _Optional[_Union[SubmitJobResponse, _Mapping]] = ..., task_event: _Optional[_Union[TaskEvent, _Mapping]] = ..., get_device_profile: _Optional[_Union[GetDeviceProfileResponse, _Mapping]] = ..., get_job: _Optional[_Union[GetJobResponse, _Mapping]] = ..., list_jobs: _Optional[_Union[ListJobsResponse, _Mapping]] = ..., cancel_job: _Optional[_Union[CancelJobResponse, _Mapping]] = ..., subscribe_task_events: _Optional[_Union[SubscribeTaskEventsResponse, _Mapping]] = ..., register_source: _Optional[_Union[RegisterSourceResponse, _Mapping]] = ..., get_source: _Optional[_Union[GetSourceResponse, _Mapping]] = ..., list_sources: _Optional[_Union[ListSourcesResponse, _Mapping]] = ..., create_edit_doc: _Optional[_Union[CreateEditDocResponse, _Mapping]] = ..., apply_edit_command: _Optional[_Union[ApplyEditCommandResponse, _Mapping]] = ..., get_edit_doc: _Optional[_Union[GetEditDocResponse, _Mapping]] = ..., snapshot_edit_doc: _Optional[_Union[SnapshotEditDocResponse, _Mapping]] = ..., read_artifact: _Optional[_Union[ReadArtifactResponse, _Mapping]] = ..., resolve_media: _Optional[_Union[ResolveMediaResponse, _Mapping]] = ..., get_storage_stats: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ..., solve_crop_path: _Optional[_Union[SolveCropPathResponse, _Mapping]] = ..., direct_clip: _Optional[_Union[DirectClipResponse, _Mapping]] = ..., set_clip_decision: _Optional[_Union[SetClipDecisionResponse, _Mapping]] = ..., list_clip_decisions: _Optional[_Union[ListClipDecisionsResponse, _Mapping]] = ..., get_preview_plan: _Optional[_Union[GetPreviewPlanResponse, _Mapping]] = ..., list_edit_docs: _Optional[_Union[ListEditDocsResponse, _Mapping]] = ..., plan_export: _Optional[_Union[PlanExportResponse, _Mapping]] = ..., export_clip: _Optional[_Union[ExportClipResponse, _Mapping]] = ..., export_archive: _Optional[_Union[ExportArchiveResponse, _Mapping]] = ..., get_local_lock: _Optional[_Union[GetLocalLockResponse, _Mapping]] = ..., get_readiness: _Optional[_Union[GetReadinessResponse, _Mapping]] = ..., export_batch: _Optional[_Union[ExportBatchResponse, _Mapping]] = ..., list_export_batches: _Optional[_Union[ListExportBatchesResponse, _Mapping]] = ..., youtube_import: _Optional[_Union[YoutubeImportResponse, _Mapping]] = ..., list_youtube_imports: _Optional[_Union[ListYoutubeImportsResponse, _Mapping]] = ..., youtube_publishing_status: _Optional[_Union[YoutubePublishingStatusResponse, _Mapping]] = ..., youtube_connect: _Optional[_Union[YoutubeConnectResponse, _Mapping]] = ..., youtube_upload: _Optional[_Union[YoutubeUploadResponse, _Mapping]] = ..., list_youtube_uploads: _Optional[_Union[ListYoutubeUploadsResponse, _Mapping]] = ..., draft_youtube_metadata: _Optional[_Union[DraftYoutubeMetadataResponse, _Mapping]] = ..., model_library: _Optional[_Union[ListModelsResponse, _Mapping]] = ..., inspect_hub_model: _Optional[_Union[InspectHubModelResponse, _Mapping]] = ..., clean_storage: _Optional[_Union[CleanStorageResponse, _Mapping]] = ...) -> None: ...
 
 class Error(_message.Message):
     __slots__ = ("code", "message")
@@ -952,16 +978,22 @@ class GetStorageStatsRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class GetStorageStatsResponse(_message.Message):
-    __slots__ = ("categories", "available_bytes", "available_known", "retention_grace_seconds")
+    __slots__ = ("categories", "available_bytes", "available_known", "retention_grace_seconds", "reclaimable_bytes", "reclaimable_items", "reclaimable_known")
     CATEGORIES_FIELD_NUMBER: _ClassVar[int]
     AVAILABLE_BYTES_FIELD_NUMBER: _ClassVar[int]
     AVAILABLE_KNOWN_FIELD_NUMBER: _ClassVar[int]
     RETENTION_GRACE_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    RECLAIMABLE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    RECLAIMABLE_ITEMS_FIELD_NUMBER: _ClassVar[int]
+    RECLAIMABLE_KNOWN_FIELD_NUMBER: _ClassVar[int]
     categories: _containers.RepeatedCompositeFieldContainer[StorageCategoryV1]
     available_bytes: int
     available_known: bool
     retention_grace_seconds: int
-    def __init__(self, categories: _Optional[_Iterable[_Union[StorageCategoryV1, _Mapping]]] = ..., available_bytes: _Optional[int] = ..., available_known: _Optional[bool] = ..., retention_grace_seconds: _Optional[int] = ...) -> None: ...
+    reclaimable_bytes: int
+    reclaimable_items: int
+    reclaimable_known: bool
+    def __init__(self, categories: _Optional[_Iterable[_Union[StorageCategoryV1, _Mapping]]] = ..., available_bytes: _Optional[int] = ..., available_known: _Optional[bool] = ..., retention_grace_seconds: _Optional[int] = ..., reclaimable_bytes: _Optional[int] = ..., reclaimable_items: _Optional[int] = ..., reclaimable_known: _Optional[bool] = ...) -> None: ...
 
 class StorageCategoryV1(_message.Message):
     __slots__ = ("key", "bytes", "items", "path")
@@ -2024,3 +2056,227 @@ class YoutubeMetadataTaskPayloadV1(_message.Message):
     prompt_digest: str
     max_output_tokens: int
     def __init__(self, key_version: _Optional[str] = ..., ir_artifact_id: _Optional[str] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ...) -> None: ...
+
+class ListModelsRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ModelV1(_message.Message):
+    __slots__ = ("name", "title", "summary", "capability", "runtime", "backend", "quantization", "license_spdx", "source_repo", "source_revision", "download_bytes", "memory_bytes", "recommended", "supported", "unsupported_reason", "memory_fit", "custom", "install_state", "installed_bytes", "download", "in_use")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SUMMARY_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    RUNTIME_FIELD_NUMBER: _ClassVar[int]
+    BACKEND_FIELD_NUMBER: _ClassVar[int]
+    QUANTIZATION_FIELD_NUMBER: _ClassVar[int]
+    LICENSE_SPDX_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_REPO_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_REVISION_FIELD_NUMBER: _ClassVar[int]
+    DOWNLOAD_BYTES_FIELD_NUMBER: _ClassVar[int]
+    MEMORY_BYTES_FIELD_NUMBER: _ClassVar[int]
+    RECOMMENDED_FIELD_NUMBER: _ClassVar[int]
+    SUPPORTED_FIELD_NUMBER: _ClassVar[int]
+    UNSUPPORTED_REASON_FIELD_NUMBER: _ClassVar[int]
+    MEMORY_FIT_FIELD_NUMBER: _ClassVar[int]
+    CUSTOM_FIELD_NUMBER: _ClassVar[int]
+    INSTALL_STATE_FIELD_NUMBER: _ClassVar[int]
+    INSTALLED_BYTES_FIELD_NUMBER: _ClassVar[int]
+    DOWNLOAD_FIELD_NUMBER: _ClassVar[int]
+    IN_USE_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    title: str
+    summary: str
+    capability: str
+    runtime: str
+    backend: str
+    quantization: str
+    license_spdx: str
+    source_repo: str
+    source_revision: str
+    download_bytes: int
+    memory_bytes: int
+    recommended: bool
+    supported: bool
+    unsupported_reason: str
+    memory_fit: str
+    custom: bool
+    install_state: str
+    installed_bytes: int
+    download: ModelDownloadV1
+    in_use: bool
+    def __init__(self, name: _Optional[str] = ..., title: _Optional[str] = ..., summary: _Optional[str] = ..., capability: _Optional[str] = ..., runtime: _Optional[str] = ..., backend: _Optional[str] = ..., quantization: _Optional[str] = ..., license_spdx: _Optional[str] = ..., source_repo: _Optional[str] = ..., source_revision: _Optional[str] = ..., download_bytes: _Optional[int] = ..., memory_bytes: _Optional[int] = ..., recommended: _Optional[bool] = ..., supported: _Optional[bool] = ..., unsupported_reason: _Optional[str] = ..., memory_fit: _Optional[str] = ..., custom: _Optional[bool] = ..., install_state: _Optional[str] = ..., installed_bytes: _Optional[int] = ..., download: _Optional[_Union[ModelDownloadV1, _Mapping]] = ..., in_use: _Optional[bool] = ...) -> None: ...
+
+class ModelDownloadV1(_message.Message):
+    __slots__ = ("state", "received_bytes", "total_bytes", "current_file", "error", "updated_unix_millis")
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    RECEIVED_BYTES_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_BYTES_FIELD_NUMBER: _ClassVar[int]
+    CURRENT_FILE_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    state: str
+    received_bytes: int
+    total_bytes: int
+    current_file: str
+    error: str
+    updated_unix_millis: int
+    def __init__(self, state: _Optional[str] = ..., received_bytes: _Optional[int] = ..., total_bytes: _Optional[int] = ..., current_file: _Optional[str] = ..., error: _Optional[str] = ..., updated_unix_millis: _Optional[int] = ...) -> None: ...
+
+class ModelJobV1(_message.Message):
+    __slots__ = ("capability", "title", "summary", "model", "selected_by", "choice", "models")
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SUMMARY_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    SELECTED_BY_FIELD_NUMBER: _ClassVar[int]
+    CHOICE_FIELD_NUMBER: _ClassVar[int]
+    MODELS_FIELD_NUMBER: _ClassVar[int]
+    capability: str
+    title: str
+    summary: str
+    model: str
+    selected_by: str
+    choice: str
+    models: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, capability: _Optional[str] = ..., title: _Optional[str] = ..., summary: _Optional[str] = ..., model: _Optional[str] = ..., selected_by: _Optional[str] = ..., choice: _Optional[str] = ..., models: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class ListModelsResponse(_message.Message):
+    __slots__ = ("models", "jobs", "install_path", "available_bytes", "available_known", "memory_total_bytes", "memory_budget_bytes", "recommended_missing_bytes", "recommended_missing")
+    MODELS_FIELD_NUMBER: _ClassVar[int]
+    JOBS_FIELD_NUMBER: _ClassVar[int]
+    INSTALL_PATH_FIELD_NUMBER: _ClassVar[int]
+    AVAILABLE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    AVAILABLE_KNOWN_FIELD_NUMBER: _ClassVar[int]
+    MEMORY_TOTAL_BYTES_FIELD_NUMBER: _ClassVar[int]
+    MEMORY_BUDGET_BYTES_FIELD_NUMBER: _ClassVar[int]
+    RECOMMENDED_MISSING_BYTES_FIELD_NUMBER: _ClassVar[int]
+    RECOMMENDED_MISSING_FIELD_NUMBER: _ClassVar[int]
+    models: _containers.RepeatedCompositeFieldContainer[ModelV1]
+    jobs: _containers.RepeatedCompositeFieldContainer[ModelJobV1]
+    install_path: str
+    available_bytes: int
+    available_known: bool
+    memory_total_bytes: int
+    memory_budget_bytes: int
+    recommended_missing_bytes: int
+    recommended_missing: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, models: _Optional[_Iterable[_Union[ModelV1, _Mapping]]] = ..., jobs: _Optional[_Iterable[_Union[ModelJobV1, _Mapping]]] = ..., install_path: _Optional[str] = ..., available_bytes: _Optional[int] = ..., available_known: _Optional[bool] = ..., memory_total_bytes: _Optional[int] = ..., memory_budget_bytes: _Optional[int] = ..., recommended_missing_bytes: _Optional[int] = ..., recommended_missing: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class DownloadModelsRequest(_message.Message):
+    __slots__ = ("names",)
+    NAMES_FIELD_NUMBER: _ClassVar[int]
+    names: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, names: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class CancelModelDownloadRequest(_message.Message):
+    __slots__ = ("name",)
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    def __init__(self, name: _Optional[str] = ...) -> None: ...
+
+class RemoveModelRequest(_message.Message):
+    __slots__ = ("name",)
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    def __init__(self, name: _Optional[str] = ...) -> None: ...
+
+class VerifyModelRequest(_message.Message):
+    __slots__ = ("name",)
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    def __init__(self, name: _Optional[str] = ...) -> None: ...
+
+class SetModelChoiceRequest(_message.Message):
+    __slots__ = ("capability", "model")
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    capability: str
+    model: str
+    def __init__(self, capability: _Optional[str] = ..., model: _Optional[str] = ...) -> None: ...
+
+class InspectHubModelRequest(_message.Message):
+    __slots__ = ("repo", "revision", "capability")
+    REPO_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    repo: str
+    revision: str
+    capability: str
+    def __init__(self, repo: _Optional[str] = ..., revision: _Optional[str] = ..., capability: _Optional[str] = ...) -> None: ...
+
+class HubModelFileV1(_message.Message):
+    __slots__ = ("path", "bytes", "suggested_name", "suggested_title")
+    PATH_FIELD_NUMBER: _ClassVar[int]
+    BYTES_FIELD_NUMBER: _ClassVar[int]
+    SUGGESTED_NAME_FIELD_NUMBER: _ClassVar[int]
+    SUGGESTED_TITLE_FIELD_NUMBER: _ClassVar[int]
+    path: str
+    bytes: int
+    suggested_name: str
+    suggested_title: str
+    def __init__(self, path: _Optional[str] = ..., bytes: _Optional[int] = ..., suggested_name: _Optional[str] = ..., suggested_title: _Optional[str] = ...) -> None: ...
+
+class InspectHubModelResponse(_message.Message):
+    __slots__ = ("repo", "commit", "capability", "license", "license_spdx", "license_allowed", "problem", "weight_choices", "files", "suggested_name", "suggested_title")
+    REPO_FIELD_NUMBER: _ClassVar[int]
+    COMMIT_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    LICENSE_FIELD_NUMBER: _ClassVar[int]
+    LICENSE_SPDX_FIELD_NUMBER: _ClassVar[int]
+    LICENSE_ALLOWED_FIELD_NUMBER: _ClassVar[int]
+    PROBLEM_FIELD_NUMBER: _ClassVar[int]
+    WEIGHT_CHOICES_FIELD_NUMBER: _ClassVar[int]
+    FILES_FIELD_NUMBER: _ClassVar[int]
+    SUGGESTED_NAME_FIELD_NUMBER: _ClassVar[int]
+    SUGGESTED_TITLE_FIELD_NUMBER: _ClassVar[int]
+    repo: str
+    commit: str
+    capability: str
+    license: str
+    license_spdx: str
+    license_allowed: bool
+    problem: str
+    weight_choices: _containers.RepeatedCompositeFieldContainer[HubModelFileV1]
+    files: _containers.RepeatedCompositeFieldContainer[HubModelFileV1]
+    suggested_name: str
+    suggested_title: str
+    def __init__(self, repo: _Optional[str] = ..., commit: _Optional[str] = ..., capability: _Optional[str] = ..., license: _Optional[str] = ..., license_spdx: _Optional[str] = ..., license_allowed: _Optional[bool] = ..., problem: _Optional[str] = ..., weight_choices: _Optional[_Iterable[_Union[HubModelFileV1, _Mapping]]] = ..., files: _Optional[_Iterable[_Union[HubModelFileV1, _Mapping]]] = ..., suggested_name: _Optional[str] = ..., suggested_title: _Optional[str] = ...) -> None: ...
+
+class AddCustomModelRequest(_message.Message):
+    __slots__ = ("repo", "commit", "capability", "weights_file", "name", "title")
+    REPO_FIELD_NUMBER: _ClassVar[int]
+    COMMIT_FIELD_NUMBER: _ClassVar[int]
+    CAPABILITY_FIELD_NUMBER: _ClassVar[int]
+    WEIGHTS_FILE_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    repo: str
+    commit: str
+    capability: str
+    weights_file: str
+    name: str
+    title: str
+    def __init__(self, repo: _Optional[str] = ..., commit: _Optional[str] = ..., capability: _Optional[str] = ..., weights_file: _Optional[str] = ..., name: _Optional[str] = ..., title: _Optional[str] = ...) -> None: ...
+
+class ForgetModelRequest(_message.Message):
+    __slots__ = ("name",)
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    def __init__(self, name: _Optional[str] = ...) -> None: ...
+
+class CleanStorageRequest(_message.Message):
+    __slots__ = ("action",)
+    ACTION_FIELD_NUMBER: _ClassVar[int]
+    action: str
+    def __init__(self, action: _Optional[str] = ...) -> None: ...
+
+class CleanStorageResponse(_message.Message):
+    __slots__ = ("freed_bytes", "removed_items", "storage")
+    FREED_BYTES_FIELD_NUMBER: _ClassVar[int]
+    REMOVED_ITEMS_FIELD_NUMBER: _ClassVar[int]
+    STORAGE_FIELD_NUMBER: _ClassVar[int]
+    freed_bytes: int
+    removed_items: int
+    storage: GetStorageStatsResponse
+    def __init__(self, freed_bytes: _Optional[int] = ..., removed_items: _Optional[int] = ..., storage: _Optional[_Union[GetStorageStatsResponse, _Mapping]] = ...) -> None: ...

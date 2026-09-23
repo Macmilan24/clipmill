@@ -186,6 +186,7 @@ impl WorkerService {
                 capabilities: descriptor.capabilities.clone(),
                 backend: descriptor.backend.clone(),
                 since_unix_millis: now_millis(),
+                max_memory_bytes: descriptor.max_memory_bytes,
             },
         )?;
         let session_id = ulid::Ulid::new().to_string();
@@ -765,6 +766,10 @@ pub(crate) struct WorkerPresence {
     pub capabilities: Vec<String>,
     pub backend: String,
     pub since_unix_millis: u64,
+    /// The memory ceiling the worker declared and signed. The scheduler never
+    /// hands it a task whose model needs more, so readiness has to say so
+    /// rather than let the task wait for a worker that can never take it.
+    pub max_memory_bytes: u64,
 }
 
 impl WorkerPresence {
@@ -1577,6 +1582,7 @@ mod tests {
             capabilities: vec!["demo-seed".to_owned()],
             backend: "cpu".to_owned(),
             since_unix_millis: 1,
+            max_memory_bytes: 1024,
         };
         let active = ActiveWorker::acquire(
             Arc::clone(&workers),
