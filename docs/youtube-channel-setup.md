@@ -1,4 +1,8 @@
-# Connect your own YouTube channel
+# YouTube channel setup (planned)
+
+Channel connection and publishing are not yet merged into `main`. This guide
+describes the proposed setup; the connection and upload controls below are not
+available in the current merged application.
 
 These steps are for channel connection and publishing. Downloading a permitted
 source video through **New project → YouTube** does not require this setup.

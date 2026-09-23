@@ -1,29 +1,9 @@
-"""Reading the sampled frames ingest already published, back into pixels.
+"""Decode ingest's sampled JPEGs with the lease's pinned decoder.
 
-Ingest decoded the source once and wrote a frame every quarter second (book
-ch. 12). This stage reads those rather than decoding the proxy again, which is
-what stops two visual surfaces disagreeing about what was on screen at a moment
-— and it is why this worker never sees a user's file.
-
-The JPEGs are turned back into arrays by **the decoder the daemon named on the
-lease**, not by an imaging library this package chose. Two JPEG decoders differ
-in the last bit of a chroma-upsampled pixel, and a face score sits on the far
-side of a threshold often enough for that to matter to a document addressed by
-content.
-
-The frame is letterboxed rather than stretched to the model's square input:
-YuNet is trained on faces with faces' proportions, and a 16:9 frame squeezed
-into a square is a room full of tall thin people. The padding is anchored at the
-top-left rather than centred so that mapping a box back is a division and not a
-division plus an offset that has to agree with a filter's rounding.
-
-The pixels come out **blue first**, which is not a preference. YuNet was trained
-through OpenCV, whose images are BGR, so that is the channel order the weights
-learned faces in. Handing it the other order is not a crash and not obviously
-wrong — most faces are still found — but it costs score on the marginal ones,
-and the marginal ones are exactly what the focus gate downstream is deciding
-about.
-"""
+Decoder differences can change scores near the detection threshold. Frames are
+letterboxed to YuNet's square input to preserve proportions; top-left padding
+makes box coordinates invertible by scaling alone. Output is BGR, matching the
+channel order on which YuNet was trained."""
 
 from __future__ import annotations
 

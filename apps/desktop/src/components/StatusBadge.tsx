@@ -4,16 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 /**
- * The design reserves specific meanings for colour, so state is expressed
- * through this one component rather than ad-hoc classes. `outbound` in
- * particular is reserved exclusively for anything that would send data
- * off-device, and must never be used decoratively.
- *
- * The words wear the `-ink` step and the border wears the hue. The design gives
- * both themes one set of status colours, tuned against the dark surface; as text
- * on the light surface they measure 2.2–3.8:1, under the 4.5:1 a label needs. The
- * ink step holds the hue and darkens it for light mode only, so the badge still
- * reads as its own colour and the words are still legible.
+ * Shared status colors. Reserve `outbound` exclusively for off-device data transfer.
+ * Use the `-ink` step for text: base hues provide only 2.2–3.8:1 contrast on light
+ * surfaces, below the 4.5:1 label target. Borders retain the base hue.
  */
 export type StatusTone = 'success' | 'warning' | 'danger' | 'outbound' | 'progress' | 'neutral';
 

@@ -1,34 +1,13 @@
-//! Cue segmentation as an exact optimization.
+//! Exact cue segmentation by dynamic programming over token boundaries.
 //!
-//! Line breaks are the craft of captioning, and they are also arithmetic. Every
-//! consideration the book lists — reading speed, the quality of the break, not
-//! orphaning an article, balanced lines, how long a cue is held, and never
-//! spanning a cut — is a number attached to one candidate cue. A cue's cost
-//! depends on which tokens it holds and nothing else, so the best partition of
-//! the whole run is a shortest path over token boundaries, and dynamic
-//! programming finds it exactly at a cost nobody will notice.
+//! Each candidate cue has local costs for reading speed, break quality, orphaned
+//! articles, line balance, and duration. Small-input tests compare the optimum
+//! against exhaustive segmentation.
 //!
-//! "Exactly" is the load-bearing word. A greedy segmenter that fills a line and
-//! moves on produces captions that look fine and read badly, and the difference
-//! is invisible in review because every individual break is defensible. The
-//! optimality property test in this module is what keeps that claim true: for
-//! runs small enough to enumerate, the dynamic program's answer is compared
-//! against every possible segmentation.
-//!
-//! ## What is hard and what is merely expensive
-//!
-//! Two constraints are absolute. A line may not exceed the profile's character
-//! ceiling — that ceiling is how the safe area reaches this module — and a cue
-//! may not span a shot cut *that falls in a silence*, because a caption that
-//! survives a change of picture reads as a glitch. A cut that falls inside a
-//! spoken word is a different thing: nothing can be done about it without
-//! dropping the word, so it is allowed and reported rather than made
-//! impossible.
-//!
-//! Everything else is a cost. Reading speed in particular is a cost and not a
-//! constraint, because the alternative to a slightly fast cue is no cue, and a
-//! viewer would rather read quickly than read nothing. The validator is what
-//! reports the residue, and the gate is what refuses to ship it.
+//! Line length and shot cuts inside silence are hard constraints. Cuts inside a
+//! spoken word are allowed and reported to preserve the word. Other limits,
+//! including reading speed, are costs so difficult speech still receives captions;
+//! the independent validator reports remaining violations for the gate.
 
 use crate::lexicon::Break;
 use crate::profile::{Profile, TICKS_PER_SECOND};

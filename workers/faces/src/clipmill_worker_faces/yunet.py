@@ -1,18 +1,9 @@
-"""The YuNet session, and the arithmetic that turns its tensors into boxes.
+"""Decode YuNet's twelve output tensors into face boxes.
 
-The model emits twelve tensors — classification, objectness, box regression and
-keypoints at three strides — and none of them is a face until this module
-decodes them against the anchor grid each stride implies. That decoding is the
-part a wrapper would normally hide, and writing it out is what lets it be tested
-against tensors built by hand rather than only against whatever the model
-happens to say about a photograph.
-
-Determinism is not incidental here. The boxes reach an artifact addressed by
-content, and the crop path solved from them is compared against a golden, so a
-detector whose output shifted with how busy the machine was would make two runs
-of the same recording disagree while sharing one address. The session is
-single-threaded and sequential for exactly the reason the VAD worker's is.
-"""
+Classification, objectness, box regression, and keypoints are decoded against
+anchor grids at three strides. Explicit decoding supports synthetic-tensor
+tests. The ONNX session is single-threaded and sequential for reproducible
+content-addressed observations."""
 
 from __future__ import annotations
 

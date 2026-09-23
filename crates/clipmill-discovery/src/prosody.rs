@@ -1,18 +1,8 @@
-//! Delivery, as far as two measurements can see it.
+//! Measure sentence loudness and speaking-rate deviations from the recording.
 //!
-//! A memorable line is usually delivered differently from the sentences around
-//! it — louder, or faster, or slower for emphasis. Neither of those is
-//! meaning, and this module claims neither: it reports how far a sentence
-//! deviates from the recording's own baseline, in loudness and in speaking
-//! rate, and the insight proposer weighs that alongside three other proxies.
-//!
-//! Deviation from *this* recording rather than an absolute bar, because an
-//! absolute bar measures the microphone. A quiet speaker's emphatic sentence
-//! and a loud speaker's flat one would otherwise score the same way round.
-//!
-//! Absent audio is absent evidence. A source with no loudness envelope gets a
-//! neutral zero rather than a default that would let prosody vote without
-//! having measured anything.
+//! Relative baselines reduce microphone and speaker-volume effects. These are
+//! delivery proxies, not semantic measurements. Missing loudness evidence yields
+//! a neutral zero.
 
 use clipmill_contracts::schemas::index_transcript as index;
 use clipmill_contracts::schemas::media_loudness_envelope::MediaLoudnessEnvelope;

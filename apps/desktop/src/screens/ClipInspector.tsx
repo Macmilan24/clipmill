@@ -1,3 +1,8 @@
+/**
+ * Inspect a candidate alongside alternatives, ranking factors, and source evidence.
+ * Evidence timestamps support seeking; the boundary lattice overlays the source
+ * waveform. Unmeasured axes retain their reasons rather than appearing as zero.
+ */
 import '../results/workspace.css';
 
 import {

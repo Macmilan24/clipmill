@@ -1,10 +1,6 @@
-//! ClipMill desktop shell.
-//!
-//! Thin by design: this process owns the daemon connection and the window, and
-//! nothing else. It holds no project state, performs no media work, and caches
-//! no artifacts — `clipmilld` remains the single writer (ch. 8). If the shell
-//! is killed, nothing durable is lost; if the daemon is killed, the shell says
-//! so and brings it back.
+//! ClipMill desktop shell: window management and daemon communication.
+//! `clipmilld` owns durable project state and media work. The shell supervises the
+//! daemon and can restart without losing durable state.
 
 mod daemon;
 mod media;
@@ -31,12 +27,8 @@ const POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// because the gap is exactly the window in which a running stage looks stalled.
 const RESUBSCRIBE_DELAY: Duration = Duration::from_millis(500);
 
-/// One task transition, shaped for the renderer.
-///
-/// Passed through rather than interpreted. Progress keeps its unit and its
-/// two counts because that is what the daemon measured — a stage reporting
-/// "412 of 900 audio windows" is saying something a percentage would throw
-/// away, and the pipeline's stages do not share a unit to average over.
+/// Task transition passed through to the renderer. Preserve progress units and
+/// counts because stages measure different quantities that cannot be averaged.
 #[derive(Debug, Serialize)]
 struct TaskEventView {
     #[serde(rename = "eventId")]
@@ -111,10 +103,8 @@ async fn device_profile(
     })
 }
 
-/// Every command below is the same shape: ask the daemon, turn the answer into
-/// something the renderer can read, and let a failure be a string the screen can
-/// show. None of them decide anything — the daemon owns every policy, and this
-/// process owns no state a restart could lose.
+/// Forward renderer commands to the daemon and convert replies to view records.
+/// The daemon owns policy and durable state; errors become displayable strings.
 #[tauri::command]
 async fn list_projects(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
@@ -181,12 +171,8 @@ async fn get_job(
 /// Containers the analysis pipeline can open, offered as the dialog's filter.
 const SOURCE_EXTENSIONS: [&str; 6] = ["mp4", "mov", "mkv", "webm", "m4v", "avi"];
 
-/// Ask the operating system for a file.
-///
-/// The dialog runs here, not in the WebView. The plugin is registered for this
-/// command's sake alone and the renderer is granted no permission to reach it,
-/// so a page cannot open a file dialog — it can only ask this host to, and what
-/// comes back is a path the user chose in a native window.
+/// Open a native source picker. The renderer has no direct dialog permission;
+/// this command returns only the path selected in the host-owned dialog.
 #[tauri::command]
 async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let (reply, chosen) = tokio::sync::oneshot::channel();
@@ -206,12 +192,8 @@ async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, Str
     Ok(path.map(|value| value.to_string()))
 }
 
-/// Ask the user where an export should land.
-///
-/// A folder rather than a file, and native for the same reason the source
-/// picker is: the renderer is granted no permission to open a dialog, so a page
-/// cannot choose a path — it can only ask this host to, and what comes back is
-/// a directory a person picked in a window the operating system drew.
+/// Open a native export-folder picker. The renderer has no direct dialog
+/// permission; this command returns the directory selected by the user.
 #[tauri::command]
 async fn choose_export_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let (reply, chosen) = tokio::sync::oneshot::channel();
@@ -497,15 +479,9 @@ async fn update_export_batch_item(
         .try_into()
 }
 
-/// Show a delivered file in the operating system's file manager.
-///
-/// The one thing the renderer may do with a path, and only with a path that
-/// names an existing regular file: the argument is canonicalised and checked
-/// before anything is spawned, and what is spawned is the platform's own
-/// reveal — `open -R` on macOS, the folder opener elsewhere — with the path
-/// as a single argument and no shell in between. Nothing is read, written,
-/// or executed; a file manager window comes to the front, or an error says
-/// why not.
+/// Reveal an existing regular file in the platform file manager. Canonicalize and
+/// validate the path first, then pass it as a single argument without a shell
+/// (`open -R` on macOS, a folder opener elsewhere).
 #[tauri::command]
 async fn reveal_path(path: String) -> Result<(), String> {
     let target = std::path::Path::new(&path)

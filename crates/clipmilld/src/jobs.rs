@@ -475,7 +475,7 @@ impl JobPlan {
         }
     }
 
-    /// The W11 ingest fan-out (book ch. 12): decode the source video once
+    /// Ingest fan-out: decode the source video once
     /// into the proxy, render the PCM diets straight from the source's audio,
     /// then hang every other derivative off an already-committed artifact.
     /// The single final task is the fan-in manifest whose recipe inputs are
@@ -673,7 +673,7 @@ struct PlannedChain {
     transcript_task_id: String,
 }
 
-/// The W15 chain (book ch. 13): voice activity, then recognition, then forced
+/// The speech chain: voice activity, then recognition, then forced
 /// alignment, then the assembly that fuses them.
 ///
 /// Strictly serial, and not for want of trying: each stage's input is the
@@ -844,7 +844,7 @@ struct IngestHandles {
     frames: Option<DerivativeHandle>,
 }
 
-/// The W11 fan-out itself, shared by the ingest job and the analyze DAG.
+/// Ingest fan-out shared by the ingest job and the analysis DAG.
 ///
 /// Shared rather than reimplemented: every task this adds is keyed from its
 /// kind, its payload, and its inputs, so the two callers produce byte-identical
@@ -939,10 +939,8 @@ fn ingest_fan_out(
 }
 
 impl JobPlan {
-    /// The W13 render (book ch. 17). One task, because the encode is one
-    /// FFmpeg graph and splitting it would mean a joiner that has to prove it
-    /// preserved timestamps, colour, and audio continuity — a Phase 2 trade
-    /// worth making only when profiling asks for it.
+    /// Render as one FFmpeg graph. Splitting the encode would require a joiner
+    /// that preserves timestamps, colour, and audio continuity.
     ///
     /// The document arrives as an immutable snapshot artifact rather than a
     /// document id, so the render is pinned to the revision the user approved
@@ -983,7 +981,7 @@ impl JobPlan {
         }
     }
 
-    /// The W25 export (book ch. 10): render, then deliver.
+    /// Export: render, then deliver.
     ///
     /// Two tasks rather than one RPC that does both, so the queue a user
     /// watches is the same task event stream every other long operation
@@ -1057,7 +1055,7 @@ impl JobPlan {
         }
     }
 
-    /// The W15 speech chain (book ch. 13): voice activity, then recognition,
+    /// The speech chain: voice activity, then recognition,
     /// then forced alignment, then the assembly that fuses them.
     ///
     /// Strictly serial, and not for want of trying: each stage's input is the
@@ -1642,7 +1640,7 @@ impl JobPlan {
                 ));
                 stages.push(("index.transcript.v1".to_owned(), index.clone()));
 
-                // The windows an editorial model reads (plan, Milestone 2).
+                // The windows an editorial model reads.
                 // Cut here so the model's stages, when they arrive, read a
                 // published artifact rather than recomputing one; nothing
                 // downstream reads them yet.

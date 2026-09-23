@@ -1,15 +1,7 @@
 /**
- * The eight axes, including the ones nobody measured.
- *
- * An unmeasured axis renders as its reason rather than as a zero-length bar.
- * That distinction is the whole point of the panel: a clip that scored nothing
- * on prompt relevance and a clip nobody could score on prompt relevance are
- * different facts, and a bar at zero states the first while meaning the second.
- *
- * The weight is shown beside the value because the two together are what moved
- * the total. A reader comparing two cards needs to know that an axis at 0.9
- * carrying weight 0.4 contributed less than one at 0.7 carrying 1.4, and the
- * panel would be misleading without it.
+ * Display ranking axes with their weights and values.
+ * Unmeasured axes show their reasons instead of zero-length bars. Weights explain
+ * each measured axis's contribution to the total.
  */
 import { Minus } from 'lucide-react';
 

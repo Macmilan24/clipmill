@@ -1,3 +1,8 @@
+/**
+ * Candidate cards using the filmstrip tile nearest each clip's first frame.
+ * Report missing filmstrips explicitly. State, signal, and selection rules are
+ * shared with the table so layout changes preserve meaning.
+ */
 import { ArrowUpRight, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 

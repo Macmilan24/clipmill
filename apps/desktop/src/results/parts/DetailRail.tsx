@@ -1,3 +1,8 @@
+/**
+ * Selected clip details with the nearest source filmstrip tile and ranking evidence.
+ * Missing filmstrips are reported explicitly. Explanations are ordered by weighted
+ * contribution and retain source sentences and timestamps.
+ */
 import { ArrowRight, CheckCheck, Scissors, TriangleAlert } from 'lucide-react';
 
 import { MediaStill } from '../../components/MediaStill.js';

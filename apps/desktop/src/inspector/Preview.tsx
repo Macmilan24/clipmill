@@ -1,18 +1,7 @@
 /**
- * The clip, as a viewer would see it.
- *
- * This is a **read-only** preview and it is deliberately not a player: it seeks
- * the proxy to the clip's window, crops it to 9:16 along the path the reframe
- * solver proposed, and draws the burned-in cues over the result. W24 builds the
- * editor's player; what this has to be is honest about what the render will
- * produce, and nothing here is a mock — the video is the project's own proxy
- * served over the media protocol, the crop is a solve nobody stored, and the
- * cues are the kinetic grouping the encoder will burn in.
- *
- * The crop is done with a CSS transform over the real frame rather than by
- * drawing a rectangle beside it. A guide overlay would show where the camera
- * is pointing; this shows what the camera sees, which is the question an editor
- * is actually asking.
+ * Read-only clip preview using the project's proxy, a proposed crop path, and
+ * burned-in caption grouping. CSS transforms apply the crop to the video frame;
+ * the proposed path is not persisted.
  */
 import { useEffect, useRef, useState } from 'react';
 

@@ -1,73 +1,70 @@
-# Authenticated external workers (W6)
+# Authenticated external workers
 
-Python model/media workers. Each worker **family** gets its own uv project and
-its own locked virtual environment, so a dependency conflict (CUDA, PyTorch,
-Paddle, …) is contained to one pool and can never take down another family or
-the daemon. Workers are strictly stateless: they take leased tasks over the
-worker protocol, stream heartbeats, and return artifacts — all durable state
-belongs to `clipmilld`.
+Python model and media workers use separate uv projects and locked environments
+for each family. Dependencies stay isolated from other worker families and the
+daemon. Workers accept leased tasks, send heartbeats, and return artifacts;
+`clipmilld` owns durable job and artifact state. The optional cloud adapter also
+keeps a local, run-scoped budget ledger to account for external requests.
 
-- `sdk/` — `clipmill_worker_sdk`: the worker protocol client (handshake with
-  capability descriptor, lease/heartbeat/complete/decline) and generated
-  contract types. Every worker family depends on it.
-- `echo/` — the null worker: exercises the full protocol without doing any
-  work. It is the protocol's reference implementation and test target.
-- `vad/` — silero-VAD on onnxruntime: where speech is, before anything
-  transcribes it.
-- `asr-whispercpp/` — recognition on the path that runs everywhere.
-- `align/` — forced alignment on a wav2vec2 CTC model, the aligner every
-  machine has.
-- `speech-mlx/` — Qwen3-ASR and Qwen3-ForcedAligner on Apple silicon, behind
-  the same two contracts. macOS-only by dependency marker, so its lockfile
-  resolves to nothing on Linux rather than to a broken environment.
-- `shots/` — PySceneDetect's content detector over the mezzanine proxy: where
-  the camera changed. The only family that runs no model and the only one that
-  spawns a sidecar, for which see below.
+| Directory         | Purpose                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `sdk/`            | Shared protocol client, generated contract types, and lease-scoped input and output helpers.                                   |
+| `echo/`           | Reference worker for protocol integration tests.                                                                               |
+| `vad/`            | Silero VAD on ONNX Runtime for speech and silence intervals.                                                                   |
+| `asr-whispercpp/` | Portable CPU speech recognition with whisper.cpp.                                                                              |
+| `align/`          | Portable wav2vec2 CTC forced alignment.                                                                                        |
+| `speech-mlx/`     | Qwen3-ASR and Qwen3-ForcedAligner on Apple silicon through the shared speech contracts.                                        |
+| `shots/`          | Model-free PySceneDetect content detection over the ingest proxy.                                                              |
+| `faces/`          | YuNet face detection on sampled ingest frames and deterministic tracking for reframing.                                        |
+| `editorial/`      | Local Qwen 3.5 proposal, review, and targeted visual checks on Apple silicon; a separate, opt-in transcript-only cloud worker. |
 
-Future families (`vision/`, `judge/`, …) follow the same shape: own
-`pyproject.toml`, own venv, `clipmill-worker-sdk` as a path dependency.
+Each family has its own `pyproject.toml`, lockfile, and environment, with
+`clipmill-worker-sdk` as a path dependency. Apple-only dependencies use platform
+markers so the projects can also be resolved on other platforms.
 
-## A worker that runs a pinned binary
+## Pinned models and binaries
 
-A model is not the only versioned input a stage can have. Shot detection loads
-no weights at all — it is arithmetic over decoded pixels — but two FFmpeg builds
-hand that arithmetic different pixels, so the decoder is as much a part of what
-produced the observation as a model would be.
+The daemon names allowed model weights and executables on each lease. Workers
+verify model files against their manifests immediately before loading them.
+Shot and face detection also use the leased FFmpeg executable: decoder changes
+can change pixels and therefore detection results.
 
-It is therefore delivered the same way weights are. The stage registry states
-which pinned binaries a stage may be handed; the daemon puts an absolute path
-and a bill-of-materials build identity on the lease; and the worker refuses to
-proceed without them rather than falling back to the PATH. The path stays out of
-the artifact key, because a machine-specific directory would give the same
-footage two addresses on two machines. The build identity goes into the stage
-payload, which the key covers — so re-pinning FFmpeg invalidates shot detections
-and leaves every other stage alone.
+The stage registry declares which binaries a stage may receive. The daemon
+supplies an absolute path and a bill-of-materials build identity. The SDK's
+`require_tool` rejects missing or duplicate entries, relative paths, symlinks,
+and non-executable files; it never falls back to `PATH`. These checks do not
+re-verify the extracted executable's digest: the BOM pins the downloaded archive.
 
-`require_tool` in the SDK is where that refusal lives: a relative path, a
-symlink standing in for the staged binary, a file nobody may execute, two
-decoders under one name, or none at all are each a stated failure.
+Build identities enter stage payloads and artifact keys. Machine-specific paths
+do not, so identical inputs and tool builds can share an address across machines.
+Re-pinning a decoder invalidates the stages that use it.
 
-## Two implementations of one capability
+## Speech implementation selection
 
-`asr` and `forced-align` each have two families behind them, and which one runs
-is not a preference written down anywhere — it is measured. `tools/bench/speech-benchmark.py`
-runs every installed implementation over a fixture, the daemon folds what it
-measured into its signed device profile, and a job records the chosen
-implementation on each task when it is planned (D19, R19).
+`asr` and `forced-align` each have portable and MLX implementations.
+`tools/bench/speech-benchmark.py` measures installed implementations over a
+fixture. The daemon records the results in its signed device profile and fixes
+the selected implementation on each task when planning a job.
 
-That choice reaches the artifact key. Two implementations produce different
-bytes from the same audio, so they are different producers of different
-observations and must not share a content address; re-measuring a device
-changes what the next job chooses and never re-attributes anything already
-published. A machine nobody has benchmarked runs the portable implementation
-and its profile says `unmeasured_fallback`, so a fallback never reads as a
-choice.
+Implementation identity enters the artifact key because different implementations
+can produce different observations from the same audio. Re-measuring a device
+changes future plans without changing published artifacts. An unmeasured device
+uses the portable implementation, explicitly marked `unmeasured_fallback`.
+
+## Editorial workers
+
+`clipmill-worker-editorial` serves local proposal, review, and visual-check tasks
+using pinned MLX weights. The separately launched
+`clipmill-worker-editorial-cloud` serves only cloud proposal and review tasks.
+Cloud use requires transcript consent and a run budget; media is not sent. The
+adapter retrieves its credential from the OS credential store and reserves budget
+before requests, retaining the charge for uncertain or interrupted calls.
 
 ## Provision and run the reference worker
 
-The Phase 0 development trust store is local to one daemon data directory.
-Provisioning writes a mode-`0600` private identity and a separate trusted
-public-key entry; it never prints or commits the private key.
+The worker trust store is local to one daemon data directory. Provisioning writes
+a mode-`0600` private identity and a separate trusted public-key entry; it never
+prints the private key. Do not commit generated identities.
 
 ```sh
 cargo run -p clipmilld --bin clipmill-worker-keygen -- \
@@ -80,26 +77,23 @@ uv run --project workers/echo clipmill-worker-echo -- \
   --identity /private/path/echo-worker.json
 ```
 
-`clipmilld` listens on `<data-dir>/run/clipmill-workers.sock` by default. The
-daemon accepts `--worker-socket`; the daemon and worker both understand
-`CLIPMILL_WORKER_SOCKET`. The shared-memory broker remains at the private
-`<data-dir>/run/clipmill-shm.sock` path.
-
-Never commit a generated identity. Phase 0 trusts explicitly provisioned local
-public keys. The signed worker/model registry planned for Phase 4 replaces this
-development trust anchor without changing the challenge/signature fields.
+`clipmilld` listens on `<data-dir>/run/clipmill-workers.sock` by default. The daemon
+accepts `--worker-socket`; both daemon and worker understand
+`CLIPMILL_WORKER_SOCKET`. The shared-memory broker uses the private
+`<data-dir>/run/clipmill-shm.sock` path. Only explicitly provisioned local public
+keys are trusted.
 
 ## Protocol and durability boundary
 
-The daemon sends a fresh random challenge. A worker signs the challenge and
-its complete descriptor (worker ID, family, protocol, capabilities, backend,
-and memory limit) with Ed25519. The daemon accepts only the current and previous
+The daemon sends a fresh random challenge. A worker signs the challenge and its
+complete descriptor (worker ID, family, protocol, capabilities, backend, and
+memory limit) with Ed25519. The daemon accepts only the current and previous
 minor protocol versions, rejects replay and duplicate active worker IDs, and
 leases only tasks covered by the authenticated descriptor.
 
-Workers pull work and explicitly accept a lease before heartbeating. A worker
-receives a lease-scoped staging directory and declares completed relative paths;
-it never assigns artifact IDs or writes SQLite. The daemon validates the exact
+Workers pull work and explicitly accept a lease before heartbeating. Each lease
+provides a staging directory, and completion declares relative output paths.
+Workers never assign artifact IDs or write SQLite. The daemon validates the exact
 file set, hashes and atomically publishes it through CAS, roots it, advances the
 task/job transaction, and only then acknowledges completion. Retrying identical
 success or failure completion bytes returns the original durable acknowledgement;
@@ -107,10 +101,10 @@ conflicting reuse is rejected.
 
 The SDK maps shared data read-only and exposes a zero-copy `pyarrow.Buffer`.
 Linux uses a sealed `memfd` transferred with `SCM_RIGHTS`; macOS uses a read-only
-POSIX shared-memory object that is unlinked after acknowledgement. The SDK
-validates the one-use token, lease, data type, dimensions, overflow-safe byte
-length, timebase, and SHA-256. The daemon revokes mappings on acknowledgement,
-lease end, cancellation, disconnect, or process death.
+POSIX shared-memory object unlinked after acknowledgement. The SDK validates the
+one-use token, lease, data type, dimensions, overflow-safe byte length, timebase,
+and SHA-256. The daemon revokes mappings on acknowledgement, lease end,
+cancellation, disconnect, or process death.
 
 Run `just gate-workers` for the authenticated response-loss and hard-kill drill.
 It covers worker death, lease expiry/reissue, daemon death/reconnect,

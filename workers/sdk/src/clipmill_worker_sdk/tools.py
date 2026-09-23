@@ -1,27 +1,12 @@
-"""Running the pinned executable the daemon named, and no other.
+"""Use only the pinned executable named on the lease.
 
-Weights are not the only versioned input a stage can have. A worker that
-decodes video is holding a second one: two FFmpeg builds hand a detector
-different pixels, so a stage that resolved its own decoder from the PATH would
-publish an observation under an address that says nothing about what produced
-it — and the address would be identical on a machine with a different build.
+The daemon verifies the download against ``bom.toml``. Its build identity enters
+the stage payload and artifact key; its machine-specific path does not.
 
-So the daemon names the binary on the lease, having fetched and verified it
-against `bom.toml`, and states its build identity. The build identity travels
-separately into the stage payload, which is what puts it in the artifact key;
-the path does not, because a path is machine-specific and would give the same
-recording two addresses on two machines.
-
-What is checked here is narrower than `weights.verify_model`, and deliberately
-so. A pinned model is checked against per-file digests from an independent
-manifest, which is an authority the worker can hold the bytes to. There is no
-equivalent authority for the sidecar at task time — `bom.toml` pins the archive
-that was downloaded, not the binary extracted from it — so re-hashing here
-would only compare the daemon's file against itself. Claiming that as
-verification would be worse than not claiming it. What is checked is what can
-be: that the lease named an absolute path to a real, regular, executable file
-that nothing has replaced with a link.
-"""
+Checks here require an absolute path to a regular executable without symlink
+substitution. They do not verify the binary's digest: the BOM pins the downloaded
+archive, not the extracted executable, so no independent task-time digest is
+available."""
 
 from __future__ import annotations
 

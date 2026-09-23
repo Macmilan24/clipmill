@@ -1,23 +1,9 @@
-//! Caption writers: one caption IR, three outputs.
+//! Write ASS, SubRip, and WebVTT from caption IR using shared frame timing.
 //!
-//! The burned-in intent (ASS) and the sidecars (SubRip, WebVTT) are written
-//! from the same cues by the same timing code, so a viewer reading captions
-//! and a viewer watching them burned in are looking at the same words at the
-//! same moments (book ch. 19).
-//!
-//! Two rules are load-bearing. Line breaks come from the document and the
-//! renderer is configured never to re-wrap: `WrapStyle: 2` tells libass that
-//! only explicit breaks exist. And every timestamp is derived from a frame
-//! index, never from a float second, so a cue's first frame is decided once.
-//!
-//! Which cues each writer reads is the third rule, and it is not symmetric. The
-//! burned-in track takes the document's kinetic grouping when it has one, and
-//! the reading cues when it does not. **The sidecars take the reading cues,
-//! always.** A burn-in that fell back to the reading grouping is merely
-//! conservative; a sidecar that picked up the kinetic one would be the exact
-//! divergence between what a viewer reads and what a deaf viewer reads that the
-//! caption engine exists to prevent, so the sidecar side has no fallback to get
-//! wrong.
+//! Line breaks come from the document; `WrapStyle: 2` prevents libass re-wrapping.
+//! Every timestamp derives from a frame index, never floating-point seconds.
+//! Burn-in uses kinetic cues when present and reading cues otherwise. Sidecars
+//! always use reading cues, with no kinetic fallback.
 
 use clipmill_edit_ir::{CaptionAnimation, CaptionCue, CaptionRegion, CaptionTrack};
 

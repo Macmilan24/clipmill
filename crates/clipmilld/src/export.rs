@@ -1,23 +1,9 @@
-//! Delivery: the task that turns a render into files somebody keeps.
+//! Deliver rendered media and metadata using `clipmill-export` decisions.
 //!
-//! Everything about *what* to deliver was decided in `clipmill-export`, which
-//! touches nothing. This module is the part that touches the world: it reads
-//! the render artifact, resolves the destination, copies the clip and its
-//! sidecars under the names the pattern chose, pulls one frame for a thumbnail,
-//! and writes the two documents that describe the result.
-//!
-//! Two rules shape the ordering. **The files are written every time**, cache hit
-//! or not — the package artifact is a description of a delivery, and a user who
-//! deleted their export and asked again must get it back rather than a cache
-//! identity. And **nothing is written into the destination until every byte is
-//! ready**: each file lands under a temporary name in the destination directory
-//! and is renamed into place, so an interrupted export leaves no half-file with
-//! a plausible size.
-//!
-//! The destination is a local directory or nothing. A half-written export over
-//! a link that dropped is a corrupt file that looks finished, and Phase 1 has
-//! no way to tell one from the other after the fact — so the filesystem is
-//! asked what it is before anything is written.
+//! Delivery rewrites files even on a cache hit so deleted exports can be restored.
+//! Files are prepared under temporary destination-directory names and renamed
+//! into place only when complete. Network filesystems are refused because remote
+//! link failures cannot be reliably distinguished from completed delivery.
 
 use std::{
     fs,
@@ -148,9 +134,8 @@ fn network_filesystem(path: &Path) -> Option<String> {
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn network_filesystem(_path: &Path) -> Option<String> {
-    // Windows is a Phase 2 target. When it arrives the answer is
-    // GetDriveType/WNetGetUniversalName, and until then this must not claim to
-    // have checked.
+    // Network-filesystem detection is implemented only on macOS and Linux.
+    // Windows support would need GetDriveType/WNetGetUniversalName.
     None
 }
 

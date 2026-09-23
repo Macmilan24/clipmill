@@ -1,41 +1,12 @@
-//! The edit director.
+//! Assemble approved candidates and evidence into deterministic Edit IR.
 //!
-//! A candidate somebody approved becomes an edit document, and nothing about
-//! that step is a judgement. Every decision it looks like the director is making
-//! was made upstream and is being *read*: discovery proposed the span, the
-//! boundary optimizer chose where to cut, the caption engine decided where lines
-//! break, the reframe solver decided whether a face earned the frame. What
-//! happens here is assembly.
+//! Upstream stages choose spans, boundaries, captions, and reframe proposals.
+//! The director rejects boundaries outside the candidate's lattice and uses `Fit`
+//! with a rationale when the reframe gate cannot justify a tracked crop.
 //!
-//! That is why the gate's headline test is a golden. The same candidate, the
-//! same boundary and the same evidence must produce the same document byte for
-//! byte — not because bytes are precious, but because an editor who approves the
-//! same clip twice and gets two different edits has been told the tool is
-//! guessing.
-//!
-//! ## What the director refuses to invent
-//!
-//! A boundary that is not on the candidate's lattice is refused rather than
-//! rounded, because the lattice is what "legal cut" means and a document built
-//! off it is a mid-word cut waiting to be discovered in the render.
-//!
-//! A camera move is proposed only when the reframe gate says a face earned the
-//! frame. Otherwise the layout is `Fit` and the document says why in its
-//! rationale — a fitted clip with a stated reason is honest; a confident crop of
-//! the wrong person is not.
-//!
-//! ## Both caption groupings reach the document
-//!
-//! The caption engine produces two groupings of one token array, and the
-//! director writes both: the reading cues that every sidecar is written from,
-//! and the kinetic cues that are burned into the picture. Writing only one
-//! would have made the other a grouping that is computed, stored, and then
-//! discarded at the render boundary — and everything a viewer ever sees comes
-//! through this document.
-//!
-//! The two lists index the same span and carry the same words. That is checked
-//! rather than assumed, because it is the one property the caption engine's
-//! whole shape exists to guarantee and the one a bug here would quietly undo.
+//! Both accessibility and kinetic caption groupings reach the document. Their
+//! shared span and words are checked before assembly. Identical inputs must
+//! produce byte-identical documents, as checked by golden tests.
 
 pub mod lattice;
 mod placement;

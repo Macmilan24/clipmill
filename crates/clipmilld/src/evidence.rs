@@ -1,17 +1,7 @@
-//! The builtin that turns a transcript into an index.
+//! Read inputs, key, and publish the `clipmill-evidence` index.
 //!
-//! Like the speech assembly beside it, this runs in the daemon rather than in
-//! a worker because it loads no model: it is arithmetic over two published
-//! JSON documents, and the two-lifecycle rule puts model-free derivation where
-//! the artifacts already are. Everything it decides lives in
-//! `clipmill-evidence`, which does no I/O — this module is the part that reads
-//! the inputs, keys the result, and publishes it.
-//!
-//! Its two documents arrive on the lease — declared by the plan when this runs
-//! standalone, delivered by a dependency inside the analyze DAG — and each is
-//! matched against the artifact kind its own manifest declares. A plan that
-//! named shot cuts where a transcript belongs is refused rather than parsed into
-//! nonsense.
+//! This model-free derivation runs in the daemon. Standalone plans and analysis
+//! dependencies provide the same leased inputs, validated by their manifest kinds.
 
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::IndexStagePayloadV1;

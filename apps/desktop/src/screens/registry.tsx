@@ -1,24 +1,7 @@
 /**
- * Which component answers for where the shell is.
- *
- * The shell used to pick its screen with a ternary — one live section, and
- * everything else a placeholder. That stops scaling the moment a second screen
- * exists, and it hides the thing worth being explicit about: a section is either
- * backed by something real or it is honestly marked as not built yet.
- *
- * So the registry is the single place that answers, and the answer is the same
- * shape either way. A section with no entry here falls through to the placeholder
- * that names the phase which will build it — which means adding a screen is one
- * line, and forgetting to add one produces "coming soon" rather than a blank
- * pane or a crash.
- *
- * One screen is not a section at all. Analysis Progress is about a particular
- * run, has no navigation row by design, and is reached from the two screens that
- * can name a run — so the route decides, and only then does the section.
- *
- * Two sections take an argument the same way. The Editor and Export rows open
- * a clip when the route names one and a list of clips when it does not; the
- * route decides which, and the screen never has to guess at "the newest".
+ * Map routes to screens, falling back to a placeholder for unimplemented sections.
+ * Analysis Progress uses a run-specific route without a sidebar row. Editor and
+ * Export open the named clip or a document picker when the route has no clip.
  */
 import { lazy, Suspense, type JSX } from 'react';
 
@@ -94,12 +77,7 @@ const SCREENS: Readonly<Record<string, Screen>> = {
 };
 
 /**
- * The screen for the current route, or the placeholder that names its phase.
- *
- * For a section, `availability` still decides: a section marked planned renders
- * the placeholder even if something is registered for it, so a half-finished
- * screen cannot reach a user by being wired up early — the section's own
- * declaration is what opens the door.
+ * Render the current route or the registered section placeholder.
  */
 export function renderScreen(context: ScreenContext): JSX.Element {
   const { route } = context;

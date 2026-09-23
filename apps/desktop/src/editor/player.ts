@@ -1,21 +1,8 @@
 /**
- * Applying a preview plan. Nothing here derives anything.
- *
- * Every function in this file is a lookup. The crop at a frame is read out of
- * an array the daemon filled; the caption at a frame is the cue whose window
- * contains it; the highlighted word is found by walking holds that were already
- * measured in centiseconds. If any of this computed instead of looked up, it
- * would be a second implementation of the render's arithmetic — and the whole
- * point of the plan is that there is only one.
- *
- * The one thing this file *does* compute is the mapping between a media
- * element's `currentTime` and a frame index, and that is unavoidable: a
- * browser reports seconds, of the proxy, while the plan is in frames, of the
- * program. The two are not the same clock. A clip cut from ten minutes into a
- * recording starts at program frame zero and proxy second six hundred, and a
- * player that confused them seeked to the recording's opening — so the
- * conversion goes through the plan's own segment map, in one place, and every
- * seek, scrub and trim uses it.
+ * Apply crop and caption decisions from the daemon's preview plan.
+ * Map proxy `currentTime` to program frames through the plan's segment map: proxy
+ * time is source-relative, while program time starts at the clip's first frame.
+ * All seek, scrub, and trim operations use this mapping.
  */
 import type {
   PreviewCue,
@@ -206,14 +193,9 @@ export function resolvePlaybackFrame(
 }
 
 /**
- * The CSS transform that shows a crop in a stage the crop's aspect fills.
- *
- * The crop is a rectangle in the *source* frame, and the element on stage is
- * the source scaled to the stage's height. So the scale is how many times the
- * crop's height goes into the source's, and the translate moves the crop's
- * centre to the element's centre, as a share of the element's own size. Built
- * against the output's dimensions instead, as it was, this was right only for
- * a source that happened to share the output's aspect.
+ * Transform a source-space crop into a stage matching its aspect.
+ * Scale by source height / crop height and translate the crop center relative
+ * to the source element. Output dimensions cannot substitute for source dimensions.
  */
 export function stageTransform(
   crop: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },

@@ -1,28 +1,9 @@
-//! Finding the documents a derivation stage was told to read.
+//! Resolve leased artifact inputs for daemon derivation stages.
 //!
-//! The four model-free stages that read published artifacts — the evidence
-//! index, discovery, ranking, and the analysis fan-in — reach their inputs by
-//! two routes that arrive at one place. Submitted as a standalone job, what they
-//! read was published by *earlier jobs*, so the plan declares its addresses.
-//! Run inside the analyze DAG, those same documents are the outputs of tasks in
-//! the same plan, so a dependency carries them. Either way the daemon delivers
-//! one list on the lease, and this module reads it.
-//!
-//! That the two routes converge before this point is the property that matters.
-//! A stage that resolved a payload address on one route and a dependency on the
-//! other would compute two keys for one piece of work — and the artifact key
-//! covers the input list, so those two keys would be two addresses for one
-//! observation. Nothing in a content-addressed store can notice that afterwards.
-//!
-//! Inputs are matched to what a stage asked for by the artifact kind each one's
-//! own manifest declares, never by position. A plan that declared a transcript
-//! where an index belongs, or a dependency list reordered upstream, is refused
-//! rather than parsed into something plausible.
-//!
-//! Everything here needs a live artifact store, so it is exercised end to end
-//! by `gate-evidence`, `gate-discovery`, and `gate-ranking` against a real
-//! daemon rather than by unit tests against a mock that would only prove the
-//! mock agrees with itself.
+//! Standalone jobs and analysis dependencies converge on one input list so both
+//! routes compute the same artifact key. Manifest kinds identify inputs rather
+//! than list positions. Integration gates exercise resolution against a live
+//! artifact store.
 
 use std::collections::BTreeMap;
 

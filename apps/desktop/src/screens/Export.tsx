@@ -1,18 +1,6 @@
 /**
- * 12 Export: the strip, the names, and the queue.
- *
- * Three things a person needs before they let a file leave: what is wrong with
- * it, what it will be called, and what the settings actually are. All three are
- * read rather than composed here — the findings come from the daemon's
- * validation strip, the names come from the daemon resolving the pattern, and
- * the delivery settings are a read-only statement of what the renderer does.
- *
- * The naming preview is the part worth being careful about. It would be easy to
- * resolve the pattern in this file and show the result, and it would be wrong
- * for the same reason the editor's player does not compute its own crops: there
- * would be two implementations of the naming rules, and the preview a user
- * approved would eventually not be the name they got. So every keystroke asks
- * the daemon, and what is drawn is the daemon's answer.
+ * Display export validation, resolved filenames, delivery settings, and queue state.
+ * The daemon resolves naming patterns so the preview uses the same rules as delivery.
  */
 import {
   AlertTriangle,
@@ -58,11 +46,7 @@ import {
 } from '../export/delivery.js';
 
 /**
- * What the render actually does, stated rather than offered.
- *
- * Every one of these is fixed in Phase 1, and a control that pretended
- * otherwise would be a control that does nothing. They are shown because an
- * editor about to upload needs to know them, not because they are adjustable.
+ * Display fixed renderer settings as delivery information.
  */
 /** What a user gets before they have an opinion; the daemon's default too. */
 const DEFAULT_PATTERN = '{index}-{clip}';

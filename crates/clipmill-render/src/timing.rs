@@ -1,11 +1,7 @@
-//! Rational time for the render target.
+//! Exact integer conversion between 1/90000-second ticks and output frames.
 //!
-//! The Edit IR counts ticks at 1/90000 (decision D06); the render target
-//! counts frames at a fixed rate. Every conversion between them happens here,
-//! in exact integer arithmetic, so that a caption's first frame is a fact
-//! rather than the result of whichever float rounding a call site happened to
-//! use. Chapter 17's parity invariant is only defensible if there is one
-//! answer to "which frame is this tick on".
+//! Shared rounding ensures preview, captions, and rendering agree on the frame
+//! containing each boundary.
 
 use clipmill_edit_ir::TICKS_PER_SECOND;
 
@@ -17,7 +13,7 @@ pub struct FrameRate {
 }
 
 impl FrameRate {
-    /// 30000/1001 — the Phase 1 render target.
+    /// 30000/1001 — the render target frame rate.
     pub const NTSC_30: Self = Self {
         num: 30_000,
         den: 1_001,

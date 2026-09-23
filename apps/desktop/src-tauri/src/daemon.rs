@@ -1,9 +1,6 @@
-//! The shell's link to `clipmilld`.
-//!
-//! The WebView never speaks to the daemon. It has no socket, no filesystem and
-//! no network capability; it can only call the commands this host process
-//! exposes. Everything below — framing, the request/response envelope, process
-//! supervision — runs in Rust so that the renderer stays a pure view layer.
+//! Host-side connection to `clipmilld`: framing, request/response handling, and
+//! process supervision. The WebView can invoke host commands but has no direct
+//! socket, filesystem, or network access.
 
 use std::{
     path::{Path, PathBuf},
@@ -47,16 +44,9 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long a freshly spawned daemon gets to open its socket.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(150);
-/// How many calls this process keeps open to the daemon at once.
-///
-/// Every call is its own connection, and the daemon accepts sixty-four in
-/// all — for this shell, its event subscription, the workers' side, and
-/// anything else on the socket. A screen that opens with a card per project
-/// asks for several documents and a thumbnail per card in one burst, and a
-/// burst past the limit was dropped at the door: cards blank, documents
-/// unread, nothing said. The burst now queues here instead, well under the
-/// daemon's ceiling, so nothing this process sends is refused for being
-/// sent together.
+/// Limit concurrent calls below the daemon's 64-connection ceiling, leaving room
+/// for event subscriptions and workers. Queue screen-loading bursts here to avoid
+/// connection refusals.
 const CALLS_IN_FLIGHT: usize = 16;
 /// The pause before a call is sent once more after the daemon closed the
 /// connection without answering.
@@ -65,8 +55,8 @@ const RETRY_AFTER: Duration = Duration::from_millis(100);
 static REQUEST_IDS: LazyLock<RequestIds> = LazyLock::new(RequestIds::new);
 static CALLS: Semaphore = Semaphore::const_new(CALLS_IN_FLIGHT);
 
-/// The daemon persists mutation receipts across shell restarts. A counter alone
-/// reuses an old receipt's key when the next shell process begins at zero.
+/// Mutation receipts survive shell restarts. Combine a session ID with the counter
+/// to avoid reusing an earlier process's receipt keys.
 struct RequestIds {
     session: ulid::Ulid,
     counter: AtomicU64,
@@ -181,9 +171,8 @@ async fn read_frame(stream: &mut UnixStream) -> Result<Vec<u8>, DaemonLinkError>
     Err(DaemonLinkError::Oversized)
 }
 
-/// A stateless request/response client. Each call opens its own connection:
-/// the control plane is low-frequency, and a fresh socket means a half-dead
-/// connection can never wedge the UI.
+/// Stateless request/response client. Each low-frequency control call opens a
+/// fresh connection so a stale socket cannot block subsequent calls.
 #[derive(Debug, Clone)]
 pub struct DaemonClient {
     socket: PathBuf,
@@ -768,17 +757,11 @@ impl DaemonClient {
         }
     }
 
-    /// Follow task events until the connection ends, calling `on_event` for each.
+    /// Stream task events on a persistent connection. The daemon acknowledges the
+    /// starting cursor, then pushes transitions. Resubscribe when the connection ends.
     ///
-    /// Unlike every other call here this one holds its connection open: the
-    /// daemon answers once with the cursor it is starting from, then pushes
-    /// frames as tasks move. Returning means the link dropped, which is the
-    /// caller's cue to resubscribe rather than an error to surface.
-    ///
-    /// `after_event_id` is what makes a reconnect honest. The daemon replays
-    /// durable events strictly after that cursor, so a shell that was away comes
-    /// back with the transitions it missed instead of a stage frozen wherever it
-    /// was when the socket died.
+    /// Durable events strictly after `after_event_id` are replayed on reconnect,
+    /// recovering transitions missed while disconnected.
     pub async fn stream_task_events<F>(
         &self,
         after_event_id: u64,
@@ -863,8 +846,8 @@ impl DaemonClient {
     }
 }
 
-/// What the sidebar and the Models screen render. `local_lock` is the daemon's
-/// own answer, never a constant in the UI: the badge has to be able to be wrong.
+/// Connection state for the sidebar and Models screen. `local_lock` comes from
+/// the daemon so the UI can report changes to the installation's status.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum ConnectionState {

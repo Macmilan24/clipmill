@@ -1,15 +1,7 @@
 /**
- * One run, followed.
- *
- * The job is fetched once and then re-fetched whenever a transition for it
- * arrives. The events themselves are also kept, because they are the live log:
- * the daemon's own record of what moved and when, which is a truer log than
- * anything this screen could compose.
- *
- * The log starts when the screen opens. The host holds one subscription for the
- * whole application and replays from its own cursor across reconnects, so what
- * reaches a screen mounted later is the transitions from that moment on. Saying
- * "this session" is honest; pretending to have the history would not be.
+ * Fetch a job and refresh it on task transitions, retaining events as a live log.
+ * The log covers this screen's session: the host replays across reconnects from
+ * its own cursor, but does not supply earlier events to newly mounted screens.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
