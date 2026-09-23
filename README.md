@@ -78,6 +78,11 @@ just setup   # fetch pinned FFmpeg and sync all workspaces
 just app     # launch the desktop shell against a live daemon
 ```
 
+Then open **Models** in the app and choose **Download all** to fetch the
+recommended models; every file is checked against its pinned SHA-256 before it
+is used. `./tools/fetch-models.sh` installs the same pins from a terminal. See
+[the model library](docs/model-library.md).
+
 ## The desktop shell
 
 `apps/desktop` is a Tauri 2 host with a React renderer. The split is deliberate:
