@@ -28,7 +28,7 @@ export function BrandMark({
     let hoverTimer: ReturnType<typeof setTimeout> | null = null;
     let previous = 0;
     let hoverBurst = false;
-    const desiredSpeed = () => (processingRef.current ? 40 : hoverBurst ? 4 : 1);
+    const desiredSpeed = () => (processingRef.current ? 40 : hoverBurst ? 21 : 3);
     let speed = desiredSpeed();
     let target = speed;
 

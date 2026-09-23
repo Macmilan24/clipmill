@@ -44,25 +44,25 @@ it('gives hover a brief burst, then returns to idle without moving the hub', () 
   });
   expect(animate.mock.contexts[0]).toBe(target.querySelector('.brand-mark-blades'));
   expect(target.querySelector('circle')).not.toBe(animate.mock.contexts[0]);
-  expect(animation.playbackRate).toBe(1);
+  expect(animation.playbackRate).toBe(3);
   expect(vi.getTimerCount()).toBe(0);
   fireEvent.pointerEnter(target);
   vi.advanceTimersByTime(160);
-  expect(animation.playbackRate).toBeGreaterThan(1);
-  expect(animation.playbackRate).toBeLessThan(4);
+  expect(animation.playbackRate).toBeGreaterThan(3);
+  expect(animation.playbackRate).toBeLessThan(21);
   vi.advanceTimersByTime(1200);
-  expect(animation.playbackRate).toBe(4);
+  expect(animation.playbackRate).toBeGreaterThan(20.9);
   vi.advanceTimersByTime(1700);
-  expect(animation.playbackRate).toBe(1);
+  expect(animation.playbackRate).toBeCloseTo(3, 1);
 
   fireEvent.pointerLeave(target);
   fireEvent.pointerEnter(target);
   vi.advanceTimersByTime(160);
-  expect(animation.playbackRate).toBeGreaterThan(1);
-  expect(animation.playbackRate).toBeLessThan(4);
+  expect(animation.playbackRate).toBeGreaterThan(3);
+  expect(animation.playbackRate).toBeLessThan(21);
   fireEvent.pointerLeave(target);
   vi.advanceTimersByTime(1200);
-  expect(animation.playbackRate).toBe(1);
+  expect(animation.playbackRate).toBeCloseTo(3, 1);
 
   rerender(
     <span data-testid="brand">
@@ -80,7 +80,7 @@ it('gives hover a brief burst, then returns to idle without moving the hub', () 
     </span>,
   );
   vi.advanceTimersByTime(1800);
-  expect(animation.playbackRate).toBe(1);
+  expect(animation.playbackRate).toBe(3);
   expect(animation.pause).not.toHaveBeenCalled();
   expect(animation.cancel).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
@@ -101,7 +101,7 @@ it('honors reduced motion at startup and when it changes during a turn', () => {
   motion.matches = false;
   motion.dispatchEvent(new Event('change'));
   vi.advanceTimersByTime(160);
-  expect(animation.playbackRate).toBeGreaterThanOrEqual(1);
+  expect(animation.playbackRate).toBeGreaterThanOrEqual(3);
   motion.matches = true;
   motion.dispatchEvent(new Event('change'));
   expect(animation.pause).toHaveBeenCalled();
