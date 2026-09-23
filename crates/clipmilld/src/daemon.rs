@@ -5,14 +5,14 @@ use std::{
     io::{self, Read},
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use tokio::{
     net::{UnixListener, UnixStream},
     sync::{Semaphore, oneshot},
     task::JoinSet,
-    time::{sleep, timeout},
+    time::timeout,
 };
 
 use clipmill_artifacts::ArtifactPath;
@@ -20,6 +20,7 @@ use clipmill_artifacts::ArtifactPath;
 use crate::{
     ArtifactCoordinator, Config, DaemonError,
     artifacts::{ArtifactActor, ArtifactHandle},
+    collector::{self, CleanUp, Collector},
     db::DbActor,
     device::{DeviceProfiler, verify_profile},
     ipc::{FrameError, handle_connection},
@@ -34,8 +35,6 @@ use crate::{
 const MAX_CONNECTIONS: usize = 64;
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
-const GC_INTERVAL: Duration = Duration::from_hours(6);
-const GC_IDLE_RETRY: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub struct Daemon {
@@ -49,6 +48,9 @@ pub struct Daemon {
     scheduler: Scheduler,
     epoch: String,
     artifact_gc_grace: Duration,
+    /// Clean-ups asked for through the service, answered by the collection
+    /// loop `serve_until` starts.
+    clean_ups: tokio::sync::mpsc::Receiver<CleanUp>,
     socket: SocketGuard,
     worker_socket: SocketGuard,
     shm_socket: SocketGuard,
@@ -273,6 +275,7 @@ impl Daemon {
             Arc::clone(&policy),
             crate::device::total_memory().await,
         );
+        let (collector, clean_ups) = Collector::new();
         let service = Service::with_scheduler(
             database.handle(),
             started_unix_millis,
@@ -299,7 +302,8 @@ impl Daemon {
             roster,
             decoder,
         )
-        .with_library(library);
+        .with_library(library)
+        .with_collector(collector);
 
         service.recover_youtube_imports().await.map_err(|error| {
             DaemonError::Ipc(format!("cannot recover YouTube imports: {error}"))
@@ -322,6 +326,7 @@ impl Daemon {
             scheduler,
             epoch: daemon_epoch,
             artifact_gc_grace: config.artifact_gc_grace,
+            clean_ups,
             socket,
             worker_socket,
             shm_socket,
@@ -386,6 +391,7 @@ impl Daemon {
             scheduler,
             epoch: daemon_epoch,
             artifact_gc_grace,
+            clean_ups,
             mut socket,
             mut worker_socket,
             mut shm_socket,
@@ -399,10 +405,11 @@ impl Daemon {
         let mut shm_connections: JoinSet<Result<(), String>> = JoinSet::new();
         let mut serve_error = None;
         let (maintenance_stop, maintenance_stopped) = oneshot::channel();
-        let mut maintenance = tokio::spawn(run_artifact_maintenance(
+        let mut maintenance = tokio::spawn(collector::run(
             artifacts.handle(),
             database.handle(),
             artifact_gc_grace,
+            clean_ups,
             maintenance_stopped,
         ));
         tokio::pin!(shutdown);
@@ -561,63 +568,6 @@ impl Daemon {
     }
 }
 
-pub(crate) async fn run_artifact_maintenance(
-    artifacts: ArtifactHandle,
-    database: crate::db::DbHandle,
-    grace: Duration,
-    mut stopped: oneshot::Receiver<()>,
-) {
-    // A deferred scan is retried after a quiet interval, not six hours later.
-    // It always reads fresh DB roots and fresh actor-owned reader pins.
-    let mut delay = Duration::ZERO;
-    loop {
-        tokio::select! {
-            _ = &mut stopped => break,
-            () = sleep(delay) => {
-                delay = GC_INTERVAL;
-                let started = Instant::now();
-                let Ok(roots) = database.list_artifact_roots().await else {
-                    tracing::warn!(
-                        operation = "gc",
-                        latency_ms = latency_millis(started),
-                        result = "error",
-                        "cannot read artifact GC roots"
-                    );
-                    continue;
-                };
-                let collected = tokio::select! {
-                    biased;
-                    _ = &mut stopped => break,
-                    result = artifacts.collect(roots, SystemTime::now(), grace) => result,
-                };
-                if let Ok(report) = collected {
-                    if report.deferred {
-                        delay = GC_IDLE_RETRY;
-                    }
-                    tracing::info!(
-                        operation = "gc",
-                        latency_ms = latency_millis(started),
-                        result = "ok",
-                        reachable = report.reachable,
-                        grace_preserved = report.preserved_by_grace,
-                        deleted = report.deleted,
-                        quarantine_deleted = report.quarantine_deleted,
-                        deferred = report.deferred,
-                        "artifact garbage collection pass"
-                    );
-                } else {
-                    tracing::warn!(
-                        operation = "gc",
-                        latency_ms = latency_millis(started),
-                        result = "error",
-                        "artifact garbage collection aborted"
-                    );
-                }
-            }
-        }
-    }
-}
-
 async fn startup_profile_capacity(
     database: &crate::db::DbHandle,
     artifacts: &ArtifactHandle,
@@ -679,10 +629,6 @@ async fn startup_profile_capacity(
         accelerator_mask: measured.accelerator_mask,
         vram_bytes: measured.vram_bytes,
     }
-}
-
-fn latency_millis(started: Instant) -> u64 {
-    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn log_connection_result(result: Result<Result<(), FrameError>, tokio::task::JoinError>) {

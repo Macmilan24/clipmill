@@ -98,6 +98,9 @@ pub(crate) struct Service {
     /// Which models are installed, which one does each job, and getting them.
     /// Absent in the tests that build a service without a workspace.
     library: Option<std::sync::Arc<crate::library::ModelLibrary>>,
+    /// The loop every artifact collection runs through, for the clean-ups
+    /// Settings asks for. Absent where no daemon runs that loop.
+    collector: Option<crate::collector::Collector>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -160,6 +163,7 @@ impl Service {
             youtube: None,
             publishing: std::sync::Arc::default(),
             library: None,
+            collector: None,
         }
     }
 
@@ -208,6 +212,7 @@ impl Service {
             youtube,
             publishing: std::sync::Arc::default(),
             library: None,
+            collector: None,
         }
     }
 

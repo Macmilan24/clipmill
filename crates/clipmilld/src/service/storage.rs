@@ -5,6 +5,11 @@
 //! generated files no root reaches, scratch that has gone quiet, interrupted
 //! downloads, and old database backups. Model weights are removed through the
 //! model library, which knows which analyses still need them.
+//!
+//! Generated files are collected by the same loop as the scheduled pass (see
+//! `collector`), and a request waits for the whole pass: it re-verifies every
+//! file a project reaches before removing anything, which on a large library
+//! takes minutes, not a request's usual moment.
 
 use std::time::{Duration, SystemTime};
 
@@ -14,7 +19,10 @@ use clipmill_contracts::proto::ipc::v1::{
 };
 
 use super::{Reply, Service, error_reply, response_reply};
-use crate::storage::{self, Category, Report};
+use crate::{
+    collector::{CleanUpError, Collector},
+    storage::{self, Category, Report},
+};
 
 /// The youngest an unreferenced object may be and still be collected by a
 /// clean-up somebody asked for. A few minutes cover the moment between an
@@ -23,6 +31,11 @@ use crate::storage::{self, Category, Report};
 pub(crate) const CLEAN_GRACE: Duration = Duration::from_mins(15);
 
 impl Service {
+    pub(crate) fn with_collector(mut self, collector: Collector) -> Self {
+        self.collector = Some(collector);
+        self
+    }
+
     /// What this installation is using on disk, by category.
     ///
     /// The store answers for artifacts from manifests it already holds. The
@@ -114,29 +127,36 @@ impl Service {
     /// Collect every generated file no root reaches, without waiting out the
     /// retention period. The store re-verifies every reachable manifest and
     /// keeps whatever a reader holds, exactly as the scheduled pass does.
+    ///
+    /// The answer is the finished pass. One that yields to other work carries
+    /// on where it stopped, so a busy engine makes this slower, never a
+    /// clean-up that reports nothing freed while it left everything in place.
     async fn clean_unused_files(&self) -> Result<Category, (ErrorCode, String)> {
-        let artifacts = self.artifacts.as_ref().ok_or((
+        let collector = self.collector.as_ref().ok_or((
             ErrorCode::Unavailable,
-            "this daemon has no artifact store".to_owned(),
+            "this daemon collects no artifacts".to_owned(),
         ))?;
-        let roots = self.database.list_artifact_roots().await.map_err(|error| {
-            (
-                ErrorCode::Unavailable,
-                format!("ClipMill could not read what is in use: {error}"),
-            )
-        })?;
-        let report = artifacts
-            .collect(roots, SystemTime::now(), CLEAN_GRACE)
+        let freed = collector
+            .clean_up(CLEAN_GRACE)
             .await
-            .map_err(|error| {
-                (
+            .map_err(|error| match error {
+                CleanUpError::Roots => (
+                    ErrorCode::Unavailable,
+                    "ClipMill could not read what your projects use, so nothing was removed."
+                        .to_owned(),
+                ),
+                CleanUpError::Refused(detail) => (
                     ErrorCode::Conflict,
-                    format!("The clean-up stopped to keep your projects safe: {error}"),
-                )
+                    format!("The clean-up stopped to keep your projects safe: {detail}"),
+                ),
+                CleanUpError::Stopped => (
+                    ErrorCode::Unavailable,
+                    "ClipMill stopped before the clean-up finished.".to_owned(),
+                ),
             })?;
         Ok(Category {
-            bytes: report.deleted_bytes,
-            items: u64::try_from(report.deleted).unwrap_or(u64::MAX),
+            bytes: freed.bytes,
+            items: freed.objects,
         })
     }
 
