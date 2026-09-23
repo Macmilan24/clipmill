@@ -81,7 +81,7 @@ export function App(): JSX.Element {
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const analysisBusy = useAnalysisActivity(state);
+  const analysisActivity = useAnalysisActivity(state);
 
   // Restore both choices before the first React paint.
   useLayoutEffect(() => {
@@ -184,7 +184,7 @@ export function App(): JSX.Element {
           activeId={section.id}
           onSelect={navigate}
           state={state}
-          analysisBusy={analysisBusy}
+          analysisBusy={analysisActivity.active}
         />
         <SidebarInset className="min-h-0 min-w-0 bg-transparent">
           <TopBar
@@ -210,12 +210,16 @@ export function App(): JSX.Element {
               newProject: {
                 state,
                 onStarted: (projectId, jobId) => {
+                  analysisActivity.markStarted(jobId);
                   openAnalysis(projectId, jobId, 'new-project');
                 },
               },
               analysis: {
                 profile,
-                onRestarted: (projectId, jobId) => openAnalysis(projectId, jobId, 'library'),
+                onRestarted: (projectId, jobId) => {
+                  analysisActivity.markStarted(jobId);
+                  openAnalysis(projectId, jobId, 'library');
+                },
                 onBack: () => {
                   navigate(route.kind === 'analysis' ? route.from : 'library');
                 },
