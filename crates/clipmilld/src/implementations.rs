@@ -34,9 +34,13 @@ pub(crate) struct Implementation {
     pub stage: &'static str,
     /// Registry name of the model it loads. Its digest joins the artifact key.
     pub model: &'static str,
-    /// The runtime a worker declares to serve this. Only a worker registered
-    /// on the same backend can be handed the task.
+    /// The runtime a worker declares to serve this.
     pub backend: &'static str,
+    /// The worker family that runs it, as that worker registers itself. A
+    /// task planned with this implementation is leased only to a worker of
+    /// this family: two families can serve one stage — whisper.cpp and MLX
+    /// both transcribe — and each loads only its own models.
+    pub worker: &'static str,
     /// The accelerator class the scheduler requires of whoever leases it.
     /// Empty means any machine will do, which is what makes a candidate the
     /// portable one.
@@ -66,6 +70,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "vad",
         stage: "speech-vad",
         model: "silero-vad",
+        worker: "speech-vad",
         backend: "onnx-cpu",
         accelerator_class: "",
         portable: true,
@@ -76,6 +81,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "asr",
         stage: "speech-asr",
         model: "whisper-base",
+        worker: "speech-asr",
         backend: "cpu",
         accelerator_class: "",
         portable: true,
@@ -89,6 +95,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "asr",
         stage: "speech-asr",
         model: "whisper-large-v3-turbo",
+        worker: "speech-asr",
         backend: "cpu",
         accelerator_class: "",
         portable: false,
@@ -99,6 +106,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "asr",
         stage: "speech-asr",
         model: "qwen3-asr-mlx",
+        worker: "speech-mlx",
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
@@ -109,6 +117,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "forced-align",
         stage: "speech-align",
         model: "wav2vec2-ctc-en",
+        worker: "speech-align",
         backend: "onnx-cpu",
         accelerator_class: "",
         portable: true,
@@ -119,6 +128,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "forced-align",
         stage: "speech-align",
         model: "qwen3-aligner-mlx",
+        worker: "speech-mlx",
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
@@ -129,6 +139,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "editorial",
         stage: "editorial-propose",
         model: "qwen3-5-editorial-mlx",
+        worker: "editorial",
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
@@ -139,6 +150,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "editorial",
         stage: "editorial-review",
         model: "qwen3-5-editorial-mlx",
+        worker: "editorial",
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
@@ -149,6 +161,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "editorial",
         stage: "editorial-look",
         model: "qwen3-5-editorial-mlx",
+        worker: "editorial",
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
@@ -159,6 +172,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "editorial",
         stage: "youtube-metadata",
         model: "qwen3-5-editorial-mlx",
+        worker: "editorial",
         backend: "mlx",
         accelerator_class: "metal",
         portable: false,
@@ -173,6 +187,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         capability: "detect-faces",
         stage: "detect-faces",
         model: "yunet-face",
+        worker: "detect-faces",
         backend: "onnx-cpu",
         accelerator_class: "",
         portable: true,
@@ -204,12 +219,14 @@ pub(crate) fn custom_runtime(capability: &str) -> Option<CustomRuntime> {
             runtime: "whisper.cpp",
             backend: "cpu",
             quantization: "ggml",
+            worker: "speech-asr",
         }),
         "editorial" => Some(CustomRuntime {
             family: "mlx-vlm",
             runtime: "mlx",
             backend: "mlx",
             quantization: "mlx",
+            worker: "editorial",
         }),
         _ => None,
     }
@@ -222,6 +239,8 @@ pub(crate) struct CustomRuntime {
     pub runtime: &'static str,
     pub backend: &'static str,
     pub quantization: &'static str,
+    /// The worker family that loads it.
+    pub worker: &'static str,
 }
 
 /// Make a person's model plannable: one implementation per stage its worker
@@ -266,6 +285,7 @@ pub(crate) fn register_custom(model: &str, capability: &str) -> Result<(), &'sta
             stage,
             model,
             backend: runtime.backend,
+            worker: runtime.worker,
             accelerator_class: if runtime.backend == "mlx" {
                 "metal"
             } else {
@@ -333,6 +353,49 @@ pub(crate) fn portable_for_stage(stage: &str) -> Option<&'static Implementation>
     candidates_for_stage(stage).find(|implementation| implementation.portable)
 }
 
+/// An implementation that loads a model. Every implementation of one model
+/// runs in one worker family, whichever stage it serves.
+pub(crate) fn for_model(model: &str) -> Option<&'static Implementation> {
+    all()
+        .into_iter()
+        .find(|implementation| implementation.model == model)
+}
+
+/// Whether a worker of `family` runs the implementation a task was planned
+/// with. A task whose implementation is not in this table — a stage that
+/// loads no model — is for any worker that declares its stage.
+pub(crate) fn runs(family: &str, implementation: &str) -> bool {
+    lookup(implementation).is_none_or(|known| known.worker == family)
+}
+
+/// The implementations of these stages another family runs: the tasks a
+/// worker of `family` declaring them must never be handed.
+pub(crate) fn foreign_to(family: &str, stages: &[String]) -> Vec<&'static str> {
+    all()
+        .into_iter()
+        .filter(|implementation| {
+            implementation.worker != family
+                && stages.iter().any(|stage| stage == implementation.stage)
+        })
+        .map(|implementation| implementation.name)
+        .collect()
+}
+
+/// What a person calls a worker family, for sentences that say which one to
+/// start.
+pub(crate) fn worker_title(family: &str) -> &'static str {
+    match family {
+        "speech-vad" => "speech-detection worker",
+        "speech-asr" => "whisper.cpp worker",
+        "speech-align" => "word-timing worker",
+        "speech-mlx" => "MLX speech worker",
+        "editorial" => "editorial worker",
+        "detect-faces" => "face-tracking worker",
+        "detect-shots" => "shot-detection worker",
+        _ => "worker",
+    }
+}
+
 /// Every capability something here can serve, in a stable order.
 ///
 /// Sorted rather than declaration-ordered, because it drives the order of the
@@ -354,8 +417,9 @@ mod tests {
 
     use super::{
         IMPLEMENTATIONS, candidates_for_capability, candidates_for_capability_names,
-        candidates_for_stage, custom_runtime, for_stage_and_model, lookup,
-        measured_candidates_for_capability, portable_for_stage, register_custom,
+        candidates_for_stage, custom_runtime, for_model, for_stage_and_model, foreign_to, lookup,
+        measured_candidates_for_capability, portable_for_stage, register_custom, runs,
+        worker_title,
     };
 
     #[test]
@@ -463,6 +527,62 @@ mod tests {
         }
     }
 
+    /// A worker package is one process with one registered family, so every
+    /// implementation it provides must name that family — and a person must be
+    /// told its name when it is the one to start.
+    #[test]
+    fn every_implementation_of_one_worker_package_names_one_family() {
+        let mut families = std::collections::BTreeMap::new();
+        for implementation in IMPLEMENTATIONS {
+            let package = implementation
+                .name
+                .split_once('@')
+                .map_or(implementation.name, |(package, _)| package);
+            let family = families.entry(package).or_insert(implementation.worker);
+            assert_eq!(
+                *family, implementation.worker,
+                "{} names a second family for {package}",
+                implementation.name
+            );
+            assert_ne!(
+                worker_title(implementation.worker),
+                "worker",
+                "{} has no name to give a person",
+                implementation.worker
+            );
+        }
+    }
+
+    /// The whisper.cpp and MLX speech workers both declare transcription and
+    /// word timing; each is handed only the tasks planned for its own models.
+    #[test]
+    fn a_task_goes_only_to_the_family_its_implementation_names() {
+        let stages = ["speech-asr".to_owned(), "speech-align".to_owned()];
+        let foreign = foreign_to("speech-mlx", &stages);
+        assert!(foreign.contains(&"clipmill-worker-asr@0.1.0"));
+        assert!(foreign.contains(&"clipmill-worker-align@0.1.0"));
+        assert!(!foreign.contains(&"clipmill-worker-speech-mlx@0.1.0/align"));
+        let foreign = foreign_to("speech-align", &["speech-align".to_owned()]);
+        assert_eq!(foreign, ["clipmill-worker-speech-mlx@0.1.0/align"]);
+        assert!(runs("speech-mlx", "clipmill-worker-speech-mlx@0.1.0/align"));
+        assert!(!runs(
+            "speech-align",
+            "clipmill-worker-speech-mlx@0.1.0/align"
+        ));
+        assert!(
+            runs("detect-shots", "clipmill-worker-shots@0.1.0"),
+            "a stage that loads no model is for whoever declares it"
+        );
+        assert_eq!(
+            for_model("qwen3-aligner-mlx").map(|found| found.worker),
+            Some("speech-mlx")
+        );
+        assert_eq!(
+            for_model("qwen3-5-editorial-mlx").map(|found| found.worker),
+            Some("editorial")
+        );
+    }
+
     #[test]
     fn the_capability_list_is_every_capability_exactly_once_in_a_stable_order() {
         assert_eq!(
@@ -555,6 +675,7 @@ mod tests {
             "clipmill-worker-asr@0.1.0/custom/test-whisper-pinned"
         );
         assert!(transcription[0].opt_in);
+        assert_eq!(transcription[0].worker, "speech-asr");
         assert!(transcription[0].accelerator_class.is_empty());
         assert!(lookup(transcription[0].name).is_some());
 
@@ -567,6 +688,7 @@ mod tests {
         ] {
             let found = for_stage_and_model(stage, "test-editorial-pinned")
                 .unwrap_or_else(|| panic!("{stage} cannot run the pinned model"));
+            assert_eq!(found.worker, "editorial");
             assert_eq!(found.accelerator_class, "metal");
             assert_eq!(found.backend, "mlx");
             assert!(found.opt_in);

@@ -620,6 +620,9 @@ pub(super) fn lease_next_task_for_worker(
     request: &LeaseRequest,
 ) -> Result<LeaseSelection, StoreError> {
     let capability_filter = format!(",{},", request.capabilities.join(","));
+    // A stage two families serve is routed by the implementation it was
+    // planned with; a worker is never handed another family's model.
+    let foreign_filter = format!(",{},", request.foreign_implementations.join(","));
     // Bind data, never interpolate task names into SQL. Exact comma-delimited
     // membership follows the registry for both policies; a cloud stage cannot
     // gain admission by falsely declaring itself local.
@@ -694,6 +697,7 @@ pub(super) fn lease_next_task_for_worker(
                     AND instr(?19, ',' || t.kind || ',') > 0
                ))
                AND instr(?17, ',' || t.kind || ',') > 0
+               AND (t.implementation = '' OR instr(?21, ',' || t.implementation || ',') = 0)
              ORDER BY j.created_unix_millis, j.job_id, t.ordinal
              LIMIT 1",
             params![
@@ -717,6 +721,7 @@ pub(super) fn lease_next_task_for_worker(
                 TaskState::Running as i32,
                 network_allowed_filter,
                 local_lock_filter,
+                foreign_filter,
             ],
             |row| {
                 Ok(SelectedTaskRow {
@@ -921,6 +926,7 @@ pub(super) fn lease_next_task(
             ]
             .map(str::to_owned)
             .to_vec(),
+            foreign_implementations: Vec::new(),
         },
     )
 }

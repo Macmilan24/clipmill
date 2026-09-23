@@ -2507,6 +2507,10 @@ pub(crate) struct LeaseRequest {
     pub capacity: ResourceCapacity,
     pub worker_id: String,
     pub capabilities: Vec<String>,
+    /// Implementations of the declared stages that another worker family
+    /// runs. A task planned with one of them is never this worker's, however
+    /// well its stage matches: it would be handed weights it cannot load.
+    pub foreign_implementations: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -2767,6 +2771,7 @@ async fn run_scheduler(
                     capacity: available_capacity,
                     worker_id: "builtin-fixture".to_owned(),
                     capabilities: builtin_capabilities.clone(),
+                    foreign_implementations: Vec::new(),
                 })
                 .await;
             let Ok(selection) = leased else {
