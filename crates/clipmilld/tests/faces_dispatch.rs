@@ -355,7 +355,7 @@ async fn worker(fixture: &Fixture) -> UnixStream {
     };
     let mut descriptor = CapabilityDescriptor {
         worker_id: fixture.worker_id.clone(),
-        family: "faces".to_owned(),
+        family: "detect-faces".to_owned(),
         capabilities: vec!["detect-faces".to_owned()],
         protocol_version: "1.2".to_owned(),
         backend: "onnx-cpu".to_owned(),

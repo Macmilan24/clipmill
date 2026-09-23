@@ -6,6 +6,10 @@
 @import 'tw-animate-css';
 @import '@clipmill/tokens/tokens.css';
 @import '@clipmill/tokens/theme.css';
+@import '@fontsource-variable/dm-sans';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import './theme-chrome.css';
 
 /* The renderer never toggles a `dark` class; the data-theme attribute on the
  * root drives every value. This keeps Tailwind's dark: variant in agreement
@@ -32,15 +36,14 @@
     font-family: var(--cm-font-ui);
     font-size: var(--cm-type-body);
     color: var(--cm-text-primary);
-    background: linear-gradient(180deg, var(--cm-bg-top) 0%, var(--cm-bg-bottom) 100%);
-    background-attachment: fixed;
+    background: var(--cm-bg-top);
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     /* The shell is fixed; only page content scrolls. */
     overflow: hidden;
   }
 
-  /* One focus treatment everywhere: a 2px indigo ring. */
-  :where(button, a, input, select, [tabindex]):focus-visible {
+  :where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
     outline: 2px solid var(--cm-accent-focus);
     outline-offset: 2px;
   }
@@ -69,18 +72,95 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The active navigation row carries a 2px indigo indicator inset on its left
- * edge. shadcn's SidebarMenuButton has no such affordance, and expressing it as
- * arbitrary Tailwind variants would be far less legible than four lines here. */
-.nav-row[data-active='true']::before {
+/* A compact activity rail leaves more room for footage and editing tools. */
+.studio-sidebar .nav-row {
+  position: relative;
+}
+.studio-sidebar .nav-row[data-active='true'] {
+  background: var(--cm-nav-active);
+  color: var(--cm-text-primary);
+  font-weight: 500;
+}
+.studio-sidebar .nav-row[data-active='true']::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 6px;
-  bottom: 6px;
+  top: 16px;
+  bottom: 16px;
   width: 2px;
-  border-radius: 1px;
-  background: var(--color-primary);
+  background: var(--cm-accent);
+  border-radius: 2px;
+  opacity: var(--cm-nav-marker-opacity);
+}
+.studio-sidebar .nav-row[data-active='true'] svg {
+  color: var(--cm-nav-icon-ink);
+  background: var(--cm-nav-icon-background);
+  box-shadow: 0 0 0 4px var(--cm-nav-icon-background);
+  border-radius: 2px;
+}
+.sidebar-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--cm-text-primary);
+  border: 1px solid var(--cm-glass-border);
+  border-radius: 10px;
+  background: var(--cm-glass);
+  flex: none;
+}
+.brand-mark {
+  overflow: visible;
+}
+.brand-mark-blades {
+  transform-box: view-box;
+  transform-origin: center;
+}
+.studio-sidebar {
+  background: var(--cm-rail);
+}
+.studio-topbar {
+  background: var(--cm-bg-top);
+}
+.page-frame {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+}
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.page-header h1 {
+  font-weight: 500;
+  font-size: var(--cm-type-page-title);
+  letter-spacing: -0.035em;
+}
+.page-description {
+  color: var(--cm-text-secondary);
+  margin-top: 5px;
+  font-size: 12px;
+}
+.project-film-frame {
+  outline: 1px solid transparent;
+  outline-offset: 3px;
+  transition: outline-color 140ms ease;
+}
+.project-film-card:hover .project-film-frame {
+  outline-color: var(--cm-accent);
+}
+.studio-main summary {
+  cursor: pointer;
+  color: var(--cm-text-secondary);
+  font-size: 12px;
+}
+.studio-main details[open] > summary {
+  margin-bottom: 12px;
+  color: var(--cm-text-primary);
 }
 
 /*
@@ -110,6 +190,9 @@
 }
 
 /* Workspace geometry belongs here, not in a second layer of page padding. */
+.studio-shell {
+  overflow: clip;
+}
 .studio-main {
   min-height: 0;
   min-width: 0;
@@ -117,7 +200,7 @@
 }
 .studio-main-page {
   overflow-y: auto;
-  padding: 24px;
+  padding: 28px 32px;
 }
 .studio-main-workspace {
   display: flex;
@@ -141,10 +224,10 @@
   gap: 16px;
 }
 .workspace-title {
-  font-size: 20px;
+  font-size: var(--cm-type-page-title);
   line-height: 1.35;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-weight: 500;
+  letter-spacing: -0.035em;
 }
 .workspace-subtitle {
   color: var(--cm-text-secondary);
@@ -153,7 +236,7 @@
 }
 .workspace-panel {
   border: 1px solid var(--cm-glass-border);
-  border-radius: 10px;
+  border-radius: var(--cm-radius-card);
   background: var(--cm-glass);
 }
 .results-layout {
@@ -349,7 +432,7 @@ input[type='range'] {
     display: none;
   }
 }
-@media (max-width: 1199px) {
+@media (max-width: 899px) {
   .studio-shell {
     --sidebar-width: 64px !important;
   }
@@ -367,6 +450,8 @@ input[type='range'] {
     justify-content: center;
     padding-inline: 0;
   }
+}
+@media (max-width: 1199px) {
   .workspace-page {
     padding: 20px;
     gap: 16px;

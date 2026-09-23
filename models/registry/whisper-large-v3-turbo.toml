@@ -1,14 +1,22 @@
 # The accurate end of the fallback family, for machines that can afford it.
 #
 # Every file is pinned by digest and the revision is pinned by commit, so
-# `fetch-models.sh` verifies rather than trusts. The licence class is what
-# `check-models.py` enforces: weights ship inside what users publish.
+# the model library and `fetch-models.sh` verify rather than trust. The
+# licence class is what `check-models.py` enforces: weights ship inside
+# what users publish.
 name = "whisper-large-v3-turbo"
 capability = "asr"
 family = "whisper.cpp"
 runtime = "whisper.cpp"
 backend = "cpu"
 quantization = "ggml-f16"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Whisper Large v3 Turbo"
+summary = "More accurate on accents, crosstalk and noisy rooms. Slower than Whisper Base and needs more memory."
+recommended = false
 
 [source]
 provider = "https://huggingface.co"

@@ -5,6 +5,8 @@ from __future__ import annotations
 import gc
 import os
 import time
+import traceback
+from contextlib import suppress
 
 
 class LocalModel:
@@ -16,7 +18,19 @@ class LocalModel:
 
         cancellation.raise_if_cancelled()
         mx.random.seed(0)
-        self.model, self.processor = load(str(root), trust_remote_code=False)
+        self.model = None
+        self.processor = None
+        try:
+            self.model, self.processor = load(str(root), trust_remote_code=False)
+        except BaseException as error:
+            # A failed constructor never reaches the stage's runtime.close().
+            # Unwound loader frames can still own partial tensors. Clear their
+            # locals before collecting, retaining the original error and stack.
+            with suppress(Exception):
+                traceback.clear_frames(error.__traceback__)
+            with suppress(Exception):
+                self.close()
+            raise
         self.cancellation = cancellation
 
     def generate(self, prompt, schema, max_tokens, images=None):
@@ -71,5 +85,7 @@ class LocalModel:
 
         self.model = None
         self.processor = None
-        gc.collect()
-        mx.clear_cache()
+        try:
+            gc.collect()
+        finally:
+            mx.clear_cache()

@@ -71,10 +71,13 @@ uv run --offline --no-sync --project workers/sdk just workers
 ```
 
 The SDK environment supplies the Python dependencies used during worker
-enrollment. Keep both terminals running. **Models & Device** reports installed
-weights and connected workers; analysis readiness explains missing requirements.
-Local inference needs several gigabytes of memory beyond the downloaded weights,
-so available memory affects which jobs can run.
+enrollment. Keep both terminals running. **Models** lists every model with its
+download size and the memory it needs, can download the recommended set in place
+of the commands above, and shows which model each job uses; analysis readiness
+explains missing requirements. Every file is checked against its pinned SHA-256
+before it is used. See [the model library](docs/model-library.md). Local
+inference needs several gigabytes of memory beyond the downloaded weights, so
+available memory affects which jobs can run.
 
 For YouTube downloads, `just setup-youtube` verifies the importer installation.
 See [YouTube import](docs/youtube-import.md) for supported URLs and limits.

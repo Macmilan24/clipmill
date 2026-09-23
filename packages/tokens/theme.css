@@ -1,4 +1,4 @@
-/* Pro-Studio Precision v1.1.0 shadcn semantic layer — GENERATED. Do not edit.
+/* Editorial Workspace v2.0.0 shadcn semantic layer — GENERATED. Do not edit.
  * Each name below is an alias for a --cm-* primitive from tokens.css, so the
  * component library and the design system cannot drift into two palettes.
  */
@@ -11,6 +11,7 @@
   --popover: var(--cm-glass-elevated);
   --popover-foreground: var(--cm-text-primary);
   --primary: var(--cm-accent);
+  --primary-foreground: var(--cm-accent-foreground);
   --secondary: var(--cm-glass-elevated);
   --secondary-foreground: var(--cm-text-primary);
   --muted: var(--cm-recessed);
@@ -21,9 +22,10 @@
   --border: var(--cm-glass-border);
   --input: var(--cm-recessed-border);
   --ring: var(--cm-accent-focus);
-  --sidebar: var(--cm-glass);
+  --sidebar: var(--cm-rail);
   --sidebar-foreground: var(--cm-text-secondary);
   --sidebar-primary: var(--cm-accent);
+  --sidebar-primary-foreground: var(--cm-accent-foreground);
   --sidebar-accent: var(--cm-accent-selected);
   --sidebar-accent-foreground: var(--cm-text-primary);
   --sidebar-border: var(--cm-glass-border);
@@ -31,11 +33,9 @@
   --success: var(--cm-semantic-success);
   --warning: var(--cm-semantic-warning);
   --outbound: var(--cm-semantic-outbound);
-  --primary-foreground: #ffffff;
   --destructive-foreground: #ffffff;
-  --sidebar-primary-foreground: #ffffff;
 
-  /* shadcn derives sm/md/lg/xl from this; 12px yields 8px controls and 16px cards. */
+  /* Component corner sizes share the panel radius. */
   --radius: var(--cm-radius-panel);
 }
 
@@ -47,6 +47,7 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -60,6 +61,7 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
@@ -67,9 +69,7 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-outbound: var(--outbound);
-  --color-primary-foreground: var(--primary-foreground);
   --color-destructive-foreground: var(--destructive-foreground);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
 
   --font-sans: var(--cm-font-ui);
   --font-mono: var(--cm-font-mono);
@@ -82,8 +82,8 @@
   --text-meta: var(--cm-type-meta);
   --text-technical: var(--cm-type-technical);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: max(2px, calc(var(--radius) - 4px));
+  --radius-md: max(2px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }

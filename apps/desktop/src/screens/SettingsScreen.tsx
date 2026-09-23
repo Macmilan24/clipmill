@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import type { Theme } from '@clipmill/tokens';
+import type { Theme, WorkspaceTheme } from '@clipmill/tokens';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { LocalLock, StorageStats } from '../daemon/client.js';
 import { Settings } from './Settings.js';
+import { ConnectionCard } from '../youtube/ConnectionCard.js';
+import { UploadHistory } from '../youtube/UploadHistory.js';
 
 export interface SettingsScreenProps {
   readonly api?: ShellApi;
   readonly theme?: Theme;
   readonly onThemeChange?: (theme: Theme) => void;
+  readonly workspaceTheme?: WorkspaceTheme;
+  readonly onWorkspaceThemeChange?: (theme: WorkspaceTheme) => void;
   readonly integrations?: ReactNode;
+  /** Go to Models, where weights are downloaded and removed. */
+  readonly onOpenModels?: () => void;
 }
 
 /** Refresh independently: a failed storage read must not hide the privacy answer. */
@@ -49,6 +55,14 @@ export function SettingsScreen({ api = daemonApi, ...preferences }: SettingsScre
   return (
     <Settings
       {...preferences}
+      integrations={
+        preferences.integrations ?? (
+          <div className="space-y-5">
+            <ConnectionCard api={api} />
+            <UploadHistory api={api} />
+          </div>
+        )
+      }
       storage={storage}
       lock={lock}
       loading={loading}
@@ -56,6 +70,16 @@ export function SettingsScreen({ api = daemonApi, ...preferences }: SettingsScre
       storageError={storageError}
       lockError={lockError}
       onRefresh={refresh}
+      onCleanStorage={async (action) => {
+        const result = await api.cleanStorage(action);
+        // The daemon measured again after cleaning; that answer replaces ours.
+        if (result.storage) {
+          setStorage(result.storage);
+          setStorageError(null);
+        }
+        return result;
+      }}
+      onOpenStorage={(key) => api.openStorageLocation(key)}
     />
   );
 }

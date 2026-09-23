@@ -4,7 +4,7 @@
  * target the displayed cues. Filler removal changes captions only, leaving media
  * unchanged. Caption timing and wrapping remain owned by the caption engine.
  */
-import { Check, Scissors, Trash2 } from 'lucide-react';
+import { Check, Scissors, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
@@ -38,14 +38,16 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
     : null;
 
   return (
-    <div className="flex min-h-0 flex-col gap-4 p-4 text-sm">
-      <p className="text-[12px] leading-relaxed text-[var(--cm-text-secondary)]">
-        Select a word to correct your captions. Changes also appear in the subtitle files.
-      </p>
+    <div className="editor-panel editor-captions-panel">
+      <div className="editor-panel-heading">
+        <h2 className="editor-panel-title">Transcript</h2>
+        <span>{plan.cues.length} captions</span>
+      </div>
+      <p className="editor-help">Select a word to edit.</p>
       {plan.cues.length === 0 && (
         <p className="py-4 text-xs text-[var(--cm-text-muted)]">No captions in this clip.</p>
       )}
-      <div className="max-h-[32vh] min-h-20 overflow-y-auto pr-1">
+      <div className="editor-caption-list">
         <ul className="flex flex-col gap-2">
           {plan.cues.map((candidate, position) => (
             <li key={candidate.cueId}>
@@ -83,11 +85,7 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
           onApply={onApply}
           onDone={() => setSelected(null)}
         />
-      ) : (
-        <p className="text-xs text-[var(--cm-ink-2)]">
-          Select a word to correct it, split the cue there, re-break its lines, or drop it.
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -112,19 +110,19 @@ function Phrase({
   let index = 0;
   return (
     <div
-      className={`group border-l-2 px-3 py-2 ${
+      className={`editor-phrase group border-l-2 px-3 py-2 ${
         live ? 'border-[var(--cm-accent)] bg-[var(--cm-accent-selected)]' : 'border-transparent'
       }`}
     >
       <div className="mb-1 flex items-center justify-between">
-        <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">{label}</span>
+        <span className="font-mono text-[11px] text-[var(--cm-ink-3)]">{label}</span>
         {onMergeWithNext && (
           <Button
             size="xs"
             variant="ghost"
             disabled={busy}
             onClick={onMergeWithNext}
-            className="text-[10px] text-[var(--cm-text-secondary)]"
+            className="editor-merge text-[11px] text-[var(--cm-text-secondary)]"
           >
             Merge with next
           </Button>
@@ -142,9 +140,10 @@ function Phrase({
                 key={`${word.text}-${mine}`}
                 type="button"
                 onClick={() => onSelectWord(mine)}
+                aria-pressed={mine === selected}
                 className={`rounded px-0.5 ${
                   mine === selected
-                    ? 'bg-[var(--cm-accent)] text-white'
+                    ? 'bg-[var(--cm-accent)] text-[var(--cm-accent-foreground)]'
                     : filler
                       ? 'text-[var(--cm-ink-3)] italic'
                       : 'text-[var(--cm-ink-1)]'
@@ -196,7 +195,13 @@ function WordActions({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-2">
+    <div className="editor-word-actions">
+      <div className="editor-panel-heading">
+        <h3 className="editor-panel-title">Edit word</h3>
+        <Button variant="ghost" size="icon-xs" onClick={onDone} aria-label="Close word editor">
+          <X />
+        </Button>
+      </div>
       <form
         className="flex items-center gap-2"
         onSubmit={(event) => {
@@ -211,15 +216,14 @@ function WordActions({
           value={draft}
           disabled={busy || !word}
           onChange={(event) => setDraft(event.target.value)}
-          className="h-8 font-mono text-xs"
+          className="h-8 text-sm"
         />
         <Button type="submit" size="sm" disabled={busy || !changed}>
           <Check className="size-3" /> Correct
         </Button>
       </form>
       <p className="text-[11px] text-[var(--cm-ink-3)]">
-        “{word?.text ?? ''}” in {cue.cueId}. A correction lands in the burned-in caption and in the
-        sidecars alike; the timing is untouched.
+        Updates captions and subtitle files. Timing stays the same.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button

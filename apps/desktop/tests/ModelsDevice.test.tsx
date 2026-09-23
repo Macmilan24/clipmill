@@ -152,8 +152,8 @@ describe('Models & Device', () => {
 
   it('never presents installed models it does not have', () => {
     renderScreen(connected, profile);
-    expect(screen.queryByText('0 installed')).toBeNull();
-    expect(screen.getByText('Checking installation…')).toBeDefined();
+    expect(screen.queryByText(/installed ·/)).toBeNull();
+    expect(screen.getByText('Reading the library…')).toBeDefined();
   });
 
   it('shows no egress figure when nobody has said what the policy is', () => {

@@ -3,6 +3,8 @@
 mod analysis;
 mod artifacts;
 mod captions;
+#[cfg(unix)]
+mod collector;
 mod config;
 #[cfg(unix)]
 mod daemon;
@@ -19,6 +21,7 @@ mod inspector;
 #[cfg(unix)]
 mod ipc;
 mod jobs;
+mod library;
 mod lock;
 mod media;
 mod models;

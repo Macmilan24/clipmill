@@ -404,12 +404,18 @@ pub struct StorageStatsView {
     /// it. Shown, not adjustable.
     #[serde(rename = "retentionGraceSeconds")]
     pub retention_grace_seconds: u64,
+    /// What cleaning up unused generated files would free now; absent when
+    /// the estimate could not be made.
+    #[serde(rename = "reclaimableBytes", skip_serializing_if = "Option::is_none")]
+    pub reclaimable_bytes: Option<u64>,
+    #[serde(rename = "reclaimableItems", skip_serializing_if = "Option::is_none")]
+    pub reclaimable_items: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct StorageCategoryView {
-    /// `artifacts`, `models`, or `state`. The wording on screen is the
-    /// renderer's; this is what it keys off.
+    /// `artifacts`, `models`, `state`, `imports`, `backups` or `temporary`.
+    /// The wording on screen is the renderer's; this is what it keys off.
     pub key: String,
     pub bytes: u64,
     pub items: u64,
@@ -422,6 +428,8 @@ impl From<GetStorageStatsResponse> for StorageStatsView {
         Self {
             available_bytes: stats.available_known.then_some(stats.available_bytes),
             retention_grace_seconds: stats.retention_grace_seconds,
+            reclaimable_bytes: stats.reclaimable_known.then_some(stats.reclaimable_bytes),
+            reclaimable_items: stats.reclaimable_known.then_some(stats.reclaimable_items),
             categories: stats
                 .categories
                 .into_iter()

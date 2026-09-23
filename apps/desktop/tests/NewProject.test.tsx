@@ -61,7 +61,7 @@ function scene(overrides: Partial<FakeWorld> = {}): FakeWorld {
   };
 }
 
-function show(world = scene()) {
+function show(world = scene(), onOpenModels?: () => void) {
   const onStarted = vi.fn();
   const api = fakeApi(world);
   const submitted: { projectId: string; request: AnalyzeRequest }[] = [];
@@ -72,7 +72,14 @@ function show(world = scene()) {
       return api.submitAnalyze(projectId, request);
     },
   };
-  render(<NewProject state={CONNECTED} onStarted={onStarted} loader={new ImportLoader(spied)} />);
+  render(
+    <NewProject
+      state={CONNECTED}
+      onStarted={onStarted}
+      {...(onOpenModels ? { onOpenModels } : {})}
+      loader={new ImportLoader(spied)}
+    />,
+  );
   return { onStarted, submitted };
 }
 
@@ -262,8 +269,28 @@ describe('the New Project screen', () => {
     });
     expect(screen.getByText(/not installed \(speech-asr-weights\)/)).toBeTruthy();
     const models = within(screen.getByRole('list', { name: 'Models not installed' }));
-    expect(models.getByText(/tools\/fetch-models\.sh/)).toBeTruthy();
+    expect(models.getByText(/Download it in Models/)).toBeTruthy();
     expect(screen.getByText('Not ready')).toBeTruthy();
+  });
+
+  it('sends a missing model to the Models page, where it can be downloaded', async () => {
+    const onOpenModels = vi.fn();
+    show(
+      scene({
+        readiness: readiness([
+          stageReadiness('speech-asr', { modelPresent: false, missingFiles: ['weights.bin'] }),
+        ]),
+      }),
+      onOpenModels,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Models' }));
+    expect(onOpenModels).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no way to Models when nothing is missing', async () => {
+    show(scene({ readiness: readiness([stageReadiness('speech-asr')]) }), vi.fn());
+    await screen.findByText('Ready');
+    expect(screen.queryByRole('button', { name: 'Open Models' })).toBeNull();
   });
 
   it('lets a run start when only a worker is missing, and says the stage will wait', async () => {

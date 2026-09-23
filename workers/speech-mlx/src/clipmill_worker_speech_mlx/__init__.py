@@ -67,7 +67,8 @@ from .languages import UNDETERMINED, UnsupportedLanguage
 from .runtime import MlxUnavailable, implementation, require_mlx
 
 __version__ = "0.1.0"
-CAPABILITIES = ("speech-asr", "speech-align")
+# Sorted: registration signs the list in order and refuses any other.
+CAPABILITIES = ("speech-align", "speech-asr")
 ASR_FILE = "asr.json"
 VAD_FILE = "vad.json"
 ALIGNMENT_FILE = "alignment.json"

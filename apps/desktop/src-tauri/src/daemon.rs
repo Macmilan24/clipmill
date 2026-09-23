@@ -91,8 +91,8 @@ pub enum DaemonLinkError {
     Closed,
     #[error("daemon frame exceeds {MAX_FRAME_BYTES} bytes")]
     Oversized,
-    #[error("daemon did not answer within {}s", CALL_TIMEOUT.as_secs())]
-    TimedOut,
+    #[error("daemon did not answer within {}s", .0.as_secs())]
+    TimedOut(Duration),
     #[error("daemon answered a different request")]
     Mismatched,
     #[error("daemon returned an empty response body")]
@@ -490,7 +490,22 @@ impl DaemonClient {
         }
     }
 
-    async fn call(&self, body: request::Body) -> Result<response::Body, DaemonLinkError> {
+    pub(crate) async fn call(
+        &self,
+        body: request::Body,
+    ) -> Result<response::Body, DaemonLinkError> {
+        self.call_within(body, CALL_TIMEOUT).await
+    }
+
+    /// A call the daemon answers only when long work is done, such as a
+    /// clean-up that re-verifies every file a project uses first. Everything
+    /// else keeps the short limit, so a daemon that stopped answering is
+    /// noticed in seconds.
+    pub(crate) async fn call_within(
+        &self,
+        body: request::Body,
+        limit: Duration,
+    ) -> Result<response::Body, DaemonLinkError> {
         let request_id = REQUEST_IDS.next("shell");
         let envelope = Request {
             request_id: request_id.clone(),
@@ -510,9 +525,9 @@ impl DaemonClient {
             let payload = read_frame(&mut stream).await?;
             Response::decode(payload.as_slice()).map_err(DaemonLinkError::from)
         };
-        let mut response = timeout(CALL_TIMEOUT, exchange())
+        let mut response = timeout(limit, exchange())
             .await
-            .map_err(|_| DaemonLinkError::TimedOut)?;
+            .map_err(|_| DaemonLinkError::TimedOut(limit))?;
         if response.as_ref().is_err_and(dropped_by_daemon) {
             // A connection closed before it answered is the daemon at its
             // limit, or restarting under this call. The same envelope goes
@@ -520,9 +535,9 @@ impl DaemonClient {
             // daemon accepts is stored under that id, so a retry of a lost
             // reply is the same reply and never a second edit.
             sleep(RETRY_AFTER).await;
-            response = timeout(CALL_TIMEOUT, exchange())
+            response = timeout(limit, exchange())
                 .await
-                .map_err(|_| DaemonLinkError::TimedOut)?;
+                .map_err(|_| DaemonLinkError::TimedOut(limit))?;
         }
         let response = response?;
 
@@ -777,7 +792,7 @@ impl DaemonClient {
         // normal state of a pipeline nobody is running.
         let opening = timeout(CALL_TIMEOUT, read_frame(&mut stream))
             .await
-            .map_err(|_| DaemonLinkError::TimedOut)??;
+            .map_err(|_| DaemonLinkError::TimedOut(CALL_TIMEOUT))??;
         let opening = Response::decode(opening.as_slice())?;
         if opening.request_id != request_id {
             return Err(DaemonLinkError::Mismatched);

@@ -3,12 +3,15 @@
  * Evidence timestamps support seeking; the boundary lattice overlays the source
  * waveform. Unmeasured axes retain their reasons rather than appearing as zero.
  */
+import '../results/workspace.css';
+
 import {
   ArrowLeft,
   Check,
   ChevronLeft,
   ChevronRight,
   Clock,
+  PanelLeft,
   RotateCcw,
   Scissors,
   TriangleAlert,
@@ -115,6 +118,7 @@ export function ClipInspector({
   const [draft, setDraft] = useState<{ startTicks: number; endTicks: number } | null>(null);
   const [positionTicks, setPositionTicks] = useState(row?.startTicks ?? 0);
   const [seekNonce, setSeekNonce] = useState(0);
+  const [showCandidates, setShowCandidates] = useState(false);
 
   // A different clip is a different window: the draft belonged to the last one,
   // and leaving the playhead where it was would seek the proxy to a position
@@ -187,8 +191,8 @@ export function ClipInspector({
   }
 
   return (
-    <div className="workspace-page">
-      <header className="flex shrink-0 items-center gap-3">
+    <div className="workspace-page clip-review-workspace">
+      <header className="clip-review-heading">
         <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
           <ArrowLeft className="size-4" aria-hidden />
           Results
@@ -197,12 +201,22 @@ export function ClipInspector({
           {row.headline || 'Untitled clip'}
         </h1>
         <span
-          className="shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase"
+          className="results-run-state"
           style={{ color: TONE_INK[state.tone], background: wash(state.tone) }}
         >
           {state.label}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={showCandidates}
+            aria-controls="clip-review-candidates"
+            onClick={() => setShowCandidates((shown) => !shown)}
+          >
+            <PanelLeft />
+            Clips
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -227,11 +241,15 @@ export function ClipInspector({
         </div>
       </header>
 
-      <div className="inspector-layout">
-        <CandidateRail rows={rows} candidateId={candidateId} onSelect={onSelect} busy={busy} />
+      <div className="inspector-layout" data-candidates={showCandidates}>
+        {showCandidates && (
+          <div id="clip-review-candidates" className="clip-review-candidate-panel">
+            <CandidateRail rows={rows} candidateId={candidateId} onSelect={onSelect} busy={busy} />
+          </div>
+        )}
 
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4" aria-label="The clip">
-          <div className="workspace-panel flex min-h-0 flex-1 flex-col p-4">
+        <section className="clip-review-viewer" aria-label="The clip">
+          <div className="clip-review-player-panel">
             <Player
               src={proxyUrl}
               startTicks={cut.startTicks}
@@ -294,8 +312,8 @@ export function ClipInspector({
           aria-label="Why this clip"
         >
           <Tabs key={candidateId} defaultValue="score" className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="mx-3 mt-3 shrink-0">
-              <TabsTrigger value="score">{row.review ? 'Review' : 'Heuristic score'}</TabsTrigger>
+            <TabsList className="clip-review-tabs">
+              <TabsTrigger value="score">{row.review ? 'Review' : 'Score'}</TabsTrigger>
               <TabsTrigger value="evidence">Evidence</TabsTrigger>
               <TabsTrigger value="boundary">Boundary</TabsTrigger>
               <TabsTrigger value="risk">
@@ -303,8 +321,20 @@ export function ClipInspector({
               </TabsTrigger>
             </TabsList>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <TabsContent value="score" className="mt-0 flex flex-col gap-6">
+            <div className="clip-review-context">
+              <TabsContent value="score" className="mt-0 flex flex-col gap-5">
+                <dl className="clip-review-facts">
+                  <div>
+                    <dt>Duration</dt>
+                    <dd>{duration(row.durationSeconds)}</dd>
+                  </div>
+                  <div>
+                    <dt>Source</dt>
+                    <dd>
+                      {clock(row.startTicks)} – {clock(row.endTicks)}
+                    </dd>
+                  </div>
+                </dl>
                 <div className="flex items-center gap-5">
                   {row.review ? (
                     <div className="min-w-0">
@@ -321,16 +351,19 @@ export function ClipInspector({
                           {row.review.summary}
                         </p>
                       )}
-                      <ul className="mt-4 flex flex-col gap-3">
-                        {row.review.reasons.map((reason, i) => (
-                          <li
-                            key={i}
-                            className="border-l-2 border-[var(--cm-glass-border)] pl-3 text-[12px] leading-relaxed text-[var(--cm-text-secondary)]"
-                          >
-                            {reason}
-                          </li>
-                        ))}
-                      </ul>
+                      <details className="results-disclosure">
+                        <summary>Review notes</summary>
+                        <ul className="results-disclosure-content flex flex-col gap-3">
+                          {row.review.reasons.map((reason, i) => (
+                            <li
+                              key={i}
+                              className="border-l-2 border-[var(--cm-glass-border)] pl-3 text-[12px] leading-relaxed text-[var(--cm-text-secondary)]"
+                            >
+                              {reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                       <p className="mt-5 text-[11px] text-[var(--cm-text-muted)]">
                         {row.review.route === 'cloud'
                           ? 'Cloud-assisted review'
@@ -388,10 +421,10 @@ export function ClipInspector({
                 </div>
 
                 {!row.review && (
-                  <div className="flex flex-col gap-3">
-                    <h3 className="border-b border-[var(--cm-glass-border)] pb-1 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-                      Detailed axis scores · {measured.length} of {row.axes.length} measured
-                    </h3>
+                  <details className="results-disclosure">
+                    <summary>
+                      Detailed scores · {measured.length} of {row.axes.length} measured
+                    </summary>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                       {detail.map((axis) => (
                         <div key={axis.axis} className="flex flex-col gap-1">
@@ -421,23 +454,23 @@ export function ClipInspector({
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </details>
                 )}
 
                 {reasons.length > 0 && (
-                  <div className="flex flex-col gap-3">
-                    <h3 className="border-b border-[var(--cm-glass-border)] pb-1 text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-                      {row.review ? 'Source excerpts' : 'Why selected'}
-                    </h3>
-                    {reasons.map((reason) => (
-                      <QuoteCard
-                        key={`${reason.label}-${reason.quote.text}`}
-                        label={reason.label}
-                        quote={reason.quote}
-                        onJump={scrub}
-                      />
-                    ))}
-                  </div>
+                  <details className="results-disclosure">
+                    <summary>{row.review ? 'Source excerpts' : 'Why selected'}</summary>
+                    <div className="results-disclosure-content flex flex-col gap-3">
+                      {reasons.map((reason) => (
+                        <QuoteCard
+                          key={`${reason.label}-${reason.quote.text}`}
+                          label={reason.label}
+                          quote={reason.quote}
+                          onJump={scrub}
+                        />
+                      ))}
+                    </div>
+                  </details>
                 )}
               </TabsContent>
 
@@ -558,7 +591,7 @@ export function ClipInspector({
             </div>
           </Tabs>
 
-          <footer className="flex shrink-0 flex-col gap-2 border-t border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-4">
+          <footer className="clip-review-actions">
             {row.review?.status === 'rejected' && (
               <p className="text-[11px] leading-relaxed text-[var(--cm-warning-ink)]">
                 The model did not recommend this moment. You can inspect the evidence and create
@@ -588,7 +621,12 @@ export function ClipInspector({
                     : 'Approve for the editor'}
             </Button>
             {onEdit && (
-              <Button variant="outline" className="w-full justify-center gap-2" onClick={onEdit}>
+              <Button
+                variant="outline"
+                className="w-full justify-center gap-2"
+                disabled={busy}
+                onClick={onEdit}
+              >
                 <Scissors className="size-4" aria-hidden />
                 Open the existing edit
               </Button>

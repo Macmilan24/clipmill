@@ -1,14 +1,22 @@
 # Forced alignment as its own stage: word timing never comes from a decoder's tokens.
 #
 # Every file is pinned by digest and the revision is pinned by commit, so
-# `fetch-models.sh` verifies rather than trusts. The licence class is what
-# `check-models.py` enforces: weights ship inside what users publish.
+# the model library and `fetch-models.sh` verify rather than trust. The
+# licence class is what `check-models.py` enforces: weights ship inside
+# what users publish.
 name = "qwen3-aligner-mlx"
 capability = "forced-align"
 family = "qwen3-aligner"
 runtime = "mlx"
 backend = "mlx"
 quantization = "int4"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Qwen3 Forced Aligner 0.6B"
+summary = "Faster word timing on the Apple silicon GPU."
+recommended = false
 
 [source]
 provider = "https://huggingface.co"
