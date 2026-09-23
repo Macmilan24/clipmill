@@ -348,6 +348,47 @@ impl ArtifactStore {
         })
     }
 
+    /// What collection would remove with this grace, without removing it.
+    ///
+    /// Read from the manifests already in memory, so it is an estimate made
+    /// in a moment: the collection itself re-reads and verifies every
+    /// reachable manifest from disk before it deletes anything, and keeps
+    /// whatever is pinned when it runs.
+    pub fn reclaimable(
+        &self,
+        roots: impl IntoIterator<Item = ArtifactId>,
+        now: SystemTime,
+        grace: Duration,
+    ) -> Result<StoreUsage, ArtifactError> {
+        let mut pending = roots.into_iter().collect::<Vec<_>>();
+        pending.extend(pinned_ids(&self.pins)?);
+        let mut reachable = BTreeSet::new();
+        while let Some(artifact_id) = pending.pop() {
+            if !reachable.insert(artifact_id) {
+                continue;
+            }
+            // A manifest that cannot name its inputs keeps nothing else alive
+            // in this estimate; collection refuses to proceed past it anyway.
+            if let Some(entry) = self.catalog.get(&artifact_id)
+                && let Ok(inputs) = entry.manifest.input_ids()
+            {
+                pending.extend(inputs);
+            }
+        }
+        Ok(self
+            .catalog
+            .iter()
+            .filter(|(artifact_id, entry)| {
+                !reachable.contains(*artifact_id) && older_than(entry.published_at, now, grace)
+            })
+            .fold(StoreUsage::default(), |usage, (_, entry)| StoreUsage {
+                objects: usage.objects + 1,
+                bytes: usage
+                    .bytes
+                    .saturating_add(entry.manifest.declared_total_bytes()),
+            }))
+    }
+
     pub fn collect_garbage(
         &mut self,
         roots: impl IntoIterator<Item = ArtifactId>,
@@ -420,7 +461,11 @@ impl ArtifactStore {
                 if reachable.contains(artifact_id) || !older_than(entry.published_at, now, grace) {
                     None
                 } else {
-                    Some((*artifact_id, entry.dir.clone()))
+                    Some((
+                        *artifact_id,
+                        entry.dir.clone(),
+                        entry.manifest.declared_total_bytes(),
+                    ))
                 }
             })
             .collect::<Vec<_>>();
@@ -439,13 +484,14 @@ impl ArtifactStore {
         // No mutation, including old quarantine cleanup, precedes a complete
         // verified mark and this final foreground-work check.
         checkpoint(interrupted)?;
-        for (artifact_id, path) in candidates {
+        for (artifact_id, path, bytes) in candidates {
             checkpoint(interrupted)?;
             let quarantine = quarantine_entry(&self.paths, &path, "gc")?;
             self.catalog.remove(&artifact_id);
             // Once quarantined, this object is safely removed from the store.
             // An interrupted unlink leaves only recoverable quarantine bytes.
             report.deleted += 1;
+            report.deleted_bytes = report.deleted_bytes.saturating_add(bytes);
             remove_tree_interruptible(&quarantine, interrupted)?;
             sync_directory(&self.paths.quarantine)?;
         }
@@ -656,6 +702,9 @@ pub struct GcReport {
     pub reachable: usize,
     pub preserved_by_grace: usize,
     pub deleted: usize,
+    /// What the deleted objects' manifests declared, so a person told
+    /// "cleaned up" can also be told how much.
+    pub deleted_bytes: u64,
     pub quarantine_deleted: usize,
     /// Foreground work interrupted this pass. Counts include only completed
     /// mutations; a fresh mark is required before collecting anything else.

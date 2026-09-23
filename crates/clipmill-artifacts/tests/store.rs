@@ -483,6 +483,71 @@ fn garbage_collection_marks_transitive_inputs_and_reader_pins() {
     assert!(store.open(child_id).is_ok());
 }
 
+/// Settings shows what a clean-up would free before anyone clicks; the
+/// estimate has to agree with the collection that follows, and neither may
+/// count what a root reaches or a reader holds.
+#[test]
+fn the_reclaimable_estimate_matches_what_collection_then_frees() {
+    let temp = TempDir::new().expect("tempdir");
+    let (mut store, _) = ArtifactStore::initialize(temp.path()).expect("store");
+    let child_recipe = recipe(21);
+    let child_id = child_recipe.artifact_id().expect("child id");
+    drop(commit_payload(
+        &mut store,
+        child_recipe,
+        "child.bin",
+        b"child",
+    ));
+    let parent_recipe = recipe_with(22, vec![child_id], None, Map::new());
+    let parent_id = parent_recipe.artifact_id().expect("parent id");
+    drop(commit_payload(
+        &mut store,
+        parent_recipe,
+        "parent.bin",
+        b"parent",
+    ));
+    drop(commit_payload(
+        &mut store,
+        recipe(23),
+        "orphan.bin",
+        b"orphan-bytes",
+    ));
+    let held = commit_payload(&mut store, recipe(24), "held.bin", b"held");
+
+    let later = SystemTime::now() + Duration::from_hours(1);
+    let estimate = store
+        .reclaimable([parent_id], later, Duration::from_mins(15))
+        .expect("estimate");
+    assert_eq!(
+        estimate.objects, 1,
+        "only the orphan: the held one is pinned"
+    );
+    assert_eq!(estimate.bytes, b"orphan-bytes".len() as u64);
+
+    let nothing_yet = store
+        .reclaimable([parent_id], SystemTime::now(), Duration::from_hours(1))
+        .expect("estimate within grace");
+    assert_eq!(
+        nothing_yet.objects, 0,
+        "grace still protects a fresh orphan"
+    );
+
+    let collected = store
+        .collect_garbage([parent_id], later, Duration::from_mins(15))
+        .expect("collect");
+    assert_eq!(collected.deleted, 1);
+    assert_eq!(collected.deleted_bytes, estimate.bytes);
+    drop(held);
+    assert_eq!(
+        store
+            .reclaimable([parent_id], later, Duration::from_mins(15))
+            .expect("estimate after release")
+            .objects,
+        1,
+        "released, the held object becomes reclaimable"
+    );
+}
+
 #[test]
 fn garbage_collection_fails_closed_for_a_missing_reachable_root() {
     let temp = TempDir::new().expect("tempdir");
