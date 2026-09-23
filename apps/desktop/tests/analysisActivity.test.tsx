@@ -114,7 +114,9 @@ it('starts immediately for a new analysis and stops after a terminal job even wi
       return Promise.resolve(current.get(id)!);
     }),
   };
-  const { result, unmount } = renderHook(() => useAnalysisActivity(connected, api, silentSubscribe));
+  const { result, unmount } = renderHook(() =>
+    useAnalysisActivity(connected, api, silentSubscribe),
+  );
   expect(result.current.active).toBe(false);
 
   act(() => result.current.markStarted('new'));
