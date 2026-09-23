@@ -93,6 +93,18 @@ bundled registry at startup; a broken one is skipped and logged. A name can
 never replace one already registered. Removing a model the person added
 forgets it entirely.
 
+## Which worker runs a model
+
+Each model is run by one worker family: the Whisper models by the whisper.cpp
+worker, the English aligner by the word-timing worker, the Qwen3 speech models by
+the MLX speech worker, and the editorial model by the editorial worker. A task
+is handed only to a worker of the family its model needs, so two families can
+serve one job side by side — `just workers` starts the MLX speech worker beside
+the portable ones on Apple silicon — and a model chosen in Models runs without
+restarting anything. When the worker a job's model needs is not connected,
+readiness names it under the job, and Models says so beside another model before
+it is chosen.
+
 ## Workers and memory
 
 The transcription and editorial workers declare a memory ceiling sized from the
