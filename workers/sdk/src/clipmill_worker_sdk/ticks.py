@@ -1,14 +1,7 @@
-"""Exact conversion between audio samples and ClipMill's timebase.
+"""Integer conversions between audio samples and 1/90000-second ticks.
 
-Every interval in the system is an integer count of 1/90000-second ticks
-(decision D06). Float seconds are not an intermediate representation here:
-they are how two stages come to disagree about where a word ended, which is
-the one disagreement a word-snapped editor cannot survive.
-
-The conversions below are integer-only and state their rounding, so a caller
-choosing a segment start and a caller choosing the previous segment's end
-land on the same tick rather than a tick apart.
-"""
+Each conversion states its rounding so adjacent boundaries agree without an
+intermediate floating-point representation."""
 
 from __future__ import annotations
 

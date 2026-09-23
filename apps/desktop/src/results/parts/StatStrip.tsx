@@ -1,3 +1,7 @@
+/**
+ * Run counts from ranking results and recorded decisions, with shortfall reasons
+ * when the recommended set is smaller than requested.
+ */
 import { AlertTriangle } from 'lucide-react';
 
 import type { Summary, Tallies } from '../model.js';

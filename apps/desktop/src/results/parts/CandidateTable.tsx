@@ -1,3 +1,8 @@
+/**
+ * Candidate rows with separate focus, batch selection, and open actions.
+ * Rows and headers share a grid template. Arrow keys move focus, Space toggles
+ * selection, and Enter opens the inspector.
+ */
 import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 

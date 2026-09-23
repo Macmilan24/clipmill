@@ -13,10 +13,7 @@ import {
 import type { NavSection } from '../shell/navigation.js';
 
 /**
- * Phase 0 builds the harness, not the product surface. Every section that is
- * not yet real says which phase builds it instead of showing a convincing
- * mockup — a fake project grid here would be the exact "demo-tier" behaviour
- * ClipMill exists to avoid.
+ * Placeholder for planned sections, using their registered availability metadata.
  */
 export function PhasePlaceholder({ section }: { readonly section: NavSection }): JSX.Element {
   if (section.availability.kind === 'live') {

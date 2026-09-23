@@ -1,16 +1,8 @@
-"""Forced alignment: when each word was said.
+"""Forced alignment supplies word timing independently of recognition.
 
-Its own stage, and its own artifact, because word timing must not come from a
-decoder's token positions (book ch. 13). Everything word-snapped downstream —
-trims, caption cues, the boundary optimizer's refusal to cut inside a word —
-resolves to the frames chosen here, so this is the stage whose failures have
-to be loud.
-
-An aligner always produces a path; that is what "forced" means. So the failure
-mode is not an exception but a bad answer, and the honest signal is the score.
-A span the model scores below the payload's threshold is reported unaligned,
-with its text, rather than published as a measurement nobody should trust.
-"""
+Words below the alignment-confidence threshold are reported as unaligned with
+their text preserved. Downstream trims, captions, and boundary selection must
+not treat those spans as measured word timing."""
 
 from __future__ import annotations
 

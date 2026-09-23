@@ -82,9 +82,8 @@ pub(crate) struct Service {
     /// The three directories a storage report covers. Absent in the tests that
     /// build a service without a workspace, where there is nothing to measure.
     storage: Option<crate::storage::StorageDirs>,
-    /// How long an unreferenced artifact is kept. Reported by Settings; not
-    /// adjustable from there, because changing it needs a collection policy
-    /// Phase 1 has not written.
+    /// How long an unreferenced artifact is kept. Settings reports this value
+    /// but does not expose controls for changing collection policy.
     retention_grace: std::time::Duration,
     /// The Local Lock, which Health and Settings both read rather than assert.
     policy: std::sync::Arc<crate::policy::LocalLockPolicy>,
@@ -3442,7 +3441,7 @@ fn snapped(
     .map_err(|error| error.to_string())
 }
 
-/// 12 Export and 13 Settings (book ch. 10, ch. 24 Phase 1).
+/// Export planning, delivery, and settings operations.
 ///
 /// Two of these four are the same operation asked twice. `plan_export` answers
 /// "what would happen", `export_clip` makes it happen, and both start by

@@ -1,3 +1,7 @@
+/**
+ * Search, filtering, sorting, and layout controls for loaded candidates.
+ * Filter counts use loaded rows, and empty filters are disabled.
+ */
 import { LayoutGrid, List, Search, X } from 'lucide-react';
 
 import { Button } from '../../components/ui/button.js';

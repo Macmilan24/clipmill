@@ -1,27 +1,8 @@
-"""Turning the proxy back into pixels, through the decoder the daemon pinned.
+"""Stream proxy frames through the daemon's pinned FFmpeg decoder.
 
-This is the only impure half of the stage, and it is kept apart from the
-detection for that reason: everything in `content` is arithmetic over arrays
-and can be tested against frames written by hand, while everything here is a
-subprocess and a pipe.
-
-Three things are pinned rather than defaulted, because all three change the
-numbers the detector produces:
-
-    the binary      the daemon names it on the lease; two FFmpeg builds decode
-                    and scale differently, and the build identity is part of
-                    the artifact key
-    the size        stated as an exact width and height rather than letting the
-                    scaler infer one from `-2`, so the frame the detector sees
-                    does not depend on how a filter rounds
-    the scaler      named explicitly; the default is a good choice, but a
-                    default is not a decision and a later FFmpeg may change it
-
-Frames arrive as raw BGR24 on a pipe, which is what OpenCV's colour conversion
-expects and therefore what the detector expects. Nothing is buffered beyond one
-frame: an hour of 320x180 video is fifteen gigabytes of raw pixels, and the
-detector only ever compares a frame with the one before it.
-"""
+The binary, exact output dimensions, and scaler are explicit because each can
+change detection scores. Frames arrive as raw BGR24, matching OpenCV's colour
+conversion, with at most one frame buffered by this iterator."""
 
 from __future__ import annotations
 

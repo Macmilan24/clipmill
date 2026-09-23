@@ -1,25 +1,8 @@
 /**
- * The Export screen's container: hold what the user typed, and ask the daemon
- * what it means.
- *
- * Which document is exported is not decided here. The clip arrives named in
- * full from the route — the document a person approved, edited, and chose to
- * deliver — and the request names that document and nothing else. It used to
- * be the newest document of the newest project, which delivered another
- * project's clip the moment someone approved one in an older project. With no
- * clip named, the screen lists every edit there is and lets a person choose.
- *
- * Which *revision* is exported is not decided here either, but it is held.
- * The plan says which revision it checked, the request carries that revision
- * as the one reviewed, and the daemon refuses any other: an edit that landed
- * between the review and the click is a conflict, re-planned and shown, not
- * a clip nobody looked at. What was queued is then followed to the files.
- *
- * Every keystroke in the pattern or the destination re-plans, debounced. That
- * is deliberate churn: the alternative is resolving the pattern here, which
- * would be a second implementation of the naming rules and would eventually
- * disagree with the files that get written. A local socket can answer this far
- * faster than a person types.
+ * Plan and follow exports for the route's document, with a picker when none is named.
+ * Carry the reviewed revision into submission; conflicts trigger a new plan for
+ * review. Debounce destination and pattern changes, leaving naming rules to the
+ * daemon so previews match delivered filenames.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -45,14 +28,9 @@ const HOT_CAPTION_CODE = 'captions.reading_rate';
 const UNIQUE_TOKENS = ['{index}', '{clip}', '{address}'] as const;
 
 /**
- * The pattern the daemon is asked to resolve.
- *
- * A plain name is what most people type, and the daemon is right that a
- * plain name would give every clip in an export the same file. So the name
- * is kept and the clip's number is added to it — `reacher` becomes
- * `reacher-{index}`, which is `reacher-01` — rather than refusing what was
- * typed. Nothing is added to a pattern that already names each clip, and
- * an empty field takes the default.
+ * Normalize export naming input before daemon resolution.
+ * Append `{index}` to plain names (`reacher` becomes `reacher-{index}`), preserve
+ * patterns that already identify clips, and use the default for empty input.
  */
 export function effectivePattern(typed: string): string {
   const pattern = typed.trim();

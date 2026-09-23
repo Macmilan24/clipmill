@@ -1,17 +1,7 @@
 /**
- * What an analysis would need, and whether it is here.
- *
- * A missing weight file or a worker fleet nobody started used to show as a
- * stage sitting planned forever, with a spinner beside it and nothing to say.
- * The daemon now answers the question directly — per stage, with the command
- * that fixes it — and two screens ask: New Project before a run is submitted,
- * so the answer is on screen before the wait would be, and Analysis Progress
- * while a stage waits, so the wait says what it is waiting for.
- *
- * The two shortfalls are different and are kept apart. A model that is not
- * installed can never be, however long the run waits, so it blocks the
- * submission. A worker that is not connected may be started at any moment,
- * and the daemon holds the task until it is; that is shown, not blocked.
+ * Analysis prerequisites for New Project and Analysis Progress.
+ * Missing models block submission. Disconnected workers are reported but do not
+ * block submission because queued tasks can run when workers connect.
  */
 import { TaskState } from '@clipmill/contracts';
 import { useCallback, useEffect, useState } from 'react';

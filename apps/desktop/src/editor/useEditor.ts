@@ -1,30 +1,11 @@
 /**
- * The editor's state: a document, a plan, and a history.
+ * Editor document, preview plan, and undo/redo state for the supplied clip.
+ * The plan supplies source proxies and clock mappings. Face tracks come from the
+ * named run, or the newest run for the same source.
  *
- * Which document is not a question this hook answers. It is handed the clip —
- * project, document, source, and the run it came out of — and opens exactly
- * that. It used to open the newest document of the newest project, which is
- * right for one project with one approval and wrong the moment a second of
- * either exists: approving a clip in an older project opened another project's
- * edit, and a batch approval left no way to reach any but the last.
- *
- * The proxy comes with the plan: the daemon names, for every source the
- * document draws from, the proxy it is previewed on and how its clock relates
- * to the source's. The face tracks come from the clip's own run — a job says
- * which recording it ran over, so the run is the one the route named or the
- * newest over that source — and never from whichever pass the project ran
- * last.
- *
- * Undo is not a special path. Applying a command returns the command that
- * undoes it, so undoing is applying that — which means an undo is logged,
- * survives a restart, and can itself be undone by the inverse it returns. The
- * daemon keeps no stack on purpose; the two stacks here are the renderer's
- * memory of where it has been, not the record of what happened.
- *
- * Every apply re-fetches the plan. It would be cheaper to patch it, and the
- * plan names that as an optimization — but a player showing a patched plan that
- * drifted from the document would be exactly the divergence this workstream
- * exists to prevent, and correctness comes before the SLO.
+ * Apply inverse commands for undo; each application remains in the daemon's log.
+ * Undo/redo stacks are local navigation state. Refresh the plan after every edit
+ * to keep playback consistent with the persisted document.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -98,24 +79,14 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
   const [undoStack, setUndoStack] = useState<readonly EditCommandJson[]>([]);
   const [redoStack, setRedoStack] = useState<readonly EditCommandJson[]>([]);
   /**
-   * Which document this hook is on, as a number that changes when it does.
-   *
-   * A mutation is in flight when the person opens another clip. Its answer —
-   * a new revision, a plan, an inverse for the undo stack — is about the
-   * document that was open when it was sent, and applied to the one that is
-   * open when it lands it would show B with A's footage and undo A's edit on
-   * B. So every mutation captures the session it started in and, after each
-   * await, touches nothing unless that session is still current.
+   * Session generation for the current document. Mutations capture it and check
+   * it after each await, preventing responses for a previously opened clip from
+   * changing the current revision, plan, or undo stack.
    */
   const session = useRef(0);
   /**
-   * Which plan request is the current one, within a session.
-   *
-   * Every apply re-fetches the plan, and two applies in flight can answer out
-   * of order. A plan that arrives after a newer request was made describes a
-   * revision the document has already left, and drawing it would show an edit
-   * being undone that nobody undid. So each request takes a number, and an
-   * answer is kept only if it is still the latest.
+   * Plan request sequence within a session. Accept only the latest response
+   * so overlapping edits cannot replace the plan with an older revision.
    */
   const latest = useRef(0);
 

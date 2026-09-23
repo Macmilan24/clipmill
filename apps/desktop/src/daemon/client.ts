@@ -1,16 +1,8 @@
 /**
- * The renderer's only way to reach the daemon.
- *
- * There is no socket, no fetch and no filesystem here — only commands the Rust
- * host exposes. Outside a Tauri window (a plain `pnpm dev` browser tab, or a
- * test) the bridge reports itself unavailable instead of throwing, so the shell
- * still renders and says why it has no data.
- *
- * States cross as the integers the contract defines and are read here through
- * the generated enums, so no screen depends on a string this file made up.
- * Documents cross as the canonical JSON the daemon published and are parsed with
- * the generated schema types, which keeps the JSON Schema the only contract
- * between the two ends.
+ * Renderer access to daemon commands through the Rust host.
+ * Outside Tauri, report the bridge as unavailable so the shell can still render.
+ * Use generated enums for wire states and generated schema types for canonical
+ * JSON documents.
  */
 import type { DeviceProfile } from '@clipmill/contracts';
 import type { FailureClass, JobState, TaskState } from '@clipmill/contracts';

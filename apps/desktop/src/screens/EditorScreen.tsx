@@ -1,16 +1,7 @@
 /**
- * The editor's container: hold the document, hand the player its plan.
- *
- * The clip arrives named in full from the route — project, document, source,
- * and the run it came out of — and this opens exactly that. Nothing here looks
- * for "the newest" anything. With no clip named, the screen lists every edit
- * there is and lets a person choose, which is what a sidebar row has to do
- * when it cannot know which clip is meant.
- *
- * The state lives in `useEditor` so the screen stays a view. What this adds is
- * re-solving, which needs the face tracks the clip's own run published — the
- * hook resolves those beside the proxy, from the same job, for the same reason
- * the proxy is: the media for a clip is the media of the run that produced it.
+ * Open the route's edit document, or show a document picker when none is named.
+ * `useEditor` owns document state and resolves face tracks from the clip's run
+ * for re-solving.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 

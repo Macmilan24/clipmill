@@ -1,13 +1,6 @@
 /**
- * 08 Reframe: where the camera points, and the ability to disagree with it.
- *
- * The solver decided this path and the editor may overrule it. What matters is
- * that overruling produces a *command* — a keyframe set at a tick — rather than
- * a hidden bit of local state, because the render reads the document and
- * nothing else. A crop nudged here that never became a command would look
- * right in the player and be absent from the file.
- *
- * Nudges are explicit keyframes; every change goes through the edit command log.
+ * Edit the solver's crop path through keyframe commands.
+ * Every nudge enters the edit log so previewed changes are included in the render.
  */
 import { useCallback, useId, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, RotateCcw } from 'lucide-react';

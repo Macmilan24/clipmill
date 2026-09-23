@@ -1,17 +1,9 @@
-//! A symmetric positive-definite banded system, and the Cholesky that solves it.
+//! Banded Cholesky for the crop path's positive-definite normal equations.
 //!
-//! The crop path's normal equations are pentadiagonal — the acceleration term
-//! couples each sample to the two on either side and nothing further — so the
-//! matrix is a band of width two around the diagonal and every entry outside it
-//! is structurally zero. Storing and factoring only the band turns an O(n³)
-//! solve into O(n·b²), which is what makes ch. 18's claim of "microseconds of
-//! compute" true and what makes an interactive nudge free.
-//!
-//! Hand-rolled rather than delegated. A LAPACK binding would be a system
-//! dependency, a build-time toolchain requirement, and a source of
-//! platform-dependent floating-point reduction order — and this is forty lines
-//! of arithmetic whose failure mode is a matrix that is not positive definite,
-//! which the caller can be told about honestly.
+//! Acceleration couples each sample to its two neighbours on either side, yielding
+//! a pentadiagonal matrix. Storing only its band gives O(n·b²) factorization.
+//! The local solver avoids a LAPACK dependency and platform-dependent reduction
+//! order; non-positive-definite inputs return an error.
 
 use thiserror::Error;
 

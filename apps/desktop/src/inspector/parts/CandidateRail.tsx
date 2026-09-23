@@ -1,3 +1,6 @@
+/**
+ * Candidate comparison rail with each clip's recorded decision.
+ */
 import type { ClipDecision } from '../../daemon/client.js';
 import { type ClipRow, duration } from '../../results/model.js';
 

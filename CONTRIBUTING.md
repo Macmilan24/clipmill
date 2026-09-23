@@ -1,44 +1,75 @@
 # Contributing to ClipMill
 
-Thanks for your interest! ClipMill is in **Phase 0 (pre-alpha)** — the
-project is young, the architecture is deliberate, and contributions are
-welcome within that frame.
-
-## Ground rules
-
-- **The design book governs.** ClipMill implements a written system design.
-  Architectural changes (new processes, new durable state, new IPC surfaces,
-  contract changes) need a discussion issue first, referencing
-  [`docs/decisions.md`](docs/decisions.md) — decisions there are revisited by
-  falsification, not by preference.
-- **Contracts are the source of truth.** Never hand-edit generated code under
-  `crates/clipmill-contracts`, `packages/contracts`, or `workers/sdk/**/gen`.
-  Change the schema or proto in `contracts/`, run `just codegen`, and commit
-  both.
-- **No float seconds.** All times in contracts and durable records are
-  rational (integer ticks at 1/90000). CI rejects violations.
-- **Derived data is content-addressed; user state lives in SQLite.** There is
-  no third place.
+Contributions are welcome. ClipMill is pre-release software; please open an issue
+before substantial architecture changes so the scope and compatibility impact
+can be discussed.
 
 ## Development setup
 
+Follow [Run from source](README.md#run-from-source) for dependencies, model weights,
+and the two-terminal app and worker setup. `just --list` lists available commands.
+
+For frontend layout work, `pnpm --filter @clipmill/desktop dev` serves a separate
+browser preview at `http://127.0.0.1:5173/preview.html`. It uses synthetic data;
+verify persistence, processing, and export through the native application. See
+[the desktop workspace guide](docs/frontend-workspace.md).
+
+## Finding your way around
+
+| Directory      | Purpose                                                         |
+| -------------- | --------------------------------------------------------------- |
+| `apps/desktop` | React interface and Tauri host                                  |
+| `crates`       | Rust daemon, media processing, editing, and export              |
+| `workers`      | Python model workers and shared SDK                             |
+| `contracts`    | JSON schemas, Protobuf definitions, and fixtures                |
+| `packages`     | Shared TypeScript contracts and design tokens                   |
+| `integrations` | External source integrations                                    |
+| `tools`        | Setup, code generation, security checks, and integration drills |
+| `docs`         | Feature guides, architecture, and decision records              |
+
+## Implementation conventions
+
+- Keep durable project state in the daemon. Derived artifacts use the
+  content-addressed store; the renderer accesses them through the host API.
+- Use the shared timebase of integer ticks at 1/90000 for contract and durable
+  timeline values. Convert at presentation boundaries.
+- Change schemas or Protobuf definitions in `contracts/`, then run `just codegen`
+  and commit the generated output. Do not edit generated files directly.
+  Code generation additionally needs `buf` and `cargo-typify` 0.7.0; see
+  [the generation script](tools/codegen/generate.sh).
+- Preserve cancellation, recovery, and explicit network consent when extending
+  processing paths. Document changes to these boundaries in the relevant guide
+  and [threat model](docs/threat-model.md).
+- Write comments that explain constraints or non-obvious decisions. Keep task
+  history and progress reports out of source comments.
+
+## Verification
+
+Run the checks relevant to your change, and report what you ran in the PR:
+
 ```sh
-just setup    # fetches the pinned FFmpeg, syncs Rust/TS/Python workspaces
-just test     # everything
-just app      # run the desktop shell
+just lint  # Rust, Python, TypeScript, formatting, and schema checks
+just test  # Workspace unit and integration suites
 ```
 
-Prerequisites: Rust stable, Node 22+ with pnpm, Python 3.12+ with uv,
-`just`, `buf`.
+Specialized `gate-*` recipes exercise real media, workers, failure recovery, and
+network isolation. Some require installed weights, specific hardware, or private
+evaluation data; read the recipe before running it. Historical recipe names are
+retained for compatibility with CI.
+
+Add regression coverage for behavior changes. Documentation-only changes should
+be checked for accuracy, links, and formatting; comment-only edits must preserve
+executable code and test coverage.
 
 ## Pull requests
 
-- Keep PRs workstream-sized: one concern, tests included, CI green.
-- Every behavioral change carries a test that fails without it. Recovery and
-  Local Lock guarantees are only real when exercised — that is why the
-  kill-drill and network-denial jobs run on every push.
-- Commit messages: short imperative subject, optionally
-  `area: what changed` style. No `Co-Authored-By` trailers.
+Keep each PR focused. Explain the problem, resulting behavior, relevant checks,
+and any remaining limitations. Complete the security review categories identified
+by CI when a sensitive boundary is involved. Commit generated changes alongside
+their source definitions, and keep private recordings, credentials, and build
+outputs out of Git.
+
+Use a short, imperative commit subject, optionally prefixed with the area changed.
 
 ## Developer Certificate of Origin
 
@@ -48,6 +79,7 @@ right to submit it under AGPL-3.0.
 
 ## Reporting bugs
 
-Open a GitHub issue with reproduction steps. For anything
-security-sensitive, see [SECURITY.md](SECURITY.md) — do **not** open a public
-issue.
+Open a GitHub issue with reproduction steps, your operating system, and relevant
+error messages. Remove private paths, transcript content, and credentials from
+logs before sharing them. Report security-sensitive issues privately as described
+in [SECURITY.md](SECURITY.md).

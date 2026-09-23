@@ -2,12 +2,9 @@
 # Fetch the pinned models per models/registry/ into .cache/models/, verifying
 # every file's sha256 before it is installed.
 #
-# The app's model library (Models) downloads the same pins and verifies them
-# the same way; this is the scripted path for development and CI. Either way,
-# acquisition is an explicit act and never a side effect of editing: a creator
-# tool that downloads weights while editing is one that phones home while
-# editing. Workers are handed a path, never a URL, and hash every file again
-# before loading it.
+# Model acquisition is explicit and separate from analysis; the app's model
+# library downloads the same pins and verifies them the same way. The daemon
+# reads installed weights and rejects files whose digests do not match.
 #
 #   ./tools/fetch-models.sh                 # fetch everything pinned
 #   ./tools/fetch-models.sh silero-vad ...  # fetch named models only
@@ -32,8 +29,7 @@ REGISTRY="models/registry"
 INSTALL_ROOT=".cache/models"
 [ -d "$REGISTRY" ] || { echo "fetch-models: no registry at $REGISTRY" >&2; exit 2; }
 
-# The licence policy runs first. A model whose terms forbid what users do with
-# the output should never reach the disk in the first place.
+# Validate the model license policy before downloading weights.
 python3 tools/security/check-models.py --registry "$REGISTRY"
 
 sha256() {

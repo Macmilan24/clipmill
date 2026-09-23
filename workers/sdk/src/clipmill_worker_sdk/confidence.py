@@ -1,15 +1,8 @@
-"""Summarizing a model's scores as the distribution the contract asks for.
+"""Summarize model scores as confidence distributions.
 
-Every perception output carries a confidence distribution rather than a bare
-scalar (book ch. 13), because the stages downstream do different things with
-it: ranking reads the median when it orders candidates and the low quantile
-when it decides whether a quote is safe to put on screen. A single averaged
-number cannot answer both, and averaging is also what hides the one bad token
-inside an otherwise confident sentence.
-
-Nearest-rank rather than interpolated, so every number published is a score
-some model actually produced rather than the midpoint of two it did not.
-"""
+Median and low-quantile scores support different downstream decisions and retain
+weak-token evidence an average would hide. Nearest-rank quantiles always report
+an observed score rather than an interpolated value."""
 
 from __future__ import annotations
 

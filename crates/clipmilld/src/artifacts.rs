@@ -464,7 +464,7 @@ impl ArtifactCoordinator {
     /// Return the distinct artifact roots currently published by projects.
     ///
     /// This is an in-process scheduler/lifecycle interface; it is deliberately
-    /// not exposed through the W3 protobuf control API.
+    /// not exposed through the protobuf control API.
     pub async fn artifact_roots(&self) -> Result<Vec<ArtifactId>, ArtifactServiceError> {
         self.database
             .list_artifact_roots()

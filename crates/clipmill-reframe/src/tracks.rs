@@ -1,18 +1,9 @@
-//! Who deserves the frame, and when the honest answer is "nobody".
+//! Resolve focus from track continuity and face size, with a fallback gate.
 //!
-//! The book's focus resolver fuses active-speaker probability, diarization
-//! agreement, track continuity, reaction salience and scene intent. Three of
-//! those five are not measured at this phase — there is no active-speaker
-//! detector, no diarization, and no salience model — so what is left is
-//! continuity and how much of the frame a face occupies, which is exactly the
-//! single-speaker case this workstream is scoped to.
-//!
-//! That makes the gate the important part. A stage that picked the best of a
-//! bad set would put the camera on whoever happened to be detected most, and
-//! the failure would be invisible: a confident-looking crop of the wrong
-//! person. So dominance has to be earned against a threshold, and falling short
-//! produces a fitted frame **and a sentence saying why**, which is the first
-//! thing anyone asks when a clip is not tracking.
+//! Active-speaker, diarization, and reaction-salience evidence are unavailable.
+//! The supported single-speaker case therefore requires a track to earn dominance
+//! against explicit thresholds. Insufficient evidence yields a fitted frame and a
+//! reason rather than choosing the best of an unreliable set.
 
 use clipmill_contracts::schemas::vision_face_track::{Track, VisionFaceTrack};
 
@@ -85,8 +76,7 @@ pub struct FocusGate {
 }
 
 impl Default for FocusGate {
-    /// Chosen against the failure they prevent rather than tuned on a
-    /// benchmark, which is what the reframe corpus in W26 is for.
+    /// Failure-prevention thresholds, not values tuned on the reframe corpus.
     ///
     /// Presence at 0.6: a face on screen for less than two thirds of a clip
     /// leaves the camera pointing at an empty chair for the rest. Score at 0.5:

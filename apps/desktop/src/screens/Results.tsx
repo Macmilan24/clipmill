@@ -1,3 +1,8 @@
+/**
+ * Results board with recommendation counts and shortfall reasons.
+ * Focus, batch selection, and opening the inspector are separate actions.
+ * Filtering, search, and ordering use the rows already loaded for the summary.
+ */
 import '../results/workspace.css';
 
 import { JobState } from '@clipmill/contracts';

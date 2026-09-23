@@ -1,21 +1,8 @@
-//! Grouping near-duplicates, without deciding between them.
+//! Group near-duplicate candidates while retaining every member.
 //!
-//! Three proposers searching one recording will nominate the same moment more
-//! than once — that is the mesh working, not a bug. What must not happen is the
-//! same clip reaching a user three times, or two of the three being dropped
-//! silently so nobody can ask why.
-//!
-//! So candidates are clustered and every cluster keeps all its members. Ranking
-//! sends the representative forward and the interface can still answer "why was
-//! this considered a duplicate?" with the alternatives in hand (book ch. 15).
-//! A diversity decision that cannot be shown is a diversity decision nobody can
-//! argue with.
-//!
-//! Similarity is two measures rather than an embedding, because there is no
-//! embedding model at this phase and a single measure gets each half wrong:
-//! interval overlap alone merges a question with the unrelated remark that
-//! follows it in the same thirty seconds, and evidence overlap alone splits two
-//! nominations of the same moment that happened to cite different units of it.
+//! Ranking advances a representative; retained alternatives explain the grouping.
+//! Similarity combines interval and evidence overlap: time alone can merge
+//! unrelated remarks, while evidence alone can split nominations of one moment.
 
 use std::collections::{BTreeMap, BTreeSet};
 

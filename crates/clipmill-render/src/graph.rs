@@ -48,7 +48,7 @@ pub struct DecodeSpan {
 ///
 /// This is the only sanctioned crop interpolation, and it lives with the
 /// document: `clipmill_edit_ir::crop_along`, keyed here by frame. The
-/// preview plan (W24) calls it; the emitted expression mirrors it; the
+/// preview plan calls it; the emitted expression mirrors it; the
 /// parity drill compares the two; and a trim evaluates the same arithmetic
 /// in ticks to keep the crop at a new boundary. A second implementation
 /// anywhere is a parity bug with a head start.
@@ -346,7 +346,7 @@ fn crop_filter(
     {
         // A crop window that changes size mid-segment is a zoom. FFmpeg
         // evaluates crop's width and height once per configuration, so a zoom
-        // cannot be expressed here honestly; Phase 2 owns it.
+        // is not supported by this graph.
         return Err(RenderError::ZoomingCropPath(segment.segment_id.clone()));
     }
     // An exactly 9:16 rectangle does not exist at every integer height — at

@@ -1,20 +1,7 @@
-//! Snapping a boundary a person dragged onto one the search says is legal.
+//! Snap dragged boundaries to discovery's legal boundary lattice.
 //!
-//! Discovery published, per candidate, the starts and ends a clip may actually
-//! use — points where a sentence begins, a speaker stops, a shot changes. The
-//! ranking then scored every legal pair and chose one. What the Inspector gives
-//! a user is a handle to move, and what this module decides is where letting go
-//! puts it.
-//!
-//! Snapping rather than accepting the raw drag is the whole point. A boundary
-//! placed a few frames off a sentence edge is the mid-word cut the boundary
-//! optimizer exists to avoid, and no amount of care with a mouse gets a person
-//! within a frame of the right instant. The lattice is what "legal" means, so
-//! the lattice is what a drag resolves to.
-//!
-//! Everything here is integer arithmetic over sorted lists, so the same drag
-//! lands on the same edge on every machine — which matters because the document
-//! it produces is compared against a golden.
+//! Raw positions can cut inside words. Sorted candidates and integer arithmetic
+//! make snapping deterministic across machines.
 
 use thiserror::Error;
 

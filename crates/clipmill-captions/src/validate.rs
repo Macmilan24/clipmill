@@ -1,20 +1,9 @@
-//! What a cue set has to satisfy before anyone is asked to read it.
+//! Independently validate finished caption cues.
 //!
-//! The segmenter minimizes a cost, and a minimum is not a guarantee: it returns
-//! the best grouping available, which on dense speech in a tight window can
-//! still be one a viewer cannot keep up with. Something separate has to say so.
-//!
-//! This is deliberately not the segmenter's own opinion of its work. It reads
-//! the finished cues and re-derives every number from them, so a bug in the
-//! cost function shows up as a violation rather than as a cost that was low for
-//! the wrong reason. The gate runs it over the goldens and refuses any
-//! reading-rate violation in the accessibility intent — that intent is what the
-//! sidecars are written from, and a sidecar is what a deaf viewer is left with
-//! when the burn-in is not enough.
-//!
-//! It takes plain facts rather than either the segmenter's types or the
-//! document's, because the caller that matters most is the one checking an
-//! exported file it did not produce.
+//! Metrics are re-derived from plain cue facts rather than the segmenter's costs,
+//! allowing exported files to be checked by the same validator. A minimum-cost
+//! partition can still violate reading limits. The caption gate rejects reading-
+//! rate violations in the accessibility cues used for sidecars.
 
 use crate::profile::{Profile, TICKS_PER_SECOND};
 

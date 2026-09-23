@@ -1,21 +1,7 @@
 /**
- * The clip as a viewer would see it, with transport an editor can drive.
- *
- * The stage is what the render will produce, not a thumbnail of it: the video is
- * the project's own proxy over the media protocol, the crop is the path the
- * reframe solver proposed applied as a transform on the real frame, and the
- * captions are the burned-in grouping from the directed document. Nothing here
- * is drawn beside the picture to describe it — a guide rectangle would show
- * where the camera is pointing, and what an editor is asking is what the camera
- * sees.
- *
- * Playback is confined to the clip's window. Running past the out point would be
- * showing footage that is not in the clip, so the transport treats the window as
- * the whole timeline and loops inside it.
- *
- * The native controls are gone because they describe the proxy — its full
- * duration, its own scrub bar — and the proxy is an hour long while the clip is
- * forty seconds of it. The transport here is about the clip.
+ * Preview the clip using its source proxy, proposed crop path, and burned-in cues.
+ * Custom transport uses the clip's window rather than the full proxy duration;
+ * playback loops within that window.
  */
 import {
   ChevronFirst,

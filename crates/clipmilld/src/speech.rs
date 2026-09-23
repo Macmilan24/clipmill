@@ -1,23 +1,9 @@
-//! Assembling the speech chain's three artifacts into one observation.
+//! Assemble VAD, recognition, and alignment into one transcript observation.
 //!
-//! Voice activity, recognition, and forced alignment are separate stages with
-//! separate failure states, which is the point (book ch. 13): a bad alignment
-//! degrades word timing without costing anyone the text. But every consumer
-//! downstream — the evidence index, discovery, ranking, captions, the editor —
-//! wants one document, and would otherwise each re-derive the fusion, each
-//! slightly differently.
-//!
-//! Fusing them is mostly bookkeeping with one real decision in it: what to do
-//! with a word the aligner would not place. Dropping it loses what was said.
-//! Publishing it with invented timing is worse, because nothing downstream
-//! could tell that timing apart from a measurement. So it is carried, its
-//! interval is spread across the space its neighbours left, it is labelled
-//! `interpolated`, and its span is declared invalid — which is what makes the
-//! boundary optimizer refuse to cut inside it.
-//!
-//! This runs in the daemon rather than in a worker because it loads no model.
-//! It is arithmetic over three JSON documents, and the two-lifecycle rule puts
-//! model-free derivation where the artifacts already are.
+//! Unaligned words retain their text with interpolated timing and invalid-span
+//! markers, so downstream boundaries cannot mistake interpolation for measured
+//! word timing. This model-free derivation runs in the daemon over the three
+//! published documents.
 
 use std::collections::BTreeMap;
 

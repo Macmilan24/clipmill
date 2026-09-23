@@ -1,15 +1,6 @@
 /**
- * The ranked set, joined to the things that explain it.
- *
- * Three published documents describe one clip between them: the ranking holds
- * the score card, the candidate set holds the lattice the boundary was chosen
- * from, and the evidence index holds the sentences a factor was read from. None
- * of them is useful alone and none of them is the interface's to reinterpret,
- * so everything here is a join rather than a calculation.
- *
- * Pure on purpose. A screen that computed while it rendered would be a screen
- * whose numbers could only be checked by looking at it; these functions are
- * checked by tests that never mount anything.
+ * Join ranking scores, candidate boundary lattices, and source evidence.
+ * These pure helpers assemble published values without recomputing ranking decisions.
  */
 import type {
   CaptionCues,
