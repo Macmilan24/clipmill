@@ -1,0 +1,24 @@
+[package]
+name = "clipmill-hub"
+description = "Narrow Hugging Face transport: repository metadata for pinning, and digest-verified weight downloads"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+url = "2.5"
+
+[dev-dependencies]
+tempfile = "3.23"
+
+[lints]
+workspace = true

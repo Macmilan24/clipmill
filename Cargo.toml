@@ -35,6 +35,7 @@ clipmill-edit-ir = { path = "crates/clipmill-edit-ir", version = "0.0.1" }
 clipmill-editorial = { path = "crates/clipmill-editorial", version = "0.0.1" }
 clipmill-evidence = { path = "crates/clipmill-evidence", version = "0.0.1" }
 clipmill-export = { path = "crates/clipmill-export", version = "0.0.1" }
+clipmill-hub = { path = "crates/clipmill-hub", version = "0.0.1" }
 clipmill-reframe = { path = "crates/clipmill-reframe", version = "0.0.1" }
 clipmill-render = { path = "crates/clipmill-render", version = "0.0.1" }
 clipmill-youtube = { path = "crates/clipmill-youtube", version = "0.0.1" }
