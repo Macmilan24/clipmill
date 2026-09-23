@@ -17,7 +17,14 @@ import { cn } from '@/lib/utils';
 
 import { formatBytes } from '../deviceProfile.js';
 import type { LibraryModel, ModelJob, ModelLibrary } from '../daemon/models.js';
-import { fitWarning, isDownloading, modelFacts, percentOf, progressText } from './describe.js';
+import {
+  fitWarning,
+  isDownloading,
+  modelFacts,
+  percentOf,
+  progressText,
+  workerWarning,
+} from './describe.js';
 
 export interface ModelRowActions {
   readonly onDownload: () => void;
@@ -53,6 +60,14 @@ export function ModelRow({
   const download = model.download;
   const planned = job.model === model.name;
   const warning = fitWarning(model, library);
+  const missingWorker =
+    installed && model.supported
+      ? workerWarning(
+          model,
+          job,
+          library.models.find((entry) => entry.name === job.model),
+        )
+      : null;
   const busy = pending !== null && pending.endsWith(`:${model.name}`);
   const alternatives = job.models.length > 1;
   const headingId = `model-${model.name}`;
@@ -91,6 +106,12 @@ export function ModelRow({
             >
               <TriangleAlert aria-hidden="true" />
               {warning.text}
+            </p>
+          )}
+          {missingWorker !== null && (
+            <p className="model-row-note text-[var(--cm-warning-ink)]" role="status">
+              <TriangleAlert aria-hidden="true" />
+              {missingWorker}
             </p>
           )}
           {download !== undefined && downloading && (

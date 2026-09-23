@@ -57,6 +57,12 @@ export interface LibraryModel {
   readonly download?: ModelDownload;
   /** The next analysis plans this model for its job. */
   readonly inUse: boolean;
+  /** The worker family that runs it: only that family is handed its tasks. */
+  readonly worker: string;
+  /** What a person calls that worker, such as "MLX speech worker". */
+  readonly workerTitle: string;
+  /** A worker of that family is connected now. */
+  readonly workerConnected: boolean;
 }
 
 export interface ModelJob {

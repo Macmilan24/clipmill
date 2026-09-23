@@ -62,6 +62,9 @@ struct ModelView {
     #[serde(skip_serializing_if = "Option::is_none")]
     download: Option<DownloadView>,
     in_use: bool,
+    worker: String,
+    worker_title: String,
+    worker_connected: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -146,6 +149,9 @@ impl From<ipc::ModelV1> for ModelView {
                 updated_unix_millis: download.updated_unix_millis,
             }),
             in_use: model.in_use,
+            worker: model.worker,
+            worker_title: model.worker_title,
+            worker_connected: model.worker_connected,
         }
     }
 }

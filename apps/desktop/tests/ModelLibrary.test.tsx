@@ -244,6 +244,38 @@ describe('the model library', () => {
     });
   });
 
+  it('warns beside a model whose worker is not running before it is chosen', async () => {
+    const library = installedLibrary();
+    show({
+      ...library,
+      models: [
+        ...library.models,
+        libraryModel('qwen3-asr-mlx', {
+          title: 'Qwen3-ASR 1.7B',
+          backend: 'mlx',
+          installState: 'installed',
+          installedBytes: 150 * 1024 ** 2,
+          worker: 'speech-mlx',
+          workerTitle: 'MLX speech worker',
+          workerConnected: false,
+        }),
+      ],
+      jobs: library.jobs.map((job) =>
+        job.capability === 'asr' ? { ...job, models: [...job.models, 'qwen3-asr-mlx'] } : job,
+      ),
+    });
+    const mlx = await screen.findByRole('listitem', { name: 'Qwen3-ASR 1.7B' });
+    expect(
+      within(mlx).getByText(
+        "Runs in the MLX speech worker, which isn't running, so transcription would wait for it. Restart the workers before choosing it.",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(row('Whisper Base')).queryByText(/isn't running/),
+      'the model in use has a running worker',
+    ).toBeNull();
+  });
+
   it('names a worker problem under the job whose model is here, and ignores cloud routes', async () => {
     show(installedLibrary(), {
       ...emptyWorld(),

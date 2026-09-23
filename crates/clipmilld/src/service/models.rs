@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use clipmill_contracts::proto::ipc::v1::{
     AddCustomModelRequest, CancelModelDownloadRequest, DownloadModelsRequest, ErrorCode,
-    ForgetModelRequest, InspectHubModelRequest, RemoveModelRequest, SetModelChoiceRequest,
-    VerifyModelRequest, response,
+    ForgetModelRequest, InspectHubModelRequest, ListModelsResponse, RemoveModelRequest,
+    SetModelChoiceRequest, VerifyModelRequest, response,
 };
 
 use super::{Reply, Service, error_reply, response_reply};
@@ -71,12 +71,28 @@ impl Service {
     }
 
     fn library_reply(&self, request_id: String, library: &ModelLibrary) -> Reply {
-        response_reply(
-            request_id,
-            response::Body::ModelLibrary(
-                library.list(&self.profile_bindings(), self.memory_budget()),
-            ),
-        )
+        let mut listing = library.list(&self.profile_bindings(), self.memory_budget());
+        self.mark_workers(&mut listing);
+        response_reply(request_id, response::Body::ModelLibrary(listing))
+    }
+
+    /// Whether the worker that runs each model is connected now. A model is
+    /// only ever run by its own worker family, so one chosen while that worker
+    /// is not running would leave its job waiting.
+    fn mark_workers(&self, listing: &mut ListModelsResponse) {
+        let roster = self
+            .roster
+            .lock()
+            .map(|workers| workers.clone())
+            .unwrap_or_default();
+        for model in &mut listing.models {
+            model.worker_connected =
+                implementations::for_model(&model.name).is_some_and(|implementation| {
+                    roster
+                        .values()
+                        .any(|worker| worker.runs(implementation.stage, implementation.name))
+                });
+        }
     }
 
     fn library_or_refuse(&self, request_id: &str) -> Result<Arc<ModelLibrary>, Reply> {

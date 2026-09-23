@@ -76,6 +76,24 @@ export function fitWarning(model: LibraryModel, library: ModelLibrary): FitWarni
   }
 }
 
+/**
+ * Said beside another model for a job, before it is chosen, when the worker
+ * that runs it is not connected but the current model's is. Only a worker of
+ * a model's own family is handed its tasks, so choosing it would leave the job
+ * waiting. The model a job already uses has its problem said once, under the
+ * job, from readiness.
+ */
+export function workerWarning(
+  model: LibraryModel,
+  job: ModelJob,
+  current: LibraryModel | undefined,
+): string | null {
+  if (model.name === job.model || model.worker === '' || model.workerConnected) return null;
+  if (current !== undefined && !current.workerConnected) return null;
+  const worker = model.workerTitle === '' ? 'worker that runs it' : model.workerTitle;
+  return `Runs in the ${worker}, which isn't running, so ${job.title.toLowerCase()} would wait for it. Restart the workers before choosing it.`;
+}
+
 /** Why a job runs the model it runs, as a badge. */
 export function jobReason(job: ModelJob): string {
   switch (job.selectedBy) {

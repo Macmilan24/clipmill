@@ -457,6 +457,7 @@ impl ModelLibrary {
         in_use: bool,
     ) -> ModelV1 {
         let memory = manifest.memory.resident_bytes();
+        let worker = implementations::for_model(&manifest.name).map(|found| found.worker);
         ModelV1 {
             name: manifest.name.clone(),
             title: manifest.title().to_owned(),
@@ -486,6 +487,13 @@ impl ModelLibrary {
                 updated_unix_millis: entry.updated,
             }),
             in_use,
+            worker: worker.unwrap_or_default().to_owned(),
+            worker_title: worker
+                .map(implementations::worker_title)
+                .unwrap_or_default()
+                .to_owned(),
+            // Whoever holds the worker roster says; the library cannot see it.
+            worker_connected: false,
         }
     }
 
