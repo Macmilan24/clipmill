@@ -25,9 +25,14 @@ ON_APPLE_SILICON = sys.platform == "darwin"
 
 
 def test_the_family_serves_both_speech_stages_that_run_a_qwen3_model():
-    """One environment, two capabilities: they are one model family."""
+    """One environment, two capabilities: they are one model family.
 
-    assert CAPABILITIES == ("speech-asr", "speech-align")
+    Sorted, because registration signs the list in order and refuses any
+    other; unsorted, this worker could never connect.
+    """
+
+    assert CAPABILITIES == ("speech-align", "speech-asr")
+    assert list(CAPABILITIES) == sorted(set(CAPABILITIES))
 
 
 def test_the_two_architectures_are_named_rather_than_inferred():
