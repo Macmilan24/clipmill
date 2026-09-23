@@ -1,8 +1,9 @@
 # The universal ASR fallback. It runs everywhere, which is why it lands before the accelerated primary.
 #
 # Every file is pinned by digest and the revision is pinned by commit, so
-# `fetch-models.sh` verifies rather than trusts. The licence class is what
-# `check-models.py` enforces: weights ship inside what users publish.
+# the model library and `fetch-models.sh` verify rather than trust. The
+# licence class is what `check-models.py` enforces: weights ship inside
+# what users publish.
 name = "whisper-base"
 capability = "asr"
 family = "whisper.cpp"
