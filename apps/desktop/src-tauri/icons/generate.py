@@ -20,8 +20,7 @@ DESKTOP = HERE.parents[1]
 def main() -> None:
     mark = json.loads((DESKTOP / "src/brand/mark.json").read_text())
     sails = "\n".join(
-        f'<path d="{mark["blade"]}" transform="rotate({angle} 50 50)" '
-        'fill-rule="evenodd" />'
+        f'<path d="{mark["blade"]}" transform="rotate({angle} 50 50)" fill-rule="evenodd" />'
         for angle in (0, 90, 180, 270)
     )
     shapes = f'{sails}\n<circle cx="50" cy="50" r="{mark["hubRadius"]}" />'
