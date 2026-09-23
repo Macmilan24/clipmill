@@ -3,6 +3,8 @@
 mod analysis;
 mod artifacts;
 mod captions;
+#[cfg(unix)]
+mod collector;
 mod config;
 #[cfg(unix)]
 mod daemon;

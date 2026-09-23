@@ -121,13 +121,24 @@ Settings → Storage acts on what nothing uses:
 
 - **Generated media** — collects generated files no project, source, task or
   system root reaches, without waiting out the retention period. The collection
-  re-verifies every reachable manifest and keeps whatever a reader holds; objects
-  younger than 15 minutes are kept, covering the moment between publishing an
-  object and rooting it. The report estimates what would be freed beforehand.
+  re-verifies every reachable manifest and payload and keeps whatever a reader
+  holds; objects younger than 15 minutes are kept, covering the moment between
+  publishing an object and rooting it. The report estimates what would be freed
+  beforehand.
 - **Database backups** — deletes all but the newest backup taken before a
   schema migration.
 - **Temporary files** — removes scratch nothing has written to for an hour, and
   interrupted downloads that are not being resumed.
+
+Freeing generated media runs through the same loop as the scheduled collection,
+so the two never interrupt each other, and it answers only once its pass has
+finished. Verification reads every file a project uses — seconds for a small
+library, minutes for a large one — and yields whenever the engine has other
+work. A pass that yielded resumes rather than restarts: it reads the roots and
+reader pins afresh, but skips the objects it already verified and, inside an
+object of many files such as a filmstrip, continues from the file and byte it
+had reached. Every pass still verifies every reachable byte once. Settings waits up to 30 minutes for the answer, and the clean-up finishes
+whether or not anyone is still waiting.
 
 Model weights are removed from Models, where a removal can say which job loses
 its model. Project state and imported originals belong to their projects.
