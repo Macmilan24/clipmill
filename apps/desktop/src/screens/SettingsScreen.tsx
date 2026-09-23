@@ -14,6 +14,8 @@ export interface SettingsScreenProps {
   readonly workspaceTheme?: WorkspaceTheme;
   readonly onWorkspaceThemeChange?: (theme: WorkspaceTheme) => void;
   readonly integrations?: ReactNode;
+  /** Go to Models, where weights are downloaded and removed. */
+  readonly onOpenModels?: () => void;
 }
 
 /** Refresh independently: a failed storage read must not hide the privacy answer. */
@@ -68,6 +70,16 @@ export function SettingsScreen({ api = daemonApi, ...preferences }: SettingsScre
       storageError={storageError}
       lockError={lockError}
       onRefresh={refresh}
+      onCleanStorage={async (action) => {
+        const result = await api.cleanStorage(action);
+        // The daemon measured again after cleaning; that answer replaces ours.
+        if (result.storage) {
+          setStorage(result.storage);
+          setStorageError(null);
+        }
+        return result;
+      }}
+      onOpenStorage={(key) => api.openStorageLocation(key)}
     />
   );
 }

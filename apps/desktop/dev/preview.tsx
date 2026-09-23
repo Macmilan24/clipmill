@@ -27,7 +27,8 @@ import { UploadHistory } from '../src/youtube/UploadHistory.js';
 import { Library } from '../src/screens/Library.js';
 import { Settings } from '../src/screens/Settings.js';
 import { ModelsDevice } from '../src/screens/ModelsDevice.js';
-import { device, readiness, storage, lock } from './settings-fixtures.js';
+import { device, readiness, lock } from './settings-fixtures.js';
+import { previewClean, previewModelApi, storageWithCleanUp } from './model-fixtures.js';
 import { NewProject } from '../src/screens/NewProject.js';
 import { LibraryLoader } from '../src/library/loader.js';
 import { ImportLoader } from '../src/import/loader.js';
@@ -36,7 +37,13 @@ import { connection, rows as fixtures, plan as previewPlan } from './fixtures.js
 import '../src/styles.css';
 
 const noAction = () => {};
-const modelApi = { ...daemonApi, fetchReadiness: async () => readiness };
+const modelScenario =
+  new URLSearchParams(location.search).get('models') === 'installed' ? 'installed' : 'fresh';
+const modelApi = {
+  ...daemonApi,
+  ...previewModelApi(modelScenario),
+  fetchReadiness: async () => readiness,
+};
 const project = {
   projectId: 'preview',
   name: 'The creative process · Episode 12',
@@ -392,7 +399,7 @@ function Preview() {
                       <UploadHistory api={publishingApi} />
                     </div>
                   }
-                  storage={storage}
+                  storage={storageWithCleanUp}
                   lock={lock}
                   loading={false}
                   error={null}
@@ -401,6 +408,9 @@ function Preview() {
                   workspaceTheme={workspaceTheme}
                   onWorkspaceThemeChange={setWorkspaceTheme}
                   onRefresh={noAction}
+                  onCleanStorage={previewClean}
+                  onOpenStorage={async () => undefined}
+                  onOpenModels={() => setPage('models')}
                 />
               )}
             </main>

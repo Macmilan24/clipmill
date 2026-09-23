@@ -55,11 +55,6 @@
   stroke-width: 1.5;
 }
 
-.model-readiness-row h3 {
-  font-size: 13px;
-  font-weight: 500;
-}
-
 .device-facts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -335,6 +330,36 @@
   width: 8px;
   height: 8px;
   margin-block: -2px;
+}
+
+.storage-confirm {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  max-width: 560px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-destructive) 35%, transparent);
+  border-radius: var(--cm-radius-control);
+  background: var(--cm-recessed);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.storage-outcome {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.storage-outcome > svg {
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .youtube-section .youtube-connection-row {

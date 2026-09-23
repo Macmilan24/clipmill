@@ -23,28 +23,9 @@ import { AppearancePreferences } from './AppearancePreferences.js';
 import './preferences.css';
 
 import type { LocalLock, StorageStats } from '../daemon/client.js';
+import type { CleanAction, CleanResult } from '../daemon/models.js';
 import { formatBytes } from '../deviceProfile.js';
-
-const CATEGORY_LABELS: Readonly<Record<string, string>> = {
-  artifacts: 'Generated media',
-  models: 'Model weights',
-  state: 'Project state',
-  imports: 'Imported originals',
-};
-const CATEGORY_NOTES: Readonly<Record<string, string>> = {
-  artifacts:
-    'Proxies, transcripts, analysis and rendered media. Unreferenced files follow the retention policy.',
-  models: 'Pinned model files, downloaded once and reused across projects.',
-  state: 'Projects, saved edits and decisions. Keep these files to preserve your work.',
-  imports:
-    'Downloaded originals are kept with their project. Deleting the project removes its managed copies.',
-};
-const CATEGORY_COLORS: Readonly<Record<string, string>> = {
-  artifacts: 'var(--cm-text-secondary)',
-  models: 'var(--cm-text-muted)',
-  state: 'var(--cm-text-primary)',
-  imports: 'var(--color-primary)',
-};
+import { CATEGORY_COLORS, StorageCategories } from './StorageSection.js';
 
 export interface SettingsProps {
   readonly storage: StorageStats | null;
@@ -59,6 +40,12 @@ export interface SettingsProps {
   readonly workspaceTheme?: WorkspaceTheme;
   readonly onWorkspaceThemeChange?: (theme: WorkspaceTheme) => void;
   readonly integrations?: ReactNode;
+  /** Free what nobody uses. Absent where the screen only reports. */
+  readonly onCleanStorage?: (action: CleanAction) => Promise<CleanResult>;
+  /** Show a category's folder; the host resolves the key to a path. */
+  readonly onOpenStorage?: (key: string) => Promise<void>;
+  /** Go to Models, where weights are downloaded and removed. */
+  readonly onOpenModels?: () => void;
 }
 
 function SectionHeading({
@@ -94,6 +81,9 @@ export function Settings({
   workspaceTheme,
   onWorkspaceThemeChange,
   integrations,
+  onCleanStorage,
+  onOpenStorage,
+  onOpenModels,
 }: SettingsProps): JSX.Element {
   const total =
     storage?.categories.reduce((sum, category) => sum + Math.max(0, category.bytes), 0) ?? 0;
@@ -234,9 +224,9 @@ export function Settings({
                         />
                       </dl>
                       <p className="mt-2 text-xs text-[var(--cm-text-muted)]">
-                        Includes enabled cloud analysis, YouTube imports, channel sign-in and
-                        publishing. Importing a video does not enable cloud AI. Model downloads are
-                        managed separately.
+                        Includes enabled cloud analysis, YouTube imports, channel sign-in,
+                        publishing, and model downloads and look-ups started in Models. Importing a
+                        video does not enable cloud AI.
                       </p>
                       <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
                         These counts describe task execution, not measured network traffic.
@@ -309,49 +299,12 @@ export function Settings({
                         />
                       ))}
                     </div>
-                    <ul className="mt-4 divide-y divide-[var(--cm-glass-border)]">
-                      {storage.categories.map((category) => (
-                        <li key={category.key} className="py-4 first:pt-0">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <h3 className="flex items-center gap-2 text-xs font-semibold">
-                                <span
-                                  aria-hidden="true"
-                                  className="size-1.5 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      CATEGORY_COLORS[category.key] ?? 'var(--cm-text-muted)',
-                                  }}
-                                />
-                                {CATEGORY_LABELS[category.key] ?? category.key}
-                              </h3>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <p className="font-mono text-xs">{formatBytes(category.bytes)}</p>
-                              <p className="mt-1 text-[11px] text-[var(--cm-text-muted)]">
-                                {category.items} {category.items === 1 ? 'item' : 'items'}
-                              </p>
-                            </div>
-                          </div>
-                          <details className="preference-disclosure mt-2">
-                            <summary>
-                              <ChevronDown className="size-3" />
-                              Location and details
-                              <span className="sr-only">
-                                {' '}
-                                for {CATEGORY_LABELS[category.key] ?? category.key}
-                              </span>
-                            </summary>
-                            <p className="mt-3 max-w-[530px] text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-                              {CATEGORY_NOTES[category.key] ?? 'Files managed by the local engine.'}
-                            </p>
-                            <p className="mt-2 select-all break-all rounded-md bg-[var(--cm-recessed)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
-                              {category.path}
-                            </p>
-                          </details>
-                        </li>
-                      ))}
-                    </ul>
+                    <StorageCategories
+                      storage={storage}
+                      onClean={onCleanStorage}
+                      onOpen={onOpenStorage}
+                      onOpenModels={onOpenModels}
+                    />
                     <div className="flex items-start gap-3 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-3.5 py-3.5">
                       <Database className="mt-0.5 size-4 shrink-0 text-[var(--cm-text-secondary)]" />
                       <div>
@@ -362,8 +315,12 @@ export function Settings({
                           </StatusBadge>
                         </div>
                         <p className="mt-2 text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
-                          Unused generated files become eligible for cleanup after this period.
+                          Unused generated files are cleaned up automatically after this period.
                           Source recordings and saved edits are kept.
+                          {storage.reclaimableBytes !== undefined &&
+                            (storage.reclaimableBytes > 0
+                              ? ` About ${formatBytes(storage.reclaimableBytes)} can be freed now with Clean up.`
+                              : ' Nothing is waiting to be cleaned up.')}
                         </p>
                       </div>
                     </div>

@@ -62,6 +62,8 @@ import { formatDuration, formatVideoSpec } from '../library/model.js';
 export interface NewProjectProps {
   readonly state: ConnectionState;
   readonly onStarted: (projectId: string, jobId: string) => void;
+  /** Open the model library, where a missing model is downloaded. */
+  readonly onOpenModels?: () => void;
   /** Injected by tests, which drive the screen through a fake daemon. */
   readonly loader?: ImportLoader;
 }
@@ -74,10 +76,12 @@ function ReadinessCard({
   readiness,
   problem,
   onRefresh,
+  onOpenModels,
 }: {
   readonly readiness: Readiness | null;
   readonly problem: string | null;
   readonly onRefresh: () => void;
+  readonly onOpenModels?: (() => void) | undefined;
 }): JSX.Element {
   const models = missingModels(readiness);
   const workers = missingWorkers(readiness);
@@ -133,9 +137,16 @@ function ReadinessCard({
             The run can be started; those stages wait until a worker connects.
           </p>
         )}
-        <Button variant="outline" size="sm" className="self-start" onClick={onRefresh}>
-          Check again
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {models.length > 0 && onOpenModels !== undefined && (
+            <Button size="sm" onClick={onOpenModels}>
+              Open Models
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={onRefresh}>
+            Check again
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -184,7 +195,12 @@ function Stepper({
   );
 }
 
-export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.Element {
+export function NewProject({
+  state,
+  onStarted,
+  onOpenModels,
+  loader,
+}: NewProjectProps): JSX.Element {
   const [importer] = useState(() => loader ?? new ImportLoader());
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [chosen, setChosen] = useState<ChosenSource | null>(null);
@@ -641,6 +657,7 @@ export function NewProject({ state, onStarted, loader }: NewProjectProps): JSX.E
             readiness={routeReadiness}
             problem={readinessProblem}
             onRefresh={refresh}
+            onOpenModels={onOpenModels}
           />
         )}
       </div>
