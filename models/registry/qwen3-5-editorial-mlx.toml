@@ -5,6 +5,14 @@ family = "qwen3.5"
 runtime = "mlx"
 backend = "mlx"
 quantization = "int4"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Qwen3.5 9B"
+summary = "A 9-billion-parameter vision-language model, quantized to 4 bits, that reads the transcript and looks at frames. Runs on the Apple silicon GPU."
+recommended = true
+
 [source]
 provider = "https://huggingface.co"
 repo = "mlx-community/Qwen3.5-9B-4bit"

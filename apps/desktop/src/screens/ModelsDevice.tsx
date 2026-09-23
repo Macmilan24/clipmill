@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils';
 
 import './preferences.css';
 
-import { ModelReadiness } from './ModelReadiness.js';
+import { ModelLibraryPanel } from '../models/ModelLibraryPanel.js';
 import type { ConnectionState } from '../daemon/client.js';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import {
@@ -329,8 +329,8 @@ function LocalLockCard({
             <ChevronDown className="size-3.5" /> Privacy and attestation details
           </summary>
           <p className={cn('mt-3 text-[11px] leading-relaxed', MUTED)}>
-            Records task execution, not measured traffic or a network firewall. Model downloads are
-            managed separately.
+            Records task execution, not measured traffic or a network firewall. Model downloads and
+            Hugging Face look-ups started above count as network operations.
           </p>
           <dl className="mt-3 grid gap-2">
             {(
@@ -426,7 +426,7 @@ export function ModelsDevice({
         <div>
           <h1 className="workspace-title">Models &amp; Device</h1>
           <p className="workspace-subtitle mt-1 max-w-[620px]">
-            Manage local models and check your device.
+            Download, choose and remove the models ClipMill runs, and check your device.
           </p>
         </div>
         <StatusBadge tone={connected ? 'success' : 'warning'}>
@@ -434,7 +434,7 @@ export function ModelsDevice({
           {connected ? 'Engine connected' : 'Engine disconnected'}
         </StatusBadge>
       </header>
-      {connected && <ModelReadiness api={api} />}
+      {connected && <ModelLibraryPanel api={api} />}
       <section aria-labelledby="device-heading" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

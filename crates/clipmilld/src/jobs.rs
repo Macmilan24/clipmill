@@ -317,13 +317,14 @@ impl JobPlan {
         job_payload: Vec<u8>,
         ir_id: ArtifactId,
         models: &crate::models::ModelRegistry,
+        implementation: &crate::implementations::Implementation,
         now: u64,
     ) -> Result<Self, &'static str> {
-        let implementation = crate::implementations::candidates_for_stage("youtube-metadata")
-            .next()
-            .ok_or("YouTube metadata implementation missing")?;
+        if implementation.stage != "youtube-metadata" {
+            return Err("YouTube metadata implementation missing");
+        }
         if models.get(implementation.model).is_none() {
-            return Err("Qwen model is not registered");
+            return Err("The editorial model is not registered");
         }
         Ok(Self {
             job_id: JobId::new().to_string(),
@@ -1678,6 +1679,7 @@ impl JobPlan {
                             vec!["editorial.windows.v1".into()],
                             request,
                             models,
+                            bindings,
                         )?;
                         let propose_id = propose.task_id.clone();
                         stages.push((propose.output_kind.clone(), propose_id.clone()));
@@ -1716,6 +1718,7 @@ impl JobPlan {
                             ],
                             request,
                             models,
+                            bindings,
                         )?;
                         let review_id = review.task_id.clone();
                         stages.push((review.output_kind.clone(), review_id.clone()));
@@ -1731,6 +1734,7 @@ impl JobPlan {
                                 ],
                                 request,
                                 models,
+                                bindings,
                             )?;
                             let id = look.task_id.clone();
                             stages.push((look.output_kind.clone(), id.clone()));
@@ -2062,6 +2066,7 @@ fn editorial_worker_task(
     input_kinds: Vec<String>,
     request: &AnalyzeSourcePayloadV1,
     models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
 ) -> Result<TaskSpec, &'static str> {
     use sha2::{Digest, Sha256};
     let cloud = if operation == "look" {
@@ -2073,10 +2078,16 @@ fn editorial_worker_task(
         "editorial-{operation}{}",
         if cloud.is_some() { "-cloud" } else { "" }
     );
-    let implementation =
-        crate::implementations::candidates_for_stage(&format!("editorial-{operation}"))
-            .next()
-            .ok_or("editorial implementation missing")?;
+    // The model the library resolved for the job — the person's choice, or
+    // the bundled one — and only then the first registered candidate, which
+    // is what a plan built without a library (the tests) has always taken.
+    let stage = format!("editorial-{operation}");
+    let implementation = bindings
+        .for_stage(&stage)
+        .and_then(|binding| crate::implementations::lookup(&binding.implementation))
+        .filter(|implementation| implementation.stage == stage)
+        .or_else(|| crate::implementations::candidates_for_stage(&stage).next())
+        .ok_or("editorial implementation missing")?;
     let prompt = match operation {
         "propose" => include_str!(
             "../../../workers/editorial/src/clipmill_worker_editorial/prompts/propose.v1.txt"
@@ -2496,6 +2507,10 @@ pub(crate) struct LeaseRequest {
     pub capacity: ResourceCapacity,
     pub worker_id: String,
     pub capabilities: Vec<String>,
+    /// Implementations of the declared stages that another worker family
+    /// runs. A task planned with one of them is never this worker's, however
+    /// well its stage matches: it would be handed weights it cannot load.
+    pub foreign_implementations: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -2756,6 +2771,7 @@ async fn run_scheduler(
                     capacity: available_capacity,
                     worker_id: "builtin-fixture".to_owned(),
                     capabilities: builtin_capabilities.clone(),
+                    foreign_implementations: Vec::new(),
                 })
                 .await;
             let Ok(selection) = leased else {
@@ -3964,8 +3980,17 @@ mod youtube_metadata_tests {
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry"),
         )
         .unwrap();
-        let plan = JobPlan::youtube_metadata(&ProjectId::new(), context.to_vec(), ir, &models, now)
-            .unwrap();
+        let plan = JobPlan::youtube_metadata(
+            &ProjectId::new(),
+            context.to_vec(),
+            ir,
+            &models,
+            crate::implementations::candidates_for_stage("youtube-metadata")
+                .next()
+                .unwrap(),
+            now,
+        )
+        .unwrap();
         (plan, models)
     }
 

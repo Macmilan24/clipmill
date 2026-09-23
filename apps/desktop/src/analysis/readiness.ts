@@ -54,7 +54,7 @@ export function submissionBlocker(readiness: Readiness | null): string | null {
   const models = missingModels(readiness);
   if (models.length > 0) {
     const names = models.map((stage) => stage.model).join(', ');
-    return `${models.length === 1 ? 'A model is' : 'Models are'} not installed (${names}); run \`tools/fetch-models.sh\` to fetch the pinned weights.`;
+    return `${models.length === 1 ? 'A model is' : 'Models are'} not installed (${names}). Download ${models.length === 1 ? 'it' : 'them'} in Models.`;
   }
   return null;
 }

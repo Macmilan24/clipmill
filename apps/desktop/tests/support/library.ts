@@ -31,6 +31,7 @@ import type {
   StageReadiness,
 } from '../../src/daemon/client.js';
 import type { ShellApi } from '../../src/daemon/api.js';
+import { FakeModelLibrary } from './models.js';
 
 export const NOW = Date.UTC(2026, 6, 31, 12, 0, 0);
 
@@ -89,7 +90,7 @@ export function stageReadiness(
     ? merged.workerPresent
       ? ''
       : `No worker is connected that runs ${stage}: start the workers with \`just workers\`.`
-    : `The model ${merged.model} is not installed: run \`tools/fetch-models.sh\` to fetch the pinned weights (${merged.missingFiles.length} file(s) missing).`;
+    : `${merged.model} is not installed (${merged.missingFiles.length} file(s) missing). Download it in Models, or choose another model for this job there.`;
   return { ...merged, ready, remedy: overrides.remedy ?? remedy };
 }
 
@@ -198,6 +199,8 @@ export interface FakeWorld {
   readonly localLock?: LocalLock;
   /** What the daemon says an analysis would need, when the world says. */
   readonly readiness?: Readiness;
+  /** The model library, when a test looks at it; a fresh catalog otherwise. */
+  readonly models?: FakeModelLibrary;
   /** The folder the fake dialog returns, or null for "closed". */
   readonly chosenFolder?: string | null;
 }
@@ -238,6 +241,7 @@ export function filmstrip(artifactId: string, tiles: number): MediaArtifact {
 
 export function fakeApi(world: FakeWorld): ShellApi {
   return {
+    ...(world.models ?? new FakeModelLibrary()).api(),
     fetchYoutubePublishingStatus: () =>
       Promise.resolve({ available: true, configured: false, connections: [] }),
     chooseYoutubeClientConfig: () => Promise.resolve(null),

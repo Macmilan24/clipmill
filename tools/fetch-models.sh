@@ -2,10 +2,12 @@
 # Fetch the pinned models per models/registry/ into .cache/models/, verifying
 # every file's sha256 before it is installed.
 #
-# Acquisition happens here, outside the Local Lock, and never inside the app:
-# a creator tool that downloads weights while editing is a creator tool that
-# phones home while editing. The daemon only ever reads what this script left
-# behind, and refuses anything whose digest does not match.
+# The app's model library (Models) downloads the same pins and verifies them
+# the same way; this is the scripted path for development and CI. Either way,
+# acquisition is an explicit act and never a side effect of editing: a creator
+# tool that downloads weights while editing is one that phones home while
+# editing. Workers are handed a path, never a URL, and hash every file again
+# before loading it.
 #
 #   ./tools/fetch-models.sh                 # fetch everything pinned
 #   ./tools/fetch-models.sh silero-vad ...  # fetch named models only

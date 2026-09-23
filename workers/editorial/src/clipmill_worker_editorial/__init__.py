@@ -20,6 +20,7 @@ from clipmill_worker_sdk import (
     WorkerConfiguration,
     WorkerIdentity,
     canonical_bytes,
+    memory_ceiling,
     require_model,
 )
 
@@ -284,9 +285,11 @@ def main() -> int:
     return run_worker(
         execute,
         capabilities=CAPABILITIES,
-        description="ClipMill local Qwen 3.5 editorial worker",
+        description="ClipMill local editorial worker",
         backend="mlx",
-        max_memory_bytes=5_977_071_067 + 2 * 1024**3,
+        # Loads whichever MLX model the lease binds, so the ceiling follows
+        # the machine; the floor is the bundled Qwen3.5 9B and its runtime.
+        max_memory_bytes=memory_ceiling(5_977_071_067 + 2 * 1024**3),
     )
 
 

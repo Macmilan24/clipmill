@@ -63,6 +63,16 @@ message Request {
     UpdateYoutubeUploadRequest update_youtube_upload = 57;
     PublishYoutubeUploadRequest publish_youtube_upload = 58;
     DraftYoutubeMetadataRequest draft_youtube_metadata = 59;
+    ListModelsRequest list_models = 60;
+    DownloadModelsRequest download_models = 61;
+    CancelModelDownloadRequest cancel_model_download = 62;
+    RemoveModelRequest remove_model = 63;
+    VerifyModelRequest verify_model = 64;
+    SetModelChoiceRequest set_model_choice = 65;
+    InspectHubModelRequest inspect_hub_model = 66;
+    AddCustomModelRequest add_custom_model = 67;
+    ForgetModelRequest forget_model = 68;
+    CleanStorageRequest clean_storage = 69;
   }
 }
 
@@ -115,6 +125,10 @@ message Response {
     YoutubeUploadResponse youtube_upload = 50;
     ListYoutubeUploadsResponse list_youtube_uploads = 51;
     DraftYoutubeMetadataResponse draft_youtube_metadata = 52;
+    // Every model-library request answers with the library as it now stands.
+    ListModelsResponse model_library = 53;
+    InspectHubModelResponse inspect_hub_model = 54;
+    CleanStorageResponse clean_storage = 55;
   }
 }
 
@@ -835,11 +849,19 @@ message GetStorageStatsResponse {
   // Displayed rather than adjustable in Phase 1: the number is real, and a
   // control that changed it would need a collection policy nobody has written.
   uint64 retention_grace_seconds = 4;
+  // Generated files nothing references — no project, source, task or system
+  // root reaches them — which a clean-up would remove now instead of waiting
+  // out the retention period. An estimate from the catalogue in memory; the
+  // clean-up itself re-verifies every reference before deleting anything.
+  uint64 reclaimable_bytes = 5;
+  uint64 reclaimable_items = 6;
+  bool reclaimable_known = 7;
 }
 
 message StorageCategoryV1 {
-  // Stable identifier: "artifacts", "models", or "state". A caller chooses its
-  // own wording; this is what it keys off.
+  // Stable identifier: "artifacts", "models", "state", "imports", "backups"
+  // or "temporary". A caller chooses its own wording; this is what it keys
+  // off. "state" excludes the backups and scratch reported beside it.
   string key = 1;
   uint64 bytes = 2;
   // How many things were counted — published objects for artifacts, files for
@@ -1750,4 +1772,189 @@ message YoutubeMetadataTaskPayloadV1 {
   string ir_artifact_id = 2;
   string prompt_digest = 3;
   uint32 max_output_tokens = 4;
+}
+
+// ---- Model library: what can run here, what is installed, and getting it ----
+//
+// The catalog is the model registry: every model a ClipMill worker knows how
+// to run, bundled with the release or pinned by the person from a repository.
+// Acquiring one is an explicit network operation the person starts. Every
+// file is verified against its pinned SHA-256 before it is installed, the
+// Local Lock counts the operation, and nothing is ever fetched automatically.
+message ListModelsRequest {}
+
+// One model, and where it stands on this device.
+message ModelV1 {
+  // Registry name: the identity analyses are keyed against.
+  string name = 1;
+  string title = 2;
+  string summary = 3;
+  // The job it does, as the registry spells it: vad, asr, forced-align,
+  // editorial or detect-faces.
+  string capability = 4;
+  string runtime = 5;
+  string backend = 6;
+  string quantization = 7;
+  string license_spdx = 8;
+  string source_repo = 9;
+  string source_revision = 10;
+  // Sum of the pinned files: what a download costs.
+  uint64 download_bytes = 11;
+  // Weights plus the runtime allowance: what running it needs.
+  uint64 memory_bytes = 12;
+  // Part of the set a fresh install is offered, on devices that can run it.
+  bool recommended = 13;
+  // This platform can load the runtime at all.
+  bool supported = 14;
+  string unsupported_reason = 15;
+  // How the memory it needs compares with this device: fits, tight (above
+  // the share an analysis may use, within physical memory), too_large, or
+  // unknown. A warning, never a refusal.
+  string memory_fit = 16;
+  // Pinned by the person rather than bundled.
+  bool custom = 17;
+  // installed, partial or missing, from the pinned sizes on disk.
+  string install_state = 18;
+  uint64 installed_bytes = 19;
+  // Present while queued, downloading or verifying, and after a failed or
+  // cancelled attempt until the next one.
+  ModelDownloadV1 download = 20;
+  // The next analysis plans this model for its job.
+  bool in_use = 21;
+  // The worker family that runs it. A task planned with this model is only
+  // ever handed to a worker of this family, whichever others serve the job.
+  string worker = 22;
+  // What a person calls that worker, such as "MLX speech worker".
+  string worker_title = 23;
+  // A worker of that family is connected now.
+  bool worker_connected = 24;
+}
+
+message ModelDownloadV1 {
+  // queued, downloading, verifying, failed or cancelled.
+  string state = 1;
+  uint64 received_bytes = 2;
+  uint64 total_bytes = 3;
+  // The file in flight, relative to the model's directory.
+  string current_file = 4;
+  // One sentence, when the attempt failed.
+  string error = 5;
+  uint64 updated_unix_millis = 6;
+}
+
+// A job an analysis runs, and which model does it.
+message ModelJobV1 {
+  string capability = 1;
+  string title = 2;
+  string summary = 3;
+  // What the next analysis plans for the job; empty when nothing is registered.
+  string model = 4;
+  // chosen (the person picked it), measured, portable (the default for an
+  // unmeasured device), installed_fallback (the default is not installed),
+  // default (the bundled choice) or unavailable.
+  string selected_by = 5;
+  // The person's explicit choice; empty for automatic.
+  string choice = 6;
+  // Every model registered for the job, in display order.
+  repeated string models = 7;
+}
+
+message ListModelsResponse {
+  repeated ModelV1 models = 1;
+  repeated ModelJobV1 jobs = 2;
+  // Where weights are installed, and the free space on that volume.
+  string install_path = 3;
+  uint64 available_bytes = 4;
+  bool available_known = 5;
+  // Physical memory, and the share an analysis may use as the scheduler
+  // counts it. Each model's fit is computed against these. Zero is unknown.
+  uint64 memory_total_bytes = 6;
+  uint64 memory_budget_bytes = 7;
+  // What completing the recommended set would download on this device.
+  uint64 recommended_missing_bytes = 8;
+  repeated string recommended_missing = 9;
+}
+
+// Queue downloads. A model already queued or downloading is left alone.
+message DownloadModelsRequest { repeated string names = 1; }
+message CancelModelDownloadRequest { string name = 1; }
+// Delete a model's installed weights. Refused while an unfinished analysis
+// task uses it; a choice naming it returns to automatic.
+message RemoveModelRequest { string name = 1; }
+// Hash every installed file against its pin. A file that no longer matches
+// is removed, so the next download repairs exactly that file.
+message VerifyModelRequest { string name = 1; }
+message SetModelChoiceRequest {
+  string capability = 1;
+  // Empty returns the job to automatic selection.
+  string model = 2;
+}
+
+// Pinning a person's own model. Inspecting reads the repository — a network
+// operation — and answers with what would be pinned; adding pins it. Only
+// jobs whose worker loads whatever it is handed take one: whisper.cpp
+// transcription and MLX editorial models.
+message InspectHubModelRequest {
+  // owner/name on Hugging Face.
+  string repo = 1;
+  // Commit, branch or tag. The answer names the commit it resolved to, and
+  // only that commit is ever pinned.
+  string revision = 2;
+  string capability = 3;
+}
+message HubModelFileV1 {
+  string path = 1;
+  uint64 bytes = 2;
+  // For a whisper.cpp weight choice: the registry name and title pinning this
+  // file would use, unique among the models already registered.
+  string suggested_name = 3;
+  string suggested_title = 4;
+}
+message InspectHubModelResponse {
+  string repo = 1;
+  string commit = 2;
+  string capability = 3;
+  // The licence as the repository declares it, and the SPDX identifier it
+  // maps to when that is one ClipMill's policy permits.
+  string license = 4;
+  string license_spdx = 5;
+  bool license_allowed = 6;
+  // Why this cannot be pinned, when it cannot. Empty when it can.
+  string problem = 7;
+  // whisper.cpp: the GGML files to choose from; exactly one is pinned.
+  repeated HubModelFileV1 weight_choices = 8;
+  // MLX: every file the model directory needs, pinned together.
+  repeated HubModelFileV1 files = 9;
+  string suggested_name = 10;
+  string suggested_title = 11;
+}
+message AddCustomModelRequest {
+  string repo = 1;
+  // The commit an inspection resolved to.
+  string commit = 2;
+  string capability = 3;
+  // whisper.cpp: the one GGML file to pin. Ignored for MLX.
+  string weights_file = 4;
+  // Registry name; lowercase words joined by hyphens or dots.
+  string name = 5;
+  string title = 6;
+}
+// Remove a model the person pinned: its weights and its manifest. Bundled
+// models cannot be forgotten, only their weights removed.
+message ForgetModelRequest { string name = 1; }
+
+// ---- Storage clean-up ----
+
+message CleanStorageRequest {
+  // unused_files: generated files nothing references, removed now instead of
+  //   after the retention period. Every reference is re-verified first.
+  // temporary: scratch left behind by stopped work and interrupted downloads.
+  // backups: database backups other than the newest.
+  string action = 1;
+}
+message CleanStorageResponse {
+  uint64 freed_bytes = 1;
+  uint64 removed_items = 2;
+  // Measured again after the clean-up.
+  GetStorageStatsResponse storage = 3;
 }

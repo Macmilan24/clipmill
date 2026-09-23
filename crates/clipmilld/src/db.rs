@@ -6,7 +6,7 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectResponse, DeleteProjectResponse, Project, Response, response,
+    CreateProjectResponse, DeleteProjectResponse, Project, Response, TaskState, response,
 };
 use clipmill_core::{ArtifactId, ProjectId};
 use prost::Message;
@@ -180,6 +180,10 @@ impl DbActor {
                                 }
                                 Command::ListArtifactRoots { reply } => {
                                     let _result = reply.send(list_artifact_roots(&connection));
+                                }
+                                Command::UnfinishedImplementations { reply } => {
+                                    let _result =
+                                        reply.send(unfinished_implementations(&connection));
                                 }
                                 Command::ArtifactIsProjectOutput {
                                     project_id,
@@ -823,6 +827,17 @@ impl DbHandle {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListArtifactRoots { reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Every implementation an unfinished task was planned with: what the
+    /// model library must not remove from under a running analysis.
+    pub(crate) async fn unfinished_implementations(&self) -> Result<Vec<String>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::UnfinishedImplementations { reply })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1576,6 +1591,9 @@ enum Command {
     ListArtifactRoots {
         reply: oneshot::Sender<Result<Vec<ArtifactId>, StoreError>>,
     },
+    UnfinishedImplementations {
+        reply: oneshot::Sender<Result<Vec<String>, StoreError>>,
+    },
     SubmitJob {
         request_id: String,
         request_hash: [u8; 32],
@@ -2174,6 +2192,26 @@ fn attach_artifact_root(
     )?;
     transaction.commit()?;
     Ok(())
+}
+
+/// Planned, admitted, running or waiting to retry: every state a task can
+/// still lease a model from. A finished task never loads its weights again.
+fn unfinished_implementations(connection: &Connection) -> Result<Vec<String>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT implementation FROM tasks
+         WHERE state IN (?1, ?2, ?3, ?4) AND implementation <> ''
+         ORDER BY implementation ASC",
+    )?;
+    let rows = statement.query_map(
+        params![
+            TaskState::Planned as i32,
+            TaskState::Admitted as i32,
+            TaskState::Running as i32,
+            TaskState::Retryable as i32,
+        ],
+        |row| row.get::<_, String>(0),
+    )?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 fn list_artifact_roots(connection: &Connection) -> Result<Vec<ArtifactId>, StoreError> {
@@ -4199,6 +4237,7 @@ mod tests {
                     "demo-seed".into(),
                     "propose-cloud".into(),
                 ],
+                foreign_implementations: Vec::new(),
             };
             // Even an older or corrupted persisted task cannot lease with a
             // false policy, or with a partial match of a registered kind.
@@ -4241,6 +4280,66 @@ mod tests {
                 selection.task.unwrap().resources.network_policy,
                 "network-allowed"
             );
+        }
+    }
+
+    /// Two families serve word timing: the ONNX aligner and the MLX speech
+    /// worker. Each is handed only the tasks planned for its own model; a
+    /// task for the other's would bind weights it cannot load.
+    #[test]
+    fn a_task_is_leased_only_to_the_family_its_implementation_names() {
+        let temp = TempDir::new().unwrap();
+        let (_, mut connection) = database(&temp);
+        let p = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "routing", 10);
+        create_project(&mut connection, "p", &[1; 32], &p).unwrap();
+        let mut plan = JobPlan::demo(&p.project_id.parse().unwrap(), b"route".to_vec(), 20);
+        plan.tasks.truncate(1);
+        plan.tasks[0].is_final = true;
+        job_store::submit_job(&mut connection, "job", &[2; 32], &plan).unwrap();
+        let worker = |family: &str| {
+            let stages = vec!["speech-align".to_owned()];
+            crate::jobs::LeaseRequest {
+                lease_id: LeaseId::new().to_string(),
+                daemon_epoch: "01ARZ3NDEKTSV4RRFFQ69G5FAV".into(),
+                now_unix_millis: 31,
+                expires_unix_millis: 15031,
+                capacity: ResourceCapacity::w4_builtin(),
+                worker_id: format!("{family}-worker"),
+                foreign_implementations: crate::implementations::foreign_to(family, &stages)
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+                capabilities: stages,
+            }
+        };
+        for (implementation, runs_it, other) in [
+            (
+                "clipmill-worker-speech-mlx@0.1.0/align",
+                "speech-mlx",
+                "speech-align",
+            ),
+            ("clipmill-worker-align@0.1.0", "speech-align", "speech-mlx"),
+        ] {
+            connection.execute("DELETE FROM task_leases", []).unwrap();
+            connection
+                .execute(
+                    "UPDATE tasks SET kind='speech-align', network_policy='local-lock', \
+                     implementation=?1, state=?2",
+                    rusqlite::params![implementation, TaskState::Planned as i32],
+                )
+                .unwrap();
+            assert!(
+                job_store::lease_next_task_for_worker(&mut connection, &worker(other))
+                    .unwrap()
+                    .task
+                    .is_none(),
+                "{other} was offered a task planned for {runs_it}"
+            );
+            let leased = job_store::lease_next_task_for_worker(&mut connection, &worker(runs_it))
+                .unwrap()
+                .task
+                .unwrap_or_else(|| panic!("{runs_it} was not offered its own task"));
+            assert_eq!(leased.implementation, implementation);
         }
     }
 

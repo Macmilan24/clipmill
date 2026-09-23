@@ -163,6 +163,10 @@ impl ArtifactActor {
         )
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one arm per actor command, around the one store they share"
+    )]
     fn start_inner(
         path: &Path,
         #[cfg(test)] pause: Option<GcPause>,
@@ -238,6 +242,14 @@ impl ArtifactActor {
                             }
                             Command::Usage { reply } => {
                                 let _reply = reply.send(store.usage());
+                            }
+                            Command::Reclaimable {
+                                roots,
+                                now,
+                                grace,
+                                reply,
+                            } => {
+                                let _reply = reply.send(store.reclaimable(roots, now, grace));
                             }
                             Command::Shutdown { reply } => {
                                 let _reply = reply.send(());
@@ -385,6 +397,30 @@ impl ArtifactHandle {
             .map_err(Into::into)
     }
 
+    /// What a collection with this grace would free now, estimated from the
+    /// manifests in memory. Nothing is removed.
+    pub(crate) async fn reclaimable(
+        &self,
+        roots: Vec<ArtifactId>,
+        now: SystemTime,
+        grace: Duration,
+    ) -> Result<StoreUsage, ArtifactServiceError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Reclaimable {
+                roots,
+                now,
+                grace,
+                reply,
+            })
+            .await
+            .map_err(|_| ArtifactServiceError::Stopped)?;
+        received
+            .await
+            .map_err(|_| ArtifactServiceError::Stopped)?
+            .map_err(Into::into)
+    }
+
     /// What the published objects occupy, read from the manifests in memory.
     pub(crate) async fn usage(&self) -> Result<StoreUsage, ArtifactServiceError> {
         let (reply, received) = oneshot::channel();
@@ -513,6 +549,12 @@ enum Command {
     },
     Usage {
         reply: oneshot::Sender<StoreUsage>,
+    },
+    Reclaimable {
+        roots: Vec<ArtifactId>,
+        now: SystemTime,
+        grace: Duration,
+        reply: oneshot::Sender<Result<StoreUsage, ArtifactError>>,
     },
     Shutdown {
         reply: oneshot::Sender<()>,

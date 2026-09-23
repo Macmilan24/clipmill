@@ -177,6 +177,7 @@ fn metadata_lease(at: u64) -> crate::jobs::LeaseRequest {
         expires_unix_millis: at + 15_000,
         worker_id: "metadata-worker-test".into(),
         capabilities: vec![KIND.into()],
+        foreign_implementations: Vec::new(),
         capacity: crate::jobs::ResourceCapacity {
             cpu_threads: 4,
             ram_bytes: 64 * 1024 * 1024 * 1024,
@@ -226,6 +227,9 @@ async fn actual_repeated_deterministic_failures_stop_retry_and_keep_manual_metad
             payload.clone(),
             identity().ir_artifact_id.parse().unwrap(),
             &models,
+            crate::implementations::candidates_for_stage("youtube-metadata")
+                .next()
+                .unwrap(),
             at,
         )
         .unwrap();

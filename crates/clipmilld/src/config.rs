@@ -28,12 +28,14 @@ pub struct Config {
     /// could pick up a host-installed face are renders nobody else can
     /// reproduce, so this holds exactly the pinned font (book ch. 19).
     pub fonts_dir: PathBuf,
-    /// Directory of pinned model manifests. Read at startup; never written.
+    /// Directory of bundled model manifests. Read at startup; never written.
+    /// Models the person pins in the app live in `paths.custom_models_dir`.
     pub models_dir: PathBuf,
-    /// Where `tools/fetch-models.sh` installed the weights those manifests
-    /// pin. Acquisition happens outside the Local Lock and never inside the
-    /// app, so the daemon only ever reads what is already here — and hands
-    /// workers a path, never a URL.
+    /// Where model weights are installed: by the model library when a person
+    /// downloads one, or by `tools/fetch-models.sh` in development. Either
+    /// way every file is verified against its pin, and workers are handed a
+    /// path, never a URL. Must be writable for in-app downloads; a packaged
+    /// build points `CLIPMILL_WEIGHTS_DIR` at the user's data directory.
     pub weights_dir: PathBuf,
     pub(crate) builtin_fixture_executor: bool,
 }
@@ -60,6 +62,10 @@ pub struct Paths {
     /// daemon believes it on exactly the same grounds: whoever can write here
     /// is already the user the daemon runs as.
     pub speech_benchmark: PathBuf,
+    /// Manifests of models the person pinned in the app, one JSON file each.
+    pub custom_models_dir: PathBuf,
+    /// Which model the person chose for each job.
+    pub model_choices: PathBuf,
 }
 
 impl Config {
@@ -252,6 +258,8 @@ impl Config {
                 device_attestation_key: state_dir.join("device-attestation.key"),
                 device_profile_scratch_dir: state_dir.join("device-profile-scratch"),
                 speech_benchmark: state_dir.join("speech-benchmark.json"),
+                custom_models_dir: state_dir.join("models"),
+                model_choices: state_dir.join("model-choices.json"),
                 data_dir,
                 state_dir,
                 run_dir,

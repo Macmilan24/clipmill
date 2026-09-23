@@ -186,6 +186,7 @@ impl WorkerService {
                 capabilities: descriptor.capabilities.clone(),
                 backend: descriptor.backend.clone(),
                 since_unix_millis: now_millis(),
+                max_memory_bytes: descriptor.max_memory_bytes,
             },
         )?;
         let session_id = ulid::Ulid::new().to_string();
@@ -328,6 +329,13 @@ impl WorkerService {
                     capacity,
                     worker_id: descriptor.worker_id.clone(),
                     capabilities: descriptor.capabilities.clone(),
+                    foreign_implementations: crate::implementations::foreign_to(
+                        &descriptor.family,
+                        &descriptor.capabilities,
+                    )
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
                 })
                 .await?;
             self.events.publish_all(selection.events);
@@ -765,12 +773,24 @@ pub(crate) struct WorkerPresence {
     pub capabilities: Vec<String>,
     pub backend: String,
     pub since_unix_millis: u64,
+    /// The memory ceiling the worker declared and signed. The scheduler never
+    /// hands it a task whose model needs more, so readiness has to say so
+    /// rather than let the task wait for a worker that can never take it.
+    pub max_memory_bytes: u64,
 }
 
 impl WorkerPresence {
     /// Whether this worker would be handed a task of the kind.
     pub(crate) fn serves(&self, task_kind: &str) -> bool {
         self.capabilities.iter().any(|kind| kind == task_kind)
+    }
+
+    /// Whether this worker would be handed a task of this stage planned with
+    /// this implementation: it declares the stage, and its family runs the
+    /// implementation. Declaring the stage alone is not enough where two
+    /// families serve it.
+    pub(crate) fn runs(&self, stage: &str, implementation: &str) -> bool {
+        self.serves(stage) && crate::implementations::runs(&self.family, implementation)
     }
 }
 
@@ -1577,6 +1597,7 @@ mod tests {
             capabilities: vec!["demo-seed".to_owned()],
             backend: "cpu".to_owned(),
             since_unix_millis: 1,
+            max_memory_bytes: 1024,
         };
         let active = ActiveWorker::acquire(
             Arc::clone(&workers),

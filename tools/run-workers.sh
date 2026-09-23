@@ -46,13 +46,26 @@ TRUST_DIR="$STATE_DIR/worker-trust"
 IDENTITY_DIR="$STATE_DIR/worker-dev-identity"
 WORKER_SOCKET="$RUN_DIR/clipmill-workers.sock"
 
-# The families a Phase 1 analyze DAG leases. `speech-mlx` is deliberately not
-# here: which recognizer serves a capability is a measured per-device decision
-# (D19), and launching both would put two workers up for one capability.
-# Directory and entry point differ for one of them, so both are named rather
-# than derived: guessing a console-script name from a directory name is the
-# kind of cleverness that breaks the day somebody adds the sixth worker.
+# The families a Phase 1 analyze DAG leases. Directory and entry point differ
+# for one of them, so both are named rather than derived: guessing a
+# console-script name from a directory name is the kind of cleverness that
+# breaks the day somebody adds the sixth worker.
 FAMILIES="vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr align:clipmill-worker-align shots:clipmill-worker-shots faces:clipmill-worker-faces"
+
+# The MLX speech family transcribes and aligns on Apple silicon, beside the
+# portable families rather than instead of them. Which model does a job is the
+# device profile's measurement or the person's choice in Models, and the daemon
+# leases a task only to the family that runs the model it was planned with —
+# so the two never compete for a task, and a model chosen in Models runs
+# without restarting anything.
+if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+  if [ -d workers/speech-mlx/.venv ]; then
+    FAMILIES="$FAMILIES speech-mlx:clipmill-worker-speech-mlx"
+  else
+    echo "run-workers: the MLX speech worker is not installed, so MLX speech models" >&2
+    echo "run-workers: will wait for it; install it with uv sync --locked --directory workers/speech-mlx" >&2
+  fi
+fi
 
 # Editorial inference is explicitly selected and initially supported on Apple silicon.
 if [ "${CLIPMILL_EDITORIAL:-1}" = 1 ] && [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] && [ -d workers/editorial/.venv ]; then

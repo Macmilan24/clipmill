@@ -1065,6 +1065,11 @@ fn linux_physical_cores() -> Option<u32> {
     u32::try_from(pairs.len()).ok().filter(|count| *count > 0)
 }
 
+/// Physical memory, for the model library's fit warnings.
+pub(crate) async fn total_memory() -> u64 {
+    measured_total_memory().await
+}
+
 async fn measured_total_memory() -> u64 {
     if cfg!(target_os = "macos") {
         sysctl_text("hw.memsize")
