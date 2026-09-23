@@ -8,6 +8,7 @@
 
 mod daemon;
 mod media;
+mod models;
 mod views;
 mod youtube;
 
@@ -741,6 +742,17 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             },
         )
         .invoke_handler(tauri::generate_handler![
+            models::list_models,
+            models::download_models,
+            models::cancel_model_download,
+            models::remove_model,
+            models::verify_model,
+            models::set_model_choice,
+            models::inspect_hub_model,
+            models::add_custom_model,
+            models::forget_model,
+            models::clean_storage,
+            models::open_storage_location,
             youtube::youtube_publishing_status,
             youtube::choose_youtube_client_config,
             youtube::connect_youtube_channel,
