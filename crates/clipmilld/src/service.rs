@@ -3809,7 +3809,8 @@ impl Service {
     /// Answered from what the planner would bind — the same bindings a job
     /// is planned with — against what is on disk and who is connected. A
     /// stage is ready when its model's pinned files are present at the sizes
-    /// the registry pins and a worker that serves the stage is on the roster.
+    /// the registry pins and a worker of the family that runs its model is on
+    /// the roster: another family declaring the stage is never handed it.
     /// The remedy names the command, because a status that says "not ready"
     /// and nothing else is a spinner with a label.
     fn get_readiness(&self, request_id: String) -> Reply {
@@ -3849,7 +3850,9 @@ impl Service {
                 &binding.backend,
                 present,
                 missing,
-                roster.values().any(|worker| worker.serves(&binding.stage)),
+                roster
+                    .values()
+                    .any(|worker| worker.runs(&binding.stage, &binding.implementation)),
             );
             check_worker_ceiling(
                 &mut readiness,
@@ -3991,7 +3994,7 @@ fn check_worker_ceiling(
     }
     let serving = roster
         .values()
-        .filter(|worker| worker.serves(&readiness.stage))
+        .filter(|worker| worker.runs(&readiness.stage, &readiness.implementation))
         .collect::<Vec<_>>();
     let admitted = serving
         .iter()
@@ -4102,9 +4105,16 @@ fn stage_readiness(
             "No worker is connected that runs {stage}: install it with `uv sync --project workers/editorial`, \
              restart `just app` to enroll it, then run `just workers`."
         ),
-        (true, false) => format!(
-            "No worker is connected that runs {stage}: start the workers with `just workers`."
-        ),
+        (true, false) => match crate::implementations::lookup(implementation) {
+            Some(known) => format!(
+                "{model} runs in the {}, which is not connected. Restart `just workers` to start \
+                 it, or choose another model for this job in Models.",
+                crate::implementations::worker_title(known.worker)
+            ),
+            None => format!(
+                "No worker is connected that runs {stage}: start the workers with `just workers`."
+            ),
+        },
     };
     StageReadinessV1 {
         stage: stage.to_owned(),
@@ -4342,6 +4352,57 @@ mod tests {
         let mut sized = ready();
         super::check_worker_ceiling(&mut sized, &roster(8 << 30), Some(3 << 30), Some(12 << 30));
         assert!(sized.ready);
+    }
+
+    /// The case a person met: Word timing set to the MLX aligner while only
+    /// the ONNX aligner's worker runs. That worker declares the stage but is
+    /// never handed the task, so the stage is not ready — and the sentence
+    /// names the worker to start rather than blaming its memory.
+    #[test]
+    fn readiness_names_the_worker_family_a_chosen_model_needs() {
+        let aligner = crate::worker::WorkerPresence {
+            family: "speech-align".to_owned(),
+            capabilities: vec!["speech-align".to_owned()],
+            backend: "onnx-cpu".to_owned(),
+            since_unix_millis: 1,
+            max_memory_bytes: 1152 << 20,
+        };
+        let mlx = "clipmill-worker-speech-mlx@0.1.0/align";
+        assert!(aligner.serves("speech-align"));
+        assert!(!aligner.runs("speech-align", mlx));
+        let mut stage = super::stage_readiness(
+            "speech-align",
+            "forced-align",
+            mlx,
+            "qwen3-aligner-mlx",
+            "mlx",
+            true,
+            vec![],
+            aligner.runs("speech-align", mlx),
+        );
+        let roster = std::collections::BTreeMap::from([("wrk".to_owned(), aligner)]);
+        super::check_worker_ceiling(&mut stage, &roster, Some(1955 << 20), Some(12 << 30));
+        assert!(!stage.ready);
+        assert!(
+            stage.remedy.contains("runs in the MLX speech worker"),
+            "{}",
+            stage.remedy
+        );
+        assert!(!stage.remedy.contains("MiB"), "{}", stage.remedy);
+
+        let portable = super::stage_readiness(
+            "speech-align",
+            "forced-align",
+            "clipmill-worker-align@0.1.0",
+            "wav2vec2-ctc-en",
+            "onnx-cpu",
+            true,
+            vec![],
+            roster
+                .values()
+                .any(|worker| worker.runs("speech-align", "clipmill-worker-align@0.1.0")),
+        );
+        assert!(portable.ready, "its own model is still served");
     }
 
     #[test]

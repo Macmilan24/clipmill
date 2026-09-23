@@ -329,6 +329,13 @@ impl WorkerService {
                     capacity,
                     worker_id: descriptor.worker_id.clone(),
                     capabilities: descriptor.capabilities.clone(),
+                    foreign_implementations: crate::implementations::foreign_to(
+                        &descriptor.family,
+                        &descriptor.capabilities,
+                    )
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
                 })
                 .await?;
             self.events.publish_all(selection.events);
@@ -776,6 +783,14 @@ impl WorkerPresence {
     /// Whether this worker would be handed a task of the kind.
     pub(crate) fn serves(&self, task_kind: &str) -> bool {
         self.capabilities.iter().any(|kind| kind == task_kind)
+    }
+
+    /// Whether this worker would be handed a task of this stage planned with
+    /// this implementation: it declares the stage, and its family runs the
+    /// implementation. Declaring the stage alone is not enough where two
+    /// families serve it.
+    pub(crate) fn runs(&self, stage: &str, implementation: &str) -> bool {
+        self.serves(stage) && crate::implementations::runs(&self.family, implementation)
     }
 }
 
