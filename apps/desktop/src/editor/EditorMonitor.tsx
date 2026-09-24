@@ -574,6 +574,12 @@ function Stage({
   );
 }
 
+/** A position in the clip as `mm:ss;ff`: a short has no hours to show. */
+function clipTimecode(ticks: number): string {
+  const full = sourceTimecode(ticks);
+  return full.startsWith('00:') ? full.slice(3) : full;
+}
+
 function share(value: number): string {
   return `${(value * 100).toFixed(2)}%`;
 }
@@ -595,8 +601,8 @@ function Transport({
   return (
     <div className="review-transport" aria-label="Transport">
       <span className="review-timecode mono" data-testid="timecode">
-        {sourceTimecode(ticks)}
-        <span className="edit-length"> / {sourceTimecode(length)}</span>
+        {clipTimecode(ticks)}
+        <span className="edit-length"> / {clipTimecode(length)}</span>
         <span className="sr-only">
           {' '}
           · frame {frame} of {plan.frameCount}
