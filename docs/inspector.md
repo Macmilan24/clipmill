@@ -49,14 +49,14 @@ The gate's headline is therefore a **golden**. The same candidate, boundary and
 evidence must produce the same bytes, because an editor who approves the same
 clip twice and gets two different edits has been told the tool is guessing.
 
-- A boundary is **snapped to the lattice** rather than taken as given. No amount
-  of care with a mouse gets a person within a frame of a sentence edge, and a
-  boundary a few frames off one is the mid-word cut the optimizer exists to
-  avoid. The edge that was dragged is honoured; the other moves only as far as
-  it must, because somebody dragging the start is answering "where should this
-  begin" and silently moving the start would answer a question they did not ask.
-- A boundary that did **not** come from the snap is checked against the lattice
-  anyway and refused rather than rounded — one arriving over IPC has been
+- A boundary a person sets is **kept where they put it, between any two
+  words** (R63). The search's lattice marks the edges it would suggest, but a
+  person may cut before or after any word and at any length. A hand-set edge
+  that lands inside a word is moved outward to keep the whole word, so a cut is
+  never one a viewer can hear.
+- A boundary that arrives over IPC is checked the same way — it must cover the
+  words it claims and cut through none of them — and refused with the edge,
+  the word and a suggested time rather than rounded, because it has been
   through a process the director does not control.
 - A camera move is proposed only when the reframe gate says a face earned the
   frame. Otherwise the layout is `Fit` and the rationale carries the gate's own
@@ -122,11 +122,10 @@ clip, which is what it is.
 
 ## What this phase does not do
 
-- **The boundary strip shows the lattice; it does not drag yet.** The snapping
-  arithmetic is done and tested and the RPC accepts a hand-set pair, but the
-  handle a person grabs is the editor's surface, and the alternative is one
-  click. Shipping a drag that only the daemon could interpret would be a control
-  whose behaviour lives somewhere the user cannot see.
+- **Extending a clip happens in the Editor.** The Inspector's handles move an
+  edge anywhere in the recording before approval; once a clip has an edit, the
+  Editor pulls an edge out into the source beyond it and derives captions for
+  just the words that brings in, keeping every correction already made.
 - **One recording at a time.** The board shows one source of one project and
   says which: the one the route named, or the picker in its header.
 - **No caption overlay before approval.** The burned-in grouping lives in the
@@ -136,8 +135,8 @@ clip, which is what it is.
 ## Gate
 
 - `just gate-inspector` — the director's goldens and the boundary swap; the
-  lattice arithmetic on its own, because it is where a person's hand meets the
-  search's rules; a decision that survives the daemon dying between the write
+  word-edge rules on their own, because they are where a person's hand meets
+  the recording; a decision that survives the daemon dying between the write
   and the read; and the board's joins, checked without mounting anything.
 
 It needs no pinned media, so it runs in the plain `inspector` CI job.
