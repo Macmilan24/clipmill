@@ -2575,12 +2575,23 @@ impl Service {
             &document.captions.style_ref,
         )
         .map_err(|error| (ErrorCode::InvalidArgument, error.to_string()))?;
+        let span_ticks = span.end_ticks - span.start_ticks;
         let command = clipmill_edit_ir::EditCommand::ExtendSegment {
             segment_id,
             in_ticks,
             out_ticks,
-            reading_cues: captions.cues,
-            burn_in_cues: captions.burn_in,
+            reading_cues: fit_extension_cues(
+                &document.captions.cues,
+                captions.cues,
+                span_ticks,
+                span.start_ticks,
+            ),
+            burn_in_cues: fit_extension_cues(
+                &document.captions.burn_in,
+                captions.burn_in,
+                span_ticks,
+                span.start_ticks,
+            ),
         };
         String::from_utf8(
             command
@@ -4409,6 +4420,41 @@ fn export_submission_reply(request_id: String, bytes: &[u8]) -> Reply {
     }
 }
 
+/// Make captions derived for a newly included span fit the document they join.
+///
+/// The caption engine numbers a derivation's cues from one, and the clip being
+/// extended already has cues with those ids, so each new cue gets an id no cue
+/// in that list has — derived from the span, so a replay of the stored command
+/// is the same edit. A cue whose hold ran past the span is ended at the span's
+/// edge, where the clip's existing captions begin or end.
+fn fit_extension_cues(
+    existing: &[clipmill_edit_ir::CaptionCue],
+    incoming: Vec<clipmill_edit_ir::CaptionCue>,
+    span_ticks: i64,
+    span_start: i64,
+) -> Vec<clipmill_edit_ir::CaptionCue> {
+    let mut taken: std::collections::HashSet<String> =
+        existing.iter().map(|cue| cue.cue_id.clone()).collect();
+    incoming
+        .into_iter()
+        .filter(|cue| cue.start_ticks < span_ticks)
+        .enumerate()
+        .map(|(index, mut cue)| {
+            let last_word = cue.words().map(|word| word.end_ticks).max().unwrap_or(0);
+            cue.end_ticks = cue.end_ticks.min(span_ticks).max(last_word);
+            let mut id = format!("cue_x{span_start}_{}", index + 1);
+            let mut suffix = 2;
+            while taken.contains(&id) {
+                id = format!("cue_x{span_start}_{}_{suffix}", index + 1);
+                suffix += 1;
+            }
+            taken.insert(id.clone());
+            cue.cue_id = id;
+            cue
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
@@ -4423,6 +4469,41 @@ mod tests {
 
     use super::{Service, validate_project_name, validate_request_id};
     use crate::db::DbActor;
+
+    #[test]
+    fn extension_cues_never_reuse_an_id_and_stay_inside_their_span() {
+        use clipmill_edit_ir::{
+            CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionWord,
+        };
+        let cue = |id: &str, start: i64, end: i64| CaptionCue {
+            cue_id: id.to_owned(),
+            start_ticks: start,
+            end_ticks: end,
+            region: CaptionRegion::LowerSafe,
+            anim: CaptionAnimation::Karaoke,
+            lines: vec![CaptionLine {
+                words: vec![CaptionWord {
+                    word_id: Some(format!("w{start}")),
+                    text: "word".to_owned(),
+                    start_ticks: start,
+                    end_ticks: start + 10_000,
+                }],
+            }],
+        };
+        let existing = [cue("cue_1", 0, 60_000), cue("cue_x500_2", 60_000, 90_000)];
+        let fitted = super::fit_extension_cues(
+            &existing,
+            vec![cue("cue_1", 0, 40_000), cue("cue_2", 45_000, 120_000)],
+            90_000,
+            500,
+        );
+        let ids: Vec<_> = fitted.iter().map(|cue| cue.cue_id.as_str()).collect();
+        assert_eq!(ids, ["cue_x500_1", "cue_x500_2_2"]);
+        assert_eq!(
+            fitted[1].end_ticks, 90_000,
+            "a hold past the span ends at its edge"
+        );
+    }
 
     #[test]
     fn editorial_readiness_requires_verified_gpu_and_enough_memory() {
