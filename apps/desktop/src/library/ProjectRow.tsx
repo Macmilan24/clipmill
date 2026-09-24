@@ -4,6 +4,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { TableCell, TableRow } from '@/components/ui/table';
 
 import { formatBytes } from '../deviceProfile.js';
+import { ProjectActions, type ProjectActionsProps } from './ProjectActions.js';
 import {
   EM_DASH,
   type LibraryProject,
@@ -25,9 +26,11 @@ import {
 export function ProjectRow({
   entry,
   onOpen,
+  actions,
 }: {
   readonly entry: LibraryProject;
   readonly onOpen: (entry: LibraryProject) => void;
+  readonly actions?: Omit<ProjectActionsProps, 'entry' | 'onOpen'>;
 }): JSX.Element {
   const status = describeStatus(entry.status);
   const activity = describeActivity(entry.status);
@@ -41,6 +44,7 @@ export function ProjectRow({
         onOpen(entry);
       }}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           onOpen(entry);
@@ -67,6 +71,9 @@ export function ProjectRow({
       </TableCell>
       <TableCell className="text-right">
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+      </TableCell>
+      <TableCell className="w-10 text-right" onClick={(event) => event.stopPropagation()}>
+        {actions && <ProjectActions entry={entry} onOpen={onOpen} {...actions} />}
       </TableCell>
     </TableRow>
   );

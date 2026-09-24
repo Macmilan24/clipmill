@@ -28,7 +28,7 @@ import type { ConnectionState } from '../daemon/client.js';
 import { ProjectCard } from '../library/ProjectCard.js';
 import { ProjectRow } from '../library/ProjectRow.js';
 import { StorageStrip } from '../library/StorageStrip.js';
-import type { LibraryLoader } from '../library/loader.js';
+import { LibraryLoader } from '../library/loader.js';
 import {
   type LibraryProject,
   SORTS,
@@ -122,6 +122,24 @@ export function Library({
   loader,
 }: LibraryProps): JSX.Element {
   const { loading, projects, storage, error, reload } = useLibrary(state, loader);
+  const [actionsLoader] = useState(() => loader ?? new LibraryLoader());
+  const [notice, setNotice] = useState<string | null>(null);
+  const actions = {
+    onRename: async (entry: LibraryProject, name: string) => {
+      await actionsLoader.rename(entry.project.projectId, name);
+      reload();
+    },
+    onReveal: (path: string) => {
+      actionsLoader.reveal(path).catch(() => {
+        setNotice('The recording could not be shown. It may have been moved or deleted.');
+      });
+    },
+    onDelete: async (entry: LibraryProject) => {
+      await actionsLoader.remove(entry.project.projectId);
+      setNotice(`Deleted “${entry.project.name}”.`);
+      reload();
+    },
+  };
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [sort, setSort] = useState<SortKey>('created');
@@ -265,6 +283,12 @@ export function Library({
         </div>
       )}
 
+      {notice === null ? null : (
+        <p role="status" className="mb-4 text-label text-[var(--cm-text-secondary)]">
+          {notice}
+        </p>
+      )}
+
       {error === null ? null : (
         <Alert className="glass mb-4 rounded-xl">
           <TriangleAlert className="text-[var(--color-warning)]" />
@@ -314,7 +338,12 @@ export function Library({
       ) : view === 'grid' ? (
         <div className={CARD_GRID}>
           {shown.map((entry) => (
-            <ProjectCard key={entry.project.projectId} entry={entry} onOpen={open} />
+            <ProjectCard
+              key={entry.project.projectId}
+              entry={entry}
+              onOpen={open}
+              actions={actions}
+            />
           ))}
         </div>
       ) : (
@@ -328,11 +357,19 @@ export function Library({
                 <TableHead>Size</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Status</TableHead>
+                <TableHead className="w-10">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {shown.map((entry) => (
-                <ProjectRow key={entry.project.projectId} entry={entry} onOpen={open} />
+                <ProjectRow
+                  key={entry.project.projectId}
+                  entry={entry}
+                  onOpen={open}
+                  actions={actions}
+                />
               ))}
             </TableBody>
           </Table>
