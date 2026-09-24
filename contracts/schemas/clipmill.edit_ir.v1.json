@@ -50,6 +50,18 @@
           "description": "Named caption preset; the style itself lives with the presets, not in every document.",
           "type": "string"
         },
+        "options": {
+          "description": "Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "font_size": { "type": "integer", "minimum": 24, "maximum": 160 },
+            "spoken": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "unspoken": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "outline": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "text_case": { "enum": ["original", "upper", "lower"] }
+          }
+        },
         "cues": {
           "type": "array",
           "items": {
@@ -202,6 +214,9 @@
                   },
                   "rect": {
                     "$ref": "#/$defs/cropRect"
+                  },
+                  "easing": {
+                    "enum": ["linear", "ease_in", "ease_out", "ease_in_out"]
                   }
                 }
               }
@@ -220,6 +235,9 @@
                   },
                   "rect": {
                     "$ref": "#/$defs/cropRect"
+                  },
+                  "easing": {
+                    "enum": ["linear", "ease_in", "ease_out", "ease_in_out"]
                   }
                 }
               }

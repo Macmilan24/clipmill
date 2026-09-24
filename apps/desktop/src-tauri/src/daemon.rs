@@ -16,16 +16,17 @@ use clipmill_contracts::proto::ipc::v1::{
     ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1, DirectClipRequest,
     DirectClipResponse, EditDoc, ExportArchiveRequest, ExportArchiveResponse, ExportBatchV1,
     ExportClipRequest, ExportClipResponse, ExportRequestV1, GetDeviceProfileRequest,
-    GetDeviceProfileResponse, GetJobRequest, GetLocalLockRequest, GetLocalLockResponse,
-    GetPreviewPlanRequest, GetPreviewPlanResponse, GetReadinessRequest, GetReadinessResponse,
-    GetStorageStatsRequest, GetStorageStatsResponse, HealthRequest, HealthResponse, Job,
-    ListClipDecisionsRequest, ListEditDocsRequest, ListExportBatchesRequest, ListJobsRequest,
-    ListProjectsRequest, ListSourcesRequest, PlanExportRequest, PlanExportResponse, Project,
-    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RegisterSourceResponse,
-    Request, ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source,
-    SubmitExportBatchRequest, SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent,
-    UpdateExportBatchItemRequest, request, response,
+    GetDeviceProfileResponse, GetEditDocRequest, GetEditDocResponse, GetJobRequest,
+    GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
+    GetReadinessRequest, GetReadinessResponse, GetStorageStatsRequest, GetStorageStatsResponse,
+    HealthRequest, HealthResponse, Job, ListClipDecisionsRequest, ListEditDocsRequest,
+    ListExportBatchesRequest, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
+    PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest, ReadArtifactResponse,
+    RegisterSourceRequest, RegisterSourceResponse, Request, ResolveMediaRequest,
+    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
+    SolveCropPathRequest, SolveCropPathResponse, Source, SubmitExportBatchRequest,
+    SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, UpdateExportBatchItemRequest, request,
+    response,
 };
 use prost::Message;
 use serde::Serialize;
@@ -305,6 +306,19 @@ impl DaemonClient {
         };
         match self.call(request::Body::ListEditDocs(request)).await? {
             response::Body::ListEditDocs(reply) => Ok(reply.docs),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Read the live edit document and its revision for contextual controls.
+    pub async fn get_edit_doc(&self, doc_id: &str) -> Result<GetEditDocResponse, DaemonLinkError> {
+        match self
+            .call(request::Body::GetEditDoc(GetEditDocRequest {
+                doc_id: doc_id.to_owned(),
+            }))
+            .await?
+        {
+            response::Body::GetEditDoc(reply) => Ok(reply),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }

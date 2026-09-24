@@ -85,6 +85,7 @@ fn two_up_decodes_both_people_and_meets_existing_audio_targets() {
                 width: 900,
                 height: 800,
             },
+            easing: clipmill_edit_ir::CropEasing::Linear,
         }]
     };
     let mut document = EditDocument::default();
@@ -249,6 +250,7 @@ fn many_shots_keep_the_tail_caption_and_audio_on_one_program_clock() {
                         width: 90,
                         height: 160,
                     },
+                    easing: clipmill_edit_ir::CropEasing::Linear,
                 }],
                 secondary_crop_path: Vec::new(),
             },
@@ -514,6 +516,7 @@ fn supported_source_rates_and_vfr_keep_source_time_through_shot_cuts() {
                             width: 90,
                             height: 160,
                         },
+                        easing: clipmill_edit_ir::CropEasing::Linear,
                     }],
                     secondary_crop_path: Vec::new(),
                 },
@@ -652,6 +655,7 @@ fn rotation_metadata_is_applied_before_display_space_cropping() {
                         width: 90,
                         height: 160,
                     },
+                    easing: clipmill_edit_ir::CropEasing::Linear,
                 }],
                 secondary_crop_path: Vec::new(),
             },
@@ -762,6 +766,7 @@ fn a_source_without_audio_encodes_silence_instead_of_invalid_loudness() {
                     width: 90,
                     height: 160,
                 },
+                easing: clipmill_edit_ir::CropEasing::Linear,
             }],
             secondary_crop_path: Vec::new(),
         },
@@ -841,6 +846,7 @@ fn a_short_audible_span_keeps_finite_nonzero_audio() {
                     width: 90,
                     height: 160,
                 },
+                easing: clipmill_edit_ir::CropEasing::Linear,
             }],
             secondary_crop_path: Vec::new(),
         },

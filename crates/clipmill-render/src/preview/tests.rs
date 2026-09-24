@@ -66,6 +66,7 @@ fn document(state: LayoutState) -> EditDocument {
                                 width: 608,
                                 height: 1_080,
                             },
+                            easing: clipmill_edit_ir::CropEasing::Linear,
                         },
                         CropKeyframe {
                             t_ticks: 90 * FRAME_TICKS,
@@ -75,6 +76,7 @@ fn document(state: LayoutState) -> EditDocument {
                                 width: 608,
                                 height: 1_080,
                             },
+                            easing: clipmill_edit_ir::CropEasing::Linear,
                         },
                     ],
                 },
@@ -82,6 +84,7 @@ fn document(state: LayoutState) -> EditDocument {
         },
         captions: CaptionTrack {
             style_ref: RenderProfile::default().caption_style.style_ref,
+            options: clipmill_edit_ir::CaptionOptions::default(),
             cues: vec![CaptionCue {
                 cue_id: "read_1".to_owned(),
                 start_ticks: 10 * FRAME_TICKS,

@@ -29,6 +29,16 @@ export interface EditIr {
      */
     style_ref: string;
     /**
+     * Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.
+     */
+    options?: {
+      font_size?: number;
+      spoken?: string;
+      unspoken?: string;
+      outline?: string;
+      text_case?: "original" | "upper" | "lower";
+    };
+    /**
      * What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always.
      */
     cues?: CaptionCue[];
@@ -76,6 +86,7 @@ export interface VideoSegment {
     crop_path?: {
       t_ticks: number;
       rect: CropRect;
+      easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
     }[];
     /**
      * Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.
@@ -83,6 +94,7 @@ export interface VideoSegment {
     secondary_crop_path?: {
       t_ticks: number;
       rect: CropRect;
+      easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
     }[];
   };
 }

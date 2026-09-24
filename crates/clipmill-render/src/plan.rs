@@ -339,13 +339,17 @@ pub fn compile(
     if document.video.segments.is_empty() {
         return Err(RenderError::EmptyProgram);
     }
-    if document.captions.style_ref != profile.caption_style.style_ref
-        && !document.captions.cues.is_empty()
-    {
-        return Err(RenderError::UnknownCaptionStyle(
-            document.captions.style_ref.clone(),
-        ));
-    }
+    let mut effective_profile = profile.clone();
+    effective_profile.caption_style = crate::profile::CaptionStyle::for_track(&document.captions)
+        .or_else(|| {
+            document
+                .captions
+                .cues
+                .is_empty()
+                .then(|| profile.caption_style.clone())
+        })
+        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
+    let profile = &effective_profile;
     let rate = profile.rate();
     let duration_ticks = document.program_duration_ticks();
     check_captions(document, duration_ticks)?;

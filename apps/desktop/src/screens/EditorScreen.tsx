@@ -118,6 +118,15 @@ export function EditorScreen({
   return (
     <Editor
       plan={editor.plan}
+      document={editor.document}
+      transcript={editor.transcript}
+      filmstrip={editor.filmstrip}
+      peaks={editor.peaks}
+      filmstripUrl={(file) =>
+        editor.filmstrip && clip
+          ? api.mediaUrl(clip.projectId, editor.filmstrip.artifactId, file)
+          : ''
+      }
       proxyUrls={editor.proxyUrls}
       docId={editor.docId}
       labels={clip?.labels ?? null}

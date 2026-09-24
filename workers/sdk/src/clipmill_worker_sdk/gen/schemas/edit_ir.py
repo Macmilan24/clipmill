@@ -17,6 +17,23 @@ class Timebase(BaseModel):
     den: Literal[90000]
 
 
+class TextCase(Enum):
+    original = 'original'
+    upper = 'upper'
+    lower = 'lower'
+
+
+class Options(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    font_size: conint(ge=24, le=160) | None = None
+    spoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    unspoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    outline: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    text_case: TextCase | None = None
+
+
 class GainCurveItem(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -65,12 +82,20 @@ class State(Enum):
     two_up = 'two_up'
 
 
+class Easing(Enum):
+    linear = 'linear'
+    ease_in = 'ease_in'
+    ease_out = 'ease_out'
+    ease_in_out = 'ease_in_out'
+
+
 class CropPathItem(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     t_ticks: conint(ge=0)
     rect: CropRect
+    easing: Easing | None = None
 
 
 class SecondaryCropPathItem(BaseModel):
@@ -79,6 +104,7 @@ class SecondaryCropPathItem(BaseModel):
     )
     t_ticks: conint(ge=0)
     rect: CropRect
+    easing: Easing | None = None
 
 
 class Layout(BaseModel):
@@ -172,6 +198,10 @@ class Captions(BaseModel):
     style_ref: str = Field(
         ...,
         description='Named caption preset; the style itself lives with the presets, not in every document.',
+    )
+    options: Options | None = Field(
+        None,
+        description='Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.',
     )
     cues: list[CaptionCue] | None = Field(
         None,

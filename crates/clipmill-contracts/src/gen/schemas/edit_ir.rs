@@ -741,6 +741,37 @@ impl CropRect {
 #[doc = "            \"$ref\": \"#/$defs/captionCue\""]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"options\": {"]
+#[doc = "          \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"font_size\": {"]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 160.0,"]
+#[doc = "              \"minimum\": 24.0"]
+#[doc = "            },"]
+#[doc = "            \"outline\": {"]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"spoken\": {"]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"text_case\": {"]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"original\","]
+#[doc = "                \"upper\","]
+#[doc = "                \"lower\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"unspoken\": {"]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
 #[doc = "        \"style_ref\": {"]
 #[doc = "          \"description\": \"Named caption preset; the style itself lives with the presets, not in every document.\","]
 #[doc = "          \"type\": \"string\""]
@@ -977,6 +1008,37 @@ impl EditIrAudioGainCurveItem {
 #[doc = "        \"$ref\": \"#/$defs/captionCue\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"options\": {"]
+#[doc = "      \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"font_size\": {"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 160.0,"]
+#[doc = "          \"minimum\": 24.0"]
+#[doc = "        },"]
+#[doc = "        \"outline\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"spoken\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"text_case\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"original\","]
+#[doc = "            \"upper\","]
+#[doc = "            \"lower\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"unspoken\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"style_ref\": {"]
 #[doc = "      \"description\": \"Named caption preset; the style itself lives with the presets, not in every document.\","]
 #[doc = "      \"type\": \"string\""]
@@ -995,12 +1057,368 @@ pub struct EditIrCaptions {
     #[doc = "What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub cues: ::std::vec::Vec<CaptionCue>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub options: ::std::option::Option<EditIrCaptionsOptions>,
     #[doc = "Named caption preset; the style itself lives with the presets, not in every document."]
     pub style_ref: ::std::string::String,
 }
 impl EditIrCaptions {
     pub fn builder() -> builder::EditIrCaptions {
         Default::default()
+    }
+}
+#[doc = "Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"font_size\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 160.0,"]
+#[doc = "      \"minimum\": 24.0"]
+#[doc = "    },"]
+#[doc = "    \"outline\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"spoken\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"text_case\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"original\","]
+#[doc = "        \"upper\","]
+#[doc = "        \"lower\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"unspoken\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrCaptionsOptions {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub font_size: ::std::option::Option<i64>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub outline: ::std::option::Option<EditIrCaptionsOptionsOutline>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub spoken: ::std::option::Option<EditIrCaptionsOptionsSpoken>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub text_case: ::std::option::Option<EditIrCaptionsOptionsTextCase>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub unspoken: ::std::option::Option<EditIrCaptionsOptionsUnspoken>,
+}
+impl ::std::default::Default for EditIrCaptionsOptions {
+    fn default() -> Self {
+        Self {
+            font_size: Default::default(),
+            outline: Default::default(),
+            spoken: Default::default(),
+            text_case: Default::default(),
+            unspoken: Default::default(),
+        }
+    }
+}
+impl EditIrCaptionsOptions {
+    pub fn builder() -> builder::EditIrCaptionsOptions {
+        Default::default()
+    }
+}
+#[doc = "`EditIrCaptionsOptionsOutline`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrCaptionsOptionsOutline(::std::string::String);
+impl ::std::ops::Deref for EditIrCaptionsOptionsOutline {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrCaptionsOptionsOutline> for ::std::string::String {
+    fn from(value: EditIrCaptionsOptionsOutline) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsOutline {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9a-fA-F]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9a-fA-F]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsOutline {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsOutline {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsOutline {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrCaptionsOptionsOutline {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditIrCaptionsOptionsSpoken`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrCaptionsOptionsSpoken(::std::string::String);
+impl ::std::ops::Deref for EditIrCaptionsOptionsSpoken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrCaptionsOptionsSpoken> for ::std::string::String {
+    fn from(value: EditIrCaptionsOptionsSpoken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsSpoken {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9a-fA-F]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9a-fA-F]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsSpoken {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsSpoken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsSpoken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrCaptionsOptionsSpoken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditIrCaptionsOptionsTextCase`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"original\","]
+#[doc = "    \"upper\","]
+#[doc = "    \"lower\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrCaptionsOptionsTextCase {
+    #[serde(rename = "original")]
+    Original,
+    #[serde(rename = "upper")]
+    Upper,
+    #[serde(rename = "lower")]
+    Lower,
+}
+impl ::std::fmt::Display for EditIrCaptionsOptionsTextCase {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Original => f.write_str("original"),
+            Self::Upper => f.write_str("upper"),
+            Self::Lower => f.write_str("lower"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsTextCase {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "original" => Ok(Self::Original),
+            "upper" => Ok(Self::Upper),
+            "lower" => Ok(Self::Lower),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsTextCase {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsTextCase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsTextCase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`EditIrCaptionsOptionsUnspoken`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrCaptionsOptionsUnspoken(::std::string::String);
+impl ::std::ops::Deref for EditIrCaptionsOptionsUnspoken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrCaptionsOptionsUnspoken> for ::std::string::String {
+    fn from(value: EditIrCaptionsOptionsUnspoken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsUnspoken {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9a-fA-F]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9a-fA-F]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsUnspoken {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsUnspoken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsUnspoken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrCaptionsOptionsUnspoken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels."]
@@ -1233,6 +1651,14 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "              \"t_ticks\""]
 #[doc = "            ],"]
 #[doc = "            \"properties\": {"]
+#[doc = "              \"easing\": {"]
+#[doc = "                \"enum\": ["]
+#[doc = "                  \"linear\","]
+#[doc = "                  \"ease_in\","]
+#[doc = "                  \"ease_out\","]
+#[doc = "                  \"ease_in_out\""]
+#[doc = "                ]"]
+#[doc = "              },"]
 #[doc = "              \"rect\": {"]
 #[doc = "                \"$ref\": \"#/$defs/cropRect\""]
 #[doc = "              },"]
@@ -1254,6 +1680,14 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "              \"t_ticks\""]
 #[doc = "            ],"]
 #[doc = "            \"properties\": {"]
+#[doc = "              \"easing\": {"]
+#[doc = "                \"enum\": ["]
+#[doc = "                  \"linear\","]
+#[doc = "                  \"ease_in\","]
+#[doc = "                  \"ease_out\","]
+#[doc = "                  \"ease_in_out\""]
+#[doc = "                ]"]
+#[doc = "              },"]
 #[doc = "              \"rect\": {"]
 #[doc = "                \"$ref\": \"#/$defs/cropRect\""]
 #[doc = "              },"]
@@ -1326,6 +1760,14 @@ impl VideoSegment {
 #[doc = "          \"t_ticks\""]
 #[doc = "        ],"]
 #[doc = "        \"properties\": {"]
+#[doc = "          \"easing\": {"]
+#[doc = "            \"enum\": ["]
+#[doc = "              \"linear\","]
+#[doc = "              \"ease_in\","]
+#[doc = "              \"ease_out\","]
+#[doc = "              \"ease_in_out\""]
+#[doc = "            ]"]
+#[doc = "          },"]
 #[doc = "          \"rect\": {"]
 #[doc = "            \"$ref\": \"#/$defs/cropRect\""]
 #[doc = "          },"]
@@ -1347,6 +1789,14 @@ impl VideoSegment {
 #[doc = "          \"t_ticks\""]
 #[doc = "        ],"]
 #[doc = "        \"properties\": {"]
+#[doc = "          \"easing\": {"]
+#[doc = "            \"enum\": ["]
+#[doc = "              \"linear\","]
+#[doc = "              \"ease_in\","]
+#[doc = "              \"ease_out\","]
+#[doc = "              \"ease_in_out\""]
+#[doc = "            ]"]
+#[doc = "          },"]
 #[doc = "          \"rect\": {"]
 #[doc = "            \"$ref\": \"#/$defs/cropRect\""]
 #[doc = "          },"]
@@ -1398,6 +1848,14 @@ impl VideoSegmentLayout {
 #[doc = "    \"t_ticks\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"easing\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"linear\","]
+#[doc = "        \"ease_in\","]
+#[doc = "        \"ease_out\","]
+#[doc = "        \"ease_in_out\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"rect\": {"]
 #[doc = "      \"$ref\": \"#/$defs/cropRect\""]
 #[doc = "    },"]
@@ -1413,12 +1871,95 @@ impl VideoSegmentLayout {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct VideoSegmentLayoutCropPathItem {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub easing: ::std::option::Option<VideoSegmentLayoutCropPathItemEasing>,
     pub rect: CropRect,
     pub t_ticks: u64,
 }
 impl VideoSegmentLayoutCropPathItem {
     pub fn builder() -> builder::VideoSegmentLayoutCropPathItem {
         Default::default()
+    }
+}
+#[doc = "`VideoSegmentLayoutCropPathItemEasing`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"linear\","]
+#[doc = "    \"ease_in\","]
+#[doc = "    \"ease_out\","]
+#[doc = "    \"ease_in_out\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum VideoSegmentLayoutCropPathItemEasing {
+    #[serde(rename = "linear")]
+    Linear,
+    #[serde(rename = "ease_in")]
+    EaseIn,
+    #[serde(rename = "ease_out")]
+    EaseOut,
+    #[serde(rename = "ease_in_out")]
+    EaseInOut,
+}
+impl ::std::fmt::Display for VideoSegmentLayoutCropPathItemEasing {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Linear => f.write_str("linear"),
+            Self::EaseIn => f.write_str("ease_in"),
+            Self::EaseOut => f.write_str("ease_out"),
+            Self::EaseInOut => f.write_str("ease_in_out"),
+        }
+    }
+}
+impl ::std::str::FromStr for VideoSegmentLayoutCropPathItemEasing {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "linear" => Ok(Self::Linear),
+            "ease_in" => Ok(Self::EaseIn),
+            "ease_out" => Ok(Self::EaseOut),
+            "ease_in_out" => Ok(Self::EaseInOut),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentLayoutCropPathItemEasing {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentLayoutCropPathItemEasing {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutCropPathItemEasing {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`VideoSegmentLayoutSecondaryCropPathItem`"]
@@ -1433,6 +1974,14 @@ impl VideoSegmentLayoutCropPathItem {
 #[doc = "    \"t_ticks\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"easing\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"linear\","]
+#[doc = "        \"ease_in\","]
+#[doc = "        \"ease_out\","]
+#[doc = "        \"ease_in_out\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"rect\": {"]
 #[doc = "      \"$ref\": \"#/$defs/cropRect\""]
 #[doc = "    },"]
@@ -1448,12 +1997,99 @@ impl VideoSegmentLayoutCropPathItem {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct VideoSegmentLayoutSecondaryCropPathItem {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub easing: ::std::option::Option<VideoSegmentLayoutSecondaryCropPathItemEasing>,
     pub rect: CropRect,
     pub t_ticks: u64,
 }
 impl VideoSegmentLayoutSecondaryCropPathItem {
     pub fn builder() -> builder::VideoSegmentLayoutSecondaryCropPathItem {
         Default::default()
+    }
+}
+#[doc = "`VideoSegmentLayoutSecondaryCropPathItemEasing`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"linear\","]
+#[doc = "    \"ease_in\","]
+#[doc = "    \"ease_out\","]
+#[doc = "    \"ease_in_out\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum VideoSegmentLayoutSecondaryCropPathItemEasing {
+    #[serde(rename = "linear")]
+    Linear,
+    #[serde(rename = "ease_in")]
+    EaseIn,
+    #[serde(rename = "ease_out")]
+    EaseOut,
+    #[serde(rename = "ease_in_out")]
+    EaseInOut,
+}
+impl ::std::fmt::Display for VideoSegmentLayoutSecondaryCropPathItemEasing {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Linear => f.write_str("linear"),
+            Self::EaseIn => f.write_str("ease_in"),
+            Self::EaseOut => f.write_str("ease_out"),
+            Self::EaseInOut => f.write_str("ease_in_out"),
+        }
+    }
+}
+impl ::std::str::FromStr for VideoSegmentLayoutSecondaryCropPathItemEasing {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "linear" => Ok(Self::Linear),
+            "ease_in" => Ok(Self::EaseIn),
+            "ease_out" => Ok(Self::EaseOut),
+            "ease_in_out" => Ok(Self::EaseInOut),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentLayoutSecondaryCropPathItemEasing {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for VideoSegmentLayoutSecondaryCropPathItemEasing
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for VideoSegmentLayoutSecondaryCropPathItemEasing
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`VideoSegmentLayoutState`"]
@@ -2234,6 +2870,10 @@ pub mod builder {
     pub struct EditIrCaptions {
         burn_in: ::std::result::Result<::std::vec::Vec<super::CaptionCue>, ::std::string::String>,
         cues: ::std::result::Result<::std::vec::Vec<super::CaptionCue>, ::std::string::String>,
+        options: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptions>,
+            ::std::string::String,
+        >,
         style_ref: ::std::result::Result<::std::string::String, ::std::string::String>,
     }
     impl ::std::default::Default for EditIrCaptions {
@@ -2241,6 +2881,7 @@ pub mod builder {
             Self {
                 burn_in: Ok(Default::default()),
                 cues: Ok(Default::default()),
+                options: Ok(Default::default()),
                 style_ref: Err("no value supplied for style_ref".to_string()),
             }
         }
@@ -2266,6 +2907,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for cues: {e}"));
             self
         }
+        pub fn options<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptions>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.options = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for options: {e}"));
+            self
+        }
         pub fn style_ref<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::string::String>,
@@ -2285,6 +2936,7 @@ pub mod builder {
             Ok(Self {
                 burn_in: value.burn_in?,
                 cues: value.cues?,
+                options: value.options?,
                 style_ref: value.style_ref?,
             })
         }
@@ -2294,7 +2946,116 @@ pub mod builder {
             Self {
                 burn_in: Ok(value.burn_in),
                 cues: Ok(value.cues),
+                options: Ok(value.options),
                 style_ref: Ok(value.style_ref),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrCaptionsOptions {
+        font_size: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        outline: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsOutline>,
+            ::std::string::String,
+        >,
+        spoken: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsSpoken>,
+            ::std::string::String,
+        >,
+        text_case: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsTextCase>,
+            ::std::string::String,
+        >,
+        unspoken: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsUnspoken>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for EditIrCaptionsOptions {
+        fn default() -> Self {
+            Self {
+                font_size: Ok(Default::default()),
+                outline: Ok(Default::default()),
+                spoken: Ok(Default::default()),
+                text_case: Ok(Default::default()),
+                unspoken: Ok(Default::default()),
+            }
+        }
+    }
+    impl EditIrCaptionsOptions {
+        pub fn font_size<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.font_size = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for font_size: {e}"));
+            self
+        }
+        pub fn outline<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsOutline>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.outline = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for outline: {e}"));
+            self
+        }
+        pub fn spoken<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsSpoken>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.spoken = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for spoken: {e}"));
+            self
+        }
+        pub fn text_case<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsTextCase>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.text_case = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for text_case: {e}"));
+            self
+        }
+        pub fn unspoken<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsUnspoken>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.unspoken = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for unspoken: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrCaptionsOptions> for super::EditIrCaptionsOptions {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrCaptionsOptions,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                font_size: value.font_size?,
+                outline: value.outline?,
+                spoken: value.spoken?,
+                text_case: value.text_case?,
+                unspoken: value.unspoken?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrCaptionsOptions> for EditIrCaptionsOptions {
+        fn from(value: super::EditIrCaptionsOptions) -> Self {
+            Self {
+                font_size: Ok(value.font_size),
+                outline: Ok(value.outline),
+                spoken: Ok(value.spoken),
+                text_case: Ok(value.text_case),
+                unspoken: Ok(value.unspoken),
             }
         }
     }
@@ -2639,18 +3400,35 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct VideoSegmentLayoutCropPathItem {
+        easing: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentLayoutCropPathItemEasing>,
+            ::std::string::String,
+        >,
         rect: ::std::result::Result<super::CropRect, ::std::string::String>,
         t_ticks: ::std::result::Result<u64, ::std::string::String>,
     }
     impl ::std::default::Default for VideoSegmentLayoutCropPathItem {
         fn default() -> Self {
             Self {
+                easing: Ok(Default::default()),
                 rect: Err("no value supplied for rect".to_string()),
                 t_ticks: Err("no value supplied for t_ticks".to_string()),
             }
         }
     }
     impl VideoSegmentLayoutCropPathItem {
+        pub fn easing<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::option::Option<super::VideoSegmentLayoutCropPathItemEasing>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.easing = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for easing: {e}"));
+            self
+        }
         pub fn rect<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::CropRect>,
@@ -2680,6 +3458,7 @@ pub mod builder {
             value: VideoSegmentLayoutCropPathItem,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                easing: value.easing?,
                 rect: value.rect?,
                 t_ticks: value.t_ticks?,
             })
@@ -2690,6 +3469,7 @@ pub mod builder {
     {
         fn from(value: super::VideoSegmentLayoutCropPathItem) -> Self {
             Self {
+                easing: Ok(value.easing),
                 rect: Ok(value.rect),
                 t_ticks: Ok(value.t_ticks),
             }
@@ -2697,18 +3477,35 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct VideoSegmentLayoutSecondaryCropPathItem {
+        easing: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentLayoutSecondaryCropPathItemEasing>,
+            ::std::string::String,
+        >,
         rect: ::std::result::Result<super::CropRect, ::std::string::String>,
         t_ticks: ::std::result::Result<u64, ::std::string::String>,
     }
     impl ::std::default::Default for VideoSegmentLayoutSecondaryCropPathItem {
         fn default() -> Self {
             Self {
+                easing: Ok(Default::default()),
                 rect: Err("no value supplied for rect".to_string()),
                 t_ticks: Err("no value supplied for t_ticks".to_string()),
             }
         }
     }
     impl VideoSegmentLayoutSecondaryCropPathItem {
+        pub fn easing<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::option::Option<super::VideoSegmentLayoutSecondaryCropPathItemEasing>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.easing = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for easing: {e}"));
+            self
+        }
         pub fn rect<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::CropRect>,
@@ -2738,6 +3535,7 @@ pub mod builder {
             value: VideoSegmentLayoutSecondaryCropPathItem,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                easing: value.easing?,
                 rect: value.rect?,
                 t_ticks: value.t_ticks?,
             })
@@ -2748,6 +3546,7 @@ pub mod builder {
     {
         fn from(value: super::VideoSegmentLayoutSecondaryCropPathItem) -> Self {
             Self {
+                easing: Ok(value.easing),
                 rect: Ok(value.rect),
                 t_ticks: Ok(value.t_ticks),
             }

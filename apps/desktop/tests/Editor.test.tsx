@@ -130,7 +130,6 @@ describe('the player and the recording’s clock', () => {
     fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
       target: { value: '150' },
     });
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /clip/i }));
     fireEvent.click(screen.getByRole('button', { name: /trim start here/i }));
     expect(onApply).toHaveBeenCalledWith({
       op: 'trim',
@@ -716,8 +715,49 @@ describe('decoded playback across shots and documents', () => {
 });
 
 describe('editor interaction boundaries', () => {
+  it('seeks on an audio lane click and adds a volume point only on a double-click', () => {
+    const { onApply } = show(program(60, 600));
+    const track = document.querySelector('.studio-audio-track')!;
+    const bounds = vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 120,
+      height: 48,
+    } as DOMRect);
+
+    fireEvent.pointerDown(track, { clientX: 60, clientY: 24 });
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.doubleClick(track, { clientX: 60, clientY: 24 });
+    expect(onApply).toHaveBeenCalledWith({ op: 'set_gain', t_ticks: 90_000, gain_db: 0 });
+    bounds.mockRestore();
+  });
+
+  it('moves a volume point as one undoable edit', () => {
+    const { onApply } = show({ ...program(60, 600), gain: [{ frame: 15, gainDb: 2 }] });
+    const track = document.querySelector('.studio-audio-track')!;
+    const bounds = vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 120,
+      height: 48,
+    } as DOMRect);
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /gain 2\.0 db/i }));
+    fireEvent.pointerUp(window, { clientX: 80, clientY: 12 });
+    expect(onApply).toHaveBeenCalledWith({
+      op: 'batch',
+      commands: [
+        { op: 'remove_gain_point', t_ticks: 45_000 },
+        { op: 'set_gain', t_ticks: 117_000, gain_db: 6 },
+      ],
+    });
+    bounds.mockRestore();
+  });
+
   it('leaves arrow keys in caption fields and native scrubbers alone', () => {
     const { video } = show({ ...program(900, 600), cues: plan().cues });
+    fireEvent.pointerDown(document.querySelector('.studio-caption-block')!);
+    fireEvent.click(screen.getByText('Words & line breaks'));
     fireEvent.click(screen.getByRole('button', { name: 'Charging' }));
     const field = screen.getByRole('textbox', { name: /correct this word/i });
     fireEvent.keyDown(field, { key: 'ArrowRight' });
@@ -778,7 +818,7 @@ it('presents two portraits from one media element and edits the selected lower c
   const { onApply } = show(two);
   expect(document.querySelectorAll('video')).toHaveLength(1);
   expect(screen.getByRole('img', { name: /two synchronized portraits/i })).toBeTruthy();
-  fireEvent.mouseDown(screen.getByRole('tab', { name: /reframe/i }));
+  fireEvent.click(screen.getByText('Reframe', { selector: 'summary' }));
   fireEvent.click(screen.getByRole('button', { name: 'Lower' }));
   fireEvent.click(screen.getByRole('button', { name: /move crop left/i }));
   expect(onApply).toHaveBeenLastCalledWith(
@@ -825,7 +865,7 @@ it('uses the renderer’s caption style and placement while labelling proxy audi
   const caption = screen.getByTestId('caption');
   expect(caption.style.fontWeight).toBe('400');
   expect(caption.style.top).toBe('12.5%');
-  expect(screen.getByText(/Fast proxy preview with your gain edits/)).toBeTruthy();
+  expect(screen.getByText(/preview from render plan/)).toBeTruthy();
 });
 
 it('keeps the current media and playhead when focusing the preview and returning with Escape', () => {
@@ -847,5 +887,5 @@ it('keeps the current media and playhead when focusing the preview and returning
   );
   expect(video()).toBe(originalVideo);
   expect(screen.getByTestId('timecode').textContent).toContain('frame 450');
-  expect(screen.getByRole('tab', { name: 'Captions' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByRole('heading', { name: 'Clip', level: 2 })).toBeTruthy();
 });

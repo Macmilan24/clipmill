@@ -35,6 +35,12 @@ import { ImportLoader } from '../src/import/loader.js';
 import { daemonApi } from '../src/daemon/api.js';
 import { connection, plan as previewPlan } from './fixtures.js';
 import {
+  editorDocument,
+  editorFilmstrip,
+  editorFilmstripUrl,
+  editorPlan,
+} from './editor-fixtures.js';
+import {
   REVIEW_DURATION_TICKS,
   reviewCrop,
   reviewPeaks,
@@ -146,7 +152,7 @@ function Preview() {
           segments: previewPlan.segments.map((segment) => ({ ...segment, hasTwoUpPaths: true })),
           cues: previewPlan.cues.map((cue) => ({ ...cue, region: 'center' })),
         }
-      : previewPlan,
+      : editorPlan,
   );
   const [notice, setNotice] = useState<string | null>(null);
   const [destination, setDestination] = useState('/Users/demo/Movies/ClipMill');
@@ -305,6 +311,11 @@ function Preview() {
               {page === 'editor' && (
                 <Editor
                   plan={plan}
+                  document={editorDocument}
+                  transcript={reviewTranscript}
+                  filmstrip={editorFilmstrip}
+                  peaks={reviewPeaks}
+                  filmstripUrl={editorFilmstripUrl}
                   proxyUrls={new Map(media ? [['preview', media]] : [])}
                   docId="preview-edit"
                   labels={labels}
