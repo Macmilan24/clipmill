@@ -501,3 +501,46 @@ input[type='range'] {
   font-weight: 100 900;
   font-display: block;
 }
+
+/* A project's menu sits over the card's frame, out of the way until wanted. */
+.project-card-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.project-film-card:hover .project-card-actions,
+.project-film-card:focus-within .project-card-actions,
+.project-card-actions:has([data-state='open']) {
+  opacity: 1;
+}
+
+.project-actions-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  background: var(--cm-glass);
+  color: var(--cm-text-secondary);
+  backdrop-filter: blur(8px);
+}
+
+.project-actions-trigger:hover,
+.project-actions-trigger[data-state='open'] {
+  color: var(--cm-text-primary);
+}
+
+.project-actions-trigger:focus-visible {
+  outline: 2px solid var(--cm-accent-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-card-actions {
+    transition: none;
+  }
+}

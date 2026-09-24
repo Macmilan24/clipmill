@@ -37,6 +37,18 @@ export class LibraryLoader {
     return { projects: gathered, storage };
   }
 
+  rename(projectId: string, name: string): Promise<Project> {
+    return this.api.renameProject(projectId, name);
+  }
+
+  remove(projectId: string): Promise<void> {
+    return this.api.deleteProject(projectId);
+  }
+
+  reveal(path: string): Promise<void> {
+    return this.api.revealPath(path);
+  }
+
   /** One project, whole. Used for the first load and for every refresh. */
   async loadProject(project: Project): Promise<LibraryProject> {
     const [jobs, sources] = await Promise.all([

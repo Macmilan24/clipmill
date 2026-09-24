@@ -222,3 +222,59 @@ describe('the Library screen', () => {
     expect(onOpenAnalysis).toHaveBeenCalledWith('p2', 'job-p2');
   });
 });
+
+describe('a project’s menu', () => {
+  function menuFor(name: string) {
+    const trigger = screen.getByRole('button', { name: `Actions for ${name}` });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    return screen.getByRole('menu');
+  }
+
+  it('renames a project, and the Library shows the new name', async () => {
+    const scene = world();
+    show({}, scene);
+    await screen.findByText('Episode 41 — pricing mistakes');
+    fireEvent.click(
+      within(menuFor('Episode 41 — pricing mistakes')).getByRole('menuitem', { name: /rename/i }),
+    );
+    const field = await screen.findByRole('textbox', { name: 'Project name' });
+    fireEvent.change(field, { target: { value: '  Pricing mistakes, fixed  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    expect(await screen.findByText('Pricing mistakes, fixed')).toBeTruthy();
+    expect(scene.projects.map((item) => item.name)).toContain('Pricing mistakes, fixed');
+  });
+
+  it('deletes a project only after it is confirmed', async () => {
+    const scene = { ...world(), deleted: [] as string[] };
+    show({}, scene);
+    await screen.findByText('Episode 41 — pricing mistakes');
+    fireEvent.click(
+      within(menuFor('Episode 41 — pricing mistakes')).getByRole('menuitem', { name: /delete/i }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/stays where it is on your disk/)).toBeTruthy();
+    expect(scene.deleted).toEqual([]);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete project' }));
+    await waitFor(() => expect(scene.deleted).toEqual(['p1']));
+    await waitFor(() => expect(screen.queryByText('Episode 41 — pricing mistakes')).toBeNull());
+  });
+
+  it('will not delete a project while it is being analyzed', async () => {
+    show();
+    await screen.findByText('CUDA kernels, part 3');
+    const item = within(menuFor('CUDA kernels, part 3')).getByRole('menuitem', {
+      name: /stop the analysis first/i,
+    });
+    expect(item.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('shows the recording on disk', async () => {
+    const scene = world();
+    show({}, scene);
+    await screen.findByText('Episode 41 — pricing mistakes');
+    fireEvent.click(
+      within(menuFor('Episode 41 — pricing mistakes')).getByRole('menuitem', { name: /^show in/i }),
+    );
+    await waitFor(() => expect(scene.revealed).toEqual(['/Volumes/Media/p1.mp4']));
+  });
+});
