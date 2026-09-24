@@ -14,10 +14,9 @@
 # because the whole reason the alternative ships beside the choice is that
 # re-running the search to find it again is work the ranking already did.
 #
-# The lattice arithmetic is checked on its own because it is where a person's
-# hand meets the search's rules: no amount of care with a mouse gets somebody
-# within a frame of a sentence edge, so a drag resolves to an edge or it is
-# refused.
+# The word-edge rules are checked on their own because they are where a
+# person's hand meets the recording: a cut may land between any two words, and
+# one that lands inside a word keeps the whole word rather than clipping it.
 #
 # Then the durable half. Rejecting a clip is small work done a dozen times a
 # session, and losing it is worse than losing something large because nobody
@@ -38,7 +37,7 @@ if [ "$ITERATIONS" -lt 1 ]; then
   exit 2
 fi
 
-echo "==> the director: goldens, the boundary swap, and the lattice arithmetic"
+echo "==> the director: goldens, the boundary swap, and cuts between words"
 for iteration in $(seq 1 "$ITERATIONS"); do
   echo "inspector-drill: iteration $iteration/$ITERATIONS"
   cargo test -p clipmill-director
@@ -53,4 +52,4 @@ cargo test -p clipmilld --lib db::tests::
 echo "==> the board's joins: an unmeasured axis, a shortfall, and the cohort's order"
 pnpm --filter @clipmill/desktop test
 
-echo "inspector-drill: OK ($ITERATIONS iterations; director goldens, boundary swap, lattice snapping, durable decisions, board joins)"
+echo "inspector-drill: OK ($ITERATIONS iterations; director goldens, boundary swap, cuts between words, durable decisions, board joins)"
