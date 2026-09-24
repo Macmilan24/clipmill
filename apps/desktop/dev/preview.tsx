@@ -38,8 +38,10 @@ import {
   editorDocument,
   editorFilmstrip,
   editorFilmstripUrl,
+  editorLabels,
   editorPlan,
 } from './editor-fixtures.js';
+import { applyPreview } from './editor-preview.js';
 import {
   REVIEW_DURATION_TICKS,
   reviewCrop,
@@ -154,6 +156,7 @@ function Preview() {
         }
       : editorPlan,
   );
+  const [editorDoc, setEditorDoc] = useState(editorDocument);
   const [notice, setNotice] = useState<string | null>(null);
   const [destination, setDestination] = useState('/Users/demo/Movies/ClipMill');
   const [pattern, setPattern] = useState('{index}-{clip}');
@@ -311,50 +314,33 @@ function Preview() {
               {page === 'editor' && (
                 <Editor
                   plan={plan}
-                  document={editorDocument}
+                  document={editorDoc}
                   transcript={reviewTranscript}
                   filmstrip={editorFilmstrip}
                   peaks={reviewPeaks}
                   filmstripUrl={editorFilmstripUrl}
                   proxyUrls={new Map(media ? [['preview', media]] : [])}
                   docId="preview-edit"
-                  labels={labels}
+                  labels={editorLabels}
                   loading={false}
                   problem={notice}
                   busy={false}
                   canUndo={false}
                   canRedo={false}
                   resolving={false}
-                  resolveRefusal="No worker connected in the UI preview."
+                  resolveRefusal="No worker is connected in the UI preview."
                   picker={null}
                   onOpenResults={() => setPage('results')}
                   onExport={() => setPage('export')}
                   onApply={(command) => {
-                    if (command.op === 'set_word_text')
-                      setPlan({
-                        ...plan,
-                        revision: plan.revision + 1,
-                        cues: plan.cues.map((cue) => ({
-                          ...cue,
-                          lines: cue.lines.map((line) =>
-                            line.map((word) =>
-                              word.wordId === command.word_id
-                                ? { ...word, text: String(command.text) }
-                                : word,
-                            ),
-                          ),
-                        })),
-                      });
-                    else if (command.op === 'set_transition')
-                      setPlan({
-                        ...plan,
-                        revision: plan.revision + 1,
-                        transitionTicks: Number(command.duration_ticks),
-                        // This fixture has one shot, so its saved preference
-                        // produces no boundaries. It does not call the renderer.
-                        transitions: [],
-                      });
-                    else setNotice('This development preview does not save editing commands.');
+                    const next = applyPreview({ plan, document: editorDoc }, command);
+                    if (!next) {
+                      setNotice('This development preview does not save that edit.');
+                      return;
+                    }
+                    setNotice(null);
+                    setPlan(next.plan);
+                    setEditorDoc(next.document);
                   }}
                   onUndo={noAction}
                   onRedo={noAction}

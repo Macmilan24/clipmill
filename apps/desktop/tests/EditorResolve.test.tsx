@@ -5,6 +5,7 @@ import type { ShellApi } from '../src/daemon/api.js';
 import type { EditorState } from '../src/editor/useEditor.js';
 import { EditorScreen } from '../src/screens/EditorScreen.js';
 import { plan } from './support/clips.js';
+import { seekTo } from './support/timeline.js';
 
 let state: EditorState;
 vi.mock('../src/editor/useEditor.js', () => ({ useEditor: () => state }));
@@ -81,9 +82,9 @@ beforeEach(() => {
   };
 });
 function resolveSecond() {
-  fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), { target: { value: '450' } });
-  fireEvent.click(screen.getByText('Reframe', { selector: 'summary' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Re-solve the path' }));
+  seekTo(state.plan!, 450);
+  fireEvent.mouseDown(screen.getByRole('tab', { name: /framing/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'Recalculate framing' }));
 }
 describe('re-solving the current shot', () => {
   it('targets the shot under the playhead and replaces every old crop keyframe', async () => {
@@ -131,7 +132,7 @@ describe('re-solving the current shot', () => {
     rerender();
     answer({ fit: true, keyframes: [], containment: 0 });
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Re-solve the path' })).toBeTruthy(),
+      expect(screen.getByRole('button', { name: 'Recalculate framing' })).toBeTruthy(),
     );
     expect(state.apply).not.toHaveBeenCalled();
   });

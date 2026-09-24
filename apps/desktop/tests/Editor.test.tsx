@@ -15,6 +15,7 @@ import type { PreviewPlan } from '../src/daemon/client.js';
 import { Editor } from '../src/screens/Editor.js';
 import { plan } from './support/clips.js';
 import { TICKS, mapping } from './support/plan.js';
+import { box, drag, measure, measureTrack, seekTo, xOf } from './support/timeline.js';
 
 const PROXY_URL = 'clipmill-media://localhost/p_old/sha256:proxy-old/proxy.mp4';
 
@@ -91,9 +92,7 @@ describe('the player and the recording’s clock', () => {
 
   it('scrubs and steps through the same mapping', () => {
     const { video } = show(program(900, 600));
-    fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
-      target: { value: '450' },
-    });
+    seekTo(program(900, 600), 450);
     expect(video().currentTime).toBe(615);
     expect(screen.getByTestId('timecode').textContent).toContain('frame 450');
     fireEvent.click(screen.getByRole('button', { name: /next frame/i }));
@@ -113,9 +112,7 @@ describe('the player and the recording’s clock', () => {
 
   it('brings a playhead past the new end back onto the program', () => {
     const { video, replan } = show(program(900, 600));
-    fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
-      target: { value: '750' },
-    });
+    seekTo(program(900, 600), 750);
     expect(screen.getByTestId('timecode').textContent).toContain('frame 750');
     // The tail is trimmed to ten seconds: frame 750 no longer exists.
     replan(program(300, 600));
@@ -126,17 +123,21 @@ describe('the player and the recording’s clock', () => {
   });
 
   it('sends a trim in the segment’s own source ticks', () => {
-    const { onApply } = show(program(900, 600));
-    fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
-      target: { value: '150' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /trim start here/i }));
+    const current = program(900, 600);
+    const { onApply } = show(current);
+    const track = measureTrack();
+    drag(
+      screen.getByRole('button', { name: 'Start of the clip' }),
+      { x: xOf(current, 0) },
+      { x: xOf(current, 5 * TICKS) },
+    );
     expect(onApply).toHaveBeenCalledWith({
       op: 'trim',
       segment_id: 'seg_1',
       in_ticks: 605 * TICKS,
       out_ticks: 630 * TICKS,
     });
+    track.mockRestore();
   });
 
   it('says there is nothing to play when the recording has no proxy', () => {
@@ -608,9 +609,7 @@ describe('decoded playback across shots and documents', () => {
     show(shots());
     const element = video();
     control.ready(element);
-    fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
-      target: { value: '16' },
-    });
+    seekTo(shots(), 16);
     control.seeks.mockClear();
     control.state(element).time = 600.5;
     control.state(element).seeking = false;
@@ -716,34 +715,35 @@ describe('decoded playback across shots and documents', () => {
 
 describe('editor interaction boundaries', () => {
   it('seeks on an audio lane click and adds a volume point only on a double-click', () => {
-    const { onApply } = show(program(60, 600));
-    const track = document.querySelector('.studio-audio-track')!;
-    const bounds = vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
-      left: 0,
-      top: 0,
-      width: 120,
-      height: 48,
-    } as DOMRect);
+    const current = program(60, 600);
+    const { onApply } = show(current);
+    const track = measureTrack(120);
+    const lane = measure(document.querySelector('.edit-audio'), box(120, 48));
 
-    fireEvent.pointerDown(track, { clientX: 60, clientY: 24 });
+    fireEvent.pointerDown(document.querySelector('.edit-audio')!, { clientX: 60, clientY: 24 });
+    fireEvent.pointerUp(window, { clientX: 60, clientY: 24 });
     expect(onApply).not.toHaveBeenCalled();
-    fireEvent.doubleClick(track, { clientX: 60, clientY: 24 });
+    fireEvent.doubleClick(document.querySelector('.edit-audio')!, {
+      clientX: xOf(current, 90_000, 120),
+      clientY: 24,
+    });
     expect(onApply).toHaveBeenCalledWith({ op: 'set_gain', t_ticks: 90_000, gain_db: 0 });
-    bounds.mockRestore();
+    track.mockRestore();
+    lane.mockRestore();
   });
 
-  it('moves a volume point as one undoable edit', () => {
-    const { onApply } = show({ ...program(60, 600), gain: [{ frame: 15, gainDb: 2 }] });
-    const track = document.querySelector('.studio-audio-track')!;
-    const bounds = vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
-      left: 0,
-      top: 0,
-      width: 120,
-      height: 48,
-    } as DOMRect);
+  it('moves a volume point as one undoable edit, and a click only selects it', () => {
+    const current = { ...program(60, 600), gain: [{ frame: 15, gainDb: 2 }] };
+    const { onApply } = show(current);
+    const track = measureTrack(120);
+    const lane = measure(document.querySelector('.edit-audio'), box(120, 48));
+    const point = screen.getByRole('button', { name: /volume \+2\.0 db/i });
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: /gain 2\.0 db/i }));
-    fireEvent.pointerUp(window, { clientX: 80, clientY: 12 });
+    fireEvent.pointerDown(point, { clientX: xOf(current, 45_000, 120), clientY: 20, button: 0 });
+    fireEvent.pointerUp(window, { clientX: xOf(current, 45_000, 120), clientY: 20 });
+    expect(onApply).not.toHaveBeenCalled();
+
+    drag(point, { x: xOf(current, 45_000, 120), y: 20 }, { x: xOf(current, 117_000, 120), y: 12 });
     expect(onApply).toHaveBeenCalledWith({
       op: 'batch',
       commands: [
@@ -751,18 +751,18 @@ describe('editor interaction boundaries', () => {
         { op: 'set_gain', t_ticks: 117_000, gain_db: 6 },
       ],
     });
-    bounds.mockRestore();
+    track.mockRestore();
+    lane.mockRestore();
   });
 
-  it('leaves arrow keys in caption fields and native scrubbers alone', () => {
+  it('leaves arrow keys in caption fields and sliders alone', () => {
     const { video } = show({ ...program(900, 600), cues: plan().cues });
-    fireEvent.pointerDown(document.querySelector('.studio-caption-block')!);
-    fireEvent.click(screen.getByText('Words & line breaks'));
+    fireEvent.pointerDown(document.querySelector('.edit-cue')!, { button: 0 });
     fireEvent.click(screen.getByRole('button', { name: 'Charging' }));
     const field = screen.getByRole('textbox', { name: /correct this word/i });
     fireEvent.keyDown(field, { key: 'ArrowRight' });
     expect(video().currentTime).toBe(600);
-    fireEvent.keyDown(screen.getByRole('slider', { name: /scrub/i }), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Caption size' }), { key: 'ArrowRight' });
     expect(video().currentTime).toBe(600);
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     expect(video().currentTime).toBeCloseTo(600 + 1 / 30, 6);
@@ -808,7 +808,7 @@ describe('editor interaction boundaries', () => {
   });
 });
 
-it('presents two portraits from one media element and edits the selected lower crop', () => {
+it('presents two portraits from one media element and reframes the lower one by dragging it', () => {
   const initial = program(30, 600);
   const two: PreviewPlan = {
     ...initial,
@@ -818,15 +818,16 @@ it('presents two portraits from one media element and edits the selected lower c
   const { onApply } = show(two);
   expect(document.querySelectorAll('video')).toHaveLength(1);
   expect(screen.getByRole('img', { name: /two synchronized portraits/i })).toBeTruthy();
-  fireEvent.click(screen.getByText('Reframe', { selector: 'summary' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Lower' }));
-  fireEvent.click(screen.getByRole('button', { name: /move crop left/i }));
+  const grab = document.querySelector('.edit-frame-grab')!;
+  const bounds = measure(grab, box(180, 320));
+  drag(grab, { x: 90, y: 240 }, { x: 108, y: 240 });
   expect(onApply).toHaveBeenLastCalledWith(
     expect.objectContaining({
       op: 'set_secondary_crop_keyframe',
-      rect: { x: 984, y: 140, width: 900, height: 800 },
+      rect: { x: 910, y: 140, width: 900, height: 800 },
     }),
   );
+  bounds.mockRestore();
 });
 
 it('shows a stored framing problem over the draft regardless of the active tab', () => {
@@ -865,15 +866,14 @@ it('uses the renderer’s caption style and placement while labelling proxy audi
   const caption = screen.getByTestId('caption');
   expect(caption.style.fontWeight).toBe('400');
   expect(caption.style.top).toBe('12.5%');
-  expect(screen.getByText(/preview from render plan/)).toBeTruthy();
+  fireEvent.mouseDown(screen.getByRole('tab', { name: /details/i }));
+  expect(screen.getByText(/drawn from the render plan/i)).toBeTruthy();
 });
 
 it('keeps the current media and playhead when focusing the preview and returning with Escape', () => {
   show(program(900, 600));
   const originalVideo = video();
-  fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), {
-    target: { value: '450' },
-  });
+  seekTo(program(900, 600), 450);
   fireEvent.click(screen.getByRole('button', { name: 'Focus preview' }));
   expect(
     screen.getByRole('button', { name: 'Restore editing panels' }).getAttribute('aria-pressed'),
@@ -887,5 +887,4 @@ it('keeps the current media and playhead when focusing the preview and returning
   );
   expect(video()).toBe(originalVideo);
   expect(screen.getByTestId('timecode').textContent).toContain('frame 450');
-  expect(screen.getByRole('heading', { name: 'Clip', level: 2 })).toBeTruthy();
 });

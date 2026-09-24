@@ -1,0 +1,671 @@
+/**
+ * Program monitor: the clip as it will render, drawn from the preview plan.
+ * Drag the picture to reframe, pinch or ⌘-scroll to zoom, and click or drag a
+ * caption to place it. A gesture draws a draft; one command is sent on release.
+ */
+import {
+  ChevronFirst,
+  ChevronLast,
+  Pause,
+  Play,
+  Repeat,
+  StepBack,
+  StepForward,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
+import {
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select.js';
+import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
+import { SPEEDS } from '../inspector/playback.js';
+import { timecode as sourceTimecode } from '../inspector/review.js';
+import { TipButton } from '../inspector/TipButton.js';
+import { batch, setCropKeyframe, setCueRegion, setLayout, ticksAt } from './commands.js';
+import { CompositionCanvas } from './CompositionCanvas.js';
+import { pressOrDrag } from './gesture.js';
+import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf } from './player.js';
+import type { EditorSelection } from './selection.js';
+
+export type MonitorView = 'edit' | 'original';
+export type SafePlatform = 'off' | 'all' | 'tiktok' | 'reels' | 'shorts';
+
+/**
+ * Where each app draws over a 1080×1920 frame, as shares of it: its top bar,
+ * the caption and sound block along the bottom, and the button column on the
+ * right. "All" is the most cautious of the three. A guide, never a rule.
+ */
+const SAFE_ZONES: Record<
+  Exclude<SafePlatform, 'off'>,
+  { top: number; bottom: number; left: number; right: number }
+> = {
+  all: { top: 150 / 1920, bottom: 480 / 1920, left: 60 / 1080, right: 130 / 1080 },
+  tiktok: { top: 150 / 1920, bottom: 420 / 1920, left: 60 / 1080, right: 120 / 1080 },
+  reels: { top: 110 / 1920, bottom: 480 / 1920, left: 60 / 1080, right: 130 / 1080 },
+  shorts: { top: 120 / 1920, bottom: 360 / 1920, left: 60 / 1080, right: 110 / 1080 },
+};
+
+const SAFE_LABELS: Record<SafePlatform, string> = {
+  off: 'Safe area off',
+  all: 'All apps',
+  tiktok: 'TikTok',
+  reels: 'Reels',
+  shorts: 'Shorts',
+};
+
+export interface MonitorPlayback {
+  readonly frame: number;
+  readonly playing: boolean;
+  readonly speed: number;
+  readonly loop: boolean;
+  readonly muted: boolean;
+  readonly preparing: boolean;
+  readonly onToggle: () => void;
+  readonly onStep: (frames: number) => void;
+  readonly onSeek: (frame: number) => void;
+  readonly onSpeed: (speed: number) => void;
+  readonly onLoop: (loop: boolean) => void;
+  readonly onMuted: (muted: boolean) => void;
+  /** Wired to the media element; see `Editor`. */
+  readonly onProxyTime: (seconds: number, atMediaEnd?: boolean) => number | null;
+  readonly onMetadata: () => void;
+  readonly onPlaying: (playing: boolean) => void;
+  readonly onBuffering: (waiting: boolean) => void;
+  readonly onError: () => void;
+}
+
+export interface EditorMonitorProps {
+  readonly plan: PreviewPlan;
+  readonly docId: string;
+  readonly videoRef: RefObject<HTMLVideoElement | null>;
+  readonly proxyUrl: string | null;
+  readonly proxyUrls: ReadonlyMap<string, string>;
+  readonly startSeconds: number | null;
+  readonly playback: MonitorPlayback;
+  /** The in and out marks, when both are set, for the loop and the clock. */
+  readonly range: { readonly first: number; readonly last: number } | null;
+  readonly busy: boolean;
+  readonly selection: EditorSelection;
+  readonly onSelect: (selection: EditorSelection) => void;
+  readonly onApply: (command: EditCommandJson) => void;
+}
+
+export function EditorMonitor({
+  plan,
+  docId,
+  videoRef,
+  proxyUrl,
+  proxyUrls,
+  startSeconds,
+  playback,
+  range,
+  busy,
+  selection,
+  onSelect,
+  onApply,
+}: EditorMonitorProps) {
+  const [view, setView] = useState<MonitorView>('edit');
+  const [safe, setSafe] = useState<SafePlatform>('off');
+  const [grid, setGrid] = useState(false);
+  const segment = segmentAt(plan, playback.frame);
+  const twoUp = cropAt(plan, playback.frame, true) !== null;
+  const fitted = cropAt(plan, playback.frame) === null;
+
+  return (
+    <section className="review-viewer edit-viewer" aria-label="Clip preview">
+      <div className="review-viewer-bar">
+        <div className="review-segmented" role="group" aria-label="What the preview shows">
+          <button type="button" aria-pressed={view === 'edit'} onClick={() => setView('edit')}>
+            Edit
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === 'original'}
+            onClick={() => setView('original')}
+          >
+            Original
+          </button>
+        </div>
+        <span className="review-viewer-note">
+          {view === 'original'
+            ? 'The whole frame, before framing and captions'
+            : twoUp
+              ? 'Two speakers'
+              : fitted
+                ? 'Whole frame'
+                : 'Following the speaker'}
+          {segment && plan.segments.length > 1
+            ? ` · Section ${plan.segments.indexOf(segment) + 1} of ${plan.segments.length}`
+            : ''}
+        </span>
+        <span className="review-spacer" />
+        <Select value={safe} onValueChange={(value) => setSafe(value as SafePlatform)}>
+          <SelectTrigger
+            aria-label="Safe area"
+            className="edit-viewer-select"
+            data-active={safe !== 'off' ? 'true' : undefined}
+            disabled={view !== 'edit'}
+          >
+            <SelectValue>{safe === 'off' ? 'Safe area' : SAFE_LABELS[safe]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent align="end">
+            {(Object.keys(SAFE_LABELS) as SafePlatform[]).map((platform) => (
+              <SelectItem key={platform} value={platform}>
+                {platform === 'off' ? 'Off' : SAFE_LABELS[platform]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          type="button"
+          className="review-viewer-toggle"
+          aria-pressed={grid}
+          disabled={view !== 'edit'}
+          onClick={() => setGrid(!grid)}
+        >
+          Grid
+        </button>
+        <span className="review-viewer-note mono">9:16</span>
+      </div>
+
+      <div className="review-stage-wrap">
+        <Stage
+          key={docId}
+          plan={plan}
+          videoRef={videoRef}
+          proxyUrl={proxyUrl}
+          proxyUrls={proxyUrls}
+          startSeconds={startSeconds}
+          playback={playback}
+          view={view}
+          safe={view === 'edit' ? safe : 'off'}
+          grid={grid && view === 'edit'}
+          busy={busy}
+          selection={selection}
+          onSelect={onSelect}
+          onApply={onApply}
+        />
+      </div>
+
+      <Transport plan={plan} playback={playback} range={range} disabled={!proxyUrl} />
+    </section>
+  );
+}
+
+type Rect = {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+};
+
+function Stage({
+  plan,
+  videoRef,
+  proxyUrl,
+  proxyUrls,
+  startSeconds,
+  playback,
+  view,
+  safe,
+  grid,
+  busy,
+  selection,
+  onSelect,
+  onApply,
+}: {
+  readonly plan: PreviewPlan;
+  readonly videoRef: RefObject<HTMLVideoElement | null>;
+  readonly proxyUrl: string | null;
+  readonly proxyUrls: ReadonlyMap<string, string>;
+  readonly startSeconds: number | null;
+  readonly playback: MonitorPlayback;
+  readonly view: MonitorView;
+  readonly safe: SafePlatform;
+  readonly grid: boolean;
+  readonly busy: boolean;
+  readonly selection: EditorSelection;
+  readonly onSelect: (selection: EditorSelection) => void;
+  readonly onApply: (command: EditCommandJson) => void;
+}) {
+  const frame = playback.frame;
+  const part = segmentAt(plan, frame);
+  const source = part ? sourceOf(plan, part) : null;
+  const localTicks = part ? ticksAt(plan, frame) - part.programStartTicks : 0;
+  // A reframe in progress: which viewport, and the rectangle it would get.
+  const [draft, setDraft] = useState<{ secondary: boolean; rect: Rect } | null>(null);
+  const [captionDrag, setCaptionDrag] = useState<number | null>(null);
+  const zoomTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
+
+  const drawn = useMemo(() => {
+    if (view === 'original') {
+      return {
+        ...plan,
+        crops: plan.crops.map(() => null),
+        secondaryCrops: plan.secondaryCrops?.map(() => null),
+      } as PreviewPlan;
+    }
+    if (!draft) return plan;
+    const key = draft.secondary ? 'secondaryCrops' : 'crops';
+    const crops = [...(plan[key] ?? plan.crops.map(() => null))];
+    crops[frame] = [draft.rect.x, draft.rect.y, draft.rect.width, draft.rect.height];
+    return { ...plan, [key]: crops } as PreviewPlan;
+  }, [plan, view, draft, frame]);
+
+  useEffect(
+    () => () => {
+      if (zoomTimer.current) clearTimeout(zoomTimer.current);
+    },
+    [],
+  );
+
+  /** The rectangle the camera takes now, or the centred full-height one a fit clip would get. */
+  const baseRect = (secondary: boolean): Rect | null => {
+    if (!source) return null;
+    const current = cropAt(plan, frame, secondary);
+    if (current) return current;
+    if (secondary) return null;
+    const height = source.displayHeight - (source.displayHeight % 2);
+    const width = Math.min(
+      source.displayWidth,
+      2 * Math.round((height * plan.width) / plan.height / 2),
+    );
+    return { x: Math.round((source.displayWidth - width) / 2), y: 0, width, height };
+  };
+
+  const commit = (secondary: boolean, rect: Rect) => {
+    if (!part) return;
+    const keyframe = setCropKeyframe(localTicks, rect, part.segmentId, secondary);
+    onApply(
+      cropAt(plan, frame, secondary)
+        ? keyframe
+        : batch([setLayout('speaker_fill', part.segmentId), keyframe]),
+    );
+    onSelect({ kind: 'keyframe', segmentId: part.segmentId, tTicks: localTicks, secondary });
+  };
+
+  const clampRect = (rect: Rect): Rect => {
+    if (!source) return rect;
+    return {
+      width: rect.width,
+      height: rect.height,
+      x: Math.round(Math.max(0, Math.min(source.displayWidth - rect.width, rect.x))),
+      y: Math.round(Math.max(0, Math.min(source.displayHeight - rect.height, rect.y))),
+    };
+  };
+
+  const grabFrame = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (busy || view !== 'edit' || !part || !source) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const twoUp = cropAt(plan, frame, true) !== null;
+    const secondary = twoUp && event.clientY - box.top > box.height / 2;
+    const start = baseRect(secondary);
+    if (!start) return;
+    // One screen pixel moves the camera by the share of the crop it covers;
+    // a two-up viewport is half the stage tall.
+    const perX = start.width / Math.max(1, box.width);
+    const perY = start.height / Math.max(1, twoUp ? box.height / 2 : box.height);
+    const moved = (dx: number, dy: number) =>
+      clampRect({ ...start, x: start.x - dx * perX, y: start.y - dy * perY });
+    pressOrDrag(event, {
+      onDrag: (dx, dy) => setDraft({ secondary, rect: moved(dx, dy) }),
+      onDrop: (dx, dy) => {
+        setDraft(null);
+        const rect = moved(dx, dy);
+        if (rect.x !== start.x || rect.y !== start.y) commit(secondary, rect);
+      },
+      onClick: () => {
+        if (selection.kind === 'cue') onSelect({ kind: 'clip' });
+      },
+      onCancel: () => setDraft(null),
+    });
+  };
+
+  // Registered by hand: React's wheel listener is passive, and a pinch the
+  // stage cannot cancel would zoom the whole window instead.
+  const wheelState = useRef({ busy, view, part, source, draft, baseRect, clampRect, commit });
+  wheelState.current = { busy, view, part, source, draft, baseRect, clampRect, commit };
+  useEffect(() => {
+    const element = stage.current;
+    if (!element) return;
+    const listener = (event: WheelEvent) => {
+      const current = wheelState.current;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      if (current.busy || current.view !== 'edit' || !current.part || !current.source) return;
+      const secondary = current.draft?.secondary ?? false;
+      const start = current.draft?.rect ?? current.baseRect(secondary);
+      if (!start) return;
+      const factor = Math.exp(event.deltaY * 0.01);
+      const height = Math.max(
+        Math.round(current.source.displayHeight * 0.2),
+        Math.min(current.source.displayHeight, Math.round((start.height * factor) / 2) * 2),
+      );
+      const width = Math.min(
+        current.source.displayWidth,
+        Math.max(2, Math.round((height * plan.width) / plan.height / 2) * 2),
+      );
+      const rect = current.clampRect({
+        width,
+        height,
+        x: start.x + (start.width - width) / 2,
+        y: start.y + (start.height - height) / 2,
+      });
+      setDraft({ secondary, rect });
+      if (zoomTimer.current) clearTimeout(zoomTimer.current);
+      // One edit per gesture, not one per wheel tick.
+      zoomTimer.current = setTimeout(() => {
+        setDraft(null);
+        wheelState.current.commit(secondary, rect);
+      }, 280);
+    };
+    element.addEventListener('wheel', listener, { passive: false });
+    return () => element.removeEventListener('wheel', listener);
+  }, [plan.width, plan.height]);
+
+  const cue = cueAt(plan, frame);
+  const style = plan.captionStyle;
+  const highlighted = cue ? highlightedWord(plan, cue, frame) : -1;
+  const grabCaption = (event: ReactPointerEvent<HTMLParagraphElement>) => {
+    if (!cue) return;
+    const box = stage.current?.getBoundingClientRect();
+    pressOrDrag(event, {
+      onClick: () => onSelect({ kind: 'cue', cueId: cue.cueId }),
+      onDrag: (_dx, _dy, next) => {
+        if (!box || busy) return;
+        setCaptionDrag(Math.max(0, Math.min(1, (next.clientY - box.top) / box.height)));
+      },
+      onDrop: (_dx, _dy, next) => {
+        setCaptionDrag(null);
+        if (!box || busy) return;
+        const down = (next.clientY - box.top) / Math.max(1, box.height);
+        const region = down < 0.36 ? 'upper_safe' : down > 0.64 ? 'lower_safe' : 'center';
+        const moving = plan.cues.filter((item) => item.region !== region);
+        onSelect({ kind: 'cue', cueId: cue.cueId });
+        if (moving.length > 0)
+          onApply(batch(moving.map((item) => setCueRegion(item.cueId, region, plan.presentation))));
+      },
+      onCancel: () => setCaptionDrag(null),
+    });
+  };
+
+  const relative = (pixels: number) => `${(pixels / plan.width) * 100}cqw`;
+  const verticalMargin = ((style?.marginVertical ?? 260) / plan.height) * 100;
+  const position =
+    captionDrag !== null
+      ? { top: `${captionDrag * 100}%`, transform: 'translateY(-50%)' }
+      : cue?.region === 'upper_safe'
+        ? { top: `${verticalMargin}%` }
+        : cue?.region === 'center'
+          ? { top: '50%', transform: 'translateY(-50%)' }
+          : { bottom: `${verticalMargin}%` };
+  let index = 0;
+  const zone = safe === 'off' ? null : SAFE_ZONES[safe];
+  const reframable = view === 'edit' && !busy && proxyUrl !== null;
+
+  return (
+    <div
+      ref={stage}
+      className="review-stage edit-stage"
+      data-view="result"
+      data-testid="stage"
+      style={{ containerType: 'inline-size' }}
+    >
+      {proxyUrl ? (
+        <>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- the cues are
+              drawn below from the plan rather than as a text track. */}
+          <video
+            ref={videoRef}
+            src={proxyUrl}
+            className="review-decoder"
+            crossOrigin="anonymous"
+            playsInline
+            data-testid="proxy"
+            data-start-seconds={startSeconds ?? undefined}
+            muted={playback.muted}
+            onLoadedMetadata={playback.onMetadata}
+            onPlay={() => playback.onPlaying(true)}
+            onPause={() => playback.onPlaying(false)}
+            onEnded={(event) => {
+              playback.onPlaying(false);
+              // The last decoded PTS can precede the last program frame.
+              // EOF itself must advance or finish the edit, not restart the proxy.
+              playback.onProxyTime(event.currentTarget.currentTime, true);
+            }}
+            onError={playback.onError}
+          />
+          <CompositionCanvas
+            video={videoRef}
+            mediaKey={proxyUrl}
+            plan={drawn}
+            frame={frame}
+            onFrame={playback.onProxyTime}
+            proxyUrls={proxyUrls}
+            onError={playback.onError}
+            onBuffering={playback.onBuffering}
+          />
+          <div
+            className="edit-frame-grab"
+            data-enabled={reframable ? 'true' : undefined}
+            data-dragging={draft ? 'true' : undefined}
+            aria-hidden="true"
+            onPointerDown={grabFrame}
+          />
+        </>
+      ) : (
+        <div className="review-unavailable" role="note">
+          <p className="review-unavailable-title">Preview unavailable</p>
+          <p>This recording has no proxy, so there is nothing to play.</p>
+        </div>
+      )}
+      {grid && <div className="edit-grid" aria-hidden="true" />}
+      {zone && (
+        <div className="review-safe-area" aria-hidden="true">
+          <span style={{ top: 0, left: 0, right: 0, height: share(zone.top) }} />
+          <span style={{ bottom: 0, left: 0, right: 0, height: share(zone.bottom) }} />
+          <span
+            style={{
+              top: share(zone.top),
+              bottom: share(zone.bottom),
+              left: 0,
+              width: share(zone.left),
+            }}
+          />
+          <span
+            style={{
+              top: share(zone.top),
+              bottom: share(zone.bottom),
+              right: 0,
+              width: share(zone.right),
+            }}
+          />
+          <i
+            style={{
+              top: share(zone.top),
+              bottom: share(zone.bottom),
+              left: share(zone.left),
+              right: share(zone.right),
+            }}
+          />
+        </div>
+      )}
+      {playback.preparing && (
+        <div role="status" className="edit-stage-status">
+          <span>Preparing preview…</span>
+        </div>
+      )}
+      {proxyUrl && view === 'edit' && cue && (
+        <p
+          className="edit-caption"
+          data-selected={selection.kind === 'cue' && selection.cueId === cue.cueId}
+          data-dragging={captionDrag !== null ? 'true' : undefined}
+          onPointerDown={grabCaption}
+          style={{
+            ...position,
+            left: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
+            right: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
+            fontFamily:
+              !style || style.fontFamily === 'Inter' ? 'ClipMill Caption Inter' : style.fontFamily,
+            fontSize: relative(style?.fontSize ?? 84),
+            fontWeight: style?.bold === false ? 400 : 700,
+            WebkitTextStroke: style?.boxed
+              ? undefined
+              : `${relative(style?.outlineWidth ?? 5)} ${style?.outline ?? '#000000'}`,
+            paintOrder: 'stroke fill',
+            textShadow: style?.boxed
+              ? undefined
+              : `${relative(style?.shadowDepth ?? 2)} ${relative(style?.shadowDepth ?? 2)} 0 ${style?.shadow ?? '#000000'}`,
+          }}
+          data-testid="caption"
+        >
+          {cue.lines.map((line, lineIndex) => (
+            // eslint-disable-next-line react/no-array-index-key -- lines have no
+            // identity of their own; their position is what they are.
+            <span key={lineIndex} className="block whitespace-nowrap">
+              <span
+                style={
+                  style?.boxed
+                    ? {
+                        background: style.outline,
+                        padding: `${relative(style.outlineWidth)} ${relative(style.outlineWidth * 2)}`,
+                        boxDecorationBreak: 'clone',
+                      }
+                    : undefined
+                }
+              >
+                {line.map((word) => {
+                  const mine = index;
+                  index += 1;
+                  return (
+                    <span
+                      key={`${word.text}-${mine}`}
+                      style={{
+                        color:
+                          !cue.karaoke || mine <= highlighted
+                            ? (style?.spoken ?? '#ffd65c')
+                            : (style?.unspoken ?? '#ffffff'),
+                      }}
+                    >
+                      {word.text}{' '}
+                    </span>
+                  );
+                })}
+              </span>
+            </span>
+          ))}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function share(value: number): string {
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function Transport({
+  plan,
+  playback,
+  range,
+  disabled,
+}: {
+  readonly plan: PreviewPlan;
+  readonly playback: MonitorPlayback;
+  readonly range: { readonly first: number; readonly last: number } | null;
+  readonly disabled: boolean;
+}) {
+  const { frame, playing, speed, loop, muted } = playback;
+  const ticks = ticksAt(plan, frame);
+  const length = ticksAt(plan, plan.frameCount);
+  return (
+    <div className="review-transport" aria-label="Transport">
+      <span className="review-timecode mono" data-testid="timecode">
+        {sourceTimecode(ticks)}
+        <span className="edit-length"> / {sourceTimecode(length)}</span>
+        <span className="sr-only">
+          {' '}
+          · frame {frame} of {plan.frameCount}
+        </span>
+      </span>
+      <div className="review-transport-buttons">
+        <TipButton label="Go to the start" disabled={disabled} onClick={() => playback.onSeek(0)}>
+          <ChevronFirst className="size-4" />
+        </TipButton>
+        <TipButton
+          label="Previous frame"
+          disabled={disabled || frame === 0}
+          onClick={() => playback.onStep(-1)}
+        >
+          <StepBack className="size-4" />
+        </TipButton>
+        <TipButton
+          label={playing ? 'Pause' : 'Play'}
+          size="icon"
+          disabled={disabled}
+          className="review-play"
+          onClick={playback.onToggle}
+        >
+          {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
+        </TipButton>
+        <TipButton
+          label="Next frame"
+          disabled={disabled || frame >= plan.frameCount - 1}
+          onClick={() => playback.onStep(1)}
+        >
+          <StepForward className="size-4" />
+        </TipButton>
+        <TipButton
+          label="Go to the end"
+          disabled={disabled}
+          onClick={() => playback.onSeek(plan.frameCount - 1)}
+        >
+          <ChevronLast className="size-4" />
+        </TipButton>
+      </div>
+      <div className="review-transport-tools">
+        <TipButton
+          label="Playback speed"
+          disabled={disabled}
+          className="review-speed mono"
+          onClick={() => {
+            const at = SPEEDS.indexOf(speed as (typeof SPEEDS)[number]);
+            playback.onSpeed(SPEEDS[(at + 1) % SPEEDS.length]!);
+          }}
+        >
+          {`${speed}×`}
+        </TipButton>
+        <TipButton
+          label={range ? 'Loop the marked range' : 'Loop the clip'}
+          pressed={loop}
+          disabled={disabled}
+          onClick={() => playback.onLoop(!loop)}
+        >
+          <Repeat className="size-4" />
+        </TipButton>
+        <TipButton
+          label={muted ? 'Unmute' : 'Mute'}
+          pressed={muted}
+          disabled={disabled}
+          onClick={() => playback.onMuted(!muted)}
+        >
+          {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+        </TipButton>
+      </div>
+    </div>
+  );
+}
