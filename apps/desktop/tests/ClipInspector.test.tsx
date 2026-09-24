@@ -1,19 +1,53 @@
 /**
- * The Inspector's honesty, held to.
- *
- * Every claim here is one the screen could quietly get wrong in a way that looks
- * fine: an axis nobody measured drawn as a zero, an alternative cut offered when
- * the lattice held only one legal pair, a clip with nothing recorded against it
- * shown as though it had been checked and cleared.
+ * The review station, held to what a reviewer relies on: the clip can be read,
+ * its cut can move to any sentence and is what an approval sends, a decision
+ * is one click or one key and can be taken back, and nothing the analysis did
+ * not measure is drawn as though it had.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '../src/components/ui/tooltip.js';
-import { ClipInspector } from '../src/screens/ClipInspector.js';
 import type { ClipRow } from '../src/results/model.js';
+import type { Transcript } from '../src/results/transcript.js';
+import { ClipInspector, type ClipInspectorProps } from '../src/screens/ClipInspector.js';
 
 const SECOND = 90_000;
+
+/**
+ * Four sentences, a second of speech each with a pause between: the clip is
+ * the middle two (12–16 s), with one sentence of context either side.
+ */
+function transcript(): Transcript {
+  const sentences = [
+    ['Most', 'people', 'wait.'],
+    ['Confidence', 'is', 'a', 'receipt.'],
+    ['Not', 'a', 'ticket.'],
+    ['So', 'start', 'small.'],
+  ];
+  const words: { text: string; startTicks: number; endTicks: number }[] = [];
+  const grouped: Transcript['sentences'][number][] = [];
+  let at = 10 * SECOND;
+  for (const sentence of sentences) {
+    const firstWord = words.length;
+    for (const text of sentence) {
+      words.push({ text, startTicks: at, endTicks: at + 0.3 * SECOND });
+      at += 0.35 * SECOND;
+    }
+    grouped.push({
+      startTicks: words[firstWord]!.startTicks,
+      endTicks: words.at(-1)!.endTicks,
+      firstWord,
+      wordCount: sentence.length,
+    });
+    at += 0.8 * SECOND;
+  }
+  return { words, sentences: grouped };
+}
+
+const WORDS = transcript();
+const CLIP_START = WORDS.sentences[1]!.startTicks - 0.05 * SECOND;
+const CLIP_END = WORDS.sentences[2]!.endTicks + 0.05 * SECOND;
 
 function row(overrides: Partial<ClipRow> = {}): ClipRow {
   return {
@@ -23,10 +57,10 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
     band: 'strong',
     bandLabel: 'Strong',
     warnings: [],
-    startTicks: 10 * SECOND,
-    endTicks: 40 * SECOND,
-    durationSeconds: 30,
-    headline: 'Your first pricing model is probably backwards',
+    startTicks: CLIP_START,
+    endTicks: CLIP_END,
+    durationSeconds: (CLIP_END - CLIP_START) / SECOND,
+    headline: 'Confidence is a receipt',
     axes: [
       {
         axis: 'hook',
@@ -34,386 +68,318 @@ function row(overrides: Partial<ClipRow> = {}): ClipRow {
         value: 0.8,
         weight: 1.4,
         unavailableReason: null,
-        evidence: [{ text: 'Most founders price from fear.', atTicks: 12 * SECOND }],
+        evidence: [{ text: 'Confidence is a receipt.', atTicks: CLIP_START }],
       },
       {
         axis: 'prompt_relevance',
         label: 'Prompt fit',
         value: null,
         weight: null,
-        unavailableReason: 'no prompt was given; prompt retrieval is not one of this phase',
+        unavailableReason: 'no prompt was given',
         evidence: [],
       },
     ],
     penalties: [],
-    boundary: null,
+    boundary: {
+      startTicks: CLIP_START,
+      endTicks: CLIP_END,
+      score: 0.9,
+      terms: [{ name: 'hook_weight', value: 0.4 }],
+      alternative: {
+        startTicks: WORDS.sentences[0]!.startTicks - 0.05 * SECOND,
+        endTicks: CLIP_END,
+      },
+    },
     decision: null,
     docId: null,
     docJobId: null,
-    latticeStarts: [9 * SECOND, 10 * SECOND],
-    latticeEnds: [40 * SECOND, 42 * SECOND],
+    latticeStarts: [CLIP_START],
+    latticeEnds: [CLIP_END],
     recommended: true,
     proposer: 'quote',
     clusterId: 'clus_1',
-    hook: { text: 'Here is the thing nobody tells you.', atTicks: 10 * SECOND },
+    hook: { text: 'Here is the thing nobody tells you.', atTicks: CLIP_START },
     payoff: null,
     flagged: false,
     ...overrides,
   };
 }
 
-/**
- * Move to a tab the way a person does.
- *
- * Radix switches on pointer-down rather than on a synthesised `click`, so a
- * bare click leaves the panel where it was and the assertion that follows fails
- * for a reason that has nothing to do with the screen.
- */
-function openTab(name: RegExp) {
-  const tab = screen.getByRole('tab', { name });
-  fireEvent.mouseDown(tab);
-  return tab;
-}
-
-function show(overrides: Partial<Parameters<typeof ClipInspector>[0]> = {}) {
-  const props = {
-    rows: [row()],
+function show(overrides: Partial<ClipInspectorProps> = {}) {
+  const props: ClipInspectorProps = {
+    rows: [row(), row({ candidateId: 'cand_2', rank: 2, headline: 'Start small' })],
     candidateId: 'cand_1',
     proxyUrl: null,
     crop: null,
-    cues: [],
     peaks: null,
+    tileUrl: () => null,
+    transcript: { status: 'ready', transcript: WORDS },
+    sourceDurationTicks: 120 * SECOND,
+    durationTarget: { minTicks: 20 * SECOND, maxTicks: 90 * SECOND },
     busy: false,
     notice: null,
-    onSelect: () => {},
-    onBack: () => {},
-    onDecide: () => {},
-    onUseAlternative: () => {},
-    onTakeCut: () => {},
-    onEdit: null,
+    autoAdvance: true,
+    onAutoAdvance: vi.fn(),
+    onSelect: vi.fn(),
+    onBack: vi.fn(),
+    onApprove: vi.fn(),
+    onDecide: vi.fn(),
+    onUndo: null,
+    onOpenEdit: null,
     ...overrides,
   };
-  // Wrapped as `App` wraps it: the transport's tooltips need the provider the
-  // shell mounts once at the root, and a test that rendered without it would be
-  // testing a tree the product never builds.
   render(
     <TooltipProvider>
       <ClipInspector {...props} />
     </TooltipProvider>,
   );
+  return props;
 }
 
-describe('the score panel', () => {
-  it('says why an axis was not measured instead of drawing it as a zero', () => {
+/** Radix tabs switch on pointer-down rather than on a synthesised click. */
+function openTab(name: RegExp) {
+  fireEvent.mouseDown(screen.getByRole('tab', { name }));
+}
+
+const word = (text: string) =>
+  [...document.querySelectorAll<HTMLElement>('.review-word')].find(
+    (element) => element.textContent === text,
+  )!;
+
+describe('reading the clip', () => {
+  it('shows its words with the sentences around it set back', () => {
     show();
-    expect(screen.getByText(/no prompt was given/i)).toBeTruthy();
-    // The value reads as absent, never as a number that could be mistaken
-    // for a scored zero.
-    expect(screen.getByText('—')).toBeTruthy();
+    expect(word('Confidence').dataset.inside).toBe('true');
+    expect(word('ticket.').dataset.inside).toBe('true');
+    expect(word('wait.').dataset.inside).toBe('false');
+    expect(word('small.').dataset.inside).toBe('false');
+    expect(screen.getByLabelText('The cut starts here')).toBeTruthy();
+    expect(screen.getByLabelText('The cut ends here')).toBeTruthy();
   });
 
-  it('counts how many axes were measured, so a thin card cannot look full', () => {
+  it('plays from any word', () => {
     show();
-    expect(screen.getByText(/1 of 2 measured/i)).toBeTruthy();
+    fireEvent.click(word('ticket.'));
+    // "ticket." starts at 14.75 s: frame 22 of the fourteenth second.
+    expect(screen.getByTestId('timecode').textContent).toBe('00:00:14;22');
   });
 
-  it('leads with the axes that moved the total, as the design draws them', () => {
-    show();
-    // Hook is the only measured axis here, so it is the hero bar and Prompt
-    // fit falls to the detailed grid.
-    expect(screen.getAllByText('Hook').length).toBeGreaterThan(0);
-    expect(screen.getByText('Prompt fit')).toBeTruthy();
-  });
-
-  it('turns a quote into a place the player can go', () => {
-    show({ proxyUrl: 'clipmill-media://proxy/proxy.mp4' });
-    const video = document.querySelector('video')!;
-    // jsdom never loads media, so it reports no metadata forever; a browser
-    // that has fired loadedmetadata reports at least HAVE_METADATA, which is
-    // what the seek waits for.
-    Object.defineProperty(video, 'readyState', { value: 1, configurable: true });
-    fireEvent.loadedMetadata(video);
-    // The hook was said at 10s; the ranker's evidence at 12s. Jumping to the
-    // evidence must move the player there.
-    fireEvent.click(screen.getByText('Why selected'));
-    fireEvent.click(screen.getAllByRole('button', { name: '0:12' })[0]!);
-    expect(video.currentTime).toBeCloseTo(12, 3);
+  it('says so when the analysis has no transcript, rather than showing nothing', () => {
+    show({ transcript: { status: 'missing', transcript: null } });
+    expect(screen.getByText(/has no transcript to read here/i)).toBeTruthy();
   });
 });
 
-describe('the boundary panel', () => {
-  it('offers the runner-up only when the lattice held one', () => {
-    show({
-      rows: [
-        row({
-          boundary: {
-            startTicks: 10 * SECOND,
-            endTicks: 40 * SECOND,
-            score: 0.5,
-            terms: [{ name: 'pronoun_open', value: -0.2 }],
-            alternative: null,
-          },
-        }),
-      ],
-    });
-    openTab(/boundary/i);
-    expect(screen.getByText(/offered one legal pair/i)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /use the alternative/i })).toBeNull();
+describe('the cut', () => {
+  it('can start a sentence earlier, and says the cut is now the reviewer’s', () => {
+    const props = show();
+    const context = word('wait.').closest('.review-sentence')!;
+    fireEvent.click(within(context as HTMLElement).getByRole('button', { name: 'Start here' }));
+    expect(screen.getByText('Your cut')).toBeTruthy();
+    expect(word('wait.').dataset.inside).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const [cut, open] = vi.mocked(props.onApprove).mock.calls[0]!;
+    expect(cut!.startTicks).toBeLessThan(CLIP_START);
+    expect(cut!.endTicks).toBe(CLIP_END);
+    expect(open).toBe(false);
   });
 
-  it('says so when the candidate carries no boundary record at all', () => {
-    show();
-    openTab(/boundary/i);
-    expect(screen.getByText(/carries no boundary record/i)).toBeTruthy();
+  it('goes back to the suggested cut, and then approves the search’s own', () => {
+    const props = show();
+    const context = word('small.').closest('.review-sentence')!;
+    fireEvent.click(within(context as HTMLElement).getByRole('button', { name: 'End here' }));
+    fireEvent.click(screen.getByRole('button', { name: /back to the suggested cut/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(props.onApprove).toHaveBeenCalledWith(null, false);
   });
 
-  it('rebuilds from the alternative when there is one to take', () => {
-    let asked = false;
-    show({
-      rows: [
-        row({
-          boundary: {
-            startTicks: 10 * SECOND,
-            endTicks: 40 * SECOND,
-            score: 0.5,
-            terms: [{ name: 'pronoun_open', value: -0.2 }],
-            alternative: { startTicks: 9 * SECOND, endTicks: 42 * SECOND },
-          },
-        }),
-      ],
-      onUseAlternative: () => {
-        asked = true;
-      },
-    });
-    openTab(/boundary/i);
-    fireEvent.click(screen.getByRole('button', { name: /use the alternative/i }));
-    expect(asked).toBe(true);
-  });
-});
-
-describe('the risk panel', () => {
-  it('says nothing was recorded rather than implying a clean bill', () => {
-    show();
-    openTab(/checks/i);
-    expect(screen.getByText(/recorded nothing against this clip/i)).toBeTruthy();
+  it('marks the out point at the playhead, between words', () => {
+    const props = show();
+    fireEvent.click(word('ticket.'));
+    fireEvent.keyDown(window, { key: 'o' });
+    fireEvent.keyDown(window, { key: 'a' });
+    const [cut] = vi.mocked(props.onApprove).mock.calls[0]!;
+    const a = WORDS.words.find((entry) => entry.text === 'a' && entry.startTicks > 13 * SECOND)!;
+    // The nearest boundary to the start of "ticket." is the pause after "a".
+    expect(cut!.endTicks).toBeGreaterThanOrEqual(a.endTicks);
+    expect(cut!.endTicks).toBeLessThan(
+      WORDS.words.find((entry) => entry.text === 'ticket.')!.startTicks + 1,
+    );
   });
 
-  it('shows each penalty with the score it cost', () => {
-    show({ rows: [row({ penalties: [{ reason: 'repetition', value: 7 }] })] });
-    openTab(/checks/i);
-    expect(screen.getByText('repetition')).toBeTruthy();
-    expect(screen.getByText('−7')).toBeTruthy();
-  });
-});
-
-describe('clip navigation', () => {
-  it('opens the clip navigator on demand without changing the selected clip', () => {
-    const selected: string[] = [];
-    show({
-      rows: [row(), row({ candidateId: 'cand_2', headline: 'Another clip' })],
-      onSelect: (candidateId) => selected.push(candidateId),
-    });
-    expect(screen.queryByRole('navigation', { name: 'Candidates' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Clips' }));
-    expect(selected).toEqual([]);
-    expect(screen.getByRole('navigation', { name: 'Candidates' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /another clip/i }));
-    expect(selected).toEqual(['cand_2']);
+  it('lets the runner-up be heard before it is taken', () => {
+    const props = show();
+    fireEvent.click(screen.getByRole('button', { name: 'Alternative cut' }));
+    expect(screen.getByText('Alternative')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Use this cut' }));
+    expect(screen.getByText('Your cut')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(props.onApprove).toHaveBeenCalledWith(row().boundary!.alternative, false);
   });
 });
 
 describe('deciding', () => {
-  it('records each of the three decisions', () => {
-    const seen: string[] = [];
-    show({ onDecide: (decision) => seen.push(decision) });
-    fireEvent.click(screen.getByRole('button', { name: /approve for the editor/i }));
-    fireEvent.click(screen.getByRole('button', { name: /keep for later/i }));
-    fireEvent.click(screen.getByRole('button', { name: /reject/i }));
-    expect(seen).toEqual(['approved', 'kept', 'rejected']);
+  it('approves the search’s cut, with or without opening it', () => {
+    const props = show();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & edit' }));
+    expect(props.onApprove).toHaveBeenNthCalledWith(1, null, false);
+    expect(props.onApprove).toHaveBeenNthCalledWith(2, null, true);
   });
 
-  it('shuts every decision while one is in flight', () => {
-    show({ busy: true });
-    expect(screen.getByRole('button', { name: /working/i })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: /keep for later/i })).toHaveProperty(
-      'disabled',
-      true,
-    );
+  it('keeps and rejects in one click, and a second click takes it back', () => {
+    const props = show({ rows: [row({ decision: 'kept' })] });
+    const keep = screen.getByRole('button', { name: 'Keep for later' });
+    expect(keep.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(keep);
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    expect(props.onDecide).toHaveBeenNthCalledWith(1, null);
+    expect(props.onDecide).toHaveBeenNthCalledWith(2, 'rejected');
   });
 
-  it('shows what the last action said', () => {
-    show({ notice: 'Sent to the editor.' });
-    expect(screen.getByRole('status')).toBeTruthy();
-    expect(screen.getByText('Sent to the editor.')).toBeTruthy();
-  });
-});
-
-describe('a candidate that is not in the ranking', () => {
-  it('says so rather than rendering an empty inspector', () => {
-    show({ candidateId: 'cand_missing' });
-    expect(screen.getByText(/not in the current ranking/i)).toBeTruthy();
-  });
-});
-
-describe('the timeline', () => {
-  it('moves a handle to the next legal edge rather than anywhere', () => {
-    // The fixture's legal starts are 9s and 10s and the cut begins at 10s, so
-    // stepping back has exactly one place it may land.
-    show();
-    const handle = screen.getByRole('button', { name: /^in point at/i });
-    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
-    expect(screen.getByRole('button', { name: /^in point at 00:00:09;00/i })).toBeTruthy();
-  });
-
-  it('refuses to step past the last legal edge', () => {
-    show();
-    const handle = screen.getByRole('button', { name: /^in point at/i });
-    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
-    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
-    // 9s is the earliest start the lattice holds; there is nowhere further back.
-    expect(screen.getByRole('button', { name: /^in point at 00:00:09;00/i })).toBeTruthy();
-  });
-
-  it('offers to take the cut only once a boundary has actually moved', () => {
-    show();
-    expect(screen.queryByRole('button', { name: /take this cut/i })).toBeNull();
-    fireEvent.keyDown(screen.getByRole('button', { name: /^in point at/i }), { key: 'ArrowLeft' });
-    expect(screen.getByRole('button', { name: /take this cut/i })).toBeTruthy();
-  });
-
-  it('sends the moved window, not the one the ranker chose', () => {
-    const taken: number[][] = [];
-    show({ onTakeCut: (start, end) => taken.push([start, end]) });
-    fireEvent.keyDown(screen.getByRole('button', { name: /^in point at/i }), { key: 'ArrowLeft' });
-    fireEvent.click(screen.getByRole('button', { name: /take this cut/i }));
-    expect(taken).toEqual([[9 * SECOND, 40 * SECOND]]);
-  });
-
-  it('says the daemon may move the cut, rather than implying it is final', () => {
-    show();
-    fireEvent.keyDown(screen.getByRole('button', { name: /^in point at/i }), { key: 'ArrowLeft' });
-    expect(screen.getByText(/snaps to a nearby speech boundary/i)).toBeTruthy();
-  });
-
-  it('puts a moved boundary back where the ranker had it', () => {
-    show();
-    const handle = screen.getByRole('button', { name: /^in point at/i });
-    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
-    fireEvent.click(screen.getByRole('button', { name: /reset/i }));
-    expect(screen.queryByRole('button', { name: /take this cut/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /^in point at 00:00:10;00/i })).toBeTruthy();
-  });
-
-  it('drops the draft when a different clip is opened', () => {
-    const { rerender } = render(<div />);
-    void rerender;
-    // Two candidates, so the second can be opened after the first is dragged.
-    const rows = [row(), row({ candidateId: 'cand_2', headline: 'Another clip' })];
-    const props = {
-      rows,
-      candidateId: 'cand_1',
-      proxyUrl: null,
-      crop: null,
-      cues: [],
-      peaks: null,
-      busy: false,
-      notice: null,
-      onSelect: () => {},
-      onBack: () => {},
-      onDecide: () => {},
-      onUseAlternative: () => {},
-      onTakeCut: () => {},
-      onEdit: null,
-    };
-    const view = render(
-      <TooltipProvider>
-        <ClipInspector {...props} />
-      </TooltipProvider>,
-    );
-    fireEvent.keyDown(screen.getAllByRole('button', { name: /^in point at/i })[0]!, {
-      key: 'ArrowLeft',
+  it('offers an approved clip’s edit and records nothing more', () => {
+    const onOpenEdit = vi.fn();
+    const props = show({
+      rows: [row({ decision: 'approved', docId: 'edt_1' })],
+      onOpenEdit,
     });
-    view.rerender(
-      <TooltipProvider>
-        <ClipInspector {...props} candidateId="cand_2" />
-      </TooltipProvider>,
-    );
-    expect(screen.queryByRole('button', { name: /take this cut/i })).toBeNull();
-  });
-});
-
-describe('the player', () => {
-  it('says there is nothing to preview rather than showing a dead frame', () => {
-    show();
-    expect(screen.getByText(/published no proxy/i)).toBeTruthy();
+    const decide = screen.getByRole('group', { name: /decide about this clip/i });
+    expect(within(decide).getByText('Approved')).toBeTruthy();
+    fireEvent.click(within(decide).getByRole('button', { name: 'Open edit' }));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(onOpenEdit).toHaveBeenCalledTimes(2);
+    expect(props.onApprove).not.toHaveBeenCalled();
   });
 
-  it('carries transport an editor can drive, once there is something to drive', () => {
-    show({ proxyUrl: 'clipmill-media://proxy/proxy.mp4' });
-    for (const name of [
-      /play/i,
-      /back one frame/i,
-      /forward one frame/i,
-      /jump to the in point/i,
-    ]) {
-      expect(screen.getByRole('button', { name })).toBeTruthy();
-    }
+  it('makes a moved cut of a clip with an edit a new edit, and says so', () => {
+    show({ rows: [row({ decision: 'approved', docId: 'edt_1' })], onOpenEdit: vi.fn() });
+    const context = word('wait.').closest('.review-sentence')!;
+    fireEvent.click(within(context as HTMLElement).getByRole('button', { name: 'Start here' }));
+    expect(screen.getByRole('button', { name: 'Approve as new edit' })).toBeTruthy();
   });
 
-  it('offers no transport at all when there is no proxy behind it', () => {
-    // Dead controls over an absent video are the failure this screen is being
-    // rebuilt to remove, so their absence is the assertion.
-    show();
-    expect(screen.queryByRole('button', { name: /^play$/i })).toBeNull();
-  });
-});
-
-describe('opening the clip', () => {
-  it('seeks the proxy once it has metadata, not before', () => {
-    // A `currentTime` written before the element knows its duration is dropped,
-    // which is what made the player open at the top of the whole recording.
-    show({ proxyUrl: 'clipmill-media://proxy/proxy.mp4' });
-    const video = document.querySelector('video');
-    expect(video).toBeTruthy();
-    fireEvent.loadedMetadata(video!);
-    expect(video!.currentTime).toBeCloseTo(10, 3);
+  it('decides from the keyboard, one key a verdict', () => {
+    const onUndo = vi.fn();
+    const props = show({ rows: [row(), row({ candidateId: 'cand_2', rank: 2 })], onUndo });
+    fireEvent.keyDown(window, { key: 'x' });
+    fireEvent.keyDown(window, { key: 'h' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    fireEvent.keyDown(window, { key: 'z', metaKey: true });
+    expect(props.onDecide).toHaveBeenNthCalledWith(1, 'rejected');
+    expect(props.onDecide).toHaveBeenNthCalledWith(2, 'kept');
+    expect(props.onApprove).toHaveBeenCalledWith(null, true);
+    expect(props.onSelect).toHaveBeenCalledWith('cand_2');
+    expect(onUndo).toHaveBeenCalledOnce();
   });
 
-  it('opens at the clip it was given, not at the recording', () => {
-    show({
-      proxyUrl: 'clipmill-media://proxy/proxy.mp4',
-      rows: [row({ startTicks: 90 * SECOND, endTicks: 120 * SECOND })],
-    });
-    const video = document.querySelector('video');
-    fireEvent.loadedMetadata(video!);
-    expect(video!.currentTime).toBeCloseTo(90, 3);
+  it('leaves the keys to a control that owns them', () => {
+    const props = show();
+    const handle = screen.getByRole('slider', { name: 'End of the cut' });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: 'ArrowDown' });
+    const tab = screen.getByRole('tab', { name: /why/i });
+    fireEvent.keyDown(tab, { key: 'Enter' });
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(props.onApprove).not.toHaveBeenCalled();
   });
-});
 
-describe('inspecting a model-declined moment', () => {
-  it('shows the reason and makes the human override explicit', () => {
-    const decisions: string[] = [];
+  it('shuts every decision while one is being written', () => {
+    const props = show({ busy: true });
+    expect(screen.getByRole('button', { name: 'Reject' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Keep for later' })).toHaveProperty('disabled', true);
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(props.onApprove).not.toHaveBeenCalled();
+  });
+
+  it('says what the last action did', () => {
+    show({ notice: 'Kept for later.' });
+    expect(screen.getByText('Kept for later.')).toBeTruthy();
+  });
+
+  it('makes the override of a declined moment explicit', () => {
     show({
       rows: [
         row({
-          review: {
-            status: 'rejected',
-            route: 'local',
-            reasons: ['The local response is missing.'],
-          },
           band: 'declined',
           bandLabel: 'Declined by editorial review',
-          recommended: false,
+          review: { status: 'rejected', route: 'local', reasons: ['The payoff is missing.'] },
         }),
       ],
-      onDecide: (decision) => decisions.push(decision),
     });
-    expect(screen.getAllByText('Declined by editorial review').length).toBeGreaterThan(0);
-    expect(screen.getByText('The local response is missing.')).toBeTruthy();
-    expect(screen.queryByText('Why selected')).toBeNull();
-    expect(screen.queryByText('Pays off with')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Approve for the editor' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Edit despite review' }));
-    expect(decisions).toEqual(['approved']);
+    expect(screen.getByRole('button', { name: 'Approve anyway' })).toBeTruthy();
+    openTab(/why/i);
+    expect(screen.getByText(/did not recommend this moment/i)).toBeTruthy();
+    expect(screen.getByText('The payoff is missing.')).toBeTruthy();
+  });
+});
+
+describe('the queue', () => {
+  it('lists every clip with its decision, and hides the decided when asked', () => {
+    const props = show({
+      rows: [
+        row(),
+        row({ candidateId: 'cand_2', rank: 2, headline: 'Already rejected', decision: 'rejected' }),
+        row({ candidateId: 'cand_3', rank: 3, headline: 'Still to review' }),
+      ],
+    });
+    const queue = screen.getByRole('navigation', { name: /clips in this review/i });
+    expect(within(queue).getByText('Already rejected')).toBeTruthy();
+    expect(within(queue).getByText('1 of 3 reviewed')).toBeTruthy();
+    fireEvent.click(within(queue).getByRole('button', { name: /^to review/i }));
+    expect(within(queue).queryByText('Already rejected')).toBeNull();
+    fireEvent.click(within(queue).getByText('Still to review'));
+    expect(props.onSelect).toHaveBeenCalledWith('cand_3');
+  });
+});
+
+describe('why and details', () => {
+  it('reads an axis nobody measured as its reason, never as a zero', () => {
+    show();
+    openTab(/why/i);
+    expect(screen.getByText('no prompt was given')).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getByText(/1 of 2 measured/i)).toBeTruthy();
+  });
+
+  it('turns a quote into a place to play from', () => {
+    show();
+    openTab(/why/i);
+    fireEvent.click(screen.getAllByRole('button', { name: /play from/i })[0]!);
+    // The hook is quoted at the clip's start, 11.8 s: frame 23 of second 11.
+    expect(screen.getByTestId('timecode').textContent).toBe('00:00:11;23');
+  });
+
+  it('names the clips that cover the same ground', () => {
+    const props = show({
+      rows: [row(), row({ candidateId: 'cand_2', rank: 2, startTicks: CLIP_START + SECOND })],
+    });
+    openTab(/details/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Clip 02' }));
+    expect(props.onSelect).toHaveBeenCalledWith('cand_2');
+  });
+
+  it('keeps the search’s numbers out of the way, in diagnostics', () => {
+    show();
+    openTab(/details/i);
+    const diagnostics = screen.getByText('Diagnostics').closest('details')!;
+    expect(diagnostics.open).toBe(false);
+    expect(within(diagnostics).getByText('hook weight')).toBeTruthy();
+  });
+});
+
+describe('what cannot be shown', () => {
+  it('says there is nothing to preview rather than showing a dead frame', () => {
+    show({ proxyUrl: null });
+    expect(screen.getByText('Preview unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play' })).toHaveProperty('disabled', true);
+  });
+
+  it('says a clip is missing from the ranking rather than rendering an empty screen', () => {
+    const props = show({ candidateId: 'cand_missing' });
+    expect(screen.getByText(/not in the current ranking/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /back to results/i }));
+    expect(props.onBack).toHaveBeenCalled();
   });
 });

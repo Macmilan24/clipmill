@@ -8,8 +8,10 @@ import {
   CANDIDATE,
   OTHER_CANDIDATE,
   OLD,
+  OLD_DOC,
   OLD_JOB,
   OLD_SOURCE,
+  document,
   twoProjects,
 } from './support/clips.js';
 function deferred<T>() {
@@ -84,9 +86,12 @@ describe('results selection races', () => {
       act(() => {
         pending =
           operation === 'approval'
-            ? hook.result.current.decide(CANDIDATE, 'approved')
+            ? hook.result.current.approve(CANDIDATE, null)
             : operation === 'variation'
-              ? hook.result.current.direct(CANDIDATE, 'alternative')
+              ? hook.result.current.approve(CANDIDATE, {
+                  startTicks: 601 * 90_000,
+                  endTicks: 630 * 90_000,
+                })
               : operation === 'manual'
                 ? hook.result.current.manual(600 * 90_000, 630 * 90_000)
                 : hook.result.current.approveMany([CANDIDATE]);
@@ -151,10 +156,96 @@ describe('declined edit intent', () => {
     expect(direct).not.toHaveBeenCalled();
     expect(hook.result.current.notice).toContain('Inspect declined moments individually');
     await act(async () => {
-      await hook.result.current.decide(CANDIDATE, 'approved');
+      await hook.result.current.approve(CANDIDATE, null);
     });
     expect(direct).toHaveBeenCalledWith(
       expect.objectContaining({ candidateId: CANDIDATE, approve: true, allowDeclined: true }),
     );
+  });
+});
+
+describe('approving the cut on screen', () => {
+  it('names the runner-up as itself and any other moved cut as exact', async () => {
+    const api = fakeApi(twoProjects());
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, {
+        startTicks: 601 * 90_000,
+        endTicks: 630 * 90_000,
+      });
+    });
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, {
+        startTicks: 598 * 90_000,
+        endTicks: 633 * 90_000,
+      });
+    });
+    expect(direct.mock.calls[0]?.[0]).toMatchObject({ cut: 'alternative', approve: true });
+    expect(direct.mock.calls[0]?.[0]).not.toHaveProperty('startTicks');
+    expect(direct.mock.calls[1]?.[0]).toMatchObject({
+      cut: 'exact',
+      startTicks: 598 * 90_000,
+      endTicks: 633 * 90_000,
+      approve: true,
+    });
+  });
+
+  it('asks for a second edit only when the clip already has one and the cut moved', async () => {
+    const world = twoProjects({ editDocs: [document(OLD, OLD_DOC, CANDIDATE)] });
+    const api = fakeApi(world);
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() =>
+      expect(hook.result.current.snapshot.rows.find((row) => row.docId)).toBeTruthy(),
+    );
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, null);
+    });
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, {
+        startTicks: 598 * 90_000,
+        endTicks: 630 * 90_000,
+      });
+    });
+    expect(direct.mock.calls[0]?.[0]).not.toHaveProperty('variation');
+    expect(direct.mock.calls[1]?.[0]).toMatchObject({ cut: 'exact', variation: true });
+  });
+
+  it('marks the decision on its row at once, without blanking the board to reload', async () => {
+    const api = fakeApi(twoProjects());
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    const loading: boolean[] = [];
+    await act(async () => {
+      const pending = hook.result.current.decide(CANDIDATE, 'kept');
+      loading.push(hook.result.current.loading);
+      await pending;
+    });
+    loading.push(hook.result.current.loading);
+    expect(loading).toEqual([false, false]);
+    expect(
+      hook.result.current.snapshot.rows.find((row) => row.candidateId === CANDIDATE)?.decision,
+    ).toBe('kept');
+    expect(hook.result.current.notice).toBe('Kept for later.');
+  });
+
+  it('takes a decision back with null', async () => {
+    const world = twoProjects();
+    const api = fakeApi(world);
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => {
+      await hook.result.current.decide(CANDIDATE, 'rejected');
+    });
+    await act(async () => {
+      await hook.result.current.decide(CANDIDATE, null);
+    });
+    expect(world.decisions.has(CANDIDATE)).toBe(false);
+    expect(
+      hook.result.current.snapshot.rows.find((row) => row.candidateId === CANDIDATE)?.decision,
+    ).toBeNull();
+    expect(hook.result.current.notice).toBe('Decision cleared.');
   });
 });

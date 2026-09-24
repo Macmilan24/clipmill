@@ -238,6 +238,22 @@ impl DbActor {
                                         .map_err(StoreError::from),
                                     );
                                 }
+                                Command::ClearClipDecision {
+                                    project_id,
+                                    source_id,
+                                    candidate_id,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(
+                                        decision_store::clear(
+                                            &connection,
+                                            &project_id,
+                                            &source_id,
+                                            &candidate_id,
+                                        )
+                                        .map_err(StoreError::from),
+                                    );
+                                }
                                 Command::ListEditDocs { project_id, reply } => {
                                     let _result = reply
                                         .send(edit_store::list_edit_docs(&connection, &project_id));
@@ -898,6 +914,26 @@ impl DbHandle {
                 candidate_id,
                 decision,
                 now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Take back what somebody decided about a clip, durably.
+    pub(crate) async fn clear_clip_decision(
+        &self,
+        project_id: String,
+        source_id: String,
+        candidate_id: String,
+    ) -> Result<(), StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ClearClipDecision {
+                project_id,
+                source_id,
+                candidate_id,
                 reply,
             })
             .await
@@ -1614,6 +1650,12 @@ enum Command {
         candidate_id: String,
         decision: Decision,
         now_unix_millis: u64,
+        reply: oneshot::Sender<Result<(), StoreError>>,
+    },
+    ClearClipDecision {
+        project_id: String,
+        source_id: String,
+        candidate_id: String,
         reply: oneshot::Sender<Result<(), StoreError>>,
     },
     ListClipDecisions {
@@ -2976,6 +3018,34 @@ mod tests {
         assert_eq!(changed.decided_unix_millis, 30);
         // Newest first, which is the order a board wants.
         assert_eq!(found[0].candidate_id, "cand_a");
+
+        // Taking a decision back removes it, and that survives a restart too.
+        decision_store::clear(
+            &reopened,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_b",
+        )
+        .expect("take the approval back");
+        // Clearing what is already clear is the same answer, not an error.
+        decision_store::clear(
+            &reopened,
+            "prj_00000000000000000000000000",
+            "src_1",
+            "cand_b",
+        )
+        .expect("clear again");
+        drop(reopened);
+        let again = open_database(&path, &backups).expect("reopen again");
+        let left = decision_store::list(&again, "prj_00000000000000000000000000", "src_1")
+            .expect("read back after clearing");
+        assert_eq!(
+            left.iter()
+                .map(|record| record.candidate_id.as_str())
+                .collect::<Vec<_>>(),
+            ["cand_a"],
+            "only the decision nobody took back is left"
+        );
     }
 
     /// Directing names the clip, and the clip is the key.

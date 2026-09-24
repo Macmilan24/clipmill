@@ -1,657 +1,594 @@
 /**
- * Inspect a candidate alongside alternatives, ranking factors, and source evidence.
- * Evidence timestamps support seeking; the boundary lattice overlays the source
- * waveform. Unmeasured axes retain their reasons rather than appearing as zero.
+ * Clip Inspector: review one candidate at a time with its words, framing,
+ * surroundings and reasons, then approve, keep or reject. The cut on screen is
+ * what an approval builds; a moved cut of a clip with an edit becomes a second
+ * edit beside the first.
  */
-import '../results/workspace.css';
+import '../inspector/review.css';
 
 import {
   ArrowLeft,
+  ArrowLeftToLine,
+  ArrowRightToLine,
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock,
+  FileText,
+  Info,
+  ListChecks,
+  Maximize2,
   PanelLeft,
   RotateCcw,
-  Scissors,
-  TriangleAlert,
+  Undo2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
-import type { ClipDecision, CropPath } from '../daemon/client.js';
-import type { OverlayCue } from '../inspector/Preview.js';
-import { CandidateRail } from '../inspector/parts/CandidateRail.js';
-import { FRAME_TICKS, Player, timecode } from '../inspector/parts/Player.js';
-import { Timeline } from '../inspector/parts/Timeline.js';
+import type { CropPath } from '../daemon/client.js';
+import { DetailsPanel } from '../inspector/DetailsPanel.js';
+import { Monitor, type MonitorView } from '../inspector/Monitor.js';
+import { PlaybackController } from '../inspector/playback.js';
+import { Queue, type QueueFilter } from '../inspector/Queue.js';
+import { type Cut, clockTenths, lengthLabel, overlapsOf, sameCut } from '../inspector/review.js';
+import { BoundaryStrip, Overview, initialView, zoomView } from '../inspector/Timeline.js';
+import { TipButton } from '../inspector/TipButton.js';
+import { TranscriptPanel } from '../inspector/TranscriptPanel.js';
+import { useReviewKeys } from '../inspector/useReviewKeys.js';
+import { WhyPanel } from '../inspector/WhyPanel.js';
 import type { Peaks } from '../results/loader.js';
-import { type ClipRow, type Quote, clock, duration, topFactors } from '../results/model.js';
-import { ScoreRing } from '../results/parts/ScoreRing.js';
+import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
 import { TONE_INK, stateOf, wash } from '../results/parts/state.js';
+import { snapEnd, snapStart } from '../results/transcript.js';
+import type { TranscriptState } from '../results/useResults.js';
 
 export interface ClipInspectorProps {
   readonly rows: readonly ClipRow[];
   readonly candidateId: string;
   readonly proxyUrl: string | null;
   readonly crop: CropPath | null;
-  readonly cues: readonly OverlayCue[];
   readonly peaks: Peaks | null;
-  /** True while a decision or a direct is in flight. */
+  readonly tileUrl: (atTicks: number) => string | null;
+  readonly transcript: TranscriptState;
+  /** How long the recording is, when the run measured it. */
+  readonly sourceDurationTicks: number | null;
+  readonly durationTarget: { readonly minTicks: number; readonly maxTicks: number } | null;
+  /** True while a decision is being written. */
   readonly busy: boolean;
   /** What the last action said, when it said something. */
   readonly notice: string | null;
+  readonly autoAdvance: boolean;
+  readonly onAutoAdvance: (on: boolean) => void;
   readonly onSelect: (candidateId: string) => void;
   readonly onBack: () => void;
-  readonly onDecide: (decision: ClipDecision) => void;
-  readonly onUseAlternative: () => void;
   /**
-   * Build the document from a boundary the editor moved.
-   *
-   * The daemon snaps whatever it is given to the lattice, so this is a proposal
-   * rather than an instruction — which is why it is a named action and not
-   * something a drag performs on its own.
+   * Approve with the cut on screen — `null` when it is still the search's —
+   * and with `open`, go on to edit it.
    */
-  readonly onTakeCut: (startTicks: number, endTicks: number) => void;
-  /**
-   * Open the clip's existing edit document in the editor.
-   *
-   * Null when the clip has none yet. Approving is what makes one — and opens
-   * it — so this is the way back to an edit that already exists, offered
-   * beside the approval rather than folded into it.
-   */
-  readonly onEdit: (() => void) | null;
+  readonly onApprove: (cut: Cut | null, open: boolean) => void;
+  /** Keep, reject, or take a decision back with `null`. */
+  readonly onDecide: (decision: 'kept' | 'rejected' | null) => void;
+  /** Take back the last decision made here, or null when there is none. */
+  readonly onUndo: (() => void) | null;
+  /** Open the clip's existing edit, or null when it has none yet. */
+  readonly onOpenEdit: (() => void) | null;
 }
 
-/** A quote with its position, as a card whose timecode jumps the player. */
-function QuoteCard({
-  quote,
-  label,
-  onJump,
-}: {
-  readonly quote: Quote;
-  readonly label: string;
-  readonly onJump: (ticks: number) => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 rounded-[var(--cm-radius-control)] border border-[var(--cm-recessed-border)] bg-[var(--cm-recessed)] p-3">
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="text-[10px] tracking-[0.09em] text-[var(--cm-text-muted)] uppercase">
-          {label}
-        </span>
-        <p className="text-[12px] leading-snug text-[var(--cm-text-primary)]">“{quote.text}”</p>
+type Tab = 'transcript' | 'why' | 'details';
+
+/** A remembered preference, read defensively: storage can be absent or refuse. */
+function remembered<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const value = localStorage.getItem(key);
+    return allowed.includes(value as T) ? (value as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function remember(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* A preference that cannot be saved is still in effect for this session. */
+  }
+}
+
+export function ClipInspector(props: ClipInspectorProps) {
+  const row = props.rows.find((candidate) => candidate.candidateId === props.candidateId);
+  if (!row) {
+    return (
+      <div className="review-missing">
+        <p>That clip is not in the current ranking.</p>
+        <Button variant="outline" onClick={props.onBack}>
+          Back to Results
+        </Button>
       </div>
-      {quote.atTicks !== null && (
-        <button
-          type="button"
-          onClick={() => onJump(quote.atTicks!)}
-          title="Jump the player to this line"
-          className="mono shrink-0 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[var(--cm-accent-selected)]"
-          style={{ color: 'var(--cm-accent)', background: 'var(--cm-accent-selected)' }}
-        >
-          {clock(quote.atTicks)}
-        </button>
-      )}
+    );
+  }
+  // Keyed by clip: a different clip is a different cut, view and audition,
+  // and none of the last one's should leak into it.
+  return <Review key={row.candidateId} row={row} {...props} />;
+}
+
+function Review({
+  row,
+  rows,
+  proxyUrl,
+  crop,
+  peaks,
+  tileUrl,
+  transcript,
+  sourceDurationTicks,
+  durationTarget,
+  busy,
+  notice,
+  autoAdvance,
+  onAutoAdvance,
+  onSelect,
+  onBack,
+  onApprove,
+  onDecide,
+  onUndo,
+  onOpenEdit,
+}: ClipInspectorProps & { readonly row: ClipRow }) {
+  // One clock per clip, starting on its first frame.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by clip upstream
+  const controller = useMemo(() => new PlaybackController(row.startTicks), []);
+  useEffect(() => () => controller.dispose(), [controller]);
+
+  const chosen: Cut = { startTicks: row.startTicks, endTicks: row.endTicks };
+  const alternative = row.boundary?.alternative ?? null;
+  const [draft, setDraft] = useState<Cut | null>(null);
+  const [auditioning, setAuditioning] = useState(false);
+  const shown: Cut = auditioning && alternative ? alternative : (draft ?? chosen);
+  const moved = !sameCut(shown, chosen);
+
+  const durationTicks = Math.max(
+    sourceDurationTicks ?? 0,
+    ...rows.map((candidate) => candidate.endTicks + 10 * TICKS_PER_SECOND),
+  );
+  const [view, setView] = useState<Cut>(() => initialView(chosen, durationTicks));
+  const [tab, setTab] = useState<Tab>(() =>
+    remembered('clipmill.review.tab', ['transcript', 'why', 'details'], 'transcript'),
+  );
+  const [monitorView, setMonitorView] = useState<MonitorView>(() =>
+    remembered('clipmill.review.view', ['result', 'source'], 'result'),
+  );
+  const [safeArea, setSafeArea] = useState(
+    () => remembered('clipmill.review.safe', ['on', 'off'], 'off') === 'on',
+  );
+  const [queueOpen, setQueueOpen] = useState(
+    () => remembered('clipmill.review.queue', ['open', 'closed'], 'open') === 'open',
+  );
+  const [filter, setFilter] = useState<QueueFilter>(() =>
+    remembered('clipmill.review.filter', ['all', 'undecided'], 'all'),
+  );
+
+  // Playing through the cut on screen stops at its end.
+  useEffect(() => {
+    controller.setCut(shown);
+  }, [controller, shown.startTicks, shown.endTicks]);
+
+  const words = transcript.status === 'ready' ? transcript.transcript : null;
+  const index = rows.indexOf(row);
+  const queue = rows.filter(
+    (candidate) =>
+      filter === 'all' || candidate.decision === null || candidate.candidateId === row.candidateId,
+  );
+  const inQueue = queue.indexOf(row);
+  const overlaps = useMemo(() => overlapsOf(rows, row), [rows, row]);
+  const approved = row.decision === 'approved';
+  const hasEdit = row.docId !== null;
+  const declined = row.review?.status === 'rejected';
+  const state = stateOf(row);
+
+  const setCut = (next: Cut) => {
+    setAuditioning(false);
+    setDraft(sameCut(next, chosen) ? null : next);
+    // An edge moved out of sight — from the transcript, say — brings the
+    // strip with it, so the cut being judged is the cut being shown.
+    if (next.startTicks < view.startTicks || next.endTicks > view.endTicks) {
+      setView(initialView(next, durationTicks));
+    }
+  };
+  /** Move one edge from outside the strip, and park the playhead on it. */
+  const moveEdge = (edge: 'in' | 'out', ticks: number) => {
+    setCut(
+      edge === 'in'
+        ? { startTicks: ticks, endTicks: shown.endTicks }
+        : { startTicks: shown.startTicks, endTicks: ticks },
+    );
+    controller.pause();
+    controller.seek(ticks);
+  };
+  const approve = (open: boolean) => {
+    if (busy) return;
+    // Already approved, with its edit: there is nothing to record, only to open.
+    if (approved && !moved) {
+      if (open) onOpenEdit?.();
+      return;
+    }
+    onApprove(moved ? shown : null, open);
+  };
+  const decide = (decision: 'kept' | 'rejected') => {
+    if (busy) return;
+    onDecide(row.decision === decision ? null : decision);
+  };
+  const markAt = (edge: 'in' | 'out') => {
+    const at = controller.getState().ticks;
+    const landed = words ? (edge === 'in' ? snapStart(words, at) : snapEnd(words, at)) : at;
+    if (edge === 'in' && landed < shown.endTicks - TICKS_PER_SECOND) moveEdge('in', landed);
+    else if (edge === 'out' && landed > shown.startTicks + TICKS_PER_SECOND)
+      moveEdge('out', landed);
+  };
+
+  useReviewKeys({
+    toggle: () => controller.toggle(),
+    pause: () => controller.pause(),
+    shuttle: (direction) => controller.shuttle(direction),
+    step: (frames) => controller.step(frames),
+    skip: (seconds) => controller.seek(controller.getState().ticks + seconds * TICKS_PER_SECOND),
+    goToStart: () => controller.seek(shown.startTicks),
+    goToEnd: () => controller.seek(shown.endTicks),
+    playAroundStart: () => controller.playAround(shown.startTicks),
+    playAroundEnd: () => controller.playAround(shown.endTicks),
+    markStart: () => markAt('in'),
+    markEnd: () => markAt('out'),
+    previousClip: () => {
+      const previous = queue[inQueue - 1];
+      if (previous) onSelect(previous.candidateId);
+    },
+    nextClip: () => {
+      const next = queue[inQueue + 1];
+      if (next) onSelect(next.candidateId);
+    },
+    approve: () => approve(false),
+    approveAndEdit: () => approve(true),
+    keep: () => decide('kept'),
+    reject: () => decide('rejected'),
+    clear: () => {
+      if (!busy && row.decision !== null) onDecide(null);
+    },
+    undo: () => onUndo?.(),
+  });
+
+  const lengthDelta = shown.endTicks - shown.startTicks - (chosen.endTicks - chosen.startTicks);
+
+  return (
+    <div className="review-workspace">
+      <header className="review-heading">
+        <div className="review-identity">
+          <TipButton label="Back to results" onClick={onBack}>
+            <ArrowLeft />
+          </TipButton>
+          <TipButton
+            label={queueOpen ? 'Hide the clip list' : 'Show the clip list'}
+            pressed={queueOpen}
+            onClick={() => {
+              setQueueOpen(!queueOpen);
+              remember('clipmill.review.queue', queueOpen ? 'closed' : 'open');
+            }}
+          >
+            <PanelLeft />
+          </TipButton>
+          <div className="review-title">
+            <h1 title={row.headline}>{row.headline || 'Untitled clip'}</h1>
+            <p>
+              <span className="mono">
+                Clip {String(row.rank).padStart(2, '0')} of {rows.length}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span className="mono">
+                {clockTenths(chosen.startTicks)}–{clockTenths(chosen.endTicks)}
+              </span>
+              <span
+                className="review-state"
+                style={{ color: TONE_INK[state.tone], background: wash(state.tone) }}
+              >
+                {state.label}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div className="review-heading-actions">
+          {notice && (
+            <p className="review-notice" role="status" title={notice}>
+              {notice}
+            </p>
+          )}
+          {onUndo && (
+            <TipButton label="Undo the last decision" onClick={onUndo} disabled={busy}>
+              <Undo2 />
+            </TipButton>
+          )}
+          <div className="review-nav">
+            <TipButton
+              label="Previous clip"
+              disabled={inQueue <= 0}
+              onClick={() => onSelect(queue[inQueue - 1]!.candidateId)}
+            >
+              <ChevronLeft />
+            </TipButton>
+            <span className="mono">
+              {index + 1}/{rows.length}
+            </span>
+            <TipButton
+              label="Next clip"
+              disabled={inQueue < 0 || inQueue >= queue.length - 1}
+              onClick={() => onSelect(queue[inQueue + 1]!.candidateId)}
+            >
+              <ChevronRight />
+            </TipButton>
+          </div>
+          <div className="review-decisions" role="group" aria-label="Decide about this clip">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="review-reject"
+              aria-pressed={row.decision === 'rejected'}
+              disabled={busy}
+              onClick={() => decide('rejected')}
+            >
+              Reject
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={row.decision === 'kept'}
+              disabled={busy}
+              onClick={() => decide('kept')}
+            >
+              Keep for later
+            </Button>
+            {hasEdit && onOpenEdit ? (
+              <Button variant="outline" size="sm" disabled={busy} onClick={onOpenEdit}>
+                Open edit
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => approve(true)}>
+                {declined ? 'Edit anyway' : 'Approve & edit'}
+              </Button>
+            )}
+            {approved && !moved ? (
+              <span className="review-approved" role="status">
+                <Check aria-hidden="true" />
+                Approved
+              </span>
+            ) : (
+              <Button size="sm" disabled={busy} onClick={() => approve(false)}>
+                {busy
+                  ? 'Working…'
+                  : hasEdit && moved
+                    ? 'Approve as new edit'
+                    : declined
+                      ? 'Approve anyway'
+                      : 'Approve'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div className="review-body" data-queue={queueOpen ? 'open' : 'closed'}>
+        {queueOpen && (
+          <Queue
+            rows={rows}
+            candidateId={row.candidateId}
+            filter={filter}
+            onFilter={(next) => {
+              setFilter(next);
+              remember('clipmill.review.filter', next);
+            }}
+            tileUrl={tileUrl}
+            busy={busy}
+            onSelect={onSelect}
+            autoAdvance={autoAdvance}
+            onAutoAdvance={onAutoAdvance}
+          />
+        )}
+
+        <Monitor
+          src={proxyUrl}
+          crop={crop}
+          controller={controller}
+          cut={shown}
+          view={monitorView}
+          onView={(next) => {
+            setMonitorView(next);
+            remember('clipmill.review.view', next);
+          }}
+          safeArea={safeArea}
+          onSafeArea={(next) => {
+            setSafeArea(next);
+            remember('clipmill.review.safe', next ? 'on' : 'off');
+          }}
+          alternative={
+            alternative
+              ? {
+                  shown: auditioning,
+                  onShow: (on) => {
+                    setAuditioning(on);
+                    controller.pause();
+                    controller.seek(on ? alternative.startTicks : (draft ?? chosen).startTicks);
+                  },
+                }
+              : null
+          }
+        />
+
+        <aside className="review-side" aria-label="About this clip">
+          <Tabs
+            value={tab}
+            onValueChange={(next) => {
+              setTab(next as Tab);
+              remember('clipmill.review.tab', next);
+            }}
+            className="review-tabs"
+          >
+            <TabsList className="review-tab-list">
+              <TabsTrigger value="transcript">
+                <FileText aria-hidden="true" />
+                Transcript
+              </TabsTrigger>
+              <TabsTrigger value="why">
+                <ListChecks aria-hidden="true" />
+                Why
+              </TabsTrigger>
+              <TabsTrigger value="details">
+                <Info aria-hidden="true" />
+                Details
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="transcript" className="review-tab-panel">
+              <TranscriptPanel
+                state={transcript}
+                cut={shown}
+                controller={controller}
+                onStart={(ticks) => moveEdge('in', ticks)}
+                onEnd={(ticks) => moveEdge('out', ticks)}
+              />
+            </TabsContent>
+            <TabsContent value="why" className="review-tab-panel">
+              <WhyPanel row={row} onJump={(ticks) => controller.seek(ticks)} />
+            </TabsContent>
+            <TabsContent value="details" className="review-tab-panel">
+              <DetailsPanel
+                row={row}
+                total={rows.length}
+                cut={shown}
+                overlaps={overlaps}
+                durationTarget={durationTarget}
+                onSelect={onSelect}
+              />
+            </TabsContent>
+          </Tabs>
+        </aside>
+      </div>
+
+      <section className="review-timeline" aria-label="Timeline">
+        <Overview
+          rows={rows}
+          candidateId={row.candidateId}
+          durationTicks={durationTicks}
+          view={view}
+          controller={controller}
+          onSelect={onSelect}
+          onSeek={(ticks) => controller.seek(ticks)}
+        />
+        <div className="review-strip-bar">
+          <span className="review-cut-summary">
+            <span className="review-lane-label">
+              {auditioning ? 'Alternative' : moved ? 'Your cut' : 'Cut'}
+            </span>
+            <span className="mono">
+              {clockTenths(shown.startTicks)} – {clockTenths(shown.endTicks)}
+            </span>
+            <span className="mono review-cut-length">
+              {lengthLabel(shown.endTicks - shown.startTicks)}
+              {moved && lengthDelta !== 0 && (
+                <span>
+                  {' '}
+                  ({lengthDelta > 0 ? '+' : '−'}
+                  {lengthLabel(Math.abs(lengthDelta))})
+                </span>
+              )}
+            </span>
+          </span>
+          {auditioning && alternative && (
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => {
+                setDraft(sameCut(alternative, chosen) ? null : alternative);
+                setAuditioning(false);
+              }}
+            >
+              Use this cut
+            </Button>
+          )}
+          {moved && !auditioning && (
+            <Button size="xs" variant="ghost" onClick={() => setDraft(null)}>
+              <RotateCcw aria-hidden="true" />
+              Back to the suggested cut
+            </Button>
+          )}
+          <span className="review-spacer" />
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={!proxyUrl}
+            onClick={() => controller.playAround(shown.startTicks)}
+          >
+            <ArrowRightToLine aria-hidden="true" />
+            Play the start
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={!proxyUrl}
+            onClick={() => controller.playAround(shown.endTicks)}
+          >
+            <ArrowLeftToLine aria-hidden="true" />
+            Play the end
+          </Button>
+          <span className="review-divider" aria-hidden="true" />
+          <TipButton
+            label="Zoom out"
+            size="icon-xs"
+            onClick={() =>
+              setView(zoomView(view, 1.6, (view.startTicks + view.endTicks) / 2, durationTicks))
+            }
+          >
+            <ZoomOut />
+          </TipButton>
+          <TipButton
+            label="Zoom in"
+            size="icon-xs"
+            onClick={() =>
+              setView(zoomView(view, 1 / 1.6, controller.getState().ticks, durationTicks))
+            }
+          >
+            <ZoomIn />
+          </TipButton>
+          <TipButton
+            label="Fit the cut"
+            size="icon-xs"
+            onClick={() => setView(initialView(shown, durationTicks))}
+          >
+            <Maximize2 />
+          </TipButton>
+        </div>
+        <BoundaryStrip
+          cut={shown}
+          chosen={chosen}
+          alternative={auditioning ? null : alternative}
+          suggestedStarts={row.latticeStarts}
+          suggestedEnds={row.latticeEnds}
+          transcript={words}
+          peaks={peaks}
+          tileUrl={tileUrl}
+          durationTicks={durationTicks}
+          view={view}
+          onView={setView}
+          controller={controller}
+          onCut={auditioning ? null : setCut}
+        />
+      </section>
+      <PlayingAnnouncer controller={controller} />
     </div>
   );
 }
 
-export function ClipInspector({
-  rows,
-  candidateId,
-  proxyUrl,
-  crop,
-  cues,
-  peaks,
-  busy,
-  notice,
-  onSelect,
-  onBack,
-  onDecide,
-  onUseAlternative,
-  onTakeCut,
-  onEdit,
-}: ClipInspectorProps) {
-  const row = rows.find((candidate) => candidate.candidateId === candidateId);
-
-  /** The boundary as dragged, or null while it is still the ranker's. */
-  const [draft, setDraft] = useState<{ startTicks: number; endTicks: number } | null>(null);
-  const [positionTicks, setPositionTicks] = useState(row?.startTicks ?? 0);
-  const [seekNonce, setSeekNonce] = useState(0);
-  const [showCandidates, setShowCandidates] = useState(false);
-
-  // A different clip is a different window: the draft belonged to the last one,
-  // and leaving the playhead where it was would seek the proxy to a position
-  // outside the clip now on screen.
-  useEffect(() => {
-    setDraft(null);
-    setPositionTicks(row?.startTicks ?? 0);
-    setSeekNonce((nonce) => nonce + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the clip is the signal
-  }, [candidateId, row?.startTicks]);
-
-  const cut = draft ?? { startTicks: row?.startTicks ?? 0, endTicks: row?.endTicks ?? 0 };
-  const moved =
-    row !== undefined && (cut.startTicks !== row.startTicks || cut.endTicks !== row.endTicks);
-
-  const scrub = (ticks: number) => {
-    setPositionTicks(Math.min(cut.endTicks, Math.max(cut.startTicks, ticks)));
-    setSeekNonce((nonce) => nonce + 1);
-  };
-
-  /** Move one edge, keeping the window at least a frame wide. */
-  const onDraft = (edge: 'in' | 'out', ticks: number) => {
-    if (!row) {
-      return;
-    }
-    const next =
-      edge === 'in'
-        ? { startTicks: Math.min(ticks, cut.endTicks - FRAME_TICKS), endTicks: cut.endTicks }
-        : { startTicks: cut.startTicks, endTicks: Math.max(ticks, cut.startTicks + FRAME_TICKS) };
-    setDraft(next);
-    setPositionTicks(edge === 'in' ? next.startTicks : next.endTicks);
-    setSeekNonce((nonce) => nonce + 1);
-  };
-
-  if (!row) {
-    return (
-      <div className="grid flex-1 place-items-center p-8">
-        <div className="flex flex-col items-center gap-3">
-          <p className="text-[13px] text-[var(--cm-text-secondary)]">
-            That clip is not in the current ranking.
-          </p>
-          <Button variant="outline" onClick={onBack}>
-            Back to the board
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const measured = (row.review ? [] : row.axes).filter((axis) => axis.value !== null);
-  const hero = row.review ? [] : topFactors(row, 3);
-  const heroKeys = new Set(hero.map((axis) => axis.axis));
-  const detail = row.axes.filter((axis) => !heroKeys.has(axis.axis));
-  const state = stateOf(row);
-
-  // The reasons: what the proposer said opens and pays off the clip, then the
-  // sentences the strongest factors were read from, without repeating one.
-  const seen = new Set<string>();
-  const reasons: { label: string; quote: Quote }[] = [];
-  const add = (label: string, quote: Quote | null | undefined) => {
-    if (quote && !seen.has(quote.text)) {
-      seen.add(quote.text);
-      reasons.push({ label, quote });
-    }
-  };
-  add(row.review ? 'Opening excerpt' : 'Opens with', row.hook);
-  add(row.review ? 'Closing excerpt' : 'Pays off with', row.payoff);
-  for (const axis of hero) {
-    add(axis.label, axis.evidence[0]);
-  }
-
+/** Says play and pause out loud for screen readers, which cannot see the icon. */
+function PlayingAnnouncer({ controller }: { readonly controller: PlaybackController }) {
+  const playing = useSyncExternalStore(controller.subscribe, () => controller.getState().playing);
   return (
-    <div className="workspace-page clip-review-workspace">
-      <header className="clip-review-heading">
-        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
-          <ArrowLeft className="size-4" aria-hidden />
-          Results
-        </Button>
-        <h1 className="truncate text-[length:var(--cm-type-card-title)] font-semibold text-[var(--cm-text-primary)]">
-          {row.headline || 'Untitled clip'}
-        </h1>
-        <span
-          className="results-run-state"
-          style={{ color: TONE_INK[state.tone], background: wash(state.tone) }}
-        >
-          {state.label}
-        </span>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-expanded={showCandidates}
-            aria-controls="clip-review-candidates"
-            onClick={() => setShowCandidates((shown) => !shown)}
-          >
-            <PanelLeft />
-            Clips
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Previous clip"
-            disabled={rows.indexOf(row) === 0 || busy}
-            onClick={() => onSelect(rows[rows.indexOf(row) - 1]!.candidateId)}
-          >
-            <ChevronLeft />
-          </Button>
-          <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
-            {rows.indexOf(row) + 1} / {rows.length}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Next clip"
-            disabled={rows.indexOf(row) === rows.length - 1 || busy}
-            onClick={() => onSelect(rows[rows.indexOf(row) + 1]!.candidateId)}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
-      </header>
-
-      <div className="inspector-layout" data-candidates={showCandidates}>
-        {showCandidates && (
-          <div id="clip-review-candidates" className="clip-review-candidate-panel">
-            <CandidateRail rows={rows} candidateId={candidateId} onSelect={onSelect} busy={busy} />
-          </div>
-        )}
-
-        <section className="clip-review-viewer" aria-label="The clip">
-          <div className="clip-review-player-panel">
-            <Player
-              src={proxyUrl}
-              startTicks={cut.startTicks}
-              endTicks={cut.endTicks}
-              crop={crop}
-              cues={cues}
-              positionTicks={positionTicks}
-              onPosition={setPositionTicks}
-              seekNonce={seekNonce}
-            />
-          </div>
-
-          <Timeline
-            startTicks={cut.startTicks}
-            endTicks={cut.endTicks}
-            latticeStarts={row.latticeStarts}
-            latticeEnds={row.latticeEnds}
-            alternative={row.boundary?.alternative ?? null}
-            positionTicks={positionTicks}
-            peaks={peaks}
-            onScrub={scrub}
-            onDraft={onDraft}
-          />
-
-          {moved && (
-            <div className="flex shrink-0 items-center gap-3 rounded-[var(--cm-radius-control)] border border-[var(--cm-glass-border)] bg-[var(--cm-glass-elevated)] px-3 py-2">
-              <p className="min-w-0 flex-1 text-[11px] text-[var(--cm-text-secondary)]">
-                Moved to{' '}
-                <span className="mono text-[var(--cm-text-primary)]">
-                  {timecode(cut.startTicks)} – {timecode(cut.endTicks)}
-                </span>
-                . The cut snaps to a nearby speech boundary.
-              </p>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => {
-                  setDraft(null);
-                  scrub(row.startTicks);
-                }}
-              >
-                <RotateCcw className="size-3.5" aria-hidden />
-                Reset
-              </Button>
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() => onTakeCut(cut.startTicks, cut.endTicks)}
-              >
-                <Scissors className="size-3.5" aria-hidden />
-                Take this cut
-              </Button>
-            </div>
-          )}
-        </section>
-
-        <section
-          className="inspector-review workspace-panel flex min-h-0 shrink-0 flex-col overflow-hidden"
-          aria-label="Why this clip"
-        >
-          <Tabs key={candidateId} defaultValue="score" className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="clip-review-tabs">
-              <TabsTrigger value="score">{row.review ? 'Review' : 'Score'}</TabsTrigger>
-              <TabsTrigger value="evidence">Evidence</TabsTrigger>
-              <TabsTrigger value="boundary">Boundary</TabsTrigger>
-              <TabsTrigger value="risk">
-                Checks{row.warnings.length > 0 ? ` (${row.warnings.length})` : ''}
-              </TabsTrigger>
-            </TabsList>
-
-            <div className="clip-review-context">
-              <TabsContent value="score" className="mt-0 flex flex-col gap-5">
-                <dl className="clip-review-facts">
-                  <div>
-                    <dt>Duration</dt>
-                    <dd>{duration(row.durationSeconds)}</dd>
-                  </div>
-                  <div>
-                    <dt>Source</dt>
-                    <dd>
-                      {clock(row.startTicks)} – {clock(row.endTicks)}
-                    </dd>
-                  </div>
-                </dl>
-                <div className="flex items-center gap-5">
-                  {row.review ? (
-                    <div className="min-w-0">
-                      <span className="mb-3 inline-flex items-center gap-2 rounded-md bg-[var(--cm-recessed)] px-2.5 py-1.5 text-[12px] font-medium">
-                        {row.band === 'needs_review' || row.band === 'declined' ? (
-                          <TriangleAlert className="size-3.5 text-[var(--cm-warning-ink)]" />
-                        ) : (
-                          <Check className="size-3.5 text-[var(--cm-success-ink)]" />
-                        )}
-                        {row.bandLabel}
-                      </span>
-                      {row.review.summary && (
-                        <p className="text-[13px] leading-relaxed text-[var(--cm-text-primary)]">
-                          {row.review.summary}
-                        </p>
-                      )}
-                      <details className="results-disclosure">
-                        <summary>Review notes</summary>
-                        <ul className="results-disclosure-content flex flex-col gap-3">
-                          {row.review.reasons.map((reason, i) => (
-                            <li
-                              key={i}
-                              className="border-l-2 border-[var(--cm-glass-border)] pl-3 text-[12px] leading-relaxed text-[var(--cm-text-secondary)]"
-                            >
-                              {reason}
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                      <p className="mt-5 text-[11px] text-[var(--cm-text-muted)]">
-                        {row.review.route === 'cloud'
-                          ? 'Cloud-assisted review'
-                          : 'Reviewed locally with Qwen'}{' '}
-                        · Your decision is final.
-                      </p>
-                    </div>
-                  ) : (
-                    <ScoreRing
-                      score={row.displayScore}
-                      band={row.band}
-                      size="lg"
-                      caption={row.bandLabel}
-                    />
-                  )}
-                  <div className={row.review ? 'hidden' : 'flex min-w-0 flex-1 flex-col gap-2.5'}>
-                    {hero.map((axis, index) => (
-                      <div key={axis.axis} className="flex flex-col gap-1">
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-[10px] tracking-[0.06em] text-[var(--cm-text-secondary)] uppercase">
-                            {axis.label}
-                          </span>
-                          <span
-                            className="mono text-[11px]"
-                            style={{
-                              color: index === 0 ? 'var(--cm-accent)' : 'var(--cm-text-primary)',
-                            }}
-                          >
-                            {Math.round((axis.value ?? 0) * 100)}
-                          </span>
-                        </div>
-                        <div className="h-1 overflow-hidden rounded-full bg-[var(--cm-recessed)]">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${Math.round((axis.value ?? 0) * 100)}%`,
-                              background:
-                                index === 0 ? 'var(--cm-accent)' : 'var(--cm-text-secondary)',
-                              boxShadow:
-                                index === 0
-                                  ? '0 0 6px color-mix(in srgb, var(--cm-accent) 60%, transparent)'
-                                  : undefined,
-                              transition: 'width 640ms cubic-bezier(0.22, 1, 0.36, 1)',
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    {!row.review && hero.length === 0 && (
-                      <p className="text-[11px] text-[var(--cm-text-muted)]">
-                        No axis was measured for this clip.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {!row.review && (
-                  <details className="results-disclosure">
-                    <summary>
-                      Detailed scores · {measured.length} of {row.axes.length} measured
-                    </summary>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                      {detail.map((axis) => (
-                        <div key={axis.axis} className="flex flex-col gap-1">
-                          <div className="flex items-baseline justify-between">
-                            <span className="mono text-[11px] text-[var(--cm-text-secondary)]">
-                              {axis.label}
-                            </span>
-                            <span className="mono text-[11px] text-[var(--cm-text-primary)]">
-                              {axis.value === null ? '—' : Math.round(axis.value * 100)}
-                            </span>
-                          </div>
-                          {axis.value === null ? (
-                            <p
-                              className="truncate text-[10px] text-[var(--cm-text-muted)]"
-                              title={axis.unavailableReason ?? 'not measured'}
-                            >
-                              {axis.unavailableReason ?? 'not measured'}
-                            </p>
-                          ) : (
-                            <div className="h-0.5 bg-[var(--cm-recessed)]">
-                              <div
-                                className="h-full bg-[var(--cm-text-secondary)]"
-                                style={{ width: `${Math.round(axis.value * 100)}%` }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-
-                {reasons.length > 0 && (
-                  <details className="results-disclosure">
-                    <summary>{row.review ? 'Source excerpts' : 'Why selected'}</summary>
-                    <div className="results-disclosure-content flex flex-col gap-3">
-                      {reasons.map((reason) => (
-                        <QuoteCard
-                          key={`${reason.label}-${reason.quote.text}`}
-                          label={reason.label}
-                          quote={reason.quote}
-                          onJump={scrub}
-                        />
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </TabsContent>
-
-              <TabsContent value="evidence" className="mt-0 flex flex-col gap-3">
-                {row.axes.every((axis) => axis.evidence.length === 0) ? (
-                  <p className="text-[12px] text-[var(--cm-text-muted)]">
-                    No evidence index was published for this analysis, so the factors carry
-                    positions but no text.
-                  </p>
-                ) : (
-                  row.axes.flatMap((axis) =>
-                    axis.evidence.map((quote, index) => (
-                      <QuoteCard
-                        key={`${axis.axis}-${index}`}
-                        label={axis.label}
-                        quote={quote}
-                        onJump={scrub}
-                      />
-                    )),
-                  )
-                )}
-              </TabsContent>
-
-              <TabsContent value="boundary" className="mt-0 flex flex-col gap-4">
-                {row.boundary ? (
-                  <>
-                    <ul className="flex flex-col gap-2">
-                      {(row.review ? [] : row.boundary.terms).map((term) => (
-                        <li key={term.name} className="flex items-baseline justify-between gap-3">
-                          <span className="text-[12px] text-[var(--cm-text-secondary)]">
-                            {term.name.replaceAll('_', ' ')}
-                          </span>
-                          <span className="mono text-[11px] text-[var(--cm-text-primary)]">
-                            {term.value.toFixed(3)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {row.boundary.alternative ? (
-                      <div className="flex flex-col gap-2 border-t border-[var(--cm-glass-border)] pt-3">
-                        <p className="text-[11px] text-[var(--cm-text-secondary)]">
-                          The runner-up cut ran{' '}
-                          <span className="mono text-[var(--cm-text-primary)]">
-                            {clock(row.boundary.alternative.startTicks)} –{' '}
-                            {clock(row.boundary.alternative.endTicks)}
-                          </span>
-                          . Taking it rebuilds the edit document from that cut.
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy}
-                          onClick={onUseAlternative}
-                        >
-                          Use the alternative cut
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="border-t border-[var(--cm-glass-border)] pt-3 text-[11px] text-[var(--cm-text-muted)]">
-                        The lattice offered one legal pair, so there is no alternative to swap to.
-                      </p>
-                    )}
-                    <dl className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[var(--cm-glass-border)] pt-3 text-[11px]">
-                      <dt className="text-[var(--cm-text-muted)]">Length</dt>
-                      <dd className="mono text-right text-[var(--cm-text-primary)]">
-                        {duration(row.durationSeconds)}
-                      </dd>
-                      <dt className="text-[var(--cm-text-muted)]">Legal pairs</dt>
-                      <dd className="mono text-right text-[var(--cm-text-primary)]">
-                        {row.latticeStarts.length}×{row.latticeEnds.length}
-                      </dd>
-                      {row.clusterId && (
-                        <>
-                          <dt className="text-[var(--cm-text-muted)]">Cluster</dt>
-                          <dd className="mono truncate text-right text-[var(--cm-text-primary)]">
-                            {row.clusterId}
-                          </dd>
-                        </>
-                      )}
-                    </dl>
-                  </>
-                ) : (
-                  <p className="text-[12px] text-[var(--cm-text-muted)]">
-                    This candidate carries no boundary record.
-                  </p>
-                )}
-              </TabsContent>
-
-              <TabsContent value="risk" className="mt-0 flex flex-col gap-3">
-                {row.warnings.length === 0 && row.penalties.length === 0 ? (
-                  <p className="flex items-center gap-2 text-[12px] text-[var(--cm-text-secondary)]">
-                    <Check className="size-4 text-[var(--cm-success-ink)]" aria-hidden />
-                    The ranker recorded nothing against this clip.
-                  </p>
-                ) : (
-                  <>
-                    {row.warnings.map((warning) => (
-                      <p
-                        key={warning}
-                        className="flex items-start gap-2 text-[12px] text-[var(--cm-warning-ink)]"
-                      >
-                        <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-                        {warning}
-                      </p>
-                    ))}
-                    {row.penalties.map((penalty) => (
-                      <p
-                        key={penalty.reason}
-                        className="flex items-start justify-between gap-2 text-[12px] text-[var(--cm-text-secondary)]"
-                      >
-                        <span>{penalty.reason.replaceAll('_', ' ')}</span>
-                        <span className="mono text-[var(--cm-danger-ink)]">−{penalty.value}</span>
-                      </p>
-                    ))}
-                  </>
-                )}
-              </TabsContent>
-            </div>
-          </Tabs>
-
-          <footer className="clip-review-actions">
-            {row.review?.status === 'rejected' && (
-              <p className="text-[11px] leading-relaxed text-[var(--cm-warning-ink)]">
-                The model did not recommend this moment. You can inspect the evidence and create
-                your own edit; its original review is preserved.
-              </p>
-            )}
-            {notice && (
-              <p
-                className="flex items-start gap-2 text-[11px] text-[var(--cm-text-secondary)]"
-                role="status"
-              >
-                <Clock className="mt-px size-3 shrink-0" aria-hidden />
-                {notice}
-              </p>
-            )}
-            <Button
-              className="w-full justify-center"
-              disabled={busy}
-              onClick={() => onDecide('approved')}
-            >
-              {busy
-                ? 'Working…'
-                : row.review?.status === 'rejected'
-                  ? 'Edit despite review'
-                  : onEdit
-                    ? 'Approve and open the edit'
-                    : 'Approve for the editor'}
-            </Button>
-            {onEdit && (
-              <Button
-                variant="outline"
-                className="w-full justify-center gap-2"
-                disabled={busy}
-                onClick={onEdit}
-              >
-                <Scissors className="size-4" aria-hidden />
-                Open the existing edit
-              </Button>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                disabled={busy}
-                onClick={() => onDecide('kept')}
-              >
-                Keep for later
-              </Button>
-              <Button
-                variant="ghost"
-                className="flex-1 text-[var(--cm-danger-ink)]"
-                disabled={busy}
-                onClick={() => onDecide('rejected')}
-              >
-                Reject
-              </Button>
-            </div>
-          </footer>
-        </section>
-      </div>
-    </div>
+    <span className="sr-only" role="status" aria-live="polite">
+      {playing ? 'Playing' : 'Paused'}
+    </span>
   );
 }

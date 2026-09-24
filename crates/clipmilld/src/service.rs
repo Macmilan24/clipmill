@@ -1779,19 +1779,19 @@ impl Service {
         if decide.candidate_id.is_empty() {
             return error_reply(request_id, ErrorCode::InvalidArgument, "no candidate named");
         }
-        let decision = match ClipDecisionV1::try_from(decide.decision)
-            .unwrap_or(ClipDecisionV1::Unspecified)
-        {
-            ClipDecisionV1::Rejected => Decision::Rejected,
-            ClipDecisionV1::Kept => Decision::Kept,
-            ClipDecisionV1::Approved => Decision::Approved,
-            // Refused rather than defaulted: "I did not say" is not one of the
-            // three things a person can decide about a clip.
-            ClipDecisionV1::Unspecified => {
+        let decision = match ClipDecisionV1::try_from(decide.decision) {
+            Ok(ClipDecisionV1::Rejected) => Some(Decision::Rejected),
+            Ok(ClipDecisionV1::Kept) => Some(Decision::Kept),
+            Ok(ClipDecisionV1::Approved) => Some(Decision::Approved),
+            // No decision is what a person answers by taking theirs back: the
+            // clip is undecided again. An edit an approval made is left alone —
+            // undoing a verdict is not deleting somebody's work.
+            Ok(ClipDecisionV1::Unspecified) => None,
+            Err(_) => {
                 return error_reply(
                     request_id,
                     ErrorCode::InvalidArgument,
-                    "a decision must be one of rejected, kept, or approved",
+                    "a decision must be rejected, kept, approved, or none",
                 );
             }
         };
@@ -1810,17 +1810,29 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
-        if let Err(error) = self
-            .database
-            .set_clip_decision(
-                project_id.to_string(),
-                source_id.to_string(),
-                decide.candidate_id.clone(),
-                decision,
-                now,
-            )
-            .await
-        {
+        let stored = match decision {
+            Some(decision) => {
+                self.database
+                    .set_clip_decision(
+                        project_id.to_string(),
+                        source_id.to_string(),
+                        decide.candidate_id.clone(),
+                        decision,
+                        now,
+                    )
+                    .await
+            }
+            None => {
+                self.database
+                    .clear_clip_decision(
+                        project_id.to_string(),
+                        source_id.to_string(),
+                        decide.candidate_id.clone(),
+                    )
+                    .await
+            }
+        };
+        if let Err(error) = stored {
             return store_error_reply(request_id, &error);
         }
         response_reply(
@@ -3358,10 +3370,11 @@ fn assemble(
     } else {
         match ClipCutV1::try_from(direct.cut).unwrap_or(ClipCutV1::Unspecified) {
             ClipCutV1::Alternative => clipmill_director::Cut::Alternative,
-            // An exact pair is snapped before anything is built from it: a boundary
-            // arriving over this socket has been through a process the director does
-            // not control, and the lattice is what legal means.
-            ClipCutV1::Exact => clipmill_director::Cut::Exact(snapped(evidence, direct)?),
+            // A person's cut may land between any two words (R63). An edge that
+            // arrives inside one is moved out to keep the word before anything
+            // is built: this socket is not the only way a pair can get here, and
+            // the director refuses a severed word rather than repairing it.
+            ClipCutV1::Exact => clipmill_director::Cut::Exact(whole_words(evidence, direct)?),
             ClipCutV1::Chosen | ClipCutV1::Unspecified => clipmill_director::Cut::Chosen,
         }
     };
@@ -3394,51 +3407,30 @@ fn assemble(
     .map_err(|error| error.to_string())
 }
 
-/// A hand-set boundary, put on the candidate's lattice.
-fn snapped(
+/// A hand-set boundary, with any edge that falls inside a word moved out to
+/// keep the whole word.
+///
+/// The lattice is not consulted: it is the search's shortlist, and a reviewer
+/// is free to disagree with it. The one thing a cut may not do is sever a word,
+/// and moving the edge outward is what the person evidently meant — the handle
+/// they dragged was on that word.
+fn whole_words(
     evidence: &crate::inspector::Evidence,
     direct: &DirectClipRequest,
 ) -> Result<clipmill_director::Boundary, String> {
-    let candidate = evidence
-        .candidates
-        .candidates
-        .iter()
-        .find(|item| item.id.as_str() == direct.candidate_id)
-        .ok_or_else(|| format!("no candidate is called {}", direct.candidate_id))?;
-    let mut starts: Vec<i64> = candidate
-        .boundary_lattice
-        .starts
-        .iter()
-        .map(|at| i64::try_from(*at).unwrap_or(i64::MAX))
-        .collect();
-    let mut ends: Vec<i64> = candidate
-        .boundary_lattice
-        .ends
-        .iter()
-        .map(|at| i64::try_from(*at).unwrap_or(i64::MAX))
-        .collect();
-    starts.sort_unstable();
-    ends.sort_unstable();
-    clipmill_director::snap(
-        clipmill_director::Lattice {
-            starts: &starts,
-            ends: &ends,
-        },
-        clipmill_director::Boundary {
-            start_ticks: i64::try_from(direct.start_ticks).unwrap_or(0),
-            end_ticks: i64::try_from(direct.end_ticks).unwrap_or(0),
-        },
-        clipmill_director::Duration {
-            min_ticks: i64::try_from(evidence.candidates.duration_target.min_ticks.get())
-                .unwrap_or(0),
-            max_ticks: i64::try_from(evidence.candidates.duration_target.max_ticks.get())
-                .unwrap_or(i64::MAX),
-        },
-        // The start is the edge a person is answering "where should this begin"
-        // with, so it is the one held.
-        clipmill_director::Edge::Start,
-    )
-    .map_err(|error| error.to_string())
+    let wanted = clipmill_director::Boundary {
+        start_ticks: i64::try_from(direct.start_ticks)
+            .map_err(|_| "the start is past the end of the timeline".to_owned())?,
+        end_ticks: i64::try_from(direct.end_ticks)
+            .map_err(|_| "the end is past the end of the timeline".to_owned())?,
+    };
+    if wanted.end_ticks <= wanted.start_ticks {
+        return Err("a cut has to end after it starts".to_owned());
+    }
+    Ok(clipmill_director::keep_whole_words(
+        &evidence.transcript,
+        wanted,
+    ))
 }
 
 /// Export planning, delivery, and settings operations.

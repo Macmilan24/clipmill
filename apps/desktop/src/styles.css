@@ -256,26 +256,6 @@
 .candidate-columns {
   grid-template-columns: 24px 24px minmax(150px, 1fr) 48px 116px 30px;
 }
-.inspector-layout {
-  display: flex;
-  gap: 16px;
-  flex: 1;
-  min-height: 0;
-}
-.inspector-candidates {
-  width: 196px;
-}
-.inspector-review {
-  width: 324px;
-}
-.inspector-player {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
 .video-stage {
   position: relative;
   height: 100%;
@@ -285,13 +265,6 @@
   border-radius: 5px;
   background: black;
   box-shadow: 0 4px 24px #0003;
-}
-.inspector-stage-wrap {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  width: 100%;
-  justify-content: center;
 }
 .editor-workspace {
   display: flex;
@@ -427,11 +400,6 @@ input[type='range'] {
   scrollbar-color: var(--cm-glass-border) transparent;
 }
 
-@media (max-width: 1439px) {
-  .inspector-candidates {
-    display: none;
-  }
-}
 @media (max-width: 899px) {
   .studio-shell {
     --sidebar-width: 64px !important;

@@ -232,22 +232,69 @@ fn taking_the_runner_up_produces_the_runner_ups_document() {
 }
 
 #[test]
-fn a_boundary_the_lattice_does_not_offer_is_refused_rather_than_rounded() {
+fn a_cut_on_a_word_edge_needs_no_lattice_point() {
     let (candidates, ranking, transcript) = (candidates(), ranking(), transcript());
-    let at = evidence(&candidates, &ranking, &transcript);
 
-    // Half a second off a legal start is exactly the mid-word cut the boundary
-    // optimizer exists to avoid.
-    let error = direct(
-        at,
+    // Half a second in is where "whole" starts: no lattice point is there, but
+    // no word is severed either, and that is the rule a person is held to.
+    let document = direct(
+        evidence(&candidates, &ranking, &transcript),
         &request(Cut::Exact(Boundary {
             start_ticks: 10 * 90_000 + 45_000,
             end_ticks: 40 * 90_000,
         })),
     )
-    .expect_err("an illegal boundary");
+    .expect("a hand-set cut between words");
 
-    assert!(error.to_string().contains("lattice"), "{error}");
+    assert_eq!(document.video.segments[0].in_ticks, 10 * 90_000 + 45_000);
+    assert_eq!(document.video.segments[0].out_ticks, 40 * 90_000);
+    let decisions = &document.rationale.as_ref().expect("a rationale").decisions;
+    assert!(
+        decisions
+            .iter()
+            .any(|line| line.contains("a boundary set by hand")),
+        "{decisions:?}"
+    );
+}
+
+#[test]
+fn a_person_may_cut_longer_than_the_search_was_asked_to() {
+    let (candidates, ranking, transcript) = (candidates(), ranking(), transcript());
+
+    // The search was held to 15–90 s. A reviewer who wants the whole minute
+    // and a half after the opening is making a choice, not a mistake.
+    let document = direct(
+        evidence(&candidates, &ranking, &transcript),
+        &request(Cut::Exact(Boundary {
+            start_ticks: 10 * 90_000,
+            end_ticks: 110 * 90_000,
+        })),
+    )
+    .expect("a cut longer than the search's target");
+
+    assert_eq!(document.video.segments[0].out_ticks, 110 * 90_000);
+}
+
+#[test]
+fn a_cut_through_a_word_is_refused_rather_than_rounded() {
+    let (candidates, ranking, transcript) = (candidates(), ranking(), transcript());
+
+    // "whole" runs from 10.5 s to 10.83 s; a start at 10.6 s is the mid-word
+    // cut a viewer hears. The daemon keeps whole words before it gets here, so
+    // anything that reaches the director severed is refused, not repaired.
+    let error = direct(
+        evidence(&candidates, &ranking, &transcript),
+        &request(Cut::Exact(Boundary {
+            start_ticks: 10 * 90_000 + 54_000,
+            end_ticks: 40 * 90_000,
+        })),
+    )
+    .expect_err("a severed word");
+
+    assert!(
+        error.to_string().contains("inside the word 'whole'"),
+        "{error}"
+    );
 }
 
 #[test]

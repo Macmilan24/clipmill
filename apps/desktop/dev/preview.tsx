@@ -33,7 +33,14 @@ import { NewProject } from '../src/screens/NewProject.js';
 import { LibraryLoader } from '../src/library/loader.js';
 import { ImportLoader } from '../src/import/loader.js';
 import { daemonApi } from '../src/daemon/api.js';
-import { connection, rows as fixtures, plan as previewPlan } from './fixtures.js';
+import { connection, plan as previewPlan } from './fixtures.js';
+import {
+  REVIEW_DURATION_TICKS,
+  reviewCrop,
+  reviewPeaks,
+  reviewRows as fixtures,
+  reviewTranscript,
+} from './review-fixtures.js';
 import '../src/styles.css';
 
 const noAction = () => {};
@@ -150,12 +157,33 @@ function Preview() {
     setCandidate(id);
     setPage('inspector');
   };
-  const decide = (decision: 'approved' | 'kept' | 'rejected') => {
-    setRows((current) =>
-      current.map((row) => (row.candidateId === candidate ? { ...row, decision } : row)),
+  const still = search.get('still');
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [history, setHistory] = useState<{ id: string; previous: ClipRow['decision'] }[]>([]);
+  /** A decision on the open clip, as the daemon would record it, then on to the next. */
+  const record = (decision: ClipRow['decision'], docId?: string) => {
+    const before = rows.find((row) => row.candidateId === candidate);
+    setHistory((stack) => [...stack, { id: candidate, previous: before?.decision ?? null }]);
+    const next = rows.map((row) =>
+      row.candidateId === candidate ? { ...row, decision, ...(docId ? { docId } : {}) } : row,
     );
-    if (decision === 'approved') setPage('editor');
-    else setNotice(`Marked ${decision}.`);
+    setRows(next);
+    setNotice(
+      decision === 'approved'
+        ? 'Approved. The edit is ready.'
+        : decision === 'kept'
+          ? 'Kept for later.'
+          : decision === 'rejected'
+            ? 'Rejected.'
+            : 'Decision cleared.',
+    );
+    if (decision && autoAdvance) {
+      const after = next.slice(next.findIndex((row) => row.candidateId === candidate) + 1);
+      const following = [...after, ...next].find(
+        (row) => row.decision === null && row.candidateId !== candidate,
+      );
+      if (following) setCandidate(following.candidateId);
+    }
   };
   const workspace = ['results', 'inspector', 'editor'].includes(page);
   return (
@@ -208,7 +236,7 @@ function Preview() {
                     state: JobState.SUCCEEDED,
                     completedUnixMillis: Date.now(),
                   }}
-                  tileUrl={() => null}
+                  tileUrl={() => still}
                   projects={[project]}
                   activeProjectId={project.projectId}
                   busy={false}
@@ -233,22 +261,41 @@ function Preview() {
                   rows={rows}
                   candidateId={candidate}
                   proxyUrl={media}
-                  crop={{
-                    fit: false,
-                    fitReason: '',
-                    containment: 1,
-                    keyframes: [{ tTicks: 0, centerX: 0.5, centerY: 0.5, scale: 1 }],
-                  }}
-                  cues={[]}
-                  peaks={null}
+                  crop={reviewCrop}
+                  peaks={reviewPeaks}
+                  tileUrl={() => still}
+                  transcript={{ status: 'ready', transcript: reviewTranscript }}
+                  sourceDurationTicks={REVIEW_DURATION_TICKS}
+                  durationTarget={{ minTicks: 20 * 90_000, maxTicks: 90 * 90_000 }}
                   busy={false}
                   notice={notice}
+                  autoAdvance={autoAdvance}
+                  onAutoAdvance={setAutoAdvance}
                   onSelect={setCandidate}
                   onBack={() => setPage('results')}
-                  onDecide={decide}
-                  onUseAlternative={() => setNotice('Preview only: no alternative cut.')}
-                  onTakeCut={() => setNotice('Preview only: no edit is saved.')}
-                  onEdit={
+                  onApprove={(_cut, open) => {
+                    record('approved', 'preview-edit');
+                    if (open) setPage('editor');
+                  }}
+                  onDecide={(decision) => record(decision)}
+                  onUndo={
+                    history.length > 0
+                      ? () => {
+                          const last = history.at(-1)!;
+                          setHistory((stack) => stack.slice(0, -1));
+                          setRows((current) =>
+                            current.map((row) =>
+                              row.candidateId === last.id
+                                ? { ...row, decision: last.previous }
+                                : row,
+                            ),
+                          );
+                          setCandidate(last.id);
+                          setNotice('Decision undone.');
+                        }
+                      : null
+                  }
+                  onOpenEdit={
                     rows.find((row) => row.candidateId === candidate)?.docId
                       ? () => setPage('editor')
                       : null

@@ -475,7 +475,8 @@ pub struct DirectClipInput {
     pub cut: String,
     #[serde(default)]
     pub style_ref: String,
-    /// Read only for `exact`, and snapped to the lattice by the daemon.
+    /// Read only for `exact`. The daemon moves an edge that falls inside a
+    /// word out to keep the whole word; anywhere between words is kept.
     #[serde(default)]
     pub start_ticks: u64,
     #[serde(default)]
@@ -533,7 +534,7 @@ pub struct DirectedClipView {
     pub revision: u64,
     pub document_json: String,
     /// Where the cut actually landed, which is not always where it was asked
-    /// for: a hand-set boundary is moved onto the lattice first.
+    /// for: a hand-set edge inside a word is moved out to keep the word.
     pub start_ticks: u64,
     pub end_ticks: u64,
     /// Why the director did what it did, in sentences.

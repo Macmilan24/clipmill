@@ -106,11 +106,12 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
     expectedRevision: number,
     command: EditCommandJson,
   ): Promise<AppliedCommand>;
+  /** `null` takes a decision back, leaving the clip undecided. */
   setClipDecision(
     projectId: string,
     sourceId: string,
     candidateId: string,
-    decision: ClipDecision,
+    decision: ClipDecision | null,
   ): Promise<ClipDecisionRecord>;
   listClipDecisions(projectId: string, sourceId: string): Promise<readonly ClipDecisionRecord[]>;
   planExport(request: ExportRequest): Promise<ExportPlan>;

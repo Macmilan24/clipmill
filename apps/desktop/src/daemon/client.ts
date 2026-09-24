@@ -549,7 +549,10 @@ export interface DirectClipInput {
   readonly candidateId: string;
   readonly cut: ClipCut;
   readonly styleRef?: string;
-  /** Read only for `exact`, and snapped to the lattice by the daemon. */
+  /**
+   * Read only for `exact`. Any edge between two words is kept as sent; one
+   * that falls inside a word is moved out to keep the whole word (R63).
+   */
   readonly startTicks?: number;
   readonly endTicks?: number;
   /**
@@ -587,7 +590,7 @@ export interface DirectedClip {
   readonly documentJson: string;
   /**
    * Where the cut landed, which is not always where it was asked for: a
-   * hand-set boundary is moved onto the lattice before anything is built.
+   * hand-set edge inside a word is moved out to keep the word.
    * For a reopened document, where its segment stands now, trims included.
    */
   readonly startTicks: number;
@@ -605,11 +608,17 @@ export async function directClip(request: DirectClipInput): Promise<DirectedClip
   return invoke<DirectedClip>('direct_clip', { request });
 }
 
+/**
+ * Record what somebody decided about a clip, or take it back.
+ *
+ * `null` is the taking back: the clip is undecided again. An edit that an
+ * approval made is left where it is — undoing a verdict is not deleting work.
+ */
 export async function setClipDecision(
   projectId: string,
   sourceId: string,
   candidateId: string,
-  decision: ClipDecision,
+  decision: ClipDecision | null,
 ): Promise<ClipDecisionRecord> {
   if (!isTauri()) {
     throw new Error(NOT_IN_SHELL.reason);
@@ -619,7 +628,7 @@ export async function setClipDecision(
     projectId,
     sourceId,
     candidateId,
-    decision,
+    decision: decision ?? 'unspecified',
   });
 }
 

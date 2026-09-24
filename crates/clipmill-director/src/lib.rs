@@ -1,8 +1,9 @@
 //! Assemble approved candidates and evidence into deterministic Edit IR.
 //!
 //! Upstream stages choose spans, boundaries, captions, and reframe proposals.
-//! The director rejects boundaries outside the candidate's lattice and uses `Fit`
-//! with a rationale when the reframe gate cannot justify a tracked crop.
+//! The director holds a cut the search returned to the candidate's lattice,
+//! holds a cut a person set to whole words (R63), and uses `Fit` with a
+//! rationale when the reframe gate cannot justify a tracked crop.
 //!
 //! Both accessibility and kinetic caption groupings reach the document. Their
 //! shared span and words are checked before assembly. Identical inputs must
@@ -10,6 +11,7 @@
 
 pub mod lattice;
 mod placement;
+pub mod words;
 
 use clipmill_captions::{DeriveRequest, Inputs};
 use clipmill_contracts::schemas::{
@@ -27,10 +29,11 @@ use clipmill_reframe::{FocusGate, Weights as CropWeights};
 use clipmill_render::captions::{Intent, project};
 use thiserror::Error;
 
-pub use lattice::{Boundary, Duration, Edge, Lattice, SnapError, is_legal, nearest, snap};
+pub use lattice::{Boundary, Duration, Lattice, is_legal};
+pub use words::{Severed, keep_whole_words, severed};
 
 /// The implementation the produced document was assembled by.
-pub const IMPLEMENTATION: &str = "clipmill-director@1.1.0";
+pub const IMPLEMENTATION: &str = "clipmill-director@1.2.0";
 /// The one segment a directed clip has. Named rather than generated: an id that
 /// changed run to run would make two identical edits different documents.
 const SEGMENT_ID: &str = "seg_1";
@@ -82,7 +85,9 @@ pub enum Cut {
     /// Its runner-up, which the Inspector offers one click away because the
     /// optimizer's second choice is frequently the editor's first.
     Alternative,
-    /// A pair the user put there, which must still be on the lattice.
+    /// A pair a person put there. It may land between any two words inside the
+    /// transcript's coverage, and at any length: the lattice and the duration
+    /// target were the search's constraints, not the reviewer's (R63).
     Exact(Boundary),
 }
 
@@ -113,7 +118,7 @@ pub enum DirectError {
     #[error(
         "the {edge} falls inside the word '{word}'. Move {edge} to {seconds} seconds to keep the whole word"
     )]
-    ClippedManualWord {
+    ClippedWord {
         edge: &'static str,
         word: String,
         seconds: String,
@@ -147,20 +152,26 @@ pub fn direct(evidence: Evidence<'_>, request: &Request) -> Result<EditDocument,
         .ok_or_else(|| DirectError::Unranked(request.candidate_id.clone()))?;
 
     let boundary = resolve(ranked, request)?;
-    let duration = Duration {
-        min_ticks: as_i64(evidence.candidates.duration_target.min_ticks.get()),
-        max_ticks: as_i64(evidence.candidates.duration_target.max_ticks.get()),
-    };
-    let (starts, ends) = points(candidate);
-    if !is_legal(
-        Lattice {
-            starts: &starts,
-            ends: &ends,
-        },
-        boundary,
-        duration,
-    ) {
-        return Err(DirectError::IllegalBoundary);
+    if let Cut::Exact(_) = request.cut {
+        // A person's cut: anywhere the transcript covers, never through a word.
+        check_span(evidence, boundary)?;
+    } else {
+        // The search's own cut is one of the pairs it chose between.
+        let duration = Duration {
+            min_ticks: as_i64(evidence.candidates.duration_target.min_ticks.get()),
+            max_ticks: as_i64(evidence.candidates.duration_target.max_ticks.get()),
+        };
+        let (starts, ends) = points(candidate);
+        if !is_legal(
+            Lattice {
+                starts: &starts,
+                ends: &ends,
+            },
+            boundary,
+            duration,
+        ) {
+            return Err(DirectError::IllegalBoundary);
+        }
     }
 
     let mut decisions = vec![cut_sentence(request.cut, boundary)];
@@ -197,36 +208,7 @@ pub fn direct_span(
     boundary: Boundary,
 ) -> Result<EditDocument, DirectError> {
     validate_evidence(evidence, request)?;
-    let coverage = &evidence.transcript.coverage;
-    if boundary.start_ticks < as_i64(coverage.start_ticks)
-        || boundary.end_ticks <= boundary.start_ticks
-        || boundary.end_ticks > as_i64(coverage.end_ticks)
-    {
-        return Err(DirectError::InvalidSpan);
-    }
-    for word in &evidence.transcript.words {
-        let start = as_i64(word.start_ticks);
-        let end = as_i64(word.end_ticks);
-        for (edge, tick, suggested) in [
-            ("start", boundary.start_ticks, start),
-            ("end", boundary.end_ticks, end),
-        ] {
-            if start < tick && tick < end {
-                // The manual form accepts decimal seconds. Round outwards to
-                // a millisecond so copying this suggestion keeps the word.
-                let millis = if edge == "end" {
-                    suggested.saturating_add(89) / 90
-                } else {
-                    suggested / 90
-                };
-                return Err(DirectError::ClippedManualWord {
-                    edge,
-                    word: word.text.to_string(),
-                    seconds: format!("{}.{:03}", millis / 1000, millis % 1000),
-                });
-            }
-        }
-    }
+    check_span(evidence, boundary)?;
     assemble_span(
         evidence,
         request,
@@ -234,6 +216,32 @@ pub fn direct_span(
         None,
         vec!["Manual source span; not an editorial recommendation.".to_owned()],
     )
+}
+
+/// A cut a person set: inside what the transcript covers, and through no word.
+fn check_span(evidence: Evidence<'_>, boundary: Boundary) -> Result<(), DirectError> {
+    let coverage = &evidence.transcript.coverage;
+    if boundary.start_ticks < as_i64(coverage.start_ticks)
+        || boundary.end_ticks <= boundary.start_ticks
+        || boundary.end_ticks > as_i64(coverage.end_ticks)
+    {
+        return Err(DirectError::InvalidSpan);
+    }
+    if let Some(cut) = severed(evidence.transcript, boundary) {
+        // The manual form accepts decimal seconds. Round outwards to a
+        // millisecond so copying this suggestion keeps the word.
+        let millis = if cut.edge == "end" {
+            cut.keep_at.saturating_add(89) / 90
+        } else {
+            cut.keep_at / 90
+        };
+        return Err(DirectError::ClippedWord {
+            edge: cut.edge,
+            word: cut.word,
+            seconds: format!("{}.{:03}", millis / 1000, millis % 1000),
+        });
+    }
+    Ok(())
 }
 
 fn validate_evidence(evidence: Evidence<'_>, request: &Request) -> Result<(), DirectError> {
@@ -585,7 +593,7 @@ fn cut_sentence(cut: Cut, boundary: Boundary) -> String {
     let source = match cut {
         Cut::Chosen => "the boundary the search chose",
         Cut::Alternative => "the search's runner-up boundary",
-        Cut::Exact(_) => "a boundary set by hand, snapped to the lattice",
+        Cut::Exact(_) => "a boundary set by hand",
     };
     format!("Cut at {source}: {seconds:.2}s.")
 }
