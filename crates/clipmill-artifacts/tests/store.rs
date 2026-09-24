@@ -439,6 +439,47 @@ fn restart_quarantines_staging_and_structurally_corrupt_objects() {
 }
 
 #[test]
+fn manifest_larger_than_four_mib_can_be_committed_and_recovered() {
+    let temp = TempDir::new().expect("tempdir");
+    let root = temp.path().join("artifacts");
+    let (mut store, _) = ArtifactStore::initialize(&root).expect("store");
+    let artifact_recipe = recipe(71);
+    let artifact_id = artifact_recipe.artifact_id().expect("id");
+    let staging = prepare_miss(&mut store, artifact_recipe.clone());
+    let path = "payload.bin".parse::<ArtifactPath>().expect("path");
+    staging
+        .create_file(&path)
+        .expect("payload")
+        .write_all(b"payload")
+        .expect("write");
+    // Frame artifacts reach this size through file records. A long quality
+    // key keeps this boundary test fast while exercising the same reader.
+    let quality = BTreeMap::from([("frame".repeat(1024 * 1024), 0.5)]);
+    drop(
+        store
+            .commit(staging.id(), vec![path], quality)
+            .expect("commit large manifest"),
+    );
+    assert!(
+        fs::metadata(store.paths().object_dir(artifact_id).join("manifest.json"))
+            .expect("manifest")
+            .len()
+            > 4 * 1024 * 1024
+    );
+    drop(store);
+
+    let (mut recovered, report) = ArtifactStore::initialize(&root).expect("recover store");
+    assert_eq!(report.committed_loaded, 1);
+    assert_eq!(report.objects_quarantined, 0);
+    assert!(matches!(
+        recovered
+            .prepare(artifact_recipe)
+            .expect("prepare cached artifact"),
+        PrepareOutcome::Hit(_)
+    ));
+}
+
+#[test]
 fn garbage_collection_marks_transitive_inputs_and_reader_pins() {
     let temp = TempDir::new().expect("tempdir");
     let (mut store, _) = ArtifactStore::initialize(temp.path()).expect("store");
