@@ -396,6 +396,19 @@ async fn list_edit_docs(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn get_edit_doc(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    doc_id: String,
+) -> Result<views::EditDocDetailView, String> {
+    supervisor
+        .client()
+        .get_edit_doc(&doc_id)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// What the player must draw for a document.
 #[tauri::command]
 async fn preview_plan(
@@ -688,6 +701,10 @@ async fn stream_task_events(supervisor: Arc<DaemonSupervisor>, app: tauri::AppHa
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "Tauri command registration is kept together in the app builder"
+)]
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = clipmilld::Config::resolve(None, None)?;
     let socket = config.paths.socket.clone();
@@ -761,6 +778,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             submit_analyze,
             apply_edit_command,
             list_edit_docs,
+            get_edit_doc,
             preview_plan,
             plan_export,
             export_clip,

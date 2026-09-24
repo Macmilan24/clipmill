@@ -13,7 +13,10 @@
 //! infinity, and the operands are small enough that FFmpeg's double
 //! arithmetic is exact.
 
-use clipmill_edit_ir::{CropKeyframe, CropRect, EditDocument, LayoutState, VideoSegment};
+use clipmill_edit_ir::{
+    CropEasing, CropKeyframe, CropRect, EditDocument, LayoutState, VideoSegment,
+    crop_along_keyframes,
+};
 
 use crate::{
     plan::{RenderError, SourceInput},
@@ -53,11 +56,15 @@ pub struct DecodeSpan {
 /// in ticks to keep the crop at a new boundary. A second implementation
 /// anywhere is a parity bug with a head start.
 pub fn crop_rect_at(path: &[CropKeyframe], rate: FrameRate, frame: i64) -> Option<CropRect> {
-    let by_frame: Vec<(i64, CropRect)> = path
+    let by_frame: Vec<CropKeyframe> = path
         .iter()
-        .map(|keyframe| (rate.frame_at(keyframe.t_ticks), keyframe.rect))
+        .map(|keyframe| CropKeyframe {
+            t_ticks: rate.frame_at(keyframe.t_ticks),
+            rect: keyframe.rect,
+            easing: keyframe.easing,
+        })
         .collect();
-    clipmill_edit_ir::crop_along(&by_frame, frame)
+    crop_along_keyframes(&by_frame, frame)
 }
 
 /// Where the second pass's loudness normalisation is substituted in.
@@ -340,27 +347,23 @@ fn crop_filter(
         .first()
         .ok_or_else(|| RenderError::SpeakerFillWithoutCropPath(segment.segment_id.clone()))?;
     let (crop_width, crop_height) = (first.rect.width, first.rect.height);
-    if path
+    let zooming = path
         .iter()
-        .any(|keyframe| keyframe.rect.width != crop_width || keyframe.rect.height != crop_height)
-    {
-        // A crop window that changes size mid-segment is a zoom. FFmpeg
-        // evaluates crop's width and height once per configuration, so a zoom
-        // is not supported by this graph.
-        return Err(RenderError::ZoomingCropPath(segment.segment_id.clone()));
-    }
+        .any(|keyframe| keyframe.rect.width != crop_width || keyframe.rect.height != crop_height);
     // An exactly 9:16 rectangle does not exist at every integer height — at
     // 1080 the ideal width is 607.5 — so the window is allowed to miss the
     // output's aspect by up to one source pixel, which scaling absorbs
     // invisibly. Anything wider than that is a framing mistake, not rounding,
     // and stretching faces to hide it would be the wrong kindness.
-    let aspect_error = (crop_width * viewport_height - crop_height * profile.width).abs();
-    if aspect_error > viewport_height {
+    if path.iter().any(|keyframe| {
+        (keyframe.rect.width * viewport_height - keyframe.rect.height * profile.width).abs()
+            > viewport_height
+    }) {
         return Err(RenderError::CropAspectMismatch(segment.segment_id.clone()));
     }
     for keyframe in path {
-        if keyframe.rect.x + crop_width > source.width
-            || keyframe.rect.y + crop_height > source.height
+        if keyframe.rect.x + keyframe.rect.width > source.width
+            || keyframe.rect.y + keyframe.rect.height > source.height
         {
             return Err(RenderError::CropOutsideFrame(segment.segment_id.clone()));
         }
@@ -376,10 +379,26 @@ fn crop_filter(
         }
         frames.push(frame);
     }
+    if zooming {
+        // crop's w/h are fixed, so scale the source anew on each frame and
+        // take a fixed output-sized window from it. Unlike zoompan, this
+        // preserves the source rectangle's aspect instead of stretching a
+        // landscape window into portrait. The final scale below is a no-op.
+        let height = axis_expression(path, &frames, |rect| rect.height, "n");
+        let x = axis_expression(path, &frames, |rect| rect.x, "n");
+        let y = axis_expression(path, &frames, |rect| rect.y, "n");
+        return Ok(format!(
+            "scale=w='ceil(iw*{viewport_height}/({height})/2)*2':h='ceil(ih*{viewport_height}/({height})/2)*2':eval=frame,\
+             crop=w={width}:h={viewport_height}:x='floor(({x})*{viewport_height}/({height}))':\
+             y='floor(({y})*{viewport_height}/({height}))':exact=1",
+            viewport_height = viewport_height,
+            width = profile.width,
+        ));
+    }
     Ok(format!(
         "crop=w={crop_width}:h={crop_height}:x='{}':y='{}':exact=1",
-        axis_expression(path, &frames, |rect| rect.x),
-        axis_expression(path, &frames, |rect| rect.y),
+        axis_expression(path, &frames, |rect| rect.x, "n"),
+        axis_expression(path, &frames, |rect| rect.y, "n"),
     ))
 }
 
@@ -389,6 +408,7 @@ fn axis_expression(
     path: &[CropKeyframe],
     frames: &[i64],
     axis: impl Fn(&CropRect) -> i64 + Copy,
+    variable: &str,
 ) -> String {
     let Some(last) = path.last() else {
         return "0".to_owned();
@@ -400,14 +420,21 @@ fn axis_expression(
         let value = if from == to {
             from.to_string()
         } else {
-            format!("floor({from}+({to}-{from})*(n-{start})/({end}-{start}))")
+            let ratio = format!("({variable}-{start})/({end}-{start})");
+            let eased = match path[index].easing {
+                CropEasing::Linear => ratio,
+                CropEasing::EaseIn => format!("pow({ratio}\\,2)"),
+                CropEasing::EaseOut => format!("(1-pow((1-{ratio})\\,2))"),
+                CropEasing::EaseInOut => format!("({ratio}*{ratio}*(3-2*{ratio}))"),
+            };
+            format!("floor({from}+({to}-{from})*{eased})")
         };
-        expression = format!("if(lt(n\\,{end})\\,{value}\\,{expression})");
+        expression = format!("if(lt({variable}\\,{end})\\,{value}\\,{expression})");
     }
     let first_frame = frames.first().copied().unwrap_or(0);
     if first_frame > 0 {
         expression = format!(
-            "if(lt(n\\,{first_frame})\\,{}\\,{expression})",
+            "if(lt({variable}\\,{first_frame})\\,{}\\,{expression})",
             axis(&path[0].rect)
         );
     }
@@ -475,6 +502,7 @@ mod tests {
                 width: 608,
                 height: 1_080,
             },
+            easing: clipmill_edit_ir::CropEasing::Linear,
         }
     }
 

@@ -937,6 +937,25 @@ impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
     }
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditDocDetailView {
+    pub doc_id: String,
+    pub revision: u64,
+    pub document_json: String,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::GetEditDocResponse> for EditDocDetailView {
+    fn from(reply: clipmill_contracts::proto::ipc::v1::GetEditDocResponse) -> Self {
+        let doc = reply.doc.unwrap_or_default();
+        Self {
+            doc_id: doc.doc_id,
+            revision: doc.revision,
+            document_json: doc.document_json,
+        }
+    }
+}
+
 /// What applying a command produced: the new revision, and the way back.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

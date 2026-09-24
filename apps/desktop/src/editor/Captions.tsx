@@ -23,6 +23,7 @@ export interface CaptionsProps {
   readonly plan: PreviewPlan;
   readonly frame: number;
   readonly busy: boolean;
+  readonly cueId?: string;
   readonly onApply: (command: EditCommandJson) => void;
 }
 
@@ -31,8 +32,9 @@ interface Selection {
   readonly wordIndex: number;
 }
 
-export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
+export function Captions({ plan, frame, busy, cueId, onApply }: CaptionsProps) {
   const [selected, setSelected] = useState<Selection | null>(null);
+  const visible = cueId ? plan.cues.filter((candidate) => candidate.cueId === cueId) : plan.cues;
   const cue = selected
     ? (plan.cues.find((candidate) => candidate.cueId === selected.cueId) ?? null)
     : null;
@@ -40,16 +42,18 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
   return (
     <div className="editor-panel editor-captions-panel">
       <div className="editor-panel-heading">
-        <h2 className="editor-panel-title">Transcript</h2>
-        <span>{plan.cues.length} captions</span>
+        <h2 className="editor-panel-title">{cueId ? 'Caption words' : 'Transcript'}</h2>
+        <span>
+          {cueId ? timecode(plan, visible[0]?.firstFrame ?? frame) : `${plan.cues.length} captions`}
+        </span>
       </div>
       <p className="editor-help">Select a word to edit.</p>
-      {plan.cues.length === 0 && (
+      {visible.length === 0 && (
         <p className="py-4 text-xs text-[var(--cm-text-muted)]">No captions in this clip.</p>
       )}
       <div className="editor-caption-list">
         <ul className="flex flex-col gap-2">
-          {plan.cues.map((candidate, position) => (
+          {visible.map((candidate) => (
             <li key={candidate.cueId}>
               <Phrase
                 cue={candidate}
@@ -58,12 +62,15 @@ export function Captions({ plan, frame, busy, onApply }: CaptionsProps) {
                 selected={selected?.cueId === candidate.cueId ? selected.wordIndex : -1}
                 onSelectWord={(wordIndex) => setSelected({ cueId: candidate.cueId, wordIndex })}
                 onMergeWithNext={
-                  position + 1 < plan.cues.length
+                  plan.cues.findIndex((item) => item.cueId === candidate.cueId) + 1 <
+                  plan.cues.length
                     ? () =>
                         onApply(
                           mergeCues(
                             candidate.cueId,
-                            plan.cues[position + 1]!.cueId,
+                            plan.cues[
+                              plan.cues.findIndex((item) => item.cueId === candidate.cueId) + 1
+                            ]!.cueId,
                             plan.presentation,
                           ),
                         )

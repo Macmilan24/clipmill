@@ -4,6 +4,7 @@
  * supply operation names and fields; the Rust implementation defines semantics.
  */
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
+import type { EditIr } from '@clipmill/contracts';
 import { secondsAt, segmentAt, sourceTicksAt } from './player.js';
 
 /**
@@ -22,6 +23,83 @@ export function setLayout(mode: LayoutMode, segmentId = SEGMENT): EditCommandJso
   return { op: 'set_layout', segment_id: segmentId, state: mode };
 }
 
+export function splitSegment(
+  segmentId: string,
+  atTicks: number,
+  newSegmentId: string,
+): EditCommandJson {
+  return {
+    op: 'split_segment',
+    segment_id: segmentId,
+    at_ticks: atTicks,
+    new_segment_id: newSegmentId,
+  };
+}
+
+/** The daemon derives captions for only the newly exposed source span. */
+export function extendWithCaptions(
+  segmentId: string,
+  inTicks: number,
+  outTicks: number,
+): EditCommandJson {
+  return {
+    op: 'extend_with_captions',
+    segment_id: segmentId,
+    in_ticks: inTicks,
+    out_ticks: outTicks,
+  };
+}
+
+export function swapPortraits(segmentId: string): EditCommandJson {
+  return { op: 'swap_portraits', segment_id: segmentId };
+}
+
+export function setCaptionStyle(styleRef: string): EditCommandJson {
+  return { op: 'set_caption_style', style_ref: styleRef };
+}
+
+export function setCaptionOptions(
+  options: NonNullable<EditIr['captions']['options']>,
+): EditCommandJson {
+  return { op: 'set_caption_options', options };
+}
+
+export function setCueRegion(
+  cueId: string,
+  region: 'upper_safe' | 'center' | 'lower_safe',
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return { op: 'set_cue_region', cue_id: cueId, region, ...inList(presentation) };
+}
+
+export function setCueTiming(
+  cueId: string,
+  startTicks: number,
+  endTicks: number,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'set_cue_timing',
+    cue_id: cueId,
+    start_ticks: startTicks,
+    end_ticks: endTicks,
+    ...inList(presentation),
+  };
+}
+
+export function removeCaptionWord(
+  cueId: string,
+  wordIndex: number,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'remove_caption_word',
+    cue_id: cueId,
+    word_index: wordIndex,
+    ...inList(presentation),
+  };
+}
+
 /** The whole clip's soft-cut duration in document ticks; zero disables it. */
 export function setTransition(durationTicks: number): EditCommandJson {
   return { op: 'set_transition', duration_ticks: durationTicks };
@@ -32,12 +110,14 @@ export function setCropKeyframe(
   rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
   segmentId = SEGMENT,
   secondary = false,
+  easing?: 'linear' | 'ease_in' | 'ease_out' | 'ease_in_out',
 ): EditCommandJson {
   return {
     op: secondary ? 'set_secondary_crop_keyframe' : 'set_crop_keyframe',
     segment_id: segmentId,
     t_ticks: tTicks,
     rect,
+    ...(easing ? { easing } : {}),
   };
 }
 
@@ -103,7 +183,7 @@ export function setWordText(wordId: string, text: string): EditCommandJson {
 export function trimStartAt(plan: PreviewPlan, frame: number): EditCommandJson | null {
   const segment = segmentAt(plan, frame);
   const ticks = sourceTicksAt(plan, frame);
-  if (!segment || ticks === null || ticks >= segment.outTicks) {
+  if (!segment || ticks === null || ticks <= segment.inTicks || ticks >= segment.outTicks) {
     return null;
   }
   if (plan.segments.length > 1) {

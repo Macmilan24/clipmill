@@ -81,6 +81,7 @@ pub fn project(
     }
     Ok(CaptionTrack {
         style_ref: preset.style_ref.to_owned(),
+        options: clipmill_edit_ir::CaptionOptions::default(),
         cues,
         // A projection answers for one intent. Assembling a document that holds
         // both is the director's job, because only it knows they describe the

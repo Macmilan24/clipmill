@@ -2407,6 +2407,24 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
+        let command_json = if serde_json::from_str::<serde_json::Value>(&apply.command_json)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("op")
+                    .and_then(|op| op.as_str())
+                    .map(str::to_owned)
+            })
+            .as_deref()
+            == Some("extend_with_captions")
+        {
+            match self.prepare_extension(&doc_id.to_string(), apply).await {
+                Ok(command) => command,
+                Err((code, message)) => return error_reply(request_id, code, message),
+            }
+        } else {
+            apply.command_json.clone()
+        };
         match self
             .database
             .apply_edit_command(
@@ -2414,7 +2432,7 @@ impl Service {
                 request_hash,
                 doc_id.to_string(),
                 apply.expected_revision,
-                apply.command_json.clone(),
+                command_json,
                 now,
             )
             .await
@@ -2425,6 +2443,151 @@ impl Service {
             },
             Err(error) => store_error_reply(request_id, &error),
         }
+    }
+
+    fn extension_request(json: &str) -> Result<(String, i64, i64), (ErrorCode, String)> {
+        let request: serde_json::Value = serde_json::from_str(json).map_err(|_| {
+            (
+                ErrorCode::InvalidArgument,
+                "Invalid extension request".to_owned(),
+            )
+        })?;
+        let string = |key: &str| {
+            request
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        };
+        let number = |key: &str| request.get(key).and_then(serde_json::Value::as_i64);
+        let segment_id = string("segment_id").ok_or((
+            ErrorCode::InvalidArgument,
+            "Choose a section to extend".to_owned(),
+        ))?;
+        let in_ticks = number("in_ticks").ok_or((
+            ErrorCode::InvalidArgument,
+            "Choose a new in point".to_owned(),
+        ))?;
+        let out_ticks = number("out_ticks").ok_or((
+            ErrorCode::InvalidArgument,
+            "Choose a new out point".to_owned(),
+        ))?;
+        Ok((segment_id, in_ticks, out_ticks))
+    }
+
+    fn extension_span(
+        document: &clipmill_edit_ir::EditDocument,
+        segment_id: &str,
+        in_ticks: i64,
+        out_ticks: i64,
+    ) -> Result<(usize, clipmill_director::Boundary), (ErrorCode, String)> {
+        let position = document
+            .video
+            .segments
+            .iter()
+            .position(|part| part.segment_id == segment_id)
+            .ok_or((ErrorCode::InvalidArgument, "No such section".to_owned()))?;
+        let part = &document.video.segments[position];
+        let span = if position == 0
+            && in_ticks >= 0
+            && in_ticks < part.in_ticks
+            && out_ticks == part.out_ticks
+        {
+            clipmill_director::Boundary {
+                start_ticks: in_ticks,
+                end_ticks: part.in_ticks,
+            }
+        } else if position + 1 == document.video.segments.len()
+            && in_ticks == part.in_ticks
+            && out_ticks > part.out_ticks
+        {
+            clipmill_director::Boundary {
+                start_ticks: part.out_ticks,
+                end_ticks: out_ticks,
+            }
+        } else {
+            return Err((
+                ErrorCode::InvalidArgument,
+                "Only the first or last clip edge can be pulled outward".to_owned(),
+            ));
+        };
+        Ok((position, span))
+    }
+
+    /// Resolve a source edge gesture into one replayable command. The command
+    /// log stores the derived cues, so replay never depends on a later analysis.
+    async fn prepare_extension(
+        &self,
+        doc_id: &str,
+        apply: &ApplyEditCommandRequest,
+    ) -> Result<String, (ErrorCode, String)> {
+        let (segment_id, in_ticks, out_ticks) = Self::extension_request(&apply.command_json)?;
+        let record = self
+            .database
+            .get_edit_doc(doc_id.to_owned())
+            .await
+            .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
+        if record.revision != apply.expected_revision {
+            return Err((
+                ErrorCode::Conflict,
+                "The edit changed. Reload before extending.".to_owned(),
+            ));
+        }
+        let document =
+            clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes())
+                .map_err(|error| (ErrorCode::Internal, error.to_string()))?;
+        let (position, span) = Self::extension_span(&document, &segment_id, in_ticks, out_ticks)?;
+        let part = &document.video.segments[position];
+        let source_id = record.source_id.ok_or((
+            ErrorCode::InvalidArgument,
+            "This edit has no linked source".to_owned(),
+        ))?;
+        let artifacts = self
+            .artifacts
+            .as_ref()
+            .ok_or((ErrorCode::Unavailable, "No artifact store".to_owned()))?;
+        let source = self
+            .database
+            .get_source(source_id.clone())
+            .await
+            .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
+        if source.project_id != record.project_id
+            || source.source_fingerprint != part.source_fingerprint
+        {
+            return Err((
+                ErrorCode::Conflict,
+                "The edit source no longer matches its recording".to_owned(),
+            ));
+        }
+        let evidence = crate::inspector::load(
+            &self.database,
+            artifacts,
+            &source_id,
+            &source.source_map_json,
+            record.job_id.as_deref(),
+        )
+        .await
+        .map_err(|error| (ErrorCode::Conflict, error.message()))?;
+        let captions = clipmill_director::captions_for_span(
+            &evidence.transcript,
+            evidence.index.as_ref(),
+            evidence.shots.as_ref(),
+            span,
+            &document.captions.style_ref,
+        )
+        .map_err(|error| (ErrorCode::InvalidArgument, error.to_string()))?;
+        let command = clipmill_edit_ir::EditCommand::ExtendSegment {
+            segment_id,
+            in_ticks,
+            out_ticks,
+            reading_cues: captions.cues,
+            burn_in_cues: captions.burn_in,
+        };
+        String::from_utf8(
+            command
+                .to_canonical_json()
+                .map_err(|error| (ErrorCode::Internal, error.to_string()))?,
+        )
+        .map_err(|error| (ErrorCode::Internal, error.to_string()))
     }
 
     /// What the editor's player must draw.

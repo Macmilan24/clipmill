@@ -366,6 +366,7 @@ fn keyframe(frame: i64, x: i64, y: i64) -> CropKeyframe {
             width: 608,
             height: 1_080,
         },
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }
 }
 
@@ -721,14 +722,29 @@ fn speaker_fill_without_a_path_is_refused() {
 }
 
 #[test]
-fn a_zooming_crop_path_is_refused_with_its_reason() {
+fn a_zooming_crop_path_compiles_and_preview_follows_the_same_windows() {
     let mut path = vec![keyframe(0, 100, 0), keyframe(30, 100, 0)];
-    path[1].rect.width = 700;
-    path[1].rect.height = 1_244;
-    assert!(matches!(
-        refuses(&crop_document(path), &[source()]),
-        RenderError::ZoomingCropPath(_)
-    ));
+    path[1].rect.width = 540;
+    path[1].rect.height = 960;
+    let document = crop_document(path);
+    let compiled =
+        compile(&document, &[source()], &RenderProfile::default()).expect("zoom compiles");
+    assert!(compiled.graph.graph.contains("eval=frame,crop="));
+    let preview =
+        clipmill_render::preview_plan(&document, &RenderProfile::default()).expect("preview");
+    assert_eq!(preview.crops[0].expect("first crop").width, 608);
+    assert_eq!(preview.crops[30].expect("zoomed crop").width, 540);
+}
+
+#[test]
+fn an_eased_keyframe_uses_the_same_midpoint_in_preview_and_graph() {
+    let mut path = vec![keyframe(0, 100, 0), keyframe(40, 500, 0)];
+    path[0].easing = clipmill_edit_ir::CropEasing::EaseIn;
+    let rate = RenderProfile::default().rate();
+    assert_eq!(crop_rect_at(&path, rate, 20).expect("midpoint").x, 200);
+    let compiled =
+        compile(&crop_document(path), &[source()], &RenderProfile::default()).expect("compiles");
+    assert!(compiled.graph.graph.contains("pow("));
 }
 
 #[test]
@@ -793,6 +809,7 @@ fn two_person_render_and_preview_use_both_independent_viewports() {
             width: 900,
             height: 800,
         },
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }]);
     let layout = &mut document.video.segments[0].layout;
     layout.state = LayoutState::TwoUp;
@@ -804,6 +821,7 @@ fn two_person_render_and_preview_use_both_independent_viewports() {
             width: 900,
             height: 800,
         },
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }];
     let profile = RenderProfile::default();
     let plan = compile(&document, &[source()], &profile).expect("two-person composition compiles");

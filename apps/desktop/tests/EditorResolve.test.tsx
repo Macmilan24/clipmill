@@ -64,8 +64,12 @@ beforeEach(() => {
     docId: 'edit',
     revision: 1,
     plan: program,
+    document: null,
     proxyUrls: new Map([[segment.sourceFingerprint, 'http://localhost/proxy.mp4']]),
     faceTrack: { projectId: 'project', artifactId: 'faces' },
+    transcript: null,
+    filmstrip: null,
+    peaks: null,
     loading: false,
     busy: false,
     problem: null,
@@ -78,7 +82,7 @@ beforeEach(() => {
 });
 function resolveSecond() {
   fireEvent.change(screen.getByRole('slider', { name: /scrub/i }), { target: { value: '450' } });
-  fireEvent.mouseDown(screen.getByRole('tab', { name: 'Reframe' }));
+  fireEvent.click(screen.getByText('Reframe', { selector: 'summary' }));
   fireEvent.click(screen.getByRole('button', { name: 'Re-solve the path' }));
 }
 describe('re-solving the current shot', () => {

@@ -853,6 +853,19 @@ export async function listEditDocs(projectId: string): Promise<readonly EditDocS
   return invoke<EditDocSummary[]>('list_edit_docs', { projectId });
 }
 
+export interface EditDocDetail {
+  readonly docId: string;
+  readonly revision: number;
+  readonly documentJson: string;
+}
+
+/** The live document, used to show saved keyframes and caption options. */
+export async function getEditDoc(docId: string): Promise<EditDocDetail> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<EditDocDetail>('get_edit_doc', { docId });
+}
+
 /**
  * One edit command, in the shape the Edit IR deserializes.
  *

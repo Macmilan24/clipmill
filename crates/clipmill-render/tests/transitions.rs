@@ -32,6 +32,7 @@ fn document(durations: &[i64]) -> EditDocument {
                             width: 540,
                             height: 960,
                         },
+                        easing: clipmill_edit_ir::CropEasing::Linear,
                     }],
                     secondary_crop_path: Vec::new(),
                 },

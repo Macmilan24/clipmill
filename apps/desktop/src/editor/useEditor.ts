@@ -8,11 +8,20 @@
  * to keep playback consistent with the persisted document.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  EditIr,
+  IndexTranscript,
+  MediaAudioPeaks,
+  MediaFilmstrip,
+  SpeechTranscript,
+} from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { EditCommandJson, Job, PreviewPlan } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
+import { type Filmstrip, type Peaks } from '../results/loader.js';
+import { type Transcript, readTranscript } from '../results/transcript.js';
 import type { ClipRef } from '../shell/route.js';
 
 const PROXY_KIND = 'media.proxy.v1';
@@ -22,6 +31,15 @@ const FACES_KIND = 'vision.face_track.v1';
 function failureMessage(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   return message.trim() || fallback;
+}
+
+function parseDocument<T>(json: string | undefined): T | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
 }
 
 /** Where a clip's media comes from: an artifact, and the project it is in. */
@@ -34,10 +52,14 @@ export interface EditorState {
   readonly docId: string | null;
   readonly revision: number;
   readonly plan: PreviewPlan | null;
+  readonly document: EditIr | null;
   /** The proxy for each source the plan names, by fingerprint, as a URL. */
   readonly proxyUrls: ReadonlyMap<string, string>;
   /** The face tracks a crop path is re-solved from, when the run published any. */
   readonly faceTrack: ArtifactRef | null;
+  readonly transcript: Transcript | null;
+  readonly filmstrip: Filmstrip | null;
+  readonly peaks: Peaks | null;
   readonly loading: boolean;
   readonly busy: boolean;
   readonly problem: string | null;
@@ -72,7 +94,11 @@ export function mediaRun(jobs: readonly Job[], clip: ClipRef): Job | null {
 export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): EditorState {
   const [revision, setRevision] = useState(0);
   const [plan, setPlan] = useState<PreviewPlan | null>(null);
+  const [document, setDocument] = useState<EditIr | null>(null);
   const [faceTrack, setFaceTrack] = useState<ArtifactRef | null>(null);
+  const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [filmstrip, setFilmstrip] = useState<Filmstrip | null>(null);
+  const [peaks, setPeaks] = useState<Peaks | null>(null);
   const [loading, setLoading] = useState(clip !== null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -103,7 +129,11 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
     setUndoStack([]);
     setRedoStack([]);
     setPlan(null);
+    setDocument(null);
     setFaceTrack(null);
+    setTranscript(null);
+    setFilmstrip(null);
+    setPeaks(null);
     setProblem(null);
     setBusy(false);
     if (!projectId || !docId || !sourceId) {
@@ -116,9 +146,10 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
     const request = latest.current;
     void (async () => {
       try {
-        const [fetched, jobs] = await Promise.all([
+        const [fetched, jobs, detail] = await Promise.all([
           api.previewPlan(projectId, docId),
           api.listJobs(projectId).catch(() => []),
+          api.getEditDoc?.(docId).catch(() => null) ?? Promise.resolve(null),
         ]);
         const run = mediaRun(jobs, {
           projectId,
@@ -127,10 +158,61 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
           ...(jobId ? { jobId } : {}),
         });
         const faces = publishedArtifact(run, FACES_KIND);
+        const read = async (kind: string) => {
+          const artifact = publishedArtifact(run, kind);
+          if (!artifact) return null;
+          return api
+            .readDocument(projectId, artifact)
+            .then((item) => ({ artifact, json: item.json }))
+            .catch(() => null);
+        };
+        const [speechDoc, indexDoc, filmstripDoc, peaksDoc] = await Promise.all([
+          read('speech.transcript.v1'),
+          read('index.transcript.v1'),
+          read('media.filmstrip.v1'),
+          read('media.audio_peaks.v1'),
+        ]);
+        const sourceFingerprint = fetched.sources.find(
+          (source) => source.sourceId === sourceId,
+        )?.sourceFingerprint;
+        const speech = parseDocument<SpeechTranscript>(speechDoc?.json);
+        const index = parseDocument<IndexTranscript>(indexDoc?.json);
+        const tiles = parseDocument<MediaFilmstrip>(filmstripDoc?.json);
+        const waveform = parseDocument<MediaAudioPeaks>(peaksDoc?.json);
         if (live && request === latest.current) {
           setRevision(fetched.revision);
           setPlan(fetched);
+          setDocument(
+            detail?.revision === fetched.revision
+              ? parseDocument<EditIr>(detail.documentJson)
+              : null,
+          );
           setFaceTrack(faces ? { projectId, artifactId: faces } : null);
+          setTranscript(
+            speech?.schema_version === 'clipmill.speech.transcript.v1' &&
+              speech.source_fingerprint === sourceFingerprint
+              ? readTranscript(speech, index)
+              : null,
+          );
+          setFilmstrip(
+            tiles?.schema_version === 'clipmill.media.filmstrip.v1' &&
+              tiles.source_fingerprint === sourceFingerprint &&
+              filmstripDoc
+              ? {
+                  artifactId: filmstripDoc.artifact,
+                  tiles: tiles.tiles.map((tile) => ({ file: tile.file, tTicks: tile.t_ticks })),
+                }
+              : null,
+          );
+          setPeaks(
+            waveform?.schema_version === 'clipmill.media.audio_peaks.v1' &&
+              waveform.source_fingerprint === sourceFingerprint
+              ? {
+                  bucketTicks: waveform.bucket_ticks,
+                  values: waveform.peaks.map((bucket) => [bucket.min, bucket.max] as const),
+                }
+              : null,
+          );
           setLoading(false);
         }
       } catch (error) {
@@ -169,7 +251,10 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
         }
         latest.current += 1;
         const request = latest.current;
-        const refreshed = await api.previewPlan(projectId, docId);
+        const [refreshed, detail] = await Promise.all([
+          api.previewPlan(projectId, docId),
+          api.getEditDoc?.(docId).catch(() => null) ?? Promise.resolve(null),
+        ]);
         if (!current()) {
           return null;
         }
@@ -180,6 +265,13 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
           if (refreshed.revision >= applied.revision) {
             setRevision(refreshed.revision);
             setPlan(refreshed);
+            if (detail?.revision === refreshed.revision) {
+              try {
+                setDocument(JSON.parse(detail.documentJson) as EditIr);
+              } catch {
+                setDocument(null);
+              }
+            }
           } else {
             setRevision(applied.revision);
           }
@@ -254,8 +346,12 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
     docId: plan ? docId : null,
     revision,
     plan,
+    document,
     proxyUrls,
     faceTrack,
+    transcript,
+    filmstrip,
+    peaks,
     loading,
     busy,
     problem,

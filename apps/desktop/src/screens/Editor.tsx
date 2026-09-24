@@ -5,14 +5,10 @@
  */
 import {
   ArrowLeft,
-  Captions as CaptionsIcon,
   Check,
   Film,
-  Scan,
-  Scissors,
   StepBack,
   StepForward,
-  Volume2,
   Info,
   Maximize2,
   Minimize2,
@@ -22,19 +18,37 @@ import {
   Undo2,
   Upload,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+  WheelEvent as ReactWheelEvent,
+} from 'react';
+import type { EditIr } from '@clipmill/contracts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
-import { Audio } from '../editor/Audio.js';
+import { EditorTranscript, type WordRange } from '../editor/EditorTranscript.js';
+import { EditorProperties, type EditorSelection } from '../editor/EditorProperties.js';
+import { StudioTimeline } from '../editor/StudioTimeline.js';
+import { programWords, cutWords, rippleRange } from '../editor/transcript.js';
+import type { Transcript } from '../results/transcript.js';
+import type { Filmstrip, Peaks } from '../results/loader.js';
 import { CompositionCanvas } from '../editor/CompositionCanvas.js';
 import { useDraftAudio } from '../editor/useDraftAudio.js';
-import { Captions } from '../editor/Captions.js';
-import { Reframe } from '../editor/Reframe.js';
 import '../editor/workspace.css';
-import { snapToWord, trimEndAt, trimStartAt } from '../editor/commands.js';
+import '../editor/studio.css';
+import {
+  batch,
+  removeCropKeyframe,
+  removeGainPoint,
+  setCropKeyframe,
+  setLayout,
+  setCueRegion,
+  splitSegment,
+  ticksAt,
+} from '../editor/commands.js';
 import type { EditCommandJson } from '../daemon/client.js';
 import type { PreviewPlan } from '../daemon/client.js';
 import {
@@ -43,16 +57,72 @@ import {
   cueLines,
   gainAt,
   highlightedWord,
-  lanePosition,
   proxySecondsAt,
   resolvePlaybackFrame,
   segmentAt,
+  sourceTicksAt,
+  sourceOf,
   timecode,
 } from '../editor/player.js';
+
+const DEFAULT_KEYS = {
+  play: 'space',
+  reverse: 'j',
+  pause: 'k',
+  forward: 'l',
+  markIn: 'i',
+  markOut: 'o',
+  split: 'mod+b',
+  delete: 'backspace',
+  marker: 'm',
+  snap: 's',
+  blade: 'b',
+  select: 'v',
+  find: 'mod+f',
+  sheet: '?',
+  zoomIn: 'mod+=',
+  zoomOut: 'mod+-',
+} as const;
+type KeyAction = keyof typeof DEFAULT_KEYS;
+type Keymap = Record<KeyAction, string>;
+const KEY_LABELS: Record<KeyAction, string> = {
+  play: 'Play / pause',
+  reverse: 'Reverse',
+  pause: 'Pause',
+  forward: 'Forward',
+  markIn: 'Mark in',
+  markOut: 'Mark out',
+  split: 'Split section',
+  delete: 'Delete selection',
+  marker: 'Add marker',
+  snap: 'Toggle snapping',
+  blade: 'Blade tool',
+  select: 'Select tool',
+  find: 'Find words',
+  sheet: 'Shortcut sheet',
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+};
+function chordOf(event: KeyboardEvent): string {
+  const key = event.key === ' ' ? 'space' : event.key.toLowerCase();
+  return [
+    event.metaKey || event.ctrlKey ? 'mod' : '',
+    event.altKey ? 'alt' : '',
+    event.shiftKey && /^[a-z0-9]$/.test(key) ? 'shift' : '',
+    key,
+  ]
+    .filter(Boolean)
+    .join('+');
+}
 
 export interface EditorProps {
   /** Null until a clip has been approved and a document exists. */
   readonly plan: PreviewPlan | null;
+  readonly document?: EditIr | null;
+  readonly transcript?: Transcript | null;
+  readonly filmstrip?: Filmstrip | null;
+  readonly peaks?: Peaks | null;
+  readonly filmstripUrl?: (file: string) => string;
   /**
    * The proxy for each source the plan names, by fingerprint, as a URL the
    * media protocol serves. A source with no entry has nothing to play.
@@ -86,6 +156,11 @@ export interface EditorProps {
 
 export function Editor({
   plan,
+  document = null,
+  transcript = null,
+  filmstrip = null,
+  peaks = null,
+  filmstripUrl = () => '',
   proxyUrls,
   docId,
   labels,
@@ -119,6 +194,33 @@ export function Editor({
     setFrame(next);
   }, []);
   const [playing, setPlaying] = useState(false);
+  const [selection, setSelection] = useState<EditorSelection>({ kind: 'clip' });
+  const [zoom, setZoom] = useState(1);
+  const [snapping, setSnapping] = useState(true);
+  const [tool, setTool] = useState<'select' | 'blade'>('select');
+  const [markers, setMarkers] = useState<readonly number[]>([]);
+  const [inFrame, setInFrame] = useState<number | null>(null);
+  const [outFrame, setOutFrame] = useState<number | null>(null);
+  const [safePlatform, setSafePlatform] = useState<'off' | 'tiktok' | 'reels' | 'shorts'>('off');
+  const [grid, setGrid] = useState(false);
+  const [before, setBefore] = useState(false);
+  const [loopRange, setLoopRange] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const reverseTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [shortcutOpen, setShortcutOpen] = useState(false);
+  const [recordingKey, setRecordingKey] = useState<KeyAction | null>(null);
+  const [keymap, setKeymap] = useState<Keymap>(() => {
+    try {
+      return {
+        ...DEFAULT_KEYS,
+        ...JSON.parse(localStorage.getItem('clipmill.editor.keys') ?? '{}'),
+      } as Keymap;
+    } catch {
+      return { ...DEFAULT_KEYS };
+    }
+  });
+  const [findSignal, setFindSignal] = useState(0);
+  const [panelWidths, setPanelWidths] = useState({ left: 300, right: 315 });
   const [focusedPreview, setFocusedPreview] = useState(false);
   const [playbackProblem, setPlaybackProblem] = useState<string | null>(null);
   // What is drawn is always a frame the program has. A trim can shorten the
@@ -127,6 +229,37 @@ export function Editor({
   // segment — and no segment would take the picture down with it.
   const frame = plan ? Math.max(0, Math.min(playhead, plan.frameCount - 1)) : playhead;
   const draftAudio = useDraftAudio(video, plan ? gainAt(plan, frame) : 0);
+
+  useEffect(() => {
+    if (!recordingKey) return;
+    const record = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.key === 'Escape') {
+        setRecordingKey(null);
+        return;
+      }
+      if (['Meta', 'Control', 'Alt', 'Shift'].includes(event.key)) return;
+      const chord = chordOf(event);
+      setKeymap((current) => {
+        const next = { ...current };
+        for (const action of Object.keys(next) as KeyAction[]) {
+          if (action !== recordingKey && next[action] === chord)
+            next[action] = current[recordingKey];
+        }
+        next[recordingKey] = chord;
+        try {
+          localStorage.setItem('clipmill.editor.keys', JSON.stringify(next));
+        } catch {
+          /* The current session still has the mapping. */
+        }
+        return next;
+      });
+      setRecordingKey(null);
+    };
+    window.addEventListener('keydown', record, true);
+    return () => window.removeEventListener('keydown', record, true);
+  }, [recordingKey]);
 
   // A different document is a different program; a playhead left where the
   // last one was would seek the new proxy to a frame it may not have.
@@ -138,9 +271,33 @@ export function Editor({
     playbackFailed.current = false;
     setPreparingPreview(false);
     setPlaying(false);
+    setSelection({ kind: 'clip' });
+    setInFrame(null);
+    setOutFrame(null);
+    setZoom(1);
+    setTool('select');
+    setBefore(false);
+    if (reverseTimer.current) clearInterval(reverseTimer.current);
+    reverseTimer.current = null;
+    try {
+      setMarkers(
+        JSON.parse(localStorage.getItem(`clipmill.editor.markers.${docId}`) ?? '[]') as number[],
+      );
+      setPanelWidths(
+        JSON.parse(
+          localStorage.getItem('clipmill.editor.panels') ?? '{"left":300,"right":315}',
+        ) as { left: number; right: number },
+      );
+    } catch {
+      setMarkers([]);
+    }
     setFocusedPreview(false);
     setPlaybackProblem(null);
   }, [docId, updateFrame]);
+
+  useEffect(() => {
+    if (video.current) video.current.playbackRate = speed;
+  }, [speed]);
 
   /**
    * Put the playhead on a program frame, and the media element where that
@@ -264,9 +421,99 @@ export function Editor({
     }
   }, [frame, plan, seek, draftAudio.connect, stopWithProblem]);
 
+  const addMarker = useCallback(
+    (at: number) => {
+      setMarkers((current) => {
+        const next = [...new Set([...current, at])].toSorted((a, b) => a - b);
+        try {
+          localStorage.setItem(`clipmill.editor.markers.${docId}`, JSON.stringify(next));
+        } catch {
+          /* Markers remain available this session. */
+        }
+        return next;
+      });
+    },
+    [docId],
+  );
+
+  const splitHere = useCallback(() => {
+    if (!plan || busy) return;
+    const part = segmentAt(plan, frame);
+    const ticks = sourceTicksAt(plan, frame);
+    if (!part || ticks === null || ticks <= part.inTicks || ticks >= part.outTicks) return;
+    const existing = new Set(document?.video.segments?.map((item) => item.segment_id));
+    let id = `${part.segmentId}_cut_${ticks}`;
+    let suffix = 2;
+    while (existing.has(id)) id = `${part.segmentId}_cut_${ticks}_${suffix++}`;
+    onApply(splitSegment(part.segmentId, ticks, id));
+    setSelection({ kind: 'section', segmentId: part.segmentId });
+  }, [plan, busy, frame, document, onApply]);
+
+  const deleteSelection = useCallback(() => {
+    if (!plan || busy) return;
+    let command: EditCommandJson | null = null;
+    if (selection.kind === 'words') {
+      const words = programWords(plan, transcript);
+      command = cutWords(
+        plan,
+        words,
+        Array.from(
+          { length: selection.range.last - selection.range.first + 1 },
+          (_, index) => selection.range.first + index,
+        ),
+      );
+    } else if (selection.kind === 'keyframe') {
+      command = removeCropKeyframe(selection.tTicks, selection.segmentId, selection.secondary);
+    } else if (selection.kind === 'gain') {
+      command = removeGainPoint(selection.tTicks);
+    } else if (inFrame !== null && outFrame !== null) {
+      command = rippleRange(
+        plan,
+        ticksAt(plan, Math.min(inFrame, outFrame)),
+        ticksAt(plan, Math.max(inFrame, outFrame)),
+      );
+    }
+    if (command) {
+      onApply(command);
+      setSelection({ kind: 'clip' });
+    }
+  }, [plan, busy, selection, transcript, inFrame, outFrame, onApply]);
+
+  const resizePanel = (side: 'left' | 'right', event: ReactPointerEvent) => {
+    event.preventDefault();
+    const initial = event.clientX;
+    const starting = panelWidths[side];
+    const move = (next: PointerEvent) =>
+      setPanelWidths((current) => ({
+        ...current,
+        [side]: Math.max(
+          220,
+          Math.min(480, starting + (next.clientX - initial) * (side === 'left' ? 1 : -1)),
+        ),
+      }));
+    const done = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', done);
+      setPanelWidths((current) => {
+        try {
+          localStorage.setItem('clipmill.editor.panels', JSON.stringify(current));
+        } catch {
+          /* This session still keeps the size. */
+        }
+        return current;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', done);
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) setFocusedPreview(false);
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        setFocusedPreview(false);
+        setShortcutOpen(false);
+        setSelection({ kind: 'clip' });
+      }
       const target = event.target;
       // Text, range inputs and Radix controls own their keyboard interactions.
       if (
@@ -276,31 +523,140 @@ export function Editor({
         )
       )
         return;
-      if (event.defaultPrevented || event.altKey || !plan) return;
+      if (event.defaultPrevented || !plan) return;
+      const key = event.key.toLowerCase();
+      const chord = chordOf(event);
+      const is = (action: KeyAction) => chord === keymap[action];
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (!busy && (event.shiftKey ? canRedo : canUndo)) (event.shiftKey ? onRedo : onUndo)();
-      } else if (
-        !event.metaKey &&
-        !event.ctrlKey &&
-        ['ArrowLeft', 'ArrowRight', ' '].includes(event.key)
-      ) {
+      } else if (is('split')) {
         event.preventDefault();
-        if (event.key === ' ') togglePlayback();
-        else step((event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 10 : 1));
+        splitHere();
+      } else if (is('find')) {
+        event.preventDefault();
+        setFindSignal((value) => value + 1);
+      } else if ((event.metaKey || event.ctrlKey) && key === 'e' && onExport) {
+        event.preventDefault();
+        onExport();
+      } else if (is('zoomIn') || chord === 'mod++') {
+        event.preventDefault();
+        setZoom((value) => Math.min(8, value * 1.5));
+      } else if (is('zoomOut')) {
+        event.preventDefault();
+        setZoom((value) => Math.max(1, value / 1.5));
+      } else if (is('play')) {
+        event.preventDefault();
+        if (reverseTimer.current) {
+          clearInterval(reverseTimer.current);
+          reverseTimer.current = null;
+        }
+        togglePlayback();
+      } else if (is('pause')) {
+        event.preventDefault();
+        if (reverseTimer.current) {
+          clearInterval(reverseTimer.current);
+          reverseTimer.current = null;
+        }
+        video.current?.pause();
+        setSpeed(1);
+      } else if (is('reverse')) {
+        event.preventDefault();
+        const element = video.current;
+        if (element && !element.paused) element.pause();
+        if (reverseTimer.current) clearInterval(reverseTimer.current);
+        const rate = speed >= 4 ? 1 : speed * 2;
+        setSpeed(rate);
+        reverseTimer.current = setInterval(
+          () =>
+            seek(
+              clockFrame.current -
+                Math.max(1, Math.round((rate * plan.rateNum) / plan.rateDen / 12)),
+            ),
+          80,
+        );
+      } else if (is('forward')) {
+        event.preventDefault();
+        if (reverseTimer.current) {
+          clearInterval(reverseTimer.current);
+          reverseTimer.current = null;
+        }
+        setSpeed((value) => (value >= 4 ? 1 : value * 2));
+        if (video.current?.paused) togglePlayback();
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        step((event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 10 : 1));
+      } else if (key === 'home' || key === 'end') {
+        event.preventDefault();
+        seek(key === 'home' ? 0 : plan.frameCount - 1);
+      } else if (is('markIn')) {
+        event.preventDefault();
+        setInFrame(frame);
+      } else if (is('markOut')) {
+        event.preventDefault();
+        setOutFrame(frame);
+      } else if (is('delete') || (keymap.delete === 'backspace' && chord === 'delete')) {
+        event.preventDefault();
+        deleteSelection();
+      } else if (is('select')) {
+        event.preventDefault();
+        setTool('select');
+      } else if (is('blade')) {
+        event.preventDefault();
+        setTool('blade');
+      } else if (is('snap')) {
+        event.preventDefault();
+        setSnapping((value) => !value);
+      } else if (is('marker')) {
+        event.preventDefault();
+        addMarker(frame);
+      } else if (key === 'z' && event.shiftKey) {
+        event.preventDefault();
+        setZoom(1);
+      } else if (is('sheet')) {
+        event.preventDefault();
+        setShortcutOpen((value) => !value);
+      } else if (key === '[' || key === ']') {
+        event.preventDefault();
+        setInFrame(key === '[' ? frame : inFrame);
+        setOutFrame(key === ']' ? frame : outFrame);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [step, plan, togglePlayback, busy, canRedo, canUndo, onRedo, onUndo]);
+  }, [
+    step,
+    plan,
+    togglePlayback,
+    busy,
+    canRedo,
+    canUndo,
+    onRedo,
+    onUndo,
+    onExport,
+    splitHere,
+    deleteSelection,
+    speed,
+    seek,
+    frame,
+    addMarker,
+    inFrame,
+    outFrame,
+    keymap,
+  ]);
+
+  useEffect(
+    () => () => {
+      if (reverseTimer.current) clearInterval(reverseTimer.current);
+    },
+    [],
+  );
 
   const cue = useMemo(() => (plan ? cueAt(plan, frame) : null), [plan, frame]);
   const highlighted = useMemo(
     () => (plan && cue ? highlightedWord(plan, cue, frame) : -1),
     [plan, cue, frame],
   );
-  const crop = useMemo(() => (plan ? cropAt(plan, frame) : null), [plan, frame]);
-  const secondaryCrop = useMemo(() => (plan ? cropAt(plan, frame, true) : null), [plan, frame]);
   const segment = useMemo(() => (plan ? segmentAt(plan, frame) : null), [plan, frame]);
 
   // This callback returns the frame synchronously: the canvas must use its
@@ -323,6 +679,15 @@ export function Editor({
           : clockFrame.current;
       }
       const next = resolvePlaybackFrame(plan, clockFrame.current, seconds);
+      if (
+        loopRange &&
+        inFrame !== null &&
+        outFrame !== null &&
+        next.frame >= Math.max(inFrame, outFrame)
+      ) {
+        seek(Math.min(inFrame, outFrame));
+        return null;
+      }
       if (next.seek || next.ended) {
         if (next.ended) {
           element.pause();
@@ -353,7 +718,7 @@ export function Editor({
       updateFrame(next.frame);
       return next.hold ? null : next.frame;
     },
-    [plan, proxyUrls, seek, updateFrame, stopWithProblem],
+    [plan, proxyUrls, seek, updateFrame, stopWithProblem, loopRange, inFrame, outFrame],
   );
 
   const onMetadata = useCallback(() => {
@@ -434,7 +799,7 @@ export function Editor({
         <div className="editor-header-actions">
           <span role="status" className="editor-save-state">
             {!busy && !problem && <Check className="size-3.5" />}{' '}
-            {busy ? 'Saving…' : problem ? 'Check edit status' : `Saved · r${plan.revision}`}
+            {busy ? 'Saving…' : problem ? 'Check edit status' : 'Saved'}
           </span>
           <div className="editor-history">
             <Button
@@ -481,12 +846,63 @@ export function Editor({
           {problem || playbackProblem || draftAudio.problem || segment?.framingWarning}
         </p>
       )}
-      <div className="editor-body">
+      <div
+        className="editor-body"
+        style={
+          {
+            '--editor-left': `${panelWidths.left}px`,
+            '--editor-right': `${panelWidths.right}px`,
+          } as CSSProperties
+        }
+      >
+        <EditorTranscript
+          plan={plan}
+          transcript={transcript}
+          frame={frame}
+          busy={busy}
+          selected={selection.kind === 'words' ? selection.range : null}
+          findSignal={findSignal}
+          onSelect={(range: WordRange) => setSelection({ kind: 'words', range })}
+          onSeek={seek}
+          onApply={onApply}
+        />
+        <div
+          className="editor-panel-resizer"
+          role="separator"
+          aria-label="Resize transcript panel"
+          aria-orientation="vertical"
+          onPointerDown={(event) => resizePanel('left', event)}
+        />
         <section className="editor-viewer" aria-label="Clip preview">
           <div className="editor-viewer-heading">
             <span className="editor-monitor-label">
               <Film aria-hidden="true" /> Program
             </span>
+            <div className="editor-monitor-tools">
+              <label>
+                Safe zones{' '}
+                <select
+                  aria-label="Platform safe zones"
+                  value={safePlatform}
+                  onChange={(event) => setSafePlatform(event.target.value as typeof safePlatform)}
+                >
+                  <option value="off">Off</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="reels">Reels</option>
+                  <option value="shorts">Shorts</option>
+                </select>
+              </label>
+              <button type="button" aria-pressed={grid} onClick={() => setGrid((value) => !value)}>
+                Grid
+              </button>
+              <button
+                type="button"
+                aria-pressed={before}
+                onClick={() => setBefore((value) => !value)}
+              >
+                Before / after
+              </button>
+            </div>
             <span className="editor-monitor-metadata">
               {segment && plan.segments.length > 1 && (
                 <span className="editor-monitor-position">
@@ -518,6 +934,13 @@ export function Editor({
               onPlaying={onMediaPlaying}
               preparingPreview={preparingPreview}
               onBuffering={onBuffering}
+              safePlatform={safePlatform}
+              grid={grid}
+              before={before}
+              busy={busy}
+              selectedCue={selection.kind === 'cue' ? selection.cueId : null}
+              onSelectCue={(cueId) => setSelection({ kind: 'cue', cueId })}
+              onApply={onApply}
               onError={() => {
                 stopWithProblem('The preview could not be loaded. Reopen the clip to try again.');
               }}
@@ -529,152 +952,146 @@ export function Editor({
             playing={playing}
             disabled={!proxyUrl}
             onStep={step}
-            onSeek={seek}
             onToggle={togglePlayback}
           />
-          <details className="editor-preview-details">
-            <summary>
-              <Info aria-hidden="true" /> About this preview
-            </summary>
-            <div>
-              <p>Fast proxy preview with your gain edits.</p>
-              <p className="mono">
-                Revision {plan.revision} · {(plan.rateNum / plan.rateDen).toFixed(2)} fps
-              </p>
-              {onExport ? (
-                <button type="button" onClick={onExport}>
-                  Render r{plan.revision} for final picture and mastered audio.
-                </button>
-              ) : (
-                <p>Review the rendered file for final picture and mastered audio.</p>
-              )}
-            </div>
-          </details>
+          <div className="editor-range-tools">
+            <button type="button" onClick={() => setInFrame(frame)}>
+              In <kbd>I</kbd>
+            </button>
+            <span>{inFrame === null ? '—' : timecode(plan, inFrame)}</span>
+            <button type="button" onClick={() => setOutFrame(frame)}>
+              Out <kbd>O</kbd>
+            </button>
+            <span>{outFrame === null ? '—' : timecode(plan, outFrame)}</span>
+            <button
+              type="button"
+              aria-pressed={loopRange}
+              onClick={() => setLoopRange((value) => !value)}
+              disabled={inFrame === null || outFrame === null}
+            >
+              Loop range
+            </button>
+            <button
+              type="button"
+              disabled={busy || inFrame === null || outFrame === null}
+              onClick={deleteSelection}
+            >
+              Delete range
+            </button>
+          </div>
         </section>
-        <aside className="editor-properties" aria-label="Edit controls">
-          <Tabs defaultValue="captions" className="editor-tool-tabs">
-            <TabsList className="editor-tool-list" aria-label="Editing tools">
-              <TabsTrigger value="captions">
-                <CaptionsIcon aria-hidden="true" />
-                Captions
-              </TabsTrigger>
-              <TabsTrigger value="reframe">
-                <Scan aria-hidden="true" />
-                Reframe
-              </TabsTrigger>
-              <TabsTrigger value="audio">
-                <Volume2 aria-hidden="true" />
-                Audio
-              </TabsTrigger>
-              <TabsTrigger value="clip">
-                <Scissors aria-hidden="true" />
-                Clip
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="reframe">
-              <Reframe
-                plan={plan}
-                frame={frame}
-                busy={busy}
-                onApply={onApply}
-                onResolve={() => onResolve(frame)}
-                resolving={resolving}
-                resolveRefusal={resolveRefusal}
-              />
-            </TabsContent>
-            <TabsContent value="captions">
-              <Captions plan={plan} frame={frame} busy={busy} onApply={onApply} />
-            </TabsContent>
-            <TabsContent value="audio">
-              <Audio plan={plan} frame={frame} busy={busy} onApply={onApply} />
-            </TabsContent>
-            <TabsContent value="clip">
-              <div className="editor-panel editor-clip-panel">
-                <section>
-                  <h2 className="editor-panel-title">Trim your clip</h2>
-                  <p className="editor-help">
-                    Set the playhead, then trim. Cuts snap to word boundaries.
-                  </p>
-                  <div className="editor-trim-actions">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy || trimStartAt(plan, snapToWord(plan, frame)) === null}
-                      onClick={() => {
-                        const command = trimStartAt(plan, snapToWord(plan, frame));
-                        if (command) {
-                          onApply(command);
-                        }
-                      }}
-                    >
-                      Trim start here
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy || trimEndAt(plan, snapToWord(plan, frame)) === null}
-                      onClick={() => {
-                        const command = trimEndAt(plan, snapToWord(plan, frame));
-                        if (command) {
-                          onApply(command);
-                        }
-                      }}
-                    >
-                      Trim end here
-                    </Button>
-                  </div>
-                </section>
-                <details className="editor-details">
-                  <summary>Clip details</summary>
-                  <dl className="editor-detail-list">
-                    <Row label="Output" value={`${plan.width}×${plan.height}`} />
-                    <Row label="Rate" value={`${(plan.rateNum / plan.rateDen).toFixed(3)} fps`} />
-                    <Row label="Frames" value={String(plan.frameCount)} />
-                    <Row
-                      label="Layout"
-                      value={secondaryCrop ? 'Two portraits' : crop ? 'Face crop' : 'Fit'}
-                    />
-                    <Row label="Gain here" value={`${gainAt(plan, frame).toFixed(1)} dB`} />
-                    {segment && (
-                      <Row
-                        label="Source window"
-                        value={`${sourceClock(segment.inTicks)} – ${sourceClock(segment.outTicks)}`}
-                      />
-                    )}
-                  </dl>
-                </details>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </aside>
+        <div
+          className="editor-panel-resizer"
+          role="separator"
+          aria-label="Resize properties panel"
+          aria-orientation="vertical"
+          onPointerDown={(event) => resizePanel('right', event)}
+        />
+        <EditorProperties
+          plan={plan}
+          document={document}
+          transcript={transcript}
+          frame={frame}
+          selection={selection}
+          busy={busy}
+          resolving={resolving}
+          resolveRefusal={resolveRefusal}
+          onApply={onApply}
+          onResolve={() => onResolve(frame)}
+        />
       </div>
 
-      <div className="editor-timeline">
-        <div className="editor-timeline-heading">
-          <h2>
-            <Film aria-hidden="true" /> Timeline
-          </h2>
-          <span>Space to play · ← → step · Shift to step 10 frames</span>
+      <StudioTimeline
+        plan={plan}
+        document={document}
+        transcript={transcript}
+        filmstrip={filmstrip}
+        peaks={peaks}
+        frame={frame}
+        docId={docId}
+        selection={selection}
+        busy={busy}
+        zoom={zoom}
+        onZoom={setZoom}
+        snap={snapping}
+        onSnap={setSnapping}
+        tool={tool}
+        onTool={setTool}
+        markers={markers}
+        onMarker={addMarker}
+        filmstripUrl={filmstripUrl}
+        onSeek={seek}
+        onSelect={setSelection}
+        onApply={onApply}
+      />
+      <details className="editor-diagnostics">
+        <summary>
+          <Info aria-hidden="true" /> Diagnostics
+        </summary>
+        <p>
+          Revision {plan.revision} · {(plan.rateNum / plan.rateDen).toFixed(2)} fps · {plan.width}×
+          {plan.height} · preview from render plan
+        </p>
+      </details>
+      {shortcutOpen && (
+        <div className="editor-shortcut-sheet" role="dialog" aria-label="Editor shortcuts">
+          <div>
+            <header>
+              <h2>Keyboard shortcuts</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShortcutOpen(false);
+                  setRecordingKey(null);
+                }}
+              >
+                Close
+              </button>
+            </header>
+            <p>Choose a shortcut, then press the keys you want to use.</p>
+            <dl>
+              {(Object.keys(DEFAULT_KEYS) as KeyAction[]).map((action) => (
+                <div key={action}>
+                  <dt>{KEY_LABELS[action]}</dt>
+                  <dd>
+                    <button
+                      type="button"
+                      aria-label={`Change ${KEY_LABELS[action]} shortcut`}
+                      data-recording={recordingKey === action}
+                      onClick={() => setRecordingKey(action)}
+                    >
+                      {recordingKey === action
+                        ? 'Press keys…'
+                        : keymap[action]
+                            .replace('mod', '⌘/Ctrl')
+                            .replace('space', 'Space')
+                            .toUpperCase()}
+                    </button>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <button
+              type="button"
+              className="editor-reset-shortcuts"
+              onClick={() => {
+                const next = { ...DEFAULT_KEYS };
+                setKeymap(next);
+                setRecordingKey(null);
+                try {
+                  localStorage.setItem('clipmill.editor.keys', JSON.stringify(next));
+                } catch {
+                  /* This session still resets. */
+                }
+              }}
+            >
+              Reset defaults
+            </button>
+          </div>
         </div>
-        <Lanes plan={plan} frame={frame} onSeek={seek} />
-      </div>
+      )}
     </div>
   );
-}
-
-function Row({ label, value }: { readonly label: string; readonly value: string }) {
-  return (
-    <div className="flex justify-between">
-      <dt className="text-[var(--cm-ink-2)]">{label}</dt>
-      <dd className="text-[var(--cm-ink-1)]">{value}</dd>
-    </div>
-  );
-}
-
-/** A source tick as `m:ss`, which is how a person reads where a clip sits. */
-function sourceClock(ticks: number): string {
-  const seconds = Math.floor(ticks / 90_000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 /** The 9:16 stage: the proxy, cropped by the plan, with the plan's captions. */
@@ -694,6 +1111,13 @@ function Stage({
   onError,
   preparingPreview,
   onBuffering,
+  safePlatform,
+  grid,
+  before,
+  busy,
+  selectedCue,
+  onSelectCue,
+  onApply,
 }: {
   readonly proxyUrl: string | null;
   readonly proxyUrls: ReadonlyMap<string, string>;
@@ -711,8 +1135,134 @@ function Stage({
   readonly onError: () => void;
   readonly preparingPreview: boolean;
   readonly onBuffering: (waiting: boolean) => void;
+  readonly safePlatform: 'off' | 'tiktok' | 'reels' | 'shorts';
+  readonly grid: boolean;
+  readonly before: boolean;
+  readonly busy: boolean;
+  readonly selectedCue: string | null;
+  readonly onSelectCue: (cueId: string) => void;
+  readonly onApply: (command: EditCommandJson) => void;
 }) {
   const style = plan.captionStyle;
+  const part = segmentAt(plan, frame);
+  const source = part ? sourceOf(plan, part) : null;
+  const crop = cropAt(plan, frame);
+  const localTicks = part ? ticksAt(plan, frame) - part.programStartTicks : 0;
+  const comparisonPlan = useMemo(
+    () =>
+      before
+        ? ({
+            ...plan,
+            crops: plan.crops.map(() => null),
+            secondaryCrops: plan.secondaryCrops?.map(() => null),
+          } as PreviewPlan)
+        : plan,
+    [before, plan],
+  );
+  const moveFrame = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (busy || before || !part || !source || !crop) return;
+    const element = event.currentTarget;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const move = (next: PointerEvent) => {
+      const dx = Math.round(
+        ((next.clientX - startX) / Math.max(1, element.clientWidth)) * crop.width,
+      );
+      const dy = Math.round(
+        ((next.clientY - startY) / Math.max(1, element.clientHeight)) * crop.height,
+      );
+      element.style.setProperty('--drag-x', `${next.clientX - startX}px`);
+      element.style.setProperty('--drag-y', `${next.clientY - startY}px`);
+      element.dataset.dragging = String(dx !== 0 || dy !== 0);
+    };
+    const finish = (next: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      element.style.removeProperty('--drag-x');
+      element.style.removeProperty('--drag-y');
+      delete element.dataset.dragging;
+      const dx = Math.round(
+        ((next.clientX - startX) / Math.max(1, element.clientWidth)) * crop.width,
+      );
+      const dy = Math.round(
+        ((next.clientY - startY) / Math.max(1, element.clientHeight)) * crop.height,
+      );
+      if (dx || dy)
+        onApply(
+          setCropKeyframe(
+            localTicks,
+            {
+              ...crop,
+              x: Math.max(0, Math.min(source.displayWidth - crop.width, crop.x - dx)),
+              y: Math.max(0, Math.min(source.displayHeight - crop.height, crop.y - dy)),
+            },
+            part.segmentId,
+          ),
+        );
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+  };
+  const zoomFrame = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (busy || before || !part || !source) return;
+    event.preventDefault();
+    const current = crop ?? {
+      x: 0,
+      y: 0,
+      width: source.displayWidth,
+      height: source.displayHeight,
+    };
+    const scale = event.deltaY < 0 ? 0.9 : 1.1;
+    const height = Math.max(
+      2,
+      Math.min(source.displayHeight, Math.round((current.height * scale) / 2) * 2),
+    );
+    const width = Math.max(
+      2,
+      Math.min(source.displayWidth, Math.round((height * plan.width) / plan.height / 2) * 2),
+    );
+    if (width === current.width && height === current.height) return;
+    const rect = {
+      width,
+      height,
+      x: Math.max(
+        0,
+        Math.min(source.displayWidth - width, current.x + Math.round((current.width - width) / 2)),
+      ),
+      y: Math.max(
+        0,
+        Math.min(
+          source.displayHeight - height,
+          current.y + Math.round((current.height - height) / 2),
+        ),
+      ),
+    };
+    onApply(
+      crop
+        ? setCropKeyframe(localTicks, rect, part.segmentId)
+        : batch([
+            setLayout('speaker_fill', part.segmentId),
+            setCropKeyframe(localTicks, rect, part.segmentId),
+          ]),
+    );
+  };
+  const captionGesture = (event: ReactPointerEvent<HTMLParagraphElement>) => {
+    if (!cue) return;
+    event.stopPropagation();
+    onSelectCue(cue.cueId);
+    const stage = event.currentTarget.closest<HTMLElement>('.video-stage');
+    if (!stage || busy) return;
+    const startY = event.clientY;
+    const finish = (next: PointerEvent) => {
+      window.removeEventListener('pointerup', finish);
+      if (Math.abs(next.clientY - startY) < 8) return;
+      const share =
+        (next.clientY - stage.getBoundingClientRect().top) / Math.max(1, stage.clientHeight);
+      const region = share < 0.37 ? 'upper_safe' : share > 0.65 ? 'lower_safe' : 'center';
+      if (region !== cue.region) onApply(setCueRegion(cue.cueId, region, plan.presentation));
+    };
+    window.addEventListener('pointerup', finish);
+  };
   const relative = (pixels: number) => `${(pixels / plan.width) * 100}cqw`;
   const verticalMargin = ((style?.marginVertical ?? 260) / plan.height) * 100;
   const position =
@@ -750,7 +1300,7 @@ function Stage({
           <CompositionCanvas
             video={videoRef}
             mediaKey={proxyUrl}
-            plan={plan}
+            plan={comparisonPlan}
             frame={frame}
             onFrame={onProxyTime}
             proxyUrls={proxyUrls}
@@ -763,6 +1313,20 @@ function Stage({
           This recording has no proxy, so there is nothing to play.
         </p>
       )}
+      {proxyUrl && (
+        <div
+          className="editor-frame-grab"
+          aria-label="Drag picture to reframe; scroll to zoom"
+          onPointerDown={moveFrame}
+          onWheel={zoomFrame}
+        />
+      )}
+      {grid && <div className="editor-monitor-grid" aria-hidden="true" />}
+      {safePlatform !== 'off' && (
+        <div className={`editor-safe-zone editor-safe-zone-${safePlatform}`} aria-hidden="true">
+          <span>Safe for {safePlatform}</span>
+        </div>
+      )}
       {preparingPreview && (
         <div
           role="status"
@@ -773,9 +1337,12 @@ function Stage({
           </span>
         </div>
       )}
-      {proxyUrl && lines.length > 0 && (
+      {proxyUrl && !before && lines.length > 0 && (
         <p
-          className="pointer-events-none absolute text-center leading-tight"
+          className="editor-grabbable-caption absolute text-center leading-tight"
+          data-selected={selectedCue === cue?.cueId}
+          onPointerDown={captionGesture}
+          title="Click to edit; drag up or down to reposition"
           style={{
             ...position,
             left: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
@@ -841,7 +1408,6 @@ function Transport({
   playing,
   disabled,
   onStep,
-  onSeek,
   onToggle,
 }: {
   readonly plan: PreviewPlan;
@@ -849,21 +1415,10 @@ function Transport({
   readonly playing: boolean;
   readonly disabled: boolean;
   readonly onStep: (by: number) => void;
-  readonly onSeek: (frame: number) => void;
   readonly onToggle: () => void;
 }) {
   return (
     <div className="editor-transport" aria-label="Transport">
-      <input
-        type="range"
-        aria-label="Scrub"
-        min={0}
-        max={Math.max(0, plan.frameCount - 1)}
-        step={1}
-        value={frame}
-        onChange={(event) => onSeek(Number(event.target.value))}
-        className="studio-range"
-      />
       <div className="editor-transport-row">
         <Button
           variant="ghost"
@@ -876,6 +1431,8 @@ function Transport({
         </Button>
         <Button
           size="icon-sm"
+          variant="ghost"
+          className="editor-play"
           disabled={disabled}
           onClick={onToggle}
           aria-label={playing ? 'Pause' : 'Play'}
@@ -901,177 +1458,5 @@ function Transport({
         </span>
       </div>
     </div>
-  );
-}
-
-/** Each track uses the same width, so the playhead aligns at every window size. */
-function Lanes({
-  plan,
-  frame,
-  onSeek,
-}: {
-  readonly plan: PreviewPlan;
-  readonly frame: number;
-  readonly onSeek: (frame: number) => void;
-}) {
-  const cropRuns = useMemo(() => {
-    const runs: { first: number; end: number; mode: 'Fit' | 'Face crop' | 'Two portraits' }[] = [];
-    for (let at = 0; at < plan.crops.length; at++) {
-      const mode =
-        plan.secondaryCrops?.[at] != null
-          ? 'Two portraits'
-          : plan.crops[at] != null
-            ? 'Face crop'
-            : 'Fit';
-      const previous = runs.at(-1);
-      if (previous && previous.mode === mode) previous.end = at + 1;
-      else runs.push({ first: at, end: at + 1, mode });
-    }
-    return runs;
-  }, [plan.crops, plan.secondaryCrops]);
-  const playhead = lanePosition(plan, frame);
-  const span = (first: number, end: number) => ({
-    left: `${lanePosition(plan, first)}%`,
-    width: `${Math.max(0.1, lanePosition(plan, end) - lanePosition(plan, first))}%`,
-  });
-  const lanes = [
-    {
-      id: 'video',
-      label: 'Video',
-      icon: <Film aria-hidden="true" />,
-      body: plan.segments.map((part, index) => (
-        <span
-          key={part.segmentId}
-          className="editor-video-block"
-          title={`Section ${index + 1} · Source ${sourceClock(part.inTicks)}–${sourceClock(part.outTicks)}`}
-          style={span(part.firstFrame, part.endFrame)}
-        >
-          <span className="editor-block-number">{String(index + 1).padStart(2, '0')}</span>
-          <span>Source footage</span>
-        </span>
-      )),
-    },
-    {
-      id: 'reframe',
-      label: 'Framing',
-      icon: <Scan aria-hidden="true" />,
-      body: cropRuns.map((run) => (
-        <span
-          key={run.first}
-          className="absolute inset-y-0 flex items-center overflow-hidden rounded-sm border border-[var(--cm-glass-border)] px-2 text-[10px] text-[var(--cm-text-secondary)]"
-          style={span(run.first, run.end)}
-        >
-          {run.mode}
-        </span>
-      )),
-    },
-    {
-      id: 'captions',
-      label: 'Captions',
-      icon: <CaptionsIcon aria-hidden="true" />,
-      body: plan.cues.map((cue) => (
-        <span
-          key={cue.cueId}
-          title={cueLines(cue).join(' ')}
-          className="absolute inset-y-0 truncate rounded-sm border-r border-[var(--cm-glass)] bg-[var(--cm-accent-selected)] px-1.5 py-1 text-[10px] text-[var(--cm-text-secondary)]"
-          style={span(cue.firstFrame, cue.endFrame)}
-        >
-          {cueLines(cue).join(' ')}
-        </span>
-      )),
-    },
-    {
-      id: 'audio',
-      label: 'Audio',
-      icon: <Volume2 aria-hidden="true" />,
-      body: (
-        <>
-          <span className="absolute inset-x-0 top-1/2 h-px bg-[var(--cm-text-muted)]/40" />
-          {plan.gain.map((point) => (
-            <span
-              key={point.frame}
-              title={`${point.gainDb.toFixed(1)} dB`}
-              className="absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-[var(--cm-text-muted)]"
-              style={{ left: `${lanePosition(plan, point.frame)}%` }}
-            />
-          ))}
-        </>
-      ),
-    },
-  ];
-  return (
-    <section className="timeline-grid" aria-label="Timeline">
-      <span />
-      <div className="editor-timeline-ruler">
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
-          <span key={ratio}>{timecode(plan, Math.floor(plan.frameCount * ratio))}</span>
-        ))}
-      </div>
-      {lanes.map((lane) => (
-        <Track
-          key={lane.id}
-          label={lane.label}
-          icon={lane.icon}
-          playhead={playhead}
-          frame={frame}
-          frameCount={plan.frameCount}
-          onSeek={onSeek}
-        >
-          {lane.body}
-        </Track>
-      ))}
-    </section>
-  );
-}
-
-function Track({
-  label,
-  icon,
-  playhead,
-  frame,
-  frameCount,
-  onSeek,
-  children,
-}: {
-  readonly label: string;
-  readonly icon: ReactNode;
-  readonly playhead: number;
-  readonly frame: number;
-  readonly frameCount: number;
-  readonly onSeek: (frame: number) => void;
-  readonly children: ReactNode;
-}) {
-  return (
-    <>
-      <span className="timeline-label">
-        {icon}
-        <span>{label}</span>
-      </span>
-      <button
-        type="button"
-        className="timeline-track text-left"
-        data-track={label.toLowerCase()}
-        aria-label={`Seek in ${label.toLowerCase()} track`}
-        onClick={(event) => {
-          if (!event.detail) return;
-          const rect = event.currentTarget.getBoundingClientRect();
-          if (rect.width > 0)
-            onSeek(Math.round(((event.clientX - rect.left) / rect.width) * (frameCount - 1)));
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-            event.preventDefault();
-            onSeek(frame + (event.key === 'ArrowLeft' ? -1 : 1));
-          }
-        }}
-      >
-        {children}
-        <span
-          className="timeline-needle"
-          style={{ left: `${playhead}%` }}
-          data-testid={label === 'Video' ? 'playhead' : undefined}
-        />
-      </button>
-    </>
   );
 }

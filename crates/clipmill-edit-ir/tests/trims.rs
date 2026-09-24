@@ -64,6 +64,37 @@ fn path_of(document: &EditDocument) -> Vec<(i64, CropRect)> {
         .collect()
 }
 
+#[test]
+fn easing_a_keyframe_is_undoable_without_changing_its_rectangle() {
+    let original = document(vec![
+        CropKeyframe {
+            t_ticks: 0,
+            rect: rect(100),
+            easing: clipmill_edit_ir::CropEasing::Linear,
+        },
+        CropKeyframe {
+            t_ticks: 5 * SECOND,
+            rect: rect(500),
+            easing: clipmill_edit_ir::CropEasing::Linear,
+        },
+    ]);
+    let mut edited = original.clone();
+    let inverse = EditCommand::SetCropKeyframe {
+        segment_id: "seg_1".to_owned(),
+        t_ticks: 0,
+        rect: rect(100),
+        easing: Some(clipmill_edit_ir::CropEasing::EaseInOut),
+    }
+    .apply(&mut edited)
+    .expect("set easing");
+    assert_eq!(
+        edited.video.segments[0].layout.crop_path[0].easing,
+        clipmill_edit_ir::CropEasing::EaseInOut
+    );
+    inverse.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+}
+
 /// The reproduction: a static crop is one keyframe at zero, and advancing
 /// the head past it must leave the crop, not the segment's claim to one.
 #[test]
@@ -71,6 +102,7 @@ fn a_static_crop_survives_a_head_trim() {
     let before = document(vec![CropKeyframe {
         t_ticks: 0,
         rect: rect(236),
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }]);
     let mut document = before.clone();
     let inverse = trim(&mut document, 12 * SECOND, 20 * SECOND);
@@ -95,14 +127,17 @@ fn a_moving_crop_keeps_its_position_at_both_new_edges() {
         CropKeyframe {
             t_ticks: 0,
             rect: rect(100),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
         CropKeyframe {
             t_ticks: 4 * SECOND,
             rect: rect(500),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
         CropKeyframe {
             t_ticks: 8 * SECOND,
             rect: rect(900),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
     ];
     let before = document(path.clone());
@@ -150,6 +185,7 @@ fn only_a_trim_that_changes_the_path_needs_the_whole_arrangement_back() {
     let mut document = document(vec![CropKeyframe {
         t_ticks: 0,
         rect: rect(236),
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }]);
     let inverse = trim(&mut document, 10 * SECOND, 22 * SECOND);
     assert!(matches!(inverse, EditCommand::Trim { .. }));
@@ -258,10 +294,12 @@ fn both_portraits_survive_trim_ripple_and_undo() {
         CropKeyframe {
             t_ticks: 0,
             rect: rect(100),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
         CropKeyframe {
             t_ticks: 10 * SECOND,
             rect: rect(300),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
     ]);
     original.video.segments[0].layout.state = LayoutState::TwoUp;
@@ -269,10 +307,12 @@ fn both_portraits_survive_trim_ripple_and_undo() {
         CropKeyframe {
             t_ticks: 0,
             rect: rect(700),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
         CropKeyframe {
             t_ticks: 10 * SECOND,
             rect: rect(900),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
     ];
     original.validate().expect("two viewports");
@@ -310,6 +350,7 @@ fn an_incomplete_two_person_layout_is_rejected_without_mutating_the_document() {
     let mut edited = document(vec![CropKeyframe {
         t_ticks: 0,
         rect: rect(100),
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }]);
     let before = edited.clone();
     assert!(
@@ -328,17 +369,20 @@ fn adjusting_the_lower_portrait_leaves_the_upper_untouched_and_undoes() {
     let mut original = document(vec![CropKeyframe {
         t_ticks: 0,
         rect: rect(100),
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }]);
     original.video.segments[0].layout.state = LayoutState::TwoUp;
     original.video.segments[0].layout.secondary_crop_path = vec![CropKeyframe {
         t_ticks: 0,
         rect: rect(700),
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }];
     let mut edited = original.clone();
     let undo = EditCommand::SetSecondaryCropKeyframe {
         segment_id: "seg_1".to_owned(),
         t_ticks: 0,
         rect: rect(720),
+        easing: None,
     }
     .apply(&mut edited)
     .expect("lower crop command");
@@ -362,10 +406,12 @@ fn a_new_solve_replaces_old_manual_keyframes_and_undo_restores_them() {
         CropKeyframe {
             t_ticks: 0,
             rect: rect(100),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
         CropKeyframe {
             t_ticks: 3 * SECOND,
             rect: rect(150),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         },
     ]);
     let replacement = vec![CropKeyframe {
@@ -376,6 +422,7 @@ fn a_new_solve_replaces_old_manual_keyframes_and_undo_restores_them() {
             width: 506,
             height: 900,
         },
+        easing: clipmill_edit_ir::CropEasing::Linear,
     }];
     let mut edited = original.clone();
     let undo = EditCommand::ReplaceCropPath {

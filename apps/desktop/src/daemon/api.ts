@@ -45,6 +45,7 @@ import {
   applyEditCommand,
   listClipDecisions,
   listEditDocs,
+  getEditDoc,
   previewPlan,
   solveCropPath,
   readDocument,
@@ -101,6 +102,7 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   ): Promise<CropPath>;
   previewPlan(projectId: string, docId: string): Promise<PreviewPlan>;
   listEditDocs(projectId: string): Promise<readonly EditDocSummary[]>;
+  getEditDoc?(docId: string): Promise<import('./client.js').EditDocDetail>;
   applyEditCommand(
     docId: string,
     expectedRevision: number,
@@ -156,6 +158,7 @@ export const daemonApi: ShellApi = {
   solveCropPath,
   previewPlan,
   listEditDocs,
+  getEditDoc,
   applyEditCommand,
   setClipDecision,
   listClipDecisions,

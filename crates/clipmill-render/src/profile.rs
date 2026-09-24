@@ -5,6 +5,7 @@
 //! content address. The default profile is a value rather
 //! than a constant so the recipe can carry it and the manifest can state it.
 
+use clipmill_edit_ir::CaptionTrack;
 use serde::{Deserialize, Serialize};
 
 use crate::timing::FrameRate;
@@ -48,6 +49,18 @@ impl Colour {
             self.transparency, self.blue, self.green, self.red
         )
     }
+
+    fn from_hex(value: &str) -> Option<Self> {
+        let digits = value.strip_prefix('#')?;
+        if digits.len() != 6 {
+            return None;
+        }
+        Some(Self::opaque(
+            u8::from_str_radix(&digits[0..2], 16).ok()?,
+            u8::from_str_radix(&digits[2..4], 16).ok()?,
+            u8::from_str_radix(&digits[4..6], 16).ok()?,
+        ))
+    }
 }
 
 /// The supported subset of ASS styling. Line *breaking* is deliberately
@@ -78,6 +91,24 @@ pub struct CaptionStyle {
 }
 
 impl CaptionStyle {
+    /// Resolve the document's preset and its saved clip-wide adjustments.
+    pub fn for_track(track: &CaptionTrack) -> Option<Self> {
+        let mut style = Self::from_preset(clipmill_captions::preset(&track.style_ref)?);
+        let options = &track.options;
+        if let Some(size) = options.font_size {
+            style.font_size = size;
+        }
+        if let Some(value) = &options.spoken {
+            style.spoken = Colour::from_hex(value)?;
+        }
+        if let Some(value) = &options.unspoken {
+            style.unspoken = Colour::from_hex(value)?;
+        }
+        if let Some(value) = &options.outline {
+            style.outline = Colour::from_hex(value)?;
+        }
+        Some(style)
+    }
     /// The default look: heavy outline, no plate, high contrast, and a spoken
     /// colour distinct enough to read as motion on a phone screen.
     ///

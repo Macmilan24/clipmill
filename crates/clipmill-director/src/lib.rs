@@ -490,6 +490,7 @@ fn solve_layout(
         .map(|keyframe| CropKeyframe {
             t_ticks: as_i64(keyframe.t_ticks) - boundary.start_ticks,
             rect: rect_of(*keyframe, request),
+            easing: clipmill_edit_ir::CropEasing::Linear,
         })
         .collect();
     Some(frames)
@@ -538,19 +539,56 @@ fn caption_track(
     boundary: Boundary,
     request: &Request,
 ) -> Result<clipmill_edit_ir::CaptionTrack, DirectError> {
+    captions_for_span(
+        evidence.transcript,
+        evidence.index,
+        evidence.shots,
+        boundary,
+        &request.style_ref,
+    )
+}
+
+/// Derive only the words newly exposed by an Editor edge extension. Cues are
+/// relative to the exposed span so the edit command can place them at either
+/// end while preserving every existing caption correction and word ID.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "clip timestamps are far below f64's exact integer range"
+)]
+pub fn captions_for_span(
+    transcript: &SpeechTranscript,
+    index: Option<&IndexTranscript>,
+    shots: Option<&EvidenceShots>,
+    boundary: Boundary,
+    style_ref: &str,
+) -> Result<clipmill_edit_ir::CaptionTrack, DirectError> {
+    let coverage = &transcript.coverage;
+    if boundary.start_ticks < as_i64(coverage.start_ticks)
+        || boundary.end_ticks <= boundary.start_ticks
+        || boundary.end_ticks > as_i64(coverage.end_ticks)
+    {
+        return Err(DirectError::InvalidSpan);
+    }
+    if let Some(cut) = severed(transcript, boundary) {
+        return Err(DirectError::ClippedWord {
+            edge: cut.edge,
+            word: cut.word,
+            seconds: format!("{:.3}", cut.keep_at as f64 / 90_000.0),
+        });
+    }
     let mut derive = DeriveRequest::new(IMPLEMENTATION);
     derive.span = Some(clipmill_captions::Span {
         start_ticks: boundary.start_ticks,
         end_ticks: boundary.end_ticks,
     });
     let cues = match clipmill_captions::derive(
-        evidence.transcript,
-        evidence.index,
-        evidence.shots,
+        transcript,
+        index,
+        shots,
         Inputs {
             // The director assembles rather than publishes, so the addresses it
             // states are the ones it read.
-            transcript_artifact_id: evidence.transcript.source_fingerprint.as_str(),
+            transcript_artifact_id: transcript.source_fingerprint.as_str(),
             index_artifact_id: None,
             shots_artifact_id: None,
         },
@@ -560,7 +598,8 @@ fn caption_track(
         // A span nobody spoke in is a clip with no captions, not a failure.
         Err(clipmill_captions::DeriveError::NoWords) => {
             return Ok(clipmill_edit_ir::CaptionTrack {
-                style_ref: request.style_ref.clone(),
+                style_ref: style_ref.to_owned(),
+                options: clipmill_edit_ir::CaptionOptions::default(),
                 cues: Vec::new(),
                 burn_in: Vec::new(),
             });
@@ -570,19 +609,15 @@ fn caption_track(
     let reading = project(
         &cues,
         Intent::Accessibility,
-        &request.style_ref,
+        style_ref,
         boundary.start_ticks,
     )
-    .map_err(|_| DirectError::UnknownStyle(request.style_ref.clone()))?;
-    let kinetic = project(
-        &cues,
-        Intent::BurnIn,
-        &request.style_ref,
-        boundary.start_ticks,
-    )
-    .map_err(|_| DirectError::UnknownStyle(request.style_ref.clone()))?;
+    .map_err(|_| DirectError::UnknownStyle(style_ref.to_owned()))?;
+    let kinetic = project(&cues, Intent::BurnIn, style_ref, boundary.start_ticks)
+        .map_err(|_| DirectError::UnknownStyle(style_ref.to_owned()))?;
     Ok(clipmill_edit_ir::CaptionTrack {
         style_ref: reading.style_ref,
+        options: clipmill_edit_ir::CaptionOptions::default(),
         cues: reading.cues,
         burn_in: kinetic.cues,
     })

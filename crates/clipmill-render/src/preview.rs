@@ -13,7 +13,7 @@ use crate::{
     graph::crop_rect_at,
     plan::RenderError,
     profile::{CaptionStyle, RenderProfile},
-    subtitles::{Sweep, sweep},
+    subtitles::{Sweep, burned_text, sweep},
     timing::FrameRate,
 };
 
@@ -143,8 +143,7 @@ pub fn preview_plan(
     }
     let frame_count = rate.frame_count(duration);
 
-    let caption_style = clipmill_captions::preset(&document.captions.style_ref)
-        .map(CaptionStyle::from_preset)
+    let caption_style = CaptionStyle::for_track(&document.captions)
         .or_else(|| {
             document
                 .captions
@@ -288,13 +287,17 @@ fn cues(document: &EditDocument, rate: FrameRate) -> Vec<PreviewCue> {
                 region: cue.region,
                 karaoke,
                 lead_in_centis: swept.lead_in_centis,
-                lines: lines(cue, &swept),
+                lines: lines(cue, &swept, document.captions.options.text_case),
             }
         })
         .collect()
 }
 
-fn lines(cue: &CaptionCue, swept: &Sweep) -> Vec<PreviewLine> {
+fn lines(
+    cue: &CaptionCue,
+    swept: &Sweep,
+    text_case: clipmill_edit_ir::CaptionCase,
+) -> Vec<PreviewLine> {
     let mut index = 0_usize;
     cue.lines
         .iter()
@@ -306,7 +309,7 @@ fn lines(cue: &CaptionCue, swept: &Sweep) -> Vec<PreviewLine> {
                     let hold = swept.holds_centis.get(index).copied().unwrap_or(0);
                     index += 1;
                     PreviewWord {
-                        text: word.text.clone(),
+                        text: burned_text(&word.text, text_case),
                         hold_centis: hold,
                         word_id: word.word_id.clone(),
                     }

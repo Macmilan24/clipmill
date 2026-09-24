@@ -5,7 +5,15 @@
 //! Burn-in uses kinetic cues when present and reading cues otherwise. Sidecars
 //! always use reading cues, with no kinetic fallback.
 
-use clipmill_edit_ir::{CaptionAnimation, CaptionCue, CaptionRegion, CaptionTrack};
+use clipmill_edit_ir::{CaptionAnimation, CaptionCase, CaptionCue, CaptionRegion, CaptionTrack};
+
+pub(crate) fn burned_text(text: &str, text_case: CaptionCase) -> String {
+    match text_case {
+        CaptionCase::Original => text.to_owned(),
+        CaptionCase::Upper => text.to_uppercase(),
+        CaptionCase::Lower => text.to_lowercase(),
+    }
+}
 
 use crate::{
     profile::{CaptionStyle, RenderProfile},
@@ -41,7 +49,7 @@ pub(crate) fn cue_windows(track: &CaptionTrack, rate: FrameRate) -> Vec<CueWindo
             cue_id: cue.cue_id.clone(),
             first_frame: rate.frame_ceil(cue.start_ticks),
             end_frame: rate.frame_ceil(cue.end_ticks),
-            text: plain_text(cue, " "),
+            text: burned_text(&plain_text(cue, " "), track.options.text_case),
         })
         .collect()
 }
@@ -106,7 +114,7 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
             centis_to_ass(start_centis),
             centis_to_ass(end_centis),
             region_style_name(cue.region),
-            dialogue_text(cue, rate, start_centis, end_centis),
+            dialogue_text(cue, rate, start_centis, end_centis, track.options.text_case),
         ));
     }
     lines.push(String::new());
@@ -163,7 +171,13 @@ pub(crate) fn sweep(
 }
 
 /// A cue's text with karaoke timing, when the cue asks for it.
-fn dialogue_text(cue: &CaptionCue, rate: FrameRate, start_centis: i64, end_centis: i64) -> String {
+fn dialogue_text(
+    cue: &CaptionCue,
+    rate: FrameRate,
+    start_centis: i64,
+    end_centis: i64,
+    text_case: CaptionCase,
+) -> String {
     let karaoke = matches!(cue.anim, CaptionAnimation::Karaoke);
     if !karaoke {
         return cue
@@ -172,7 +186,7 @@ fn dialogue_text(cue: &CaptionCue, rate: FrameRate, start_centis: i64, end_centi
             .map(|line| {
                 line.words
                     .iter()
-                    .map(|word| word.text.as_str())
+                    .map(|word| burned_text(&word.text, text_case))
                     .collect::<Vec<_>>()
                     .join(" ")
             })
@@ -194,7 +208,10 @@ fn dialogue_text(cue: &CaptionCue, rate: FrameRate, start_centis: i64, end_centi
                 pieces.push(" ".to_owned());
             }
             let hold = swept.holds_centis.get(index).copied().unwrap_or(0);
-            pieces.push(format!("{{\\k{hold}}}{}", word.text));
+            pieces.push(format!(
+                "{{\\k{hold}}}{}",
+                burned_text(&word.text, text_case)
+            ));
             index += 1;
         }
     }
@@ -314,6 +331,7 @@ mod tests {
     fn track() -> CaptionTrack {
         CaptionTrack {
             style_ref: crate::profile::DEFAULT_STYLE_REF.to_owned(),
+            options: clipmill_edit_ir::CaptionOptions::default(),
             cues: vec![CaptionCue {
                 cue_id: "cue_1".to_owned(),
                 start_ticks: 30 * FRAME_TICKS,

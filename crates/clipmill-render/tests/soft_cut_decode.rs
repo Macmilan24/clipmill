@@ -77,6 +77,7 @@ fn soft_cuts_match_preview_weights_without_shortening_or_retiming_the_clip() {
                 width,
                 height,
             },
+            easing: clipmill_edit_ir::CropEasing::Linear,
         }]
     };
     let mut document = EditDocument::default();

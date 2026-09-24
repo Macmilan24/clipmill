@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Peaks } from '../results/loader.js';
 import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
 import { type Transcript, snapEnd, snapStart } from '../results/transcript.js';
+import { waveformPath } from '../results/waveform.js';
 import type { PlaybackController } from './playback.js';
 import { type Cut, FRAME_TICKS, clamp, clockTenths, rulerStep, timecode } from './review.js';
 
@@ -125,35 +126,6 @@ export function Overview({
       </span>
     </div>
   );
-}
-
-/**
- * The waveform for a window, as one SVG path.
- *
- * Read from the peaks the ingest measured — one min/max pair per bucket — and
- * never synthesised, mirrored about the midline, and sampled to a few hundred
- * columns so a long window does not make a path of ten thousand points.
- */
-function waveformPath(peaks: Peaks, from: number, to: number, columns = 320): string {
-  const first = Math.max(0, Math.floor(from / peaks.bucketTicks));
-  const last = Math.min(peaks.values.length - 1, Math.ceil(to / peaks.bucketTicks));
-  if (last <= first) return '';
-  const step = Math.max(1, Math.floor((last - first) / columns));
-  const top: string[] = [];
-  const bottom: string[] = [];
-  for (let bucket = first; bucket <= last; bucket += step) {
-    let low = 0;
-    let high = 0;
-    for (let inner = bucket; inner < Math.min(bucket + step, last + 1); inner += 1) {
-      const [min, max] = peaks.values[inner]!;
-      low = Math.min(low, min);
-      high = Math.max(high, max);
-    }
-    const x = (((bucket * peaks.bucketTicks - from) / (to - from)) * 100).toFixed(2);
-    top.push(`${x},${(50 - (high / 32_767) * 46).toFixed(1)}`);
-    bottom.push(`${x},${(50 - (low / 32_767) * 46).toFixed(1)}`);
-  }
-  return `M${top.join(' L')} L${bottom.toReversed().join(' L')} Z`;
 }
 
 export interface BoundaryStripProps {

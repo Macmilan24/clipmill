@@ -65,6 +65,7 @@ fn sample_document() -> EditDocument {
                         width: 608,
                         height: 1080,
                     },
+                    easing: clipmill_edit_ir::CropEasing::Linear,
                 })
                 .collect(),
         },
@@ -88,6 +89,7 @@ fn sample_document() -> EditDocument {
         },
         captions: CaptionTrack {
             style_ref: "clean".to_owned(),
+            options: clipmill_edit_ir::CaptionOptions::default(),
             cues: vec![
                 cue(
                     "cue_1",
@@ -207,6 +209,7 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
                 width: 608,
                 height: 1080,
             },
+            easing: None,
         });
         if let Some(first) = segment.layout.crop_path.first() {
             commands.push(EditCommand::RemoveCropKeyframe {
@@ -552,6 +555,7 @@ fn invalid_documents_are_refused() {
                 width: 10,
                 height: 10,
             },
+            easing: clipmill_edit_ir::CropEasing::Linear,
         });
     assert!(
         stray_keyframe.validate().is_err(),

@@ -42,6 +42,27 @@ pub struct CropRect {
 pub struct CropKeyframe {
     pub t_ticks: i64,
     pub rect: CropRect,
+    /// Interpolation from this keyframe to the next one.
+    #[serde(default, skip_serializing_if = "CropEasing::is_linear")]
+    pub easing: CropEasing,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CropEasing {
+    #[default]
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+}
+
+impl CropEasing {
+    // Serde's skip_serializing_if callback takes a reference.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_linear(&self) -> bool {
+        *self == Self::Linear
+    }
 }
 
 /// The crop a path holds at a position along it.
@@ -77,6 +98,53 @@ pub fn crop_along(path: &[(i64, CropRect)], at: i64) -> Option<CropRect> {
         });
     }
     Some(*last)
+}
+
+/// Evaluate a saved path, including the easing owned by its outgoing point.
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    reason = "media ticks and crop pixels stay within f64 precision; eased results are rounded to pixels"
+)]
+pub fn crop_along_keyframes(path: &[CropKeyframe], at: i64) -> Option<CropRect> {
+    let first = path.first()?;
+    let last = path.last()?;
+    if at <= first.t_ticks {
+        return Some(first.rect);
+    }
+    if at >= last.t_ticks {
+        return Some(last.rect);
+    }
+    for pair in path.windows(2) {
+        let (before, after) = (&pair[0], &pair[1]);
+        if at < before.t_ticks || at >= after.t_ticks {
+            continue;
+        }
+        let offset = at - before.t_ticks;
+        let span = after.t_ticks - before.t_ticks;
+        let unit = offset as f64 / span as f64;
+        let factor = match before.easing {
+            CropEasing::Linear => unit,
+            CropEasing::EaseIn => unit * unit,
+            CropEasing::EaseOut => 1.0 - (1.0 - unit) * (1.0 - unit),
+            CropEasing::EaseInOut => unit * unit * (3.0 - 2.0 * unit),
+        };
+        let ease = |from: i64, to: i64| -> i64 {
+            if before.easing == CropEasing::Linear {
+                interpolate(from, to, offset, span)
+            } else {
+                (from as f64 + (to - from) as f64 * factor).floor() as i64
+            }
+        };
+        return Some(CropRect {
+            x: ease(before.rect.x, after.rect.x),
+            y: ease(before.rect.y, after.rect.y),
+            width: ease(before.rect.width, after.rect.width),
+            height: ease(before.rect.height, after.rect.height),
+        });
+    }
+    Some(last.rect)
 }
 
 /// Linear interpolation in integers, rounded toward negative infinity so a
@@ -259,6 +327,10 @@ pub struct CaptionTrack {
     /// Named style preset; the style itself lives in the caption presets, not
     /// in every document.
     pub style_ref: String,
+    /// Clip-wide look adjustments over the named preset. The reading sidecar
+    /// keeps the original word case; these affect the burned-in picture.
+    #[serde(default, skip_serializing_if = "CaptionOptions::is_default")]
+    pub options: CaptionOptions,
     /// What a **reader** gets. Every sidecar is written from this list and only
     /// this list, because a sidecar is what a viewer who cannot hear is left
     /// with — so it carries the conservative grouping, always.
@@ -277,6 +349,42 @@ pub struct CaptionTrack {
     /// deliberate and the sidecar side is the one that is never negotiable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub burn_in: Vec<CaptionCue>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptionCase {
+    #[default]
+    Original,
+    Upper,
+    Lower,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaptionOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spoken: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unspoken: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline: Option<String>,
+    #[serde(default, skip_serializing_if = "is_original_case")]
+    pub text_case: CaptionCase,
+}
+
+impl CaptionOptions {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+// Serde's skip_serializing_if callback takes a reference.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_original_case(value: &CaptionCase) -> bool {
+    *value == CaptionCase::Original
 }
 
 /// Which of the two groupings a cue-scoped command is addressed to.
@@ -892,33 +1000,46 @@ impl EditDocument {
         new_duration: i64,
     ) -> Vec<CropKeyframe> {
         let new_out = new_in.saturating_add(new_duration);
-        let in_source: Vec<(i64, CropRect)> = path
+        let in_source: Vec<CropKeyframe> = path
             .iter()
-            .map(|keyframe| (old_in.saturating_add(keyframe.t_ticks), keyframe.rect))
+            .map(|keyframe| CropKeyframe {
+                t_ticks: old_in.saturating_add(keyframe.t_ticks),
+                rect: keyframe.rect,
+                easing: keyframe.easing,
+            })
             .collect();
         let mut kept: Vec<CropKeyframe> = in_source
             .iter()
-            .filter(|(source, _)| (new_in..=new_out).contains(source))
-            .map(|(source, rect)| CropKeyframe {
-                t_ticks: source - new_in,
-                rect: *rect,
+            .filter(|key| (new_in..=new_out).contains(&key.t_ticks))
+            .map(|key| CropKeyframe {
+                t_ticks: key.t_ticks - new_in,
+                rect: key.rect,
+                easing: key.easing,
             })
             .collect();
-        if in_source.iter().any(|(source, _)| *source < new_in)
+        if in_source.iter().any(|key| key.t_ticks < new_in)
             && kept.first().is_none_or(|keyframe| keyframe.t_ticks != 0)
-            && let Some(rect) = crop_along(&in_source, new_in)
+            && let Some(rect) = crop_along_keyframes(&in_source, new_in)
         {
-            kept.insert(0, CropKeyframe { t_ticks: 0, rect });
+            kept.insert(
+                0,
+                CropKeyframe {
+                    t_ticks: 0,
+                    rect,
+                    easing: CropEasing::Linear,
+                },
+            );
         }
-        if in_source.iter().any(|(source, _)| *source > new_out)
+        if in_source.iter().any(|key| key.t_ticks > new_out)
             && kept
                 .last()
                 .is_none_or(|keyframe| keyframe.t_ticks != new_duration)
-            && let Some(rect) = crop_along(&in_source, new_out)
+            && let Some(rect) = crop_along_keyframes(&in_source, new_out)
         {
             kept.push(CropKeyframe {
                 t_ticks: new_duration,
                 rect,
+                easing: CropEasing::Linear,
             });
         }
         kept
@@ -1001,6 +1122,27 @@ impl EditDocument {
         validate_cues(&self.captions.cues)?;
         validate_cues(&self.captions.burn_in)?;
         validate_shared_words(&self.captions)?;
+        if self
+            .captions
+            .options
+            .font_size
+            .is_some_and(|size| !(24..=160).contains(&size))
+        {
+            return Err(DocumentError::InvalidCaptionOptions);
+        }
+        for colour in [
+            &self.captions.options.spoken,
+            &self.captions.options.unspoken,
+            &self.captions.options.outline,
+        ] {
+            if colour.as_ref().is_some_and(|hex| {
+                hex.len() != 7
+                    || !hex.starts_with('#')
+                    || !hex[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+            }) {
+                return Err(DocumentError::InvalidCaptionOptions);
+            }
+        }
 
         let mut previous_gain: Option<i64> = None;
         for point in &self.audio.gain_curve {
@@ -1024,6 +1166,8 @@ impl EditDocument {
 
 #[derive(Debug, Error)]
 pub enum DocumentError {
+    #[error("caption size or colour is outside the supported range")]
+    InvalidCaptionOptions,
     #[error("soft cuts must be between zero and 250 milliseconds")]
     InvalidTransitionDuration,
     #[error("edit document version {0} is not supported")]
