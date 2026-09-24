@@ -2372,6 +2372,8 @@ pub(crate) struct JobRecord {
     /// What an export job is delivering; `None` for every other kind.
     pub export: Option<v1::ExportSummaryV1>,
     pub content_profile: String,
+    /// What an analysis was asked for; `None` for every other kind.
+    pub analysis: Option<v1::AnalysisSettingsV1>,
 }
 
 impl From<JobRecord> for v1::Job {
@@ -2390,6 +2392,7 @@ impl From<JobRecord> for v1::Job {
             source_id: value.source_id.unwrap_or_default(),
             export: value.export,
             content_profile: value.content_profile,
+            analysis: value.analysis,
         }
     }
 }

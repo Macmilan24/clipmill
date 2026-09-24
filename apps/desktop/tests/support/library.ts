@@ -194,6 +194,9 @@ export interface FakeWorld {
   readonly exported: ExportRequest[];
   /** Every path the screen asked the host to reveal. */
   readonly revealed: string[];
+  /** Every project the screen deleted, and every run it cancelled. */
+  readonly deleted?: string[];
+  readonly cancelled?: string[];
   /** Every archive request, as (projectId, destination) pairs. */
   readonly archived: Array<readonly [string, string]>;
   readonly localLock?: LocalLock;
@@ -302,6 +305,30 @@ export function fakeApi(world: FakeWorld): ShellApi {
         ? Promise.reject(new Error('this daemon measures no storage'))
         : Promise.resolve(world.storage),
     createProject: (name) => Promise.resolve(`prj_${name}`),
+    // The listing is changed in place, as the daemon's table would be.
+    renameProject: (projectId, name) => {
+      const projects = world.projects as Project[];
+      const at = projects.findIndex((item) => item.projectId === projectId);
+      if (at < 0) return Promise.reject(new Error('no such project'));
+      projects[at] = { ...projects[at]!, name: name.trim() };
+      return Promise.resolve(projects[at]!);
+    },
+    deleteProject: (projectId) => {
+      const projects = world.projects as Project[];
+      const at = projects.findIndex((item) => item.projectId === projectId);
+      if (at < 0) return Promise.reject(new Error('no such project'));
+      projects.splice(at, 1);
+      world.deleted?.push(projectId);
+      return Promise.resolve();
+    },
+    cancelJob: (jobId) => {
+      const found = Object.values(world.jobs)
+        .flat()
+        .find((candidate) => candidate.jobId === jobId);
+      if (!found) return Promise.reject(new Error('no such job'));
+      world.cancelled?.push(jobId);
+      return Promise.resolve({ ...found, state: JobState.CANCELLED });
+    },
     chooseSourceFile: () => Promise.resolve(world.chosenPath ?? null),
     registerSource: (projectId, absolutePath) =>
       Promise.resolve({

@@ -12,21 +12,21 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ApplyEditCommandResponse,
-    ClipDecisionRecordV1, CreateProjectRequest, DemoDagPayloadV1, DirectClipRequest,
-    DirectClipResponse, EditDoc, ExportArchiveRequest, ExportArchiveResponse, ExportBatchV1,
-    ExportClipRequest, ExportClipResponse, ExportRequestV1, GetDeviceProfileRequest,
+    AnalyzeSourcePayloadV1, ApplyEditCommandRequest, ApplyEditCommandResponse, CancelJobRequest,
+    ClipDecisionRecordV1, CreateProjectRequest, DeleteProjectRequest, DemoDagPayloadV1,
+    DirectClipRequest, DirectClipResponse, EditDoc, ExportArchiveRequest, ExportArchiveResponse,
+    ExportBatchV1, ExportClipRequest, ExportClipResponse, ExportRequestV1, GetDeviceProfileRequest,
     GetDeviceProfileResponse, GetEditDocRequest, GetEditDocResponse, GetJobRequest,
     GetLocalLockRequest, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
     GetReadinessRequest, GetReadinessResponse, GetStorageStatsRequest, GetStorageStatsResponse,
     HealthRequest, HealthResponse, Job, ListClipDecisionsRequest, ListEditDocsRequest,
     ListExportBatchesRequest, ListJobsRequest, ListProjectsRequest, ListSourcesRequest,
     PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest, ReadArtifactResponse,
-    RegisterSourceRequest, RegisterSourceResponse, Request, ResolveMediaRequest,
-    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
-    SolveCropPathRequest, SolveCropPathResponse, Source, SubmitExportBatchRequest,
-    SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent, UpdateExportBatchItemRequest, request,
-    response,
+    RegisterSourceRequest, RegisterSourceResponse, RenameProjectRequest, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
+    SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source,
+    SubmitExportBatchRequest, SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent,
+    UpdateExportBatchItemRequest, request, response,
 };
 use prost::Message;
 use serde::Serialize;
@@ -742,6 +742,44 @@ impl DaemonClient {
                 .project
                 .map(|project| project.project_id)
                 .ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Give a project a new name, and return it as it now stands.
+    pub async fn rename_project(
+        &self,
+        project_id: &str,
+        name: &str,
+    ) -> Result<Project, DaemonLinkError> {
+        let body = request::Body::RenameProject(RenameProjectRequest {
+            project_id: project_id.to_owned(),
+            name: name.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::RenameProject(renamed) => renamed.project.ok_or(DaemonLinkError::Empty),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Delete a project and everything recorded against it.
+    pub async fn delete_project(&self, project_id: &str) -> Result<(), DaemonLinkError> {
+        let body = request::Body::DeleteProject(DeleteProjectRequest {
+            project_id: project_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::DeleteProject(_) => Ok(()),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Stop a job: tasks not yet started never start, and running ones are told to stop.
+    pub async fn cancel_job(&self, job_id: &str) -> Result<Job, DaemonLinkError> {
+        let body = request::Body::CancelJob(CancelJobRequest {
+            job_id: job_id.to_owned(),
+        });
+        match self.call(body).await? {
+            response::Body::CancelJob(cancelled) => cancelled.job.ok_or(DaemonLinkError::Empty),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }

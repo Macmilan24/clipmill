@@ -221,6 +221,21 @@ pub struct JobView {
     /// export again after it was left or the application relaunched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub export: Option<ExportSummaryView>,
+    /// What an analysis was asked for, so a retry can ask for it again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analysis: Option<AnalysisSettingsView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AnalysisSettingsView {
+    pub language: String,
+    #[serde(rename = "minTicks")]
+    pub min_ticks: u64,
+    #[serde(rename = "maxTicks")]
+    pub max_ticks: u64,
+    pub count: u64,
+    #[serde(rename = "localEditorial")]
+    pub local_editorial: bool,
 }
 
 /// The identity of an export, as its job carries it.
@@ -260,6 +275,13 @@ impl From<Job> for JobView {
             source_id: job.source_id,
             export: job.export.map(Into::into),
             content_profile: job.content_profile,
+            analysis: job.analysis.map(|settings| AnalysisSettingsView {
+                language: settings.language,
+                min_ticks: settings.min_ticks,
+                max_ticks: settings.max_ticks,
+                count: settings.count,
+                local_editorial: settings.local_editorial,
+            }),
         }
     }
 }

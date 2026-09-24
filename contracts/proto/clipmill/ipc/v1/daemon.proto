@@ -73,6 +73,7 @@ message Request {
     AddCustomModelRequest add_custom_model = 67;
     ForgetModelRequest forget_model = 68;
     CleanStorageRequest clean_storage = 69;
+    RenameProjectRequest rename_project = 70;
   }
 }
 
@@ -129,6 +130,7 @@ message Response {
     ListModelsResponse model_library = 53;
     InspectHubModelResponse inspect_hub_model = 54;
     CleanStorageResponse clean_storage = 55;
+    RenameProjectResponse rename_project = 56;
   }
 }
 
@@ -192,6 +194,16 @@ message DeleteProjectRequest {
 }
 
 message DeleteProjectResponse {}
+
+// Give a project a new name. The name follows the same rules as a new one.
+message RenameProjectRequest {
+  string project_id = 1;
+  string name = 2;
+}
+
+message RenameProjectResponse {
+  Project project = 1;
+}
 
 // ---- Jobs and task events ----
 
@@ -632,6 +644,18 @@ message Job {
   ExportSummaryV1 export = 12;
   // Selected rubric read from this analysis job's persisted payload.
   string content_profile = 13;
+  // What an analysis was asked for, read off its own payload; absent for every
+  // other kind of job. A retry starts from these rather than from defaults.
+  AnalysisSettingsV1 analysis = 14;
+}
+
+// The choices an analysis was started with.
+message AnalysisSettingsV1 {
+  string language = 1;
+  uint64 min_ticks = 2;
+  uint64 max_ticks = 3;
+  uint64 count = 4;
+  bool local_editorial = 5;
 }
 
 // The identity of an export, as its job carries it.

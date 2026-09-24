@@ -1951,14 +1951,25 @@ fn complete_job_record(
                 destination_dir: request.destination_dir,
             })
         });
-    let content_profile = (header.kind == "analyze-source")
+    let analyzed = (header.kind == "analyze-source")
         .then(|| {
             clipmill_contracts::proto::ipc::v1::AnalyzeSourcePayloadV1::decode(
                 header.payload.as_slice(),
             )
             .ok()
         })
-        .flatten()
+        .flatten();
+    let analysis =
+        analyzed.as_ref().map(
+            |payload| clipmill_contracts::proto::ipc::v1::AnalysisSettingsV1 {
+                language: payload.language.clone(),
+                min_ticks: payload.duration.map_or(0, |duration| duration.min_ticks),
+                max_ticks: payload.duration.map_or(0, |duration| duration.max_ticks),
+                count: payload.count,
+                local_editorial: payload.local_editorial,
+            },
+        );
+    let content_profile = analyzed
         .map(|payload| {
             if payload.content_profile.is_empty() {
                 "interview".to_owned()
@@ -1969,6 +1980,7 @@ fn complete_job_record(
         .unwrap_or_default();
     Ok(JobRecord {
         content_profile,
+        analysis,
         job_id: header.job_id,
         project_id: header.project_id,
         source_id: header.source_id,

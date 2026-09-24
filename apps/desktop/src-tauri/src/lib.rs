@@ -130,6 +130,45 @@ async fn create_project(
 }
 
 #[tauri::command]
+async fn rename_project(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    name: String,
+) -> Result<views::ProjectView, String> {
+    supervisor
+        .client()
+        .rename_project(&project_id, &name)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn delete_project(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+) -> Result<(), String> {
+    supervisor
+        .client()
+        .delete_project(&project_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn cancel_job(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    job_id: String,
+) -> Result<views::JobView, String> {
+    supervisor
+        .client()
+        .cancel_job(&job_id)
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn list_sources(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
     project_id: String,
@@ -793,7 +832,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             solve_crop_path,
             direct_clip,
             set_clip_decision,
-            list_clip_decisions
+            list_clip_decisions,
+            rename_project,
+            delete_project,
+            cancel_job
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
