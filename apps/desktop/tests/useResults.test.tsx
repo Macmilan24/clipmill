@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CropPath } from '../src/daemon/client.js';
+import { rememberLook } from '../src/results/captionLook.js';
 import { EMPTY_SNAPSHOT, ResultsLoader, type ResultsSnapshot } from '../src/results/loader.js';
 import { useResults } from '../src/results/useResults.js';
 import { emptyWorld, fakeApi, source } from './support/library.js';
@@ -190,6 +191,21 @@ describe('approving the cut on screen', () => {
       endTicks: 633 * 90_000,
       approve: true,
     });
+  });
+
+  it('builds the edit in the caption look chosen for the project', async () => {
+    rememberLook(OLD, 'clipmill.captions.minimal.v1');
+    const api = fakeApi(twoProjects());
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, null);
+    });
+    expect(direct.mock.calls[0]?.[0]).toMatchObject({
+      styleRef: 'clipmill.captions.minimal.v1',
+    });
+    localStorage.removeItem(`clipmill.captionLook.${OLD}`);
   });
 
   it('asks for a second edit only when the clip already has one and the cut moved', async () => {

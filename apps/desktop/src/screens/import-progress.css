@@ -68,9 +68,73 @@
   text-align: center;
 }
 
+.import-dropzone {
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.import-dropzone[data-dragging='true'] {
+  border-color: var(--cm-accent);
+  border-style: solid;
+  background: var(--cm-accent-selected);
+}
+
 .import-change-file {
   display: flex;
   justify-content: flex-end;
+}
+
+.import-change-file[data-dragging='true'] {
+  outline: 2px dashed var(--cm-accent);
+  outline-offset: 4px;
+  border-radius: var(--cm-radius-control);
+}
+
+/* The three caption looks, each drawn in its own style. */
+.import-looks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.import-looks button {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 6px 8px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+}
+
+.import-looks button > span {
+  color: var(--cm-text-primary);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.import-looks button[data-look='minimal'] > span {
+  font-weight: 500;
+}
+
+.import-looks button[data-look='boxed'] > span {
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--cm-text-primary);
+  color: var(--cm-bg-top);
+}
+
+.import-looks button:hover:not(:disabled) {
+  border-color: var(--cm-accent);
+}
+
+.import-looks button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  background: var(--cm-accent-selected);
+  color: var(--cm-text-primary);
 }
 
 .import-change-file button {

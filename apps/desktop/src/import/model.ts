@@ -95,6 +95,8 @@ export interface ImportSettings {
   readonly cloudConsent?: boolean;
   readonly language: string;
   readonly rightsAttested: boolean;
+  /** The caption look this project's clips start with. */
+  readonly captionLook?: string;
 }
 
 export const DEFAULT_SETTINGS: ImportSettings = {
