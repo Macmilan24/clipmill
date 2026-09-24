@@ -16,7 +16,9 @@ use crate::{
     manifest::{FileRecord, MANIFEST_NAME, ManifestError, StoredManifest},
 };
 
-const MAX_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
+// Frame artifacts list every extracted image. At six frames per second, a
+// normal long video can exceed 4 MiB of manifest metadata.
+const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 const DIRECTORY_MODE: u32 = 0o700;
 const STAGING_FILE_MODE: u32 = 0o600;
 const COMMITTED_FILE_MODE: u32 = 0o400;
@@ -400,6 +402,9 @@ impl ArtifactStore {
             StoredManifest::from_parts(state.artifact_id, &state.recipe, &files, quality);
         manifest.validate(state.artifact_id)?;
         let manifest_bytes = manifest.to_pretty_bytes()?;
+        if manifest_bytes.len() as u64 > MAX_MANIFEST_BYTES {
+            return Err(ArtifactError::ManifestTooLarge);
+        }
         let temporary_manifest = state.path.join(".manifest.tmp");
         write_private_file(&temporary_manifest, &manifest_bytes, STAGING_FILE_MODE)?;
         let manifest_path = state.path.join(MANIFEST_NAME);
@@ -1306,7 +1311,7 @@ pub enum ArtifactError {
     NonRegularFile,
     #[error("artifact paths must be valid UTF-8")]
     NonUtf8Path,
-    #[error("artifact manifest exceeds 4 MiB")]
+    #[error("artifact manifest exceeds 64 MiB")]
     ManifestTooLarge,
     #[error("artifact payload size does not match its manifest")]
     PayloadSizeMismatch,
