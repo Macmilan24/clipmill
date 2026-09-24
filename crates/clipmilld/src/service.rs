@@ -388,6 +388,10 @@ impl Service {
             request::Body::CreateProject(create) => {
                 self.create_project(request_id, request_hash, &create).await
             }
+            request::Body::RenameProject(rename) => {
+                self.rename_project(request_id, request_hash, &rename.project_id, &rename.name)
+                    .await
+            }
             request::Body::GetProject(get) => self.get_project(request_id, &get.project_id).await,
             request::Body::ListProjects(_) => match self.database.list_projects().await {
                 Ok(projects) => response_reply(
@@ -565,6 +569,46 @@ impl Service {
         match self
             .database
             .create_project(request_id.clone(), request_hash, project)
+            .await
+        {
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    async fn rename_project(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        value: &str,
+        name: &str,
+    ) -> Reply {
+        let project_id = match value.parse::<ProjectId>() {
+            Ok(project_id) => project_id,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let name = match validate_project_name(name) {
+            Ok(name) => name,
+            Err(message) => return error_reply(request_id, ErrorCode::InvalidArgument, message),
+        };
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        match self
+            .database
+            .rename_project(
+                request_id.clone(),
+                request_hash,
+                project_id.to_string(),
+                name,
+                now,
+            )
             .await
         {
             Ok(bytes) => Reply {
@@ -3234,6 +3278,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetProject(_)) => "get_project",
         Some(request::Body::ListProjects(_)) => "list_projects",
         Some(request::Body::DeleteProject(_)) => "delete_project",
+        Some(request::Body::RenameProject(_)) => "rename_project",
         Some(request::Body::SubmitJob(_)) => "submit_job",
         Some(request::Body::SubscribeTaskEvents(_)) => "subscribe_task_events",
         Some(request::Body::GetDeviceProfile(_)) => "get_device_profile",

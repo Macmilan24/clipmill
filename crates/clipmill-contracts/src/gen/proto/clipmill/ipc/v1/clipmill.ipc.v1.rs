@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -147,6 +147,8 @@ pub mod request {
         ForgetModel(super::ForgetModelRequest),
         #[prost(message, tag = "69")]
         CleanStorage(super::CleanStorageRequest),
+        #[prost(message, tag = "70")]
+        RenameProject(super::RenameProjectRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -157,7 +159,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -260,6 +262,8 @@ pub mod response {
         InspectHubModel(super::InspectHubModelResponse),
         #[prost(message, tag = "55")]
         CleanStorage(super::CleanStorageResponse),
+        #[prost(message, tag = "56")]
+        RenameProject(super::RenameProjectResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -327,6 +331,19 @@ pub struct DeleteProjectRequest {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeleteProjectResponse {}
+/// Give a project a new name. The name follows the same rules as a new one.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RenameProjectRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RenameProjectResponse {
+    #[prost(message, optional, tag = "1")]
+    pub project: ::core::option::Option<Project>,
+}
 // ---- Jobs and task events ----
 
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -854,6 +871,24 @@ pub struct Job {
     /// Selected rubric read from this analysis job's persisted payload.
     #[prost(string, tag = "13")]
     pub content_profile: ::prost::alloc::string::String,
+    /// What an analysis was asked for, read off its own payload; absent for every
+    /// other kind of job. A retry starts from these rather than from defaults.
+    #[prost(message, optional, tag = "14")]
+    pub analysis: ::core::option::Option<AnalysisSettingsV1>,
+}
+/// The choices an analysis was started with.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AnalysisSettingsV1 {
+    #[prost(string, tag = "1")]
+    pub language: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub min_ticks: u64,
+    #[prost(uint64, tag = "3")]
+    pub max_ticks: u64,
+    #[prost(uint64, tag = "4")]
+    pub count: u64,
+    #[prost(bool, tag = "5")]
+    pub local_editorial: bool,
 }
 /// The identity of an export, as its job carries it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

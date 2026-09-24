@@ -140,6 +140,18 @@ export interface Job {
    * application relaunched — rather than in renderer state a remount lost.
    */
   readonly export?: ExportSummary;
+  /** What an analysis was asked for, off its own payload; absent for other kinds. */
+  readonly analysis?: AnalysisSettings;
+}
+
+/** The choices an analysis was started with, as its job reports them. */
+export interface AnalysisSettings {
+  readonly language: string;
+  /** Zero where the run left the daemon's default. */
+  readonly minTicks: number;
+  readonly maxTicks: number;
+  readonly count: number;
+  readonly localEditorial: boolean;
 }
 
 /** The identity of an export, as its job carries it. */
@@ -312,6 +324,33 @@ export async function createProject(name: string): Promise<string> {
   }
   const { invoke } = await core();
   return invoke<string>('create_project', { name });
+}
+
+/** Give a project a new name; the daemon answers with the project as it now stands. */
+export async function renameProject(projectId: string, name: string): Promise<Project> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<Project>('rename_project', { projectId, name });
+}
+
+/** Delete a project with its sources, runs and edits. */
+export async function deleteProject(projectId: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  await invoke<void>('delete_project', { projectId });
+}
+
+/** Stop a run. Tasks not started never start; running ones are asked to stop. */
+export async function cancelJob(jobId: string): Promise<Job> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<Job>('cancel_job', { jobId });
 }
 
 export async function listSources(projectId: string): Promise<readonly Source[]> {

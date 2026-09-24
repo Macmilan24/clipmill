@@ -157,6 +157,7 @@ async fn unavailable_completed_artifact_preserves_manual_draft_without_retry_sta
         failure_detail: String::new(),
         export: None,
         content_profile: String::new(),
+        analysis: None,
     };
     service
         .describe_metadata_job(&mut context, &identity(), &job)

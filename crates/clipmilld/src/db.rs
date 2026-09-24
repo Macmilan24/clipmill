@@ -6,7 +6,8 @@ use std::{
 };
 
 use clipmill_contracts::proto::ipc::v1::{
-    CreateProjectResponse, DeleteProjectResponse, Project, Response, TaskState, response,
+    CreateProjectResponse, DeleteProjectResponse, Project, RenameProjectResponse, Response,
+    TaskState, response,
 };
 use clipmill_core::{ArtifactId, ProjectId};
 use prost::Message;
@@ -158,6 +159,23 @@ impl DbActor {
                                         &request_id,
                                         &request_hash,
                                         &project_id,
+                                        completed_unix_millis,
+                                    ));
+                                }
+                                Command::Rename {
+                                    request_id,
+                                    request_hash,
+                                    project_id,
+                                    name,
+                                    completed_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(rename_project(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &project_id,
+                                        &name,
                                         completed_unix_millis,
                                     ));
                                 }
@@ -775,6 +793,29 @@ impl DbHandle {
                 request_id,
                 request_hash,
                 project_id,
+                completed_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn rename_project(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        name: String,
+        completed_unix_millis: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Rename {
+                request_id,
+                request_hash,
+                project_id,
+                name,
                 completed_unix_millis,
                 reply,
             })
@@ -1607,6 +1648,14 @@ enum Command {
         completed_unix_millis: u64,
         reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
     },
+    Rename {
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        name: String,
+        completed_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
     Get {
         project_id: String,
         reply: oneshot::Sender<Result<ProjectRecord, StoreError>>,
@@ -2153,6 +2202,47 @@ fn delete_project(
     Ok(response)
 }
 
+fn rename_project(
+    connection: &mut Connection,
+    request_id: &str,
+    request_hash: &[u8; 32],
+    project_id: &str,
+    name: &str,
+    completed_unix_millis: u64,
+) -> Result<Vec<u8>, StoreError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if let Some(response) = replay(&transaction, request_id, request_hash)? {
+        transaction.commit()?;
+        return Ok(response);
+    }
+
+    let renamed = transaction.execute(
+        "UPDATE projects SET name = ?2 WHERE project_id = ?1 AND is_system = 0",
+        params![project_id, name],
+    )?;
+    if renamed == 0 {
+        return Err(StoreError::NotFound);
+    }
+    let project = get_project(&transaction, project_id)?;
+
+    let response = Response {
+        request_id: request_id.to_owned(),
+        body: Some(response::Body::RenameProject(RenameProjectResponse {
+            project: Some(project.into()),
+        })),
+    }
+    .encode_to_vec();
+    remember(
+        &transaction,
+        request_id,
+        request_hash,
+        &response,
+        completed_unix_millis,
+    )?;
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn replay(
     transaction: &Connection,
     request_id: &str,
@@ -2316,7 +2406,8 @@ mod tests {
         CREATE_V1_TABLES, CREATE_V2_TABLES, Decision, ProjectRecord, SCHEMA_VERSION,
         SQLITE_MIN_VERSION, StoreError, attach_artifact_root, create_project, decision_store,
         delete_project, device_store, edit_store, enforce_integrity_check, enforce_sqlite_version,
-        get_project, job_store, list_artifact_roots, list_projects, open_database, source_store,
+        get_project, job_store, list_artifact_roots, list_projects, open_database, rename_project,
+        source_store,
     };
     use crate::{
         DaemonError,
@@ -4714,6 +4805,52 @@ mod tests {
         .expect("delete");
         assert!(matches!(
             get_project(&connection, "prj_01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+            Err(StoreError::NotFound)
+        ));
+    }
+
+    #[test]
+    fn renaming_a_project_keeps_it_and_answers_a_retry_the_same() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let first = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Episode 12", 10);
+        create_project(&mut connection, "create-1", &[1; 32], &first).expect("create");
+
+        let answer = rename_project(
+            &mut connection,
+            "rename-1",
+            &[4; 32],
+            &first.project_id,
+            "Creative confidence",
+            20,
+        )
+        .expect("rename");
+        let renamed = get_project(&connection, &first.project_id).expect("get");
+        assert_eq!(renamed.name, "Creative confidence");
+        assert_eq!(
+            renamed.created_unix_millis, 10,
+            "a rename is not a new project"
+        );
+
+        let retried = rename_project(
+            &mut connection,
+            "rename-1",
+            &[4; 32],
+            &first.project_id,
+            "Creative confidence",
+            30,
+        )
+        .expect("retry");
+        assert_eq!(retried, answer);
+        assert!(matches!(
+            rename_project(
+                &mut connection,
+                "rename-2",
+                &[5; 32],
+                "prj_01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                "Nobody",
+                40,
+            ),
             Err(StoreError::NotFound)
         ));
     }

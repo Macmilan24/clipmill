@@ -34,7 +34,9 @@ import {
   type Readiness,
   chooseExportFolder,
   chooseSourceFile,
+  cancelJob,
   createProject,
+  deleteProject,
   fetchJob,
   fetchStorageStats,
   listJobs,
@@ -66,6 +68,7 @@ import {
   exportArchive,
   fetchLocalLock,
   fetchReadiness,
+  renameProject,
   revealPath,
 } from './client.js';
 
@@ -80,6 +83,9 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   mediaUrl(projectId: string, artifactId: string, file: string): string;
   fetchStorageStats(): Promise<StorageStats>;
   createProject(name: string): Promise<string>;
+  renameProject(projectId: string, name: string): Promise<Project>;
+  deleteProject(projectId: string): Promise<void>;
+  cancelJob(jobId: string): Promise<Job>;
   chooseSourceFile(): Promise<string | null>;
   registerSource(projectId: string, absolutePath: string): Promise<RegisteredSource>;
   getSource(sourceId: string): Promise<SourceDetails>;
@@ -146,6 +152,9 @@ export const daemonApi: ShellApi = {
   mediaUrl,
   fetchStorageStats,
   createProject,
+  renameProject,
+  deleteProject,
+  cancelJob,
   chooseSourceFile,
   registerSource,
   getSource,
