@@ -1,9 +1,9 @@
 /**
  * Document picker for Editor and Export routes without a clip.
- * Rows show source, project, revision, and edit time, newest edited first.
- * Opening a row passes the full clip identity.
+ * Rows show the clip's title and a frame of it, its project and when it was
+ * last edited, newest first. Opening a row passes the full clip identity.
  */
-import { Scissors } from 'lucide-react';
+import { Film, Scissors } from 'lucide-react';
 
 import { Button } from '../components/ui/button.js';
 import { Spinner } from '../components/ui/spinner.js';
@@ -45,14 +45,21 @@ export function DocumentPicker({ documents, verb, onOpen }: DocumentPickerProps)
       {documents.entries.map((entry) => (
         <li
           key={entry.clip.docId}
-          className="flex items-center justify-between gap-3 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] px-3 py-2 text-left"
+          className="flex items-center gap-3 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] px-3 py-2 text-left"
         >
-          <span className="flex min-w-0 flex-col">
+          <span className="grid h-10 w-[72px] shrink-0 place-items-center overflow-hidden rounded-[4px] bg-[var(--cm-viewer)] text-[var(--cm-viewer-ink)]">
+            {entry.thumbnail ? (
+              <img src={entry.thumbnail} alt="" className="size-full object-cover" />
+            ) : (
+              <Film className="size-4 opacity-60" aria-hidden />
+            )}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-sm text-[var(--cm-ink-1)]">
-              {entry.sourceName ?? 'Untitled clip'}
+              {entry.title ?? entry.sourceName ?? 'Untitled clip'}
             </span>
             <span className="truncate text-xs text-[var(--cm-ink-3)]">
-              {entry.projectName} · r{entry.revision} · {edited(entry.updatedUnixMillis)}
+              {entry.projectName} · edited {edited(entry.updatedUnixMillis)}
             </span>
           </span>
           <Button size="sm" variant="outline" onClick={() => onOpen(entry.clip)}>

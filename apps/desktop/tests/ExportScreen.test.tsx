@@ -91,7 +91,7 @@ describe('the export screen, handed a clip in an older project', () => {
     });
     expect(world.exported.every((request) => request.docId === OLD_DOC)).toBe(true);
 
-    fireEvent.click(await screen.findByRole('button', { name: /^export revision/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     await waitFor(() => {
       expect(screen.getByTestId('delivery')).toBeTruthy();
     });
@@ -208,7 +208,7 @@ describe('the export screen and the revision that was reviewed', () => {
     });
     show(OLDER_CLIP, world);
     await planned(world);
-    const button = await screen.findByRole('button', { name: /export revision r4/i });
+    const button = await screen.findByRole('button', { name: /^export clip$/i });
     fireEvent.click(button);
     await waitFor(() => {
       expect(world.exported.some((request) => request.expectedRevision === 4)).toBe(true);
@@ -226,7 +226,7 @@ describe('the export screen and the revision that was reviewed', () => {
     show(OLDER_CLIP, world);
     await planned(world);
     const plansBefore = world.exported.length;
-    fireEvent.click(await screen.findByRole('button', { name: /export revision r4/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     expect(await screen.findByText(/moved since it was reviewed/i)).toBeTruthy();
     await waitFor(() => {
       expect(world.exported.length).toBeGreaterThan(plansBefore);
@@ -272,7 +272,7 @@ describe('the name pattern', () => {
       expect(world.exported.at(-1)?.namingPattern).toBe('reacher-{index}');
     });
     expect(screen.queryByTestId('pattern-problem')).toBeNull();
-    await screen.findByRole('button', { name: /export revision r0/i });
+    await screen.findByRole('button', { name: /^export clip$/i });
     // A pattern that already names each clip is sent as typed; an empty field
     // takes the default.
     expect(effectivePattern('{clip} by {project}')).toBe('{clip} by {project}');
@@ -305,7 +305,7 @@ describe('the name pattern', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('pattern-problem')).toBeNull();
     });
-    await screen.findByRole('button', { name: /export revision r0/i });
+    await screen.findByRole('button', { name: /^export clip$/i });
   });
 });
 
@@ -361,17 +361,14 @@ describe('captions that run faster than a reader can follow', () => {
     const gate = await screen.findByTestId('hot-captions-gate');
     expect(gate.textContent).toContain('2 captions');
     expect(gate.textContent).toContain('up to 22.1 characters a second');
-    expect(screen.getByRole('button', { name: /export revision r0/i })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
 
     fireEvent.click(gate.querySelector('input[type="checkbox"]')!);
     await waitFor(() => {
       expect(world.exported.at(-1)?.gatesPassed).toContain('captions_reading_rate');
     });
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /export revision r0/i })).toHaveProperty(
+      expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty(
         'disabled',
         false,
       );
@@ -379,7 +376,7 @@ describe('captions that run faster than a reader can follow', () => {
     // Confirmed, the captions are still named — as advisories, and the
     // confirmation stays on screen rather than vanishing once given.
     expect(screen.getByTestId('hot-captions-gate')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /export revision r0/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^export clip$/i }));
     await waitFor(() => {
       const sent = world.exported.filter((request) => 'expectedRevision' in request);
       expect(sent.at(-1)?.gatesPassed).toContain('captions_reading_rate');
@@ -407,19 +404,16 @@ describe('following a queued export', () => {
     });
     show(OLDER_CLIP, world);
     await planned(world);
-    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     const card = await screen.findByTestId('delivery');
-    expect(card.textContent).toContain('Delivering revision r0');
+    expect(card.textContent).toContain('Exporting…');
     expect(card.textContent).toContain('/Users/sami/Movies/clips');
     await waitFor(() => {
       expect(screen.getByTestId('stage-render').textContent).toBe('120 of 900 frames');
     });
     expect(screen.getByTestId('stage-deliver').textContent).toBe('waiting');
     // Nothing can be exported twice while one is in flight.
-    expect(screen.getByRole('button', { name: /export revision/i })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
   });
 
   it('lists the files the delivery wrote, at the folder it wrote them to, and reveals one', async () => {
@@ -442,11 +436,11 @@ describe('following a queued export', () => {
     });
     show(OLDER_CLIP, world);
     await planned(world);
-    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     const files = await screen.findByRole('list', { name: /delivered files/i });
     expect(files.textContent).toContain('/Users/sami/Movies/clips/01-charging-less.mp4');
     expect(files.textContent).toContain('/Users/sami/Movies/clips/01-charging-less.srt');
-    expect(screen.getByTestId('delivery').textContent).toContain('Delivered revision r0');
+    expect(screen.getByTestId('delivery').textContent).toContain('Exported');
     fireEvent.click(screen.getByRole('button', { name: /reveal 01-charging-less\.mp4/i }));
     expect(world.revealed).toEqual(['/Users/sami/Movies/clips/01-charging-less.mp4']);
   });
@@ -478,7 +472,7 @@ describe('following a queued export', () => {
     const onOpen = vi.fn<(clip: ClipRef) => void>();
     const first = render(<ExportScreen clip={OLDER_CLIP} onOpen={onOpen} api={api} />);
     await planned(world);
-    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     await screen.findByTestId('delivery');
     await waitFor(() => {
       expect(screen.getByTestId('stage-render').textContent).toBe('12 of 90 frames');
@@ -489,12 +483,12 @@ describe('following a queued export', () => {
     await screen.findByTestId('export-clip');
     await chooseRights();
     const card = await screen.findByTestId('delivery');
-    expect(card.textContent).toContain('Delivering revision r0');
+    expect(card.textContent).toContain('Exporting…');
     await waitFor(() => {
       expect(screen.getByTestId('stage-render').textContent).toBe('12 of 90 frames');
     });
     // And nothing can be exported on top of it while it runs.
-    expect(screen.getByRole('button', { name: /^export$/i })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
   });
 
   /** After a relaunch nothing was ever queued from this screen; the daemon still knows. */
@@ -519,7 +513,7 @@ describe('following a queued export', () => {
     show(OLDER_CLIP, world);
     const files = await screen.findByRole('list', { name: /delivered files/i });
     expect(files.textContent).toContain('/Users/sami/Movies/clips/01-charging-less.mp4');
-    expect(screen.getByTestId('delivery').textContent).toContain('Delivered revision r0');
+    expect(screen.getByTestId('delivery').textContent).toContain('Exported');
     // Nothing was asked of the daemon that it had not already done.
     expect(world.exported.filter((request) => 'expectedRevision' in request)).toHaveLength(0);
   });
@@ -553,7 +547,7 @@ describe('following a queued export', () => {
     });
     show(OLDER_CLIP, world);
     const card = await screen.findByTestId('delivery');
-    expect(card.textContent).toContain('Delivering revision r0');
+    expect(card.textContent).toContain('Exporting…');
     expect(card.textContent).toContain('/Users/sami/Movies/clips');
     expect(card.textContent).not.toContain('/elsewhere');
   });
@@ -584,7 +578,7 @@ describe('following a queued export', () => {
     };
     render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={flaky} />);
     await planned(world);
-    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     const card = await screen.findByTestId('delivery');
     expect(await screen.findByTestId('delivery-interruption')).toBeTruthy();
     expect(card.textContent).toContain('the daemon is restarting');
@@ -620,13 +614,13 @@ describe('following a queued export', () => {
     });
     show(OLDER_CLIP, world);
     await planned(world);
-    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     expect(await screen.findByText(/ran out of disk at frame 411/i)).toBeTruthy();
     expect(screen.getByTestId('stage-render').textContent).toBe('failed');
     expect(screen.queryByRole('list', { name: /delivered files/i })).toBeNull();
     // The failure is over; another export can be asked for.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /export revision/i })).toHaveProperty(
+      expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty(
         'disabled',
         false,
       );
@@ -651,7 +645,7 @@ describe('export responses remain bound to their selection', () => {
     const onOpen = vi.fn();
     const view = render(<ExportScreen clip={OLDER_CLIP} onOpen={onOpen} api={api} />);
     await planned(world);
-    fireEvent.click(await screen.findByRole('button', { name: /export revision r0/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^export clip$/i }));
     await waitFor(() => expect(api.exportClip).toHaveBeenCalledTimes(1));
     view.rerender(
       <ExportScreen

@@ -138,7 +138,12 @@ export function BatchExportScreen({ api = daemonApi, onBack, onEdit }: BatchExpo
                 aiAssistance: ['asr_captions', 'reframe'],
                 index: ordinal + 1,
                 date: localDate(),
-                title: choice.title.trim() || opening || entry.clip.labels?.clip || 'Clip',
+                title:
+                  choice.title.trim() ||
+                  entry.title ||
+                  opening ||
+                  entry.clip.labels?.clip ||
+                  'Clip',
                 expectedRevision: preview.revision,
               };
               const plan = await api.planExport(request);
@@ -348,12 +353,14 @@ export function BatchExportScreen({ api = daemonApi, onBack, onEdit }: BatchExpo
                   <div className="min-w-0 flex-1">
                     <CardTitle className="text-sm leading-5">
                       {prepared?.request.title ||
+                        entry.title ||
                         entry.clip.labels?.clip ||
                         entry.sourceName ||
                         'Untitled clip'}
                     </CardTitle>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {entry.projectName} · r{prepared?.plan.revision ?? entry.revision}
+                      {entry.projectName}
+                      {entry.sourceName ? ` · ${entry.sourceName}` : ''}
                     </p>
                   </div>
                   {number > 0 && (

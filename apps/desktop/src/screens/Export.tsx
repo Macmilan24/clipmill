@@ -329,7 +329,7 @@ export function Export(props: ExportProps): JSX.Element {
                   </label>
                   <p className="text-xs text-muted-foreground">
                     {props.hotCaptionsConfirmed
-                      ? `Confirmed for revision r${props.plan?.revision ?? '—'}.`
+                      ? 'Confirmed for this version of the edit.'
                       : 'Review required before export. You can also adjust these captions in the editor.'}
                   </p>
                   <details className="rounded-lg border px-3 py-2 text-xs">
@@ -442,13 +442,11 @@ export function Export(props: ExportProps): JSX.Element {
       {props.audition && props.delivery && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">
-              Final rendered preview · r{props.delivery.revision}
-            </CardTitle>
+            <CardTitle className="text-sm">The exported clip</CardTitle>
           </CardHeader>
           <CardContent>
             <video
-              aria-label={`Final rendered revision r${props.delivery.revision}`}
+              aria-label="The exported clip"
               src={props.audition}
               onError={props.onAuditionError}
               controls
@@ -474,11 +472,7 @@ export function Export(props: ExportProps): JSX.Element {
       {props.publishing}
       <div className="export-actions">
         <Button onClick={props.onExport} disabled={!ready || delivering}>
-          {props.busy
-            ? 'Working…'
-            : props.plan
-              ? `Export revision r${props.plan.revision}`
-              : 'Export'}
+          {props.busy ? 'Working…' : 'Export clip'}
         </Button>
         <Button variant="outline" onClick={props.onArchive} disabled={props.busy}>
           Save project archive
@@ -534,10 +528,10 @@ function DeliveryCard({
         <CardTitle className="flex items-center gap-2 text-sm">
           <PackageCheck className="size-4" />
           {delivery.files
-            ? `Delivered revision r${delivery.revision}`
+            ? 'Exported'
             : delivery.failure
-              ? `Revision r${delivery.revision} was not delivered`
-              : `Delivering revision r${delivery.revision}`}
+              ? 'This export did not finish'
+              : 'Exporting…'}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
