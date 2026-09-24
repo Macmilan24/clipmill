@@ -10,7 +10,7 @@ import {
   TriangleAlert,
   Video,
 } from 'lucide-react';
-import { type JSX, useState } from 'react';
+import { type JSX, useEffect, useRef, useState } from 'react';
 
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -42,7 +42,8 @@ import {
 } from '../analysis/readiness.js';
 import type { ConnectionState, Readiness } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
-import { type ChosenSource, ImportLoader } from '../import/loader.js';
+import { type ChosenSource, ImportLoader, isVideoPath } from '../import/loader.js';
+import { CAPTION_LOOKS, DEFAULT_LOOK } from '../results/captionLook.js';
 import { YouTubeImport } from '../import/YouTubeImport.js';
 import { recallYoutube, rememberYoutube } from '../import/youtube.js';
 import {
@@ -243,15 +244,16 @@ export function NewProject({
     blockingReason(settings, chosen !== null, busy) ??
     (connected ? submissionBlocker(routeReadiness) : null);
 
-  const choose = async (): Promise<void> => {
+  /** Register a recording, from the dialog or dropped on the window. */
+  const use = async (path: string | Promise<string | null>): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      const path = await importer.choose();
-      if (path !== null) {
+      const chosenPath = await path;
+      if (chosenPath !== null) {
         // The same project is reused when the choice changes, so looking at
         // three files does not leave three empty projects behind.
-        setChosen(await importer.register(path, chosen?.projectId ?? null));
+        setChosen(await importer.register(chosenPath, chosen?.projectId ?? null));
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -259,6 +261,41 @@ export function NewProject({
       setBusy(false);
     }
   };
+  const choose = (): Promise<void> => use(importer.choose());
+
+  // A recording dropped anywhere on the window is taken as the source, the
+  // way the file dialog's choice is.
+  const [dragging, setDragging] = useState(false);
+  const accepting = sourceKind === 'local' && connected && !busy;
+  const latestUse = useRef(use);
+  latestUse.current = use;
+  useEffect(() => {
+    if (!accepting) {
+      setDragging(false);
+      return undefined;
+    }
+    let live = true;
+    let stop: (() => void) | null = null;
+    void importer
+      .watchDrops((drop) => {
+        if (drop.kind === 'over') setDragging(true);
+        else if (drop.kind === 'leave') setDragging(false);
+        else {
+          setDragging(false);
+          const path = drop.paths.find(isVideoPath);
+          if (path) void latestUse.current(path);
+          else setError('Drop a video file: MP4, MOV, MKV, WEBM, M4V or AVI.');
+        }
+      })
+      .then((unlisten) => {
+        if (live) stop = unlisten;
+        else unlisten();
+      });
+    return () => {
+      live = false;
+      stop?.();
+    };
+  }, [accepting, importer]);
 
   const start = async (): Promise<void> => {
     if (chosen === null) {
@@ -349,13 +386,18 @@ export function NewProject({
                 onChosen={setChosen}
               />
             ) : (
-              <div className={chosen === null ? 'import-dropzone' : 'import-change-file'}>
+              <div
+                className={chosen === null ? 'import-dropzone' : 'import-change-file'}
+                data-dragging={dragging ? 'true' : undefined}
+              >
                 {chosen === null && (
                   <>
                     <FileVideo className={cn('mx-auto size-8', MUTED)} />
-                    <p className="mt-3 text-sm font-medium">Choose a local file</p>
+                    <p className="mt-3 text-sm font-medium">
+                      {dragging ? 'Drop the recording to use it' : 'Drop a recording here'}
+                    </p>
                     <p className={cn('mt-1 text-xs', SECONDARY)}>
-                      Your original recording stays untouched.
+                      Or choose one. Your original recording stays untouched.
                     </p>
                   </>
                 )}
@@ -510,6 +552,31 @@ export function NewProject({
                   run; the genre rubric applies to model analysis.
                 </p>
               )}
+            </div>
+            <div className="mb-5 space-y-2.5">
+              <div className="text-xs font-medium" id="caption-look-label">
+                Caption look
+              </div>
+              <div className="import-looks" role="group" aria-labelledby="caption-look-label">
+                {CAPTION_LOOKS.map((look) => (
+                  <button
+                    key={look.ref}
+                    type="button"
+                    aria-pressed={(settings.captionLook ?? DEFAULT_LOOK) === look.ref}
+                    data-look={look.label.toLowerCase()}
+                    disabled={busy}
+                    onClick={() =>
+                      setSettings((current) => ({ ...current, captionLook: look.ref }))
+                    }
+                  >
+                    <span aria-hidden="true">Aa</span>
+                    {look.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
+                Every clip from this recording starts with it. Change any clip in the Editor.
+              </p>
             </div>
             <div className="mb-2 text-xs font-medium">Clip length</div>
             <RadioGroup

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { ClipCut, ClipDecision, CropPath, DirectedClip } from '../daemon/client.js';
+import { lookFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { TICKS_PER_SECOND } from './model.js';
 import type { Transcript } from './transcript.js';
@@ -321,12 +322,14 @@ export function useResults(
         // Approving is what creates the edit document, and the daemon records
         // the decision in the same write — so there is no moment where the
         // board says approved and the editor has nothing to open.
+        const look = lookFor(projectId);
         const directed = await api.directClip({
           projectId,
           sourceId: snapshot.source.sourceId,
           candidateId,
           cut,
           approve: true,
+          ...(look ? { styleRef: look } : {}),
           ...(cut === 'exact' && window
             ? { startTicks: window.startTicks, endTicks: window.endTicks }
             : {}),
@@ -367,12 +370,14 @@ export function useResults(
       setBusy(true);
       setNotice(null);
       try {
+        const look = lookFor(projectId);
         const directed = await api.directClip({
           projectId,
           sourceId: snapshot.source.sourceId,
           jobId: snapshot.run.jobId,
           candidateId: '',
           cut: 'exact',
+          ...(look ? { styleRef: look } : {}),
           startTicks,
           endTicks,
           manualSpan: true,

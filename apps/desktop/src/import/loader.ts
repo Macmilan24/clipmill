@@ -7,7 +7,8 @@
 import type { SourceMap } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { Job, Source, YoutubeImport } from '../daemon/client.js';
+import { type Job, type Source, type YoutubeImport, isTauri } from '../daemon/client.js';
+import { rememberLook } from '../results/captionLook.js';
 import { type ImportSettings, languageSubtag, projectNameFor, secondsToTicks } from './model.js';
 
 /**
@@ -37,6 +38,20 @@ export interface ChosenSource {
   readonly cached: boolean;
   /** Actual remote metadata, when the source was imported from YouTube. */
   readonly title?: string;
+}
+
+/** A file dragged over the window, or let go on it. */
+export interface FileDrop {
+  readonly kind: 'over' | 'leave' | 'drop';
+  readonly paths: readonly string[];
+}
+
+/** The recordings New Project accepts, by extension. */
+export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'] as const;
+
+export function isVideoPath(path: string): boolean {
+  const extension = path.split('.').pop()?.toLowerCase() ?? '';
+  return (VIDEO_EXTENSIONS as readonly string[]).includes(extension);
 }
 
 export class ImportLoader {
@@ -86,8 +101,30 @@ export class ImportLoader {
     };
   }
 
+  /**
+   * Hear files dropped on the window, as paths. Only the desktop shell can say
+   * where a dropped file lives; elsewhere nothing is ever heard.
+   */
+  async watchDrops(listener: (drop: FileDrop) => void): Promise<() => void> {
+    if (!isTauri()) return () => {};
+    const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+    return getCurrentWebview().onDragDropEvent((event) => {
+      const payload = event.payload;
+      if (payload.type === 'enter') listener({ kind: 'over', paths: payload.paths });
+      else if (payload.type === 'over') listener({ kind: 'over', paths: [] });
+      else if (payload.type === 'leave') listener({ kind: 'leave', paths: [] });
+      else listener({ kind: 'drop', paths: payload.paths });
+    });
+  }
+
   /** Start the analysis, in the units the contract keeps. */
-  start(chosen: ChosenSource, settings: ImportSettings): Promise<Job> {
+  async start(chosen: ChosenSource, settings: ImportSettings): Promise<Job> {
+    const job = await this.submit(chosen, settings);
+    if (settings.captionLook) rememberLook(chosen.projectId, settings.captionLook);
+    return job;
+  }
+
+  private submit(chosen: ChosenSource, settings: ImportSettings): Promise<Job> {
     return this.api.submitAnalyze(chosen.projectId, {
       sourceId: chosen.source.sourceId,
       language: languageSubtag(settings),

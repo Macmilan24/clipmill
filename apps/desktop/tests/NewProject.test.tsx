@@ -8,11 +8,12 @@
  * daemon receives, and that the ones which state a fact — the cloud toggle, the
  * rights gate — behave as facts rather than as decoration.
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { AnalyzeRequest, ConnectionState } from '../src/daemon/client.js';
-import { ImportLoader } from '../src/import/loader.js';
+import { type FileDrop, ImportLoader } from '../src/import/loader.js';
+import { lookFor } from '../src/results/captionLook.js';
 import { NewProject } from '../src/screens/NewProject.js';
 import {
   type FakeWorld,
@@ -392,5 +393,57 @@ describe('the New Project screen', () => {
     expect(submitted[0]?.request.contentProfile).toBe('scripted');
     expect(submitted[0]?.request.minTicks).toBe(20 * 90_000);
     expect(submitted[0]?.request.maxTicks).toBe(90 * 90_000);
+  });
+});
+
+describe('dropping a recording and choosing a caption look', () => {
+  /** A loader whose drops the test makes, since only the desktop shell can. */
+  class Dropping extends ImportLoader {
+    listener: ((drop: FileDrop) => void) | null = null;
+    override watchDrops(listener: (drop: FileDrop) => void): Promise<() => void> {
+      this.listener = listener;
+      return Promise.resolve(() => {
+        this.listener = null;
+      });
+    }
+  }
+
+  function showDropping(world = scene()) {
+    const loader = new Dropping(fakeApi(world));
+    const onStarted = vi.fn();
+    render(<NewProject state={CONNECTED} onStarted={onStarted} loader={loader} />);
+    return { loader, onStarted };
+  }
+
+  it('takes a video dropped on the window as the source', async () => {
+    const { loader } = showDropping();
+    await waitFor(() => expect(loader.listener).not.toBeNull());
+    act(() => loader.listener!({ kind: 'over', paths: [PATH] }));
+    expect(screen.getByText('Drop the recording to use it')).toBeTruthy();
+    act(() => loader.listener!({ kind: 'drop', paths: ['/tmp/notes.txt', PATH] }));
+    expect(await screen.findByText('pricing-mistakes-episode-41.mp4')).toBeTruthy();
+  });
+
+  it('says what it accepts when something else is dropped', async () => {
+    const { loader } = showDropping();
+    await waitFor(() => expect(loader.listener).not.toBeNull());
+    act(() => loader.listener!({ kind: 'drop', paths: ['/tmp/notes.txt'] }));
+    expect(await screen.findByText(/Drop a video file/)).toBeTruthy();
+  });
+
+  it('starts every clip of the project with the chosen look', async () => {
+    const { onStarted } = showDropping();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse files' }));
+    await screen.findByText('pricing-mistakes-episode-41.mp4');
+    fireEvent.click(screen.getByRole('button', { name: /Boxed/ }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
+        false,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Analyze video/ }));
+    await waitFor(() => expect(onStarted).toHaveBeenCalled());
+    expect(lookFor('prj_pricing-mistakes-episode-41')).toBe('clipmill.captions.boxed.v1');
   });
 });
