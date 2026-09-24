@@ -73,7 +73,15 @@ export function ModelRow({
   const headingId = `model-${model.name}`;
 
   return (
-    <li className="model-row px-5 py-4" aria-labelledby={headingId}>
+    <li
+      data-tour={
+        installed || model.installState === 'partial' || model.custom
+          ? 'models-removable-row'
+          : undefined
+      }
+      className="model-row px-5 py-4"
+      aria-labelledby={headingId}
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">

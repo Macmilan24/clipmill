@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -22,6 +23,8 @@ import {
   subscribeDaemonState,
 } from './daemon/client.js';
 import { renderScreen } from './screens/registry.js';
+import { StudioTour } from './onboarding/StudioTour.js';
+import { rememberTour, shouldAutoStartTour, type TourOutcome } from './onboarding/state.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
 import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
@@ -76,6 +79,13 @@ export function App(): JSX.Element {
   );
   const [route, setRoute] = useState<Route>(memory.route);
   const [clip, setClip] = useState<ClipRef | null>(memory.clip);
+  const [tourSession, setTourSession] = useState<{ origin: Route; automatic: boolean } | null>(
+    () =>
+      shouldAutoStartTour(typeof localStorage === 'undefined' ? null : localStorage)
+        ? { origin: memory.route, automatic: true }
+        : null,
+  );
+  const tourTrigger = useRef<HTMLElement | null>(null);
   const [state, setState] = useState<ConnectionState>({ status: 'connecting' });
   const [profile, setProfile] = useState<DeviceProfile | null>(null);
   const [artifactId, setArtifactId] = useState<string | null>(null);
@@ -143,8 +153,47 @@ export function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    remember(typeof localStorage === 'undefined' ? null : localStorage, { route, clip });
-  }, [route, clip]);
+    // Keep a fresh install fresh if the app closes partway through the guide.
+    if (tourSession === null) {
+      remember(typeof localStorage === 'undefined' ? null : localStorage, { route, clip });
+    }
+  }, [route, clip, tourSession]);
+
+  const openTour = useCallback(() => {
+    tourTrigger.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setTourSession({ origin: route, automatic: false });
+    setRoute(sectionRoute('library'));
+  }, [route]);
+
+  const endTour = useCallback(
+    (outcome: TourOutcome) => {
+      rememberTour(typeof localStorage === 'undefined' ? null : localStorage, outcome);
+      setRoute(
+        tourSession?.automatic && outcome === 'finished'
+          ? sectionRoute('library')
+          : (tourSession?.origin ?? sectionRoute('library')),
+      );
+      setTourSession(null);
+      const trigger = tourTrigger.current;
+      tourTrigger.current = null;
+      requestAnimationFrame(() => {
+        if (trigger?.isConnected) trigger.focus();
+        else if (trigger)
+          document.querySelector<HTMLElement>('[aria-label="Open guided tour"]')?.focus();
+        else
+          (
+            document.querySelector<HTMLElement>('main button:not([disabled])') ??
+            document.querySelector<HTMLElement>('[aria-label="Open guided tour"]')
+          )?.focus();
+      });
+    },
+    [tourSession],
+  );
+
+  const tourNavigate = useCallback((sectionId: string) => {
+    setRoute(sectionRoute(sectionId));
+  }, []);
 
   /** Open a clip in the editor or on the export screen, and remember it. */
   const openClip = useCallback((next: ClipRef, screen: 'editor' | 'export') => {
@@ -191,6 +240,7 @@ export function App(): JSX.Element {
             trail={trail}
             theme={theme}
             onToggleTheme={toggleTheme}
+            onOpenTour={openTour}
             state={state}
             profile={profile}
           />
@@ -266,6 +316,7 @@ export function App(): JSX.Element {
                 onOpenModels: () => {
                   navigate('models');
                 },
+                onOpenTour: openTour,
               },
               models: {
                 state,
@@ -282,6 +333,7 @@ export function App(): JSX.Element {
           </main>
         </SidebarInset>
       </SidebarProvider>
+      {tourSession !== null && <StudioTour onNavigate={tourNavigate} onEnd={endTour} />}
     </TooltipProvider>
   );
 }

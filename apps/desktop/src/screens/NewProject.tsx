@@ -331,7 +331,7 @@ export function NewProject({
       )}
 
       <div className="import-layout">
-        <Card className="import-source">
+        <Card data-tour="new-project-source" className="import-source">
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5 text-section-title">
               <FileVideo className="size-4" /> Source footage
@@ -349,6 +349,7 @@ export function NewProject({
           </CardHeader>
           <CardContent>
             <div
+              data-tour="new-project-source-tabs"
               role="group"
               aria-label="Source location"
               className="import-source-tabs mb-4 flex w-fit gap-1 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] p-1"
@@ -449,7 +450,7 @@ export function NewProject({
           </CardContent>
         </Card>
 
-        <Card className="import-options">
+        <Card data-tour="new-project-preferences" className="import-options">
           <CardHeader>
             <CardTitle className="text-section-title">Clip preferences</CardTitle>
           </CardHeader>
@@ -676,7 +677,7 @@ export function NewProject({
             </div>
           </CardContent>
         </Card>
-        <Card className="import-start">
+        <Card data-tour="new-project-start" className="import-start">
           <CardContent>
             <Label
               htmlFor="rights"

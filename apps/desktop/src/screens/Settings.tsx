@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  CircleHelp,
   Database,
   HardDrive,
   Info,
@@ -48,6 +49,7 @@ export interface SettingsProps {
   readonly onOpenStorage?: (key: string) => Promise<void>;
   /** Go to Models, where weights are downloaded and removed. */
   readonly onOpenModels?: () => void;
+  readonly onOpenTour?: () => void;
   /** The engine's version, for About; null while it is not connected. */
   readonly engineVersion?: string | null;
 }
@@ -88,6 +90,7 @@ export function Settings({
   onCleanStorage,
   onOpenStorage,
   onOpenModels,
+  onOpenTour,
   engineVersion,
 }: SettingsProps): JSX.Element {
   const total =
@@ -99,7 +102,7 @@ export function Settings({
         <div>
           <h1 className="workspace-title">Settings &amp; privacy</h1>
           <p className="workspace-subtitle mt-1">
-            Appearance, connected accounts and local storage.
+            Guided tour, appearance, connected accounts and local storage.
           </p>
         </div>
         {onRefresh && (
@@ -120,6 +123,9 @@ export function Settings({
           aria-label="Settings sections"
           className="flex flex-wrap gap-1 xl:sticky xl:top-0 xl:flex-col"
         >
+          {onOpenTour && (
+            <SectionLink href="#settings-guide" icon={<CircleHelp />} label="Guided tour" />
+          )}
           {appearance && (
             <SectionLink href="#settings-appearance" icon={<Palette />} label="Appearance" />
           )}
@@ -131,6 +137,27 @@ export function Settings({
           <SectionLink href="#settings-about" icon={<Info />} label="About" />
         </nav>
         <div className="settings-sections min-w-0">
+          {onOpenTour && (
+            <section id="settings-guide" className="scroll-mt-6" aria-label="Guided tour">
+              <Card className="preference-section gap-0 overflow-hidden py-0">
+                <SectionHeading
+                  icon={<CircleHelp />}
+                  title="Guided tour"
+                  detail="A step-by-step map from importing a recording to delivering a finished clip."
+                />
+                <CardContent className="flex flex-wrap items-center justify-between gap-4 px-5 py-5">
+                  <p className="max-w-md text-xs leading-relaxed text-[var(--cm-text-secondary)]">
+                    Take the walkthrough again whenever you want. It explains each screen without
+                    starting a download, analysis, or upload.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={onOpenTour}>
+                    <CircleHelp />
+                    Start tour
+                  </Button>
+                </CardContent>
+              </Card>
+            </section>
+          )}
           {appearance && (
             <section id="settings-appearance" className="scroll-mt-6" aria-label="Appearance">
               <Card className="preference-section gap-0 overflow-hidden py-0">
@@ -161,6 +188,7 @@ export function Settings({
           )}
           <section
             id="settings-privacy"
+            data-tour="settings-privacy"
             className="scroll-mt-6"
             aria-label="Privacy and cloud processing"
           >

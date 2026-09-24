@@ -66,6 +66,7 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="none"
+      data-tour="app-sidebar"
       className="studio-sidebar glass h-full rounded-none border-y-0 border-l-0 shadow-none"
     >
       <SidebarHeader className="h-20 flex-col items-center justify-center gap-1.5 px-2">
@@ -93,6 +94,7 @@ export function AppSidebar({
                 >
                   <SidebarMenuButton
                     isActive={active}
+                    data-tour={`nav-${section.id}`}
                     aria-label={section.label}
                     aria-current={active ? 'page' : undefined}
                     title={section.label}

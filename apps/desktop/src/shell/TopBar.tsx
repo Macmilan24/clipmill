@@ -1,4 +1,4 @@
-import { Moon, Sun } from 'lucide-react';
+import { CircleHelp, Moon, Sun } from 'lucide-react';
 import { Fragment, type JSX } from 'react';
 
 import type { DeviceProfile } from '@clipmill/contracts';
@@ -22,6 +22,7 @@ interface TopBarProps {
   readonly trail: readonly string[];
   readonly theme: Theme;
   readonly onToggleTheme: () => void;
+  readonly onOpenTour?: () => void;
   readonly state: ConnectionState;
   readonly profile: DeviceProfile | null;
 }
@@ -40,7 +41,13 @@ function statusLabel(state: ConnectionState): { text: string; tone: string } {
 /**
  * Breadcrumbs, daemon connection status, and theme controls.
  */
-export function TopBar({ trail, theme, onToggleTheme, state }: TopBarProps): JSX.Element {
+export function TopBar({
+  trail,
+  theme,
+  onToggleTheme,
+  onOpenTour,
+  state,
+}: TopBarProps): JSX.Element {
   const status = statusLabel(state);
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
 
@@ -69,6 +76,22 @@ export function TopBar({ trail, theme, onToggleTheme, state }: TopBarProps): JSX
           <span className={cn('size-1.5 rounded-full bg-current', status.tone)} aria-hidden />
           {status.text}
         </span>
+
+        {onOpenTour && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onOpenTour}
+                aria-label="Open guided tour"
+              >
+                <CircleHelp />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Guided tour</TooltipContent>
+          </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
