@@ -371,8 +371,14 @@ export function fakeApi(world: FakeWorld): ShellApi {
         : Promise.reject(new Error('this project has no such document'));
     },
     setClipDecision: (_projectId, _sourceId, candidateId, decision) => {
-      world.decisions.set(candidateId, decision);
-      return Promise.resolve({ candidateId, decision, decidedUnixMillis: 0 });
+      // `null` takes a decision back, as the daemon does: the row is gone.
+      if (decision === null) world.decisions.delete(candidateId);
+      else world.decisions.set(candidateId, decision);
+      return Promise.resolve({
+        candidateId,
+        decision: decision ?? 'unspecified',
+        decidedUnixMillis: 0,
+      });
     },
     listClipDecisions: () =>
       Promise.resolve(

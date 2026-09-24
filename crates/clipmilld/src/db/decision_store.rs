@@ -16,7 +16,8 @@
 //! There is exactly one row per candidate. Changing your mind replaces the
 //! decision rather than appending to it, because the question "what did I decide
 //! about this clip" has one answer and a history nobody asked for is a table
-//! that grows without a reader.
+//! that grows without a reader. Taking a decision back removes the row: an
+//! undecided clip is one nobody has an answer for, which is what no row says.
 
 use rusqlite::{Connection, params};
 
@@ -97,6 +98,25 @@ pub(crate) fn set(
             decision.as_str(),
             i64::try_from(now).unwrap_or(i64::MAX)
         ],
+    )?;
+    Ok(())
+}
+
+/// Take a decision back, so the clip is undecided again.
+///
+/// A row that is not there is already the answer, so clearing a clip nobody
+/// decided about is not an error — a retried undo must not fail on the second
+/// attempt because the first one landed.
+pub(crate) fn clear(
+    connection: &Connection,
+    project_id: &str,
+    source_id: &str,
+    candidate_id: &str,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "DELETE FROM clip_decisions
+          WHERE project_id = ?1 AND source_id = ?2 AND candidate_id = ?3",
+        params![project_id, source_id, candidate_id],
     )?;
     Ok(())
 }

@@ -2,13 +2,15 @@
  * Shared data container for Results and Clip Inspector.
  * The route selects the project, source, and run; sidebar entry defaults to the
  * newest project and provides a picker. Approval passes the returned document's
- * full clip identity to the editor.
+ * full clip identity to the editor when opening it; review decisions stay on the
+ * Inspector, advance through the queue, and can be undone most recent first.
  */
 import { useEffect, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
-import type { ClipDecision, DirectedClip, Project } from '../daemon/client.js';
+import type { ClipDecision, Project } from '../daemon/client.js';
+import { nextUndecided } from '../inspector/review.js';
 import type { ClipRow } from '../results/model.js';
 import { ManualClip } from '../results/ManualClip.js';
 import { useResults } from '../results/useResults.js';
@@ -165,22 +167,92 @@ export function ResultsScreen({
     }
   };
 
-  /** Approving from the Inspector opens what it approved. */
-  const approve = async (id: string) => {
-    const directed: DirectedClip | null = await results.decide(id, 'approved');
-    const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
-    if (directed && row) {
-      edit(row, directed.docId, directed.jobId);
+  /** Whether a decision moves on to the next undecided clip; kept per machine. */
+  const [autoAdvance, setAutoAdvance] = useState(() => {
+    try {
+      return localStorage.getItem('clipmill.review.advance') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const chooseAutoAdvance = (on: boolean) => {
+    setAutoAdvance(on);
+    try {
+      localStorage.setItem('clipmill.review.advance', on ? 'on' : 'off');
+    } catch {
+      /* Still in effect for this session. */
     }
   };
 
-  // Ask where the camera should point whenever the opened clip changes. The
-  // solve writes nothing, so this is a question rather than a commitment.
+  /**
+   * What each Inspector decision replaced, newest last, so the last can be
+   * taken back. Cleared with the recording: another board's decisions are not
+   * on screen to undo.
+   */
+  const history = useRef<{ candidateId: string; previous: ClipDecision | null }[]>([]);
+  const [undoable, setUndoable] = useState(0);
+  const recording = `${project?.projectId ?? ''}/${snapshot.source?.sourceId ?? ''}`;
+  useEffect(() => {
+    history.current = [];
+    setUndoable(0);
+  }, [recording]);
+  const recordDecision = (candidateId: string, next: ClipDecision | null) => {
+    const previous = snapshot.rows.find((row) => row.candidateId === candidateId)?.decision ?? null;
+    if (previous === next) return;
+    history.current.push({ candidateId, previous });
+    setUndoable(history.current.length);
+  };
+
+  const advanceFrom = (candidateId: string) => {
+    if (!autoAdvance || !mounted.current || intentRef.current !== intent) return;
+    const next = nextUndecided(snapshot.rows, candidateId);
+    if (next) inspect(next);
+  };
+
+  const approveOnScreen = async (
+    id: string,
+    window: { readonly startTicks: number; readonly endTicks: number } | null,
+    open: boolean,
+  ) => {
+    const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
+    const directed = await results.approve(id, window);
+    if (!directed || !row) return;
+    recordDecision(id, 'approved');
+    if (open) edit(row, directed.docId, directed.jobId);
+    else advanceFrom(id);
+  };
+
+  const decideOnScreen = async (id: string, decision: 'kept' | 'rejected' | null) => {
+    const recorded = await results.decide(id, decision);
+    if (!recorded) return;
+    recordDecision(id, decision);
+    if (decision !== null) advanceFrom(id);
+  };
+
+  /** Put the last decision back; an undone approval leaves its edit in Edits. */
+  const undo = async () => {
+    const last = history.current.pop();
+    setUndoable(history.current.length);
+    if (!last) return;
+    const recorded =
+      last.previous === 'approved'
+        ? (await results.approve(last.candidateId, null)) !== null
+        : await results.decide(last.candidateId, last.previous);
+    if (!recorded) return;
+    results.say('Decision undone.');
+    if (last.candidateId !== candidateId) inspect(last.candidateId);
+  };
+
+  // Ask where the camera should point whenever the opened clip changes, and
+  // read the recording's words for it. The solve writes nothing, so this is a
+  // question rather than a commitment.
+  const { requestTranscript } = results;
   useEffect(() => {
     if (candidateId) {
       solveFor(candidateId);
+      requestTranscript();
     }
-  }, [candidateId, solveFor]);
+  }, [candidateId, solveFor, requestTranscript]);
 
   if (candidateId && (projectsLoading || results.loading))
     return (
@@ -198,30 +270,25 @@ export function ResultsScreen({
         candidateId={candidateId}
         proxyUrl={results.proxyUrl}
         crop={results.crop}
-        cues={results.cues}
         peaks={snapshot.peaks}
+        tileUrl={results.tileUrl}
+        transcript={results.transcript}
+        sourceDurationTicks={snapshot.sourceDurationTicks ?? null}
+        durationTarget={snapshot.durationTarget ?? null}
         busy={results.busy}
         notice={results.notice}
+        autoAdvance={autoAdvance}
+        onAutoAdvance={chooseAutoAdvance}
         onSelect={inspect}
         onBack={onBack}
-        onDecide={(decision: ClipDecision) => {
-          if (decision === 'approved') {
-            void approve(candidateId);
-          } else {
-            void results.decide(candidateId, decision);
-          }
+        onApprove={(window, open) => {
+          void approveOnScreen(candidateId, window, open);
         }}
-        onUseAlternative={() => {
-          void results.direct(candidateId, 'alternative').then((directed) => {
-            if (directed && opened) edit(opened, directed.docId, directed.jobId);
-          });
+        onDecide={(decision) => {
+          void decideOnScreen(candidateId, decision);
         }}
-        onTakeCut={(startTicks, endTicks) => {
-          void results.direct(candidateId, 'exact', { startTicks, endTicks }).then((directed) => {
-            if (directed && opened) edit(opened, directed.docId, directed.jobId);
-          });
-        }}
-        onEdit={
+        onUndo={undoable > 0 ? () => void undo() : null}
+        onOpenEdit={
           opened?.docId
             ? () => {
                 edit(opened, opened.docId!, opened.docJobId ?? undefined);

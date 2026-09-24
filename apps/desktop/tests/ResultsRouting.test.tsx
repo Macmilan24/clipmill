@@ -124,9 +124,8 @@ function inspect(world = twoProjects(), onEdit = vi.fn<(clip: ClipRef) => void>(
 
 describe('approving a clip in an older project', () => {
   it('asks the daemon for that project, source and candidate, approving in the same call', async () => {
-    const { world, decided } = inspect();
-    const approve = await screen.findByRole('button', { name: /approve for the editor/i });
-    fireEvent.click(approve);
+    const { world, decided, onEdit } = inspect();
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() => {
       expect(world.directed).toHaveLength(1);
     });
@@ -143,11 +142,13 @@ describe('approving a clip in an older project', () => {
     // One write, not two. A decision recorded first and a document that then
     // failed to build was how a clip ended up approved with nothing to open.
     expect(decided).not.toHaveBeenCalled();
+    // Approving without asking to edit stays in the review.
+    expect(onEdit).not.toHaveBeenCalled();
   });
 
   it('hands the editor the older project, its source, its run and the document it got back', async () => {
     const { onEdit } = inspect();
-    fireEvent.click(await screen.findByRole('button', { name: /approve for the editor/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve & edit' }));
     await waitFor(() => {
       expect(onEdit).toHaveBeenCalledTimes(1);
     });
@@ -161,9 +162,9 @@ describe('approving a clip in an older project', () => {
     });
   });
 
-  it('reopens the edit the clip already has rather than opening a second one', async () => {
+  it('reopens the edit the clip already has rather than building a second one', async () => {
     // The older project has an edit of this clip from an earlier session, and
-    // so does the newer project. Approving again must open the older one's.
+    // so does the newer project. Approving again must reopen the older one's.
     const world = twoProjects({
       editDocs: [
         document('p_new', 'edt_0000000000000000000000NEW1', CANDIDATE),
@@ -171,11 +172,14 @@ describe('approving a clip in an older project', () => {
         document(OLD, OLD_DOC, CANDIDATE, { revision: 3, jobId: 'job-older-run' }),
       ],
     });
-    const { onEdit } = inspect(world);
-    fireEvent.click(await screen.findByRole('button', { name: /approve and open the edit/i }));
+    const { onEdit, world: seen } = inspect(world);
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() => {
-      expect(onEdit).toHaveBeenCalledTimes(1);
+      expect(seen.directed).toHaveLength(1);
     });
+    expect(seen.directed[0]).not.toHaveProperty('variation');
+    expect(await screen.findByText(/kept as it stands/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open edit' }));
     // The editor is handed the document's own run, not the board's: its
     // captions and face tracks are that run's.
     expect(onEdit.mock.calls[0]?.[0]).toMatchObject({
@@ -183,13 +187,12 @@ describe('approving a clip in an older project', () => {
       docId: OLD_DOC,
       jobId: 'job-older-run',
     });
-    expect(screen.getByRole('status').textContent).toMatch(/already has an edit/i);
   });
 
   it('offers the existing edit beside the approval, and opens that one', async () => {
     const world = twoProjects({ editDocs: [document(OLD, OLD_DOC, CANDIDATE)] });
     const { onEdit, world: seen } = inspect(world);
-    fireEvent.click(await screen.findByRole('button', { name: /open the existing edit/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open edit' }));
     expect(onEdit).toHaveBeenCalledTimes(1);
     expect(onEdit.mock.calls[0]?.[0]).toMatchObject({
       projectId: OLD,
@@ -201,18 +204,42 @@ describe('approving a clip in an older project', () => {
     expect(seen.directed).toHaveLength(0);
   });
 
-  it('asks for a different cut as a variation, so the existing edit is not handed back instead', async () => {
+  it('approves the runner-up as a second edit when the clip already has one', async () => {
     const world = twoProjects({ editDocs: [document(OLD, OLD_DOC, CANDIDATE)] });
     const { world: seen } = inspect(world);
-    // The runner-up cut lives on the boundary tab; Radix tabs switch on
-    // pointer-down rather than click.
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: /boundary/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /use the alternative/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Alternative cut' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use this cut' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve as new edit' }));
     await waitFor(() => {
       expect(seen.directed).toHaveLength(1);
     });
-    expect(seen.directed[0]).toMatchObject({ cut: 'alternative', variation: true });
-    expect(seen.directed[0]?.approve).not.toBe(true);
+    expect(seen.directed[0]).toMatchObject({ cut: 'alternative', variation: true, approve: true });
+  });
+});
+
+describe('reviewing in a row', () => {
+  it('moves on to the next undecided clip after a decision, and takes the decision back', async () => {
+    const onInspect = vi.fn();
+    const shell = fakeApi(twoProjects());
+    render(
+      <TooltipProvider>
+        <ResultsScreen
+          candidateId={CANDIDATE}
+          projectId={OLD}
+          sourceId={OLD_SOURCE}
+          jobId={OLD_JOB}
+          onInspect={onInspect}
+          onEdit={() => {}}
+          onBack={() => {}}
+          api={shell}
+        />
+      </TooltipProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    await waitFor(() => expect(onInspect).toHaveBeenCalledTimes(1));
+    expect(onInspect.mock.calls[0]?.[2]).toBe(OTHER_CANDIDATE);
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo the last decision' }));
+    await waitFor(() => expect(screen.getByText('Decision undone.')).toBeTruthy());
   });
 });
 
@@ -249,12 +276,12 @@ it('does not reopen a clip after the user leaves it during approval', async () =
     </TooltipProvider>
   );
   const view = render(at(CANDIDATE));
-  fireEvent.click(await screen.findByRole('button', { name: /approve for the editor/i }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve & edit' }));
   await waitFor(() => expect(direct).toHaveBeenCalledOnce());
   view.rerender(at(OTHER_CANDIDATE));
   await act(async () => finish());
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: /approve for the editor/i })).toHaveProperty(
+    expect(screen.getByRole('button', { name: 'Approve & edit' })).toHaveProperty(
       'disabled',
       false,
     ),

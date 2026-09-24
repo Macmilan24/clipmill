@@ -205,3 +205,76 @@ describe('filmstrip identity', () => {
     },
   );
 });
+
+describe('the words the Inspector reads', () => {
+  const INDEX = 'sha256:index-old';
+  const WORDS = 'sha256:words-old';
+
+  /** The older recording, with an index that names its transcript. */
+  function withWords(fingerprint?: string) {
+    const world = twoProjects();
+    const selected = world.sources[OLD]![0]!;
+    const [analysis, ...rest] = world.jobs[OLD]!;
+    const speech = {
+      schema_version: 'clipmill.speech.transcript.v1',
+      source_fingerprint: fingerprint ?? selected.sourceFingerprint,
+      words: [
+        { index: 0, text: 'Charging', start_ticks: 600 * 90_000, end_ticks: 600.4 * 90_000 },
+        { index: 1, text: 'less.', start_ticks: 600.5 * 90_000, end_ticks: 601 * 90_000 },
+      ],
+      segments: [{ index: 0, first_word_index: 0, word_count: 2 }],
+    };
+    return {
+      ...world,
+      jobs: {
+        ...world.jobs,
+        [OLD]: [
+          {
+            ...analysis!,
+            tasks: [
+              ...analysis!.tasks,
+              task('index.transcript.v1', TaskState.SUCCEEDED, { outputArtifactId: INDEX }),
+            ],
+          },
+          ...rest,
+        ],
+      },
+      documents: {
+        ...world.documents,
+        [INDEX]: {
+          artifactId: INDEX,
+          kind: 'index.transcript.v1',
+          json: JSON.stringify({
+            inputs: { transcript_artifact_id: WORDS },
+            sentences: [{ index: 0, first_word_index: 0, word_count: 2 }],
+          }),
+        },
+        [WORDS]: { artifactId: WORDS, kind: 'speech.transcript.v1', json: JSON.stringify(speech) },
+      },
+    };
+  }
+
+  it('reads the transcript the index names, with its sentences', async () => {
+    const loader = new ResultsLoader(fakeApi(withWords()));
+    const snapshot = await loader.load(OLD, OLD_SOURCE, OLD_JOB);
+    expect(snapshot.transcriptArtifactId).toBe(WORDS);
+    const words = await loader.loadTranscript(OLD, snapshot);
+    expect(words?.words.map((word) => word.text)).toEqual(['Charging', 'less.']);
+    expect(words?.sentences).toEqual([
+      { startTicks: 600 * 90_000, endTicks: 601 * 90_000, firstWord: 0, wordCount: 2 },
+    ]);
+  });
+
+  it('reads no words that belong to another recording', async () => {
+    const loader = new ResultsLoader(fakeApi(withWords(`sha256:${'dd'.repeat(32)}`)));
+    const snapshot = await loader.load(OLD, OLD_SOURCE, OLD_JOB);
+    expect(await loader.loadTranscript(OLD, snapshot)).toBeNull();
+  });
+
+  it('has no transcript to read for a run that published none', async () => {
+    const loader = new ResultsLoader(fakeApi(twoProjects()));
+    const snapshot = await loader.load(OLD, OLD_SOURCE, OLD_JOB);
+    expect(snapshot.transcriptArtifactId).toBeNull();
+    expect(await loader.loadTranscript(OLD, snapshot)).toBeNull();
+  });
+});

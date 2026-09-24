@@ -1,36 +1,68 @@
 /**
  * Shared Results and Inspector state.
- * Decisions are written to the daemon, then reloaded so both views reflect
- * persisted state.
+ * Decisions are written to the daemon, applied to the row at once, then re-read
+ * quietly so neither view blanks while the store confirms them.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { ClipCut, ClipDecision, CropPath, DirectedClip } from '../daemon/client.js';
-import type { OverlayCue } from '../inspector/Preview.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
-import { overlayCuesFromEdit } from './model.js';
+import { TICKS_PER_SECOND } from './model.js';
+import type { Transcript } from './transcript.js';
 
 /** The proxy file the media protocol serves for a proxy artifact. */
 const PROXY_FILE = 'proxy.mp4';
+
+/**
+ * How far either side of a clip the camera path is solved.
+ *
+ * The Inspector plays past a clip's edges so a reviewer can hear what comes
+ * before and after, and a path that stopped at the edge would freeze the frame
+ * exactly where they are deciding whether to extend it.
+ */
+const SOLVE_MARGIN_TICKS = 30 * TICKS_PER_SECOND;
+
+/** A window of the recording, in source ticks. */
+export interface Window {
+  readonly startTicks: number;
+  readonly endTicks: number;
+}
+
+/** The recording's words, and whether they could be read. */
+export type TranscriptState =
+  | { readonly status: 'idle' | 'loading' | 'missing'; readonly transcript: null }
+  | { readonly status: 'ready'; readonly transcript: Transcript };
 
 export interface ResultsState {
   readonly loading: boolean;
   readonly snapshot: ResultsSnapshot;
   readonly proxyUrl: string | null;
   readonly crop: CropPath | null;
-  readonly cues: readonly OverlayCue[];
   readonly busy: boolean;
   readonly notice: string | null;
+  /** Say something in the notice line — for an action the screen took itself. */
+  readonly say: (notice: string | null) => void;
   readonly reload: () => void;
   /**
-   * Record a decision.
+   * Keep, reject, or take a decision back with `null`.
    *
-   * Approving is the one that directs: it answers with the document, which is
-   * the one the clip already had if it had one. Keeping and rejecting answer
-   * with nothing, because they create nothing.
+   * Approving is `approve`, because approving is the one decision that builds
+   * something. Answers whether the decision was recorded.
    */
-  readonly decide: (candidateId: string, decision: ClipDecision) => Promise<DirectedClip | null>;
+  readonly decide: (
+    candidateId: string,
+    decision: Exclude<ClipDecision, 'approved'> | null,
+  ) => Promise<boolean>;
+  /**
+   * Approve a clip with the cut on screen, and answer with its edit.
+   *
+   * `null` is the cut the search chose. A clip with an edit gets that edit
+   * back — unless the cut on screen differs from the search's, which asks for
+   * a second edit beside the first, because a different cut is a different
+   * edit and the first one is somebody's work.
+   */
+  readonly approve: (candidateId: string, window: Window | null) => Promise<DirectedClip | null>;
   /**
    * Approve several at once, each through the same path a single approval takes.
    *
@@ -46,20 +78,15 @@ export interface ResultsState {
    */
   readonly tileUrl: (atTicks: number) => string | null;
   readonly solveFor: (candidateId: string) => void;
-  /**
-   * Build the edit document from a named cut, without changing the decision.
-   *
-   * An `exact` cut carries the window it wants. The daemon snaps that to the
-   * lattice and answers with where it actually landed, which is why the notice
-   * quotes the director rather than echoing what was asked for.
-   */
+  /** Build an edit from a span nobody proposed, without deciding anything. */
   readonly manual: (startTicks: number, endTicks: number) => Promise<DirectedClip | null>;
-  readonly direct: (
-    candidateId: string,
-    cut: ClipCut,
-    window?: { readonly startTicks: number; readonly endTicks: number },
-  ) => Promise<DirectedClip | null>;
+  /** The recording's words, read when the Inspector first asks for them. */
+  readonly transcript: TranscriptState;
+  readonly requestTranscript: () => void;
 }
+
+const same = (left: Window, right: Window) =>
+  left.startTicks === right.startTicks && left.endTicks === right.endTicks;
 
 export function useResults(
   projectId: string | null,
@@ -73,45 +100,61 @@ export function useResults(
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropPath | null>(null);
-  const [cues, setCues] = useState<readonly OverlayCue[]>([]);
+  const [transcript, setTranscript] = useState<TranscriptState>({
+    status: 'idle',
+    transcript: null,
+  });
 
   const loadSequence = useRef(0);
   const cropSequence = useRef(0);
   const contextSequence = useRef(0);
-  const reload = useCallback(() => {
-    const sequence = ++loadSequence.current;
-    if (!projectId) {
-      setSnapshot(EMPTY_SNAPSHOT);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    void loader
-      .load(projectId, sourceId, jobId)
-      .then((next) => {
-        if (sequence === loadSequence.current) setSnapshot(next);
-      })
-      .catch((cause: unknown) => {
-        if (sequence === loadSequence.current)
-          setSnapshot({
-            ...EMPTY_SNAPSHOT,
-            problem: {
-              kind: 'unreadable',
-              detail: cause instanceof Error ? cause.message : String(cause),
-            },
-          });
-      })
-      .finally(() => {
-        if (sequence === loadSequence.current) setLoading(false);
-      });
-  }, [loader, projectId, sourceId, jobId]);
+  const solved = useRef<string | null>(null);
+  const transcriptFor = useRef<string | null>(null);
+
+  const load = useCallback(
+    (quietly: boolean) => {
+      const sequence = ++loadSequence.current;
+      if (!projectId) {
+        setSnapshot(EMPTY_SNAPSHOT);
+        setLoading(false);
+        return;
+      }
+      if (!quietly) setLoading(true);
+      void loader
+        .load(projectId, sourceId, jobId)
+        .then((next) => {
+          if (sequence === loadSequence.current) setSnapshot(next);
+        })
+        .catch((cause: unknown) => {
+          // A quiet re-read that fails keeps what is on screen: the decision
+          // it was checking on is already durable, and blanking the board over
+          // a failed refresh would lose more than it reports.
+          if (sequence === loadSequence.current && !quietly)
+            setSnapshot({
+              ...EMPTY_SNAPSHOT,
+              problem: {
+                kind: 'unreadable',
+                detail: cause instanceof Error ? cause.message : String(cause),
+              },
+            });
+        })
+        .finally(() => {
+          if (sequence === loadSequence.current) setLoading(false);
+        });
+    },
+    [loader, projectId, sourceId, jobId],
+  );
+  const reload = useCallback(() => load(false), [load]);
+  const refresh = useCallback(() => load(true), [load]);
 
   useEffect(() => {
     setSnapshot(EMPTY_SNAPSHOT);
     setCrop(null);
-    setCues([]);
     setNotice(null);
     setBusy(false);
+    setTranscript({ status: 'idle', transcript: null });
+    solved.current = null;
+    transcriptFor.current = null;
     reload();
     return () => {
       loadSequence.current++;
@@ -145,25 +188,34 @@ export function useResults(
   );
 
   /**
-   * Ask where the camera should point over a clip.
+   * Ask where the camera should point over a clip and the context around it.
    *
-   * A proposal, so this is safe to call whenever the selection moves. A refusal
+   * A proposal, so this is safe to call whenever the selection moves. Asked
+   * again only when the clip or the face tracks changed — a quiet refresh after
+   * a decision must not blank the picture the reviewer is looking at. A refusal
    * is not an error here: a fitted frame with a reason is a legitimate answer
    * and the preview says so.
    */
   const solveFor = useCallback(
     (candidateId: string) => {
-      const sequence = ++cropSequence.current;
-      setCrop(null);
-      setCues([]);
       const row = snapshot.rows.find((candidate) => candidate.candidateId === candidateId);
       const faceTrack = snapshot.faceTrackArtifactId;
+      const key = row && faceTrack ? `${candidateId}:${faceTrack}:${row.startTicks}` : null;
+      if (key !== null && key === solved.current) return;
+      solved.current = key;
+      const sequence = ++cropSequence.current;
+      setCrop(null);
       if (!projectId || !row || !faceTrack) {
-        setCrop(null);
         return;
       }
+      const limit = snapshot.sourceDurationTicks ?? Number.MAX_SAFE_INTEGER;
       void api
-        .solveCropPath(projectId, faceTrack, row.startTicks, row.endTicks)
+        .solveCropPath(
+          projectId,
+          faceTrack,
+          Math.max(0, row.startTicks - SOLVE_MARGIN_TICKS),
+          Math.min(limit, row.endTicks + SOLVE_MARGIN_TICKS),
+        )
         .then((next) => {
           if (sequence === cropSequence.current) setCrop(next);
         })
@@ -174,53 +226,129 @@ export function useResults(
     [api, projectId, snapshot],
   );
 
-  /** What a directed reply means on screen: the overlay, and a sentence. */
-  const took = useCallback((directed: DirectedClip) => {
-    // The overlay is the burned-in grouping of the document that came back —
-    // reopened or built — so what the preview draws is what the encoder will.
-    setCues(overlayCuesFromEdit(directed.documentJson, directed.startTicks));
-    setNotice(
-      directed.reopened
-        ? 'This clip already has an edit; it was reopened as it stands.'
-        : directed.decisions.length > 0
-          ? directed.decisions.join(' ')
-          : 'Sent to the editor.',
-    );
-  }, []);
+  const requestTranscript = useCallback(() => {
+    const wanted = snapshot.transcriptArtifactId ?? null;
+    if (!projectId || !snapshot.source) return;
+    if (wanted === transcriptFor.current) return;
+    transcriptFor.current = wanted;
+    if (!wanted) {
+      setTranscript({ status: 'missing', transcript: null });
+      return;
+    }
+    const context = contextSequence.current;
+    setTranscript({ status: 'loading', transcript: null });
+    void loader.loadTranscript(projectId, snapshot).then((read) => {
+      if (context !== contextSequence.current || transcriptFor.current !== wanted) return;
+      setTranscript(
+        read ? { status: 'ready', transcript: read } : { status: 'missing', transcript: null },
+      );
+    });
+  }, [loader, projectId, snapshot]);
 
-  const direct = useCallback(
+  /** Put a decision on its row at once; the quiet refresh confirms it. */
+  const mark = useCallback(
+    (candidateId: string, decision: ClipDecision | null, directed: DirectedClip | null) => {
+      setSnapshot((current) => ({
+        ...current,
+        rows: current.rows.map((row) =>
+          row.candidateId === candidateId
+            ? {
+                ...row,
+                decision,
+                ...(directed ? { docId: directed.docId, docJobId: directed.jobId || null } : {}),
+              }
+            : row,
+        ),
+      }));
+    },
+    [],
+  );
+
+  const decide = useCallback(
     async (
       candidateId: string,
-      cut: ClipCut,
-      window?: { readonly startTicks: number; readonly endTicks: number },
-    ): Promise<DirectedClip | null> => {
+      decision: Exclude<ClipDecision, 'approved'> | null,
+    ): Promise<boolean> => {
       if (!projectId || !snapshot.source) {
-        return null;
+        return false;
       }
       const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
       try {
+        await api.setClipDecision(projectId, snapshot.source.sourceId, candidateId, decision);
+        if (context !== contextSequence.current) return false;
+        mark(candidateId, decision, null);
+        setNotice(
+          decision === 'kept'
+            ? 'Kept for later.'
+            : decision === 'rejected'
+              ? 'Rejected.'
+              : 'Decision cleared.',
+        );
+        refresh();
+        return true;
+      } catch (error) {
+        if (context === contextSequence.current) setNotice((error as Error).message);
+        return false;
+      } finally {
+        if (context === contextSequence.current) setBusy(false);
+      }
+    },
+    [api, projectId, refresh, mark, snapshot.source],
+  );
+
+  const approve = useCallback(
+    async (candidateId: string, window: Window | null): Promise<DirectedClip | null> => {
+      const row = snapshot.rows.find((candidate) => candidate.candidateId === candidateId);
+      if (!projectId || !snapshot.source || !row) {
+        return null;
+      }
+      const chosen = { startTicks: row.startTicks, endTicks: row.endTicks };
+      const moved = window !== null && !same(window, chosen);
+      const alternative = row.boundary?.alternative ?? null;
+      // The runner-up is named as itself, so the edit's rationale says whose
+      // cut it is; any other moved cut is the reviewer's own.
+      const cut: ClipCut = !moved
+        ? 'chosen'
+        : alternative && same(window, alternative)
+          ? 'alternative'
+          : 'exact';
+      const context = contextSequence.current;
+      setBusy(true);
+      setNotice(null);
+      try {
+        // Approving is what creates the edit document, and the daemon records
+        // the decision in the same write — so there is no moment where the
+        // board says approved and the editor has nothing to open.
         const directed = await api.directClip({
           projectId,
           sourceId: snapshot.source.sourceId,
           candidateId,
           cut,
-          ...(snapshot.rows.some(
-            (row) => row.candidateId === candidateId && row.review?.status === 'rejected',
-          )
-            ? { allowDeclined: true }
+          approve: true,
+          ...(cut === 'exact' && window
+            ? { startTicks: window.startTicks, endTicks: window.endTicks }
             : {}),
-          ...(window ? { startTicks: window.startTicks, endTicks: window.endTicks } : {}),
-          // A different cut is a different edit, asked for on purpose. Without
-          // this the daemon would hand back the existing document — with the
-          // boundary this call was trying to replace.
-          variation: true,
+          // A different cut of a clip that already has an edit is a second
+          // edit. Without asking for one by name, the daemon would hand back
+          // the existing document — with the boundary this was replacing.
+          ...(moved && row.docId ? { variation: true } : {}),
+          ...(row.review?.status === 'rejected' ? { allowDeclined: true } : {}),
+          // The run the board is showing: its candidate, its boundaries, its
+          // transcript — not whichever run published each stage last.
           ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
         });
         if (context !== contextSequence.current) return null;
-        took(directed);
-        reload();
+        mark(candidateId, 'approved', directed);
+        setNotice(
+          directed.reopened
+            ? 'Approved. Its edit is kept as it stands.'
+            : moved && row.docId
+              ? 'Approved with your cut as a new edit. The earlier edit is still in Edits.'
+              : 'Approved. The edit is ready.',
+        );
+        refresh();
         return directed;
       } catch (error) {
         if (context === contextSequence.current) setNotice((error as Error).message);
@@ -229,56 +357,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run, snapshot.rows, took],
-  );
-
-  const decide = useCallback(
-    async (candidateId: string, decision: ClipDecision): Promise<DirectedClip | null> => {
-      if (!projectId || !snapshot.source) {
-        return null;
-      }
-      const context = contextSequence.current;
-      setBusy(true);
-      setNotice(null);
-      try {
-        let directed: DirectedClip | null = null;
-        if (decision === 'approved') {
-          // Approving is what creates the edit document, and the daemon
-          // records the decision in the same write — so there is no moment
-          // where the board says approved and the editor has nothing to
-          // open. A clip that already has an edit gets it back, not a second.
-          directed = await api.directClip({
-            projectId,
-            sourceId: snapshot.source.sourceId,
-            candidateId,
-            cut: 'chosen',
-            approve: true,
-            ...(snapshot.rows.some(
-              (row) => row.candidateId === candidateId && row.review?.status === 'rejected',
-            )
-              ? { allowDeclined: true }
-              : {}),
-            // The run the board is showing: its candidate, its boundaries,
-            // its transcript — not whichever run published each stage last.
-            ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
-          });
-          if (context !== contextSequence.current) return null;
-          took(directed);
-        } else {
-          await api.setClipDecision(projectId, snapshot.source.sourceId, candidateId, decision);
-          if (context !== contextSequence.current) return null;
-          setNotice(decision === 'kept' ? 'Kept for later.' : 'Rejected.');
-        }
-        reload();
-        return directed;
-      } catch (error) {
-        if (context === contextSequence.current) setNotice((error as Error).message);
-        return null;
-      } finally {
-        if (context === contextSequence.current) setBusy(false);
-      }
-    },
-    [api, projectId, reload, snapshot.source, snapshot.run, snapshot.rows, took],
+    [api, projectId, refresh, mark, snapshot.source, snapshot.run, snapshot.rows],
   );
 
   const manual = useCallback(
@@ -300,7 +379,7 @@ export function useResults(
           approve: false,
         });
         if (context !== contextSequence.current) return null;
-        took(directed);
+        setNotice('Sent to the editor.');
         reload();
         return directed;
       } catch (error) {
@@ -310,7 +389,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run, took],
+    [api, projectId, reload, snapshot.source, snapshot.run],
   );
 
   const approveMany = useCallback(
@@ -372,18 +451,17 @@ export function useResults(
     snapshot,
     proxyUrl,
     crop,
-    // Empty until a clip is approved, because the burned-in grouping lives in
-    // the document approving creates. Showing cues before then would mean
-    // showing captions the render has not been asked to draw.
-    cues,
     busy,
     notice,
+    say: setNotice,
     reload,
     decide,
+    approve,
     approveMany,
     tileUrl,
     solveFor,
-    direct,
     manual,
+    transcript,
+    requestTranscript,
   };
 }

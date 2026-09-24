@@ -10,6 +10,7 @@ import type {
   MediaFilmstrip,
   RankingSet,
   SourceMap,
+  SpeechTranscript,
 } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
@@ -17,6 +18,7 @@ import { newest } from '../daemon/ordering.js';
 import type { ClipDecisionRecord, Job, Source } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
 import { type ClipRow, type Summary, clipRows, summarize } from './model.js';
+import { type Transcript, readTranscript } from './transcript.js';
 
 export const RANKING_KIND = 'ranking.set.v1';
 export const CANDIDATES_KIND = 'discovery.candidates.v1';
@@ -25,6 +27,7 @@ export const PROXY_KIND = 'media.proxy.v1';
 export const FACES_KIND = 'vision.face_track.v1';
 export const FILMSTRIP_KIND = 'media.filmstrip.v1';
 export const PEAKS_KIND = 'media.audio_peaks.v1';
+export const TRANSCRIPT_KIND = 'speech.transcript.v1';
 
 /** Why a board has nothing to show, in words a person can act on. */
 export type ResultsProblem =
@@ -69,6 +72,19 @@ export interface ResultsSnapshot {
   readonly run: RunInfo | null;
   readonly filmstrip: Filmstrip | null;
   readonly peaks: Peaks | null;
+  /**
+   * How long the search was asked to make a clip. A reviewer may cut outside
+   * it (R63); the Inspector says so rather than stopping them.
+   */
+  readonly durationTarget?: { readonly minTicks: number; readonly maxTicks: number } | null;
+  /**
+   * The transcript the index was read from, which the Inspector loads on its
+   * own: the board never draws a word, and a two-hour transcript is too much
+   * to read for a grid of cards.
+   */
+  readonly transcriptArtifactId?: string | null;
+  /** The index the rows were joined from, kept for the transcript's sentences. */
+  readonly index?: IndexTranscript | null;
   readonly problem: ResultsProblem | null;
 }
 
@@ -82,6 +98,9 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
   run: null,
   filmstrip: null,
   peaks: null,
+  durationTarget: null,
+  transcriptArtifactId: null,
+  index: null,
   problem: { kind: 'no-source' },
 };
 
@@ -161,10 +180,12 @@ export class ResultsLoader {
       if (rankingSet.source_fingerprint !== source.sourceFingerprint) {
         return { ...EMPTY_SNAPSHOT, source, problem: { kind: 'not-analyzed' } };
       }
+      const candidateSet = JSON.parse(candidateDoc.json) as DiscoveryCandidates;
+      const index = indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null;
       const rows = clipRows(
         rankingSet,
-        JSON.parse(candidateDoc.json) as DiscoveryCandidates,
-        indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null,
+        candidateSet,
+        index,
         decisions as readonly ClipDecisionRecord[],
         documents.filter((document) => document.sourceId === source.sourceId),
       );
@@ -209,6 +230,18 @@ export class ResultsLoader {
               values: peaks.peaks.map((bucket) => [bucket.min, bucket.max] as const),
             }
           : null,
+        durationTarget: candidateSet.duration_target
+          ? {
+              minTicks: candidateSet.duration_target.min_ticks,
+              maxTicks: candidateSet.duration_target.max_ticks,
+            }
+          : null,
+        // The index names the transcript its word positions refer to, which
+        // is the one to read; the job's own is the fallback for a run that
+        // published no index.
+        transcriptArtifactId:
+          index?.inputs?.transcript_artifact_id ?? publishedArtifact(job, TRANSCRIPT_KIND),
+        index,
         problem: null,
       };
     } catch (error) {
@@ -217,6 +250,32 @@ export class ResultsLoader {
         source,
         problem: { kind: 'unreadable', detail: (error as Error).message },
       };
+    }
+  }
+
+  /**
+   * The words of the recording a snapshot describes, for the Inspector.
+   *
+   * Null when the run published no transcript, or published one for a
+   * different recording — words from another source would be read aloud
+   * against this one's picture, and no transcript is the honest answer.
+   */
+  async loadTranscript(projectId: string, snapshot: ResultsSnapshot): Promise<Transcript | null> {
+    const json = await this.readOptional(projectId, snapshot.transcriptArtifactId ?? null);
+    if (!json || !snapshot.source) {
+      return null;
+    }
+    try {
+      const speech = JSON.parse(json) as SpeechTranscript;
+      if (
+        speech.schema_version !== 'clipmill.speech.transcript.v1' ||
+        speech.source_fingerprint !== snapshot.source.sourceFingerprint
+      ) {
+        return null;
+      }
+      return readTranscript(speech, snapshot.index ?? null);
+    } catch {
+      return null;
     }
   }
 
