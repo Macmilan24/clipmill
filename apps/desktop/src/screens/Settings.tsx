@@ -2,6 +2,7 @@ import {
   ChevronDown,
   Database,
   HardDrive,
+  Info,
   Lock,
   Palette,
   Plug,
@@ -18,6 +19,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
+import { AboutSection } from './AboutSection.js';
 import { AppearancePreferences } from './AppearancePreferences.js';
 
 import './preferences.css';
@@ -46,6 +48,8 @@ export interface SettingsProps {
   readonly onOpenStorage?: (key: string) => Promise<void>;
   /** Go to Models, where weights are downloaded and removed. */
   readonly onOpenModels?: () => void;
+  /** The engine's version, for About; null while it is not connected. */
+  readonly engineVersion?: string | null;
 }
 
 function SectionHeading({
@@ -84,6 +88,7 @@ export function Settings({
   onCleanStorage,
   onOpenStorage,
   onOpenModels,
+  engineVersion,
 }: SettingsProps): JSX.Element {
   const total =
     storage?.categories.reduce((sum, category) => sum + Math.max(0, category.bytes), 0) ?? 0;
@@ -123,6 +128,7 @@ export function Settings({
           )}
           <SectionLink href="#settings-privacy" icon={<ShieldCheck />} label="Privacy & cloud" />
           <SectionLink href="#settings-storage" icon={<HardDrive />} label="Storage" />
+          <SectionLink href="#settings-about" icon={<Info />} label="About" />
         </nav>
         <div className="settings-sections min-w-0">
           {appearance && (
@@ -331,6 +337,9 @@ export function Settings({
             <p className="mt-3 text-[11px] leading-relaxed text-[var(--cm-text-muted)]">
               Storage locations and retention are managed by the local engine.
             </p>
+          </section>
+          <section id="settings-about" className="scroll-mt-6" aria-label="About">
+            <AboutSection engineVersion={engineVersion ?? null} />
           </section>
         </div>
       </div>

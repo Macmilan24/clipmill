@@ -258,6 +258,7 @@ export function App(): JSX.Element {
                 },
               },
               settings: {
+                engineVersion: state.status === 'connected' ? state.daemonVersion : null,
                 theme,
                 onThemeChange: setTheme,
                 workspaceTheme,
