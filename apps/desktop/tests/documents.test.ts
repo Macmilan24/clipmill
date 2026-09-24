@@ -7,9 +7,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { documentEntries } from '../src/editor/documents.js';
-import { CANDIDATE, NEW, NEW_DOC, OLD, OLD_DOC, document } from './support/clips.js';
-import { project, source } from './support/library.js';
+import { documentEntries, withClipNames } from '../src/editor/documents.js';
+import { CANDIDATE, NEW, NEW_DOC, OLD, OLD_DOC, document, twoProjects } from './support/clips.js';
+import { fakeApi, project, source } from './support/library.js';
 
 const PROJECTS = [project(NEW, 'Dogfood episode'), project(OLD, 'CUDA kernels', 3_600_000)];
 const SOURCES = new Map([
@@ -61,5 +61,50 @@ describe('the document list', () => {
     expect(entries[0]?.sourceName).toBeNull();
     expect(entries[0]?.clip.candidateId).toBeUndefined();
     expect(entries[0]?.clip.labels?.clip).toBe('Clip');
+  });
+});
+
+describe('naming clips by what they are', () => {
+  it('uses the title the analysis gave each clip, read once per run', async () => {
+    const world = twoProjects({
+      editDocs: [document(OLD, OLD_DOC, CANDIDATE)],
+    });
+    const ranking = JSON.parse(world.documents[`sha256:ranking-${OLD}`]!.json) as {
+      cohort: { candidate_id: string; title?: string }[];
+    };
+    for (const item of ranking.cohort) {
+      if (item.candidate_id === CANDIDATE) item.title = 'Why pricing mistakes compound';
+    }
+    const named = {
+      ...world,
+      documents: {
+        ...world.documents,
+        [`sha256:ranking-${OLD}`]: {
+          ...world.documents[`sha256:ranking-${OLD}`]!,
+          json: JSON.stringify(ranking),
+        },
+      },
+    };
+    const api = fakeApi(named);
+    const listed = documentEntries(
+      named.projects,
+      new Map(Object.entries(named.sources)),
+      new Map([[OLD, named.editDocs!]]),
+    );
+    expect(listed[0]!.title).toBeNull();
+    const [entry] = await withClipNames(listed, api);
+    expect(entry!.title).toBe('Why pricing mistakes compound');
+    expect(entry!.clip.labels?.clip).toBe('Why pricing mistakes compound');
+  });
+
+  it('keeps the file name when the run gave the clip no title', async () => {
+    const world = twoProjects({ editDocs: [document(OLD, OLD_DOC, CANDIDATE)] });
+    const listed = documentEntries(
+      world.projects,
+      new Map(Object.entries(world.sources)),
+      new Map([[OLD, world.editDocs!]]),
+    );
+    const [entry] = await withClipNames(listed, fakeApi(world));
+    expect(entry!.clip.labels?.clip).toBe(listed[0]!.clip.labels?.clip);
   });
 });

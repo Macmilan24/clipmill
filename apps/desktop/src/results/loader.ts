@@ -54,6 +54,12 @@ export interface Filmstrip {
   readonly tiles: readonly { readonly file: string; readonly tTicks: number }[];
 }
 
+/** A clip as a list outside Results names it. */
+export interface ClipName {
+  readonly title: string;
+  readonly thumbnail: string | null;
+}
+
 /** The loudness contour, one min/max pair per bucket, for drawing a waveform. */
 export interface Peaks {
   readonly bucketTicks: number;
@@ -260,6 +266,50 @@ export class ResultsLoader {
    * different recording — words from another source would be read aloud
    * against this one's picture, and no transcript is the honest answer.
    */
+  /**
+   * What each clip of a run is called, and a frame of it: for the lists that
+   * name clips outside Results, which would otherwise have only a file name.
+   * Reads the ranking, the candidates, the index and the filmstrip, nothing
+   * else, and answers with an empty map for a run that ranked nothing.
+   */
+  async clipNames(
+    projectId: string,
+    sourceId: string,
+    jobId: string | null,
+  ): Promise<ReadonlyMap<string, ClipName>> {
+    const job = analyzed(await this.api.listJobs(projectId), sourceId, jobId);
+    const ranking = publishedArtifact(job, RANKING_KIND);
+    const candidates = publishedArtifact(job, CANDIDATES_KIND);
+    if (!job || !ranking || !candidates) return new Map();
+    const filmstripId = publishedArtifact(job, FILMSTRIP_KIND);
+    const [rankingDoc, candidateDoc, indexDoc, filmstripDoc] = await Promise.all([
+      this.api.readDocument(projectId, ranking),
+      this.api.readDocument(projectId, candidates),
+      this.readOptional(projectId, publishedArtifact(job, INDEX_KIND)),
+      this.readOptional(projectId, filmstripId),
+    ]);
+    const rows = clipRows(
+      JSON.parse(rankingDoc.json) as RankingSet,
+      JSON.parse(candidateDoc.json) as DiscoveryCandidates,
+      indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null,
+      [],
+    );
+    const strip = filmstripDoc ? (JSON.parse(filmstripDoc) as MediaFilmstrip) : null;
+    const still = (ticks: number): string | null => {
+      if (!strip || !filmstripId || strip.tiles.length === 0) return null;
+      const nearest = strip.tiles.reduce((best, tile) =>
+        Math.abs(tile.t_ticks - ticks) < Math.abs(best.t_ticks - ticks) ? tile : best,
+      );
+      return this.api.mediaUrl(projectId, filmstripId, nearest.file);
+    };
+    return new Map(
+      rows.map((row) => [
+        row.candidateId,
+        { title: row.headline, thumbnail: still(row.startTicks) },
+      ]),
+    );
+  }
+
   async loadTranscript(projectId: string, snapshot: ResultsSnapshot): Promise<Transcript | null> {
     const json = await this.readOptional(projectId, snapshot.transcriptArtifactId ?? null);
     if (!json || !snapshot.source) {

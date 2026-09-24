@@ -114,7 +114,7 @@ describe('the editor, reached with no clip named', () => {
     expect(items).toHaveLength(2);
     // The older project's edit was touched more recently, so it leads.
     expect(items[0]?.textContent).toContain('CUDA kernels');
-    expect(items[0]?.textContent).toContain('r4');
+    expect(items[0]?.textContent).toContain('edited');
     expect(items[1]?.textContent).toContain('Dogfood episode');
     // Nothing was opened on anyone's behalf.
     expect(world.planned).toEqual([]);

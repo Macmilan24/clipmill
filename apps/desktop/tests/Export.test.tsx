@@ -131,7 +131,7 @@ describe('the export screen', () => {
       }),
     });
     expect(screen.getByText(/lands inside/)).toBeTruthy();
-    const button = screen.getByRole('button', { name: /^export revision r4$/i });
+    const button = screen.getByRole('button', { name: /^export clip$/i });
     fireEvent.click(button);
     expect(onExport).not.toHaveBeenCalled();
   });
@@ -150,7 +150,7 @@ describe('the export screen', () => {
       }),
     });
     expect(screen.getByText(/46 characters a second/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^export revision r4$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^export clip$/i }));
     expect(onExport).toHaveBeenCalledOnce();
   });
 
@@ -182,10 +182,7 @@ describe('the export screen', () => {
 
 it('keeps export disabled while a changed destination or filename is being validated', () => {
   show({ planning: true });
-  expect(screen.getByRole('button', { name: /^export revision r4$/i })).toHaveProperty(
-    'disabled',
-    true,
-  );
+  expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
 });
 
 it('groups fast captions into one review control while keeping the export blocked', () => {
@@ -199,5 +196,5 @@ it('groups fast captions into one review control while keeping the export blocke
   expect(screen.getAllByText(finding.detail)).toHaveLength(1);
   expect(screen.queryByText(/captions[._]reading_rate/)).toBeNull();
   expect(screen.getByText('Review caption details (1)')).toBeTruthy();
-  expect(screen.getByRole('button', { name: /export revision/i })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
 });

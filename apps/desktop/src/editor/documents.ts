@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { EditDocSummary, Project, Source } from '../daemon/client.js';
+import { type ClipName, ResultsLoader } from '../results/loader.js';
 import type { ClipRef } from '../shell/route.js';
 
 export interface DocumentEntry {
@@ -15,6 +16,10 @@ export interface DocumentEntry {
   readonly projectName: string;
   /** The recording's file name, or null when the document names no source. */
   readonly sourceName: string | null;
+  /** The clip's title from its analysis, once it is known. */
+  readonly title: string | null;
+  /** A frame of the clip, once it is known. */
+  readonly thumbnail: string | null;
   readonly revision: number;
   readonly updatedUnixMillis: number;
 }
@@ -53,6 +58,8 @@ export function documentEntries(
         },
         projectName: project.name,
         sourceName: source ? fileName(source.absolutePath) : null,
+        title: null,
+        thumbnail: null,
         revision: document.revision,
         updatedUnixMillis: document.updatedUnixMillis,
       });
@@ -65,7 +72,42 @@ export function documentEntries(
   );
 }
 
-/** What the breadcrumb calls a document opened from this list. */
+/**
+ * The entries with their clips' titles and frames, where the analysis that
+ * found each clip still says what it is called. The run a document names is
+ * read once for however many of its clips are listed.
+ */
+export async function withClipNames(
+  entries: readonly DocumentEntry[],
+  api: ShellApi,
+): Promise<readonly DocumentEntry[]> {
+  const loader = new ResultsLoader(api);
+  const runs = new Map<string, Promise<ReadonlyMap<string, ClipName>>>();
+  const named = await Promise.all(
+    entries.map(async (entry) => {
+      const { projectId, sourceId, jobId, candidateId } = entry.clip;
+      if (!candidateId) return entry;
+      const key = `${projectId}\u0000${sourceId}\u0000${jobId ?? ''}`;
+      if (!runs.has(key)) {
+        runs.set(
+          key,
+          loader.clipNames(projectId, sourceId, jobId ?? null).catch(() => new Map()),
+        );
+      }
+      const name = (await runs.get(key)!).get(candidateId);
+      if (!name || !name.title.trim()) return entry;
+      return {
+        ...entry,
+        title: name.title,
+        thumbnail: name.thumbnail,
+        clip: { ...entry.clip, labels: { project: entry.projectName, clip: name.title } },
+      };
+    }),
+  );
+  return named;
+}
+
+/** What the breadcrumb calls a document opened from this list, until its title is known. */
 function clipLabel(document: EditDocSummary, source: Source | undefined): string {
   const recording = source ? fileName(source.absolutePath) : 'Clip';
   return document.candidateId === ''
@@ -99,10 +141,14 @@ export function useEditDocuments(api: ShellApi = daemonApi): DocumentList {
             documents.set(project.projectId, held);
           }),
         );
+        const listed = documentEntries(projects, sources, documents);
         if (live) {
-          setEntries(documentEntries(projects, sources, documents));
+          setEntries(listed);
           setLoading(false);
         }
+        // Titles take a few more reads; the list is usable before they land.
+        const named = await withClipNames(listed, api);
+        if (live) setEntries(named);
       } catch (error) {
         if (live) {
           setProblem((error as Error).message);
