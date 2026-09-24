@@ -16,6 +16,8 @@ export interface SettingsScreenProps {
   readonly integrations?: ReactNode;
   /** Go to Models, where weights are downloaded and removed. */
   readonly onOpenModels?: () => void;
+  /** The engine's version, for About; null while it is not connected. */
+  readonly engineVersion?: string | null;
 }
 
 /** Refresh independently: a failed storage read must not hide the privacy answer. */
