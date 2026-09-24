@@ -103,6 +103,53 @@ describe('the Analysis Progress screen', () => {
     await waitFor(() => expect(onRestarted).toHaveBeenCalledWith('p1', 'job-p1'));
   });
 
+  it('retries with the choices the run was started with', async () => {
+    const scene = {
+      ...running(),
+      jobs: {
+        p1: [
+          {
+            ...job('p1', JobState.CANCELLED),
+            contentProfile: 'scripted',
+            analysis: {
+              language: 'de',
+              minTicks: 30 * 90_000,
+              maxTicks: 60 * 90_000,
+              count: 8,
+              localEditorial: true,
+            },
+          },
+        ],
+      },
+    };
+    const api = fakeApi(scene);
+    const submitAnalyze = vi.fn(api.submitAnalyze);
+    show(scene, { loader: new AnalysisLoader({ ...api, submitAnalyze }), onRestarted: vi.fn() });
+    expect(await screen.findByText(/up to 8 clips, 30–60 seconds, in German/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze again locally' }));
+    await waitFor(() =>
+      expect(submitAnalyze).toHaveBeenCalledWith('p1', {
+        sourceId: 'src_p1',
+        language: 'de',
+        minTicks: 30 * 90_000,
+        maxTicks: 60 * 90_000,
+        count: 8,
+        localEditorial: true,
+        contentProfile: 'scripted',
+      }),
+    );
+  });
+
+  it('stops a run only once asked twice', async () => {
+    const scene = { ...running(), cancelled: [] as string[] };
+    show(scene);
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop analysis' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(scene.cancelled).toEqual([]);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Stop analysis' }));
+    await waitFor(() => expect(scene.cancelled).toEqual(['job-p1']));
+  });
+
   it('shows every stage of the pipeline, named for a reader', async () => {
     show();
     const pipeline = within(await screen.findByRole('list', { name: 'Pipeline stages' }));

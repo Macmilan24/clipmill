@@ -12,12 +12,19 @@ import {
 } from 'lucide-react';
 import { type JSX, useEffect, useMemo, useState } from 'react';
 
-import type { DeviceProfile } from '@clipmill/contracts';
+import { type DeviceProfile, JobState } from '@clipmill/contracts';
 
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Progress as ProgressBar } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -37,7 +44,7 @@ import {
 } from '../analysis/model.js';
 import { useReadiness, waitingReasons } from '../analysis/readiness.js';
 import { AnalysisLoader, useAnalysis } from '../analysis/useAnalysis.js';
-import type { Job, TaskEvent } from '../daemon/client.js';
+import type { AnalysisSettings, AnalyzeRequest, Job, TaskEvent } from '../daemon/client.js';
 import {
   acceleratorMemory,
   describeAccelerator,
@@ -293,6 +300,56 @@ function LiveLog({
   );
 }
 
+const DEFAULT_SETTINGS: AnalysisSettings = {
+  language: 'en',
+  minTicks: 20 * 90_000,
+  maxTicks: 90 * 90_000,
+  count: 5,
+  localEditorial: true,
+};
+
+/** The same analysis again: this recording, with the choices the run was started with. */
+export function retryRequest(job: Job, sourceId: string): AnalyzeRequest {
+  const settings = job.analysis ?? DEFAULT_SETTINGS;
+  return {
+    sourceId,
+    language: settings.language,
+    minTicks: settings.minTicks,
+    maxTicks: settings.maxTicks,
+    count: settings.count,
+    localEditorial: true,
+    contentProfile: job.contentProfile === 'scripted' ? 'scripted' : 'interview',
+  };
+}
+
+/** The retry's choices, as a sentence: "up to 5 clips, 20–90 seconds, in English". */
+export function describeRetry(request: AnalyzeRequest): string {
+  const clips =
+    request.count > 0
+      ? `up to ${request.count} ${request.count === 1 ? 'clip' : 'clips'}`
+      : 'the usual number of clips';
+  const length =
+    request.minTicks > 0 && request.maxTicks > 0
+      ? `${seconds(request.minTicks)}–${seconds(request.maxTicks)} seconds`
+      : 'the usual length';
+  const language = request.language
+    ? `in ${languageName(request.language)}`
+    : 'with the language detected';
+  return `${clips}, ${length}, ${language}`;
+}
+
+function seconds(ticks: number): number {
+  return Math.round(ticks / 90_000);
+}
+
+function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
 export function AnalysisProgress({
   projectId,
   jobId,
@@ -310,6 +367,8 @@ export function AnalysisProgress({
 
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+  const [stopping, setStopping] = useState<'asking' | 'sending' | null>(null);
+  const [stopError, setStopError] = useState<string | null>(null);
   const cloud = job?.tasks.some((task) => task.kind.endsWith('-cloud')) ?? false;
   const status = readStatus(job);
   const running = status.kind === 'analyzing' || status.kind === 'queued';
@@ -377,11 +436,70 @@ export function AnalysisProgress({
             {cloud ? 'Cloud-assisted analysis · transcript sharing enabled' : 'Local analysis'}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={onBack}>
-          <ArrowLeft />
-          Back
-        </Button>
+        <div className="flex items-center gap-2">
+          {running && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={stopping === 'sending' || job.state === JobState.CANCEL_REQUESTED}
+              onClick={() => {
+                setStopError(null);
+                setStopping('asking');
+              }}
+            >
+              <CircleSlash />
+              {job.state === JobState.CANCEL_REQUESTED ? 'Stopping…' : 'Stop analysis'}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={onBack}>
+            <ArrowLeft />
+            Back
+          </Button>
+        </div>
       </header>
+      <Dialog
+        open={stopping !== null}
+        onOpenChange={(open) => {
+          if (!open && stopping !== 'sending') setStopping(null);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Stop this analysis?</DialogTitle>
+          <DialogDescription>
+            Steps already finished are kept, and you can analyze the recording again later.
+          </DialogDescription>
+          {stopError && (
+            <p role="alert" className="text-label text-[var(--cm-danger-ink)]">
+              {stopError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              disabled={stopping === 'sending'}
+              onClick={() => setStopping(null)}
+            >
+              Keep going
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={stopping === 'sending'}
+              onClick={() => {
+                setStopping('sending');
+                api
+                  .cancelJob(jobId)
+                  .then(() => setStopping(null))
+                  .catch((cause: unknown) => {
+                    setStopError(cause instanceof Error ? cause.message : String(cause));
+                    setStopping('asking');
+                  });
+              }}
+            >
+              {stopping === 'sending' ? 'Stopping…' : 'Stop analysis'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section className="analysis-status" aria-label="Analysis progress">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -445,7 +563,7 @@ export function AnalysisProgress({
           >
             {status.kind === 'analyzed' ? 'View results' : 'View results when ready'}
           </Button>
-          {status.kind === 'failed' && source && onRestarted && (
+          {(status.kind === 'failed' || status.kind === 'cancelled') && source && onRestarted && (
             <>
               <Button
                 variant="outline"
@@ -454,15 +572,7 @@ export function AnalysisProgress({
                   setRestarting(true);
                   setRestartError(null);
                   void api
-                    .submitAnalyze(projectId, {
-                      sourceId: source.sourceId,
-                      language: 'en',
-                      minTicks: 20 * 90_000,
-                      maxTicks: 90 * 90_000,
-                      count: 5,
-                      localEditorial: true,
-                      contentProfile: job?.contentProfile === 'scripted' ? 'scripted' : 'interview',
-                    })
+                    .submitAnalyze(projectId, retryRequest(job, source.sourceId))
                     .then((next) => onRestarted(projectId, next.jobId))
                     .catch((cause: unknown) =>
                       setRestartError(cause instanceof Error ? cause.message : String(cause)),
@@ -473,8 +583,8 @@ export function AnalysisProgress({
                 {restarting ? 'Starting…' : 'Analyze again locally'}
               </Button>
               <p className="text-xs">
-                Uses this recording with Qwen 3.5: up to five clips, 20–90 seconds. Existing edits
-                stay saved.
+                Same recording and choices as this run:{' '}
+                {describeRetry(retryRequest(job, source.sourceId))}. Existing edits stay saved.
               </p>
               {restartError && <p role="alert">{restartError}</p>}
             </>
