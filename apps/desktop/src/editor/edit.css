@@ -85,7 +85,7 @@
   container-type: inline-size;
 }
 
-@container (max-width: 320px) {
+@container (max-width: 304px) {
   .edit-side .review-tab-list svg {
     display: none;
   }
