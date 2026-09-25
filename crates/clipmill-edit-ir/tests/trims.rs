@@ -437,3 +437,69 @@ fn a_new_solve_replaces_old_manual_keyframes_and_undo_restores_them() {
     redo.apply(&mut edited).expect("redo new solve");
     assert_eq!(edited.video.segments[0].layout.crop_path, replacement);
 }
+
+#[test]
+fn a_two_person_solve_replaces_both_portraits_in_one_step() {
+    let original = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(100),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    let upper = vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(200),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }];
+    let lower = vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(800),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }];
+    original.validate().expect("valid before");
+    let mut edited = original.clone();
+    let undo = EditCommand::Batch {
+        commands: vec![
+            EditCommand::SetLayout {
+                segment_id: "seg_1".to_owned(),
+                state: LayoutState::TwoUp,
+            },
+            EditCommand::ReplaceCropPath {
+                segment_id: "seg_1".to_owned(),
+                path: upper.clone(),
+            },
+            EditCommand::ReplaceSecondaryCropPath {
+                segment_id: "seg_1".to_owned(),
+                path: lower.clone(),
+            },
+        ],
+    }
+    .apply(&mut edited)
+    .expect("a two-person solve");
+    let layout = &edited.video.segments[0].layout;
+    assert_eq!(layout.state, LayoutState::TwoUp);
+    assert_eq!(
+        (&layout.crop_path, &layout.secondary_crop_path),
+        (&upper, &lower)
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+    // A lower path alone never makes a two-up layout valid without an upper one.
+    let mut broken = original.clone();
+    broken.video.segments[0].layout.crop_path.clear();
+    assert!(
+        EditCommand::Batch {
+            commands: vec![
+                EditCommand::SetLayout {
+                    segment_id: "seg_1".to_owned(),
+                    state: LayoutState::TwoUp,
+                },
+                EditCommand::ReplaceSecondaryCropPath {
+                    segment_id: "seg_1".to_owned(),
+                    path: lower,
+                },
+            ],
+        }
+        .apply(&mut broken)
+        .is_err()
+    );
+}

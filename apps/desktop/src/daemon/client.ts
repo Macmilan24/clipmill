@@ -758,6 +758,47 @@ export interface CropPath {
   readonly fit: boolean;
   readonly fitReason: string;
   readonly containment: number;
+  /** The face followed, when one was. Older hosts leave it out. */
+  readonly trackId?: number | null;
+  /** The lower portrait's path, for a two-person solve; empty otherwise. */
+  readonly secondaryKeyframes?: readonly CropKeyframe[];
+}
+
+/** What else a solve may be asked for. */
+export interface SolveOptions {
+  /** Follow this face rather than the one the solver would choose. */
+  readonly trackId?: number;
+  /** Solve both portraits of a two-person layout. */
+  readonly twoUp?: boolean;
+}
+
+/** One face in one sampled frame, as shares of the source's display frame. */
+export interface FaceSighting {
+  readonly trackId: number;
+  readonly tTicks: number;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** The faces seen over a span, for picking who the camera follows. */
+export async function listFaces(
+  projectId: string,
+  faceTrackArtifactId: string,
+  startTicks: number,
+  endTicks: number,
+): Promise<readonly FaceSighting[]> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<FaceSighting[]>('list_faces', {
+    projectId,
+    faceTrackArtifactId,
+    startTicks,
+    endTicks,
+  });
 }
 
 /**
@@ -771,6 +812,7 @@ export async function solveCropPath(
   faceTrackArtifactId: string,
   startTicks: number,
   endTicks: number,
+  options: SolveOptions = {},
 ): Promise<CropPath> {
   if (!isTauri()) {
     throw new Error(NOT_IN_SHELL.reason);
@@ -781,6 +823,8 @@ export async function solveCropPath(
     faceTrackArtifactId,
     startTicks,
     endTicks,
+    trackId: options.trackId ?? null,
+    twoUp: options.twoUp ?? false,
   });
 }
 

@@ -28,7 +28,7 @@ import type { EditIr } from '@clipmill/contracts';
 
 import { Button } from '../components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
-import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
+import type { EditCommandJson, FaceSighting, PreviewPlan } from '../daemon/client.js';
 import { type Cut, clockTenths } from '../inspector/review.js';
 import { TipButton } from '../inspector/TipButton.js';
 import type { Filmstrip, Peaks } from '../results/loader.js';
@@ -117,6 +117,11 @@ export interface EditorProps {
   readonly onUndo: () => void;
   readonly onRedo: () => void;
   readonly onResolve: (frame: number) => void;
+  /** Follow one face through the section at `frame`. Absent hides the faces. */
+  readonly onFollow?: ((frame: number, trackId: number) => void) | null;
+  /** The faces seen over a span of the source, for choosing whom to follow. */
+  readonly loadFaces?:
+    ((startTicks: number, endTicks: number) => Promise<readonly FaceSighting[]>) | null;
   /** The clip's whole edit history, newest last. Absent hides History. */
   readonly onLoadHistory?: (() => Promise<readonly HistoryStep[]>) | null;
   /** Where a pinned caption font is served from. Absent keeps CSS captions. */
@@ -181,6 +186,8 @@ export function Editor({
   onUndo,
   onRedo,
   onResolve,
+  onFollow = null,
+  loadFaces = null,
   fontUrl = null,
   previewCaptions = null,
   onLoadHistory = null,
@@ -983,6 +990,8 @@ export function Editor({
           onApply={onApply}
           captions={exactCaptions}
           captionOptions={document?.captions.options ?? {}}
+          loadFaces={loadFaces}
+          onFollow={onFollow ? (trackId) => onFollow(frame, trackId) : null}
         />
         <div
           className="edit-resizer"

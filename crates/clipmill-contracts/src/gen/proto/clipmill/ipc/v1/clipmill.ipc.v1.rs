@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -153,6 +153,8 @@ pub mod request {
         PreviewCaptions(super::PreviewCaptionsRequest),
         #[prost(message, tag = "72")]
         ListEditHistory(super::ListEditHistoryRequest),
+        #[prost(message, tag = "73")]
+        ListFaces(super::ListFacesRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -163,7 +165,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -272,6 +274,8 @@ pub mod response {
         PreviewCaptions(super::PreviewCaptionsResponse),
         #[prost(message, tag = "58")]
         ListEditHistory(super::ListEditHistoryResponse),
+        #[prost(message, tag = "59")]
+        ListFaces(super::ListFacesResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1309,6 +1313,18 @@ pub struct SolveCropPathRequest {
     /// with no opinion should send.
     #[prost(message, optional, tag = "7")]
     pub weights: ::core::option::Option<CropWeightsV1>,
+    /// Follow this face instead of the one the focus gate would choose. A person
+    /// picked it, so it only has to be seen in the span: the presence bar that
+    /// keeps the automatic camera off an empty chair is theirs to overrule.
+    #[prost(uint32, tag = "8")]
+    pub track_id: u32,
+    #[prost(bool, tag = "9")]
+    pub follow_track: bool,
+    /// Solve the two-person layout instead: the pair the two-up gate finds, each
+    /// in its own half-height portrait, the left-hand face on top. Refused, with
+    /// a reason, when two people are not both clearly in the span.
+    #[prost(bool, tag = "10")]
+    pub two_up: bool,
 }
 /// The objective's terms, per ch. 18. Every one of them exists to prevent
 /// chasing — the failure users punish hardest is not a static miscrop but a
@@ -1356,6 +1372,51 @@ pub struct SolveCropPathResponse {
     /// optimal and still fail to contain a subject that left.
     #[prost(double, tag = "6")]
     pub containment: f64,
+    /// With `two_up`: the lower portrait's path and the face it follows. The
+    /// upper portrait's are `keyframes` and `track_id`.
+    #[prost(message, repeated, tag = "7")]
+    pub secondary_keyframes: ::prost::alloc::vec::Vec<CropKeyframeV1>,
+    #[prost(uint32, tag = "8")]
+    pub secondary_track_id: u32,
+}
+/// The faces the detector saw over a span, for a shell to draw over the whole
+/// frame so a person can pick who the camera follows.
+///
+/// Read from a published face track and checked the way every artifact read
+/// is. Like SolveCropPath it is a proposal surface: nothing is written.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListFacesRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub face_track_artifact_id: ::prost::alloc::string::String,
+    /// Source ticks, half-open. A clip's section, normally.
+    #[prost(uint64, tag = "3")]
+    pub start_ticks: u64,
+    #[prost(uint64, tag = "4")]
+    pub end_ticks: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListFacesResponse {
+    /// Every box in the span, bridged ones included, in track then time order.
+    #[prost(message, repeated, tag = "1")]
+    pub sightings: ::prost::alloc::vec::Vec<FaceSightingV1>,
+}
+/// One face in one sampled frame, as shares of the source's display frame.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct FaceSightingV1 {
+    #[prost(uint32, tag = "1")]
+    pub track_id: u32,
+    #[prost(uint64, tag = "2")]
+    pub t_ticks: u64,
+    #[prost(double, tag = "3")]
+    pub x: f64,
+    #[prost(double, tag = "4")]
+    pub y: f64,
+    #[prost(double, tag = "5")]
+    pub width: f64,
+    #[prost(double, tag = "6")]
+    pub height: f64,
 }
 /// One point on the virtual camera path. Centre and scale, both normalized
 /// against the source frame, so the same path drives any resolution.

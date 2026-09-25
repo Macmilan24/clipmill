@@ -13,6 +13,8 @@ import {
   type ClipDecisionRecord,
   type AppliedCommand,
   type CropPath,
+  type FaceSighting,
+  type SolveOptions,
   type EditCommandJson,
   type EditDocSummary,
   type PreviewPlan,
@@ -52,6 +54,7 @@ import {
   getEditDoc,
   previewPlan,
   solveCropPath,
+  listFaces,
   readDocument,
   registerSource,
   relinkSource,
@@ -122,7 +125,15 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
     faceTrackArtifactId: string,
     startTicks: number,
     endTicks: number,
+    options?: SolveOptions,
   ): Promise<CropPath>;
+  /** The faces seen over a span. Absent from shells without it. */
+  listFaces?(
+    projectId: string,
+    faceTrackArtifactId: string,
+    startTicks: number,
+    endTicks: number,
+  ): Promise<readonly FaceSighting[]>;
   previewPlan(projectId: string, docId: string): Promise<PreviewPlan>;
   listEditDocs(projectId: string): Promise<readonly EditDocSummary[]>;
   getEditDoc?(docId: string): Promise<import('./client.js').EditDocDetail>;
@@ -186,6 +197,7 @@ export const daemonApi: ShellApi = {
   submitAnalyze,
   directClip,
   solveCropPath,
+  listFaces,
   previewPlan,
   listEditDocs,
   getEditDoc,

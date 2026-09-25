@@ -76,6 +76,7 @@ message Request {
     RenameProjectRequest rename_project = 70;
     PreviewCaptionsRequest preview_captions = 71;
     ListEditHistoryRequest list_edit_history = 72;
+    ListFacesRequest list_faces = 73;
   }
 }
 
@@ -135,6 +136,7 @@ message Response {
     RenameProjectResponse rename_project = 56;
     PreviewCaptionsResponse preview_captions = 57;
     ListEditHistoryResponse list_edit_history = 58;
+    ListFacesResponse list_faces = 59;
   }
 }
 
@@ -990,6 +992,15 @@ message SolveCropPathRequest {
   // Zero leaves each weight at the daemon's default, which is what a caller
   // with no opinion should send.
   CropWeightsV1 weights = 7;
+  // Follow this face instead of the one the focus gate would choose. A person
+  // picked it, so it only has to be seen in the span: the presence bar that
+  // keeps the automatic camera off an empty chair is theirs to overrule.
+  uint32 track_id = 8;
+  bool follow_track = 9;
+  // Solve the two-person layout instead: the pair the two-up gate finds, each
+  // in its own half-height portrait, the left-hand face on top. Refused, with
+  // a reason, when two people are not both clearly in the span.
+  bool two_up = 10;
 }
 
 // The objective's terms, per ch. 18. Every one of them exists to prevent
@@ -1026,6 +1037,38 @@ message SolveCropPathResponse {
   // stayed inside the crop. Reported rather than asserted — a path can be
   // optimal and still fail to contain a subject that left.
   double containment = 6;
+  // With `two_up`: the lower portrait's path and the face it follows. The
+  // upper portrait's are `keyframes` and `track_id`.
+  repeated CropKeyframeV1 secondary_keyframes = 7;
+  uint32 secondary_track_id = 8;
+}
+
+// The faces the detector saw over a span, for a shell to draw over the whole
+// frame so a person can pick who the camera follows.
+//
+// Read from a published face track and checked the way every artifact read
+// is. Like SolveCropPath it is a proposal surface: nothing is written.
+message ListFacesRequest {
+  string project_id = 1;
+  string face_track_artifact_id = 2;
+  // Source ticks, half-open. A clip's section, normally.
+  uint64 start_ticks = 3;
+  uint64 end_ticks = 4;
+}
+
+message ListFacesResponse {
+  // Every box in the span, bridged ones included, in track then time order.
+  repeated FaceSightingV1 sightings = 1;
+}
+
+// One face in one sampled frame, as shares of the source's display frame.
+message FaceSightingV1 {
+  uint32 track_id = 1;
+  uint64 t_ticks = 2;
+  double x = 3;
+  double y = 4;
+  double width = 5;
+  double height = 6;
 }
 
 // One point on the virtual camera path. Centre and scale, both normalized

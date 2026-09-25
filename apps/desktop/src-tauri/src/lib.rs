@@ -472,6 +472,29 @@ async fn preview_captions(
         .map_err(|error| error.to_string())
 }
 
+/// The faces seen over a span, for picking who the camera follows.
+#[tauri::command]
+async fn list_faces(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    face_track_artifact_id: String,
+    start_ticks: u64,
+    end_ticks: u64,
+) -> Result<Vec<views::FaceSightingView>, String> {
+    let request = clipmill_contracts::proto::ipc::v1::ListFacesRequest {
+        project_id,
+        face_track_artifact_id,
+        start_ticks,
+        end_ticks,
+    };
+    supervisor
+        .client()
+        .list_faces(request)
+        .await
+        .map(|sightings| sightings.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
 /// A document's whole edit history, oldest first.
 #[tauri::command]
 async fn list_edit_history(
@@ -676,6 +699,9 @@ async fn local_lock(
 
 /// The crop path for a span, as a proposal. Nothing is written, so the
 /// Inspector may ask again every time a boundary moves.
+///
+/// `track_id` follows that face instead of the one the gate would choose, and
+/// `two_up` solves both portraits of a two-person layout.
 #[tauri::command]
 async fn solve_crop_path(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
@@ -683,6 +709,8 @@ async fn solve_crop_path(
     face_track_artifact_id: String,
     start_ticks: u64,
     end_ticks: u64,
+    track_id: Option<u32>,
+    two_up: Option<bool>,
 ) -> Result<views::CropPathView, String> {
     let request = clipmill_contracts::proto::ipc::v1::SolveCropPathRequest {
         project_id,
@@ -692,6 +720,9 @@ async fn solve_crop_path(
         aspect_width: 9,
         aspect_height: 16,
         weights: None,
+        track_id: track_id.unwrap_or(0),
+        follow_track: track_id.is_some(),
+        two_up: two_up.unwrap_or(false),
     };
     supervisor
         .client()
@@ -873,6 +904,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             relink_source,
             preview_captions,
             list_edit_history,
+            list_faces,
             get_source,
             start_youtube_import,
             get_youtube_import,

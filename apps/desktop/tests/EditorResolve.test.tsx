@@ -10,13 +10,13 @@ import { seekTo } from './support/timeline.js';
 let state: EditorState;
 vi.mock('../src/editor/useEditor.js', () => ({ useEditor: () => state }));
 const clip = { projectId: 'project', docId: 'edit', sourceId: 'source', candidateId: 'candidate' };
-function show(solveCropPath: ShellApi['solveCropPath']) {
+function show(solveCropPath: ShellApi['solveCropPath'], more: Partial<ShellApi> = {}) {
   const props = {
     clip,
     onOpenResults: vi.fn(),
     onOpen: vi.fn(),
     onExport: vi.fn(),
-    api: { solveCropPath } as ShellApi,
+    api: { solveCropPath, ...more } as ShellApi,
   };
   const view = render(
     <TooltipProvider>
@@ -96,7 +96,7 @@ describe('re-solving the current shot', () => {
     show(solve);
     resolveSecond();
     await waitFor(() => expect(state.apply).toHaveBeenCalled());
-    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000);
+    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, {});
     expect(state.apply).toHaveBeenCalledWith({
       op: 'batch',
       commands: [
@@ -134,6 +134,130 @@ describe('re-solving the current shot', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Recalculate framing' })).toBeTruthy(),
     );
+    expect(state.apply).not.toHaveBeenCalled();
+  });
+});
+
+describe('re-solving a two-person section', () => {
+  beforeEach(() => {
+    const segments = state.plan!.segments.map((segment) =>
+      Object.assign({}, segment, { hasTwoUpPaths: true }),
+    );
+    state = { ...state, plan: { ...state.plan!, segments } };
+  });
+
+  it('keeps both people, each portrait solved for half the frame', async () => {
+    const solve = vi.fn().mockResolvedValue({
+      fit: false,
+      keyframes: [{ tTicks: 1_800_000, centerX: 0.25, centerY: 0.5, scale: 0.5 }],
+      secondaryKeyframes: [{ tTicks: 1_800_000, centerX: 0.75, centerY: 0.5, scale: 0.5 }],
+      containment: 1,
+    });
+    show(solve);
+    resolveSecond();
+    await waitFor(() => expect(state.apply).toHaveBeenCalled());
+    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, { twoUp: true });
+    // Half the output's height: a 9:8 portrait, 608 wide for 540 tall.
+    expect(state.apply).toHaveBeenCalledWith({
+      op: 'batch',
+      commands: [
+        { op: 'set_layout', segment_id: 'second', state: 'two_up' },
+        {
+          op: 'replace_crop_path',
+          segment_id: 'second',
+          path: [{ t_ticks: 0, rect: { x: 176, y: 270, width: 608, height: 540 } }],
+        },
+        {
+          op: 'replace_secondary_crop_path',
+          segment_id: 'second',
+          path: [{ t_ticks: 0, rect: { x: 1136, y: 270, width: 608, height: 540 } }],
+        },
+      ],
+    });
+  });
+
+  it('lets the camera decide afresh when the pair is no longer clear', async () => {
+    const solve = vi
+      .fn()
+      .mockResolvedValueOnce({
+        fit: true,
+        fitReason: 'two people are not both clearly in this section',
+        keyframes: [],
+        containment: 0,
+      })
+      .mockResolvedValueOnce({
+        fit: false,
+        keyframes: [{ tTicks: 1_800_000, centerX: 0.5, centerY: 0.5, scale: 1 }],
+        containment: 1,
+      });
+    show(solve);
+    resolveSecond();
+    await waitFor(() => expect(state.apply).toHaveBeenCalled());
+    expect(solve).toHaveBeenLastCalledWith('project', 'faces', 1_800_000, 2_700_000, {});
+    expect(state.apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commands: expect.arrayContaining([
+          { op: 'set_layout', segment_id: 'second', state: 'speaker_fill' },
+        ]),
+      }),
+    );
+  });
+});
+
+describe('following a person picked on the whole frame', () => {
+  const sightings = [0, 1].flatMap((trackId) =>
+    [2_235_000, 2_250_000, 2_265_000].map((tTicks) => ({
+      trackId,
+      tTicks,
+      x: trackId === 0 ? 0.2 : 0.7,
+      y: 0.3,
+      width: 0.1,
+      height: 0.2,
+    })),
+  );
+
+  it('offers each face in the Original view and follows the one clicked', async () => {
+    const solve = vi.fn().mockResolvedValue({
+      fit: false,
+      keyframes: [{ tTicks: 1_800_000, centerX: 0.75, centerY: 0.5, scale: 1 }],
+      containment: 1,
+      trackId: 1,
+    });
+    const listFaces = vi.fn().mockResolvedValue(sightings);
+    show(solve, { listFaces });
+    seekTo(state.plan!, 450);
+    fireEvent.click(screen.getByRole('button', { name: 'Original' }));
+    await waitFor(() =>
+      expect(listFaces).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000),
+    );
+    const people = await screen.findAllByRole('button', { name: /^Follow person/ });
+    expect(people).toHaveLength(2);
+    fireEvent.click(people[1]!);
+    await waitFor(() => expect(state.apply).toHaveBeenCalled());
+    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, { trackId: 1 });
+    expect(state.apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commands: expect.arrayContaining([
+          { op: 'set_layout', segment_id: 'second', state: 'speaker_fill' },
+        ]),
+      }),
+    );
+    // Back on the edit, where the new framing shows.
+    expect(screen.getByRole('button', { name: 'Edit' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('says why when that person cannot be followed through the section', async () => {
+    const solve = vi.fn().mockResolvedValue({
+      fit: true,
+      fitReason: 'the clearest face appears in too little of this clip to follow',
+      keyframes: [],
+      containment: 0,
+    });
+    show(solve, { listFaces: vi.fn().mockResolvedValue(sightings) });
+    seekTo(state.plan!, 450);
+    fireEvent.click(screen.getByRole('button', { name: 'Original' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: /^Follow person/ }))[0]!);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/cannot be followed/);
     expect(state.apply).not.toHaveBeenCalled();
   });
 });

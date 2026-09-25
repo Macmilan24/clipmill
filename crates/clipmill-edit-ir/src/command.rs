@@ -122,6 +122,12 @@ pub enum EditCommand {
         segment_id: String,
         t_ticks: i64,
     },
+    /// Replace the lower portrait's solved path, as a re-solve of a
+    /// two-person layout does beside `ReplaceCropPath` for the upper one.
+    ReplaceSecondaryCropPath {
+        segment_id: String,
+        path: Vec<CropKeyframe>,
+    },
     /// Correct one word's text without disturbing its timing, addressed by
     /// cue and position. The word's other occurrence — the same word in the
     /// other presentation — is corrected with it when the word carries an id.
@@ -367,6 +373,17 @@ impl EditCommand {
                     path.clone(),
                 );
                 Ok(Self::ReplaceCropPath {
+                    segment_id: segment_id.clone(),
+                    path: previous,
+                })
+            }
+            Self::ReplaceSecondaryCropPath { segment_id, path } => {
+                let index = document.segment_index(segment_id)?;
+                let previous = std::mem::replace(
+                    &mut document.video.segments[index].layout.secondary_crop_path,
+                    path.clone(),
+                );
+                Ok(Self::ReplaceSecondaryCropPath {
                     segment_id: segment_id.clone(),
                     path: previous,
                 })

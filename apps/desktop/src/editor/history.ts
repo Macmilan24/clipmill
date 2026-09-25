@@ -56,6 +56,7 @@ export function describeCommand(command: EditCommandJson): string {
     case 'replace_crop_path':
     case 'set_secondary_crop_keyframe':
     case 'remove_secondary_crop_keyframe':
+    case 'replace_secondary_crop_path':
       return 'Reframe';
     case 'edit_caption_text':
     case 'set_word_text':

@@ -3,9 +3,10 @@
  * `useEditor` owns document state and resolves face tracks from the clip's run
  * for re-solving.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import type { CropKeyframe, CropPath, SolveOptions } from '../daemon/client.js';
 import { batch, setLayout, solvedKeyframe } from '../editor/commands.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
@@ -101,13 +102,16 @@ export function EditorScreen({
     : 'This analysis has no face evidence. Reanalyze the recording to add automatic framing.';
 
   /**
-   * Ask the solver again and write what it says as one undoable step.
+   * Ask the solver about the section at `frame` and write what it says as one
+   * undoable step.
    *
    * The solve itself writes nothing — it is a proposal — so turning it into
-   * keyframes is the editor's decision and is recorded as such.
+   * keyframes is the editor's decision and is recorded as such. A section
+   * showing two people is re-solved as two people: recalculating a two-person
+   * layout into one portrait would undo a choice nobody asked to undo.
    */
-  const onResolve = useCallback(
-    async (frame: number) => {
+  const solveSection = useCallback(
+    async (frame: number, follow: number | null) => {
       const plan = editor.plan;
       const faceTrack = editor.faceTrack;
       // The span the solver is asked about is the segment's own window into the
@@ -123,29 +127,74 @@ export function EditorScreen({
       const version = ++resolveVersion.current;
       setResolving(true);
       setResolveProblem(null);
-      try {
-        const solved = await api.solveCropPath(
+      const ask = (options: SolveOptions = {}) =>
+        api.solveCropPath(
           faceTrack.projectId,
           faceTrack.artifactId,
           segment.inTicks,
           segment.outTicks,
+          options,
         );
-        if (version !== resolveVersion.current) return;
-        if (solved.fit || solved.keyframes.length === 0) {
-          await editor.apply(setLayout('fit', segment.segmentId));
-          return;
+      const path = (
+        keyframes: readonly CropKeyframe[],
+        aspect: { width: number; height: number },
+      ) =>
+        keyframes.map((keyframe) => {
+          const converted = solvedKeyframe(keyframe, segment, source, aspect);
+          return { t_ticks: converted.tTicks, rect: converted.rect };
+        });
+      try {
+        let solved: CropPath;
+        if (follow !== null) {
+          solved = await ask({ trackId: follow });
+          if (version !== resolveVersion.current) return;
+          if (solved.fit || solved.keyframes.length === 0) {
+            setResolveProblem(
+              `That person cannot be followed through this section: ${solved.fitReason || 'they are barely in it'}.`,
+            );
+            return;
+          }
+        } else {
+          solved = segment.hasTwoUpPaths ? await ask({ twoUp: true }) : await ask();
+          if (version !== resolveVersion.current) return;
+          const pair = solved.secondaryKeyframes ?? [];
+          if (segment.hasTwoUpPaths && !solved.fit && pair.length > 0) {
+            // Each portrait is half the frame tall.
+            const half = { width: plan.width, height: plan.height / 2 };
+            await editor.apply(
+              batch([
+                setLayout('two_up', segment.segmentId),
+                {
+                  op: 'replace_crop_path',
+                  segment_id: segment.segmentId,
+                  path: path(solved.keyframes, half),
+                },
+                {
+                  op: 'replace_secondary_crop_path',
+                  segment_id: segment.segmentId,
+                  path: path(pair, half),
+                },
+              ]),
+            );
+            return;
+          }
+          if (segment.hasTwoUpPaths) {
+            // The pair is no longer clear here; the camera decides afresh.
+            solved = await ask();
+            if (version !== resolveVersion.current) return;
+          }
+          if (solved.fit || solved.keyframes.length === 0) {
+            await editor.apply(setLayout('fit', segment.segmentId));
+            return;
+          }
         }
-        const aspect = { width: plan.width, height: plan.height };
         await editor.apply(
           batch([
             setLayout('speaker_fill', segment.segmentId),
             {
               op: 'replace_crop_path',
               segment_id: segment.segmentId,
-              path: solved.keyframes.map((keyframe) => {
-                const converted = solvedKeyframe(keyframe, segment, source, aspect);
-                return { t_ticks: converted.tTicks, rect: converted.rect };
-              }),
+              path: path(solved.keyframes, { width: plan.width, height: plan.height }),
             },
           ]),
         );
@@ -159,6 +208,19 @@ export function EditorScreen({
       }
     },
     [api, editor],
+  );
+  const onResolve = useCallback((frame: number) => solveSection(frame, null), [solveSection]);
+
+  // The faces of a section, for the Original view to offer. A shell without
+  // face listing, or an analysis without faces, offers none.
+  const faceTrack = editor.faceTrack;
+  const loadFaces = useMemo(
+    () =>
+      api.listFaces && faceTrack
+        ? (startTicks: number, endTicks: number) =>
+            api.listFaces!(faceTrack.projectId, faceTrack.artifactId, startTicks, endTicks)
+        : null,
+    [api, faceTrack],
   );
 
   return (
@@ -201,6 +263,14 @@ export function EditorScreen({
       onResolve={(frame) => {
         void onResolve(frame);
       }}
+      onFollow={
+        loadFaces
+          ? (frame, trackId) => {
+              void solveSection(frame, trackId);
+            }
+          : null
+      }
+      loadFaces={loadFaces}
       onLoadHistory={
         api.listEditHistory && clip
           ? async () => historySteps(await api.listEditHistory!(clip.docId))
