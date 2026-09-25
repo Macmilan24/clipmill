@@ -41,8 +41,8 @@ from clipmill_worker_sdk.inputs import MissingInputError, require_input
 from clipmill_worker_sdk.tools import ToolUnavailableError, require_tool
 from clipmill_worker_sdk.weights import ModelVerificationError, require_model
 
+from . import activity, tracking
 from . import frames as frames_module
-from . import tracking
 from .frames import FRAMES_DESCRIPTOR, DecodeFailed, decode_frames, letterbox_for, read_frames
 from .yunet import IMPLEMENTATION, INPUT_SIZE, YuNet
 
@@ -121,6 +121,8 @@ def execute_faces(context: TaskContext) -> tuple[str, ...]:
         raise DeterministicTaskError(str(error), code=code) from error
 
     per_frame: list[tuple[int, list]] = []
+    # Each detection's mouth and upper-face patches, by the detection's identity.
+    measured: dict[int, activity.Patches | None] = {}
     examined = 0
     for start in range(0, len(ordered), BATCH_FRAMES):
         context.cancellation.raise_if_cancelled()
@@ -137,6 +139,10 @@ def execute_faces(context: TaskContext) -> tuple[str, ...]:
         for frame, image in zip(batch, pixels, strict=True):
             found = detector.detect(image, settings.score_threshold, settings.nms_iou)
             per_frame.append((frame.t_ticks, found))
+            # Read the mouths now, while the frame is still in memory; the
+            # tracks that say which face is which come after every frame.
+            for detection, patches in zip(found, activity.patches_for(image, found), strict=True):
+                measured[id(detection)] = patches
             examined += 1
         context.report_progress("frames_examined", examined, len(ordered))
 
@@ -152,8 +158,18 @@ def execute_faces(context: TaskContext) -> tuple[str, ...]:
     )
     frame_times = [at for at, _ in per_frame]
     bridged = [tracking.bridge(track, frame_times) for track in tracks]
+    # Two sampled frames apart is still one moment of speech; farther is not.
+    step = frame_times[1] - frame_times[0] if len(frame_times) > 1 else 0
+    motions = [
+        activity.track_motion(
+            [(item.t_ticks, item.detection, item.interpolated) for item in track.observations],
+            measured,
+            2 * step,
+        )
+        for track in bridged
+    ]
 
-    document = _document(payload, sampled, settings, bridged, examined, box)
+    document = _document(payload, sampled, settings, bridged, examined, box, motions)
     context.staging.write_bytes(OUTPUT_FILE, canonical_bytes(document))
     return (OUTPUT_FILE,)
 
@@ -204,9 +220,11 @@ def _document(
     tracks: list[tracking.Track],
     examined: int,
     box: frames_module.Letterbox | None = None,
+    motions: list[dict[int, float]] | None = None,
 ) -> VisionFaceTrack:
     published: list[TrackDocument] = []
     for index, track in enumerate(tracks):
+        moved = motions[index] if motions is not None else {}
         boxes: list[Box] = []
         for observation in track.observations:
             if box is None:
@@ -226,6 +244,7 @@ def _document(
                     h=round(h, 6),
                     score=round(min(max(observation.detection.score, 0.0), 1.0), 4),
                     interpolated=True if observation.interpolated else None,
+                    mouth_motion=moved.get(observation.t_ticks),
                 )
             )
         if not boxes:
@@ -252,7 +271,7 @@ def _document(
         frames_artifact_id=sampled.artifact_id,
         producer=Producer(
             stage=STAGE,
-            implementation=f"clipmill-worker-faces@{__version__}+{IMPLEMENTATION}",
+            implementation=f"clipmill-worker-faces@{__version__}+{IMPLEMENTATION}+{activity.VERSION}",
         ),
         detection=DetectionParameters(
             score_threshold=settings.score_threshold,
