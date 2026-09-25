@@ -106,3 +106,23 @@ export function sourceFpsOf(sourceMapJson: string): number | null {
     return null;
   }
 }
+
+const FOLDER_KEY = 'clipmill.export.folder';
+
+/** The folder the last export went to, which the next one starts in. */
+export function recallFolder(): string {
+  try {
+    return localStorage.getItem(FOLDER_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function rememberFolder(folder: string): void {
+  if (!folder.trim()) return;
+  try {
+    localStorage.setItem(FOLDER_KEY, folder);
+  } catch {
+    // The next export asks again.
+  }
+}

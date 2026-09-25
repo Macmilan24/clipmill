@@ -42,6 +42,7 @@ import {
   editorPlan,
 } from './editor-fixtures.js';
 import { applyPreview } from './editor-preview.js';
+import { ShortcutSheet, useShortcutSheet } from '../src/shell/ShortcutSheet.js';
 import {
   REVIEW_DURATION_TICKS,
   reviewCrop,
@@ -209,8 +210,10 @@ function Preview() {
     }
   };
   const workspace = ['results', 'inspector', 'editor'].includes(page);
+  const shortcuts = useShortcutSheet();
   return (
     <TooltipProvider>
+      <ShortcutSheet open={shortcuts.open} onOpenChange={shortcuts.setOpen} />
       <div className="flex h-full flex-col">
         <div className="flex h-7 shrink-0 items-center justify-center border-b border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] text-[10px] text-[var(--cm-text-muted)]">
           UI development preview · Synthetic data · No files are changed

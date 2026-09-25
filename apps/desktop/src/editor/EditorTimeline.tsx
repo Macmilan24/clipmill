@@ -45,6 +45,7 @@ import {
   trim,
 } from './commands.js';
 import { pressOrDrag } from './gesture.js';
+import { type MenuTarget, TimelineMenu } from './TimelineMenu.js';
 import type { EditorSelection } from './selection.js';
 import {
   TICKS,
@@ -386,6 +387,7 @@ export function EditorTimeline(props: EditorTimelineProps) {
             onSeek={onSeek}
             onSelect={onSelect}
             onApply={props.onApply}
+            onSplit={onSplit}
             at={at}
             wide={wide}
             span={span}
@@ -451,6 +453,7 @@ interface LaneProps extends Pick<
   | 'onSeek'
   | 'onSelect'
   | 'onApply'
+  | 'onSplit'
 > {
   /** The playhead, read when a drag needs it rather than redrawn with it. */
   readonly playheadRef: RefObject<number>;
@@ -480,6 +483,7 @@ const Lanes = memo(function Lanes({
   onSeek,
   onSelect,
   onApply,
+  onSplit,
   at,
   wide,
   span,
@@ -489,6 +493,8 @@ const Lanes = memo(function Lanes({
   pixelsToTicks,
 }: LaneProps) {
   const [ghost, setGhost] = useState<Ghost | null>(null);
+  // What a right-click landed on, for the timeline's menu.
+  const [menu, setMenu] = useState<MenuTarget | null>(null);
   const duration = programTicks(plan);
   const { before, after } = reach(plan);
 
@@ -756,222 +762,279 @@ const Lanes = memo(function Lanes({
     selection.kind === 'section' && selection.segmentId === id;
 
   return (
-    <>
-      <div className="review-stills edit-lane edit-video" onPointerDown={scrub}>
-        {stills.map((still, index) =>
-          still ? (
-            // eslint-disable-next-line react/no-array-index-key -- slots are positions
-            <img key={index} src={still} alt="" loading="lazy" draggable={false} />
-          ) : (
-            // eslint-disable-next-line react/no-array-index-key -- slots are positions
-            <span key={index} />
-          ),
-        )}
-        {plan.segments.map((part, index) => {
-          const from = part.programStartTicks;
-          const to = from + part.outTicks - part.inTicks;
-          return (
-            <div
-              key={part.segmentId}
-              className="edit-section"
-              data-selected={sectionSelected(part.segmentId) ? 'true' : undefined}
-              style={{ left: at(from), width: wide(from, to) }}
-            >
-              {plan.segments.length > 1 && (
-                <span className="edit-section-label mono">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
-              )}
-              {(['in', 'out'] as const).map((edge) => (
-                <button
-                  key={edge}
-                  type="button"
-                  className="review-handle edit-handle"
-                  data-edge={edge}
-                  data-outer={
-                    (edge === 'in' && index === 0) ||
-                    (edge === 'out' && index === plan.segments.length - 1)
-                      ? 'true'
-                      : undefined
-                  }
-                  disabled={busy}
-                  aria-label={`${edge === 'in' ? 'Start' : 'End'} of ${
-                    plan.segments.length > 1 ? `section ${index + 1}` : 'the clip'
-                  }`}
-                  onPointerDown={(event) => grabEdge(event, index, edge)}
-                />
-              ))}
-            </div>
-          );
-        })}
-        {ghost?.kind === 'edge' && (
-          <span className="edit-edge-ghost" style={{ left: at(ghost.ticks) }} aria-hidden="true">
-            <span className="mono">
-              {ghost.ticks < 0 ? `−${clockTenths(-ghost.ticks)}` : clockTenths(ghost.ticks)}
-            </span>
-          </span>
-        )}
-      </div>
-
-      <div className="edit-lane edit-captions" onPointerDown={scrub}>
-        {plan.cues.map((cue) => {
-          const saved = cues.find((item) => item.cue_id === cue.cueId);
-          const drawn =
-            ghost?.kind === 'cue' && ghost.cueId === cue.cueId
-              ? { start: ghost.start, end: ghost.end }
-              : {
-                  start: saved?.start_ticks ?? ticksOfFrame(plan, cue.firstFrame),
-                  end: saved?.end_ticks ?? ticksOfFrame(plan, cue.endFrame),
-                };
-          const selected = selection.kind === 'cue' && selection.cueId === cue.cueId;
-          const text = cue.lines
-            .flat()
-            .map((word) => word.text)
-            .join(' ');
-          return (
-            <div
-              key={cue.cueId}
-              className="edit-cue"
-              data-selected={selected ? 'true' : undefined}
-              data-region={cue.region}
-              style={{ left: at(drawn.start), width: wide(drawn.start, drawn.end) }}
-              title={text}
-              onPointerDown={(event) => {
-                if (event.button > 0) return;
-                event.stopPropagation();
-                onSelect({ kind: 'cue', cueId: cue.cueId });
-                onSeek(cue.firstFrame);
-              }}
-            >
-              {saved && (
-                <button
-                  type="button"
-                  className="edit-cue-edge"
-                  data-edge="start"
-                  aria-label={`Start of the caption “${text}”`}
-                  disabled={busy}
-                  onPointerDown={(event) => grabCueEdge(event, cue.cueId, 'start')}
-                />
-              )}
-              <span>{text}</span>
-              {saved && (
-                <button
-                  type="button"
-                  className="edit-cue-edge"
-                  data-edge="end"
-                  aria-label={`End of the caption “${text}”`}
-                  disabled={busy}
-                  onPointerDown={(event) => grabCueEdge(event, cue.cueId, 'end')}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="edit-lane edit-framing" onPointerDown={scrub}>
-        {plan.segments.map((part) => {
-          const from = part.programStartTicks;
-          const to = from + part.outTicks - part.inTicks;
-          const two =
-            part.hasTwoUpPaths || (plan.secondaryCrops?.[part.firstFrame] ?? null) !== null;
-          const fit = !two && plan.crops[part.firstFrame] === null;
-          return (
-            <button
-              key={part.segmentId}
-              type="button"
-              className="edit-run"
-              data-selected={sectionSelected(part.segmentId) ? 'true' : undefined}
-              style={{ left: at(from), width: wide(from, to) }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => onSelect({ kind: 'section', segmentId: part.segmentId })}
-            >
-              {two ? 'Two speakers' : fit ? 'Whole frame' : 'Follow speaker'}
-            </button>
-          );
-        })}
-        {keyframes.map(({ point, shown, secondary }) => {
-          const id = `${shown.segmentId}:${point.t_ticks}:${secondary}`;
-          const ticks =
-            ghost?.kind === 'keyframe' && ghost.id === id
-              ? ghost.ticks
-              : shown.programStartTicks + point.t_ticks;
-          const selected =
-            selection.kind === 'keyframe' &&
-            selection.segmentId === shown.segmentId &&
-            selection.tTicks === point.t_ticks &&
-            selection.secondary === secondary;
-          return (
-            <button
-              key={id}
-              type="button"
-              className="edit-keyframe"
-              data-secondary={secondary ? 'true' : undefined}
-              data-selected={selected ? 'true' : undefined}
-              style={{ left: at(ticks) }}
-              aria-label={`${secondary ? 'Lower' : 'Framing'} keyframe at ${clockTenths(ticks)}`}
-              disabled={busy}
-              onPointerDown={(event) => grabKeyframe(event, shown, point, secondary)}
-            />
-          );
-        })}
-      </div>
-
-      <div
-        ref={audioLane}
-        className="review-sound edit-lane edit-audio"
-        onPointerDown={scrub}
-        onDoubleClick={(event) => {
-          if (busy) return;
-          const ticks = Math.round(clamp(ticksAtX(event.clientX), 0, duration - 1));
-          const db = gainAtY(event.clientY);
-          onApply(setGain(ticks, db));
-          onSelect({ kind: 'gain', tTicks: ticks });
-        }}
-      >
-        {waves.map((wave) =>
-          wave.path ? (
-            <svg
-              key={wave.key}
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              data-outside={wave.outside ? 'true' : undefined}
-              style={{ left: at(wave.from), width: wide(wave.from, wave.to) }}
-              aria-hidden="true"
-            >
-              <path d={wave.path} />
-            </svg>
-          ) : null,
-        )}
-        <svg
-          className="edit-volume"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <polyline
-            vectorEffect="non-scaling-stroke"
-            points={volumeLine(drawnGain, view, span, duration)}
-          />
-        </svg>
-        {drawnGain.map((point) => (
-          <button
-            key={point.index}
-            type="button"
-            className="edit-gain"
-            data-selected={
-              selection.kind === 'gain' && selection.tTicks === gainPoints[point.index]!.ticks
-                ? 'true'
-                : undefined
+    <TimelineMenu
+      plan={plan}
+      cues={cues}
+      target={menu}
+      playhead={frameOfTicks(plan, playheadRef.current)}
+      busy={busy}
+      onApply={onApply}
+      onSeek={onSeek}
+      onSplit={onSplit}
+      onClose={() => setMenu(null)}
+    >
+      <div className="edit-lanes">
+        <div
+          className="review-stills edit-lane edit-video"
+          onPointerDown={scrub}
+          data-menu="true"
+          onContextMenu={(event) => {
+            // Sections let the pointer through to the lane for scrubbing, so
+            // the lane finds the one under the pointer itself.
+            const ticks = ticksAtX(event.clientX);
+            const part = plan.segments.find(
+              (candidate) =>
+                ticks >= candidate.programStartTicks &&
+                ticks < candidate.programStartTicks + candidate.outTicks - candidate.inTicks,
+            );
+            if (!part) {
+              event.preventDefault();
+              return;
             }
-            style={{ left: at(point.ticks), top: gainY(point.db) }}
-            aria-label={`Volume ${point.db > 0 ? '+' : ''}${point.db.toFixed(1)} dB at ${clockTenths(point.ticks)}`}
-            disabled={busy}
-            onPointerDown={(event) => grabGain(event, gainPoints[point.index]!)}
-          />
-        ))}
+            setMenu({ kind: 'section', segmentId: part.segmentId });
+            onSelect({ kind: 'section', segmentId: part.segmentId });
+          }}
+        >
+          {stills.map((still, index) =>
+            still ? (
+              // eslint-disable-next-line react/no-array-index-key -- slots are positions
+              <img key={index} src={still} alt="" loading="lazy" draggable={false} />
+            ) : (
+              // eslint-disable-next-line react/no-array-index-key -- slots are positions
+              <span key={index} />
+            ),
+          )}
+          {plan.segments.map((part, index) => {
+            const from = part.programStartTicks;
+            const to = from + part.outTicks - part.inTicks;
+            return (
+              <div
+                key={part.segmentId}
+                className="edit-section"
+                data-selected={sectionSelected(part.segmentId) ? 'true' : undefined}
+                style={{ left: at(from), width: wide(from, to) }}
+              >
+                {plan.segments.length > 1 && (
+                  <span className="edit-section-label mono">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                )}
+                {(['in', 'out'] as const).map((edge) => (
+                  <button
+                    key={edge}
+                    type="button"
+                    className="review-handle edit-handle"
+                    data-edge={edge}
+                    data-outer={
+                      (edge === 'in' && index === 0) ||
+                      (edge === 'out' && index === plan.segments.length - 1)
+                        ? 'true'
+                        : undefined
+                    }
+                    disabled={busy}
+                    aria-label={`${edge === 'in' ? 'Start' : 'End'} of ${
+                      plan.segments.length > 1 ? `section ${index + 1}` : 'the clip'
+                    }`}
+                    onPointerDown={(event) => grabEdge(event, index, edge)}
+                  />
+                ))}
+              </div>
+            );
+          })}
+          {ghost?.kind === 'edge' && (
+            <span className="edit-edge-ghost" style={{ left: at(ghost.ticks) }} aria-hidden="true">
+              <span className="mono">
+                {ghost.ticks < 0 ? `−${clockTenths(-ghost.ticks)}` : clockTenths(ghost.ticks)}
+              </span>
+            </span>
+          )}
+        </div>
+
+        <div className="edit-lane edit-captions" onPointerDown={scrub}>
+          {plan.cues.map((cue) => {
+            const saved = cues.find((item) => item.cue_id === cue.cueId);
+            const drawn =
+              ghost?.kind === 'cue' && ghost.cueId === cue.cueId
+                ? { start: ghost.start, end: ghost.end }
+                : {
+                    start: saved?.start_ticks ?? ticksOfFrame(plan, cue.firstFrame),
+                    end: saved?.end_ticks ?? ticksOfFrame(plan, cue.endFrame),
+                  };
+            const selected = selection.kind === 'cue' && selection.cueId === cue.cueId;
+            const text = cue.lines
+              .flat()
+              .map((word) => word.text)
+              .join(' ');
+            return (
+              <div
+                key={cue.cueId}
+                className="edit-cue"
+                data-selected={selected ? 'true' : undefined}
+                data-region={cue.region}
+                style={{ left: at(drawn.start), width: wide(drawn.start, drawn.end) }}
+                title={text}
+                onPointerDown={(event) => {
+                  if (event.button > 0) return;
+                  event.stopPropagation();
+                  onSelect({ kind: 'cue', cueId: cue.cueId });
+                  onSeek(cue.firstFrame);
+                }}
+                data-menu="true"
+                onContextMenu={() => {
+                  setMenu({ kind: 'cue', cueId: cue.cueId });
+                  onSelect({ kind: 'cue', cueId: cue.cueId });
+                }}
+              >
+                {saved && (
+                  <button
+                    type="button"
+                    className="edit-cue-edge"
+                    data-edge="start"
+                    aria-label={`Start of the caption “${text}”`}
+                    disabled={busy}
+                    onPointerDown={(event) => grabCueEdge(event, cue.cueId, 'start')}
+                  />
+                )}
+                <span>{text}</span>
+                {saved && (
+                  <button
+                    type="button"
+                    className="edit-cue-edge"
+                    data-edge="end"
+                    aria-label={`End of the caption “${text}”`}
+                    disabled={busy}
+                    onPointerDown={(event) => grabCueEdge(event, cue.cueId, 'end')}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="edit-lane edit-framing" onPointerDown={scrub}>
+          {plan.segments.map((part) => {
+            const from = part.programStartTicks;
+            const to = from + part.outTicks - part.inTicks;
+            const two =
+              part.hasTwoUpPaths || (plan.secondaryCrops?.[part.firstFrame] ?? null) !== null;
+            const fit = !two && plan.crops[part.firstFrame] === null;
+            return (
+              <button
+                key={part.segmentId}
+                type="button"
+                className="edit-run"
+                data-selected={sectionSelected(part.segmentId) ? 'true' : undefined}
+                style={{ left: at(from), width: wide(from, to) }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => onSelect({ kind: 'section', segmentId: part.segmentId })}
+                data-menu="true"
+                onContextMenu={() => {
+                  setMenu({ kind: 'section', segmentId: part.segmentId });
+                  onSelect({ kind: 'section', segmentId: part.segmentId });
+                }}
+              >
+                {two ? 'Two speakers' : fit ? 'Whole frame' : 'Follow speaker'}
+              </button>
+            );
+          })}
+          {keyframes.map(({ point, shown, secondary }) => {
+            const id = `${shown.segmentId}:${point.t_ticks}:${secondary}`;
+            const ticks =
+              ghost?.kind === 'keyframe' && ghost.id === id
+                ? ghost.ticks
+                : shown.programStartTicks + point.t_ticks;
+            const selected =
+              selection.kind === 'keyframe' &&
+              selection.segmentId === shown.segmentId &&
+              selection.tTicks === point.t_ticks &&
+              selection.secondary === secondary;
+            return (
+              <button
+                key={id}
+                type="button"
+                className="edit-keyframe"
+                data-secondary={secondary ? 'true' : undefined}
+                data-selected={selected ? 'true' : undefined}
+                style={{ left: at(ticks) }}
+                aria-label={`${secondary ? 'Lower' : 'Framing'} keyframe at ${clockTenths(ticks)}`}
+                disabled={busy}
+                onPointerDown={(event) => grabKeyframe(event, shown, point, secondary)}
+                data-menu="true"
+                onContextMenu={() =>
+                  setMenu({
+                    kind: 'keyframe',
+                    segmentId: shown.segmentId,
+                    tTicks: point.t_ticks,
+                    secondary,
+                    rect: point.rect,
+                    easing: point.easing ?? 'linear',
+                  })
+                }
+              />
+            );
+          })}
+        </div>
+
+        <div
+          ref={audioLane}
+          className="review-sound edit-lane edit-audio"
+          onPointerDown={scrub}
+          onDoubleClick={(event) => {
+            if (busy) return;
+            const ticks = Math.round(clamp(ticksAtX(event.clientX), 0, duration - 1));
+            const db = gainAtY(event.clientY);
+            onApply(setGain(ticks, db));
+            onSelect({ kind: 'gain', tTicks: ticks });
+          }}
+        >
+          {waves.map((wave) =>
+            wave.path ? (
+              <svg
+                key={wave.key}
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                data-outside={wave.outside ? 'true' : undefined}
+                style={{ left: at(wave.from), width: wide(wave.from, wave.to) }}
+                aria-hidden="true"
+              >
+                <path d={wave.path} />
+              </svg>
+            ) : null,
+          )}
+          <svg
+            className="edit-volume"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <polyline
+              vectorEffect="non-scaling-stroke"
+              points={volumeLine(drawnGain, view, span, duration)}
+            />
+          </svg>
+          {drawnGain.map((point) => (
+            <button
+              key={point.index}
+              type="button"
+              className="edit-gain"
+              data-selected={
+                selection.kind === 'gain' && selection.tTicks === gainPoints[point.index]!.ticks
+                  ? 'true'
+                  : undefined
+              }
+              style={{ left: at(point.ticks), top: gainY(point.db) }}
+              aria-label={`Volume ${point.db > 0 ? '+' : ''}${point.db.toFixed(1)} dB at ${clockTenths(point.ticks)}`}
+              disabled={busy}
+              onPointerDown={(event) => grabGain(event, gainPoints[point.index]!)}
+              data-menu="true"
+              onContextMenu={() =>
+                setMenu({ kind: 'gain', tTicks: gainPoints[point.index]!.ticks, db: point.db })
+              }
+            />
+          ))}
+        </div>
       </div>
-    </>
+    </TimelineMenu>
   );
 });
 

@@ -22,6 +22,7 @@ import type { EditCommandJson, Job, PreviewPlan } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
 import { type Filmstrip, type Peaks } from '../results/loader.js';
 import { type Transcript, readTranscript } from '../results/transcript.js';
+import { historySteps } from './history.js';
 import type { ClipRef } from '../shell/route.js';
 
 const PROXY_KIND = 'media.proxy.v1';
@@ -183,7 +184,13 @@ export function useEditor(
         const index = parseDocument<IndexTranscript>(indexDoc?.json);
         const tiles = parseDocument<MediaFilmstrip>(filmstripDoc?.json);
         const waveform = parseDocument<MediaAudioPeaks>(peaksDoc?.json);
+        // The log is the undo history: every command was stored with its
+        // inverse, so undo reaches past this window into earlier sessions.
+        const logged = api.listEditHistory
+          ? await api.listEditHistory(docId).catch(() => null)
+          : null;
         if (live && request === latest.current) {
+          if (logged) setUndoStack(historySteps(logged).map((step) => step.inverse));
           setRevision(fetched.revision);
           setPlan(fetched);
           setDocument(

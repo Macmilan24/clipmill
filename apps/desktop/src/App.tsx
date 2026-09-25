@@ -25,6 +25,7 @@ import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
 import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
+import { ShortcutSheet, useShortcutSheet } from './shell/ShortcutSheet.js';
 import { recall, remember } from './shell/memory.js';
 import {
   type ClipRef,
@@ -176,9 +177,11 @@ export function App(): JSX.Element {
   }, []);
 
   const { section, trail } = placementOf(route);
+  const shortcuts = useShortcutSheet();
 
   return (
     <TooltipProvider delayDuration={300}>
+      <ShortcutSheet open={shortcuts.open} onOpenChange={shortcuts.setOpen} />
       <SidebarProvider
         // The sidebar becomes an icon rail in compact desktop windows.
         style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}

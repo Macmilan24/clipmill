@@ -20,7 +20,8 @@ import type { CropPath } from '../daemon/client.js';
 import { drawComposition, observeVideoFrames } from '../editor/CompositionCanvas.js';
 import { TICKS_PER_SECOND } from '../results/model.js';
 import { type PlaybackController, SPEEDS } from './playback.js';
-import { type Cut, SAFE_AREA, clockTenths, cropRect, timecode } from './review.js';
+import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
+import { type Cut, SAFE_AREA, clockTenths, cropRect } from './review.js';
 import { TipButton } from './TipButton.js';
 
 export type MonitorView = 'result' | 'source';
@@ -305,10 +306,13 @@ function Transport({
   controller,
   cut,
   disabled,
+  fps = 30_000 / 1_001,
 }: {
   readonly controller: PlaybackController;
   readonly cut: Cut;
   readonly disabled: boolean;
+  /** The recording's frame rate, for a frame count. */
+  readonly fps?: number;
 }) {
   const ticks = useSyncExternalStore(controller.subscribe, () => controller.getState().ticks);
   const playing = useSyncExternalStore(controller.subscribe, () => controller.getState().playing);
@@ -317,10 +321,18 @@ function Transport({
   const muted = useSyncExternalStore(controller.subscribe, () => controller.getState().muted);
   const into = ticks - cut.startTicks;
   const length = cut.endTicks - cut.startTicks;
+  const format = useTimeFormat();
+  // Clip time, as the Editor and the export count it; where it is in the
+  // recording is a hover away rather than a second clock beside it.
   return (
     <div className="review-transport" aria-label="Transport">
-      <span className="review-timecode mono" data-testid="timecode">
-        {timecode(ticks)}
+      <span
+        className="review-timecode mono"
+        data-testid="timecode"
+        title={`${clockTenths(ticks)} in the recording`}
+      >
+        {into < 0 ? `−${formatTime(-into, format, fps)}` : formatTime(into, format, fps)}
+        <span className="edit-length"> / {formatTime(length, format, fps)}</span>
       </span>
       <div className="review-transport-buttons">
         <TipButton
@@ -354,9 +366,6 @@ function Transport({
         </TipButton>
       </div>
       <div className="review-transport-tools">
-        <span className="review-clip-clock mono" title="Position in the cut, and its length">
-          {into < 0 ? `−${clockTenths(-into)}` : clockTenths(into)} / {clockTenths(length)}
-        </span>
         <TipButton
           label="Playback speed"
           disabled={disabled}

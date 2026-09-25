@@ -11,6 +11,7 @@ import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
 import { segmentAt, sourceOf } from '../editor/player.js';
 import { useEditor } from '../editor/useEditor.js';
+import { historySteps } from '../editor/history.js';
 import type { ClipRef, EditorFocus } from '../shell/route.js';
 import { Editor } from './Editor.js';
 
@@ -200,6 +201,11 @@ export function EditorScreen({
       onResolve={(frame) => {
         void onResolve(frame);
       }}
+      onLoadHistory={
+        api.listEditHistory && clip
+          ? async () => historySteps(await api.listEditHistory!(clip.docId))
+          : null
+      }
       fontUrl={api.captionFontUrl ?? null}
       previewCaptions={
         api.previewCaptions && clip
