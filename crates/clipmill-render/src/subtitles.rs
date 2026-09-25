@@ -72,14 +72,15 @@ fn plain_text(cue: &CaptionCue, separator: &str) -> String {
 pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String {
     let rate = profile.rate();
     let style = &profile.caption_style;
+    let (play_x, play_y) = crate::profile::design_resolution(profile.width, profile.height);
     let mut lines = vec![
         "[Script Info]".to_owned(),
         "ScriptType: v4.00+".to_owned(),
-        // The render is authored at output resolution, so libass never
-        // rescales the style and a preview at proxy resolution can scale by
-        // one factor.
-        format!("PlayResX: {}", profile.width),
-        format!("PlayResY: {}", profile.height),
+        // Styles are authored at the design height and libass scales them to
+        // whatever the output is, so every output size keeps one proportion
+        // and a preview at proxy resolution scales by one factor.
+        format!("PlayResX: {play_x}"),
+        format!("PlayResY: {play_y}"),
         // 2: no automatic wrapping. The document already decided the breaks.
         "WrapStyle: 2".to_owned(),
         "ScaledBorderAndShadow: yes".to_owned(),
@@ -120,7 +121,11 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
                 start_centis,
                 end_centis,
                 track.options.text_case,
-                highlight_enabled(cue, track.options.highlight_spoken_word),
+                if highlight_enabled(cue, track.options.highlight_spoken_word) {
+                    Plain::Swept
+                } else {
+                    Plain::Words(style.unspoken)
+                },
             ),
         ));
     }
@@ -199,17 +204,30 @@ pub(crate) fn sweep(
     }
 }
 
+/// How a cue's words are coloured: swept word by word as they are spoken, or
+/// all in the one colour the look calls its words.
+#[derive(Clone, Copy)]
+enum Plain {
+    Swept,
+    Words(crate::profile::Colour),
+}
+
 /// A cue's text with karaoke timing, when the cue asks for it.
+///
+/// Without a sweep libass draws text in the style's primary colour, which is
+/// the *spoken* colour — so a cue with no highlight would take the highlight
+/// colour and ignore the words colour. The words colour is set on the line
+/// instead, and the two swatches mean the same thing whatever the look.
 fn dialogue_text(
     cue: &CaptionCue,
     rate: FrameRate,
     start_centis: i64,
     end_centis: i64,
     text_case: CaptionCase,
-    karaoke: bool,
+    colouring: Plain,
 ) -> String {
-    if !karaoke {
-        return cue
+    if let Plain::Words(colour) = colouring {
+        let text = cue
             .lines
             .iter()
             .map(|line| {
@@ -221,6 +239,7 @@ fn dialogue_text(
             })
             .collect::<Vec<_>>()
             .join("\\N");
+        return format!("{{\\1c{}}}{text}", colour.to_ass_override());
     }
     let swept = sweep(cue, rate, start_centis, end_centis);
     let mut pieces = Vec::new();

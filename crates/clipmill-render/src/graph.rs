@@ -128,46 +128,9 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     let mut video_spans = Vec::new();
     let mut audio_labels = Vec::new();
 
-    let mut video_inputs = vec![String::new(); request.spans.len()];
-    let mut audio_inputs = vec![String::new(); request.spans.len()];
-    for (input_index, group) in decoder_groups(request.spans).iter().enumerate() {
-        let video_members: Vec<_> = group
-            .clone()
-            .filter(|&i| request.spans[i].frame_count > 0)
-            .collect();
-        if !request.audio_only && !video_members.is_empty() {
-            if video_members.len() == 1 {
-                video_inputs[video_members[0]] = format!("[{input_index}:v]");
-            } else {
-                let labels = video_members
-                    .iter()
-                    .map(|i| format!("[decode_v{i}]"))
-                    .collect::<String>();
-                chains.push(format!(
-                    "[{input_index}:v]split={}{}",
-                    video_members.len(),
-                    labels
-                ));
-                for i in video_members {
-                    video_inputs[i] = format!("[decode_v{i}]");
-                }
-            }
-        }
-        if request.spans[group.start].has_audio {
-            if group.len() == 1 {
-                audio_inputs[group.start] = format!("[{input_index}:a]");
-            } else {
-                let labels = group
-                    .clone()
-                    .map(|i| format!("[decode_a{i}]"))
-                    .collect::<String>();
-                chains.push(format!("[{input_index}:a]asplit={}{}", group.len(), labels));
-                for i in group.clone() {
-                    audio_inputs[i] = format!("[decode_a{i}]");
-                }
-            }
-        }
-    }
+    let inputs = decoder_inputs(request);
+    chains.extend(inputs.chains);
+    let (video_inputs, audio_inputs) = (inputs.video, inputs.audio);
 
     for (index, span) in request.spans.iter().enumerate() {
         let segment = request
@@ -272,6 +235,67 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         video_label: "[vout]".to_owned(),
         audio_label: "[aout]".to_owned(),
     })
+}
+
+/// What each span reads its frames and samples from.
+///
+/// A span whose decoder is shared with its neighbours reads one output of a
+/// `split`/`asplit` over that decoder; a span alone on its input reads the
+/// input directly. The chains are the splits themselves.
+struct DecoderInputs {
+    video: Vec<String>,
+    audio: Vec<String>,
+    chains: Vec<String>,
+}
+
+fn decoder_inputs(request: &GraphRequest<'_>) -> DecoderInputs {
+    let mut inputs = DecoderInputs {
+        video: vec![String::new(); request.spans.len()],
+        audio: vec![String::new(); request.spans.len()],
+        chains: Vec::new(),
+    };
+    for (input_index, group) in decoder_groups(request.spans).iter().enumerate() {
+        let video_members: Vec<usize> = group
+            .clone()
+            .filter(|&i| request.spans[i].frame_count > 0)
+            .collect();
+        if !request.audio_only && !video_members.is_empty() {
+            if let [only] = video_members[..] {
+                inputs.video[only] = format!("[{input_index}:v]");
+            } else {
+                let labels = video_members
+                    .iter()
+                    .map(|i| format!("[decode_v{i}]"))
+                    .collect::<Vec<_>>()
+                    .concat();
+                inputs.chains.push(format!(
+                    "[{input_index}:v]split={}{labels}",
+                    video_members.len(),
+                ));
+                for i in video_members {
+                    inputs.video[i] = format!("[decode_v{i}]");
+                }
+            }
+        }
+        if request.spans[group.start].has_audio {
+            if group.len() == 1 {
+                inputs.audio[group.start] = format!("[{input_index}:a]");
+            } else {
+                let labels = group
+                    .clone()
+                    .map(|i| format!("[decode_a{i}]"))
+                    .collect::<Vec<_>>()
+                    .concat();
+                inputs
+                    .chains
+                    .push(format!("[{input_index}:a]asplit={}{labels}", group.len()));
+                for i in group.clone() {
+                    inputs.audio[i] = format!("[decode_a{i}]");
+                }
+            }
+        }
+    }
+    inputs
 }
 
 fn concat_chain(labels: &[String], video: bool) -> String {

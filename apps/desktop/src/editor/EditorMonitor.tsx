@@ -555,8 +555,10 @@ function Stage({
                     <span
                       key={`${word.text}-${mine}`}
                       style={{
+                        // Without a sweep every word is in the words colour,
+                        // as the export draws it.
                         color:
-                          !cue.karaoke || mine <= highlighted
+                          cue.karaoke && mine <= highlighted
                             ? (style?.spoken ?? '#ffd65c')
                             : (style?.unspoken ?? '#ffffff'),
                       }}
