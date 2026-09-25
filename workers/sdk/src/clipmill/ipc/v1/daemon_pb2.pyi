@@ -1364,7 +1364,7 @@ class PreviewLineV1(_message.Message):
     def __init__(self, words: _Optional[_Iterable[_Union[PreviewWordV1, _Mapping]]] = ...) -> None: ...
 
 class PreviewCueV1(_message.Message):
-    __slots__ = ("cue_id", "first_frame", "end_frame", "region", "karaoke", "lead_in_centis", "lines")
+    __slots__ = ("cue_id", "first_frame", "end_frame", "region", "karaoke", "lead_in_centis", "lines", "start_ticks", "end_ticks")
     CUE_ID_FIELD_NUMBER: _ClassVar[int]
     FIRST_FRAME_FIELD_NUMBER: _ClassVar[int]
     END_FRAME_FIELD_NUMBER: _ClassVar[int]
@@ -1372,6 +1372,8 @@ class PreviewCueV1(_message.Message):
     KARAOKE_FIELD_NUMBER: _ClassVar[int]
     LEAD_IN_CENTIS_FIELD_NUMBER: _ClassVar[int]
     LINES_FIELD_NUMBER: _ClassVar[int]
+    START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    END_TICKS_FIELD_NUMBER: _ClassVar[int]
     cue_id: str
     first_frame: int
     end_frame: int
@@ -1379,7 +1381,9 @@ class PreviewCueV1(_message.Message):
     karaoke: bool
     lead_in_centis: int
     lines: _containers.RepeatedCompositeFieldContainer[PreviewLineV1]
-    def __init__(self, cue_id: _Optional[str] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., region: _Optional[str] = ..., karaoke: _Optional[bool] = ..., lead_in_centis: _Optional[int] = ..., lines: _Optional[_Iterable[_Union[PreviewLineV1, _Mapping]]] = ...) -> None: ...
+    start_ticks: int
+    end_ticks: int
+    def __init__(self, cue_id: _Optional[str] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., region: _Optional[str] = ..., karaoke: _Optional[bool] = ..., lead_in_centis: _Optional[int] = ..., lines: _Optional[_Iterable[_Union[PreviewLineV1, _Mapping]]] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ...) -> None: ...
 
 class PreviewGainV1(_message.Message):
     __slots__ = ("frame", "gain_db")
@@ -1488,7 +1492,7 @@ class PreviewTransitionV1(_message.Message):
     def __init__(self, incoming_segment_id: _Optional[str] = ..., outgoing_frame: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ...) -> None: ...
 
 class GetPreviewPlanResponse(_message.Message):
-    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies", "presentation", "secondary_crops", "caption_style", "transition_ticks", "transitions")
+    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies", "presentation", "secondary_crops", "caption_style", "transition_ticks", "transitions", "reading_cues", "reading_min_duration_ticks", "reading_min_gap_ticks")
     REVISION_FIELD_NUMBER: _ClassVar[int]
     RATE_NUM_FIELD_NUMBER: _ClassVar[int]
     RATE_DEN_FIELD_NUMBER: _ClassVar[int]
@@ -1506,6 +1510,9 @@ class GetPreviewPlanResponse(_message.Message):
     CAPTION_STYLE_FIELD_NUMBER: _ClassVar[int]
     TRANSITION_TICKS_FIELD_NUMBER: _ClassVar[int]
     TRANSITIONS_FIELD_NUMBER: _ClassVar[int]
+    READING_CUES_FIELD_NUMBER: _ClassVar[int]
+    READING_MIN_DURATION_TICKS_FIELD_NUMBER: _ClassVar[int]
+    READING_MIN_GAP_TICKS_FIELD_NUMBER: _ClassVar[int]
     revision: int
     rate_num: int
     rate_den: int
@@ -1523,7 +1530,10 @@ class GetPreviewPlanResponse(_message.Message):
     caption_style: PreviewCaptionStyleV1
     transition_ticks: int
     transitions: _containers.RepeatedCompositeFieldContainer[PreviewTransitionV1]
-    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ..., presentation: _Optional[str] = ..., secondary_crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., caption_style: _Optional[_Union[PreviewCaptionStyleV1, _Mapping]] = ..., transition_ticks: _Optional[int] = ..., transitions: _Optional[_Iterable[_Union[PreviewTransitionV1, _Mapping]]] = ...) -> None: ...
+    reading_cues: _containers.RepeatedCompositeFieldContainer[PreviewCueV1]
+    reading_min_duration_ticks: int
+    reading_min_gap_ticks: int
+    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ..., presentation: _Optional[str] = ..., secondary_crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., caption_style: _Optional[_Union[PreviewCaptionStyleV1, _Mapping]] = ..., transition_ticks: _Optional[int] = ..., transitions: _Optional[_Iterable[_Union[PreviewTransitionV1, _Mapping]]] = ..., reading_cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., reading_min_duration_ticks: _Optional[int] = ..., reading_min_gap_ticks: _Optional[int] = ...) -> None: ...
 
 class ListEditDocsRequest(_message.Message):
     __slots__ = ("project_id",)
@@ -1538,14 +1548,16 @@ class ListEditDocsResponse(_message.Message):
     def __init__(self, docs: _Optional[_Iterable[_Union[EditDoc, _Mapping]]] = ...) -> None: ...
 
 class ExportFindingV1(_message.Message):
-    __slots__ = ("code", "severity", "detail")
+    __slots__ = ("code", "severity", "detail", "cue_id")
     CODE_FIELD_NUMBER: _ClassVar[int]
     SEVERITY_FIELD_NUMBER: _ClassVar[int]
     DETAIL_FIELD_NUMBER: _ClassVar[int]
+    CUE_ID_FIELD_NUMBER: _ClassVar[int]
     code: str
     severity: ExportSeverity
     detail: str
-    def __init__(self, code: _Optional[str] = ..., severity: _Optional[_Union[ExportSeverity, str]] = ..., detail: _Optional[str] = ...) -> None: ...
+    cue_id: str
+    def __init__(self, code: _Optional[str] = ..., severity: _Optional[_Union[ExportSeverity, str]] = ..., detail: _Optional[str] = ..., cue_id: _Optional[str] = ...) -> None: ...
 
 class ExportValidationV1(_message.Message):
     __slots__ = ("passes", "findings")

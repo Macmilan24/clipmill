@@ -74,6 +74,8 @@ pub struct PreviewLine {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewCue {
     pub cue_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
     pub first_frame: i64,
     pub end_frame: i64,
     pub region: CaptionRegion,
@@ -108,6 +110,8 @@ pub struct PreviewPlan {
     pub secondary_crops: Vec<Option<PreviewCrop>>,
     pub caption_style: CaptionStyle,
     pub cues: Vec<PreviewCue>,
+    /// The SRT/VTT grouping, editable independently of the burned-in grouping.
+    pub reading_cues: Vec<PreviewCue>,
     pub gain: Vec<PreviewGain>,
     /// The output frame the crops are fitted into.
     pub width: i64,
@@ -160,7 +164,8 @@ pub fn preview_plan(
         frame_count,
         crops: crops(document, rate, frame_count, false),
         secondary_crops: crops(document, rate, frame_count, true),
-        cues: cues(document, rate),
+        cues: cues(document.captions.burned(), rate),
+        reading_cues: cues(&document.captions.cues, rate),
         segments: segments(document, rate),
         presentation: document.captions.burned_presentation(),
         gain: document
@@ -258,11 +263,8 @@ fn crops(
 /// The burned-in list, not the reading one: the player is showing what a viewer
 /// watching the export would see, and the sidecars are a different surface with
 /// a different grouping.
-fn cues(document: &EditDocument, rate: FrameRate) -> Vec<PreviewCue> {
-    document
-        .captions
-        .burned()
-        .iter()
+fn cues(cues: &[CaptionCue], rate: FrameRate) -> Vec<PreviewCue> {
+    cues.iter()
         .map(|cue| {
             let first_frame = rate.frame_ceil(cue.start_ticks);
             let end_frame = rate.frame_ceil(cue.end_ticks);
@@ -282,6 +284,8 @@ fn cues(document: &EditDocument, rate: FrameRate) -> Vec<PreviewCue> {
             };
             PreviewCue {
                 cue_id: cue.cue_id.clone(),
+                start_ticks: cue.start_ticks,
+                end_ticks: cue.end_ticks,
                 first_frame,
                 end_frame,
                 region: cue.region,

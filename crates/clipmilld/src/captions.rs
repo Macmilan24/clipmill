@@ -24,7 +24,7 @@ use crate::{
 
 /// The task kind this module executes.
 pub(crate) const KIND_CAPTIONS: &str = "derive-captions";
-pub(crate) const IMPLEMENTATION: &str = "clipmill-captions-dp@1.0.0";
+pub(crate) const IMPLEMENTATION: &str = "clipmill-captions-dp@1.0.1";
 const OUTPUT_FILE: &str = "captions.json";
 
 /// Read the words, segment them twice, and publish the result.

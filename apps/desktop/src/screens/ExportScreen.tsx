@@ -11,7 +11,7 @@ import type { ExportPlan, ExportRequest, QueuedExport } from '../daemon/client.j
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
 import { latestExportOf, useDelivery } from '../export/delivery.js';
-import type { ClipRef } from '../shell/route.js';
+import type { ClipRef, EditorFocus } from '../shell/route.js';
 import { Export } from './Export.js';
 import { BatchExportScreen } from './BatchExportScreen.js';
 import { UploadPanel } from '../youtube/UploadPanel.js';
@@ -52,7 +52,8 @@ export interface ExportScreenProps {
   readonly clip: ClipRef | null;
   /** Open a different clip here — from the list this screen offers. */
   readonly onOpen: (clip: ClipRef) => void;
-  readonly onEdit?: (clip: ClipRef) => void;
+  /** Open the clip in the editor — on a particular caption, when a finding named one. */
+  readonly onEdit?: (clip: ClipRef, focus?: EditorFocus) => void;
   readonly onOpenChannelSettings?: () => void;
   readonly api?: ShellApi;
 }
@@ -355,7 +356,7 @@ export function ExportScreen({
         ) : null
       }
       onBatch={() => setBatchMode(true)}
-      onEdit={clip && onEdit ? () => onEdit(clip) : undefined}
+      onEdit={clip && onEdit ? (focus) => onEdit(clip, focus) : undefined}
       docId={docId}
       labels={clip?.labels ?? null}
       picker={clip === null ? <ClipList onOpen={onOpen} api={api} /> : null}

@@ -20,6 +20,116 @@ fn fixture() -> EditDocument {
     document
 }
 
+#[test]
+fn removing_a_word_clears_both_tracks_and_undo_restores_everything() {
+    let mut document = fixture();
+    let original = document.clone();
+    let id = word_id_of(&document, Presentation::BurnIn, "timestamp");
+    let command = EditCommand::RemoveCaptionWord {
+        cue_id: "hot_10".to_owned(),
+        word_index: 0,
+        presentation: Presentation::BurnIn,
+    };
+    let inverse = command.apply(&mut document).expect("remove the word");
+    assert!(document.word_text(&id).is_none());
+    assert!(
+        !document
+            .captions
+            .burn_in
+            .iter()
+            .any(|cue| cue.cue_id == "hot_10")
+    );
+    assert_eq!(document.video, original.video);
+    assert_eq!(document.audio, original.audio);
+    assert!(document.captions.words().all(|word| word.text != "·"));
+    document.validate().expect("no empty cues or lines remain");
+    let redo = inverse.apply(&mut document).expect("undo deletion");
+    assert_eq!(document, original);
+    redo.apply(&mut document).expect("redo deletion");
+    assert!(document.word_text(&id).is_none());
+}
+
+#[test]
+fn removing_from_a_legacy_document_does_not_guess_another_words_identity() {
+    let raw = include_str!("../../../contracts/fixtures/edit_ir/valid/two_caption_intents.json");
+    let mut document = EditDocument::from_canonical_json(raw.as_bytes()).expect("fixture");
+    let original = document.clone();
+    let inverse = EditCommand::RemoveCaptionWord {
+        cue_id: "hot_10".to_owned(),
+        word_index: 0,
+        presentation: Presentation::BurnIn,
+    }
+    .apply(&mut document)
+    .expect("remove a legacy word");
+    assert_eq!(document.captions.cues, original.captions.cues);
+    inverse.apply(&mut document).expect("undo");
+    assert_eq!(document, original);
+    assert!(
+        EditCommand::RemoveCaptionWord {
+            cue_id: "hot_10".to_owned(),
+            word_index: 3,
+            presentation: Presentation::BurnIn,
+        }
+        .apply(&mut document)
+        .is_err()
+    );
+    assert_eq!(document, original);
+}
+
+#[test]
+fn caption_display_timing_preserves_words_and_the_other_track() {
+    let mut document = fixture();
+    let original = document.clone();
+    let cue = &document.captions.cues[0];
+    let command = EditCommand::SetCueTiming {
+        cue_id: cue.cue_id.clone(),
+        start_ticks: 0,
+        end_ticks: cue.end_ticks,
+        presentation: Presentation::Reading,
+    };
+    let inverse = command
+        .apply(&mut document)
+        .expect("extend into the opening gap");
+    assert_eq!(document.captions.cues[0].start_ticks, 0);
+    assert_eq!(
+        document.captions.cues[0].lines,
+        original.captions.cues[0].lines
+    );
+    assert_eq!(document.captions.burn_in, original.captions.burn_in);
+    assert_eq!(document.video, original.video);
+    assert_eq!(document.audio, original.audio);
+    inverse.apply(&mut document).expect("undo timing");
+    assert_eq!(document, original);
+}
+
+#[test]
+fn invalid_caption_timing_is_rejected_atomically() {
+    let original = fixture();
+    let cue = &original.captions.cues[0];
+    let next = &original.captions.cues[1];
+    let last_word = cue.words().last().expect("word");
+    for (start, end) in [
+        (-1, cue.end_ticks),
+        (0, 0),
+        (0, i64::MAX),
+        (cue.start_ticks, next.start_ticks + 1),
+        (cue.start_ticks, last_word.end_ticks - 1),
+    ] {
+        let mut document = original.clone();
+        assert!(
+            EditCommand::SetCueTiming {
+                cue_id: cue.cue_id.clone(),
+                start_ticks: start,
+                end_ticks: end,
+                presentation: Presentation::Reading,
+            }
+            .apply(&mut document)
+            .is_err()
+        );
+        assert_eq!(document, original);
+    }
+}
+
 fn words(document: &EditDocument, presentation: Presentation) -> Vec<(String, i64)> {
     document
         .captions

@@ -24,6 +24,31 @@ use crate::{RenderProfile, SourceInput, compile, crop_rect_at};
 const FRAME_TICKS: i64 = 3_003;
 const SOURCE: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
+#[test]
+fn preview_exposes_subtitle_grouping_with_exact_edit_bounds() {
+    let raw = include_str!("../../../../contracts/fixtures/edit_ir/valid/two_caption_intents.json");
+    let edit = EditDocument::from_canonical_json(raw.as_bytes()).expect("fixture");
+    let plan = preview_plan(&edit, &RenderProfile::default()).expect("preview");
+    assert_ne!(plan.cues.len(), plan.reading_cues.len());
+    for (cue, saved) in plan.reading_cues.iter().zip(&edit.captions.cues) {
+        assert_eq!(cue.cue_id, saved.cue_id);
+        assert_eq!(
+            (cue.start_ticks, cue.end_ticks),
+            (saved.start_ticks, saved.end_ticks)
+        );
+        assert_eq!(
+            cue.lines
+                .iter()
+                .flat_map(|line| &line.words)
+                .map(|word| &word.text)
+                .collect::<Vec<_>>(),
+            saved.words().map(|word| &word.text).collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(plan.reading_cues.len(), edit.captions.cues.len());
+    assert_eq!(plan.cues.len(), edit.captions.burn_in.len());
+}
+
 fn source() -> SourceInput {
     SourceInput {
         fingerprint: SOURCE.to_owned(),

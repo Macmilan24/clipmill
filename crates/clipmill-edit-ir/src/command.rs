@@ -1136,6 +1136,41 @@ impl EditCommand {
         })
     }
 
+    fn remove_caption_word(
+        document: &mut EditDocument,
+        presentation: Presentation,
+        cue_id: &str,
+        word_index: usize,
+    ) -> Result<Self, CommandError> {
+        let index = document.cue_index(presentation, cue_id)?;
+        let word_id = document.captions.list(presentation)[index]
+            .words()
+            .nth(word_index)
+            .ok_or(CommandError::NoSuchWord(word_index))?
+            .word_id
+            .clone();
+        let inverse = Self::capture(document);
+        for list in [Presentation::Reading, Presentation::BurnIn] {
+            let cues = document.captions.list_mut(list);
+            for cue in cues.iter_mut() {
+                let mut position = 0;
+                for line in &mut cue.lines {
+                    line.words.retain(|word| {
+                        let remove = word_id.as_ref().map_or(
+                            list == presentation && cue.cue_id == cue_id && position == word_index,
+                            |id| word.word_id.as_ref() == Some(id),
+                        );
+                        position += 1;
+                        !remove
+                    });
+                }
+                cue.lines.retain(|line| !line.words.is_empty());
+            }
+            cues.retain(|cue| !cue.lines.is_empty());
+        }
+        Ok(inverse)
+    }
+
     fn apply_merge_cues(
         document: &mut EditDocument,
         presentation: Presentation,
@@ -1223,6 +1258,16 @@ pub enum CommandError {
     CueAlreadyExists(String),
     #[error("only adjacent cues can be merged")]
     CuesNotAdjacent,
+    #[error("caption timing must stay inside the clip")]
+    CaptionTimingOutsideProgram,
+    #[error(
+        "caption timing overlaps a neighbouring caption; shorten the display window or merge the captions"
+    )]
+    CaptionTimingOverlaps,
+    #[error(
+        "caption timing must include all its spoken words; extend the display window instead of cutting through speech"
+    )]
+    CaptionTimingExcludesWords,
     #[error("edit command is not valid JSON: {0}")]
     Json(String),
 }

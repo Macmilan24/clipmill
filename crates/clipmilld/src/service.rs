@@ -219,14 +219,21 @@ impl Service {
     /// fingerprint.
     ///
     /// Resolved through the ingest manifest rather than by searching the
-    /// store, because the manifest is the job's single rooted artifact and its
+    /// store, because the manifest is what roots the derivatives and its
     /// children are what garbage collection keeps reachable. Anything found
     /// another way might be an object nobody is holding on to.
+    ///
+    /// The manifest is found by the stage that published it, whatever job ran
+    /// it: ingest lives inside the `analyze-source` DAG now, and a lookup by
+    /// the old standalone job kind answered "never ingested" for every source.
     async fn ingested_derivative(&self, source_id: &str, kind: &str) -> Option<(String, String)> {
         let artifacts = self.artifacts.as_ref()?;
         let manifest_id = self
             .database
-            .latest_source_job_artifact(source_id.to_owned(), "ingest-source".to_owned())
+            .latest_source_task_artifact(
+                source_id.to_owned(),
+                crate::media::KIND_MANIFEST.to_owned(),
+            )
             .await
             .ok()
             .flatten()?
@@ -3493,38 +3500,10 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 None => PreviewCropV1::default(),
             })
             .collect(),
-        cues: plan
-            .cues
-            .iter()
-            .map(|cue| PreviewCueV1 {
-                cue_id: cue.cue_id.clone(),
-                first_frame: cue.first_frame,
-                end_frame: cue.end_frame,
-                region: match cue.region {
-                    clipmill_edit_ir::CaptionRegion::LowerSafe => "lower_safe",
-                    clipmill_edit_ir::CaptionRegion::UpperSafe => "upper_safe",
-                    clipmill_edit_ir::CaptionRegion::Center => "center",
-                }
-                .to_owned(),
-                karaoke: cue.karaoke,
-                lead_in_centis: cue.lead_in_centis,
-                lines: cue
-                    .lines
-                    .iter()
-                    .map(|line| PreviewLineV1 {
-                        words: line
-                            .words
-                            .iter()
-                            .map(|word| PreviewWordV1 {
-                                text: word.text.clone(),
-                                hold_centis: word.hold_centis,
-                                word_id: word.word_id.clone().unwrap_or_default(),
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-            })
-            .collect(),
+        cues: plan.cues.iter().map(preview_cue_response).collect(),
+        reading_cues: plan.reading_cues.iter().map(preview_cue_response).collect(),
+        reading_min_duration_ticks: clipmill_captions::Profile::ACCESSIBILITY_EN.min_duration_ticks,
+        reading_min_gap_ticks: clipmill_captions::Profile::ACCESSIBILITY_EN.min_gap_ticks,
         gain: plan
             .gain
             .iter()
@@ -3554,6 +3533,39 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
         sources: Vec::new(),
         proxies: Vec::new(),
         presentation: plan.presentation.as_str().to_owned(),
+    }
+}
+
+fn preview_cue_response(cue: &clipmill_render::PreviewCue) -> PreviewCueV1 {
+    PreviewCueV1 {
+        cue_id: cue.cue_id.clone(),
+        start_ticks: cue.start_ticks,
+        end_ticks: cue.end_ticks,
+        first_frame: cue.first_frame,
+        end_frame: cue.end_frame,
+        region: match cue.region {
+            clipmill_edit_ir::CaptionRegion::LowerSafe => "lower_safe",
+            clipmill_edit_ir::CaptionRegion::UpperSafe => "upper_safe",
+            clipmill_edit_ir::CaptionRegion::Center => "center",
+        }
+        .to_owned(),
+        karaoke: cue.karaoke,
+        lead_in_centis: cue.lead_in_centis,
+        lines: cue
+            .lines
+            .iter()
+            .map(|line| PreviewLineV1 {
+                words: line
+                    .words
+                    .iter()
+                    .map(|word| PreviewWordV1 {
+                        text: word.text.clone(),
+                        hold_centis: word.hold_centis,
+                        word_id: word.word_id.clone().unwrap_or_default(),
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 
@@ -3701,6 +3713,7 @@ impl Service {
                 code: "destination.unusable".to_owned(),
                 severity: ExportSeverity::Blocking as i32,
                 detail: error.to_string(),
+                cue_id: String::new(),
             });
         }
 
@@ -4406,6 +4419,7 @@ fn validation_of(report: &clipmill_export::Report) -> ExportValidationV1 {
                     clipmill_export::Severity::Advisory => ExportSeverity::Advisory as i32,
                 },
                 detail: finding.detail.clone(),
+                cue_id: finding.cue_id.clone().unwrap_or_default(),
             })
             .collect(),
     }
