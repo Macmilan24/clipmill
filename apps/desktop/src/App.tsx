@@ -28,6 +28,7 @@ import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
 import { recall, remember } from './shell/memory.js';
 import {
   type ClipRef,
+  type EditorFocus,
   type Route,
   editorRoute,
   exportRoute,
@@ -147,10 +148,13 @@ export function App(): JSX.Element {
   }, [route, clip]);
 
   /** Open a clip in the editor or on the export screen, and remember it. */
-  const openClip = useCallback((next: ClipRef, screen: 'editor' | 'export') => {
-    setClip(next);
-    setRoute(screen === 'editor' ? editorRoute(next) : exportRoute(next));
-  }, []);
+  const openClip = useCallback(
+    (next: ClipRef, screen: 'editor' | 'export', focus?: EditorFocus) => {
+      setClip(next);
+      setRoute(screen === 'editor' ? editorRoute(next, focus) : exportRoute(next));
+    },
+    [],
+  );
 
   const navigate = useCallback(
     (sectionId: string, projectId?: string) => {
@@ -252,7 +256,7 @@ export function App(): JSX.Element {
               },
               export: {
                 onOpenChannelSettings: () => setRoute({ kind: 'section', sectionId: 'settings' }),
-                onEdit: (next) => openClip(next, 'editor'),
+                onEdit: (next, focus) => openClip(next, 'editor', focus),
                 onOpen: (next) => {
                   openClip(next, 'export');
                 },

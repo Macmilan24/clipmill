@@ -259,10 +259,19 @@ fn frame_shape(map: &Value) -> Result<(i64, i64, bool), TaskExecutionError> {
 /// Video keyframe positions from the source's reference index, when it has
 /// one. A source that was never ingested simply decodes from its start: a
 /// missing index costs seek time, not correctness.
+///
+/// Looked up by the *stage* that published the manifest, not by a job kind.
+/// Ingest runs inside the composite `analyze-source` DAG, where the manifest
+/// is one task among twenty and not the final one, so asking for an
+/// `ingest-source` job's final artifact found nothing for any recording a
+/// user actually analyzed — and the fallback above hid it as a render that
+/// decoded from the file's first frame to reach a clip forty minutes in,
+/// which for a long source is the difference between a two-minute export and
+/// one that runs out its deadline.
 async fn keyframe_ticks(context: &RenderContext<'_>, source_id: &str) -> Vec<i64> {
     let Ok(Some(manifest_id)) = context
         .database
-        .latest_source_job_artifact(source_id.to_owned(), "ingest-source".to_owned())
+        .latest_source_task_artifact(source_id.to_owned(), crate::media::KIND_MANIFEST.to_owned())
         .await
     else {
         return Vec::new();

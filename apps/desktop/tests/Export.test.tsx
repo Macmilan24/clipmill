@@ -69,6 +69,58 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
 }
 
 describe('the export screen', () => {
+  it('offers an editor recovery path for a blocked subtitle', () => {
+    const onEdit = vi.fn();
+    const { onExport } = show({
+      onEdit,
+      plan: plan({
+        passes: false,
+        findings: [
+          {
+            code: 'captions.too_brief',
+            severity: 'blocking',
+            detail:
+              'Subtitle 4 at 0:42.51 — “[BLANK_AUDIO]” is on screen for 0.64s; the minimum is 0.83s.',
+            cueId: 'cue_4',
+          },
+        ],
+      }),
+    });
+    expect(screen.getByText(/Subtitle 4 at 0:42.51/)).toBeTruthy();
+    expect(screen.getByText(/cannot be exported as it is/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /fix captions/i }));
+    // The editor is sent to the cue itself, on the track the finding is about.
+    expect(onEdit).toHaveBeenCalledWith({ panel: 'captions', track: 'reading', cueId: 'cue_4' });
+    fireEvent.click(screen.getByRole('button', { name: /^export revision r4$/i }));
+    expect(onExport).not.toHaveBeenCalled();
+  });
+
+  it('still points at a brief subtitle the strip only advises on, without blocking', () => {
+    const onEdit = vi.fn();
+    show({
+      onEdit,
+      plan: plan({
+        passes: true,
+        findings: [
+          {
+            code: 'captions.too_brief',
+            severity: 'advisory',
+            detail:
+              'Subtitle 4 at 0:42.51 — “[BLANK_AUDIO]” is on screen for 0.64s; the minimum is 0.83s.',
+            cueId: 'cue_4',
+          },
+        ],
+      }),
+    });
+    expect(screen.getByText(/worth a look before exporting/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /fix captions/i }));
+    expect(onEdit).toHaveBeenCalledWith({ panel: 'captions', track: 'reading', cueId: 'cue_4' });
+    expect(screen.getByRole('button', { name: /^export revision r4$/i })).toHaveProperty(
+      'disabled',
+      false,
+    );
+  });
+
   it('describes render progress as media time and delivery as the next step', () => {
     show({
       delivery: {

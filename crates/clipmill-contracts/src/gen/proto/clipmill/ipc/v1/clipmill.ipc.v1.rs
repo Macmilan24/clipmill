@@ -1635,6 +1635,11 @@ pub struct PreviewCueV1 {
     /// told not to.
     #[prost(message, repeated, tag = "7")]
     pub lines: ::prost::alloc::vec::Vec<PreviewLineV1>,
+    /// Exact display bounds for edits; frame rounding must not retime a cue.
+    #[prost(int64, tag = "8")]
+    pub start_ticks: i64,
+    #[prost(int64, tag = "9")]
+    pub end_ticks: i64,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PreviewGainV1 {
@@ -1807,6 +1812,16 @@ pub struct GetPreviewPlanResponse {
     pub transition_ticks: i64,
     #[prost(message, repeated, tag = "17")]
     pub transitions: ::prost::alloc::vec::Vec<PreviewTransitionV1>,
+    /// The sidecar grouping and the two numbers the export strip holds it to,
+    /// so the editor can offer a repair that clears the finding rather than one
+    /// that trades it for the next: a cue held to the floor is refused if it
+    /// then crowds its neighbour.
+    #[prost(message, repeated, tag = "18")]
+    pub reading_cues: ::prost::alloc::vec::Vec<PreviewCueV1>,
+    #[prost(int64, tag = "19")]
+    pub reading_min_duration_ticks: i64,
+    #[prost(int64, tag = "20")]
+    pub reading_min_gap_ticks: i64,
 }
 /// The edit documents a project holds, oldest first.
 ///
@@ -1834,6 +1849,10 @@ pub struct ExportFindingV1 {
     /// One sentence naming the thing and the number, ready to show.
     #[prost(string, tag = "3")]
     pub detail: ::prost::alloc::string::String,
+    /// The caption cue a `captions.*` finding is about, so a surface can open
+    /// that cue rather than parse `detail` for it. Empty for every other check.
+    #[prost(string, tag = "4")]
+    pub cue_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExportValidationV1 {

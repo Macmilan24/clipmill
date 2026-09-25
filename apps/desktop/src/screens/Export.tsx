@@ -5,6 +5,7 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  Captions,
   Eye,
   FolderOpen,
   Info,
@@ -38,6 +39,7 @@ import { Spinner } from '@/components/ui/spinner';
 
 import type { ExportFinding, ExportPlan } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
+import type { EditorFocus } from '../shell/route.js';
 import {
   type Delivery,
   type DeliveryStage,
@@ -62,6 +64,32 @@ function hottestRate(findings: readonly ExportFinding[]): string {
 }
 
 /** Stable machine codes stay in the export record, not in the reading flow. */
+/**
+ * Where "Fix captions" should land: the first caption the strip refused, or
+ * failing that the first it merely pointed at.
+ *
+ * The finding names the cue and which grouping it is in — `captions.burn_in.*`
+ * is the on-screen track, everything else under `captions.` is the subtitle
+ * file. A finding with no cue (there are none today, but the field is
+ * optional) still opens the right track; the editor then lands on the track's
+ * first problem itself.
+ */
+function captionFocusOf(
+  findings: readonly ExportFinding[],
+): { readonly focus: EditorFocus; readonly blocking: boolean } | null {
+  const captions = findings.filter((finding) => finding.code.startsWith('captions.'));
+  const first = captions.find((finding) => finding.severity === 'blocking') ?? captions[0];
+  if (!first) return null;
+  return {
+    blocking: first.severity === 'blocking',
+    focus: {
+      panel: 'captions',
+      track: first.code.startsWith('captions.burn_in.') ? 'on-screen' : 'reading',
+      ...(first.cueId ? { cueId: first.cueId } : {}),
+    },
+  };
+}
+
 function findingTitle(code: string): string {
   if (code.startsWith('framing.')) return 'Framing needs attention';
   if (code === 'boundary.inside_word') return 'A cut interrupts a word';
@@ -96,7 +124,8 @@ const DELIVERY: readonly (readonly [string, string])[] = [
 ];
 
 export interface ExportProps {
-  readonly onEdit?: (() => void) | undefined;
+  /** Open the editor — on a particular caption, when handed the focus for one. */
+  readonly onEdit?: ((focus?: EditorFocus) => void) | undefined;
   readonly onBatch?: () => void;
   readonly publishing?: ReactNode;
   readonly docId: string | null;
@@ -172,6 +201,7 @@ export function Export(props: ExportProps): JSX.Element {
       finding.severity === 'advisory' &&
       !(finding.code === 'captions.reading_rate' && props.hotCaptions.length > 0),
   );
+  const captionFocus = captionFocusOf(props.plan?.findings ?? []);
   const ready =
     props.plan?.passes === true && props.attestation !== '' && !props.busy && !props.planning;
   const delivering = props.delivery !== null && !props.delivery.settled;
@@ -195,7 +225,7 @@ export function Export(props: ExportProps): JSX.Element {
             </Button>
           )}
           {props.onEdit && (
-            <Button variant="outline" size="sm" onClick={props.onEdit}>
+            <Button variant="outline" size="sm" onClick={() => props.onEdit?.()}>
               <ArrowLeft className="size-4" />
               Back to editor
             </Button>
@@ -352,6 +382,27 @@ export function Export(props: ExportProps): JSX.Element {
                 <p className="flex items-center gap-2 text-xs text-[var(--cm-ink-2)]">
                   <Spinner className="size-3" /> Checking…
                 </p>
+              )}
+
+              {captionFocus && (
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <p>
+                    {captionFocus.blocking
+                      ? 'A caption in the subtitle file cannot be exported as it is. '
+                      : 'A caption in the subtitle file is worth a look before exporting. '}
+                    The editor opens on it, with a fix ready to apply.
+                  </p>
+                  {props.onEdit && (
+                    <Button
+                      size="sm"
+                      variant={captionFocus.blocking ? 'default' : 'outline'}
+                      onClick={() => props.onEdit?.(captionFocus.focus)}
+                      disabled={props.busy}
+                    >
+                      <Captions className="size-4" /> Fix captions
+                    </Button>
+                  )}
+                </div>
               )}
 
               {blocking.map((finding) => (

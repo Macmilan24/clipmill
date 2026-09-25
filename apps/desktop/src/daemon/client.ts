@@ -780,6 +780,9 @@ export interface PreviewProxy {
 
 export interface PreviewCue {
   readonly cueId: string;
+  /** Exact display bounds. Older hosts do not expose timing edits. */
+  readonly startTicks?: number;
+  readonly endTicks?: number;
   readonly firstFrame: number;
   readonly endFrame: number;
   readonly region: string;
@@ -843,6 +846,9 @@ export interface PreviewPlan {
   /** Lower viewport of a two-person composition, indexed like crops. */
   readonly secondaryCrops?: readonly (readonly [number, number, number, number] | null)[];
   readonly cues: readonly PreviewCue[];
+  readonly readingCues?: readonly PreviewCue[];
+  readonly readingMinDurationTicks?: number;
+  readonly readingMinGapTicks?: number;
   readonly gain: readonly PreviewGain[];
   readonly width: number;
   readonly height: number;
@@ -968,6 +974,8 @@ export interface ExportFinding {
   readonly code: string;
   readonly severity: 'blocking' | 'advisory';
   readonly detail: string;
+  /** The caption cue a `captions.*` finding is about. Absent for other checks. */
+  readonly cueId?: string;
 }
 
 /** What an export would do, answered without doing it. */

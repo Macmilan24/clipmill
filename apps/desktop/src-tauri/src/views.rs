@@ -686,6 +686,9 @@ pub struct PreviewPlanView {
     pub secondary_crops: Vec<Option<[i64; 4]>>,
     pub caption_style: Option<PreviewCaptionStyleView>,
     pub cues: Vec<PreviewCueView>,
+    pub reading_cues: Vec<PreviewCueView>,
+    pub reading_min_duration_ticks: i64,
+    pub reading_min_gap_ticks: i64,
     pub gain: Vec<PreviewGainView>,
     pub width: i64,
     pub height: i64,
@@ -768,6 +771,8 @@ pub struct PreviewProxyView {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewCueView {
     pub cue_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
     pub first_frame: i64,
     pub end_frame: i64,
     pub region: String,
@@ -791,6 +796,35 @@ pub struct PreviewWordView {
 pub struct PreviewGainView {
     pub frame: i64,
     pub gain_db: f64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::PreviewCueV1> for PreviewCueView {
+    fn from(cue: clipmill_contracts::proto::ipc::v1::PreviewCueV1) -> Self {
+        PreviewCueView {
+            cue_id: cue.cue_id,
+            start_ticks: cue.start_ticks,
+            end_ticks: cue.end_ticks,
+            first_frame: cue.first_frame,
+            end_frame: cue.end_frame,
+            region: cue.region,
+            karaoke: cue.karaoke,
+            lead_in_centis: cue.lead_in_centis,
+            lines: cue
+                .lines
+                .into_iter()
+                .map(|line| {
+                    line.words
+                        .into_iter()
+                        .map(|word| PreviewWordView {
+                            text: word.text,
+                            hold_centis: word.hold_centis,
+                            word_id: word.word_id,
+                        })
+                        .collect()
+                })
+                .collect(),
+        }
+    }
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for PreviewPlanView {
@@ -846,32 +880,14 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                         .then_some([crop.x, crop.y, crop.width, crop.height])
                 })
                 .collect(),
-            cues: reply
-                .cues
+            cues: reply.cues.into_iter().map(PreviewCueView::from).collect(),
+            reading_cues: reply
+                .reading_cues
                 .into_iter()
-                .map(|cue| PreviewCueView {
-                    cue_id: cue.cue_id,
-                    first_frame: cue.first_frame,
-                    end_frame: cue.end_frame,
-                    region: cue.region,
-                    karaoke: cue.karaoke,
-                    lead_in_centis: cue.lead_in_centis,
-                    lines: cue
-                        .lines
-                        .into_iter()
-                        .map(|line| {
-                            line.words
-                                .into_iter()
-                                .map(|word| PreviewWordView {
-                                    text: word.text,
-                                    hold_centis: word.hold_centis,
-                                    word_id: word.word_id,
-                                })
-                                .collect()
-                        })
-                        .collect(),
-                })
+                .map(PreviewCueView::from)
                 .collect(),
+            reading_min_duration_ticks: reply.reading_min_duration_ticks,
+            reading_min_gap_ticks: reply.reading_min_gap_ticks,
             gain: reply
                 .gain
                 .into_iter()
@@ -1027,6 +1043,10 @@ pub struct ExportFindingView {
     /// screen cannot mistake one enum ordinal for another.
     pub severity: String,
     pub detail: String,
+    /// The caption cue a `captions.*` finding is about. Absent, not empty, for
+    /// every other check, so a screen tests for it rather than for `""`.
+    #[serde(rename = "cueId", skip_serializing_if = "Option::is_none")]
+    pub cue_id: Option<String>,
 }
 
 impl From<PlanExportResponse> for ExportPlanView {
@@ -1051,6 +1071,7 @@ impl From<PlanExportResponse> for ExportPlanView {
                         "blocking".to_owned()
                     },
                     detail: finding.detail,
+                    cue_id: (!finding.cue_id.is_empty()).then_some(finding.cue_id),
                 })
                 .collect(),
             stem: plan.stem,

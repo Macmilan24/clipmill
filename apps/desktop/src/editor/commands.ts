@@ -326,6 +326,43 @@ export function mergeCues(
 }
 
 /**
+ * Stop showing a word, in both caption tracks at once.
+ *
+ * A caption edit and not a media edit: the word was said and the audio is
+ * untouched. Addressed by cue and position in the track on screen; the daemon
+ * follows the word's identity into the other track, and drops a cue that is
+ * left with nothing to show.
+ */
+export function removeCaptionWord(
+  cueId: string,
+  wordIndex: number,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'remove_caption_word',
+    cue_id: cueId,
+    word_index: wordIndex,
+    ...inList(presentation),
+  };
+}
+
+/** Hold a cue for a different window. Its spoken words do not move. */
+export function setCueTiming(
+  cueId: string,
+  startTicks: number,
+  endTicks: number,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'set_cue_timing',
+    cue_id: cueId,
+    start_ticks: startTicks,
+    end_ticks: endTicks,
+    ...inList(presentation),
+  };
+}
+
+/**
  * The command that corrects one shown word, whatever the document knows it by.
  *
  * Addressed to the word's identity when it has one, so it lands in both

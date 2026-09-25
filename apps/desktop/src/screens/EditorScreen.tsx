@@ -11,12 +11,14 @@ import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
 import { segmentAt, sourceOf } from '../editor/player.js';
 import { useEditor } from '../editor/useEditor.js';
-import type { ClipRef } from '../shell/route.js';
+import type { ClipRef, EditorFocus } from '../shell/route.js';
 import { Editor } from './Editor.js';
 
 export interface EditorScreenProps {
   /** The clip to open, or null when the row was reached with none named. */
   readonly clip: ClipRef | null;
+  /** What to land on inside the clip, when the opener said. */
+  readonly focus?: EditorFocus | null;
   readonly onOpenResults: () => void;
   /** Open a different clip here — from the list this screen offers. */
   readonly onOpen: (clip: ClipRef) => void;
@@ -27,6 +29,7 @@ export interface EditorScreenProps {
 
 export function EditorScreen({
   clip,
+  focus = null,
   onOpenResults,
   onOpen,
   onExport,
@@ -130,6 +133,7 @@ export function EditorScreen({
       proxyUrls={editor.proxyUrls}
       docId={editor.docId}
       labels={clip?.labels ?? null}
+      focus={focus}
       loading={editor.loading}
       problem={editor.problem ?? resolveProblem}
       busy={editor.busy}

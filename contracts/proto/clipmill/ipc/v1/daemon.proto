@@ -1263,6 +1263,9 @@ message PreviewCueV1 {
   // Already broken. The player must not re-wrap, for the same reason libass is
   // told not to.
   repeated PreviewLineV1 lines = 7;
+  // Exact display bounds for edits; frame rounding must not retime a cue.
+  int64 start_ticks = 8;
+  int64 end_ticks = 9;
 }
 
 message PreviewGainV1 {
@@ -1377,6 +1380,13 @@ message GetPreviewPlanResponse {
   PreviewCaptionStyleV1 caption_style = 15;
   int64 transition_ticks = 16;
   repeated PreviewTransitionV1 transitions = 17;
+  // The sidecar grouping and the two numbers the export strip holds it to,
+  // so the editor can offer a repair that clears the finding rather than one
+  // that trades it for the next: a cue held to the floor is refused if it
+  // then crowds its neighbour.
+  repeated PreviewCueV1 reading_cues = 18;
+  int64 reading_min_duration_ticks = 19;
+  int64 reading_min_gap_ticks = 20;
 }
 
 // The edit documents a project holds, oldest first.
@@ -1415,6 +1425,9 @@ message ExportFindingV1 {
   ExportSeverity severity = 2;
   // One sentence naming the thing and the number, ready to show.
   string detail = 3;
+  // The caption cue a `captions.*` finding is about, so a surface can open
+  // that cue rather than parse `detail` for it. Empty for every other check.
+  string cue_id = 4;
 }
 
 message ExportValidationV1 {

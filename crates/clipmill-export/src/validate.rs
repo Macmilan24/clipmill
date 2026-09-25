@@ -84,6 +84,10 @@ pub struct Finding {
     pub severity: Severity,
     /// One sentence, naming the thing and the number.
     pub detail: String,
+    /// The caption cue a finding is about, so a surface can open it rather
+    /// than parse the sentence for its number. `None` for every other check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cue_id: Option<String>,
 }
 
 impl Finding {
@@ -92,6 +96,7 @@ impl Finding {
             code: code.to_owned(),
             severity: Severity::Blocking,
             detail,
+            cue_id: None,
         }
     }
 
@@ -100,7 +105,13 @@ impl Finding {
             code: code.to_owned(),
             severity: Severity::Advisory,
             detail,
+            cue_id: None,
         }
+    }
+
+    fn about(mut self, cue_id: &str) -> Self {
+        self.cue_id = Some(cue_id.to_owned());
+        self
     }
 }
 
@@ -238,14 +249,17 @@ fn check_captions(document: &EditDocument, context: &Context<'_>, findings: &mut
         .any(|gate| gate == READING_RATE_GATE);
     for violation in run_profile(&document.captions.cues, Profile::ACCESSIBILITY_EN) {
         let code = format!("captions.{}", code_of(&violation));
-        let detail = format!("Sidecar caption: {}", violation.message());
+        let detail = caption_detail("Subtitle", &document.captions.cues, &violation);
         let confirmed =
             hot_captions_confirmed && matches!(violation, Violation::ReadingRate { .. });
-        findings.push(if confirmed {
+        let finding = if confirmed {
             Finding::advisory(&code, format!("{detail} — confirmed as read."))
+        } else if legible_but_brief(&violation) {
+            Finding::advisory(&code, detail)
         } else {
             Finding::blocking(&code, detail)
-        });
+        };
+        findings.push(finding.about(violation.cue_id()));
     }
     // The burn-in track runs hot on purpose. A finding against it is worth
     // showing and is not worth refusing an export over — the alternative would
@@ -253,12 +267,63 @@ fn check_captions(document: &EditDocument, context: &Context<'_>, findings: &mut
     // asked to produce.
     if !document.captions.burn_in.is_empty() {
         for violation in run_profile(&document.captions.burn_in, Profile::BURN_IN_EN) {
-            findings.push(Finding::advisory(
-                &format!("captions.burn_in.{}", code_of(&violation)),
-                format!("Burned-in caption: {}", violation.message()),
-            ));
+            findings.push(
+                Finding::advisory(
+                    &format!("captions.burn_in.{}", code_of(&violation)),
+                    caption_detail("On-screen caption", &document.captions.burn_in, &violation),
+                )
+                .about(violation.cue_id()),
+            );
         }
     }
+}
+
+/// A sidecar cue held for less than the standard asks, but long enough to be
+/// read at all.
+///
+/// The standard's five sixths of a second is what a subtitle *should* get, and
+/// a cue under it is worth pointing at; it is not worth refusing the export
+/// over when the words were on screen long enough to be seen. Where reading
+/// stops being possible is the burn-in profile's own floor — the track that
+/// runs hot on purpose still refuses to flash a caption for less than that —
+/// so below it the finding blocks, and above it the finding advises. The
+/// number itself stays the standard's: the fix path aims at it, and a person
+/// who reaches it has a subtitle nobody will complain about.
+fn legible_but_brief(violation: &Violation) -> bool {
+    matches!(
+        violation,
+        Violation::TooBrief { ticks, .. } if *ticks >= Profile::BURN_IN_EN.min_duration_ticks
+    )
+}
+
+fn caption_detail(label: &str, cues: &[CaptionCue], violation: &Violation) -> String {
+    let Some((index, cue)) = cues
+        .iter()
+        .enumerate()
+        .find(|(_, cue)| cue.cue_id == violation.cue_id())
+    else {
+        return format!("{label} {}: {}", violation.cue_id(), violation.message());
+    };
+    let text = cue
+        .words()
+        .map(|word| word.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let excerpt: String = text.chars().take(100).collect();
+    let suffix = if text.chars().count() > 100 {
+        "…"
+    } else {
+        ""
+    };
+    let centis = cue.start_ticks / 900;
+    format!(
+        "{label} {} at {}:{:02}.{:02} — “{excerpt}{suffix}” {}.",
+        index + 1,
+        centis / 6000,
+        (centis / 100) % 60,
+        centis % 100,
+        violation.message()
+    )
 }
 
 fn run_profile(cues: &[CaptionCue], profile: Profile) -> Vec<Violation> {
@@ -396,6 +461,131 @@ mod tests {
         let report = validate(&document(), &context(&[]));
         assert!(report.passes(), "{:?}", report.findings);
         assert!(report.findings.is_empty(), "{:?}", report.findings);
+    }
+
+    #[test]
+    fn a_short_silence_marker_is_named_and_removable_without_reanalysis() {
+        use clipmill_edit_ir::{CaptionLine, CaptionWord, EditCommand, Presentation};
+        let mut doc = document();
+        let mut marker = doc.captions.cues[0].clone();
+        marker.cue_id = "cue_silence".to_owned();
+        marker.start_ticks = 2 * TICKS_PER_SECOND;
+        marker.end_ticks = marker.start_ticks + 57_432;
+        marker.lines = vec![CaptionLine {
+            words: vec![CaptionWord {
+                word_id: Some("silence_word".to_owned()),
+                text: "[BLANK_AUDIO]".to_owned(),
+                start_ticks: marker.start_ticks,
+                end_ticks: marker.start_ticks + 22_680,
+            }],
+        }];
+        doc.captions.cues.insert(1, marker.clone());
+        doc.captions.burn_in = doc.captions.cues.clone();
+        doc.validate()
+            .expect("stored document is structurally valid");
+        let original = doc.clone();
+        let report = validate(&doc, &context(&[]));
+        // 0.64 s is under the standard and over the floor: advice, and advice
+        // that names the cue so a surface can open it.
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == "captions.too_brief")
+            .expect("found");
+        assert_eq!(finding.severity, Severity::Advisory);
+        assert_eq!(finding.cue_id.as_deref(), Some("cue_silence"));
+        assert!(finding.detail.contains("Subtitle 2 at 0:02.00"));
+        assert!(finding.detail.contains("[BLANK_AUDIO]"));
+        assert!(finding.detail.contains("0.64s"));
+        assert!(finding.detail.contains("0.83s"));
+        // The marker also reads too fast for its window, and that still blocks.
+        assert!(!report.passes());
+        let inverse = EditCommand::RemoveCaptionWord {
+            cue_id: marker.cue_id,
+            word_index: 0,
+            presentation: Presentation::Reading,
+        }
+        .apply(&mut doc)
+        .expect("remove the marker");
+        assert!(validate(&doc, &context(&[])).passes());
+        assert!(
+            doc.captions
+                .words()
+                .all(|word| word.text != "[BLANK_AUDIO]")
+        );
+        inverse.apply(&mut doc).expect("undo");
+        assert_eq!(doc, original);
+    }
+
+    /// A one-word cue, held for `end_ticks`, in place of the fixture's first.
+    fn with_brief_first_cue(end_ticks: i64) -> EditDocument {
+        use clipmill_edit_ir::{CaptionLine, CaptionWord};
+        let mut doc = document();
+        let cue = &mut doc.captions.cues[0];
+        cue.end_ticks = end_ticks;
+        cue.lines = vec![CaptionLine {
+            words: vec![CaptionWord {
+                word_id: None,
+                text: "Hello.".to_owned(),
+                start_ticks: 0,
+                end_ticks: end_ticks.min(20_000),
+            }],
+        }];
+        doc
+    }
+
+    #[test]
+    fn a_flash_blocks_and_a_brief_but_legible_cue_only_advises() {
+        // A quarter of a second: nobody read that.
+        let flash = validate(&with_brief_first_cue(22_500), &context(&[]));
+        let finding = flash
+            .blocking()
+            .find(|finding| finding.code == "captions.too_brief")
+            .expect("blocked");
+        assert_eq!(finding.cue_id.as_deref(), Some("cue_1"));
+        assert!(finding.detail.contains("0.25s"));
+
+        // Under the standard's five sixths, over the floor: shown, not refused.
+        let brief = validate(&with_brief_first_cue(57_432), &context(&[]));
+        assert!(brief.passes(), "{:?}", brief.findings);
+        let finding = brief
+            .findings
+            .iter()
+            .find(|finding| finding.code == "captions.too_brief")
+            .expect("advised");
+        assert_eq!(finding.severity, Severity::Advisory);
+        assert_eq!(finding.cue_id.as_deref(), Some("cue_1"));
+
+        // At the floor exactly, the same.
+        let at_floor = validate(&with_brief_first_cue(30_000), &context(&[]));
+        assert!(at_floor.passes(), "{:?}", at_floor.findings);
+    }
+
+    #[test]
+    fn extending_a_real_short_caption_clears_the_finding_without_waiving_the_check() {
+        use clipmill_edit_ir::{EditCommand, Presentation};
+        let mut doc = with_brief_first_cue(22_500);
+        assert!(!validate(&doc, &context(&[])).passes());
+        EditCommand::SetCueTiming {
+            cue_id: "cue_1".to_owned(),
+            start_ticks: 0,
+            end_ticks: 75_000,
+            presentation: Presentation::Reading,
+        }
+        .apply(&mut doc)
+        .expect("extend into the gap");
+        let report = validate(&doc, &context(&[]));
+        assert!(report.passes());
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.code != "captions.too_brief")
+        );
+        assert_eq!(
+            doc.captions.cues[0].words().next().expect("word").end_ticks,
+            20_000
+        );
     }
 
     #[test]

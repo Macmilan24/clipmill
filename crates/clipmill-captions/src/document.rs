@@ -207,6 +207,9 @@ fn tokens_of(
         .filter(|word| {
             as_i64(word.start_ticks) >= span.start_ticks && as_i64(word.end_ticks) <= span.end_ticks
         })
+        // Whisper can emit this silence marker as ordinary text tokens.
+        // Keep real sound descriptions such as [music] and [laughter].
+        .filter(|word| !word.text.trim().eq_ignore_ascii_case("[BLANK_AUDIO]"))
         .map(|word| {
             let text = word.text.to_string();
             let normalized = lexicon::normalize(&text);
@@ -424,4 +427,63 @@ fn nonzero(value: i64) -> Result<NonZeroU64, DeriveError> {
 fn nonzero_usize(value: usize) -> Result<NonZeroU64, DeriveError> {
     NonZeroU64::new(as_u64_from_usize(value))
         .ok_or_else(|| DeriveError::Contract("a value the contract requires to be positive".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use super::*;
+
+    #[test]
+    fn silence_markers_are_omitted_without_dropping_sound_descriptions_or_renumbering_words() {
+        let raw =
+            include_str!("../../../contracts/fixtures/speech.transcript/valid/ten_words.json");
+        let mut transcript: SpeechTranscript = serde_json::from_str(raw).expect("transcript");
+        for (index, text) in [
+            (1, "[BLANK_AUDIO]"),
+            (2, "[music]"),
+            (3, "[laughter]"),
+            (4, "[blank_audio]"),
+        ] {
+            transcript.words[index].text = text.parse().expect("text");
+        }
+        let request = DeriveRequest::new("test");
+        let cues = derive(&transcript, None, None, Inputs {
+            transcript_artifact_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            index_artifact_id: None, shots_artifact_id: None,
+        }, &request).expect("captions");
+        let expected: Vec<_> = transcript
+            .words
+            .iter()
+            .filter(|word| !word.text.eq_ignore_ascii_case("[BLANK_AUDIO]"))
+            .map(|word| word.index)
+            .collect();
+        assert_eq!(
+            cues.tokens
+                .iter()
+                .map(|token| token.word_index)
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(
+            cues.tokens
+                .iter()
+                .any(|token| token.text.as_str() == "[music]")
+        );
+        assert!(
+            cues.tokens
+                .iter()
+                .any(|token| token.text.as_str() == "[laughter]")
+        );
+        for grouping in [&cues.intents.accessibility, &cues.intents.burn_in] {
+            assert_eq!(
+                grouping
+                    .cues
+                    .iter()
+                    .map(|cue| cue.token_count.get())
+                    .sum::<u64>(),
+                u64::try_from(cues.tokens.len()).expect("count")
+            );
+        }
+    }
 }
