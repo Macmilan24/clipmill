@@ -104,6 +104,19 @@ export interface EditorProps {
   readonly onUndo: () => void;
   readonly onRedo: () => void;
   readonly onResolve: (frame: number) => void;
+  /** Where a pinned caption font is served from. Absent keeps CSS captions. */
+  readonly fontUrl?: ((file: string) => string) | null;
+  /**
+   * The captions under a look not chosen yet, as the export would write them.
+   * Absent makes every look a saved choice, as before.
+   */
+  readonly previewCaptions?: ((draft: CaptionDraft) => Promise<string | null>) | null;
+}
+
+/** A caption look being tried: a preset, clip-wide options, or both. */
+export interface CaptionDraft {
+  readonly styleRef?: string;
+  readonly options?: NonNullable<EditIr['captions']['options']>;
 }
 
 const PANELS_KEY = 'clipmill.editor.panels';
@@ -153,6 +166,8 @@ export function Editor({
   onUndo,
   onRedo,
   onResolve,
+  fontUrl = null,
+  previewCaptions = null,
 }: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [playhead, setFrame] = useState(0);
@@ -175,6 +190,37 @@ export function Editor({
   const reverseTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [selection, setSelection] = useState<EditorSelection>(NOTHING);
   const [tab, setTab] = useState<PropertiesTab>('captions');
+  // A caption look being tried: the script libass draws until it is chosen
+  // or let go. Tagged with the revision it was drawn over, so an edit that
+  // lands meanwhile shows the saved captions rather than a stale draft.
+  const [draft, setDraft] = useState<{ ass: string; revision: number } | null>(null);
+  const draftRequest = useRef(0);
+  const tryLook = useCallback(
+    (look: CaptionDraft | null) => {
+      draftRequest.current += 1;
+      const request = draftRequest.current;
+      if (!look || !previewCaptions || !plan) {
+        setDraft(null);
+        return;
+      }
+      const revision = plan.revision;
+      void previewCaptions(look).then((ass) => {
+        if (request === draftRequest.current && ass !== null) setDraft({ ass, revision });
+      });
+    },
+    [previewCaptions, plan],
+  );
+  const exactCaptions = useMemo(() => {
+    if (!plan?.ass || !fontUrl) return null;
+    const faces = (plan.fonts ?? [])
+      .filter((face) => face.installed)
+      .map((face) => ({ family: face.family, url: fontUrl(face.file) }));
+    if (faces.length === 0) return null;
+    const ass = draft && draft.revision === plan.revision ? draft.ass : plan.ass;
+    const family =
+      /Style: lower_safe,([^,]+),/.exec(ass)?.[1] ?? plan.captionStyle?.fontFamily ?? 'Inter';
+    return { ass, faces, family };
+  }, [plan, fontUrl, draft]);
   const [tool, setTool] = useState<Tool>('select');
   const [snap, setSnap] = useState(true);
   const [marks, setMarks] = useState<{ in: number | null; out: number | null }>({
@@ -874,6 +920,8 @@ export function Editor({
           selection={selection}
           onSelect={select}
           onApply={onApply}
+          captions={exactCaptions}
+          captionOptions={document?.captions.options ?? {}}
         />
         <div
           className="edit-resizer"
@@ -897,6 +945,8 @@ export function Editor({
           onResolve={() => onResolve(frame)}
           onSelect={select}
           onSeek={seek}
+          onTryLook={previewCaptions ? tryLook : null}
+          fonts={plan.fonts ?? []}
         />
       </div>
       <EditorTimeline

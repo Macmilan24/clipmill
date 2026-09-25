@@ -200,6 +200,26 @@ export function EditorScreen({
       onResolve={(frame) => {
         void onResolve(frame);
       }}
+      fontUrl={api.captionFontUrl ?? null}
+      previewCaptions={
+        api.previewCaptions && clip
+          ? async (draft) => {
+              const current = editor.document?.captions;
+              try {
+                const preview = await api.previewCaptions!(
+                  clip.docId,
+                  draft.styleRef ?? '',
+                  JSON.stringify(draft.options ?? current?.options ?? {}),
+                );
+                return preview.ass;
+              } catch {
+                // A look that cannot be drawn yet is simply not drawn; the
+                // saved captions stay on the preview.
+                return null;
+              }
+            }
+          : null
+      }
     />
   );
 }

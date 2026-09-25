@@ -15,7 +15,7 @@ export function CaptionLookSample({
       data-highlight={highlight ? 'on' : 'off'}
       aria-hidden="true"
     >
-      <span>Make</span> <span>moments</span> <span>matter</span>
+      <span>Make</span> <span>it</span> <span>count</span>
     </span>
   );
 }

@@ -112,6 +112,46 @@ export function trim(inTicks: number, outTicks: number, segmentId = SEGMENT): Ed
 /** Which of the document's two cue lists a cue-scoped command means. */
 export type Presentation = 'reading' | 'burn_in';
 
+/** A caption's centre on the frame, in thousandths of its width and height. */
+export interface CaptionPosition {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** Place one caption by hand, or hand it back to its region with null. */
+export function setCuePosition(
+  cueId: string,
+  position: CaptionPosition | null,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'set_cue_position',
+    cue_id: cueId,
+    ...(position ? { position } : {}),
+    ...inList(presentation),
+  };
+}
+
+/** Mark or unmark a key word, in both caption presentations. */
+export function setWordEmphasis(wordId: string, emphasis: boolean): EditCommandJson {
+  return { op: 'set_word_emphasis', word_id: wordId, emphasis };
+}
+
+/** Show at most this many words on screen at once. The subtitle files keep theirs. */
+export function regroupOnScreen(maxWords: number): EditCommandJson {
+  return { op: 'regroup_on_screen', max_words: maxWords };
+}
+
+/** Remove recognizer dashes, silence markers and bracketed annotations. */
+export function dropNonSpeechWords(): EditCommandJson {
+  return { op: 'drop_non_speech_words' };
+}
+
+/** Name the clip, or clear the name with null. */
+export function setTitle(title: string | null): EditCommandJson {
+  return title === null ? { op: 'set_title' } : { op: 'set_title', title };
+}
+
 /** The presentation field, written only when it is not the default. */
 function inList(presentation: Presentation): { readonly presentation?: Presentation } {
   return presentation === 'reading' ? {} : { presentation };
