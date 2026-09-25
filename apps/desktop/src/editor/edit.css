@@ -357,6 +357,14 @@
   justify-content: center;
 }
 
+.edit-wide .edit-look-button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px;
+}
+
 .review-segmented button:disabled {
   opacity: 0.4;
 }

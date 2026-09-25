@@ -750,6 +750,10 @@ impl CropRect {
 #[doc = "              \"maximum\": 160.0,"]
 #[doc = "              \"minimum\": 24.0"]
 #[doc = "            },"]
+#[doc = "            \"highlight_spoken_word\": {"]
+#[doc = "              \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
+#[doc = "              \"type\": \"boolean\""]
+#[doc = "            },"]
 #[doc = "            \"outline\": {"]
 #[doc = "              \"type\": \"string\","]
 #[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
@@ -1017,6 +1021,10 @@ impl EditIrAudioGainCurveItem {
 #[doc = "          \"maximum\": 160.0,"]
 #[doc = "          \"minimum\": 24.0"]
 #[doc = "        },"]
+#[doc = "        \"highlight_spoken_word\": {"]
+#[doc = "          \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
+#[doc = "          \"type\": \"boolean\""]
+#[doc = "        },"]
 #[doc = "        \"outline\": {"]
 #[doc = "          \"type\": \"string\","]
 #[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
@@ -1081,6 +1089,10 @@ impl EditIrCaptions {
 #[doc = "      \"maximum\": 160.0,"]
 #[doc = "      \"minimum\": 24.0"]
 #[doc = "    },"]
+#[doc = "    \"highlight_spoken_word\": {"]
+#[doc = "      \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
 #[doc = "    \"outline\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
@@ -1110,6 +1122,9 @@ impl EditIrCaptions {
 pub struct EditIrCaptionsOptions {
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub font_size: ::std::option::Option<i64>,
+    #[doc = "Override the preset's spoken-word highlight independently of its typography."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub highlight_spoken_word: ::std::option::Option<bool>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub outline: ::std::option::Option<EditIrCaptionsOptionsOutline>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -1123,6 +1138,7 @@ impl ::std::default::Default for EditIrCaptionsOptions {
     fn default() -> Self {
         Self {
             font_size: Default::default(),
+            highlight_spoken_word: Default::default(),
             outline: Default::default(),
             spoken: Default::default(),
             text_case: Default::default(),
@@ -2954,6 +2970,8 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct EditIrCaptionsOptions {
         font_size: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        highlight_spoken_word:
+            ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
         outline: ::std::result::Result<
             ::std::option::Option<super::EditIrCaptionsOptionsOutline>,
             ::std::string::String,
@@ -2975,6 +2993,7 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 font_size: Ok(Default::default()),
+                highlight_spoken_word: Ok(Default::default()),
                 outline: Ok(Default::default()),
                 spoken: Ok(Default::default()),
                 text_case: Ok(Default::default()),
@@ -2991,6 +3010,16 @@ pub mod builder {
             self.font_size = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for font_size: {e}"));
+            self
+        }
+        pub fn highlight_spoken_word<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<bool>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.highlight_spoken_word = value.try_into().map_err(|e| {
+                format!("error converting supplied value for highlight_spoken_word: {e}")
+            });
             self
         }
         pub fn outline<T>(mut self, value: T) -> Self
@@ -3041,6 +3070,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 font_size: value.font_size?,
+                highlight_spoken_word: value.highlight_spoken_word?,
                 outline: value.outline?,
                 spoken: value.spoken?,
                 text_case: value.text_case?,
@@ -3052,6 +3082,7 @@ pub mod builder {
         fn from(value: super::EditIrCaptionsOptions) -> Self {
             Self {
                 font_size: Ok(value.font_size),
+                highlight_spoken_word: Ok(value.highlight_spoken_word),
                 outline: Ok(value.outline),
                 spoken: Ok(value.spoken),
                 text_case: Ok(value.text_case),

@@ -123,7 +123,7 @@ describe('the New Project screen', () => {
       true,
     );
 
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
         false,
@@ -134,7 +134,7 @@ describe('the New Project screen', () => {
   it('defaults to local Qwen and requires fresh cloud consent after changing routes', async () => {
     const { submitted } = show();
     await chooseFile();
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     const route = screen.getByLabelText('Editorial analysis');
     expect(route.textContent).toContain('Local · Qwen 3.5');
     fireEvent.keyDown(route, { key: 'Enter' });
@@ -176,7 +176,7 @@ describe('the New Project screen', () => {
 
     fireEvent.click(screen.getByLabelText(/Extended/));
     fireEvent.click(screen.getByRole('button', { name: 'More clips' }));
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
         false,
@@ -208,7 +208,7 @@ describe('the New Project screen', () => {
   it('lets the bounds be set by hand, and refuses a range that is backwards', async () => {
     show();
     await chooseFile();
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     fireEvent.click(screen.getByLabelText(/Custom/));
 
     const shortest = await screen.findByLabelText('Shortest');
@@ -235,7 +235,7 @@ describe('the New Project screen', () => {
   it('says what closing the app actually does', async () => {
     show();
     await chooseFile();
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     expect(
       await screen.findByText('Closing ClipMill pauses the run; it resumes when you reopen.'),
     ).toBeTruthy();
@@ -263,7 +263,7 @@ describe('the New Project screen', () => {
       }),
     );
     await chooseFile();
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     const start = screen.getByRole('button', { name: /Analyze video/ });
     await waitFor(() => {
       expect(start.hasAttribute('disabled')).toBe(true);
@@ -304,7 +304,7 @@ describe('the New Project screen', () => {
       }),
     );
     await chooseFile();
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     const workers = within(await screen.findByRole('list', { name: 'Stages with no worker' }));
     expect(workers.getByText(/just workers/)).toBeTruthy();
     expect(screen.getByText(/those stages wait until a worker connects/)).toBeTruthy();
@@ -326,7 +326,7 @@ describe('the New Project screen', () => {
       }),
     );
     await chooseFile();
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     const start = screen.getByRole('button', { name: /Analyze video/ });
     await waitFor(() => {
       expect(start.hasAttribute('disabled')).toBe(true);
@@ -387,7 +387,7 @@ describe('the New Project screen', () => {
     fireEvent.keyDown(profile, { key: 'Enter' });
     fireEvent.click(await screen.findByRole('option', { name: 'TV / movie scene' }));
     expect(screen.getByText(/wider plot can stay unresolved/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     fireEvent.click(screen.getByRole('button', { name: /Analyze video/ }));
     await waitFor(() => expect(submitted).toHaveLength(1));
     expect(submitted[0]?.request.contentProfile).toBe('scripted');
@@ -436,7 +436,7 @@ describe('dropping a recording and choosing a caption look', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Browse files' }));
     await screen.findByText('pricing-mistakes-episode-41.mp4');
     fireEvent.click(screen.getByRole('button', { name: /Boxed/ }));
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I own this footage/ }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Analyze video/ }).hasAttribute('disabled')).toBe(
         false,

@@ -17,6 +17,62 @@ const EXPORT_JOB_KIND = 'export-clip';
 const POLL_MILLIS = 750;
 /** How long to wait before asking again after a read that failed. */
 const RETRY_MILLIS = 2_000;
+const RECENT_EXPORTS_KEY = 'clipmill.export.recent-rates';
+
+interface ExportRate {
+  readonly jobId: string;
+  readonly secondsPerMediaSecond: number;
+}
+
+function recentExportRates(): ExportRate[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(RECENT_EXPORTS_KEY) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (entry): entry is ExportRate =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          typeof (entry as ExportRate).jobId === 'string' &&
+          Number.isFinite((entry as ExportRate).secondsPerMediaSecond) &&
+          (entry as ExportRate).secondsPerMediaSecond > 0,
+      )
+      .slice(-8);
+  } catch {
+    return [];
+  }
+}
+
+/** Remember actual wall time on this machine, including export delivery. */
+export function rememberExportRate(
+  jobId: string,
+  mediaSeconds: number,
+  startedMillis: number,
+  endedMillis: number,
+): void {
+  if (mediaSeconds <= 0 || endedMillis <= startedMillis) return;
+  const samples = recentExportRates();
+  if (samples.some((sample) => sample.jobId === jobId)) return;
+  const secondsPerMediaSecond = (endedMillis - startedMillis) / 1000 / mediaSeconds;
+  try {
+    localStorage.setItem(
+      RECENT_EXPORTS_KEY,
+      JSON.stringify([...samples, { jobId, secondsPerMediaSecond }].slice(-8)),
+    );
+  } catch {
+    // An unavailable local store only removes the estimate.
+  }
+}
+
+/** Median avoids one unusually slow render dominating future estimates. */
+export function estimatedExportSeconds(mediaSeconds: number, fractionDone: number): number | null {
+  const rates = recentExportRates()
+    .map((sample) => sample.secondsPerMediaSecond)
+    .sort((a, b) => a - b);
+  if (rates.length === 0 || mediaSeconds <= 0) return null;
+  const rate = rates[Math.floor(rates.length / 2)] ?? 0;
+  return Math.max(0, Math.ceil(rate * mediaSeconds * (1 - Math.max(0, Math.min(1, fractionDone)))));
+}
 
 /**
  * Find a document's newest export in durable daemon jobs so delivery state
@@ -57,6 +113,15 @@ export interface DeliveryStage {
 
 /** Worker counters are media time, not elapsed wall time or an ETA. */
 export function deliveryProgressText(progress: NonNullable<DeliveryStage['progress']>): string {
+  if (progress.unit.startsWith('export.')) {
+    const label =
+      {
+        'export.measuring': 'Measuring sound',
+        'export.rendering': 'Rendering picture',
+        'export.checking': 'Checking result',
+      }[progress.unit] ?? 'Exporting';
+    return `${label} · ${Math.floor((100 * progress.done) / Math.max(1, progress.total))}%`;
+  }
   if (progress.unit === 'media_millis') {
     const clock = (millis: number) => {
       const tenths = Math.max(0, Math.floor(millis / 100));
@@ -80,7 +145,7 @@ export function deliveryWaitText(stage: DeliveryStage): string {
     case 'retry: daemon restart':
       return 'Resuming after restart';
     case 'retry: transient failure':
-      return 'Retrying after an interruption';
+      return 'Trying this step again';
     case 'retry: lease expired':
       return 'Restarting an interrupted step';
     default:
@@ -100,6 +165,8 @@ export interface Delivery {
   readonly renderArtifactId?: string | undefined;
   readonly revision: number;
   readonly destinationDir: string;
+  readonly createdUnixMillis?: number | undefined;
+  readonly updatedUnixMillis?: number | undefined;
   readonly stages: readonly DeliveryStage[];
   /** True once the job has settled, delivered or not. */
   readonly settled: boolean;
@@ -262,6 +329,8 @@ export function useDelivery(
     )?.outputArtifactId,
     revision: queued.revision,
     destinationDir: queued.destinationDir,
+    createdUnixMillis: current?.createdUnixMillis,
+    updatedUnixMillis: current?.updatedUnixMillis,
     stages: deliveryStages(current),
     settled: settled(current),
     files: files?.jobId === queued.jobId ? files.value : null,

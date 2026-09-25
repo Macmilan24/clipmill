@@ -88,7 +88,7 @@ impl SampledSource {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct InspectedSource {
     pub observation: FileObservation,
     pub source_fingerprint: String,

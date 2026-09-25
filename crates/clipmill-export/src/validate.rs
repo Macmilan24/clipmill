@@ -2,7 +2,7 @@
 //!
 //! Four questions, and each one is a thing a user would otherwise discover
 //! after uploading: has anybody said what this footage is, does a cut land
-//! inside a word, can the sidecars actually be read at the speed they run, and
+//! inside a word, do the sidecars flash too briefly to see, and
 //! is there room on the disk. Every answer is a [`Finding`] carrying its own
 //! reason, because "export failed" is not an answer anyone can act on.
 //!
@@ -10,10 +10,8 @@
 //! the file would be wrong or would not fit; **advisory** means a person might
 //! have meant it. The burn-in caption track is the case that proves the line is
 //! real: it runs deliberately hot — a few words held briefly is the whole point
-//! of the kinetic intent — so a reading-rate finding against it is advisory,
-//! while the same finding against the accessibility cues is blocking, because
-//! those are what leave the building as SRT and VTT and they are held to the
-//! profile the caption engine exists to guarantee.
+//! of the kinetic intent. Reading-speed and style findings on both tracks are
+//! advice. Only a sidecar cue under one third of a second blocks delivery.
 //!
 //! Nothing here does any I/O. Disk headroom is checked against numbers the
 //! caller measured, so this function is the same function in a pre-flight
@@ -32,17 +30,6 @@ pub const DURATION_GATE: &str = "duration_60s";
 /// Sixty seconds is where the platforms stop treating a clip as a short, which
 /// is where a rights claim starts being worth something to somebody.
 pub const RIGHTS_GATE_SECONDS: i64 = 60;
-
-/// The gate token a user passes to ship a sidecar that runs faster than the
-/// reading profile allows.
-///
-/// Real dialogue is often faster than twenty characters a second, and a cue
-/// hemmed in by the next line, a cut, or the end of the clip cannot be held
-/// any longer without hiding words that were said — which would be worse.
-/// The strip still refuses such a sidecar by default: nobody ships captions
-/// a reader cannot keep up with without knowing. Passing this gate is
-/// knowing, and the delivered metadata records that it was passed.
-pub const READING_RATE_GATE: &str = "captions_reading_rate";
 
 const TICKS_PER_SECOND: i64 = 90_000;
 
@@ -235,29 +222,18 @@ fn check_boundaries(document: &EditDocument, findings: &mut Vec<Finding>) {
     }
 }
 
-/// The sidecars have to be readable at the speed they run.
-fn check_captions(document: &EditDocument, context: &Context<'_>, findings: &mut Vec<Finding>) {
-    // The accessibility track is what becomes SRT and VTT, so it is held to the
-    // profile without exception — with one confirmation a person can give.
-    // Speech is as fast as it is: a cue hemmed in by the next line, a cut, or
-    // the clip's end reads hot because the words were said that fast, and
-    // the only way to slow it is to drop words. That is refused until the
-    // person exporting says they know, and recorded when they do.
-    let hot_captions_confirmed = context
-        .gates_passed
-        .iter()
-        .any(|gate| gate == READING_RATE_GATE);
+/// Report fast subtitles while refusing only display windows too brief to read.
+fn check_captions(document: &EditDocument, _context: &Context<'_>, findings: &mut Vec<Finding>) {
     for violation in run_profile(&document.captions.cues, Profile::ACCESSIBILITY_EN) {
         let code = format!("captions.{}", code_of(&violation));
         let detail = caption_detail("Subtitle", &document.captions.cues, &violation);
-        let confirmed =
-            hot_captions_confirmed && matches!(violation, Violation::ReadingRate { .. });
-        let finding = if confirmed {
-            Finding::advisory(&code, format!("{detail} — confirmed as read."))
-        } else if legible_but_brief(&violation) {
-            Finding::advisory(&code, detail)
-        } else {
+        let finding = if matches!(
+            violation,
+            Violation::TooBrief { ticks, .. } if ticks < Profile::BURN_IN_EN.min_duration_ticks
+        ) {
             Finding::blocking(&code, detail)
+        } else {
+            Finding::advisory(&code, detail)
         };
         findings.push(finding.about(violation.cue_id()));
     }
@@ -276,24 +252,6 @@ fn check_captions(document: &EditDocument, context: &Context<'_>, findings: &mut
             );
         }
     }
-}
-
-/// A sidecar cue held for less than the standard asks, but long enough to be
-/// read at all.
-///
-/// The standard's five sixths of a second is what a subtitle *should* get, and
-/// a cue under it is worth pointing at; it is not worth refusing the export
-/// over when the words were on screen long enough to be seen. Where reading
-/// stops being possible is the burn-in profile's own floor — the track that
-/// runs hot on purpose still refuses to flash a caption for less than that —
-/// so below it the finding blocks, and above it the finding advises. The
-/// number itself stays the standard's: the fix path aims at it, and a person
-/// who reaches it has a subtitle nobody will complain about.
-fn legible_but_brief(violation: &Violation) -> bool {
-    matches!(
-        violation,
-        Violation::TooBrief { ticks, .. } if *ticks >= Profile::BURN_IN_EN.min_duration_ticks
-    )
 }
 
 fn caption_detail(label: &str, cues: &[CaptionCue], violation: &Violation) -> String {
@@ -498,8 +456,8 @@ mod tests {
         assert!(finding.detail.contains("[BLANK_AUDIO]"));
         assert!(finding.detail.contains("0.64s"));
         assert!(finding.detail.contains("0.83s"));
-        // The marker also reads too fast for its window, and that still blocks.
-        assert!(!report.passes());
+        // Reading speed is advice; a 0.64 s marker no longer blocks delivery.
+        assert!(report.passes());
         let inverse = EditCommand::RemoveCaptionWord {
             cue_id: marker.cue_id,
             word_index: 0,
@@ -559,6 +517,21 @@ mod tests {
         // At the floor exactly, the same.
         let at_floor = validate(&with_brief_first_cue(30_000), &context(&[]));
         assert!(at_floor.passes(), "{:?}", at_floor.findings);
+    }
+
+    #[test]
+    fn an_overwide_caption_is_advice_without_a_release_gate() {
+        let mut doc = document();
+        doc.captions.cues[0].lines[0].words[0].text =
+            "Averylongunbrokenwordthatcannotfitcomfortablyononesubtitleline".to_owned();
+        let report = validate(&doc, &context(&[]));
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == "captions.line_too_wide")
+            .expect("line width finding");
+        assert_eq!(finding.severity, Severity::Advisory);
+        assert!(report.passes(), "{:?}", report.findings);
     }
 
     #[test]
@@ -708,7 +681,7 @@ mod tests {
     /// A sidecar cue that reads faster than the profile allows is refused
     /// until the person exporting says they know, and then it is only said.
     #[test]
-    fn a_hot_sidecar_cue_blocks_until_the_reading_rate_gate_is_passed() {
+    fn a_hot_sidecar_cue_is_advice_without_a_confirmation_gate() {
         let mut hot = document();
         // Squeeze the first cue's window to the profile's shortest allowed
         // hold: the same words, said in less time than a reader has for
@@ -728,23 +701,24 @@ mod tests {
 
         let gates = Vec::new();
         let report = validate(&hot, &context(&gates));
-        assert!(!report.passes());
+        assert!(report.passes(), "{:?}", report.findings);
         assert!(
             codes(&report).contains(&"captions.reading_rate".to_owned()),
             "{:?}",
             report.findings
         );
 
-        let confirmed = vec![super::READING_RATE_GATE.to_owned()];
-        let report = validate(&hot, &context(&confirmed));
-        assert!(report.passes(), "{:?}", report.findings);
         let said = report
             .findings
             .iter()
             .find(|finding| finding.code == "captions.reading_rate")
             .expect("the hot cue is still named");
         assert_eq!(said.severity, Severity::Advisory);
-        assert!(said.detail.contains("confirmed"), "{}", said.detail);
+        assert!(
+            said.detail.contains("characters a second"),
+            "{}",
+            said.detail
+        );
     }
 
     #[test]
@@ -793,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sidecar_that_cannot_be_read_at_speed_blocks() {
+    fn a_sidecar_that_flashes_under_a_third_second_blocks() {
         let mut fast = document();
         // Same words, a third of the time.
         for cue in &mut fast.captions.cues {

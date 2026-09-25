@@ -449,6 +449,17 @@ export async function registerSource(
   return invoke<RegisteredSource>('register_source', { projectId, absolutePath });
 }
 
+/** Reconnect a moved recording only when the daemon verifies its fingerprint. */
+export async function relinkSource(
+  projectId: string,
+  sourceId: string,
+  absolutePath: string,
+): Promise<RegisteredSource> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<RegisteredSource>('relink_source', { projectId, sourceId, absolutePath });
+}
+
 export async function getSource(sourceId: string): Promise<SourceDetails> {
   if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
   const { invoke } = await core();
@@ -588,6 +599,7 @@ export interface DirectClipInput {
   readonly candidateId: string;
   readonly cut: ClipCut;
   readonly styleRef?: string;
+  readonly highlightSpokenWord?: boolean;
   /**
    * Read only for `exact`. Any edge between two words is kept as sent; one
    * that falls inside a word is moved out to keep the whole word (R63).

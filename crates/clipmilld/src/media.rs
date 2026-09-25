@@ -20,7 +20,10 @@ use std::{
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -73,6 +76,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const TERMINATE_GRACE: Duration = Duration::from_millis(500);
 const BASE_DEADLINE_MILLIS: u64 = 30_000;
 const MAX_DEADLINE_MILLIS: u64 = 4 * 60 * 60 * 1_000;
+const STALL_LIMIT: Duration = Duration::from_secs(60);
 const MAX_STDERR_BYTES: u64 = 256 * 1024;
 const MAX_PROBE_STDOUT_BYTES: u64 = 64 * 1024 * 1024;
 const PROGRESS_TAIL_BYTES: u64 = 4 * 1024;
@@ -117,14 +121,38 @@ const LOUDNESS_CADENCE_HZ: u32 = 10;
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ProgressSlot {
     inner: Arc<Mutex<Option<ProgressUnits>>>,
+    cancelled: Arc<AtomicBool>,
+    export_step: Option<ExportProgressStep>,
+}
+
+#[derive(Clone, Debug)]
+struct ExportProgressStep {
+    unit: &'static str,
+    base: u64,
+    span: u64,
+    total: u64,
 }
 
 impl ProgressSlot {
     pub(crate) fn set(&self, unit: &str, done: u64, total: u64) {
         if let Ok(mut slot) = self.inner.lock() {
+            let (unit, done, total) = if unit == "media_millis" {
+                self.export_step.as_ref().map_or_else(
+                    || (unit.to_owned(), done, total),
+                    |step| {
+                        (
+                            step.unit.to_owned(),
+                            step.base.saturating_add(done.min(step.span)),
+                            step.total,
+                        )
+                    },
+                )
+            } else {
+                (unit.to_owned(), done, total)
+            };
             *slot = Some(ProgressUnits {
-                unit: unit.to_owned(),
-                done: done.min(total.max(done)),
+                unit,
+                done: if total > 0 { done.min(total) } else { done },
                 total,
             });
         }
@@ -133,14 +161,37 @@ impl ProgressSlot {
     pub(crate) fn take(&self) -> Option<ProgressUnits> {
         self.inner.lock().ok().and_then(|mut slot| slot.take())
     }
+
+    pub(crate) fn export_step(&self, unit: &'static str, base: u64, span: u64, total: u64) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            cancelled: Arc::clone(&self.cancelled),
+            export_step: Some(ExportProgressStep {
+                unit,
+                base,
+                span,
+                total,
+            }),
+        }
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
 }
 
 #[derive(Debug, Error)]
 pub(crate) enum MediaError {
     #[error("cannot run media sidecar: {0}")]
     Io(String),
-    #[error("FFmpeg exceeded its duration-scaled deadline")]
+    #[error("media step exceeded its overall safety limit")]
     Timeout,
+    #[error("media step stopped making progress")]
+    Stalled,
     #[error("FFmpeg output exceeded its bounded budget")]
     OutputLimit,
     #[error("FFmpeg rejected the media input")]
@@ -157,7 +208,7 @@ impl MediaError {
             Self::Failed | Self::InvalidOutput(_) | Self::OutputLimit => {
                 TaskExecutionError::deterministic(self.to_string())
             }
-            Self::Io(_) | Self::Timeout | Self::Stopped => {
+            Self::Io(_) | Self::Timeout | Self::Stalled | Self::Stopped => {
                 TaskExecutionError::transient(self.to_string())
             }
         }
@@ -326,28 +377,43 @@ fn run_ffmpeg_blocking(
         .stderr(Stdio::from(stderr));
     let mut child = command.spawn().map_err(io_error)?;
 
-    let deadline_millis = BASE_DEADLINE_MILLIS
-        .saturating_add(spec.duration_hint_millis.saturating_mul(4))
-        .min(MAX_DEADLINE_MILLIS);
-    let deadline = Instant::now() + Duration::from_millis(deadline_millis);
+    // A slow machine may encode far below real time. Its media clock, rather
+    // than the clip's duration, tells us whether it is still making progress.
+    // The cap protects against a sidecar that advances forever without ending.
+    let started = Instant::now();
+    let mut last_movement = started;
+    let mut last_media_millis = 0;
     let mut ticks_since_progress = 0_u32;
     let mut ticks_since_size = 0_u32;
     let status = loop {
+        if progress.is_cancelled() {
+            terminate_child(&mut child);
+            return Err(MediaError::Stopped);
+        }
         if let Some(status) = child.try_wait().map_err(io_error)? {
             break status;
         }
-        if Instant::now() >= deadline {
+        let now = Instant::now();
+        if now.duration_since(started) >= Duration::from_millis(MAX_DEADLINE_MILLIS) {
             terminate_child(&mut child);
             return Err(MediaError::Timeout);
         }
         ticks_since_progress += 1;
         if ticks_since_progress >= 10 {
             ticks_since_progress = 0;
-            if spec.duration_hint_millis > 0
-                && let Some(done) = read_progress_millis(&progress_path)
-            {
-                progress.set("media_millis", done, spec.duration_hint_millis);
+            if let Some(done) = read_progress_millis(&progress_path) {
+                if done > last_media_millis {
+                    last_media_millis = done;
+                    last_movement = now;
+                }
+                if spec.duration_hint_millis > 0 {
+                    progress.set("media_millis", done, spec.duration_hint_millis);
+                }
             }
+        }
+        if now.duration_since(last_movement) >= STALL_LIMIT {
+            terminate_child(&mut child);
+            return Err(MediaError::Stalled);
         }
         ticks_since_size += 1;
         if ticks_since_size >= 20 {
@@ -524,6 +590,7 @@ struct SourceContext {
     absolute_path: String,
     fingerprint: Sha256Digest,
     duration_ticks: i64,
+    frame_rate: clipmill_render::FrameRateSpec,
     stream_timebases: Vec<(u64, i128, i128)>,
     stream_kinds: Vec<(u64, String)>,
 }
@@ -654,6 +721,8 @@ async fn source_context(
         absolute_path: source.observation.absolute_path,
         fingerprint,
         duration_ticks,
+        frame_rate: crate::inspector::frame_rate_of(&source.source_map_json)
+            .unwrap_or(clipmill_render::RenderProfile::default().frame_rate),
         stream_timebases,
         stream_kinds,
     })
@@ -823,6 +892,14 @@ async fn execute_proxy(
     progress: &ProgressSlot,
 ) -> Result<ArtifactId, TaskExecutionError> {
     let context = source_context(database, sources, task).await?;
+    let frame_rate = format!("{}/{}", context.frame_rate.num, context.frame_rate.den);
+    let gop_frames = ((context
+        .frame_rate
+        .num
+        .saturating_add(context.frame_rate.den / 2))
+        / context.frame_rate.den)
+        .clamp(1, 240);
+    let gop = gop_frames.to_string();
     let mut config = Map::new();
     config.insert("ffmpeg_bom".to_owned(), json!(FFMPEG_BOM));
     config.insert(
@@ -834,8 +911,8 @@ async fn execute_proxy(
         json!({
             "max_width": 1280,
             "max_height": 720,
-            "frame_rate": "30000/1001",
-            "gop_frames": 30,
+            "frame_rate": frame_rate.as_str(),
+            "gop_frames": gop_frames,
             "video_codec": "libx264",
             "crf": 23,
             "preset": "veryfast",
@@ -866,7 +943,7 @@ async fn execute_proxy(
                 "-fps_mode",
                 "cfr",
                 "-r",
-                "30000/1001",
+                &frame_rate,
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -876,9 +953,9 @@ async fn execute_proxy(
                 "-pix_fmt",
                 "yuv420p",
                 "-g",
-                "30",
+                &gop,
                 "-keyint_min",
-                "30",
+                &gop,
                 "-sc_threshold",
                 "0",
                 "-c:a",
@@ -917,7 +994,7 @@ async fn execute_proxy(
             )
             .await
             .map_err(MediaError::into_task_error)?;
-        let descriptor = proxy_descriptor(&probed, context.fingerprint)?;
+        let descriptor = proxy_descriptor(&probed, context.fingerprint, context.frame_rate, gop_frames)?;
         write_canonical_json(&staging, &artifact_path("proxy.json")?, &descriptor)?;
         commit_staging(
             artifacts,
@@ -936,6 +1013,8 @@ async fn execute_proxy(
 fn proxy_descriptor(
     probed: &Value,
     fingerprint: Sha256Digest,
+    rate: clipmill_render::FrameRateSpec,
+    gop_frames: i64,
 ) -> Result<Value, TaskExecutionError> {
     let streams = probed["streams"]
         .as_array()
@@ -944,6 +1023,17 @@ fn proxy_descriptor(
         .iter()
         .find(|stream| stream["codec_type"] == "video")
         .ok_or_else(|| TaskExecutionError::deterministic("proxy has no video stream"))?;
+    let observed_rate = video["r_frame_rate"]
+        .as_str()
+        .and_then(|value| value.split_once('/'))
+        .and_then(|(num, den)| Some((num.parse::<i128>().ok()?, den.parse::<i128>().ok()?)))
+        .filter(|(num, den)| *num > 0 && *den > 0)
+        .ok_or_else(|| TaskExecutionError::deterministic("proxy probe has no valid frame rate"))?;
+    if observed_rate.0 * i128::from(rate.den) != i128::from(rate.num) * observed_rate.1 {
+        return Err(TaskExecutionError::deterministic(
+            "proxy frame rate differs from the source rate requested",
+        ));
+    }
     let audio = streams
         .iter()
         .find(|stream| stream["codec_type"] == "audio");
@@ -966,8 +1056,8 @@ fn proxy_descriptor(
             "codec": video["codec_name"].as_str().unwrap_or("unknown"),
             "width": video["width"].as_u64().unwrap_or(0),
             "height": video["height"].as_u64().unwrap_or(0),
-            "frame_rate": {"num": 30_000, "den": 1_001},
-            "gop_frames": 30,
+            "frame_rate": {"num": rate.num, "den": rate.den},
+            "gop_frames": gop_frames,
             "pix_fmt": video["pix_fmt"].as_str().unwrap_or("unknown"),
         },
     });
@@ -1800,9 +1890,29 @@ mod tests {
     use clipmill_core::Sha256Digest;
 
     use super::{
-        ProgressSlot, directory_bytes, ffmpeg_sibling, parse_loudness_metadata,
+        ProgressSlot, directory_bytes, ffmpeg_sibling, parse_loudness_metadata, proxy_descriptor,
         read_progress_millis, read_wav_info, ticks_to_millis,
     };
+
+    #[test]
+    fn proxy_descriptor_reports_the_verified_source_rate() {
+        let probed = serde_json::json!({
+            "format": {"duration": "2.000", "format_name": "mp4"},
+            "streams": [{
+                "codec_type": "video", "codec_name": "h264", "width": 1280,
+                "height": 720, "pix_fmt": "yuv420p", "r_frame_rate": "24000/1001"
+            }]
+        });
+        let rate = clipmill_render::FrameRateSpec {
+            num: 24_000,
+            den: 1_001,
+        };
+        let descriptor = proxy_descriptor(&probed, Sha256Digest::from_bytes([7; 32]), rate, 24)
+            .expect("matching rate");
+        assert_eq!(descriptor["video"]["frame_rate"]["num"], 24_000);
+        let wrong = clipmill_render::FrameRateSpec { num: 25, den: 1 };
+        assert!(proxy_descriptor(&probed, Sha256Digest::from_bytes([7; 32]), wrong, 25).is_err());
+    }
 
     /// A gated window must not become `null` in the document.
     ///
@@ -1891,6 +2001,32 @@ mod tests {
         let taken = slot.take().expect("latest progress");
         assert_eq!((taken.done, taken.total), (20, 100));
         assert!(slot.take().is_none());
+    }
+
+    #[test]
+    fn export_steps_keep_one_monotonic_counter() {
+        let slot = ProgressSlot::default();
+        let first = slot.export_step("export.measuring", 0, 1_000, 3_000);
+        first.set("media_millis", 1_000, 1_000);
+        let measured = slot.take().expect("measured");
+        assert_eq!(
+            (measured.unit.as_str(), measured.done, measured.total),
+            ("export.measuring", 1_000, 3_000)
+        );
+        let second = slot.export_step("export.rendering", 1_000, 1_000, 3_000);
+        second.set("media_millis", 250, 1_000);
+        let rendered = slot.take().expect("render progress");
+        assert_eq!(
+            (rendered.unit.as_str(), rendered.done, rendered.total),
+            ("export.rendering", 1_250, 3_000)
+        );
+        second.set("media_millis", 1_500, 1_000);
+        assert_eq!(slot.take().expect("capped").done, 2_000);
+        let third = slot.export_step("export.checking", 2_000, 1_000, 3_000);
+        third.set("media_millis", 1_000, 1_000);
+        assert_eq!(slot.take().expect("complete").done, 3_000);
+        third.cancel();
+        assert!(slot.is_cancelled());
     }
 
     #[test]

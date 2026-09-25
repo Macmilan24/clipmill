@@ -323,13 +323,31 @@ impl ArtifactStore {
             .active
             .remove(&artifact_id)
             .ok_or_else(|| ArtifactError::UnknownStaging(staging_id.to_string()))?;
-        let result = self.commit_inner(&state, declared_paths, quality);
+        let mut renamed_to_object = false;
+        let result = self.commit_inner(&state, declared_paths, quality, &mut renamed_to_object);
         match result {
             Ok(lease) => Ok(lease),
             Err(error) => {
-                if fs::symlink_metadata(&state.path).is_ok()
+                // A failure after the atomic staging-to-object rename leaves
+                // no staging directory to revoke. Remove that unpublished
+                // object as well, or the same recipe is refused on every retry
+                // until the store is reopened. Never touch a catalogued hit.
+                self.catalog.remove(&artifact_id);
+                let failed_path = if fs::symlink_metadata(&state.path).is_ok() {
+                    Some(&state.path)
+                } else if renamed_to_object {
+                    let final_path = self.paths.object_dir(artifact_id);
+                    if fs::symlink_metadata(&final_path).is_ok() {
+                        // Keep the owned path alive while it is quarantined.
+                        return self.quarantine_failed_object(&final_path, error);
+                    }
+                    None
+                } else {
+                    None
+                };
+                if let Some(path) = failed_path
                     && let Err(quarantine_error) =
-                        quarantine_entry(&self.paths, &state.path, "commit-failed")
+                        quarantine_entry(&self.paths, path, "commit-failed")
                 {
                     return Err(ArtifactError::QuarantineAfterFailure {
                         original: error.to_string(),
@@ -339,6 +357,20 @@ impl ArtifactStore {
                 Err(error)
             }
         }
+    }
+
+    fn quarantine_failed_object(
+        &self,
+        path: &Path,
+        error: ArtifactError,
+    ) -> Result<ArtifactLease, ArtifactError> {
+        if let Err(quarantine_error) = quarantine_entry(&self.paths, path, "commit-failed-object") {
+            return Err(ArtifactError::QuarantineAfterFailure {
+                original: error.to_string(),
+                quarantine: quarantine_error.to_string(),
+            });
+        }
+        Err(error)
     }
 
     /// Revoke an uncommitted staging token and quarantine its directory.
@@ -369,6 +401,7 @@ impl ArtifactStore {
         state: &StagingState,
         declared_paths: Vec<ArtifactPath>,
         quality: BTreeMap<String, f64>,
+        renamed_to_object: &mut bool,
     ) -> Result<ArtifactLease, ArtifactError> {
         if declared_paths.is_empty() {
             return Err(ArtifactError::NoDeclaredFiles);
@@ -437,6 +470,7 @@ impl ArtifactStore {
 
         fs::rename(&state.path, &final_path)
             .map_err(|source| ArtifactError::io(&final_path, source))?;
+        *renamed_to_object = true;
         sync_directory(&self.paths.staging)?;
         sync_directory(final_parent)?;
         let entry = load_catalog_entry(&final_path, state.artifact_id)?;

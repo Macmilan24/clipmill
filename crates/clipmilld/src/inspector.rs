@@ -251,13 +251,28 @@ pub(crate) fn frame_of(source_map_json: &[u8]) -> Option<Frame> {
     (width > 0 && height > 0).then_some(Frame { width, height })
 }
 
+/// Use the recorded source rate for both preview and output. Older source maps
+/// may omit it; those retain the render profile's default rate.
+pub(crate) fn frame_rate_of(source_map_json: &[u8]) -> Option<clipmill_render::FrameRateSpec> {
+    let map: Value = serde_json::from_slice(source_map_json).ok()?;
+    let video = map
+        .get("streams")?
+        .as_array()?
+        .iter()
+        .find(|stream| stream["kind"] == "video")?;
+    let rate = &video["video"]["frame_rate"];
+    let num = rate["num"].as_i64()?;
+    let den = rate["den"].as_i64()?;
+    (num > 0 && den > 0).then_some(clipmill_render::FrameRateSpec { num, den })
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
     use clipmill_contracts::schemas::ranking_set::RankingSet;
 
-    use super::{LoadError, check_coherence, frame_of};
+    use super::{LoadError, check_coherence, frame_of, frame_rate_of};
 
     #[test]
     fn the_display_dimensions_are_preferred_over_the_coded_ones() {
@@ -289,6 +304,21 @@ mod tests {
         let map = br#"{"streams":[{"kind":"video","video":{
             "coded_width":0,"coded_height":720}}]}"#;
         assert!(frame_of(map).is_none());
+    }
+
+    #[test]
+    fn source_frame_rate_is_kept_as_an_exact_rational() {
+        let map =
+            br#"{"streams":[{"kind":"video","video":{"frame_rate":{"num":24000,"den":1001}}}]}"#;
+        let rate = frame_rate_of(map).expect("source rate");
+        assert_eq!((rate.num, rate.den), (24_000, 1_001));
+        assert!(frame_rate_of(br#"{"streams":[{"kind":"video","video":{}}]}"#).is_none());
+        assert!(
+            frame_rate_of(
+                br#"{"streams":[{"kind":"video","video":{"frame_rate":{"num":0,"den":1}}}]}"#
+            )
+            .is_none()
+        );
     }
 
     /// The published interview ranking, whose inputs name the fixtures it was

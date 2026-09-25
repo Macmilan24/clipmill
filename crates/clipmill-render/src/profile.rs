@@ -107,6 +107,12 @@ impl CaptionStyle {
         if let Some(value) = &options.outline {
             style.outline = Colour::from_hex(value)?;
         }
+        if options.highlight_spoken_word == Some(true) && style.spoken == style.unspoken {
+            style.spoken = Colour::opaque(0xFF, 0xD6, 0x5C);
+        }
+        if options.highlight_spoken_word == Some(false) {
+            style.spoken = style.unspoken;
+        }
         Some(style)
     }
     /// The default look: heavy outline, no plate, high contrast, and a spoken

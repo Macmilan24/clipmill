@@ -3,7 +3,14 @@
  * disk, or delete it. Rename and delete confirm in a dialog; deleting leaves a
  * recording imported from disk where it is.
  */
-import { FolderOpen, MoreHorizontal, Pencil, SquareArrowOutUpRight, Trash2 } from 'lucide-react';
+import {
+  FolderOpen,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  SquareArrowOutUpRight,
+  Trash2,
+} from 'lucide-react';
 import { type JSX, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -30,6 +37,7 @@ export interface ProjectActionsProps {
   readonly onOpen: (entry: LibraryProject) => void;
   readonly onRename: (entry: LibraryProject, name: string) => Promise<void>;
   readonly onReveal: (path: string) => void;
+  readonly onRelink?: (entry: LibraryProject) => Promise<void>;
   readonly onDelete: (entry: LibraryProject) => Promise<void>;
 }
 
@@ -46,6 +54,7 @@ export function ProjectActions({
   onOpen,
   onRename,
   onReveal,
+  onRelink,
   onDelete,
 }: ProjectActionsProps): JSX.Element {
   const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
@@ -80,6 +89,16 @@ export function ProjectActions({
             <DropdownMenuItem onSelect={() => onReveal(path)}>
               <FolderOpen aria-hidden="true" />
               {revealLabel()}
+            </DropdownMenuItem>
+          )}
+          {entry.source !== null && onRelink && (
+            <DropdownMenuItem
+              onSelect={() => {
+                void onRelink(entry);
+              }}
+            >
+              <Link2 aria-hidden="true" />
+              Locate recording…
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />

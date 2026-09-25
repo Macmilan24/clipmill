@@ -44,6 +44,7 @@ import type { ConnectionState, Readiness } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 import { type ChosenSource, ImportLoader, isVideoPath } from '../import/loader.js';
 import { CAPTION_LOOKS, DEFAULT_LOOK } from '../results/captionLook.js';
+import { CaptionLookSample } from '../results/CaptionLookSample.js';
 import { YouTubeImport } from '../import/YouTubeImport.js';
 import { recallYoutube, rememberYoutube } from '../import/youtube.js';
 import {
@@ -569,7 +570,10 @@ export function NewProject({
                       setSettings((current) => ({ ...current, captionLook: look.ref }))
                     }
                   >
-                    <span aria-hidden="true">Aa</span>
+                    <CaptionLookSample
+                      look={look.label.toLowerCase() as 'clean' | 'minimal' | 'boxed'}
+                      highlight={settings.highlightSpokenWord ?? true}
+                    />
                     {look.label}
                   </button>
                 ))}
@@ -577,6 +581,20 @@ export function NewProject({
               <p className="text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
                 Every clip from this recording starts with it. Change any clip in the Editor.
               </p>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={settings.highlightSpokenWord ?? true}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      highlightSpokenWord: event.target.checked,
+                    }))
+                  }
+                />
+                Highlight the spoken word
+              </label>
             </div>
             <div className="mb-2 text-xs font-medium">Clip length</div>
             <RadioGroup

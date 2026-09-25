@@ -17,6 +17,7 @@ use clipmill_edit_ir::{
     CropEasing, CropKeyframe, CropRect, EditDocument, LayoutState, VideoSegment,
     crop_along_keyframes,
 };
+use std::ops::Range;
 
 use crate::{
     plan::{RenderError, SourceInput},
@@ -45,6 +46,26 @@ pub struct DecodeSpan {
     pub frame_count: i64,
     /// Phase of this segment’s first frame on the global program grid.
     pub video_offset_ticks: i64,
+}
+
+/// Consecutive sections over the same source window share one input decoder.
+/// Their trims still select exact, separate ranges inside that input.
+pub(crate) fn decoder_groups(spans: &[DecodeSpan]) -> Vec<Range<usize>> {
+    let mut groups = Vec::new();
+    let mut start = 0;
+    for index in 1..=spans.len() {
+        let same_decoder = index < spans.len()
+            && spans[index].source_fingerprint == spans[index - 1].source_fingerprint
+            && spans[index].seek_ticks == spans[index - 1].seek_ticks
+            && spans[index].trim_start_ticks == spans[index - 1].trim_end_ticks;
+        if !same_decoder {
+            if start < index {
+                groups.push(start..index);
+            }
+            start = index;
+        }
+    }
+    groups
 }
 
 /// The crop rectangle a segment shows on one of its own frames.
@@ -107,6 +128,47 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     let mut video_spans = Vec::new();
     let mut audio_labels = Vec::new();
 
+    let mut video_inputs = vec![String::new(); request.spans.len()];
+    let mut audio_inputs = vec![String::new(); request.spans.len()];
+    for (input_index, group) in decoder_groups(request.spans).iter().enumerate() {
+        let video_members: Vec<_> = group
+            .clone()
+            .filter(|&i| request.spans[i].frame_count > 0)
+            .collect();
+        if !request.audio_only && !video_members.is_empty() {
+            if video_members.len() == 1 {
+                video_inputs[video_members[0]] = format!("[{input_index}:v]");
+            } else {
+                let labels = video_members
+                    .iter()
+                    .map(|i| format!("[decode_v{i}]"))
+                    .collect::<String>();
+                chains.push(format!(
+                    "[{input_index}:v]split={}{}",
+                    video_members.len(),
+                    labels
+                ));
+                for i in video_members {
+                    video_inputs[i] = format!("[decode_v{i}]");
+                }
+            }
+        }
+        if request.spans[group.start].has_audio {
+            if group.len() == 1 {
+                audio_inputs[group.start] = format!("[{input_index}:a]");
+            } else {
+                let labels = group
+                    .clone()
+                    .map(|i| format!("[decode_a{i}]"))
+                    .collect::<String>();
+                chains.push(format!("[{input_index}:a]asplit={}{}", group.len(), labels));
+                for i in group.clone() {
+                    audio_inputs[i] = format!("[decode_a{i}]");
+                }
+            }
+        }
+    }
+
     for (index, span) in request.spans.iter().enumerate() {
         let segment = request
             .document
@@ -120,8 +182,9 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         if !request.audio_only && span.frame_count > 0 {
             let label = format!("v{index}");
             chains.push(format!(
-                "[{index}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS-{offset}/TB,\
+                "{}trim=start={start}:end={end},setpts=PTS-STARTPTS-{offset}/TB,\
                  fps={num}/{den}:start_time=0,{TAIL_PAD},trim=end_frame={frames},setpts=PTS-STARTPTS,format=yuv420p[t{index}]",
+                video_inputs[index],
                 num = rate.num,
                 den = rate.den,
                 frames = span.frame_count,
@@ -141,8 +204,9 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         let label = format!("a{index}");
         if span.has_audio {
             chains.push(format!(
-                "[{index}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS,\
+                "{}atrim=start={start}:end={end},asetpts=PTS-STARTPTS,\
                  aformat=sample_fmts=fltp:sample_rates={rate_hz}:channel_layouts=stereo[{label}]",
+                audio_inputs[index],
                 rate_hz = request.profile.audio_sample_rate,
             ));
         } else {

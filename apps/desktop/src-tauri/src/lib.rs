@@ -265,6 +265,24 @@ async fn register_source(
         })
 }
 
+/// Locate the same recording after it has moved, preserving its source id.
+#[tauri::command]
+async fn relink_source(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    source_id: String,
+    absolute_path: String,
+) -> Result<views::RegisteredSourceView, String> {
+    supervisor
+        .client()
+        .register_source_with_id(&project_id, &absolute_path, &source_id)
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|registered| {
+            views::RegisteredSourceView::try_from(registered).map_err(ToOwned::to_owned)
+        })
+}
+
 #[tauri::command]
 async fn get_source(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
@@ -809,6 +827,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             storage_stats,
             choose_source_file,
             register_source,
+            relink_source,
             get_source,
             start_youtube_import,
             get_youtube_import,

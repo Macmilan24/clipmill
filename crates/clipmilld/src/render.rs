@@ -95,8 +95,11 @@ pub(crate) async fn execute_render_task(
     drop(lease);
 
     let font = stage_font_source(context.fonts_dir)?;
-    let inputs = resolve_sources(context, &task.project_id, &document).await?;
-    let profile = RenderProfile::default();
+    let (inputs, source_rate) = resolve_sources(context, &task.project_id, &document).await?;
+    let mut profile = RenderProfile::default();
+    if let Some(rate) = source_rate {
+        profile.frame_rate = rate;
+    }
     let plan = clipmill_render::compile(&document, &inputs, &profile)
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
 
@@ -175,7 +178,7 @@ async fn resolve_sources(
     context: &RenderContext<'_>,
     project_id: &str,
     document: &EditDocument,
-) -> Result<Vec<SourceInput>, TaskExecutionError> {
+) -> Result<(Vec<SourceInput>, Option<clipmill_render::FrameRateSpec>), TaskExecutionError> {
     let mut wanted = document
         .video
         .segments
@@ -191,6 +194,12 @@ async fn resolve_sources(
         .await
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     let mut inputs = Vec::with_capacity(wanted.len());
+    let first_source = document
+        .video
+        .segments
+        .first()
+        .map(|segment| segment.source_fingerprint.as_str());
+    let mut source_rate = None;
     for fingerprint in wanted {
         let record = registered
             .iter()
@@ -215,6 +224,9 @@ async fn resolve_sources(
             })?;
         let map: Value = serde_json::from_slice(&record.source_map_json)
             .map_err(|_| TaskExecutionError::deterministic("source map is not valid JSON"))?;
+        if Some(fingerprint.as_str()) == first_source {
+            source_rate = crate::inspector::frame_rate_of(&record.source_map_json);
+        }
         let (width, height, has_audio) = frame_shape(&map)?;
         let duration_ticks = map["container"]["duration_ticks"].as_i64().unwrap_or(0);
         inputs.push(SourceInput {
@@ -227,7 +239,7 @@ async fn resolve_sources(
             keyframe_ticks: keyframe_ticks(context, &record.source_id).await,
         });
     }
-    Ok(inputs)
+    Ok((inputs, source_rate))
 }
 
 /// Display dimensions of the first video stream, and whether audio exists.
@@ -394,11 +406,13 @@ async fn render_into(
     write_text(staging, ASS_FILE, &plan.ass)?;
 
     let duration_hint = ticks_to_millis(plan.duration_ticks);
+    let total_work = duration_hint.saturating_mul(3);
+    let measuring = progress.export_step("export.measuring", 0, duration_hint, total_work);
     let measurement_report = context
         .media
         .run_ffmpeg(
             ffmpeg_spec(plan.measurement_args(), &work, duration_hint),
-            progress.clone(),
+            measuring,
         )
         .await
         .map_err(MediaError::into_task_error)?;
@@ -407,18 +421,31 @@ async fn render_into(
             TaskExecutionError::deterministic("the loudness measurement pass reported nothing")
         })?;
 
+    let rendering =
+        progress.export_step("export.rendering", duration_hint, duration_hint, total_work);
     let _encode = context
         .media
         .run_ffmpeg(
             ffmpeg_spec(plan.encode_args(measured_input), &work, duration_hint),
-            progress.clone(),
+            rendering,
         )
         .await
         .map_err(MediaError::into_task_error)?;
 
+    progress.set(
+        "export.checking",
+        duration_hint.saturating_mul(2),
+        total_work,
+    );
     let probed = probe_output(context, &work).await?;
     verify_output(plan, &probed)?;
-    let measured_output = measure_output(context, &work, duration_hint, progress).await?;
+    let checking = progress.export_step(
+        "export.checking",
+        duration_hint.saturating_mul(2),
+        duration_hint,
+        total_work,
+    );
+    let measured_output = measure_output(context, &work, duration_hint, &checking).await?;
 
     write_text(staging, SRT_FILE, &plan.srt)?;
     write_text(staging, VTT_FILE, &plan.vtt)?;

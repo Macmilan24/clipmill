@@ -35,7 +35,10 @@ export function EditorScreen({
   onExport,
   api = daemonApi,
 }: EditorScreenProps) {
-  const editor = useEditor(clip, api);
+  const [sourceRefresh, setSourceRefresh] = useState(0);
+  const [relinking, setRelinking] = useState(false);
+  const [relinkProblem, setRelinkProblem] = useState<string | null>(null);
+  const editor = useEditor(clip, api, sourceRefresh);
   const [resolving, setResolving] = useState(false);
   const [resolveProblem, setResolveProblem] = useState<string | null>(null);
   const resolveVersion = useRef(0);
@@ -44,6 +47,22 @@ export function EditorScreen({
     setResolveProblem(null);
     setResolving(false);
   }, [clip?.docId, editor.plan?.revision]);
+
+  const onRelink = useCallback(async () => {
+    if (!clip || relinking) return;
+    setRelinking(true);
+    setRelinkProblem(null);
+    try {
+      const chosen = await api.chooseSourceFile();
+      if (chosen === null) return;
+      await api.relinkSource(clip.projectId, clip.sourceId, chosen);
+      setSourceRefresh((current) => current + 1);
+    } catch (error) {
+      setRelinkProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRelinking(false);
+    }
+  }, [api, clip, relinking]);
 
   /**
    * Why the solver cannot be asked, or `null` when it can.
@@ -135,7 +154,7 @@ export function EditorScreen({
       labels={clip?.labels ?? null}
       focus={focus}
       loading={editor.loading}
-      problem={editor.problem ?? resolveProblem}
+      problem={relinkProblem ?? editor.problem ?? resolveProblem}
       busy={editor.busy}
       canUndo={editor.canUndo}
       canRedo={editor.canRedo}
@@ -144,6 +163,8 @@ export function EditorScreen({
       picker={clip === null ? <ClipList onOpen={onOpen} api={api} /> : null}
       onOpenResults={onOpenResults}
       onExport={clip === null ? null : () => onExport(clip)}
+      onRelink={clip === null ? null : () => void onRelink()}
+      relinking={relinking}
       onApply={(command) => {
         void editor.apply(command);
       }}

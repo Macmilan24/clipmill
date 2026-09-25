@@ -10,7 +10,7 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { ExportPlan, ExportRequest, QueuedExport } from '../daemon/client.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
-import { latestExportOf, useDelivery } from '../export/delivery.js';
+import { latestExportOf, rememberExportRate, useDelivery } from '../export/delivery.js';
 import type { ClipRef, EditorFocus } from '../shell/route.js';
 import { Export } from './Export.js';
 import { BatchExportScreen } from './BatchExportScreen.js';
@@ -22,7 +22,6 @@ const PLAN_DEBOUNCE_MS = 250;
 const RIGHTS_GATE_SECONDS = 60;
 const DURATION_GATE = 'duration_60s';
 /** The confirmation that ships a subtitle file faster than the reading profile. */
-const READING_RATE_GATE = 'captions_reading_rate';
 const HOT_CAPTION_CODE = 'captions.reading_rate';
 /** The tokens that make each clip's name its own; the daemon insists on one. */
 const UNIQUE_TOKENS = ['{index}', '{clip}', '{address}'] as const;
@@ -74,7 +73,6 @@ export function ExportScreen({
   const [pattern, setPattern] = useState('{index}-{clip}');
   const [attestation, setAttestation] = useState('');
   const [rightsApproval, setRightsApproval] = useState<string | null>(null);
-  const [captionApproval, setCaptionApproval] = useState<string | null>(null);
   const [plan, setPlan] = useState<ExportPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -86,6 +84,16 @@ export function ExportScreen({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectionGeneration = useRef(0);
   const delivery = useDelivery(projectId, queued, api);
+  useEffect(() => {
+    if (queued && delivery?.files && delivery.createdUnixMillis && delivery.updatedUnixMillis) {
+      rememberExportRate(
+        queued.jobId,
+        durationTicks / 90_000,
+        delivery.createdUnixMillis,
+        delivery.updatedUnixMillis,
+      );
+    }
+  }, [queued, delivery, durationTicks]);
   const approvalKey = plan
     ? JSON.stringify([
         projectId,
@@ -98,7 +106,6 @@ export function ExportScreen({
       ])
     : null;
   const gatePassed = approvalKey !== null && rightsApproval === approvalKey;
-  const hotCaptionsConfirmed = approvalKey !== null && captionApproval === approvalKey;
   const [audition, setAudition] = useState<{
     projectId: string;
     renderId: string;
@@ -142,7 +149,6 @@ export function ExportScreen({
     setBusy(false);
     setAttestation('');
     setRightsApproval(null);
-    setCaptionApproval(null);
     setDurationTicks(0);
     setTitle('');
     setPlan(null);
@@ -200,16 +206,13 @@ export function ExportScreen({
       destinationDir: destination,
       namingPattern: effectivePattern(pattern),
       sourceAttestation: attestation,
-      gatesPassed: [
-        ...(gatePassed ? [DURATION_GATE] : []),
-        ...(hotCaptionsConfirmed ? [READING_RATE_GATE] : []),
-      ],
+      gatesPassed: gatePassed ? [DURATION_GATE] : [],
       aiAssistance: [...AI_ASSISTANCE],
       index: 1,
       date: today(),
       title,
     };
-  }, [docId, destination, pattern, gatePassed, hotCaptionsConfirmed, title, attestation]);
+  }, [docId, destination, pattern, gatePassed, title, attestation]);
 
   // The captions the strip named as too fast to read. Once confirmed they
   // come back as advisories under the same code, so the confirmation stays
@@ -268,6 +271,23 @@ export function ExportScreen({
     }
   }, [api]);
 
+  const onRelink = useCallback(async () => {
+    if (!clip || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const chosen = await api.chooseSourceFile();
+      if (chosen === null) return;
+      await api.relinkSource(clip.projectId, clip.sourceId, chosen);
+      setPlan(null);
+      setReplan((count) => count + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, clip, busy]);
+
   const onExport = useCallback(async () => {
     if (request === null || plan === null || !attestation) {
       return;
@@ -288,7 +308,6 @@ export function ExportScreen({
         // now, so the findings and the names on screen are of that, and let
         // the person look before asking again.
         setRightsApproval(null);
-        setCaptionApproval(null);
         setPlan(null);
         setReplan((count) => count + 1);
       }
@@ -296,6 +315,18 @@ export function ExportScreen({
       if (selectionGeneration.current === generation) setBusy(false);
     }
   }, [api, request, plan, attestation]);
+
+  const onCancel = useCallback(async () => {
+    if (!queued || delivery?.settled) return;
+    setBusy(true);
+    try {
+      await api.cancelJob(queued.jobId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The export could not be stopped.');
+    } finally {
+      setBusy(false);
+    }
+  }, [api, queued, delivery?.settled]);
 
   const onReveal = useCallback(
     async (path: string) => {
@@ -380,19 +411,21 @@ export function ExportScreen({
       rightsGateNeeded={rightsGateNeeded}
       rightsGatePassed={gatePassed}
       hotCaptions={hotCaptions}
-      hotCaptionsConfirmed={hotCaptionsConfirmed}
-      onHotCaptionsChange={(checked) => setCaptionApproval(checked ? approvalKey : null)}
       plan={plan}
       planning={planning}
       busy={busy}
       error={error}
       delivery={delivery}
+      mediaSeconds={durationTicks / 90_000}
       archive={archive}
       onDestinationChange={setDestination}
       onPatternChange={setPattern}
       onChooseFolder={() => void onChooseFolder()}
       onRightsGateChange={(checked) => setRightsApproval(checked ? approvalKey : null)}
       onExport={() => void onExport()}
+      onCancel={() => void onCancel()}
+      onRetry={() => void onExport()}
+      onRelink={clip === null ? undefined : () => void onRelink()}
       onArchive={() => void onArchive()}
       onReveal={(path) => void onReveal(path)}
     />

@@ -497,6 +497,8 @@ pub struct DirectClipInput {
     pub cut: String,
     #[serde(default)]
     pub style_ref: String,
+    #[serde(default)]
+    pub highlight_spoken_word: Option<bool>,
     /// Read only for `exact`. The daemon moves an edge that falls inside a
     /// word out to keep the whole word; anywhere between words is kept.
     #[serde(default)]
@@ -532,6 +534,7 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
                 _ => 1,
             },
             style_ref: input.style_ref,
+            highlight_spoken_word: input.highlight_spoken_word,
             start_ticks: input.start_ticks,
             end_ticks: input.end_ticks,
             variation: input.variation,

@@ -12,6 +12,23 @@ export const CAPTION_LOOKS = [
 export const DEFAULT_LOOK = CAPTION_LOOKS[0].ref;
 
 const key = (projectId: string) => `clipmill.captionLook.${projectId}`;
+const highlightKey = (projectId: string) => `clipmill.captionHighlight.${projectId}`;
+
+export function rememberHighlight(projectId: string, enabled: boolean): void {
+  try {
+    localStorage.setItem(highlightKey(projectId), enabled ? 'on' : 'off');
+  } catch {
+    /* default applies */
+  }
+}
+
+export function highlightFor(projectId: string): boolean {
+  try {
+    return localStorage.getItem(highlightKey(projectId)) !== 'off';
+  } catch {
+    return true;
+  }
+}
 
 export function rememberLook(projectId: string, styleRef: string): void {
   try {

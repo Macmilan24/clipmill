@@ -72,34 +72,6 @@ export function setCueRegion(
   return { op: 'set_cue_region', cue_id: cueId, region, ...inList(presentation) };
 }
 
-export function setCueTiming(
-  cueId: string,
-  startTicks: number,
-  endTicks: number,
-  presentation: Presentation = 'reading',
-): EditCommandJson {
-  return {
-    op: 'set_cue_timing',
-    cue_id: cueId,
-    start_ticks: startTicks,
-    end_ticks: endTicks,
-    ...inList(presentation),
-  };
-}
-
-export function removeCaptionWord(
-  cueId: string,
-  wordIndex: number,
-  presentation: Presentation = 'reading',
-): EditCommandJson {
-  return {
-    op: 'remove_caption_word',
-    cue_id: cueId,
-    word_index: wordIndex,
-    ...inList(presentation),
-  };
-}
-
 /** The whole clip's soft-cut duration in document ticks; zero disables it. */
 export function setTransition(durationTicks: number): EditCommandJson {
   return { op: 'set_transition', duration_ticks: durationTicks };

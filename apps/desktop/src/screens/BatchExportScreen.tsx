@@ -195,11 +195,7 @@ export function BatchExportScreen({ api = daemonApi, onBack, onEdit }: BatchExpo
       const prepared = checks[docId]?.prepared;
       if (!prepared || !choices[docId]?.attestation || !prepared.plan.passes) return false;
       const choice = choices[docId]!;
-      return (
-        (prepared.durationTicks <= 60 * 90000 || choice.rightsApproval === prepared.scope) &&
-        (!prepared.plan.findings.some((finding) => finding.code === HOT_CAPTION_CODE) ||
-          choice.captionsApproval === prepared.scope)
-      );
+      return prepared.durationTicks <= 60 * 90000 || choice.rightsApproval === prepared.scope;
     });
   const exportBatch = async () => {
     if (!ready || submitInFlight.current) return;
@@ -434,16 +430,10 @@ export function BatchExportScreen({ api = daemonApi, onBack, onEdit }: BatchExpo
                           />
                         )}
                         {hot.length > 0 && (
-                          <Confirmation
-                            label={`I reviewed the ${hot.length} fast caption ${hot.length === 1 ? 'passage' : 'passages'} in this revision.`}
-                            checked={choice.captionsApproval === prepared.scope}
-                            disabled={busy || checking}
-                            onChange={(checked) =>
-                              changeChoice(id, {
-                                captionsApproval: checked ? prepared.scope : null,
-                              })
-                            }
-                          />
+                          <p className="text-xs text-muted-foreground">
+                            {hot.length} fast subtitle {hot.length === 1 ? 'passage' : 'passages'}{' '}
+                            to review. This is advice and does not delay export.
+                          </p>
                         )}
                         {prepared.plan.findings.length > 0 && (
                           <ul className="space-y-1 text-xs" aria-label="Export findings">

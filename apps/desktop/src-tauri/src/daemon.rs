@@ -645,9 +645,22 @@ impl DaemonClient {
         project_id: &str,
         absolute_path: &str,
     ) -> Result<RegisterSourceResponse, DaemonLinkError> {
+        self.register_source_with_id(project_id, absolute_path, "")
+            .await
+    }
+
+    /// Relink an existing source when `source_id` is present. The daemon fully
+    /// probes the chosen file before it mutates the saved observation.
+    pub async fn register_source_with_id(
+        &self,
+        project_id: &str,
+        absolute_path: &str,
+        source_id: &str,
+    ) -> Result<RegisterSourceResponse, DaemonLinkError> {
         let body = request::Body::RegisterSource(RegisterSourceRequest {
             project_id: project_id.to_owned(),
             absolute_path: absolute_path.to_owned(),
+            source_id: source_id.to_owned(),
         });
         match self.call(body).await? {
             response::Body::RegisterSource(registered) => Ok(registered),

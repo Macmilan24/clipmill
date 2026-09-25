@@ -129,6 +129,7 @@ it('creates a manual edit from the named run without pretending it was approved 
     endTicks: 630 * 90_000,
     manualSpan: true,
     approve: false,
+    highlightSpokenWord: true,
   });
 });
 

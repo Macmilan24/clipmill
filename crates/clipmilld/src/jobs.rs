@@ -2960,6 +2960,7 @@ async fn execute_task(executors: BuiltinExecutors, events: EventHub, task: Lease
                     events.publish_all(task_events);
                 } else {
                     tracing::debug!(task_id = task.task_id, "task lease heartbeat was rejected");
+                    progress.cancel();
                     break None;
                 }
             }

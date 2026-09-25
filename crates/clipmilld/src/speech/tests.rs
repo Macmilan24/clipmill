@@ -214,6 +214,35 @@ fn an_unplaced_utterance_is_carried_with_spread_timing_and_declared_invalid() {
     assert!(assembled.document.coverage.aligned_ticks < assembled.document.coverage.speech_ticks);
 }
 
+#[test]
+fn a_collapsed_aligner_word_is_marked_unmeasured() {
+    let mut collapsed = alignment();
+    let target = &mut collapsed.words[0];
+    target.end_ticks = target.start_ticks;
+    let text = target.text.to_string();
+    let assembled = assemble(&activity(), &recognized(), &collapsed, inputs(), ASSEMBLER)
+        .expect("collapsed timing remains readable");
+    let repaired = assembled
+        .document
+        .words
+        .iter()
+        .find(|word| word.text.as_str() == text)
+        .expect("word kept");
+    assert!(matches!(
+        repaired.timing,
+        transcript::WordTiming::Interpolated
+    ));
+    assert!(repaired.end_ticks > repaired.start_ticks);
+    assert!(
+        assembled
+            .document
+            .invalid_regions
+            .iter()
+            .any(|region| region.start_ticks <= repaired.start_ticks
+                && repaired.end_ticks <= region.end_ticks)
+    );
+}
+
 /// A single out-of-vocabulary word goes back between its neighbours rather
 /// than at the end, or the transcript's word order stops matching what was
 /// said.
