@@ -448,20 +448,32 @@ class IngestSourcePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
 
 class RenderClipPayloadV1(_message.Message):
-    __slots__ = ("key_version", "doc_id", "ir_artifact_id", "source_attestation", "gates_passed", "ai_assistance")
+    __slots__ = ("key_version", "doc_id", "ir_artifact_id", "source_attestation", "gates_passed", "ai_assistance", "format")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     IR_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ATTESTATION_FIELD_NUMBER: _ClassVar[int]
     GATES_PASSED_FIELD_NUMBER: _ClassVar[int]
     AI_ASSISTANCE_FIELD_NUMBER: _ClassVar[int]
+    FORMAT_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     doc_id: str
     ir_artifact_id: str
     source_attestation: str
     gates_passed: _containers.RepeatedScalarFieldContainer[str]
     ai_assistance: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, key_version: _Optional[str] = ..., doc_id: _Optional[str] = ..., ir_artifact_id: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ...) -> None: ...
+    format: OutputFormatV1
+    def __init__(self, key_version: _Optional[str] = ..., doc_id: _Optional[str] = ..., ir_artifact_id: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ..., format: _Optional[_Union[OutputFormatV1, _Mapping]] = ...) -> None: ...
+
+class OutputFormatV1(_message.Message):
+    __slots__ = ("frame_rate_num", "frame_rate_den", "height")
+    FRAME_RATE_NUM_FIELD_NUMBER: _ClassVar[int]
+    FRAME_RATE_DEN_FIELD_NUMBER: _ClassVar[int]
+    HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    frame_rate_num: int
+    frame_rate_den: int
+    height: int
+    def __init__(self, frame_rate_num: _Optional[int] = ..., frame_rate_den: _Optional[int] = ..., height: _Optional[int] = ...) -> None: ...
 
 class TranscribeSourcePayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "language", "detection")
@@ -888,7 +900,7 @@ class CancelJobResponse(_message.Message):
     def __init__(self, job: _Optional[_Union[Job, _Mapping]] = ...) -> None: ...
 
 class Source(_message.Message):
-    __slots__ = ("source_id", "project_id", "absolute_path", "byte_size", "sample_sha256", "source_fingerprint", "source_map_artifact_id", "created_unix_millis")
+    __slots__ = ("source_id", "project_id", "absolute_path", "byte_size", "sample_sha256", "source_fingerprint", "source_map_artifact_id", "created_unix_millis", "missing")
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     ABSOLUTE_PATH_FIELD_NUMBER: _ClassVar[int]
@@ -897,6 +909,7 @@ class Source(_message.Message):
     SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     SOURCE_MAP_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     CREATED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    MISSING_FIELD_NUMBER: _ClassVar[int]
     source_id: str
     project_id: str
     absolute_path: str
@@ -905,7 +918,8 @@ class Source(_message.Message):
     source_fingerprint: str
     source_map_artifact_id: str
     created_unix_millis: int
-    def __init__(self, source_id: _Optional[str] = ..., project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ..., byte_size: _Optional[int] = ..., sample_sha256: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., source_map_artifact_id: _Optional[str] = ..., created_unix_millis: _Optional[int] = ...) -> None: ...
+    missing: bool
+    def __init__(self, source_id: _Optional[str] = ..., project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ..., byte_size: _Optional[int] = ..., sample_sha256: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., source_map_artifact_id: _Optional[str] = ..., created_unix_millis: _Optional[int] = ..., missing: _Optional[bool] = ...) -> None: ...
 
 class RegisterSourceRequest(_message.Message):
     __slots__ = ("project_id", "absolute_path", "source_id")
@@ -1572,7 +1586,7 @@ class ExportValidationV1(_message.Message):
     def __init__(self, passes: _Optional[bool] = ..., findings: _Optional[_Iterable[_Union[ExportFindingV1, _Mapping]]] = ...) -> None: ...
 
 class ExportRequestV1(_message.Message):
-    __slots__ = ("doc_id", "destination_dir", "naming_pattern", "source_attestation", "gates_passed", "ai_assistance", "index", "date", "title", "expected_revision")
+    __slots__ = ("doc_id", "destination_dir", "naming_pattern", "source_attestation", "gates_passed", "ai_assistance", "index", "date", "title", "expected_revision", "format")
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
     DESTINATION_DIR_FIELD_NUMBER: _ClassVar[int]
     NAMING_PATTERN_FIELD_NUMBER: _ClassVar[int]
@@ -1583,6 +1597,7 @@ class ExportRequestV1(_message.Message):
     DATE_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    FORMAT_FIELD_NUMBER: _ClassVar[int]
     doc_id: str
     destination_dir: str
     naming_pattern: str
@@ -1593,7 +1608,8 @@ class ExportRequestV1(_message.Message):
     date: str
     title: str
     expected_revision: int
-    def __init__(self, doc_id: _Optional[str] = ..., destination_dir: _Optional[str] = ..., naming_pattern: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ..., index: _Optional[int] = ..., date: _Optional[str] = ..., title: _Optional[str] = ..., expected_revision: _Optional[int] = ...) -> None: ...
+    format: OutputFormatV1
+    def __init__(self, doc_id: _Optional[str] = ..., destination_dir: _Optional[str] = ..., naming_pattern: _Optional[str] = ..., source_attestation: _Optional[str] = ..., gates_passed: _Optional[_Iterable[str]] = ..., ai_assistance: _Optional[_Iterable[str]] = ..., index: _Optional[int] = ..., date: _Optional[str] = ..., title: _Optional[str] = ..., expected_revision: _Optional[int] = ..., format: _Optional[_Union[OutputFormatV1, _Mapping]] = ...) -> None: ...
 
 class PlanExportRequest(_message.Message):
     __slots__ = ("request",)

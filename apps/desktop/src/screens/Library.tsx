@@ -131,7 +131,9 @@ export function Library({
     },
     onReveal: (path: string) => {
       actionsLoader.reveal(path).catch(() => {
-        setNotice('The recording could not be shown. It may have been moved or deleted.');
+        setNotice(
+          'The recording could not be shown. If it was moved, choose Locate recording… from the project’s menu.',
+        );
       });
     },
     onRelink: async (entry: LibraryProject) => {

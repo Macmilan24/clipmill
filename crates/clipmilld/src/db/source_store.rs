@@ -100,6 +100,9 @@ impl From<SourceRecord> for Source {
             source_fingerprint: record.source_fingerprint,
             source_map_artifact_id: record.source_map_artifact_id,
             created_unix_millis: record.created_unix_millis,
+            // A store read does not look at the disk; the service does, when
+            // it answers with the source.
+            missing: false,
         }
     }
 }

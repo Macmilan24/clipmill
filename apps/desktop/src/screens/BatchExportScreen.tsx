@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import { outputFormat, recallFormat } from '../export/format.js';
 import type { ExportBatch, ExportBatchItem } from '../daemon/client.js';
 import { useEditDocuments } from '../editor/documents.js';
 import { deliveryProgressText, deliveryWaitText, useDelivery } from '../export/delivery.js';
@@ -136,6 +137,7 @@ export function BatchExportScreen({ api = daemonApi, onBack, onEdit }: BatchExpo
                     : undefined,
                 ),
                 aiAssistance: ['asr_captions', 'reframe'],
+                format: outputFormat(recallFormat()),
                 index: ordinal + 1,
                 date: localDate(),
                 title:

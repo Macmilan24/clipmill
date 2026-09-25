@@ -41,6 +41,14 @@
   font-size: var(--cm-type-label);
 }
 
+.edit-alert-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 5px;
+}
+
 /* Body ------------------------------------------------------------------ */
 
 .edit-body {

@@ -3005,6 +3005,55 @@ impl Service {
         Ok(path)
     }
 
+    /// Point a registered source at the file it moved to.
+    ///
+    /// The new file is fully inspected and accepted only when its fingerprint
+    /// is the one the source was registered with, so everything already made
+    /// from the recording — analysis, clips, edits — stays attached to it.
+    async fn relink_source(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: ProjectId,
+        register: &RegisterSourceRequest,
+        inspector: &crate::sources::SourceInspector,
+        sampled: crate::sources::SampledSource,
+    ) -> Reply {
+        if register.source_id.parse::<SourceId>().is_err() {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "source id is invalid",
+            );
+        }
+        let inspection = match inspector.complete(sampled).await {
+            Ok(value) => value,
+            Err(error) => return source_probe_error_reply(request_id, &error),
+        };
+        let now = match unix_millis() {
+            Ok(value) => value,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        match self
+            .database
+            .relink_source(
+                request_id.clone(),
+                request_hash,
+                project_id.to_string(),
+                register.source_id.clone(),
+                inspection,
+                now,
+            )
+            .await
+        {
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
     async fn register_source(
         &self,
         request_id: String,
@@ -3032,39 +3081,16 @@ impl Service {
             Err(error) => return source_probe_error_reply(request_id, &error),
         };
         if !register.source_id.is_empty() {
-            if register.source_id.parse::<SourceId>().is_err() {
-                return error_reply(
-                    request_id,
-                    ErrorCode::InvalidArgument,
-                    "source id is invalid",
-                );
-            }
-            let inspection = match inspector.complete(sampled).await {
-                Ok(value) => value,
-                Err(error) => return source_probe_error_reply(request_id, &error),
-            };
-            let now = match unix_millis() {
-                Ok(value) => value,
-                Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
-            };
-            return match self
-                .database
+            return self
                 .relink_source(
-                    request_id.clone(),
+                    request_id,
                     request_hash,
-                    project_id.to_string(),
-                    register.source_id.clone(),
-                    inspection,
-                    now,
+                    project_id,
+                    register,
+                    inspector,
+                    sampled,
                 )
-                .await
-            {
-                Ok(bytes) => Reply {
-                    bytes,
-                    outcome: Outcome::Success,
-                },
-                Err(error) => store_error_reply(request_id, &error),
-            };
+                .await;
         }
         let existing = self
             .database
@@ -3132,7 +3158,7 @@ impl Service {
                 response::Body::GetSource(GetSourceResponse {
                     source_map_json: String::from_utf8(source.source_map_json.clone())
                         .unwrap_or_default(),
-                    source: Some(source.into()),
+                    source: Some(source_reply(source)),
                 }),
             ),
             Err(error) => store_error_reply(request_id, &error),
@@ -3150,7 +3176,7 @@ impl Service {
             Ok(sources) => response_reply(
                 request_id,
                 response::Body::ListSources(ListSourcesResponse {
-                    sources: sources.into_iter().map(Into::into).collect(),
+                    sources: sources.into_iter().map(source_reply).collect(),
                 }),
             ),
             Err(error) => store_error_reply(request_id, &error),
@@ -3740,7 +3766,17 @@ impl Service {
         };
 
         let available = available_at(&asked.destination_dir);
-        let estimated = clipmill_export::estimate_bytes(document.program_duration_ticks());
+        let (height, chosen_rate) = match crate::render::output_request(asked.format.as_ref()) {
+            Ok(value) => value,
+            Err(message) => return error_reply(request_id, ErrorCode::InvalidArgument, message),
+        };
+        let sources = self
+            .database
+            .list_sources(record.project_id.clone())
+            .await
+            .unwrap_or_default();
+        let output = output_profile(&document, &sources, height, chosen_rate);
+        let estimated = scaled_estimate(document.program_duration_ticks(), &output);
         let report = clipmill_export::validate(
             &document,
             &clipmill_export::Context {
@@ -3754,6 +3790,13 @@ impl Service {
         // than an error, so it arrives beside the others in the same list a
         // user is already reading.
         let mut findings = validation_of(&report);
+        for path in missing_recordings(&document, &sources) {
+            findings.passes = false;
+            findings.findings.push(missing_recording_finding(&path));
+        }
+        if let Some(finding) = upscale_finding(&document, &sources, &output) {
+            findings.findings.push(finding);
+        }
         if let Err(error) = crate::export::probe_destination(&asked.destination_dir) {
             findings.passes = false;
             findings.findings.push(ExportFindingV1 {
@@ -3764,17 +3807,7 @@ impl Service {
             });
         }
 
-        let stem = pattern.resolve(&clipmill_export::Fields {
-            project: String::new(),
-            clip: asked.title.clone(),
-            index: asked.index.max(1),
-            duration_seconds: u64::try_from(document.program_duration_ticks().max(0) / 90_000)
-                .unwrap_or(0),
-            date: asked.date.clone(),
-            // Resolved before a render exists, so `{address}` has nothing to
-            // shorten yet and the preview says so rather than inventing one.
-            address: String::new(),
-        });
+        let stem = planned_stem(&pattern, asked, &document);
         response_reply(
             request_id,
             response::Body::PlanExport(PlanExportResponse {
@@ -3787,6 +3820,40 @@ impl Service {
                 revision: record.revision,
             }),
         )
+    }
+
+    /// Why an export may not start, in the words the export strip uses, or
+    /// `None` when it may. A recording that moved is named first: nothing
+    /// else can be fixed from here until it is found.
+    async fn export_refusal(
+        &self,
+        asked: &ExportRequestV1,
+        document: &clipmill_edit_ir::EditDocument,
+        project_id: &str,
+    ) -> Option<String> {
+        if let Ok(sources) = self.database.list_sources(project_id.to_owned()).await
+            && let Some(path) = missing_recordings(document, &sources).first()
+        {
+            return Some(missing_recording_finding(path).detail);
+        }
+        let report = clipmill_export::validate(
+            document,
+            &clipmill_export::Context {
+                source_attestation: &asked.source_attestation,
+                gates_passed: &asked.gates_passed,
+                estimated_bytes: clipmill_export::estimate_bytes(document.program_duration_ticks()),
+                available_bytes: available_at(&asked.destination_dir),
+            },
+        );
+        // The reasons travel in the message: an export that failed without
+        // saying why is a dialog a user closes and gives up on.
+        (!report.passes()).then(|| {
+            report
+                .blocking()
+                .map(|finding| finding.detail.clone())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
     }
 
     /// Perform an export: snapshot, render, deliver — as one job.
@@ -3830,23 +3897,10 @@ impl Service {
         }
         // Checked before the destination is created, so a refused export leaves
         // no empty folder behind explaining nothing.
-        let report = clipmill_export::validate(
-            &document,
-            &clipmill_export::Context {
-                source_attestation: &asked.source_attestation,
-                gates_passed: &asked.gates_passed,
-                estimated_bytes: clipmill_export::estimate_bytes(document.program_duration_ticks()),
-                available_bytes: available_at(&asked.destination_dir),
-            },
-        );
-        if !report.passes() {
-            // The reasons travel in the message: an export that failed without
-            // saying why is a dialog a user closes and gives up on.
-            let reasons = report
-                .blocking()
-                .map(|finding| finding.detail.clone())
-                .collect::<Vec<_>>()
-                .join(" ");
+        if let Some(reasons) = self
+            .export_refusal(asked, &document, &record.project_id)
+            .await
+        {
             return error_reply(request_id, ErrorCode::PolicyDenied, reasons);
         }
         let destination = match crate::export::resolve_destination(&asked.destination_dir) {
@@ -3919,6 +3973,7 @@ impl Service {
             source_attestation: resolved.source_attestation.clone(),
             gates_passed: resolved.gates_passed.clone(),
             ai_assistance: resolved.ai_assistance.clone(),
+            format: resolved.format,
         }
         .encode_to_vec();
         let deliver_payload = DeliverExportPayloadV1 {
@@ -4434,7 +4489,152 @@ fn admit_export(asked: &ExportRequestV1, revision: u64) -> Result<(), (ErrorCode
             format!("an export declared a disclosure token nobody recognises: {token}"),
         ));
     }
+    crate::render::output_request(asked.format.as_ref())
+        .map_err(|message| (ErrorCode::InvalidArgument, message))?;
     Ok(())
+}
+
+/// The file name an export would take, resolved before any render exists.
+fn planned_stem(
+    pattern: &clipmill_export::Pattern,
+    asked: &ExportRequestV1,
+    document: &clipmill_edit_ir::EditDocument,
+) -> String {
+    pattern.resolve(&clipmill_export::Fields {
+        project: String::new(),
+        clip: asked.title.clone(),
+        index: asked.index.max(1),
+        duration_seconds: u64::try_from(document.program_duration_ticks().max(0) / 90_000)
+            .unwrap_or(0),
+        date: asked.date.clone(),
+        // Resolved before a render exists, so `{address}` has nothing to
+        // shorten yet and the preview says so rather than inventing one.
+        address: String::new(),
+    })
+}
+
+/// The profile an export would render with: the chosen height, and the chosen
+/// rate or else the rate of the recording the clip opens on.
+fn output_profile(
+    document: &clipmill_edit_ir::EditDocument,
+    sources: &[crate::db::SourceRecord],
+    height: i64,
+    chosen_rate: Option<clipmill_render::FrameRateSpec>,
+) -> clipmill_render::RenderProfile {
+    let source_rate = document.video.segments.first().and_then(|first| {
+        sources
+            .iter()
+            .find(|source| source.source_fingerprint == first.source_fingerprint)
+            .and_then(|source| crate::inspector::frame_rate_of(&source.source_map_json))
+    });
+    let rate = chosen_rate
+        .or(source_rate)
+        .unwrap_or(clipmill_render::RenderProfile::default().frame_rate);
+    clipmill_render::RenderProfile::for_output(height, rate).unwrap_or_default()
+}
+
+/// The size estimate, scaled from the 1080 × 1920 rate it is stated at by the
+/// picture's area and by frame rates above thirty.
+fn scaled_estimate(duration_ticks: i64, profile: &clipmill_render::RenderProfile) -> u64 {
+    let base = clipmill_export::estimate_bytes(duration_ticks);
+    let default = clipmill_render::RenderProfile::default();
+    let area = u64::try_from(profile.width * profile.height).unwrap_or(1);
+    let default_area = u64::try_from(default.width * default.height).unwrap_or(1);
+    let fast = profile.frame_rate.num > 31 * profile.frame_rate.den;
+    base.saturating_mul(area)
+        .checked_div(default_area.max(1))
+        .unwrap_or(base)
+        .saturating_mul(if fast { 3 } else { 2 })
+        / 2
+}
+
+/// Advice when the chosen size enlarges the recording more than twice over.
+fn upscale_finding(
+    document: &clipmill_edit_ir::EditDocument,
+    sources: &[crate::db::SourceRecord],
+    profile: &clipmill_render::RenderProfile,
+) -> Option<ExportFindingV1> {
+    let inputs = sources
+        .iter()
+        .filter_map(|source| {
+            let frame = crate::inspector::frame_of(&source.source_map_json)?;
+            Some(clipmill_render::SourceInput {
+                fingerprint: source.source_fingerprint.clone(),
+                path: String::new(),
+                width: frame.width,
+                height: frame.height,
+                has_audio: true,
+                duration_ticks: 0,
+                keyframe_ticks: Vec::new(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let factor = clipmill_render::largest_upscale(document, &inputs, profile)?;
+    (factor > 2.0).then(|| ExportFindingV1 {
+        code: "format.upscaled".to_owned(),
+        severity: ExportSeverity::Advisory as i32,
+        detail: format!(
+            "At {}p this clip enlarges the recording up to {factor:.1} times, so it will not look sharper than a smaller export. It still exports.",
+            profile.width
+        ),
+        cue_id: String::new(),
+    })
+}
+
+/// A source as a reply states it, including whether its file is still there.
+fn source_reply(record: crate::db::SourceRecord) -> clipmill_contracts::proto::ipc::v1::Source {
+    let missing = !source_file_present(&record.observation);
+    let mut source: clipmill_contracts::proto::ipc::v1::Source = record.into();
+    source.missing = missing;
+    source
+}
+
+/// Whether the registered file is still where it was, at the size it had.
+///
+/// A size check rather than a fingerprint: this runs on every listing, and a
+/// different size is already proof of a different file. Relinking is where
+/// the whole fingerprint is compared.
+fn source_file_present(observation: &crate::sources::FileObservation) -> bool {
+    std::fs::metadata(&observation.absolute_path)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() == observation.byte_size)
+}
+
+/// The recordings a document cuts from that are not where they were
+/// registered, by path, so an export can say which one to find.
+fn missing_recordings(
+    document: &clipmill_edit_ir::EditDocument,
+    sources: &[crate::db::SourceRecord],
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    for source in sources {
+        let used = document
+            .video
+            .segments
+            .iter()
+            .any(|segment| segment.source_fingerprint == source.source_fingerprint);
+        if used
+            && !source_file_present(&source.observation)
+            && !missing.contains(&source.observation.absolute_path)
+        {
+            missing.push(source.observation.absolute_path.clone());
+        }
+    }
+    missing
+}
+
+fn missing_recording_finding(path: &str) -> ExportFindingV1 {
+    let name = std::path::Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    ExportFindingV1 {
+        code: "source.missing".to_owned(),
+        severity: ExportSeverity::Blocking as i32,
+        detail: format!(
+            "The recording {name} is no longer where it was imported from. Locate it to export this clip."
+        ),
+        cue_id: String::new(),
+    }
 }
 
 /// Free space where an export would land, or on the nearest folder above it
@@ -4575,6 +4775,77 @@ mod tests {
 
     use super::{Service, validate_project_name, validate_request_id};
     use crate::db::DbActor;
+
+    #[test]
+    fn an_export_may_ask_for_the_offered_sizes_and_rates_only() {
+        use clipmill_contracts::proto::ipc::v1::OutputFormatV1;
+        let ask = |num, den, height| {
+            crate::render::output_request(Some(&OutputFormatV1 {
+                frame_rate_num: num,
+                frame_rate_den: den,
+                height,
+            }))
+        };
+        assert_eq!(crate::render::output_request(None), Ok((1_920, None)));
+        assert_eq!(ask(0, 0, 0), Ok((1_920, None)));
+        let (height, rate) = ask(60, 1, 3_840).expect("4K at sixty");
+        assert_eq!(height, 3_840);
+        assert_eq!(rate.map(|rate| (rate.num, rate.den)), Some((60, 1)));
+        assert!(ask(0, 0, 1_000).is_err(), "an odd height");
+        assert!(ask(1_000, 1, 0).is_err(), "an absurd rate");
+        assert!(ask(30, 0, 0).is_err(), "a rate with no denominator");
+    }
+
+    #[test]
+    fn a_moved_recording_is_named_by_the_export_checks() {
+        use crate::{db::SourceRecord, sources::FileObservation};
+        use clipmill_edit_ir::{EditDocument, Layout, LayoutState, VideoSegment};
+        let temp = TempDir::new().expect("tempdir");
+        let present = temp.path().join("present.mov");
+        std::fs::write(&present, b"12345").expect("recording");
+        let record = |path: &std::path::Path, fingerprint: &str, size: u64| SourceRecord {
+            source_id: "src_1".to_owned(),
+            project_id: "prj_1".to_owned(),
+            observation: FileObservation {
+                absolute_path: path.to_string_lossy().into_owned(),
+                byte_size: size,
+                sample_sha256: String::new(),
+                device_id: 0,
+                inode: 0,
+                modified_unix_nanos: 0,
+            },
+            source_fingerprint: fingerprint.to_owned(),
+            source_map_json: Vec::new(),
+            source_map_artifact_id: String::new(),
+            created_unix_millis: 0,
+        };
+        let mut document = EditDocument::default();
+        document.video.segments = vec![VideoSegment {
+            segment_id: "seg".to_owned(),
+            source_fingerprint: "sha256:aa".to_owned(),
+            in_ticks: 0,
+            out_ticks: 90_000,
+            layout: Layout {
+                state: LayoutState::Fit,
+                crop_path: Vec::new(),
+                secondary_crop_path: Vec::new(),
+            },
+        }];
+        let here = [record(&present, "sha256:aa", 5)];
+        assert!(super::missing_recordings(&document, &here).is_empty());
+        // Replaced by a different file of another size: not the recording.
+        let changed = [record(&present, "sha256:aa", 6)];
+        assert_eq!(super::missing_recordings(&document, &changed).len(), 1);
+        let gone = [record(&temp.path().join("gone.mov"), "sha256:aa", 5)];
+        let missing = super::missing_recordings(&document, &gone);
+        assert_eq!(missing.len(), 1);
+        let finding = super::missing_recording_finding(&missing[0]);
+        assert_eq!(finding.code, "source.missing");
+        assert!(finding.detail.contains("gone.mov"), "{}", finding.detail);
+        // A recording the clip does not use is none of the export's business.
+        let unrelated = [record(&temp.path().join("gone.mov"), "sha256:bb", 5)];
+        assert!(super::missing_recordings(&document, &unrelated).is_empty());
+    }
 
     #[test]
     fn extension_cues_never_reuse_an_id_and_stay_inside_their_span() {

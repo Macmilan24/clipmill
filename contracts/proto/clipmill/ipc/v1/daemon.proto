@@ -253,6 +253,24 @@ message RenderClipPayloadV1 {
   // Model work that shaped the footage, e.g. "asr_captions", "reframe".
   // Empty for a hand-authored document, which is the Phase 1 truth.
   repeated string ai_assistance = 6;
+  // How the file is encoded. Unset keeps the recording's frame rate at
+  // 1080 x 1920, which is what every render did before the choice existed.
+  OutputFormatV1 format = 7;
+}
+
+// The delivered picture's frame rate and size.
+//
+// The frame rate defaults to the recording's own: converting 23.976 or 25
+// frames a second to 29.97 repeats a frame every few, and pans judder. A
+// creator who wants 30 or 60 for a platform says so here.
+message OutputFormatV1 {
+  // Frames per second as a fraction. A zero numerator keeps the recording's
+  // own rate.
+  uint32 frame_rate_num = 1;
+  uint32 frame_rate_den = 2;
+  // Height of the 9:16 frame in pixels: 1920 (1080p), 2560 (1440p) or 3840
+  // (4K). Zero is 1920.
+  uint32 height = 3;
 }
 
 // Versioned payload for the speech chain (book ch. 13): voice activity, then
@@ -735,6 +753,11 @@ message Source {
   string source_fingerprint = 6;
   string source_map_artifact_id = 7;
   uint64 created_unix_millis = 8;
+  // The file is no longer at `absolute_path`, or is a different size than
+  // when it was registered: moved, renamed, replaced or deleted. Everything
+  // made from it still works from the preview copies; an export needs the
+  // original back, which relinking restores.
+  bool missing = 9;
 }
 
 message RegisterSourceRequest {
@@ -1473,6 +1496,9 @@ message ExportRequestV1 {
   // current revision is taken, which is what a caller with no review step
   // means.
   optional uint64 expected_revision = 10;
+  // Frame rate and size of the delivered picture. Unset is the recording's
+  // own frame rate at 1080 x 1920.
+  OutputFormatV1 format = 11;
 }
 
 // Check an export without performing one. No side effects, no files.

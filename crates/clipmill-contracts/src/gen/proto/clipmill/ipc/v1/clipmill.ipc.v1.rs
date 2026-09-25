@@ -408,6 +408,28 @@ pub struct RenderClipPayloadV1 {
     /// Empty for a hand-authored document, which is the Phase 1 truth.
     #[prost(string, repeated, tag = "6")]
     pub ai_assistance: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// How the file is encoded. Unset keeps the recording's frame rate at
+    /// 1080 x 1920, which is what every render did before the choice existed.
+    #[prost(message, optional, tag = "7")]
+    pub format: ::core::option::Option<OutputFormatV1>,
+}
+/// The delivered picture's frame rate and size.
+///
+/// The frame rate defaults to the recording's own: converting 23.976 or 25
+/// frames a second to 29.97 repeats a frame every few, and pans judder. A
+/// creator who wants 30 or 60 for a platform says so here.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct OutputFormatV1 {
+    /// Frames per second as a fraction. A zero numerator keeps the recording's
+    /// own rate.
+    #[prost(uint32, tag = "1")]
+    pub frame_rate_num: u32,
+    #[prost(uint32, tag = "2")]
+    pub frame_rate_den: u32,
+    /// Height of the 9:16 frame in pixels: 1920 (1080p), 2560 (1440p) or 3840
+    /// (4K). Zero is 1920.
+    #[prost(uint32, tag = "3")]
+    pub height: u32,
 }
 /// Versioned payload for the speech chain (book ch. 13): voice activity, then
 /// recognition, then forced alignment, then the assembly that fuses them. The
@@ -985,6 +1007,12 @@ pub struct Source {
     pub source_map_artifact_id: ::prost::alloc::string::String,
     #[prost(uint64, tag = "8")]
     pub created_unix_millis: u64,
+    /// The file is no longer at `absolute_path`, or is a different size than
+    /// when it was registered: moved, renamed, replaced or deleted. Everything
+    /// made from it still works from the preview copies; an export needs the
+    /// original back, which relinking restores.
+    #[prost(bool, tag = "9")]
+    pub missing: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RegisterSourceRequest {
@@ -1912,6 +1940,10 @@ pub struct ExportRequestV1 {
     /// means.
     #[prost(uint64, optional, tag = "10")]
     pub expected_revision: ::core::option::Option<u64>,
+    /// Frame rate and size of the delivered picture. Unset is the recording's
+    /// own frame rate at 1080 x 1920.
+    #[prost(message, optional, tag = "11")]
+    pub format: ::core::option::Option<OutputFormatV1>,
 }
 /// Check an export without performing one. No side effects, no files.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
