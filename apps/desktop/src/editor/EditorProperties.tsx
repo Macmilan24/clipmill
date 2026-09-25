@@ -5,7 +5,7 @@
  */
 import type { EditIr } from '@clipmill/contracts';
 import { AudioLines, Captions as CaptionsIcon, Crop, Info, Minus, Plus, X } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
@@ -17,20 +17,20 @@ import {
   SelectValue,
 } from '../components/ui/select.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
-import type { EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
+import type { CaptionFont, EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
+import type { CaptionDraft } from '../screens/Editor.js';
 import { clockTenths, timecode } from '../inspector/review.js';
 import type { EditorFocus } from '../shell/route.js';
 import { repairAll, shortCues } from './captionRepairs.js';
+import { CaptionStyleControls, LOOKS } from './CaptionStyle.js';
+import { CommitSlider, Field } from './controls.js';
 import { CueTiming } from './CueTiming.js';
 import {
-  batch,
   correctWord,
   mergeCues,
   removeCaptionWord,
   removeCropKeyframe,
   removeGainPoint,
-  setCaptionOptions,
-  setCaptionStyle,
   setCropKeyframe,
   setCueLines,
   setCueRegion,
@@ -44,13 +44,6 @@ import { cropAt, gainAt, segmentAt, sourceOf } from './player.js';
 import type { EditorSelection, PropertiesTab } from './selection.js';
 import { freshCueId, programTicks, ticksOfFrame } from './timeline.js';
 import { shownCues } from './transcript.js';
-import { CaptionLookSample } from '../results/CaptionLookSample.js';
-
-const PRESETS = [
-  { label: 'Clean', ref: 'clipmill.captions.clean.v1' },
-  { label: 'Minimal', ref: 'clipmill.captions.minimal.v1' },
-  { label: 'Boxed', ref: 'clipmill.captions.boxed.v1' },
-] as const;
 
 const REGIONS = [
   ['upper_safe', 'Top'],
@@ -76,6 +69,10 @@ export interface EditorPropertiesProps {
   readonly onResolve: () => void;
   readonly onSelect: (selection: EditorSelection) => void;
   readonly onSeek: (frame: number) => void;
+  /** Draw a caption look before it is chosen; null goes back to the saved one. */
+  readonly onTryLook?: ((look: CaptionDraft | null) => void) | null;
+  /** Every caption typeface, with whether this installation has it. */
+  readonly fonts?: readonly CaptionFont[];
 }
 
 export function EditorProperties(props: EditorPropertiesProps) {
@@ -163,28 +160,11 @@ function CaptionsTab({
   onApply,
   onSelect,
   onSeek,
+  onTryLook = null,
+  fonts = [],
 }: EditorPropertiesProps) {
   const cue =
     selection.kind === 'cue' ? plan.cues.find((item) => item.cueId === selection.cueId) : undefined;
-  const styleRef = document?.captions.style_ref ?? plan.captionStyle?.styleRef ?? PRESETS[0].ref;
-  const options = document?.captions.options ?? {};
-  const highlightEnabled = options.highlight_spoken_word ?? !styleRef.includes('.minimal.');
-  const update = (change: Partial<typeof options>) =>
-    onApply(setCaptionOptions({ ...options, ...change }));
-  const chooseLook = (ref: string) =>
-    onApply(
-      options.highlight_spoken_word === undefined
-        ? batch([
-            setCaptionOptions({ ...options, highlight_spoken_word: highlightEnabled }),
-            setCaptionStyle(ref),
-          ])
-        : setCaptionStyle(ref),
-    );
-  const style = plan.captionStyle;
-  const regionOfAll = plan.cues.every((item) => item.region === plan.cues[0]?.region)
-    ? plan.cues[0]?.region
-    : null;
-  const [perLine, setPerLine] = useState(4);
   const problems = plan.presentation === 'reading' ? shortCues(plan) : [];
 
   if (plan.cues.length === 0) {
@@ -259,135 +239,14 @@ function CaptionsTab({
         />
       )}
 
-      <section className="review-section">
-        <h3 className="review-section-title">Look</h3>
-        <div className="review-segmented edit-wide" role="group" aria-label="Caption look">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.ref}
-              type="button"
-              className="edit-look-button"
-              aria-pressed={styleRef.includes(`.${preset.label.toLowerCase()}.`)}
-              disabled={busy}
-              onClick={() => chooseLook(preset.ref)}
-            >
-              <CaptionLookSample
-                look={preset.label.toLowerCase() as 'clean' | 'minimal' | 'boxed'}
-                highlight={highlightEnabled}
-              />
-              {preset.label}
-            </button>
-          ))}
-        </div>
-        <label className="mt-3 flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={highlightEnabled}
-            disabled={busy}
-            onChange={(event) => update({ highlight_spoken_word: event.target.checked })}
-          />
-          Highlight the spoken word
-        </label>
-        <Field label="Size">
-          <CommitSlider
-            label="Caption size"
-            min={40}
-            max={140}
-            value={options.font_size ?? style?.fontSize ?? 84}
-            disabled={busy}
-            format={(value) => `${value}`}
-            onCommit={(value) => update({ font_size: value })}
-          />
-        </Field>
-        <Field label="Colours">
-          <div className="edit-swatches">
-            {highlightEnabled && (
-              <Swatch
-                label="Spoken word"
-                value={options.spoken ?? style?.spoken ?? '#ffd65c'}
-                disabled={busy}
-                onCommit={(value) => update({ spoken: value })}
-              />
-            )}
-            <Swatch
-              label="Words"
-              value={options.unspoken ?? style?.unspoken ?? '#ffffff'}
-              disabled={busy}
-              onCommit={(value) => update({ unspoken: value })}
-            />
-            <Swatch
-              label="Outline"
-              value={options.outline ?? style?.outline ?? '#000000'}
-              disabled={busy}
-              onCommit={(value) => update({ outline: value })}
-            />
-          </div>
-        </Field>
-        <Field label="Case">
-          <div className="review-segmented" role="group" aria-label="Letter case">
-            {(
-              [
-                ['original', 'As said'],
-                ['upper', 'AA'],
-                ['lower', 'aa'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={(options.text_case ?? 'original') === value}
-                disabled={busy}
-                onClick={() => update({ text_case: value })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </Field>
-      </section>
-
-      <section className="review-section">
-        <h3 className="review-section-title">All captions</h3>
-        <Field label="Position">
-          <RegionPicker
-            label="Where every caption sits"
-            value={regionOfAll ?? null}
-            disabled={busy}
-            onPick={(region) => {
-              const moving = plan.cues.filter((item) => item.region !== region);
-              if (moving.length > 0)
-                onApply(
-                  batch(moving.map((item) => setCueRegion(item.cueId, region, plan.presentation))),
-                );
-            }}
-          />
-        </Field>
-        <Field label="Words per line">
-          <div className="edit-inline">
-            <Stepper label="Words per line" value={perLine} min={1} max={8} onChange={setPerLine} />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                onApply(
-                  batch(
-                    plan.cues.map((item) =>
-                      setCueLines(
-                        item.cueId,
-                        wordCounts(item.lines.flat().length, perLine),
-                        plan.presentation,
-                      ),
-                    ),
-                  ),
-                )
-              }
-            >
-              Apply
-            </Button>
-          </div>
-        </Field>
-      </section>
+      <CaptionStyleControls
+        plan={plan}
+        document={document}
+        busy={busy}
+        fonts={fonts}
+        onApply={onApply}
+        onTryLook={onTryLook}
+      />
     </div>
   );
 }
@@ -988,9 +847,9 @@ function AudioTab({
 function DetailsTab({ plan, document }: EditorPropertiesProps) {
   const first = plan.segments[0];
   const last = plan.segments.at(-1);
-  const look = PRESETS.find((preset) =>
+  const look = LOOKS.find((preset) =>
     (document?.captions.style_ref ?? plan.captionStyle?.styleRef ?? '').includes(
-      `.${preset.label.toLowerCase()}.`,
+      `.${preset.look}.`,
     ),
   );
   return (
@@ -1033,15 +892,6 @@ function DetailsTab({ plan, document }: EditorPropertiesProps) {
 }
 
 /* Controls ------------------------------------------------------------------ */
-
-function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-  return (
-    <div className="edit-field">
-      <span className="edit-field-label">{label}</span>
-      <div className="edit-field-control">{children}</div>
-    </div>
-  );
-}
 
 function Fact({
   label,
@@ -1088,131 +938,6 @@ function RegionPicker({
   );
 }
 
-/** A slider that moves freely and sends its value once, when let go. */
-function CommitSlider({
-  label,
-  min,
-  max,
-  value,
-  disabled,
-  format,
-  onCommit,
-}: {
-  readonly label: string;
-  readonly min: number;
-  readonly max: number;
-  readonly value: number;
-  readonly disabled: boolean;
-  readonly format: (value: number) => string;
-  readonly onCommit: (value: number) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const commit = () => {
-    if (draft !== value) onCommit(draft);
-  };
-  return (
-    <div className="edit-slider">
-      <input
-        type="range"
-        aria-label={label}
-        min={min}
-        max={max}
-        step={1}
-        value={draft}
-        disabled={disabled}
-        onChange={(event) => setDraft(Number(event.target.value))}
-        onPointerUp={commit}
-        onKeyUp={commit}
-        onBlur={commit}
-      />
-      <span className="mono">{format(draft)}</span>
-    </div>
-  );
-}
-
-/** A colour well that sends its colour once the picker closes. */
-function Swatch({
-  label,
-  value,
-  disabled,
-  onCommit,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly disabled: boolean;
-  readonly onCommit: (value: string) => void;
-}) {
-  const shown = value.slice(0, 7).toLowerCase();
-  const [draft, setDraft] = useState(shown);
-  const input = useRef<HTMLInputElement>(null);
-  const latest = useRef({ shown, onCommit });
-  latest.current = { shown, onCommit };
-  useEffect(() => setDraft(shown), [shown]);
-  // React's onChange is the input event; the picker's own change is its close.
-  useEffect(() => {
-    const element = input.current;
-    if (!element) return;
-    const closed = () => {
-      if (element.value !== latest.current.shown) latest.current.onCommit(element.value);
-    };
-    element.addEventListener('change', closed);
-    return () => element.removeEventListener('change', closed);
-  }, []);
-  return (
-    <label className="edit-swatch" title={label}>
-      <input
-        ref={input}
-        type="color"
-        aria-label={label}
-        value={draft}
-        disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
-      />
-      <span style={{ background: draft }} aria-hidden="true" />
-      <span className="edit-swatch-label">{label}</span>
-    </label>
-  );
-}
-
-function Stepper({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  readonly label: string;
-  readonly value: number;
-  readonly min: number;
-  readonly max: number;
-  readonly onChange: (value: number) => void;
-}) {
-  return (
-    <div className="edit-stepper" role="group" aria-label={label}>
-      <button
-        type="button"
-        aria-label="Fewer"
-        disabled={value <= min}
-        onClick={() => onChange(value - 1)}
-      >
-        <Minus className="size-3" aria-hidden="true" />
-      </button>
-      <span className="mono" aria-live="polite">
-        {value}
-      </span>
-      <button
-        type="button"
-        aria-label="More"
-        disabled={value >= max}
-        onClick={() => onChange(value + 1)}
-      >
-        <Plus className="size-3" aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
-
 function TimeNudge({
   label,
   ticks,
@@ -1255,10 +980,4 @@ function clockHundredths(ticks: number): string {
   const hundredths = Math.max(0, Math.round(ticks / 900));
   const seconds = Math.floor(hundredths / 100);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}.${String(hundredths % 100).padStart(2, '0')}`;
-}
-
-function wordCounts(total: number, limit: number): number[] {
-  const counts: number[] = [];
-  for (let left = total; left > 0; left -= limit) counts.push(Math.min(left, limit));
-  return counts;
 }

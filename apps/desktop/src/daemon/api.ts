@@ -7,6 +7,8 @@ import { modelLibraryApi, type ModelLibraryApi } from './models.js';
 import { publishingApi, type PublishingApi } from './publishing.js';
 import {
   type AnalyzeRequest,
+  type CaptionPreview,
+  type EditHistoryEntry,
   type ClipDecision,
   type ClipDecisionRecord,
   type AppliedCommand,
@@ -53,6 +55,9 @@ import {
   readDocument,
   registerSource,
   relinkSource,
+  previewCaptions,
+  listEditHistory,
+  captionFontUrl,
   getSource,
   startYoutubeImport,
   getYoutubeImport,
@@ -94,6 +99,12 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
     sourceId: string,
     absolutePath: string,
   ): Promise<RegisteredSource>;
+  /** Captions under a look not chosen yet. Absent from shells without it. */
+  previewCaptions?(docId: string, styleRef: string, optionsJson: string): Promise<CaptionPreview>;
+  /** A document's whole edit history. Absent from shells without it. */
+  listEditHistory?(docId: string): Promise<readonly EditHistoryEntry[]>;
+  /** Where a pinned caption font is served from. Absent where none are. */
+  captionFontUrl?(file: string): string;
   getSource(sourceId: string): Promise<SourceDetails>;
   startYoutubeImport(
     projectId: string,
@@ -164,6 +175,9 @@ export const daemonApi: ShellApi = {
   chooseSourceFile,
   registerSource,
   relinkSource,
+  previewCaptions,
+  listEditHistory,
+  captionFontUrl,
   getSource,
   startYoutubeImport,
   getYoutubeImport,

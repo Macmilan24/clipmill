@@ -30,11 +30,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select.js';
+import type { EditIr } from '@clipmill/contracts';
+
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
 import { SPEEDS } from '../inspector/playback.js';
 import { timecode as sourceTimecode } from '../inspector/review.js';
 import { TipButton } from '../inspector/TipButton.js';
-import { batch, setCropKeyframe, setCueRegion, setLayout, ticksAt } from './commands.js';
+import {
+  batch,
+  setCaptionOptions,
+  setCropKeyframe,
+  setCuePosition,
+  setLayout,
+  ticksAt,
+} from './commands.js';
+import { type CaptionFace, CaptionCanvas } from './CaptionCanvas.js';
 import { CompositionCanvas } from './CompositionCanvas.js';
 import { pressOrDrag } from './gesture.js';
 import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf } from './player.js';
@@ -101,6 +111,23 @@ export interface EditorMonitorProps {
   readonly selection: EditorSelection;
   readonly onSelect: (selection: EditorSelection) => void;
   readonly onApply: (command: EditCommandJson) => void;
+  /**
+   * The captions as the export burns them in, for libass to draw: the plan's
+   * script or a look still being tried, and the faces it may use. Null keeps
+   * the CSS approximation.
+   */
+  readonly captions?: ExactCaptions | null;
+  /** The clip-wide caption options, so a drag can move every caption. */
+  readonly captionOptions?: CaptionOptions;
+}
+
+type CaptionOptions = NonNullable<EditIr['captions']['options']>;
+
+/** A subtitle script and the faces it may be drawn with. */
+export interface ExactCaptions {
+  readonly ass: string;
+  readonly faces: readonly CaptionFace[];
+  readonly family: string;
 }
 
 export function EditorMonitor({
@@ -116,6 +143,8 @@ export function EditorMonitor({
   selection,
   onSelect,
   onApply,
+  captions = null,
+  captionOptions = {},
 }: EditorMonitorProps) {
   const [view, setView] = useState<MonitorView>('edit');
   const [safe, setSafe] = useState<SafePlatform>('off');
@@ -197,6 +226,8 @@ export function EditorMonitor({
           selection={selection}
           onSelect={onSelect}
           onApply={onApply}
+          captions={view === 'edit' ? captions : null}
+          captionOptions={captionOptions}
         />
       </div>
 
@@ -226,7 +257,11 @@ function Stage({
   selection,
   onSelect,
   onApply,
+  captions,
+  captionOptions,
 }: {
+  readonly captions: ExactCaptions | null;
+  readonly captionOptions: CaptionOptions;
   readonly plan: PreviewPlan;
   readonly videoRef: RefObject<HTMLVideoElement | null>;
   readonly proxyUrl: string | null;
@@ -247,7 +282,10 @@ function Stage({
   const localTicks = part ? ticksAt(plan, frame) - part.programStartTicks : 0;
   // A reframe in progress: which viewport, and the rectangle it would get.
   const [draft, setDraft] = useState<{ secondary: boolean; rect: Rect } | null>(null);
-  const [captionDrag, setCaptionDrag] = useState<number | null>(null);
+  // Where a caption being dragged would sit, as shares of the frame.
+  const [captionDrag, setCaptionDrag] = useState<{ x: number; y: number } | null>(null);
+  // Whether libass is drawing the captions; the CSS ones then only take clicks.
+  const [exact, setExact] = useState(false);
   const zoomTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stage = useRef<HTMLDivElement>(null);
 
@@ -383,21 +421,54 @@ function Stage({
   const grabCaption = (event: ReactPointerEvent<HTMLParagraphElement>) => {
     if (!cue) return;
     const box = stage.current?.getBoundingClientRect();
+    const caption = event.currentTarget.getBoundingClientRect();
+    // Where the caption's centre was when the drag began, so it follows the
+    // pointer from wherever on the text it was picked up.
+    const origin = box
+      ? {
+          x: (caption.left + caption.width / 2 - box.left) / Math.max(1, box.width),
+          y: (caption.top + caption.height / 2 - box.top) / Math.max(1, box.height),
+        }
+      : null;
+    const placed = (dx: number, dy: number) =>
+      box && origin
+        ? {
+            x: snapCentre(clampShare(origin.x + dx / Math.max(1, box.width))),
+            y: clampShare(origin.y + dy / Math.max(1, box.height)),
+          }
+        : null;
     pressOrDrag(event, {
       onClick: () => onSelect({ kind: 'cue', cueId: cue.cueId }),
-      onDrag: (_dx, _dy, next) => {
-        if (!box || busy) return;
-        setCaptionDrag(Math.max(0, Math.min(1, (next.clientY - box.top) / box.height)));
+      onDrag: (dx, dy) => {
+        if (busy) return;
+        setCaptionDrag(placed(dx, dy));
       },
-      onDrop: (_dx, _dy, next) => {
+      onDrop: (dx, dy, next) => {
         setCaptionDrag(null);
-        if (!box || busy) return;
-        const down = (next.clientY - box.top) / Math.max(1, box.height);
-        const region = down < 0.36 ? 'upper_safe' : down > 0.64 ? 'lower_safe' : 'center';
-        const moving = plan.cues.filter((item) => item.region !== region);
+        const at = placed(dx, dy);
+        if (!at || busy) return;
+        const position = { x: Math.round(at.x * 1000), y: Math.round(at.y * 1000) };
         onSelect({ kind: 'cue', cueId: cue.cueId });
-        if (moving.length > 0)
-          onApply(batch(moving.map((item) => setCueRegion(item.cueId, region, plan.presentation))));
+        // Alt places this caption alone; otherwise every caption moves, as
+        // a creator placing captions over a face means all of them.
+        if (next.altKey) {
+          onApply(setCuePosition(cue.cueId, position, plan.presentation));
+          return;
+        }
+        // A cue placed on its own is one whose position is not the clip's;
+        // moving every caption brings those along too.
+        const track = captionOptions.position;
+        const alone = plan.cues.filter(
+          (item) =>
+            item.position &&
+            (!track || item.position[0] !== track.x || item.position[1] !== track.y),
+        );
+        onApply(
+          batch([
+            setCaptionOptions({ ...captionOptions, position }),
+            ...alone.map((item) => setCuePosition(item.cueId, null, plan.presentation)),
+          ]),
+        );
       },
       onCancel: () => setCaptionDrag(null),
     });
@@ -405,14 +476,20 @@ function Stage({
 
   const relative = (pixels: number) => `${(pixels / plan.width) * 100}cqw`;
   const verticalMargin = ((style?.marginVertical ?? 260) / plan.height) * 100;
-  const position =
-    captionDrag !== null
-      ? { top: `${captionDrag * 100}%`, transform: 'translateY(-50%)' }
-      : cue?.region === 'upper_safe'
-        ? { top: `${verticalMargin}%` }
-        : cue?.region === 'center'
-          ? { top: '50%', transform: 'translateY(-50%)' }
-          : { bottom: `${verticalMargin}%` };
+  const centred =
+    captionDrag ??
+    (cue?.position ? { x: cue.position[0] / 1000, y: cue.position[1] / 1000 } : null);
+  const position = centred
+    ? {
+        left: `${centred.x * 100}%`,
+        top: `${centred.y * 100}%`,
+        transform: 'translate(-50%, -50%)',
+      }
+    : cue?.region === 'upper_safe'
+      ? { top: `${verticalMargin}%` }
+      : cue?.region === 'center'
+        ? { top: '50%', transform: 'translateY(-50%)' }
+        : { bottom: `${verticalMargin}%` };
   let index = 0;
   const zone = safe === 'off' ? null : SAFE_ZONES[safe];
   const reframable = view === 'edit' && !busy && proxyUrl !== null;
@@ -466,6 +543,17 @@ function Stage({
             aria-hidden="true"
             onPointerDown={grabFrame}
           />
+          {captions && (
+            <CaptionCanvas
+              ass={captions.ass}
+              faces={captions.faces}
+              family={captions.family}
+              seconds={(frame * plan.rateDen) / Math.max(1, plan.rateNum)}
+              frameWidth={plan.width}
+              frameHeight={plan.height}
+              onDrawing={setExact}
+            />
+          )}
         </>
       ) : (
         <div className="review-unavailable" role="note">
@@ -515,10 +603,15 @@ function Stage({
           data-selected={selection.kind === 'cue' && selection.cueId === cue.cueId}
           data-dragging={captionDrag !== null ? 'true' : undefined}
           onPointerDown={grabCaption}
+          data-exact={exact ? 'true' : undefined}
           style={{
+            ...(centred
+              ? { width: 'max-content', maxWidth: '100%' }
+              : {
+                  left: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
+                  right: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
+                }),
             ...position,
-            left: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
-            right: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
             fontFamily:
               !style || style.fontFamily === 'Inter' ? 'ClipMill Caption Inter' : style.fontFamily,
             fontSize: relative(style?.fontSize ?? 84),
@@ -676,4 +769,14 @@ function Transport({
       </div>
     </div>
   );
+}
+
+/** A share of the frame, kept on it. */
+function clampShare(value: number): number {
+  return Math.max(0.02, Math.min(0.98, value));
+}
+
+/** The horizontal centre pulls a caption dragged close to it. */
+function snapCentre(value: number): number {
+  return Math.abs(value - 0.5) < 0.025 ? 0.5 : value;
 }

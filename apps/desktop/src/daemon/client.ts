@@ -568,6 +568,49 @@ export function mediaUrl(projectId: string, artifactId: string, file: string): s
     : `clipmill-media://localhost/${path}`;
 }
 
+/** Where the player loads a pinned caption font from. */
+export function captionFontUrl(file: string): string {
+  const path = `fonts/${encodeURIComponent(file)}`;
+  return navigator.userAgent.includes('Windows')
+    ? `http://clipmill-media.localhost/${path}`
+    : `clipmill-media://localhost/${path}`;
+}
+
+/** Captions drawn under a look that has not been chosen yet. */
+export interface CaptionPreview {
+  readonly ass: string;
+  readonly revision: number;
+}
+
+/**
+ * The burned-in captions a document would have under another look, computed
+ * by the render code and not saved: trying a look is not an edit.
+ */
+export async function previewCaptions(
+  docId: string,
+  styleRef: string,
+  optionsJson: string,
+): Promise<CaptionPreview> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<CaptionPreview>('preview_captions', { docId, styleRef, optionsJson });
+}
+
+/** One logged edit, with the command that undoes it. */
+export interface EditHistoryEntry {
+  readonly revision: number;
+  readonly commandJson: string;
+  readonly inverseJson: string;
+  readonly appliedUnixMillis: number;
+}
+
+/** Every command a document has had, oldest first. */
+export async function listEditHistory(docId: string): Promise<readonly EditHistoryEntry[]> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<readonly EditHistoryEntry[]>('list_edit_history', { docId });
+}
+
 /**
  * Follow task transitions.
  *
@@ -798,6 +841,8 @@ export interface PreviewProxy {
 
 export interface PreviewCue {
   readonly cueId: string;
+  /** `[x, y]` in thousandths of the frame, when the cue was placed by hand. */
+  readonly position?: readonly [number, number] | null;
   /** Exact display bounds. Older hosts do not expose timing edits. */
   readonly startTicks?: number;
   readonly endTicks?: number;
@@ -837,6 +882,18 @@ export interface PreviewCaptionStyle {
   readonly boxed: boolean;
   readonly marginHorizontal: number;
   readonly marginVertical: number;
+  /** The colour key words are set in. Absent from older daemons. */
+  readonly accent?: string;
+  /** How the spoken word is marked: fill, word, box, pop or underline. */
+  readonly highlight?: string;
+}
+
+/** One caption typeface, and whether this installation has its pinned file. */
+export interface CaptionFont {
+  readonly family: string;
+  readonly label: string;
+  readonly file: string;
+  readonly installed: boolean;
 }
 
 /** A saved soft cut, allocated on the render's program frame grid. */
@@ -867,6 +924,13 @@ export interface PreviewPlan {
   readonly readingCues?: readonly PreviewCue[];
   readonly readingMinDurationTicks?: number;
   readonly readingMinGapTicks?: number;
+  /**
+   * The burned-in captions exactly as the export writes them. A player that
+   * runs libass draws the export's pixels from this. Absent from older daemons.
+   */
+  readonly ass?: string;
+  /** Every caption typeface, with whether this installation has it. */
+  readonly fonts?: readonly CaptionFont[];
   readonly gain: readonly PreviewGain[];
   readonly width: number;
   readonly height: number;
@@ -906,6 +970,8 @@ export interface EditDocSummary {
   readonly revision: number;
   readonly createdUnixMillis: number;
   readonly updatedUnixMillis: number;
+  /** What somebody named the clip, when they did. */
+  readonly title?: string | null;
 }
 
 export async function listEditDocs(projectId: string): Promise<readonly EditDocSummary[]> {

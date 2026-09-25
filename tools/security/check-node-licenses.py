@@ -30,6 +30,21 @@ ALLOWED_TERMS = {
     "OFL-1.1",
     "Python-2.0",
     "Unlicense",
+    # The caption player (jassub: libass, FreeType, HarfBuzz and FriBidi
+    # compiled to WebAssembly, and its requestVideoFrameCallback polyfill).
+    # ClipMill is AGPL-3.0-only, and every one of these may be combined with
+    # it: LGPL-2.1-or-later and GPL-2.0-or-later can be taken as their version
+    # 3, GPL-3.0 combines with the AGPL under section 13 of both, and the
+    # rest are permissive. The player is what lets the editor draw the
+    # captions the export burns in with the same engine.
+    "BSL-1.0",
+    "FTL",
+    "GPL-2.0-or-later",
+    "GPL-3.0",
+    "LGPL-2.1-or-later",
+    "MIT-Modern-Variant",
+    "NTP",
+    "Zlib",
 }
 
 

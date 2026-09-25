@@ -1,5 +1,5 @@
 /** Deliberately separate from main.tsx and the production build. No daemon calls. */
-import { useLayoutEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useState, type CSSProperties } from 'react';
 import {
   DEFAULT_WORKSPACE_THEME,
   ThemeController,
@@ -157,6 +157,20 @@ function Preview() {
       : editorPlan,
   );
   const [editorDoc, setEditorDoc] = useState(editorDocument);
+  // With the dev server's caption route (CLIPMILL_CAPTION_ASS) and ?fonts=
+  // naming the pinned font directory, the editor draws the render's own ASS.
+  const fontsDir = search.get('fonts');
+  const [editorAss, setEditorAss] = useState<string | null>(null);
+  useEffect(() => {
+    if (!fontsDir) return;
+    let live = true;
+    void captionAssOf(editorDoc.captions, plan.rateNum, plan.rateDen).then((ass) => {
+      if (live) setEditorAss(ass);
+    });
+    return () => {
+      live = false;
+    };
+  }, [fontsDir, editorDoc, plan.rateNum, plan.rateDen]);
   const [notice, setNotice] = useState<string | null>(null);
   const [destination, setDestination] = useState('/Users/demo/Movies/ClipMill');
   const [pattern, setPattern] = useState('{index}-{clip}');
@@ -313,7 +327,30 @@ function Preview() {
               )}
               {page === 'editor' && (
                 <Editor
-                  plan={plan}
+                  plan={
+                    editorAss
+                      ? {
+                          ...plan,
+                          ass: editorAss,
+                          fonts: CAPTION_FONTS.map((font) => ({ ...font, installed: true })),
+                        }
+                      : plan
+                  }
+                  fontUrl={fontsDir ? (file) => `${fontsDir}/${file}` : null}
+                  previewCaptions={
+                    fontsDir
+                      ? (draft) =>
+                          captionAssOf(
+                            {
+                              ...editorDoc.captions,
+                              ...(draft.styleRef ? { style_ref: draft.styleRef } : {}),
+                              ...(draft.options ? { options: draft.options } : {}),
+                            },
+                            plan.rateNum,
+                            plan.rateDen,
+                          )
+                      : null
+                  }
                   document={editorDoc}
                   transcript={reviewTranscript}
                   filmstrip={editorFilmstrip}
@@ -485,4 +522,32 @@ if (import.meta.env.DEV) {
   import.meta.hot?.dispose((data) => {
     data['root'] = root;
   });
+}
+
+/** The caption faces the render pins, as the daemon lists them. */
+const CAPTION_FONTS = [
+  { family: 'Inter', label: 'Inter', file: 'Inter-Bold.ttf' },
+  { family: 'Montserrat Black', label: 'Montserrat', file: 'Montserrat-Black.ttf' },
+  { family: 'Poppins ExtraBold', label: 'Poppins', file: 'Poppins-ExtraBold.ttf' },
+  { family: 'Anton', label: 'Anton', file: 'Anton-Regular.ttf' },
+  { family: 'Bebas Neue', label: 'Bebas Neue', file: 'BebasNeue-Regular.ttf' },
+  { family: 'Luckiest Guy', label: 'Luckiest Guy', file: 'LuckiestGuy-Regular.ttf' },
+  { family: 'DM Serif Display', label: 'DM Serif', file: 'DMSerifDisplay-Regular.ttf' },
+] as const;
+
+/** The render's own ASS for a caption track, from the dev server's route. */
+async function captionAssOf(
+  captions: unknown,
+  rateNum: number,
+  rateDen: number,
+): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `/__clipmill/caption-ass?rate=${encodeURIComponent(`${rateNum}/${rateDen}`)}`,
+      { method: 'POST', body: JSON.stringify(captions) },
+    );
+    return response.ok ? await response.text() : null;
+  } catch {
+    return null;
+  }
 }
