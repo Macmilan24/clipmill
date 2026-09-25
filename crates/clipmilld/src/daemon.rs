@@ -303,7 +303,8 @@ impl Daemon {
             decoder,
         )
         .with_library(library)
-        .with_collector(collector);
+        .with_collector(collector)
+        .with_fonts(config.fonts_dir.clone());
 
         service.recover_youtube_imports().await.map_err(|error| {
             DaemonError::Ipc(format!("cannot recover YouTube imports: {error}"))

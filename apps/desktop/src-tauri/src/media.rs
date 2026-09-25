@@ -48,8 +48,14 @@ struct FileEntry {
 pub struct MediaProtocol {
     supervisor: Arc<DaemonSupervisor>,
     artifacts_dir: PathBuf,
+    /// The pinned caption fonts, served so the player draws captions with
+    /// the faces the render burns in.
+    fonts_dir: Option<PathBuf>,
     authorized: Mutex<HashMap<(String, String), Inventory>>,
 }
+
+/// The path prefix caption fonts are served under.
+const FONTS_PREFIX: &str = "/fonts/";
 
 impl std::fmt::Debug for MediaProtocol {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -65,8 +71,41 @@ impl MediaProtocol {
         Self {
             supervisor,
             artifacts_dir,
+            fonts_dir: None,
             authorized: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Serve the caption fonts pinned in this directory.
+    #[must_use]
+    pub fn with_fonts(mut self, fonts_dir: PathBuf) -> Self {
+        self.fonts_dir = Some(fonts_dir);
+        self
+    }
+
+    /// One caption font, by the file name its catalogue entry pins. Nothing
+    /// else in the directory is reachable: the name must be a catalogued
+    /// face's, so a URL cannot ask for a licence text or another file.
+    fn serve_font(&self, name: &str) -> Response<Vec<u8>> {
+        let Some(face) = clipmill_captions::FONTS
+            .iter()
+            .find(|face| face.file == name)
+        else {
+            return refuse(StatusCode::NOT_FOUND, "not a caption font");
+        };
+        let Some(dir) = &self.fonts_dir else {
+            return refuse(StatusCode::NOT_FOUND, "caption fonts are not installed");
+        };
+        let Ok(bytes) = std::fs::read(dir.join(face.file)) else {
+            return refuse(StatusCode::NOT_FOUND, "this caption font is not installed");
+        };
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "font/ttf")
+            .header(header::CONTENT_LENGTH, bytes.len().to_string())
+            .header(header::CACHE_CONTROL, "public, max-age=86400")
+            .body(bytes)
+            .unwrap_or_else(|_| refuse(StatusCode::INTERNAL_SERVER_ERROR, "cannot answer"))
     }
 
     /// Answer one media request.
@@ -102,6 +141,9 @@ impl MediaProtocol {
     async fn serve_inner(&self, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         if request.method() != tauri::http::Method::GET {
             return refuse(StatusCode::METHOD_NOT_ALLOWED, "media supports GET only");
+        }
+        if let Some(name) = request.uri().path().strip_prefix(FONTS_PREFIX) {
+            return self.serve_font(name);
         }
         let Some(target) = Target::parse(request.uri().path()) else {
             return refuse(StatusCode::BAD_REQUEST, "malformed media path");

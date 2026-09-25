@@ -74,6 +74,8 @@ message Request {
     ForgetModelRequest forget_model = 68;
     CleanStorageRequest clean_storage = 69;
     RenameProjectRequest rename_project = 70;
+    PreviewCaptionsRequest preview_captions = 71;
+    ListEditHistoryRequest list_edit_history = 72;
   }
 }
 
@@ -131,6 +133,8 @@ message Response {
     InspectHubModelResponse inspect_hub_model = 54;
     CleanStorageResponse clean_storage = 55;
     RenameProjectResponse rename_project = 56;
+    PreviewCaptionsResponse preview_captions = 57;
+    ListEditHistoryResponse list_edit_history = 58;
   }
 }
 
@@ -1293,6 +1297,11 @@ message PreviewCueV1 {
   // Exact display bounds for edits; frame rounding must not retime a cue.
   int64 start_ticks = 8;
   int64 end_ticks = 9;
+  // The cue's centre in thousandths of the frame, when it was placed by hand
+  // (its own position, or the clip-wide one). Unplaced cues sit in `region`.
+  bool positioned = 10;
+  uint32 position_x = 11;
+  uint32 position_y = 12;
 }
 
 message PreviewGainV1 {
@@ -1363,6 +1372,21 @@ message PreviewCaptionStyleV1 {
   bool boxed = 11;
   uint32 margin_horizontal = 12;
   uint32 margin_vertical = 13;
+  // The colour key words are set in.
+  string accent = 14;
+  // How the spoken word is marked: fill, word, box, pop or underline.
+  string highlight = 15;
+}
+
+// One caption typeface, and whether this installation has its pinned file.
+message CaptionFontV1 {
+  // The font's own family name, which a caption style names.
+  string family = 1;
+  // What a person picks it by.
+  string label = 2;
+  // The pinned file, served to the player so it draws with the same face.
+  string file = 3;
+  bool installed = 4;
 }
 
 // A duration-preserving blend of an outgoing still and live incoming video.
@@ -1414,6 +1438,11 @@ message GetPreviewPlanResponse {
   repeated PreviewCueV1 reading_cues = 18;
   int64 reading_min_duration_ticks = 19;
   int64 reading_min_gap_ticks = 20;
+  // The burned-in captions exactly as the export writes them. A player that
+  // runs libass draws the pixels the render will burn in from this alone.
+  string ass = 21;
+  // Every caption typeface, with whether this installation has it.
+  repeated CaptionFontV1 fonts = 22;
 }
 
 // The edit documents a project holds, oldest first.
@@ -1427,6 +1456,42 @@ message ListEditDocsRequest {
 
 message ListEditDocsResponse {
   repeated EditDoc docs = 1;
+}
+
+// The burned-in captions a document would have under another caption look,
+// computed and not saved: what the editor draws while a person is still
+// choosing, so trying a look is not an edit.
+message PreviewCaptionsRequest {
+  string doc_id = 1;
+  // A caption preset; empty keeps the document's own.
+  string style_ref = 2;
+  // The clip-wide caption options as the edit document stores them, as JSON.
+  // Empty keeps the document's own.
+  string options_json = 3;
+}
+
+message PreviewCaptionsResponse {
+  // The ASS the export would burn in with that look.
+  string ass = 1;
+  uint64 revision = 2;
+}
+
+// Every command applied to a document, oldest first, with its inverse: the
+// history an editor can show, and undo that outlives the window it was made in.
+message ListEditHistoryRequest {
+  string doc_id = 1;
+}
+
+message EditHistoryEntryV1 {
+  // The revision this command produced.
+  uint64 revision = 1;
+  string command_json = 2;
+  string inverse_json = 3;
+  uint64 applied_unix_millis = 4;
+}
+
+message ListEditHistoryResponse {
+  repeated EditHistoryEntryV1 entries = 1;
 }
 
 // ---- Export and archive (book ch. 10, ch. 24 Phase 1) ----

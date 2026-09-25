@@ -72,6 +72,9 @@ pub struct PreviewLine {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewCue {
     pub cue_id: String,
+    /// Where the cue's centre sits when it was placed by hand, its own or the
+    /// clip-wide one; `None` leaves it to its region.
+    pub position: Option<clipmill_edit_ir::CaptionPosition>,
     pub start_ticks: i64,
     pub end_ticks: i64,
     pub first_frame: i64,
@@ -119,6 +122,36 @@ pub struct PreviewPlan {
     /// Which cue list `cues` came from, so a surface showing them addresses
     /// its cue-scoped commands to the same list.
     pub presentation: Presentation,
+    /// The burned-in captions as the export writes them, so a player that
+    /// runs libass draws exactly the pixels the render will burn in.
+    pub ass: String,
+}
+
+/// The burned-in captions a document has, as the export writes them.
+///
+/// For a caller that only needs the captions — the editor trying a look
+/// before choosing it — without sampling every frame's crop.
+pub fn caption_ass(
+    document: &EditDocument,
+    profile: &RenderProfile,
+) -> Result<String, RenderError> {
+    document.validate()?;
+    let caption_style = CaptionStyle::for_track(&document.captions)
+        .or_else(|| {
+            document
+                .captions
+                .cues
+                .is_empty()
+                .then(|| profile.caption_style.clone())
+        })
+        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
+    Ok(crate::subtitles::write_ass(
+        &document.captions,
+        &RenderProfile {
+            caption_style,
+            ..profile.clone()
+        },
+    ))
 }
 
 /// Interpret a document against the proxy timeline.
@@ -154,26 +187,24 @@ pub fn preview_plan(
                 .then(|| profile.caption_style.clone())
         })
         .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
+    let ass = crate::subtitles::write_ass(
+        &document.captions,
+        &RenderProfile {
+            caption_style: caption_style.clone(),
+            ..profile.clone()
+        },
+    );
     Ok(PreviewPlan {
         transition_ticks: document.video.transition_ticks,
         transitions: crate::transitions::transitions(document, rate),
         caption_style,
+        ass,
         rate,
         frame_count,
         crops: crops(document, rate, frame_count, false),
         secondary_crops: crops(document, rate, frame_count, true),
-        cues: cues(
-            document.captions.burned(),
-            rate,
-            document.captions.options.text_case,
-            document.captions.options.highlight_spoken_word,
-        ),
-        reading_cues: cues(
-            &document.captions.cues,
-            rate,
-            document.captions.options.text_case,
-            document.captions.options.highlight_spoken_word,
-        ),
+        cues: cues(document.captions.burned(), rate, &document.captions.options),
+        reading_cues: cues(&document.captions.cues, rate, &document.captions.options),
         segments: segments(document, rate),
         presentation: document.captions.burned_presentation(),
         gain: document
@@ -274,9 +305,10 @@ fn crops(
 fn cues(
     cues: &[CaptionCue],
     rate: FrameRate,
-    text_case: clipmill_edit_ir::CaptionCase,
-    highlight_override: Option<bool>,
+    options: &clipmill_edit_ir::CaptionOptions,
 ) -> Vec<PreviewCue> {
+    let text_case = options.text_case;
+    let highlight_override = options.highlight_spoken_word;
     cues.iter()
         .map(|cue| {
             let first_frame = rate.frame_ceil(cue.start_ticks);
@@ -297,6 +329,7 @@ fn cues(
             };
             PreviewCue {
                 cue_id: cue.cue_id.clone(),
+                position: cue.position.or(options.position),
                 start_ticks: cue.start_ticks,
                 end_ticks: cue.end_ticks,
                 first_frame,

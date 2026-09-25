@@ -49,6 +49,34 @@ fn preview_exposes_subtitle_grouping_with_exact_edit_bounds() {
     assert_eq!(plan.cues.len(), edit.captions.burn_in.len());
 }
 
+#[test]
+fn the_preview_carries_the_captions_the_export_burns_in_for_every_mark() {
+    use clipmill_edit_ir::{CaptionPosition, HighlightStyle};
+    for highlight in [
+        None,
+        Some(HighlightStyle::Word),
+        Some(HighlightStyle::Box),
+        Some(HighlightStyle::Pop),
+        Some(HighlightStyle::Underline),
+    ] {
+        let mut edit = document(LayoutState::Fit);
+        edit.captions.options.highlight_style = highlight;
+        edit.captions.options.font_family = Some("Anton".to_owned());
+        edit.captions.options.position = Some(CaptionPosition { x: 500, y: 300 });
+        edit.captions.cues[0].lines[0].words[0].emphasis = true;
+        let profile = RenderProfile::default();
+        let preview = preview_plan(&edit, &profile).expect("preview");
+        let render = compile(&edit, &[source()], &profile).expect("render");
+        assert_eq!(preview.ass, render.ass, "{highlight:?}");
+        assert!(
+            render.ass.contains("Style: lower_safe,Anton,"),
+            "{}",
+            render.ass
+        );
+        assert!(render.ass.contains("\\pos(540,576)"), "{}", render.ass);
+    }
+}
+
 fn source() -> SourceInput {
     SourceInput {
         fingerprint: SOURCE.to_owned(),
@@ -67,6 +95,7 @@ fn word(text: &str, from: i64, to: i64) -> CaptionWord {
         start_ticks: from * FRAME_TICKS,
         end_ticks: to * FRAME_TICKS,
         word_id: None,
+        emphasis: false,
     }
 }
 
@@ -123,6 +152,7 @@ fn document(state: LayoutState) -> EditDocument {
                         word("point", 70, 95),
                     ],
                 }],
+                position: None,
             }],
             burn_in: vec![
                 CaptionCue {
@@ -134,6 +164,7 @@ fn document(state: LayoutState) -> EditDocument {
                     lines: vec![CaptionLine {
                         words: vec![word("the", 10, 40), word("whole", 40, 50)],
                     }],
+                    position: None,
                 },
                 CaptionCue {
                     cue_id: "hot_2".to_owned(),
@@ -144,6 +175,7 @@ fn document(state: LayoutState) -> EditDocument {
                     lines: vec![CaptionLine {
                         words: vec![word("point", 70, 95)],
                     }],
+                    position: None,
                 },
             ],
         },

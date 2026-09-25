@@ -91,6 +91,8 @@ pub(crate) struct Service {
     roster: crate::worker::WorkerRoster,
     /// The pinned decoder every media stage runs, for the same question.
     decoder: Option<std::path::PathBuf>,
+    /// Where the pinned caption fonts are, to say which this installation has.
+    fonts_dir: Option<std::path::PathBuf>,
     batch_admission: std::sync::Arc<tokio::sync::Mutex<()>>,
     youtube: Option<std::sync::Arc<youtube::YoutubeRuntime>>,
     publishing: std::sync::Arc<youtube_publish::PublishingRuntime>,
@@ -158,6 +160,7 @@ impl Service {
             policy: std::sync::Arc::default(),
             roster: crate::worker::new_roster(),
             decoder: None,
+            fonts_dir: None,
             batch_admission: std::sync::Arc::default(),
             youtube: None,
             publishing: std::sync::Arc::default(),
@@ -207,12 +210,38 @@ impl Service {
             policy,
             roster,
             decoder: Some(decoder),
+            fonts_dir: None,
             batch_admission: std::sync::Arc::default(),
             youtube,
             publishing: std::sync::Arc::default(),
             library: None,
             collector: None,
         }
+    }
+
+    /// Tell the service where the pinned caption fonts are.
+    pub(crate) fn with_fonts(mut self, fonts_dir: std::path::PathBuf) -> Self {
+        self.fonts_dir = Some(fonts_dir);
+        self
+    }
+
+    /// Every caption typeface, with whether its pinned file is installed.
+    ///
+    /// The editor offers only the installed ones: a face whose file is not
+    /// here could be chosen and then refused by the render.
+    fn caption_fonts(&self) -> Vec<clipmill_contracts::proto::ipc::v1::CaptionFontV1> {
+        clipmill_captions::FONTS
+            .iter()
+            .map(|face| clipmill_contracts::proto::ipc::v1::CaptionFontV1 {
+                family: face.family.to_owned(),
+                label: face.label.to_owned(),
+                file: face.file.to_owned(),
+                installed: self
+                    .fonts_dir
+                    .as_ref()
+                    .is_some_and(|dir| dir.join(face.file).is_file()),
+            })
+            .collect()
     }
 
     /// One derivative ingest produced for a source, with the source's
@@ -443,6 +472,12 @@ impl Service {
                     .await
             }
             request::Body::GetEditDoc(get) => self.get_edit_doc(request_id, &get.doc_id).await,
+            request::Body::PreviewCaptions(preview) => {
+                self.preview_captions(request_id, &preview).await
+            }
+            request::Body::ListEditHistory(list) => {
+                self.list_edit_history(request_id, &list.doc_id).await
+            }
             request::Body::SnapshotEditDoc(snapshot) => {
                 self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
             }
@@ -2689,19 +2724,7 @@ impl Service {
                 "the stored document did not parse",
             );
         };
-        let sources_for_rate = match self.database.list_sources(project_id.to_string()).await {
-            Ok(sources) => sources,
-            Err(error) => return store_error_reply(request_id, &error),
-        };
-        let mut profile = clipmill_render::RenderProfile::default();
-        if let Some(first) = document.video.segments.first()
-            && let Some(rate) = sources_for_rate
-                .iter()
-                .find(|source| source.source_fingerprint == first.source_fingerprint)
-                .and_then(|source| crate::inspector::frame_rate_of(&source.source_map_json))
-        {
-            profile.frame_rate = rate;
-        }
+        let profile = self.preview_profile(project_id.as_str(), &document).await;
         let plan = match clipmill_render::preview_plan(&document, &profile) {
             Ok(plan) => plan,
             Err(error) => {
@@ -2712,6 +2735,7 @@ impl Service {
         let mut reply = preview_response(record.revision, &plan);
         reply.sources = sources;
         reply.proxies = proxies;
+        reply.fonts = self.caption_fonts();
         response_reply(request_id, response::Body::GetPreviewPlan(reply))
     }
 
@@ -2823,6 +2847,123 @@ impl Service {
                 response::Body::GetEditDoc(GetEditDocResponse {
                     doc: Some(record.into()),
                 }),
+            ),
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    /// The profile a document is previewed at: the default frame, at the
+    /// frame rate of the recording the clip opens on, which is what an export
+    /// renders at unless another rate is chosen.
+    async fn preview_profile(
+        &self,
+        project_id: &str,
+        document: &clipmill_edit_ir::EditDocument,
+    ) -> clipmill_render::RenderProfile {
+        let sources = self
+            .database
+            .list_sources(project_id.to_owned())
+            .await
+            .unwrap_or_default();
+        let mut profile = clipmill_render::RenderProfile::default();
+        if let Some(first) = document.video.segments.first()
+            && let Some(rate) = sources
+                .iter()
+                .find(|source| source.source_fingerprint == first.source_fingerprint)
+                .and_then(|source| crate::inspector::frame_rate_of(&source.source_map_json))
+        {
+            profile.frame_rate = rate;
+        }
+        profile
+    }
+
+    /// The captions a document would burn in under another look, unsaved.
+    ///
+    /// Trying a look is not an edit: the editor draws this while a person is
+    /// still choosing and sends one command when they have chosen.
+    async fn preview_captions(
+        &self,
+        request_id: String,
+        request: &clipmill_contracts::proto::ipc::v1::PreviewCaptionsRequest,
+    ) -> Reply {
+        let doc_id = match request.doc_id.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let record = match self.database.get_edit_doc(doc_id.to_string()).await {
+            Ok(record) => record,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let Ok(mut document) =
+            clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes())
+        else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the stored document did not parse",
+            );
+        };
+        if !request.style_ref.is_empty() {
+            if clipmill_captions::preset(&request.style_ref).is_none() {
+                return error_reply(
+                    request_id,
+                    ErrorCode::InvalidArgument,
+                    "unknown caption look",
+                );
+            }
+            document.captions.style_ref.clone_from(&request.style_ref);
+        }
+        if !request.options_json.is_empty() {
+            match serde_json::from_str::<clipmill_edit_ir::CaptionOptions>(&request.options_json) {
+                Ok(options) => document.captions.options = options,
+                Err(error) => {
+                    return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+                }
+            }
+        }
+        let profile = self.preview_profile(&record.project_id, &document).await;
+        match clipmill_render::caption_ass(&document, &profile) {
+            Ok(ass) => response_reply(
+                request_id,
+                response::Body::PreviewCaptions(
+                    clipmill_contracts::proto::ipc::v1::PreviewCaptionsResponse {
+                        ass,
+                        revision: record.revision,
+                    },
+                ),
+            ),
+            Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
+        }
+    }
+
+    /// Every command a document has had, oldest first, with its inverse.
+    async fn list_edit_history(&self, request_id: String, value: &str) -> Reply {
+        let doc_id = match value.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        match self.database.get_edit_log(doc_id.to_string()).await {
+            Ok((_initial, entries)) => response_reply(
+                request_id,
+                response::Body::ListEditHistory(
+                    clipmill_contracts::proto::ipc::v1::ListEditHistoryResponse {
+                        entries: entries
+                            .into_iter()
+                            .map(
+                                |entry| clipmill_contracts::proto::ipc::v1::EditHistoryEntryV1 {
+                                    revision: entry.revision,
+                                    command_json: entry.command_json,
+                                    inverse_json: entry.inverse_json,
+                                    applied_unix_millis: entry.applied_unix_millis,
+                                },
+                            )
+                            .collect(),
+                    },
+                ),
             ),
             Err(error) => store_error_reply(request_id, &error),
         }
@@ -3370,6 +3511,8 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::CreateEditDoc(_)) => "create_edit_doc",
         Some(request::Body::ApplyEditCommand(_)) => "apply_edit_command",
         Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
+        Some(request::Body::PreviewCaptions(_)) => "preview_captions",
+        Some(request::Body::ListEditHistory(_)) => "list_edit_history",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         Some(request::Body::ListModels(_)) => "list_models",
         Some(request::Body::DownloadModels(_)) => "download_models",
@@ -3558,7 +3701,19 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
             boxed: plan.caption_style.boxed,
             margin_horizontal: plan.caption_style.margin_horizontal,
             margin_vertical: plan.caption_style.margin_vertical,
+            accent: preview_colour(plan.caption_style.accent),
+            highlight: match plan.caption_style.highlight {
+                clipmill_edit_ir::HighlightStyle::Fill => "fill",
+                clipmill_edit_ir::HighlightStyle::Word => "word",
+                clipmill_edit_ir::HighlightStyle::Box => "box",
+                clipmill_edit_ir::HighlightStyle::Pop => "pop",
+                clipmill_edit_ir::HighlightStyle::Underline => "underline",
+            }
+            .to_owned(),
         }),
+        ass: plan.ass.clone(),
+        // Filled by the caller, which knows where the fonts are installed.
+        fonts: Vec::new(),
         secondary_crops: plan
             .secondary_crops
             .iter()
@@ -3612,6 +3767,9 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
 fn preview_cue_response(cue: &clipmill_render::PreviewCue) -> PreviewCueV1 {
     PreviewCueV1 {
         cue_id: cue.cue_id.clone(),
+        positioned: cue.position.is_some(),
+        position_x: cue.position.map_or(0, |position| position.x),
+        position_y: cue.position.map_or(0, |position| position.y),
         start_ticks: cue.start_ticks,
         end_ticks: cue.end_ticks,
         first_frame: cue.first_frame,
@@ -4864,8 +5022,10 @@ mod tests {
                     text: "word".to_owned(),
                     start_ticks: start,
                     end_ticks: start + 10_000,
+                    emphasis: false,
                 }],
             }],
+            position: None,
         };
         let existing = [cue("cue_1", 0, 60_000), cue("cue_x500_2", 60_000, 90_000)];
         let fitted = super::fit_extension_cues(

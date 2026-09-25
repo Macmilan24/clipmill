@@ -430,7 +430,7 @@ fn nonzero_usize(value: usize) -> Result<NonZeroU64, DeriveError> {
 /// Recognition emits speaker dashes, silence markers, and annotations as
 /// ordinary words. They are not spoken captions and often create a one-frame
 /// subtitle that the export checker quite rightly refuses.
-fn captionable_word(text: &str) -> bool {
+pub fn captionable_word(text: &str) -> bool {
     let text = text.trim();
     let annotation = (text.starts_with('[') && text.ends_with(']'))
         || (text.starts_with('(') && text.ends_with(')'));

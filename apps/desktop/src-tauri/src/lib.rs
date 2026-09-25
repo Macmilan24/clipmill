@@ -453,6 +453,49 @@ async fn list_edit_docs(
         .map_err(|error| error.to_string())
 }
 
+/// Captions under a look being tried, without saving it.
+#[tauri::command]
+async fn preview_captions(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    doc_id: String,
+    style_ref: String,
+    options_json: String,
+) -> Result<views::CaptionPreviewView, String> {
+    supervisor
+        .client()
+        .preview_captions(&doc_id, &style_ref, &options_json)
+        .await
+        .map(|reply| views::CaptionPreviewView {
+            ass: reply.ass,
+            revision: reply.revision,
+        })
+        .map_err(|error| error.to_string())
+}
+
+/// A document's whole edit history, oldest first.
+#[tauri::command]
+async fn list_edit_history(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    doc_id: String,
+) -> Result<Vec<views::EditHistoryEntryView>, String> {
+    supervisor
+        .client()
+        .list_edit_history(&doc_id)
+        .await
+        .map(|entries| {
+            entries
+                .into_iter()
+                .map(|entry| views::EditHistoryEntryView {
+                    revision: entry.revision,
+                    command_json: entry.command_json,
+                    inverse_json: entry.inverse_json,
+                    applied_unix_millis: entry.applied_unix_millis,
+                })
+                .collect()
+        })
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 async fn get_edit_doc(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
@@ -771,10 +814,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let background = Arc::clone(&supervisor);
     // The media door. It holds the store root so it can derive an object
     // directory from a content address; it receives no path from the daemon.
-    let media = Arc::new(media::MediaProtocol::new(
-        Arc::clone(&supervisor),
-        config.paths.artifacts_dir.clone(),
-    ));
+    let media = Arc::new(
+        media::MediaProtocol::new(Arc::clone(&supervisor), config.paths.artifacts_dir.clone())
+            .with_fonts(config.fonts_dir.clone()),
+    );
 
     tauri::Builder::default()
         // Registered for `choose_source_file` alone. The renderer is granted no
@@ -828,6 +871,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             choose_source_file,
             register_source,
             relink_source,
+            preview_captions,
+            list_edit_history,
             get_source,
             start_youtube_import,
             get_youtube_import,

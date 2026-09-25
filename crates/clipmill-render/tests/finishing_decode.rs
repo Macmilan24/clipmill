@@ -268,8 +268,10 @@ fn many_shots_keep_the_tail_caption_and_audio_on_one_program_clock() {
                 start_ticks: 891_000,
                 end_ticks: 927_000,
                 word_id: None,
+                emphasis: false,
             }],
         }],
+        position: None,
     }];
     let source = SourceInput {
         fingerprint,

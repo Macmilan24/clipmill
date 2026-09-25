@@ -638,6 +638,7 @@ mod tests {
                     .to_owned(),
                 inverse_json: r#"{"op":"set_layout","segment_id":"seg_1","state":"speaker_fill"}"#
                     .to_owned(),
+                applied_unix_millis: 0,
             }],
         )];
         let decisions = vec![(

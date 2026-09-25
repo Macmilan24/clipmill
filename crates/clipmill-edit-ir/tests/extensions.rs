@@ -21,8 +21,10 @@ fn cue(id: &str, word_id: &str, text: &str, start: i64, end: i64) -> CaptionCue 
                 start_ticks: start,
                 end_ticks: end,
                 word_id: Some(word_id.to_owned()),
+                emphasis: false,
             }],
         }],
+        position: None,
     }
 }
 

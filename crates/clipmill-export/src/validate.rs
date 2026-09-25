@@ -435,6 +435,7 @@ mod tests {
                 text: "[BLANK_AUDIO]".to_owned(),
                 start_ticks: marker.start_ticks,
                 end_ticks: marker.start_ticks + 22_680,
+                emphasis: false,
             }],
         }];
         doc.captions.cues.insert(1, marker.clone());
@@ -487,6 +488,7 @@ mod tests {
                 text: "Hello.".to_owned(),
                 start_ticks: 0,
                 end_ticks: end_ticks.min(20_000),
+                emphasis: false,
             }],
         }];
         doc

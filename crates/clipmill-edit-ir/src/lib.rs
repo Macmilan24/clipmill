@@ -15,12 +15,13 @@
 mod command;
 mod document;
 mod reflow;
+mod regroup;
 
 pub use command::{CommandError, EditCommand};
 pub use document::{
     Asset, AudioTrack, CaptionAnimation, CaptionCase, CaptionCue, CaptionLine, CaptionOptions,
-    CaptionRegion, CaptionTrack, CaptionWord, CropEasing, CropKeyframe, CropRect, DocumentError,
-    EditDocument, GainPoint, IR_VERSION, Layout, LayoutState, Presentation, Rationale,
-    TICKS_PER_SECOND, Timebase, VideoSegment, VideoTrack, crop_along, crop_along_keyframes,
-    gain_at, interpolate,
+    CaptionPosition, CaptionRegion, CaptionTrack, CaptionWord, CropEasing, CropKeyframe, CropRect,
+    DocumentError, EditDocument, GainPoint, HighlightStyle, IR_VERSION, Layout, LayoutState,
+    Presentation, Rationale, TICKS_PER_SECOND, Timebase, VideoSegment, VideoTrack, crop_along,
+    crop_along_keyframes, gain_at, interpolate,
 };

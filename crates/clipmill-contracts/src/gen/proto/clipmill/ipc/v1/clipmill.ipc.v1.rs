@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -149,6 +149,10 @@ pub mod request {
         CleanStorage(super::CleanStorageRequest),
         #[prost(message, tag = "70")]
         RenameProject(super::RenameProjectRequest),
+        #[prost(message, tag = "71")]
+        PreviewCaptions(super::PreviewCaptionsRequest),
+        #[prost(message, tag = "72")]
+        ListEditHistory(super::ListEditHistoryRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -159,7 +163,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -264,6 +268,10 @@ pub mod response {
         CleanStorage(super::CleanStorageResponse),
         #[prost(message, tag = "56")]
         RenameProject(super::RenameProjectResponse),
+        #[prost(message, tag = "57")]
+        PreviewCaptions(super::PreviewCaptionsResponse),
+        #[prost(message, tag = "58")]
+        ListEditHistory(super::ListEditHistoryResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1674,6 +1682,14 @@ pub struct PreviewCueV1 {
     pub start_ticks: i64,
     #[prost(int64, tag = "9")]
     pub end_ticks: i64,
+    /// The cue's centre in thousandths of the frame, when it was placed by hand
+    /// (its own position, or the clip-wide one). Unplaced cues sit in `region`.
+    #[prost(bool, tag = "10")]
+    pub positioned: bool,
+    #[prost(uint32, tag = "11")]
+    pub position_x: u32,
+    #[prost(uint32, tag = "12")]
+    pub position_y: u32,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PreviewGainV1 {
@@ -1781,6 +1797,27 @@ pub struct PreviewCaptionStyleV1 {
     pub margin_horizontal: u32,
     #[prost(uint32, tag = "13")]
     pub margin_vertical: u32,
+    /// The colour key words are set in.
+    #[prost(string, tag = "14")]
+    pub accent: ::prost::alloc::string::String,
+    /// How the spoken word is marked: fill, word, box, pop or underline.
+    #[prost(string, tag = "15")]
+    pub highlight: ::prost::alloc::string::String,
+}
+/// One caption typeface, and whether this installation has its pinned file.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CaptionFontV1 {
+    /// The font's own family name, which a caption style names.
+    #[prost(string, tag = "1")]
+    pub family: ::prost::alloc::string::String,
+    /// What a person picks it by.
+    #[prost(string, tag = "2")]
+    pub label: ::prost::alloc::string::String,
+    /// The pinned file, served to the player so it draws with the same face.
+    #[prost(string, tag = "3")]
+    pub file: ::prost::alloc::string::String,
+    #[prost(bool, tag = "4")]
+    pub installed: bool,
 }
 /// A duration-preserving blend of an outgoing still and live incoming video.
 /// Outgoing alpha = (end_frame - frame) / (end_frame - first_frame), for
@@ -1856,6 +1893,13 @@ pub struct GetPreviewPlanResponse {
     pub reading_min_duration_ticks: i64,
     #[prost(int64, tag = "20")]
     pub reading_min_gap_ticks: i64,
+    /// The burned-in captions exactly as the export writes them. A player that
+    /// runs libass draws the pixels the render will burn in from this alone.
+    #[prost(string, tag = "21")]
+    pub ass: ::prost::alloc::string::String,
+    /// Every caption typeface, with whether this installation has it.
+    #[prost(message, repeated, tag = "22")]
+    pub fonts: ::prost::alloc::vec::Vec<CaptionFontV1>,
 }
 /// The edit documents a project holds, oldest first.
 ///
@@ -1871,6 +1915,53 @@ pub struct ListEditDocsRequest {
 pub struct ListEditDocsResponse {
     #[prost(message, repeated, tag = "1")]
     pub docs: ::prost::alloc::vec::Vec<EditDoc>,
+}
+/// The burned-in captions a document would have under another caption look,
+/// computed and not saved: what the editor draws while a person is still
+/// choosing, so trying a look is not an edit.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCaptionsRequest {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+    /// A caption preset; empty keeps the document's own.
+    #[prost(string, tag = "2")]
+    pub style_ref: ::prost::alloc::string::String,
+    /// The clip-wide caption options as the edit document stores them, as JSON.
+    /// Empty keeps the document's own.
+    #[prost(string, tag = "3")]
+    pub options_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCaptionsResponse {
+    /// The ASS the export would burn in with that look.
+    #[prost(string, tag = "1")]
+    pub ass: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
+}
+/// Every command applied to a document, oldest first, with its inverse: the
+/// history an editor can show, and undo that outlives the window it was made in.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListEditHistoryRequest {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EditHistoryEntryV1 {
+    /// The revision this command produced.
+    #[prost(uint64, tag = "1")]
+    pub revision: u64,
+    #[prost(string, tag = "2")]
+    pub command_json: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub inverse_json: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "4")]
+    pub applied_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListEditHistoryResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub entries: ::prost::alloc::vec::Vec<EditHistoryEntryV1>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ExportFindingV1 {

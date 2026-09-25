@@ -17,7 +17,7 @@ pub(crate) fn burned_text(text: &str, text_case: CaptionCase) -> String {
 
 use crate::{
     profile::{CaptionStyle, RenderProfile},
-    timing::{FrameRate, centis_to_ass, millis_to_srt, millis_to_vtt},
+    timing::{FrameRate, millis_to_srt, millis_to_vtt},
 };
 
 /// The frames a cue occupies in the rendered program: `[first_frame,
@@ -92,41 +92,43 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
          BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding"
             .to_owned(),
     ];
-    lines.extend(
-        [
-            CaptionRegion::LowerSafe,
-            CaptionRegion::UpperSafe,
-            CaptionRegion::Center,
-        ]
-        .into_iter()
-        .map(|region| style_line(style, region)),
-    );
+    let regions = [
+        CaptionRegion::LowerSafe,
+        CaptionRegion::UpperSafe,
+        CaptionRegion::Center,
+    ];
+    lines.extend(regions.into_iter().map(|region| style_line(style, region)));
+    // The box mark draws with two helper styles of its own; nothing else
+    // needs them, so a document that never boxes a word does not carry them.
+    let boxes = style.highlight == clipmill_edit_ir::HighlightStyle::Box
+        && track
+            .burned()
+            .iter()
+            .any(|cue| highlight_enabled(cue, track.options.highlight_spoken_word));
+    if boxes {
+        for region in regions {
+            lines.push(mark_style_line(style, region));
+            lines.push(word_style_line(style, region));
+        }
+    }
     lines.push(String::new());
     lines.push("[Events]".to_owned());
     lines.push(
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
             .to_owned(),
     );
+    let context = crate::kinetic::CueContext {
+        style,
+        rate,
+        text_case: track.options.text_case,
+        position: track.options.position,
+        play: (play_x, play_y),
+    };
     for cue in track.burned() {
-        let start_centis = rate.frame_centis(rate.frame_ceil(cue.start_ticks));
-        let end_centis = rate.frame_centis(rate.frame_ceil(cue.end_ticks));
-        lines.push(format!(
-            "Dialogue: 0,{},{},{},,0,0,0,,{}",
-            centis_to_ass(start_centis),
-            centis_to_ass(end_centis),
-            region_style_name(cue.region),
-            dialogue_text(
-                cue,
-                rate,
-                start_centis,
-                end_centis,
-                track.options.text_case,
-                if highlight_enabled(cue, track.options.highlight_spoken_word) {
-                    Plain::Swept
-                } else {
-                    Plain::Words(style.unspoken)
-                },
-            ),
+        lines.extend(crate::kinetic::cue_dialogues(
+            cue,
+            highlight_enabled(cue, track.options.highlight_spoken_word),
+            &context,
         ));
     }
     lines.push(String::new());
@@ -204,76 +206,6 @@ pub(crate) fn sweep(
     }
 }
 
-/// How a cue's words are coloured: swept word by word as they are spoken, or
-/// all in the one colour the look calls its words.
-#[derive(Clone, Copy)]
-enum Plain {
-    Swept,
-    Words(crate::profile::Colour),
-}
-
-/// A cue's text with karaoke timing, when the cue asks for it.
-///
-/// Without a sweep libass draws text in the style's primary colour, which is
-/// the *spoken* colour — so a cue with no highlight would take the highlight
-/// colour and ignore the words colour. The words colour is set on the line
-/// instead, and the two swatches mean the same thing whatever the look.
-fn dialogue_text(
-    cue: &CaptionCue,
-    rate: FrameRate,
-    start_centis: i64,
-    end_centis: i64,
-    text_case: CaptionCase,
-    colouring: Plain,
-) -> String {
-    if let Plain::Words(colour) = colouring {
-        let text = cue
-            .lines
-            .iter()
-            .map(|line| {
-                line.words
-                    .iter()
-                    .map(|word| burned_text(&word.text, text_case))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
-            .collect::<Vec<_>>()
-            .join("\\N");
-        return format!("{{\\1c{}}}{text}", colour.to_ass_override());
-    }
-    let swept = sweep(cue, rate, start_centis, end_centis);
-    let mut pieces = Vec::new();
-    if swept.lead_in_centis > 0 {
-        pieces.push(format!("{{\\k{}}}", swept.lead_in_centis));
-    }
-    let mut index = 0_usize;
-    for (line_index, line) in cue.lines.iter().enumerate() {
-        if line_index > 0 {
-            pieces.push("\\N".to_owned());
-        }
-        for (word_index, word) in line.words.iter().enumerate() {
-            if word_index > 0 {
-                pieces.push(" ".to_owned());
-            }
-            let hold = swept.holds_centis.get(index).copied().unwrap_or(0);
-            pieces.push(format!(
-                "{{\\k{hold}}}{}",
-                burned_text(&word.text, text_case)
-            ));
-            index += 1;
-        }
-    }
-    pieces.concat()
-}
-
-fn region_style_name(region: CaptionRegion) -> &'static str {
-    match region {
-        CaptionRegion::LowerSafe => "lower_safe",
-        CaptionRegion::UpperSafe => "upper_safe",
-        CaptionRegion::Center => "center",
-    }
-}
-
 fn region_alignment(region: CaptionRegion) -> u32 {
     match region {
         CaptionRegion::LowerSafe => 2,
@@ -287,7 +219,7 @@ fn style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
         "Style: {name},{font},{size},{spoken},{unspoken},{outline},{shadow},{bold},0,0,0,\
          100,100,0,0,{border},{outline_width},{shadow_depth},{alignment},{margin_h},{margin_h},\
          {margin_v},1",
-        name = region_style_name(region),
+        name = crate::kinetic::region_style_name(region),
         // 1 draws an outline and a drop shadow; 3 fills an opaque plate behind
         // the line, using the outline colour as the plate.
         border = if style.boxed { 3 } else { 1 },
@@ -310,6 +242,57 @@ fn style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
             style.margin_vertical
         },
     )
+}
+
+/// The opaque box a marked word sits on: the style's spoken colour, padded
+/// around the word, with its text drawn invisible by the event.
+fn mark_style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
+    let padding = (style.font_size / 7).max(8);
+    format!(
+        "Style: {name}{suffix},{font},{size},&HFF000000,&HFF000000,{box_colour},&HFF000000,{bold},0,0,0,\
+         100,100,0,0,3,{padding},0,{alignment},{margin_h},{margin_h},{margin_v},1",
+        name = crate::kinetic::region_style_name(region),
+        suffix = crate::kinetic::MARK_SUFFIX,
+        font = style.font_family,
+        size = style.font_size,
+        box_colour = style.spoken.to_ass(),
+        bold = i32::from(style.bold),
+        alignment = region_alignment(region),
+        margin_h = style.margin_horizontal,
+        margin_v = region_margin(style, region),
+    )
+}
+
+/// The marked word redrawn over its box: the look's outline, no plate and no
+/// shadow, so the box shows around the letters rather than under a plate.
+fn word_style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
+    format!(
+        "Style: {name}{suffix},{font},{size},{text},{text},{outline},&HFF000000,{bold},0,0,0,\
+         100,100,0,0,1,{outline_width},0,{alignment},{margin_h},{margin_h},{margin_v},1",
+        name = crate::kinetic::region_style_name(region),
+        suffix = crate::kinetic::WORD_SUFFIX,
+        font = style.font_family,
+        size = style.font_size,
+        text = style.unspoken.to_ass(),
+        outline = crate::profile::Colour {
+            transparency: 0,
+            ..style.outline
+        }
+        .to_ass(),
+        outline_width = style.outline_width.max(2),
+        bold = i32::from(style.bold),
+        alignment = region_alignment(region),
+        margin_h = style.margin_horizontal,
+        margin_v = region_margin(style, region),
+    )
+}
+
+fn region_margin(style: &CaptionStyle, region: CaptionRegion) -> u32 {
+    if matches!(region, CaptionRegion::Center) {
+        0
+    } else {
+        style.margin_vertical
+    }
 }
 
 pub(crate) fn write_srt(track: &CaptionTrack, rate: FrameRate) -> String {
@@ -373,6 +356,7 @@ mod tests {
             start_ticks: start_frame * FRAME_TICKS,
             end_ticks: end_frame * FRAME_TICKS,
             word_id: None,
+            emphasis: false,
         }
     }
 
@@ -394,6 +378,7 @@ mod tests {
                         words: vec![word("point", 60, 75)],
                     },
                 ],
+                position: None,
             }],
             burn_in: Vec::new(),
         }
@@ -484,6 +469,7 @@ mod tests {
                 lines: vec![CaptionLine {
                     words: vec![word(text, from, to)],
                 }],
+                position: None,
             })
             .collect()
     }

@@ -130,6 +130,7 @@ fn cue_from(
         region: model.region,
         anim: model.anim,
         lines,
+        position: None,
     }
 }
 

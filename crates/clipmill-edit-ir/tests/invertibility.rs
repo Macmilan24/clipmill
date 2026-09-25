@@ -40,12 +40,17 @@ fn word(text: &str, start: i64, end: i64) -> CaptionWord {
         start_ticks: start,
         end_ticks: end,
         word_id: Some(format!("w@{start}")),
+        emphasis: false,
     }
 }
 
 /// A document with several segments, cues, crop keyframes, and gain points —
 /// enough structure that a command can plausibly disturb something it should
 /// not.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one fixture document, written out field by field"
+)]
 fn sample_document() -> EditDocument {
     let segment = |id: &str, in_ticks: i64, out_ticks: i64, keyframes: Vec<i64>| VideoSegment {
         segment_id: id.to_owned(),
@@ -77,6 +82,7 @@ fn sample_document() -> EditDocument {
         region: CaptionRegion::LowerSafe,
         anim: CaptionAnimation::Karaoke,
         lines: vec![CaptionLine { words }],
+        position: None,
     };
     EditDocument {
         video: VideoTrack {
@@ -262,6 +268,20 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
         gain_db: -6.0,
     });
     commands.push(EditCommand::RemoveGainPoint { t_ticks: 150_000 });
+    commands.push(EditCommand::RegroupOnScreen {
+        max_words: u32::try_from(rng.below(4)).unwrap_or(0) + 1,
+    });
+    commands.push(EditCommand::DropNonSpeechWords {});
+    if let Some(cue_id) = pick(rng, &cue_ids) {
+        commands.push(EditCommand::SetCuePosition {
+            cue_id,
+            position: Some(clipmill_edit_ir::CaptionPosition {
+                x: u32::try_from(rng.below(1_001)).unwrap_or(0),
+                y: u32::try_from(rng.below(1_001)).unwrap_or(0),
+            }),
+            presentation: Presentation::Reading,
+        });
+    }
     commands
 }
 
