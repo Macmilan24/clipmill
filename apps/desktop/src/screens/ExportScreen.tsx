@@ -14,7 +14,9 @@ import { latestExportOf, rememberExportRate, useDelivery } from '../export/deliv
 import {
   type FormatChoice,
   outputFormat,
+  recallFolder,
   recallFormat,
+  rememberFolder,
   rememberFormat,
   sourceFpsOf,
 } from '../export/format.js';
@@ -76,7 +78,7 @@ export function ExportScreen({
   const docId = clip?.docId ?? null;
   const [durationTicks, setDurationTicks] = useState(0);
   const [title, setTitle] = useState('');
-  const [destination, setDestination] = useState('');
+  const [destination, setDestination] = useState(() => recallFolder());
   const [pattern, setPattern] = useState('{index}-{clip}');
   const [attestation, setAttestation] = useState('');
   const [rightsApproval, setRightsApproval] = useState<string | null>(null);
@@ -335,6 +337,7 @@ export function ExportScreen({
     try {
       // The revision the plan checked is the revision that may leave.
       const exported = await api.exportClip({ ...request, expectedRevision: plan.revision });
+      rememberFolder(request.destinationDir);
       if (selectionGeneration.current === generation) setQueued(exported);
     } catch (cause) {
       if (selectionGeneration.current !== generation) return;

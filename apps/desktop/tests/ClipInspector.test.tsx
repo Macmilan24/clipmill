@@ -160,8 +160,11 @@ describe('reading the clip', () => {
   it('plays from any word', () => {
     show();
     fireEvent.click(word('ticket.'));
-    // "ticket." starts at 14.75 s: frame 22 of the fourteenth second.
-    expect(screen.getByTestId('timecode').textContent).toBe('00:00:14;22');
+    // "ticket." starts at 14.75 s in the recording, three seconds into the
+    // cut: the clock reads clip time, the recording's is on hover.
+    const clock = screen.getByTestId('timecode');
+    expect(clock.textContent).toBe('0:03.0 / 0:03.3');
+    expect(clock.getAttribute('title')).toBe('0:14.8 in the recording');
   });
 
   it('says so when the analysis has no transcript, rather than showing nothing', () => {
@@ -347,8 +350,10 @@ describe('why and details', () => {
     show();
     openTab(/why/i);
     fireEvent.click(screen.getAllByRole('button', { name: /play from/i })[0]!);
-    // The hook is quoted at the clip's start, 11.8 s: frame 23 of second 11.
-    expect(screen.getByTestId('timecode').textContent).toBe('00:00:11;23');
+    // The hook is quoted at the clip's start, 11.8 s into the recording.
+    const clock = screen.getByTestId('timecode');
+    expect(clock.textContent).toBe('0:00.0 / 0:03.3');
+    expect(clock.getAttribute('title')).toBe('0:11.8 in the recording');
   });
 
   it('names the clips that cover the same ground', () => {

@@ -9,6 +9,7 @@ import {
   RefreshCw,
   ShieldCheck,
   ShieldOff,
+  SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
@@ -21,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { AboutSection } from './AboutSection.js';
 import { AppearancePreferences } from './AppearancePreferences.js';
+import { EditingPreferences } from './EditingPreferences.js';
 
 import './preferences.css';
 
@@ -126,6 +128,7 @@ export function Settings({
           {integrations && (
             <SectionLink href="#settings-integrations" icon={<Plug />} label="Connections" />
           )}
+          <SectionLink href="#settings-editing" icon={<SlidersHorizontal />} label="Editing" />
           <SectionLink href="#settings-privacy" icon={<ShieldCheck />} label="Privacy & cloud" />
           <SectionLink href="#settings-storage" icon={<HardDrive />} label="Storage" />
           <SectionLink href="#settings-about" icon={<Info />} label="About" />
@@ -159,6 +162,18 @@ export function Settings({
               {integrations}
             </section>
           )}
+          <section id="settings-editing" className="scroll-mt-6" aria-label="Editing and export">
+            <Card className="preference-section gap-0 overflow-hidden py-0">
+              <SectionHeading
+                icon={<SlidersHorizontal />}
+                title="Editing & export"
+                detail="How time reads, what exports start from, your caption styles and keys."
+              />
+              <CardContent className="px-5 py-5">
+                <EditingPreferences />
+              </CardContent>
+            </Card>
+          </section>
           <section
             id="settings-privacy"
             className="scroll-mt-6"

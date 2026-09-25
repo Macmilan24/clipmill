@@ -19,7 +19,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
 import type { CaptionFont, EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
 import type { CaptionDraft } from '../screens/Editor.js';
-import { clockTenths, timecode } from '../inspector/review.js';
+import { clockTenths } from '../inspector/review.js';
 import type { EditorFocus } from '../shell/route.js';
 import { repairAll, shortCues } from './captionRepairs.js';
 import { CaptionStyleControls, LOOKS } from './CaptionStyle.js';
@@ -859,7 +859,7 @@ function DetailsTab({ plan, document }: EditorPropertiesProps) {
         {first && last && (
           <Fact
             label="From the recording"
-            value={`${timecode(first.inTicks)} – ${timecode(last.outTicks)}`}
+            value={`${clockTenths(first.inTicks)} – ${clockTenths(last.outTicks)}`}
             mono
           />
         )}

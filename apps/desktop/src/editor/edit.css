@@ -63,7 +63,8 @@
 }
 
 .edit-workspace[data-focused='true'] .edit-side,
-.edit-workspace[data-focused='true'] .edit-resizer {
+.edit-workspace[data-focused='true'] .edit-resizer,
+.edit-workspace[data-focused='true'] .edit-resizer-lanes {
   display: none;
 }
 
@@ -729,7 +730,9 @@
 
 .edit-track-labels {
   display: grid;
-  grid-template-rows: 18px 42px 26px 22px 42px;
+  grid-template-rows:
+    18px calc(42px * var(--edit-lane-scale, 1)) calc(26px * var(--edit-lane-scale, 1))
+    calc(22px * var(--edit-lane-scale, 1)) calc(42px * var(--edit-lane-scale, 1));
   align-items: center;
   padding-top: 1px;
   color: var(--cm-text-muted);
@@ -737,7 +740,9 @@
 }
 
 .edit-track {
-  grid-template-rows: 18px 42px 26px 22px 42px;
+  grid-template-rows:
+    18px calc(42px * var(--edit-lane-scale, 1)) calc(26px * var(--edit-lane-scale, 1))
+    calc(22px * var(--edit-lane-scale, 1)) calc(42px * var(--edit-lane-scale, 1));
   cursor: default;
 }
 
@@ -1064,7 +1069,9 @@
   }
   .edit-track,
   .edit-track-labels {
-    grid-template-rows: 18px 34px 22px 20px 32px;
+    grid-template-rows:
+      18px calc(34px * var(--edit-lane-scale, 1)) calc(22px * var(--edit-lane-scale, 1))
+      calc(20px * var(--edit-lane-scale, 1)) calc(32px * var(--edit-lane-scale, 1));
   }
 }
 
@@ -1142,4 +1149,119 @@
 .edit-saved-style button + button {
   padding-inline: 6px;
   border-left: 1px solid var(--cm-glass-border);
+}
+
+/* Title and history -------------------------------------------------------- */
+
+.edit-title-button {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  margin-left: -4px;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.edit-title-button:hover {
+  background: var(--cm-accent-selected, rgb(255 255 255 / 0.06));
+}
+
+.edit-title-input {
+  width: min(560px, 100%);
+  padding: 0 4px;
+  margin-left: -4px;
+  border: 1px solid var(--cm-accent);
+  border-radius: 4px;
+  background: var(--cm-recessed, transparent);
+  color: var(--cm-text-primary);
+  font: inherit;
+  font-size: var(--cm-type-card-title, 17px);
+  font-weight: var(--cm-weight-heading, 600);
+  outline: none;
+}
+
+.edit-history {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 12px 16px;
+  list-style: none;
+}
+
+.edit-history li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 8px 8px;
+  border-radius: 6px;
+}
+
+.edit-history li[data-current] {
+  background: var(--cm-accent-selected, rgb(255 255 255 / 0.05));
+}
+
+.edit-history-label {
+  overflow: hidden;
+  font-size: var(--cm-type-label, 13px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-history-time {
+  grid-column: 1;
+  color: var(--cm-text-muted);
+  font-size: var(--cm-type-meta, 11px);
+}
+
+.edit-history li > button,
+.edit-history-now {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+.edit-history-now {
+  color: var(--cm-text-muted);
+  font-size: var(--cm-type-meta, 11px);
+}
+
+.edit-history-note {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-label, 13px);
+}
+
+/* A key word in the transcript: marked as the accent will mark it on screen. */
+.edit-word[data-key='true'] {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-success, #4ade80) 70%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* The lanes share one menu; their box must not change the timeline's layout. */
+.edit-lanes {
+  display: contents;
+}
+
+/* The timeline's top edge: drag for taller or shorter lanes. */
+.edit-resizer-lanes {
+  flex: none;
+  width: 100%;
+  height: 6px;
+  margin-top: -3px;
+  margin-bottom: -3px;
+  cursor: row-resize;
+  position: relative;
+  z-index: 3;
+}
+
+.edit-resizer-lanes:hover,
+.edit-resizer-lanes:active {
+  background: color-mix(in srgb, var(--cm-accent) 35%, transparent);
 }

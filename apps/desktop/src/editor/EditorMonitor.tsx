@@ -34,7 +34,8 @@ import type { EditIr } from '@clipmill/contracts';
 
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
 import { SPEEDS } from '../inspector/playback.js';
-import { timecode as sourceTimecode } from '../inspector/review.js';
+import { clockTenths } from '../inspector/review.js';
+import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
 import { TipButton } from '../inspector/TipButton.js';
 import {
   batch,
@@ -47,7 +48,7 @@ import {
 import { type CaptionFace, CaptionCanvas } from './CaptionCanvas.js';
 import { CompositionCanvas } from './CompositionCanvas.js';
 import { pressOrDrag } from './gesture.js';
-import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf } from './player.js';
+import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf, sourceTicksAt } from './player.js';
 import type { EditorSelection } from './selection.js';
 
 export type MonitorView = 'edit' | 'original';
@@ -669,12 +670,6 @@ function Stage({
   );
 }
 
-/** A position in the clip as `mm:ss;ff`: a short has no hours to show. */
-function clipTimecode(ticks: number): string {
-  const full = sourceTimecode(ticks);
-  return full.startsWith('00:') ? full.slice(3) : full;
-}
-
 function share(value: number): string {
   return `${(value * 100).toFixed(2)}%`;
 }
@@ -693,11 +688,18 @@ function Transport({
   const { frame, playing, speed, loop, muted } = playback;
   const ticks = ticksAt(plan, frame);
   const length = ticksAt(plan, plan.frameCount);
+  const format = useTimeFormat();
+  const fps = plan.rateNum / Math.max(1, plan.rateDen);
+  const recording = sourceTicksAt(plan, frame);
   return (
     <div className="review-transport" aria-label="Transport">
-      <span className="review-timecode mono" data-testid="timecode">
-        {clipTimecode(ticks)}
-        <span className="edit-length"> / {clipTimecode(length)}</span>
+      <span
+        className="review-timecode mono"
+        data-testid="timecode"
+        title={recording === null ? undefined : `${clockTenths(recording)} in the recording`}
+      >
+        {formatTime(ticks, format, fps)}
+        <span className="edit-length"> / {formatTime(length, format, fps)}</span>
         <span className="sr-only">
           {' '}
           · frame {frame} of {plan.frameCount}

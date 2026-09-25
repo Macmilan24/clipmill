@@ -3,7 +3,17 @@
  * approved clip. Every picture, crop and caption comes from the preview plan the
  * render code computed; the player maps media time onto the plan's program frames.
  */
-import { ArrowLeft, Check, Link2, Maximize2, Minimize2, Redo2, Undo2, Upload } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  Keyboard,
+  Link2,
+  Maximize2,
+  Minimize2,
+  Redo2,
+  Undo2,
+  Upload,
+} from 'lucide-react';
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -53,7 +63,10 @@ import {
 import { cutWords, programWords, rippleRange, shownCues } from '../editor/transcript.js';
 import { useDraftAudio } from '../editor/useDraftAudio.js';
 import { useEditorKeys } from '../editor/useEditorKeys.js';
+import { ClipTitle, HistoryButton } from '../editor/EditorHistory.js';
+import type { HistoryStep } from '../editor/history.js';
 import type { EditorFocus } from '../shell/route.js';
+import { openShortcuts } from '../shell/ShortcutSheet.js';
 import {
   gainAt,
   proxySecondsAt,
@@ -104,6 +117,8 @@ export interface EditorProps {
   readonly onUndo: () => void;
   readonly onRedo: () => void;
   readonly onResolve: (frame: number) => void;
+  /** The clip's whole edit history, newest last. Absent hides History. */
+  readonly onLoadHistory?: (() => Promise<readonly HistoryStep[]>) | null;
   /** Where a pinned caption font is served from. Absent keeps CSS captions. */
   readonly fontUrl?: ((file: string) => string) | null;
   /**
@@ -120,7 +135,7 @@ export interface CaptionDraft {
 }
 
 const PANELS_KEY = 'clipmill.editor.panels';
-const DEFAULT_PANELS = { left: 300, right: 320 };
+const DEFAULT_PANELS = { left: 300, right: 320, lanes: 1 };
 
 function remembered<T>(key: string, fallback: T): T {
   try {
@@ -168,6 +183,7 @@ export function Editor({
   onResolve,
   fontUrl = null,
   previewCaptions = null,
+  onLoadHistory = null,
 }: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [playhead, setFrame] = useState(0);
@@ -712,6 +728,31 @@ export function Editor({
     plan !== null && docId !== null,
   );
 
+  /**
+   * Taller or shorter timeline lanes, by dragging the timeline's top edge:
+   * more filmstrip and waveform for close work, more picture otherwise.
+   */
+  const resizeLanes = (event: ReactPointerEvent) => {
+    event.preventDefault();
+    const origin = event.clientY;
+    const starting = panels.lanes ?? 1;
+    const move = (next: PointerEvent) =>
+      setPanels((current) => ({
+        ...current,
+        lanes: Math.max(0.75, Math.min(2.4, starting + (origin - next.clientY) / 130)),
+      }));
+    const done = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', done);
+      setPanels((current) => {
+        remember(PANELS_KEY, current);
+        return current;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', done);
+  };
+
   const resize = (side: 'left' | 'right', event: ReactPointerEvent) => {
     event.preventDefault();
     const origin = event.clientX;
@@ -804,14 +845,23 @@ export function Editor({
   };
 
   return (
-    <div className="review-workspace edit-workspace" data-focused={focused ? 'true' : undefined}>
+    <div
+      className="review-workspace edit-workspace"
+      data-focused={focused ? 'true' : undefined}
+      style={{ '--edit-lane-scale': String(panels.lanes ?? 1) } as CSSProperties}
+    >
       <header className="review-heading">
         <div className="review-identity">
           <TipButton label="Back to results" onClick={onOpenResults}>
             <ArrowLeft className="size-4" />
           </TipButton>
           <div className="review-title">
-            <h1 data-testid="clip-name">{labels?.clip ?? 'Clip editor'}</h1>
+            <ClipTitle
+              title={document?.title ?? null}
+              fallback={labels?.clip ?? 'Clip editor'}
+              busy={busy}
+              onApply={onApply}
+            />
             <p>
               <span>{labels?.project ?? 'Your edit'}</span>
               <span aria-hidden="true">·</span>
@@ -845,6 +895,17 @@ export function Editor({
           <TipButton label="Redo" disabled={!canRedo || busy} onClick={onRedo}>
             <Redo2 className="size-4" />
           </TipButton>
+          <TipButton label="Keyboard shortcuts" onClick={openShortcuts}>
+            <Keyboard className="size-4" />
+          </TipButton>
+          {onLoadHistory && (
+            <HistoryButton
+              revision={plan.revision}
+              busy={busy}
+              onLoad={onLoadHistory}
+              onApply={onApply}
+            />
+          )}
           <span className="review-divider" aria-hidden="true" />
           <TipButton
             label={focused ? 'Restore editing panels' : 'Focus preview'}
@@ -949,6 +1010,18 @@ export function Editor({
           fonts={plan.fonts ?? []}
         />
       </div>
+      <div
+        className="edit-resizer-lanes"
+        role="separator"
+        aria-label="Resize the timeline"
+        aria-orientation="horizontal"
+        onPointerDown={resizeLanes}
+        onDoubleClick={() => {
+          const next = { ...panels, lanes: 1 };
+          setPanels(next);
+          remember(PANELS_KEY, next);
+        }}
+      />
       <EditorTimeline
         plan={plan}
         document={document}

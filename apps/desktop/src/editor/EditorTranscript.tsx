@@ -5,17 +5,26 @@
  * captions or correct them; fillers and long pauses are gathered for review.
  */
 import type { EditIr } from '@clipmill/contracts';
-import { Search, X } from 'lucide-react';
+import { EyeOff, PencilLine, Play, Scissors, Search, Sparkles, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Checkbox } from '../components/ui/checkbox.js';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '../components/ui/context-menu.js';
 import { Input } from '../components/ui/input.js';
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
 import { clockTenths } from '../inspector/review.js';
 import { TipButton } from '../inspector/TipButton.js';
 import { type Transcript, endAfter, startBefore } from '../results/transcript.js';
-import { extendWithCaptions } from './commands.js';
+import { keyWords } from './captionStyles.js';
+import { batch, extendWithCaptions, setWordEmphasis } from './commands.js';
 import { type WordRange, positions } from './selection.js';
 import { frameOfTicks } from './timeline.js';
 import {
@@ -74,6 +83,8 @@ export function EditorTranscript({
   );
   const [finding, setFinding] = useState(false);
   const [review, setReview] = useState<Review>(null);
+  // Bumped by the word menu's Correct, which opens the selection's editor.
+  const [correctSignal, setCorrectSignal] = useState(0);
   useEffect(() => {
     if (findSignal > 0) setFinding(true);
   }, [findSignal]);
@@ -157,6 +168,7 @@ export function EditorTranscript({
       ) : (
         <Words
           plan={plan}
+          document={document}
           transcript={transcript}
           words={words}
           refs={refs}
@@ -167,6 +179,7 @@ export function EditorTranscript({
           onSelect={onSelect}
           onSeek={onSeek}
           onApply={onApply}
+          onCorrect={() => setCorrectSignal((count) => count + 1)}
         />
       )}
       {selected && words[selected.first] && (
@@ -176,6 +189,7 @@ export function EditorTranscript({
           refs={refs}
           selected={selected}
           busy={busy}
+          correctSignal={correctSignal}
           onApply={onApply}
           onClear={() => onSelect(null)}
         />
@@ -186,6 +200,7 @@ export function EditorTranscript({
 
 function Words({
   plan,
+  document,
   transcript,
   words,
   refs,
@@ -196,8 +211,11 @@ function Words({
   onSelect,
   onSeek,
   onApply,
+  onCorrect,
 }: {
   readonly plan: PreviewPlan;
+  readonly document: EditIr | null;
+  readonly onCorrect: () => void;
   readonly transcript: Transcript;
   readonly words: ReturnType<typeof programWords>;
   readonly refs: readonly (CaptionWordRef | null)[];
@@ -215,6 +233,10 @@ function Words({
   const touched = useRef(0);
   const anchor = useRef<number | null>(null);
   const dragged = useRef(false);
+  // The word a right-click landed on; none, and no menu opens.
+  const [target, setTarget] = useState<number | null>(null);
+  const targetRef = useRef<number | null>(null);
+  const emphasized = useMemo(() => new Set(keyWords(document)), [document]);
 
   // Where each spoken word landed in the program, by its place in the transcript.
   const placed = useMemo(() => {
@@ -261,151 +283,242 @@ function Words({
   }
 
   const inRange = (at: number) => selected !== null && at >= selected.first && at <= selected.last;
+  // What the menu acts on: the selection the word is in, or the word alone.
+  const menuRange: WordRange | null =
+    target === null
+      ? null
+      : inRange(target) && selected
+        ? selected
+        : { first: target, last: target };
+  const menuPositions = menuRange ? positions(menuRange) : [];
+  const menuCut = menuRange ? cutWords(plan, words, menuPositions) : null;
+  const menuHide = menuRange
+    ? hideInCaptions(
+        plan,
+        menuPositions.map((at) => refs[at] ?? null),
+      )
+    : null;
+  const menuRefs = menuPositions.flatMap((at) => (refs[at] ? [refs[at]!] : []));
+  const allKey = menuRefs.length > 0 && menuRefs.every((ref) => emphasized.has(ref.wordId));
 
   return (
-    <div
-      ref={list}
-      className="review-transcript edit-transcript"
-      onWheel={() => {
-        touched.current = Date.now();
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (!open) targetRef.current = null;
       }}
     >
-      <p className="review-transcript-summary">
-        <span className="mono">{words.length}</span> words in the clip
-      </p>
-      {from > 0 && (
-        <button type="button" className="review-more" onClick={() => setEarlier(earlier + MORE)}>
-          Show earlier
-        </button>
-      )}
-      {sentences.slice(from, to).map((sentence) => {
-        const sourceWords = transcript.words.slice(
-          sentence.firstWord,
-          sentence.firstWord + sentence.wordCount,
-        );
-        const inside = sourceWords.filter((_, offset) =>
-          placed.has(sentence.firstWord + offset),
-        ).length;
-        const before =
-          sentence.firstWord + sentence.wordCount <= firstSource ||
-          (inside === 0 && sentence.firstWord < firstSource);
-        const after = sentence.firstWord > lastSource;
-        const partialHead = !before && sentence.firstWord < firstSource;
-        const partialTail = !after && sentence.firstWord + sentence.wordCount - 1 > lastSource;
-        const state =
-          inside === sourceWords.length ? 'inside' : inside === 0 ? 'outside' : 'partial';
-        const firstPlaced = sourceWords.findIndex((_, offset) =>
-          placed.has(sentence.firstWord + offset),
-        );
-        const label =
-          firstPlaced >= 0
-            ? clockTenths(words[placed.get(sentence.firstWord + firstPlaced)!]!.startTicks)
-            : before
-              ? 'Before the clip'
-              : after
-                ? 'After the clip'
-                : 'Cut';
-        const includeStart =
-          first && (before || partialHead) ? startBefore(transcript, sentence.firstWord) : null;
-        const includeEnd =
-          last && (after || partialTail)
-            ? endAfter(transcript, sentence.firstWord + sentence.wordCount - 1)
-            : null;
-        return (
-          <div key={sentence.firstWord} className="review-sentence" data-state={state}>
-            <div className="review-sentence-head">
-              <span className="mono">{label}</span>
-              {(includeStart !== null || includeEnd !== null) && (
-                <span className="review-sentence-actions">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      if (includeStart !== null && first)
-                        onApply(extendWithCaptions(first.segmentId, includeStart, first.outTicks));
-                      else if (includeEnd !== null && last)
-                        onApply(extendWithCaptions(last.segmentId, last.inTicks, includeEnd));
-                    }}
-                  >
-                    {includeStart !== null ? 'Include from here' : 'Include to here'}
-                  </button>
-                </span>
-              )}
-            </div>
-            <p>
-              {sourceWords.map((word, offset) => {
-                const at = placed.get(sentence.firstWord + offset);
-                if (at === undefined) {
-                  const between =
-                    sentence.firstWord + offset > firstSource &&
-                    sentence.firstWord + offset < lastSource;
-                  return (
-                    <span key={offset}>
-                      <span
-                        className="review-word edit-word"
-                        data-inside="false"
-                        data-cut={between ? 'true' : undefined}
+      <ContextMenuTrigger
+        asChild
+        onContextMenu={(event) => {
+          // Only a word opens the menu; anywhere else keeps the page's own.
+          if (targetRef.current === null) event.preventDefault();
+        }}
+      >
+        <div
+          ref={list}
+          className="review-transcript edit-transcript"
+          onWheel={() => {
+            touched.current = Date.now();
+          }}
+        >
+          <p className="review-transcript-summary">
+            <span className="mono">{words.length}</span> words in the clip
+          </p>
+          {from > 0 && (
+            <button
+              type="button"
+              className="review-more"
+              onClick={() => setEarlier(earlier + MORE)}
+            >
+              Show earlier
+            </button>
+          )}
+          {sentences.slice(from, to).map((sentence) => {
+            const sourceWords = transcript.words.slice(
+              sentence.firstWord,
+              sentence.firstWord + sentence.wordCount,
+            );
+            const inside = sourceWords.filter((_, offset) =>
+              placed.has(sentence.firstWord + offset),
+            ).length;
+            const before =
+              sentence.firstWord + sentence.wordCount <= firstSource ||
+              (inside === 0 && sentence.firstWord < firstSource);
+            const after = sentence.firstWord > lastSource;
+            const partialHead = !before && sentence.firstWord < firstSource;
+            const partialTail = !after && sentence.firstWord + sentence.wordCount - 1 > lastSource;
+            const state =
+              inside === sourceWords.length ? 'inside' : inside === 0 ? 'outside' : 'partial';
+            const firstPlaced = sourceWords.findIndex((_, offset) =>
+              placed.has(sentence.firstWord + offset),
+            );
+            const label =
+              firstPlaced >= 0
+                ? clockTenths(words[placed.get(sentence.firstWord + firstPlaced)!]!.startTicks)
+                : before
+                  ? 'Before the clip'
+                  : after
+                    ? 'After the clip'
+                    : 'Cut';
+            const includeStart =
+              first && (before || partialHead) ? startBefore(transcript, sentence.firstWord) : null;
+            const includeEnd =
+              last && (after || partialTail)
+                ? endAfter(transcript, sentence.firstWord + sentence.wordCount - 1)
+                : null;
+            return (
+              <div key={sentence.firstWord} className="review-sentence" data-state={state}>
+                <div className="review-sentence-head">
+                  <span className="mono">{label}</span>
+                  {(includeStart !== null || includeEnd !== null) && (
+                    <span className="review-sentence-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          if (includeStart !== null && first)
+                            onApply(
+                              extendWithCaptions(first.segmentId, includeStart, first.outTicks),
+                            );
+                          else if (includeEnd !== null && last)
+                            onApply(extendWithCaptions(last.segmentId, last.inTicks, includeEnd));
+                        }}
                       >
-                        {word.text}
-                      </span>{' '}
+                        {includeStart !== null ? 'Include from here' : 'Include to here'}
+                      </button>
                     </span>
-                  );
-                }
-                const ref = refs[at];
-                return (
-                  <span key={offset}>
-                    <span
-                      className="review-word edit-word"
-                      data-position={at}
-                      data-inside="true"
-                      data-live={at === live ? 'true' : undefined}
-                      data-selected={inRange(at) ? 'true' : undefined}
-                      data-hidden={ref === null ? 'true' : undefined}
-                      data-filler={isFiller(word.text) ? 'true' : undefined}
-                      title={ref === null ? 'Hidden from the captions' : undefined}
-                      onPointerDown={(event) => {
-                        if (event.button > 0) return;
-                        event.preventDefault();
-                        dragged.current = false;
-                        if (event.shiftKey && selected) {
-                          onSelect({
-                            first: Math.min(selected.first, at),
-                            last: Math.max(selected.last, at),
-                          });
-                          return;
-                        }
-                        anchor.current = at;
-                        onSelect({ first: at, last: at });
-                      }}
-                      onPointerEnter={() => {
-                        if (anchor.current === null || anchor.current === at) return;
-                        dragged.current = true;
-                        onSelect({
-                          first: Math.min(anchor.current, at),
-                          last: Math.max(anchor.current, at),
-                        });
-                      }}
-                      onClick={(event) => {
-                        if (!dragged.current && !event.shiftKey) {
-                          onSeek(frameOfTicks(plan, words[at]!.startTicks));
-                        }
-                      }}
-                    >
-                      {ref?.text ?? word.text}
-                    </span>{' '}
-                  </span>
-                );
-              })}
-            </p>
-          </div>
-        );
-      })}
-      {to < sentences.length && (
-        <button type="button" className="review-more" onClick={() => setLater(later + MORE)}>
-          Show later
-        </button>
-      )}
-    </div>
+                  )}
+                </div>
+                <p>
+                  {sourceWords.map((word, offset) => {
+                    const at = placed.get(sentence.firstWord + offset);
+                    if (at === undefined) {
+                      const between =
+                        sentence.firstWord + offset > firstSource &&
+                        sentence.firstWord + offset < lastSource;
+                      return (
+                        <span key={offset}>
+                          <span
+                            className="review-word edit-word"
+                            data-inside="false"
+                            data-cut={between ? 'true' : undefined}
+                          >
+                            {word.text}
+                          </span>{' '}
+                        </span>
+                      );
+                    }
+                    const ref = refs[at];
+                    return (
+                      <span key={offset}>
+                        <span
+                          className="review-word edit-word"
+                          data-position={at}
+                          data-inside="true"
+                          data-live={at === live ? 'true' : undefined}
+                          data-selected={inRange(at) ? 'true' : undefined}
+                          data-hidden={ref === null ? 'true' : undefined}
+                          data-filler={isFiller(word.text) ? 'true' : undefined}
+                          title={ref === null ? 'Hidden from the captions' : undefined}
+                          onPointerDown={(event) => {
+                            if (event.button > 0) return;
+                            event.preventDefault();
+                            dragged.current = false;
+                            if (event.shiftKey && selected) {
+                              onSelect({
+                                first: Math.min(selected.first, at),
+                                last: Math.max(selected.last, at),
+                              });
+                              return;
+                            }
+                            anchor.current = at;
+                            onSelect({ first: at, last: at });
+                          }}
+                          onPointerEnter={() => {
+                            if (anchor.current === null || anchor.current === at) return;
+                            dragged.current = true;
+                            onSelect({
+                              first: Math.min(anchor.current, at),
+                              last: Math.max(anchor.current, at),
+                            });
+                          }}
+                          onClick={(event) => {
+                            if (!dragged.current && !event.shiftKey) {
+                              onSeek(frameOfTicks(plan, words[at]!.startTicks));
+                            }
+                          }}
+                          onContextMenu={() => {
+                            targetRef.current = at;
+                            setTarget(at);
+                            if (!inRange(at)) onSelect({ first: at, last: at });
+                          }}
+                          data-key={ref && emphasized.has(ref.wordId) ? 'true' : undefined}
+                        >
+                          {ref?.text ?? word.text}
+                        </span>{' '}
+                      </span>
+                    );
+                  })}
+                </p>
+              </div>
+            );
+          })}
+          {to < sentences.length && (
+            <button type="button" className="review-more" onClick={() => setLater(later + MORE)}>
+              Show later
+            </button>
+          )}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {menuRange && (
+          <>
+            <ContextMenuLabel>
+              {menuPositions.length === 1
+                ? `“${refs[menuRange.first]?.text ?? words[menuRange.first]?.text ?? ''}”`
+                : `${menuPositions.length} words`}
+            </ContextMenuLabel>
+            <ContextMenuItem
+              onSelect={() => onSeek(frameOfTicks(plan, words[menuRange.first]!.startTicks))}
+            >
+              <Play aria-hidden="true" />
+              Play from here
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              disabled={busy || !menuCut}
+              onSelect={() => menuCut && onApply(menuCut)}
+            >
+              <Scissors aria-hidden="true" />
+              Cut from the clip
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={busy || !menuHide}
+              onSelect={() => menuHide && onApply(menuHide)}
+            >
+              <EyeOff aria-hidden="true" />
+              Hide in captions
+            </ContextMenuItem>
+            {menuPositions.length === 1 && refs[menuRange.first] && (
+              <ContextMenuItem disabled={busy} onSelect={onCorrect}>
+                <PencilLine aria-hidden="true" />
+                Correct…
+              </ContextMenuItem>
+            )}
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              disabled={busy || menuRefs.length === 0}
+              onSelect={() =>
+                onApply(batch(menuRefs.map((ref) => setWordEmphasis(ref.wordId, !allKey))))
+              }
+            >
+              <Sparkles aria-hidden="true" />
+              {allKey ? 'Not a key word' : 'Key word'}
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -415,6 +528,7 @@ function SelectionBar({
   refs,
   selected,
   busy,
+  correctSignal,
   onApply,
   onClear,
 }: {
@@ -423,6 +537,8 @@ function SelectionBar({
   readonly refs: readonly (CaptionWordRef | null)[];
   readonly selected: WordRange;
   readonly busy: boolean;
+  /** Bumped to open the correction for a single selected word. */
+  readonly correctSignal: number;
   readonly onApply: (command: EditCommandJson) => void;
   readonly onClear: () => void;
 }) {
@@ -439,6 +555,11 @@ function SelectionBar({
     setCorrecting(false);
     setDraft(single?.text ?? '');
   }, [selected.first, selected.last, single?.text]);
+  useEffect(() => {
+    if (correctSignal > 0 && single) setCorrecting(true);
+    // Only a new request opens it; the selection changing closes it above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [correctSignal]);
   const length = (words[selected.last]!.endTicks - words[selected.first]!.startTicks) / 90_000;
   return (
     <div className="edit-selection-bar" role="toolbar" aria-label="Selected words">
