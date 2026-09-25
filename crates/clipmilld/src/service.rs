@@ -19,20 +19,22 @@ use clipmill_contracts::proto::ipc::v1::{
     DetectShotsPayloadV1, DirectClipRequest, DiscoverCandidatesPayloadV1, Error, ErrorCode,
     ExportArchiveRequest, ExportArchiveResponse, ExportClipPayloadV1, ExportClipRequest,
     ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity, ExportValidationV1,
-    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
-    GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse,
-    GetReadinessResponse, GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1,
-    IngestSourcePayloadV1, ListClipDecisionsRequest, ListClipDecisionsResponse,
-    ListEditDocsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest, PlanExportResponse,
-    PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1,
-    PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
-    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
-    StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
-    TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
+    FaceSightingV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
+    GetJobResponse, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
+    GetProjectResponse, GetReadinessResponse, GetSourceResponse, HealthResponse,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
+    ListClipDecisionsResponse, ListEditDocsResponse, ListFacesRequest, ListFacesResponse,
+    ListJobsResponse, ListProjectsResponse, ListSourcesResponse, LocalLockStatusV1, MediaFileV1,
+    PingResponse, PlanExportRequest, PlanExportResponse, PreviewCropV1, PreviewCueV1,
+    PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1, PreviewSourceV1, PreviewWordV1,
+    ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse,
+    RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse,
+    Response, SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse,
+    SolveCropPathRequest, SolveCropPathResponse, StageReadinessV1, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1,
+    WorkerPresenceV1, request, response,
 };
+use clipmill_contracts::schemas::vision_face_track::VisionFaceTrack;
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
 use prost::Message;
@@ -478,6 +480,7 @@ impl Service {
             request::Body::ListEditHistory(list) => {
                 self.list_edit_history(request_id, &list.doc_id).await
             }
+            request::Body::ListFaces(list) => self.list_faces(request_id, &list).await,
             request::Body::SnapshotEditDoc(snapshot) => {
                 self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
             }
@@ -1972,27 +1975,26 @@ impl Service {
         clippy::too_many_lines,
         reason = "source geometry and matching evidence must be resolved before solving"
     )]
-    async fn solve_crop_path(&self, request_id: String, solve: &SolveCropPathRequest) -> Reply {
-        let Ok(project_id) = solve.project_id.parse::<ProjectId>() else {
-            return error_reply(
-                request_id,
-                ErrorCode::InvalidArgument,
-                "solve names no project",
-            );
+    /// A face track this project published, verified and parsed, with the
+    /// display frame of the source it was measured on.
+    async fn face_track(
+        &self,
+        request_id: &str,
+        project: &str,
+        artifact: &str,
+    ) -> Result<(VisionFaceTrack, (u32, u32)), Reply> {
+        let refuse = |code, message: &str| Err(error_reply(request_id.to_owned(), code, message));
+        let Ok(project_id) = project.parse::<ProjectId>() else {
+            return refuse(ErrorCode::InvalidArgument, "the request names no project");
         };
-        let Ok(artifact_id) = solve
-            .face_track_artifact_id
-            .parse::<clipmill_core::ArtifactId>()
-        else {
-            return error_reply(
-                request_id,
+        let Ok(artifact_id) = artifact.parse::<clipmill_core::ArtifactId>() else {
+            return refuse(
                 ErrorCode::InvalidArgument,
-                "solve names no face track address",
+                "the request names no face track address",
             );
         };
         let Some(artifacts) = self.artifacts.as_ref() else {
-            return error_reply(
-                request_id,
+            return refuse(
                 ErrorCode::Unavailable,
                 "this daemon serves no artifact store",
             );
@@ -2006,35 +2008,29 @@ impl Service {
         {
             Ok(true) => {}
             Ok(false) => {
-                return error_reply(
-                    request_id,
+                return refuse(
                     ErrorCode::NotFound,
                     "this project published no such artifact",
                 );
             }
-            Err(error) => return store_error_reply(request_id, &error),
+            Err(error) => return Err(store_error_reply(request_id.to_owned(), &error)),
         }
         let Ok(lease) = artifacts.open(artifact_id).await else {
-            return error_reply(
-                request_id,
-                ErrorCode::NotFound,
-                "the artifact is not in this store",
-            );
+            return refuse(ErrorCode::NotFound, "the artifact is not in this store");
         };
         if lease.kind() != "vision.face_track.v1" {
-            return error_reply(
-                request_id,
+            return Err(error_reply(
+                request_id.to_owned(),
                 ErrorCode::InvalidArgument,
                 format!("{} is not a face track", lease.kind()),
-            );
+            ));
         }
-        let document: clipmill_contracts::schemas::vision_face_track::VisionFaceTrack =
+        let document: VisionFaceTrack =
             match crate::media::read_artifact_document(&lease, "faces.json") {
                 Ok(value) => value,
                 Err(error) => {
                     tracing::warn!(?error, "a published face track failed verification");
-                    return error_reply(
-                        request_id,
+                    return refuse(
                         ErrorCode::Internal,
                         "the face track does not match its manifest",
                     );
@@ -2043,47 +2039,88 @@ impl Service {
 
         let registered = match self.database.list_sources(project_id.to_string()).await {
             Ok(sources) => sources,
-            Err(error) => return store_error_reply(request_id, &error),
+            Err(error) => return Err(store_error_reply(request_id.to_owned(), &error)),
         };
         let frame = registered
             .iter()
             .find(|source| source.source_fingerprint == document.source_fingerprint.as_str())
             .and_then(|source| crate::inspector::frame_of(&source.source_map_json));
         let Some(frame) = frame else {
-            return error_reply(
-                request_id,
+            return refuse(
                 ErrorCode::InvalidArgument,
                 "the face tracks have no registered source display dimensions",
             );
         };
-        let (Ok(source_width), Ok(source_height)) =
-            (u32::try_from(frame.width), u32::try_from(frame.height))
+        let (Ok(width), Ok(height)) = (u32::try_from(frame.width), u32::try_from(frame.height))
         else {
-            return error_reply(
-                request_id,
+            return refuse(
                 ErrorCode::InvalidArgument,
                 "source display dimensions are too large",
             );
         };
-        match clipmill_reframe::solve_in_frame(
-            &document,
-            solve.start_ticks,
-            solve.end_ticks,
-            clipmill_reframe::FrameGeometry {
-                source_width,
-                source_height,
-                output_width: solve.aspect_width,
-                output_height: solve.aspect_height,
-            },
-            crop_weights(solve.weights.as_ref()),
-            FocusGate::default(),
-        ) {
-            Ok(solved) => response_reply(
-                request_id,
-                response::Body::SolveCropPath(crop_response(&solved)),
-            ),
+        Ok((document, (width, height)))
+    }
+
+    async fn solve_crop_path(&self, request_id: String, solve: &SolveCropPathRequest) -> Reply {
+        let (document, frame) = match self
+            .face_track(
+                &request_id,
+                &solve.project_id,
+                &solve.face_track_artifact_id,
+            )
+            .await
+        {
+            Ok(found) => found,
+            Err(reply) => return reply,
+        };
+        match crop_solve(document, solve, frame) {
+            Ok(solved) => response_reply(request_id, response::Body::SolveCropPath(solved)),
             Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
         }
+    }
+
+    /// The faces seen over a span, so a person can point at the one to follow.
+    async fn list_faces(&self, request_id: String, list: &ListFacesRequest) -> Reply {
+        if list.end_ticks <= list.start_ticks
+            || list.end_ticks - list.start_ticks > MAX_FACE_SPAN_TICKS
+        {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "ask for the faces of one section, up to ten minutes of it",
+            );
+        }
+        let (document, _) = match self
+            .face_track(&request_id, &list.project_id, &list.face_track_artifact_id)
+            .await
+        {
+            Ok(found) => found,
+            Err(reply) => return reply,
+        };
+        let sightings = document
+            .tracks
+            .iter()
+            .flat_map(|track| {
+                track
+                    .boxes
+                    .iter()
+                    .filter(|seen| {
+                        seen.t_ticks >= list.start_ticks && seen.t_ticks < list.end_ticks
+                    })
+                    .map(|seen| FaceSightingV1 {
+                        track_id: u32::try_from(track.track_id).unwrap_or(u32::MAX),
+                        t_ticks: seen.t_ticks,
+                        x: seen.x,
+                        y: seen.y,
+                        width: seen.w,
+                        height: seen.h,
+                    })
+            })
+            .collect();
+        response_reply(
+            request_id,
+            response::Body::ListFaces(ListFacesResponse { sightings }),
+        )
     }
 
     /// Authorize a media artifact and say what it holds.
@@ -3417,6 +3454,116 @@ fn crop_weights(asked: Option<&CropWeightsV1>) -> Weights {
     }
 }
 
+/// The gate for a face somebody picked: it only has to be seen in the span.
+/// Presence, score and margin keep the automatic camera honest; a person who
+/// points at a face has already made the call they guard.
+const CHOSEN_FACE: FocusGate = FocusGate {
+    min_presence: 0.05,
+    min_score: 0.0,
+    min_margin: 0.0,
+};
+
+/// The longest span `ListFaces` answers for: a clip's section, not a recording.
+const MAX_FACE_SPAN_TICKS: u64 = 10 * 60 * 90_000;
+
+/// A fitted answer with the reason for it.
+fn refused_crop(reason: &str) -> SolveCropPathResponse {
+    SolveCropPathResponse {
+        fit: true,
+        fit_reason: reason.to_owned(),
+        ..SolveCropPathResponse::default()
+    }
+}
+
+/// The camera a solve request asks for: the gate's choice, the face a person
+/// picked, or both portraits of a two-person layout.
+fn crop_solve(
+    document: VisionFaceTrack,
+    solve: &SolveCropPathRequest,
+    (source_width, source_height): (u32, u32),
+) -> Result<SolveCropPathResponse, clipmill_reframe::SolveError> {
+    let geometry = |output_width: u32| clipmill_reframe::FrameGeometry {
+        source_width,
+        source_height,
+        output_width,
+        output_height: solve.aspect_height,
+    };
+    let weights = crop_weights(solve.weights.as_ref());
+    if solve.two_up {
+        // Each portrait is half the frame tall, so each crop is twice as wide
+        // for its height as the frame is.
+        let halves = geometry(solve.aspect_width.saturating_mul(2));
+        return two_up_solve(&document, solve, halves, weights);
+    }
+    let (document, gate) = if solve.follow_track {
+        let mut one = document;
+        one.tracks
+            .retain(|track| track.track_id == u64::from(solve.track_id));
+        if one.tracks.is_empty() {
+            return Ok(refused_crop("that person is not in this recording"));
+        }
+        (one, CHOSEN_FACE)
+    } else {
+        (document, FocusGate::default())
+    };
+    clipmill_reframe::solve_in_frame(
+        &document,
+        solve.start_ticks,
+        solve.end_ticks,
+        geometry(solve.aspect_width),
+        weights,
+        gate,
+    )
+    .map(|solved| crop_response(&solved))
+}
+
+/// Both portraits of a two-person layout, solved the way the director solves
+/// them: the pair the two-up gate finds, left-hand face on top, each followed
+/// alone through the span.
+fn two_up_solve(
+    document: &VisionFaceTrack,
+    solve: &SolveCropPathRequest,
+    halves: clipmill_reframe::FrameGeometry,
+    weights: Weights,
+) -> Result<SolveCropPathResponse, clipmill_reframe::SolveError> {
+    let Some(pair) = clipmill_reframe::resolve_pair(document, solve.start_ticks, solve.end_ticks)
+    else {
+        return Ok(refused_crop(
+            "two people are not both clearly in this section",
+        ));
+    };
+    let mut solved = Vec::with_capacity(2);
+    for id in pair {
+        let mut one = document.clone();
+        one.tracks.retain(|track| track.track_id == id);
+        let path = clipmill_reframe::solve_in_frame(
+            &one,
+            solve.start_ticks,
+            solve.end_ticks,
+            halves,
+            weights,
+            FocusGate::default(),
+        )?;
+        if path.fit {
+            return Ok(refused_crop(
+                "one of the two people is not clear enough in this section to follow",
+            ));
+        }
+        solved.push(path);
+    }
+    let [upper, lower] = solved.as_slice() else {
+        return Ok(refused_crop(
+            "two people are not both clearly in this section",
+        ));
+    };
+    let mut response = crop_response(upper);
+    let second = crop_response(lower);
+    response.secondary_keyframes = second.keyframes;
+    response.secondary_track_id = second.track_id;
+    response.containment = upper.containment.min(lower.containment);
+    Ok(response)
+}
+
 fn crop_response(solved: &clipmill_reframe::CropPath) -> SolveCropPathResponse {
     SolveCropPathResponse {
         keyframes: solved
@@ -3440,6 +3587,7 @@ fn crop_response(solved: &clipmill_reframe::CropPath) -> SolveCropPathResponse {
         track_id: u32::try_from(solved.track_id.unwrap_or(0)).unwrap_or(0),
         has_track: solved.track_id.is_some(),
         containment: solved.containment,
+        ..SolveCropPathResponse::default()
     }
 }
 
@@ -3513,6 +3661,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
         Some(request::Body::PreviewCaptions(_)) => "preview_captions",
         Some(request::Body::ListEditHistory(_)) => "list_edit_history",
+        Some(request::Body::ListFaces(_)) => "list_faces",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         Some(request::Body::ListModels(_)) => "list_models",
         Some(request::Body::DownloadModels(_)) => "download_models",
@@ -4933,6 +5082,95 @@ mod tests {
 
     use super::{Service, validate_project_name, validate_request_id};
     use crate::db::DbActor;
+
+    /// Two people side by side for ten seconds at four frames a second: the
+    /// left one at a quarter of the frame, the right at three quarters.
+    fn two_people() -> clipmill_contracts::schemas::vision_face_track::VisionFaceTrack {
+        let track = |id: u64, x: f64| {
+            let boxes: Vec<_> = (0..40u64)
+                .map(|frame| serde_json::json!({ "t_ticks": frame * 22_500, "x": x, "y": 0.3, "w": 0.1, "h": 0.2, "score": 0.95 }))
+                .collect();
+            serde_json::json!({ "track_id": id, "first_ticks": 0, "last_ticks": 39 * 22_500, "frames_present": 40, "mean_score": 0.95, "boxes": boxes })
+        };
+        serde_json::from_value(serde_json::json!({
+            "schema_version": "clipmill.vision.face_track.v1",
+            "source_fingerprint": format!("sha256:{}", "1".repeat(64)),
+            "frames_artifact_id": format!("sha256:{}", "2".repeat(64)),
+            "producer": { "stage": "detect-faces", "implementation": "fixture" },
+            "coverage": { "start_ticks": 0, "end_ticks": 900_000, "analyzed": true },
+            "detection": { "score_threshold": 0.6, "nms_iou": 0.3, "input_width": 320, "input_height": 320, "match_iou": 0.5, "recover_iou": 0.3, "max_gap_frames": 6, "min_track_frames": 4, "frame_rate": { "num": 4, "den": 1 } },
+            "tracks": [track(0, 0.2), track(1, 0.7)],
+        }))
+        .expect("a face track")
+    }
+
+    fn ask(adjust: impl FnOnce(&mut super::SolveCropPathRequest)) -> super::SolveCropPathRequest {
+        let mut solve = super::SolveCropPathRequest {
+            start_ticks: 0,
+            end_ticks: 900_000,
+            aspect_width: 9,
+            aspect_height: 16,
+            ..super::SolveCropPathRequest::default()
+        };
+        adjust(&mut solve);
+        solve
+    }
+
+    #[test]
+    fn two_people_alike_leave_the_automatic_camera_fitted() {
+        let solved = super::crop_solve(two_people(), &ask(|_| {}), (1_920, 1_080)).expect("solve");
+        assert!(solved.fit, "neither face is more worth following");
+        assert!(!solved.fit_reason.is_empty());
+    }
+
+    #[test]
+    fn a_face_somebody_picked_is_followed() {
+        for (track, side) in [(0u32, 0.25), (1, 0.75)] {
+            let solved = super::crop_solve(
+                two_people(),
+                &ask(|solve| {
+                    solve.follow_track = true;
+                    solve.track_id = track;
+                }),
+                (1_920, 1_080),
+            )
+            .expect("solve");
+            assert!(!solved.fit, "{}", solved.fit_reason);
+            assert!(solved.has_track && solved.track_id == track);
+            assert!((solved.keyframes[0].center_x - side).abs() < 0.05);
+        }
+        let absent = super::crop_solve(
+            two_people(),
+            &ask(|solve| {
+                solve.follow_track = true;
+                solve.track_id = 7;
+            }),
+            (1_920, 1_080),
+        )
+        .expect("solve");
+        assert!(absent.fit && absent.fit_reason.contains("not in this recording"));
+    }
+
+    #[test]
+    fn a_two_up_solve_returns_both_portraits_with_the_left_face_on_top() {
+        let solved = super::crop_solve(
+            two_people(),
+            &ask(|solve| solve.two_up = true),
+            (1_920, 1_080),
+        )
+        .expect("solve");
+        assert!(!solved.fit, "{}", solved.fit_reason);
+        assert!(!solved.keyframes.is_empty() && !solved.secondary_keyframes.is_empty());
+        assert!(solved.keyframes[0].center_x < solved.secondary_keyframes[0].center_x);
+        assert_eq!((solved.track_id, solved.secondary_track_id), (0, 1));
+
+        let mut alone = two_people();
+        alone.tracks.truncate(1);
+        let refused = super::crop_solve(alone, &ask(|solve| solve.two_up = true), (1_920, 1_080))
+            .expect("solve");
+        assert!(refused.fit && refused.secondary_keyframes.is_empty());
+        assert!(refused.fit_reason.contains("two people"));
+    }
 
     #[test]
     fn an_export_may_ask_for_the_offered_sizes_and_rates_only() {

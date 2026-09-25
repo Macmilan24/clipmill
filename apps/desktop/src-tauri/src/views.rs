@@ -653,24 +653,60 @@ pub struct CropPathView {
     pub fit: bool,
     pub fit_reason: String,
     pub containment: f64,
+    /// The face followed, when one was.
+    pub track_id: Option<u32>,
+    /// The lower portrait's path, for a two-person solve; empty otherwise.
+    pub secondary_keyframes: Vec<CropKeyframeView>,
+}
+
+fn keyframe_views(
+    keyframes: Vec<clipmill_contracts::proto::ipc::v1::CropKeyframeV1>,
+) -> Vec<CropKeyframeView> {
+    keyframes
+        .into_iter()
+        .map(|keyframe| CropKeyframeView {
+            t_ticks: keyframe.t_ticks,
+            center_x: keyframe.center_x,
+            center_y: keyframe.center_y,
+            scale: keyframe.scale,
+        })
+        .collect()
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::SolveCropPathResponse> for CropPathView {
     fn from(reply: clipmill_contracts::proto::ipc::v1::SolveCropPathResponse) -> Self {
         Self {
-            keyframes: reply
-                .keyframes
-                .into_iter()
-                .map(|keyframe| CropKeyframeView {
-                    t_ticks: keyframe.t_ticks,
-                    center_x: keyframe.center_x,
-                    center_y: keyframe.center_y,
-                    scale: keyframe.scale,
-                })
-                .collect(),
+            keyframes: keyframe_views(reply.keyframes),
             fit: reply.fit,
             fit_reason: reply.fit_reason,
             containment: reply.containment,
+            track_id: reply.has_track.then_some(reply.track_id),
+            secondary_keyframes: keyframe_views(reply.secondary_keyframes),
+        }
+    }
+}
+
+/// One face in one sampled frame, as shares of the source's display frame.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FaceSightingView {
+    pub track_id: u32,
+    pub t_ticks: u64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::FaceSightingV1> for FaceSightingView {
+    fn from(seen: clipmill_contracts::proto::ipc::v1::FaceSightingV1) -> Self {
+        Self {
+            track_id: seen.track_id,
+            t_ticks: seen.t_ticks,
+            x: seen.x,
+            y: seen.y,
+            width: seen.width,
+            height: seen.height,
         }
     }
 }

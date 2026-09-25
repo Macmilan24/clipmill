@@ -342,6 +342,17 @@ impl DaemonClient {
         }
     }
 
+    /// The faces seen over a span of one face track.
+    pub async fn list_faces(
+        &self,
+        request: clipmill_contracts::proto::ipc::v1::ListFacesRequest,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::FaceSightingV1>, DaemonLinkError> {
+        match self.call(request::Body::ListFaces(request)).await? {
+            response::Body::ListFaces(reply) => Ok(reply.sightings),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     /// Read the live edit document and its revision for contextual controls.
     pub async fn get_edit_doc(&self, doc_id: &str) -> Result<GetEditDocResponse, DaemonLinkError> {
         match self

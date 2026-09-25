@@ -32,7 +32,7 @@ import {
 } from '../components/ui/select.js';
 import type { EditIr } from '@clipmill/contracts';
 
-import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
+import type { EditCommandJson, FaceSighting, PreviewPlan } from '../daemon/client.js';
 import { SPEEDS } from '../inspector/playback.js';
 import { clockTenths } from '../inspector/review.js';
 import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
@@ -47,6 +47,7 @@ import {
 } from './commands.js';
 import { type CaptionFace, CaptionCanvas } from './CaptionCanvas.js';
 import { CompositionCanvas } from './CompositionCanvas.js';
+import { type FaceNow, byTrack, facesAt, fittedFrame } from './faces.js';
 import { pressOrDrag } from './gesture.js';
 import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf, sourceTicksAt } from './player.js';
 import type { EditorSelection } from './selection.js';
@@ -120,6 +121,14 @@ export interface EditorMonitorProps {
   readonly captions?: ExactCaptions | null;
   /** The clip-wide caption options, so a drag can move every caption. */
   readonly captionOptions?: CaptionOptions;
+  /**
+   * The faces seen over a span of the source, so the Original view can offer
+   * each one to follow. Absent shows the frame without them.
+   */
+  readonly loadFaces?:
+    ((startTicks: number, endTicks: number) => Promise<readonly FaceSighting[]>) | null;
+  /** Follow this face through the section at the playhead. */
+  readonly onFollow?: ((trackId: number) => void) | null;
 }
 
 type CaptionOptions = NonNullable<EditIr['captions']['options']>;
@@ -146,6 +155,8 @@ export function EditorMonitor({
   onApply,
   captions = null,
   captionOptions = {},
+  loadFaces = null,
+  onFollow = null,
 }: EditorMonitorProps) {
   const [view, setView] = useState<MonitorView>('edit');
   const [safe, setSafe] = useState<SafePlatform>('off');
@@ -153,6 +164,37 @@ export function EditorMonitor({
   const segment = segmentAt(plan, playback.frame);
   const twoUp = cropAt(plan, playback.frame, true) !== null;
   const fitted = cropAt(plan, playback.frame) === null;
+
+  // The faces of the section at the playhead, fetched when the Original view
+  // is showing: that is where a person points at the one to follow.
+  const [faces, setFaces] = useState<{
+    readonly key: string;
+    readonly tracks: ReadonlyMap<number, readonly FaceSighting[]>;
+  } | null>(null);
+  const spanIn = segment?.inTicks ?? 0;
+  const spanOut = segment?.outTicks ?? 0;
+  const faceKey = segment ? `${segment.sourceFingerprint}:${spanIn}:${spanOut}` : null;
+  const picking = view === 'original' && loadFaces !== null && onFollow !== null;
+  useEffect(() => {
+    if (!picking || !loadFaces || faceKey === null) return undefined;
+    let live = true;
+    loadFaces(spanIn, spanOut)
+      .then((sightings) => {
+        if (live) setFaces({ key: faceKey, tracks: byTrack(sightings) });
+      })
+      // No faces to offer is the frame without them, not a broken preview.
+      .catch(() => {
+        if (live) setFaces({ key: faceKey, tracks: new Map() });
+      });
+    return () => {
+      live = false;
+    };
+  }, [picking, loadFaces, faceKey, spanIn, spanOut]);
+  const ticksNow = sourceTicksAt(plan, playback.frame);
+  const shown: readonly FaceNow[] =
+    picking && faces && faces.key === faceKey && ticksNow !== null
+      ? facesAt(faces.tracks, ticksNow)
+      : [];
 
   return (
     <section className="review-viewer edit-viewer" aria-label="Clip preview">
@@ -171,7 +213,9 @@ export function EditorMonitor({
         </div>
         <span className="review-viewer-note">
           {view === 'original'
-            ? 'The whole frame, before framing and captions'
+            ? shown.length > 0
+              ? 'Click a face to follow that person'
+              : 'The whole frame, before framing and captions'
             : twoUp
               ? 'Two speakers'
               : fitted
@@ -229,11 +273,59 @@ export function EditorMonitor({
           onApply={onApply}
           captions={view === 'edit' ? captions : null}
           captionOptions={captionOptions}
+          faces={shown}
+          onFollow={
+            onFollow
+              ? (trackId) => {
+                  onFollow(trackId);
+                  setView('edit');
+                }
+              : null
+          }
         />
       </div>
 
       <Transport plan={plan} playback={playback} range={range} disabled={!proxyUrl} />
     </section>
+  );
+}
+
+const percent = (value: number) => `${value * 100}%`;
+
+/** The faces on the whole frame, each a button that follows that person. */
+function FacePicker({
+  faces,
+  frame,
+  disabled,
+  onFollow,
+}: {
+  readonly faces: readonly FaceNow[];
+  readonly frame: ReturnType<typeof fittedFrame>;
+  readonly disabled: boolean;
+  readonly onFollow: (trackId: number) => void;
+}) {
+  return (
+    <div className="edit-faces" role="group" aria-label="People in the frame">
+      {faces.map((face, order) => (
+        <button
+          key={face.trackId}
+          type="button"
+          className="edit-face"
+          disabled={disabled}
+          aria-label={`Follow person ${order + 1}`}
+          title="Follow this person"
+          style={{
+            left: percent(frame.left + face.x * frame.width),
+            top: percent(frame.top + face.y * frame.height),
+            width: percent(face.width * frame.width),
+            height: percent(face.height * frame.height),
+          }}
+          onClick={() => onFollow(face.trackId)}
+        >
+          <span>Follow</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -260,9 +352,13 @@ function Stage({
   onApply,
   captions,
   captionOptions,
+  faces,
+  onFollow,
 }: {
   readonly captions: ExactCaptions | null;
   readonly captionOptions: CaptionOptions;
+  readonly faces: readonly FaceNow[];
+  readonly onFollow: ((trackId: number) => void) | null;
   readonly plan: PreviewPlan;
   readonly videoRef: RefObject<HTMLVideoElement | null>;
   readonly proxyUrl: string | null;
@@ -563,6 +659,14 @@ function Stage({
         </div>
       )}
       {grid && <div className="edit-grid" aria-hidden="true" />}
+      {view === 'original' && source && onFollow && faces.length > 0 && (
+        <FacePicker
+          faces={faces}
+          frame={fittedFrame(source, plan)}
+          disabled={busy}
+          onFollow={onFollow}
+        />
+      )}
       {zone && (
         <div className="review-safe-area" aria-hidden="true">
           <span style={{ top: 0, left: 0, right: 0, height: share(zone.top) }} />
