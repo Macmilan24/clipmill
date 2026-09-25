@@ -380,7 +380,6 @@ function Preview() {
                   rightsGateNeeded={false}
                   rightsGatePassed={true}
                   hotCaptions={[]}
-                  hotCaptionsConfirmed={false}
                   plan={{
                     passes: true,
                     findings: [],
@@ -405,7 +404,6 @@ function Preview() {
                     setNotice('Folder selection is available in the desktop app.')
                   }
                   onRightsGateChange={noAction}
-                  onHotCaptionsChange={noAction}
                   onExport={() => setNotice('Development preview: no video was exported.')}
                   onArchive={() => setNotice('Development preview: no archive was written.')}
                   onReveal={noAction}

@@ -47,7 +47,6 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
     rightsGateNeeded: false,
     rightsGatePassed: false,
     hotCaptions: [],
-    hotCaptionsConfirmed: false,
     plan: plan(),
     planning: false,
     busy: false,
@@ -58,7 +57,6 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
     onPatternChange: vi.fn(),
     onChooseFolder: vi.fn(),
     onRightsGateChange: vi.fn(),
-    onHotCaptionsChange: vi.fn(),
     onExport,
     onArchive: vi.fn(),
     onReveal: vi.fn(),
@@ -91,7 +89,7 @@ describe('the export screen', () => {
     fireEvent.click(screen.getByRole('button', { name: /fix captions/i }));
     // The editor is sent to the cue itself, on the track the finding is about.
     expect(onEdit).toHaveBeenCalledWith({ panel: 'captions', track: 'reading', cueId: 'cue_4' });
-    fireEvent.click(screen.getByRole('button', { name: /^export revision r4$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^export clip$/i }));
     expect(onExport).not.toHaveBeenCalled();
   });
 
@@ -115,7 +113,7 @@ describe('the export screen', () => {
     expect(screen.getByText(/worth a look before exporting/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /fix captions/i }));
     expect(onEdit).toHaveBeenCalledWith({ panel: 'captions', track: 'reading', cueId: 'cue_4' });
-    expect(screen.getByRole('button', { name: /^export revision r4$/i })).toHaveProperty(
+    expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty(
       'disabled',
       false,
     );
@@ -237,16 +235,16 @@ it('keeps export disabled while a changed destination or filename is being valid
   expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
 });
 
-it('groups fast captions into one review control while keeping the export blocked', () => {
+it('groups fast captions as advice without holding up export', () => {
   const finding = {
     code: 'captions.reading_rate',
-    severity: 'blocking' as const,
+    severity: 'advisory' as const,
     detail: 'Passage one asks for 22.1 characters a second.',
   };
-  show({ hotCaptions: [finding], plan: plan({ passes: false, findings: [finding] }) });
-  expect(screen.getByTestId('hot-captions-gate').textContent).toContain('One caption');
+  show({ hotCaptions: [finding], plan: plan({ passes: true, findings: [finding] }) });
+  expect(screen.getByText(/1 fast subtitle passage/)).toBeTruthy();
   expect(screen.getAllByText(finding.detail)).toHaveLength(1);
   expect(screen.queryByText(/captions[._]reading_rate/)).toBeNull();
   expect(screen.getByText('Review caption details (1)')).toBeTruthy();
-  expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', false);
 });

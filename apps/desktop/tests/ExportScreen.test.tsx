@@ -311,16 +311,16 @@ describe('the name pattern', () => {
 
 describe('captions that run faster than a reader can follow', () => {
   const HOT: ExportPlan = {
-    passes: false,
+    passes: true,
     findings: [
       {
         code: 'captions.reading_rate',
-        severity: 'blocking',
+        severity: 'advisory',
         detail: 'Sidecar caption: asks for 22.1 characters a second, and the profile allows 20.0',
       },
       {
         code: 'captions.reading_rate',
-        severity: 'blocking',
+        severity: 'advisory',
         detail: 'Sidecar caption: asks for 21.4 characters a second, and the profile allows 20.0',
       },
     ],
@@ -331,55 +331,23 @@ describe('captions that run faster than a reader can follow', () => {
   };
 
   /**
-   * The speech is as fast as it is. The strip refuses a subtitle file a
-   * reader cannot keep up with until the person exporting says they know;
-   * the screen asks, sends the confirmation as a gate, and the export goes.
+   * Fast speech is shown as advice and does not require a gate.
    */
-  it('asks for a confirmation, sends it as a gate, and then exports', async () => {
+  it('shows the fast passages and exports without a confirmation', async () => {
     const world = twoProjects({ exportPlan: HOT });
     const api = fakeApi(world);
-    const gated = {
-      ...api,
-      planExport: (request: Parameters<typeof api.planExport>[0]) => {
-        if (!request.gatesPassed?.includes('captions_reading_rate')) {
-          return api.planExport(request);
-        }
-        world.exported.push(request);
-        return Promise.resolve({
-          ...HOT,
-          passes: true,
-          findings: HOT.findings.map((finding) => ({
-            ...finding,
-            severity: 'advisory' as const,
-            detail: `${finding.detail} — confirmed as read.`,
-          })),
-        });
-      },
-    };
-    render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={gated} />);
+    render(<ExportScreen clip={OLDER_CLIP} onOpen={vi.fn()} api={api} />);
     await planned(world);
-    const gate = await screen.findByTestId('hot-captions-gate');
-    expect(gate.textContent).toContain('2 captions');
-    expect(gate.textContent).toContain('up to 22.1 characters a second');
-    expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
-
-    fireEvent.click(gate.querySelector('input[type="checkbox"]')!);
-    await waitFor(() => {
-      expect(world.exported.at(-1)?.gatesPassed).toContain('captions_reading_rate');
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty(
-        'disabled',
-        false,
-      );
-    });
-    // Confirmed, the captions are still named — as advisories, and the
-    // confirmation stays on screen rather than vanishing once given.
-    expect(screen.getByTestId('hot-captions-gate')).toBeTruthy();
+    expect(await screen.findByText(/2 fast subtitle passages/)).toBeTruthy();
+    expect(screen.getByText('Review caption details (2)')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty(
+      'disabled',
+      false,
+    );
     fireEvent.click(screen.getByRole('button', { name: /^export clip$/i }));
     await waitFor(() => {
       const sent = world.exported.filter((request) => 'expectedRevision' in request);
-      expect(sent.at(-1)?.gatesPassed).toContain('captions_reading_rate');
+      expect(sent.at(-1)?.gatesPassed).not.toContain('captions_reading_rate');
     });
   });
 });

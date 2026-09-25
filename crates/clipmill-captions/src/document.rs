@@ -207,9 +207,7 @@ fn tokens_of(
         .filter(|word| {
             as_i64(word.start_ticks) >= span.start_ticks && as_i64(word.end_ticks) <= span.end_ticks
         })
-        // Whisper can emit this silence marker as ordinary text tokens.
-        // Keep real sound descriptions such as [music] and [laughter].
-        .filter(|word| !word.text.trim().eq_ignore_ascii_case("[BLANK_AUDIO]"))
+        .filter(|word| captionable_word(word.text.as_str()))
         .map(|word| {
             let text = word.text.to_string();
             let normalized = lexicon::normalize(&text);
@@ -429,21 +427,31 @@ fn nonzero_usize(value: usize) -> Result<NonZeroU64, DeriveError> {
         .ok_or_else(|| DeriveError::Contract("a value the contract requires to be positive".into()))
 }
 
+/// Recognition emits speaker dashes, silence markers, and annotations as
+/// ordinary words. They are not spoken captions and often create a one-frame
+/// subtitle that the export checker quite rightly refuses.
+fn captionable_word(text: &str) -> bool {
+    let text = text.trim();
+    let annotation = (text.starts_with('[') && text.ends_with(']'))
+        || (text.starts_with('(') && text.ends_with(')'));
+    !annotation && text.chars().any(char::is_alphanumeric)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
     use super::*;
 
     #[test]
-    fn silence_markers_are_omitted_without_dropping_sound_descriptions_or_renumbering_words() {
+    fn recognition_annotations_and_punctuation_are_omitted_without_renumbering_words() {
         let raw =
             include_str!("../../../contracts/fixtures/speech.transcript/valid/ten_words.json");
         let mut transcript: SpeechTranscript = serde_json::from_str(raw).expect("transcript");
         for (index, text) in [
             (1, "[BLANK_AUDIO]"),
             (2, "[music]"),
-            (3, "[laughter]"),
-            (4, "[blank_audio]"),
+            (3, "-"),
+            (4, "(speaking in foreign language)"),
         ] {
             transcript.words[index].text = text.parse().expect("text");
         }
@@ -455,7 +463,7 @@ mod tests {
         let expected: Vec<_> = transcript
             .words
             .iter()
-            .filter(|word| !word.text.eq_ignore_ascii_case("[BLANK_AUDIO]"))
+            .filter(|word| captionable_word(word.text.as_str()))
             .map(|word| word.index)
             .collect();
         assert_eq!(
@@ -468,12 +476,7 @@ mod tests {
         assert!(
             cues.tokens
                 .iter()
-                .any(|token| token.text.as_str() == "[music]")
-        );
-        assert!(
-            cues.tokens
-                .iter()
-                .any(|token| token.text.as_str() == "[laughter]")
+                .all(|token| captionable_word(token.text.as_str()))
         );
         for grouping in [&cues.intents.accessibility, &cues.intents.burn_in] {
             assert_eq!(

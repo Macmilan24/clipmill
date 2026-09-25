@@ -52,6 +52,7 @@ import {
   solveCropPath,
   readDocument,
   registerSource,
+  relinkSource,
   getSource,
   startYoutubeImport,
   getYoutubeImport,
@@ -88,6 +89,11 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   cancelJob(jobId: string): Promise<Job>;
   chooseSourceFile(): Promise<string | null>;
   registerSource(projectId: string, absolutePath: string): Promise<RegisteredSource>;
+  relinkSource(
+    projectId: string,
+    sourceId: string,
+    absolutePath: string,
+  ): Promise<RegisteredSource>;
   getSource(sourceId: string): Promise<SourceDetails>;
   startYoutubeImport(
     projectId: string,
@@ -157,6 +163,7 @@ export const daemonApi: ShellApi = {
   cancelJob,
   chooseSourceFile,
   registerSource,
+  relinkSource,
   getSource,
   startYoutubeImport,
   getYoutubeImport,

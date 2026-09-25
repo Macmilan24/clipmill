@@ -109,18 +109,18 @@
   font-size: var(--cm-type-meta);
 }
 
-.import-looks button > span {
+.import-looks button > span:not(.caption-look-sample) {
   color: var(--cm-text-primary);
   font-size: 17px;
   font-weight: 700;
   line-height: 1.2;
 }
 
-.import-looks button[data-look='minimal'] > span {
+.import-looks button[data-look='minimal'] > span:not(.caption-look-sample) {
   font-weight: 500;
 }
 
-.import-looks button[data-look='boxed'] > span {
+.import-looks button[data-look='boxed'] > span:not(.caption-look-sample) {
   padding: 0 4px;
   border-radius: 2px;
   background: var(--cm-text-primary);

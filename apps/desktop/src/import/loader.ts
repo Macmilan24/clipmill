@@ -8,7 +8,7 @@ import type { SourceMap } from '@clipmill/contracts';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { type Job, type Source, type YoutubeImport, isTauri } from '../daemon/client.js';
-import { rememberLook } from '../results/captionLook.js';
+import { rememberHighlight, rememberLook } from '../results/captionLook.js';
 import { type ImportSettings, languageSubtag, projectNameFor, secondsToTicks } from './model.js';
 
 /**
@@ -121,6 +121,7 @@ export class ImportLoader {
   async start(chosen: ChosenSource, settings: ImportSettings): Promise<Job> {
     const job = await this.submit(chosen, settings);
     if (settings.captionLook) rememberLook(chosen.projectId, settings.captionLook);
+    rememberHighlight(chosen.projectId, settings.highlightSpokenWord ?? true);
     return job;
   }
 

@@ -32,6 +32,10 @@ export interface EditIr {
      * Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.
      */
     options?: {
+      /**
+       * Override the preset's spoken-word highlight independently of its typography.
+       */
+      highlight_spoken_word?: boolean;
       font_size?: number;
       spoken?: string;
       unspoken?: string;

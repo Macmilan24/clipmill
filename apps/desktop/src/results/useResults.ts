@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { ClipCut, ClipDecision, CropPath, DirectedClip } from '../daemon/client.js';
-import { lookFor } from './captionLook.js';
+import { highlightFor, lookFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { TICKS_PER_SECOND } from './model.js';
 import type { Transcript } from './transcript.js';
@@ -330,6 +330,7 @@ export function useResults(
           cut,
           approve: true,
           ...(look ? { styleRef: look } : {}),
+          highlightSpokenWord: highlightFor(projectId),
           ...(cut === 'exact' && window
             ? { startTicks: window.startTicks, endTicks: window.endTicks }
             : {}),
@@ -378,6 +379,7 @@ export function useResults(
           candidateId: '',
           cut: 'exact',
           ...(look ? { styleRef: look } : {}),
+          highlightSpokenWord: highlightFor(projectId),
           startTicks,
           endTicks,
           manualSpan: true,

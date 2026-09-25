@@ -114,11 +114,22 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
             centis_to_ass(start_centis),
             centis_to_ass(end_centis),
             region_style_name(cue.region),
-            dialogue_text(cue, rate, start_centis, end_centis, track.options.text_case),
+            dialogue_text(
+                cue,
+                rate,
+                start_centis,
+                end_centis,
+                track.options.text_case,
+                highlight_enabled(cue, track.options.highlight_spoken_word),
+            ),
         ));
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+pub(crate) fn highlight_enabled(cue: &CaptionCue, override_value: Option<bool>) -> bool {
+    override_value.unwrap_or(matches!(cue.anim, CaptionAnimation::Karaoke))
 }
 
 /// Where a cue's highlight is at every moment it is on screen.
@@ -131,9 +142,9 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
 /// a frame nobody checked.
 ///
 /// Durations are centiseconds from the dialogue's own start, and each word
-/// holds the highlight until the next word begins — so the sweep advances
-/// exactly when speech does and the holds sum to the cue's length with no
-/// accumulated drift.
+/// holds the highlight until the next word begins, with a short floor when
+/// several guessed starts collapse on one frame. Holds still sum to the cue's
+/// length with no accumulated drift.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Sweep {
     /// Before the first word is sung. Zero when speech starts with the cue.
@@ -148,24 +159,42 @@ pub(crate) fn sweep(
     start_centis: i64,
     end_centis: i64,
 ) -> Sweep {
-    // Boundaries in dialogue-relative centiseconds: the cue start, then each
-    // word's start, then the cue end.
-    let mut boundaries = vec![0_i64];
-    for word in cue.words() {
-        let centis = rate.frame_centis(rate.frame_ceil(word.start_ticks));
-        boundaries.push((centis - start_centis).max(0));
+    let words = cue.words().collect::<Vec<_>>();
+    if words.is_empty() {
+        return Sweep {
+            lead_in_centis: 0,
+            holds_centis: Vec::new(),
+        };
     }
-    boundaries.push((end_centis - start_centis).max(0));
-
-    let holds = (0..cue.words().count())
-        .map(|index| {
-            let start = boundaries.get(index + 1).copied().unwrap_or(0);
-            let end = boundaries.get(index + 2).copied().unwrap_or(start);
+    let total = (end_centis - start_centis).max(0);
+    // An aligner may put several words on one tick. Reserve about two output
+    // frames for each word by borrowing from the long holds around that run.
+    // When the cue is too short to fit that floor, divide its available time
+    // evenly rather than creating an impossible boundary beyond its end.
+    let two_frames = (rate.frame_centis(2) - rate.frame_centis(0)).max(1);
+    let floor = two_frames.min(total / i64::try_from(words.len()).unwrap_or(1).max(1));
+    let mut starts = Vec::with_capacity(words.len());
+    for (index, word) in words.iter().enumerate() {
+        let desired =
+            (rate.frame_centis(rate.frame_ceil(word.start_ticks)) - start_centis).clamp(0, total);
+        let lower = starts
+            .last()
+            .copied()
+            .map_or(0, |previous| previous + floor);
+        let remaining = i64::try_from(words.len() - index).unwrap_or(1);
+        let upper = total.saturating_sub(remaining.saturating_mul(floor));
+        starts.push(desired.clamp(lower, upper));
+    }
+    let holds = starts
+        .iter()
+        .enumerate()
+        .map(|(index, &start)| {
+            let end = starts.get(index + 1).copied().unwrap_or(total);
             (end - start).max(0)
         })
         .collect();
     Sweep {
-        lead_in_centis: boundaries.get(1).copied().unwrap_or(0),
+        lead_in_centis: starts[0],
         holds_centis: holds,
     }
 }
@@ -177,8 +206,8 @@ fn dialogue_text(
     start_centis: i64,
     end_centis: i64,
     text_case: CaptionCase,
+    karaoke: bool,
 ) -> String {
-    let karaoke = matches!(cue.anim, CaptionAnimation::Karaoke);
     if !karaoke {
         return cue
             .lines
@@ -313,7 +342,7 @@ mod tests {
         CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionTrack, CaptionWord,
     };
 
-    use super::{cue_windows, unrenderable_character, write_ass, write_srt, write_vtt};
+    use super::{cue_windows, sweep, unrenderable_character, write_ass, write_srt, write_vtt};
     use crate::{profile::RenderProfile, timing::FrameRate};
 
     const FRAME_TICKS: i64 = 3_003;
@@ -386,6 +415,27 @@ mod tests {
         assert!(
             dialogue.contains(&format!("{{\\k{expected}}}whole")),
             "expected whole to hold for {expected} centiseconds: {dialogue}"
+        );
+    }
+
+    #[test]
+    fn collapsed_word_starts_each_get_visible_highlight_time() {
+        let mut caption = track().cues[0].clone();
+        caption.start_ticks = 0;
+        caption.end_ticks = 90 * FRAME_TICKS;
+        for word in caption.lines.iter_mut().flat_map(|line| &mut line.words) {
+            word.start_ticks = 30 * FRAME_TICKS;
+            word.end_ticks = 30 * FRAME_TICKS;
+        }
+        let measured = sweep(&caption, RATE, 0, RATE.frame_centis(90));
+        let floor = RATE.frame_centis(2) - RATE.frame_centis(0);
+        assert!(
+            measured.holds_centis.iter().all(|hold| *hold >= floor),
+            "{measured:?}"
+        );
+        assert_eq!(
+            measured.lead_in_centis + measured.holds_centis.iter().sum::<i64>(),
+            RATE.frame_centis(90)
         );
     }
 

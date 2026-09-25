@@ -48,10 +48,7 @@ export function confirmationGates(
 ): string[] {
   if (!prepared) return [];
   const scope = approvalScope(prepared.request.docId, prepared.plan, choices.attestation);
-  return [
-    ...(choices.rightsApproval === scope ? ['duration_60s'] : []),
-    ...(choices.captionsApproval === scope ? ['captions_reading_rate'] : []),
-  ];
+  return choices.rightsApproval === scope ? ['duration_60s'] : [];
 }
 
 /** Use all program segments; frame rounding is not a source-duration measurement. */

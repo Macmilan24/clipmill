@@ -9,6 +9,7 @@ import {
   Eye,
   FolderOpen,
   Info,
+  Link2,
   PackageCheck,
   Upload,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ import {
   type DeliveryStage,
   deliveryProgressText,
   deliveryWaitText,
+  estimatedExportSeconds,
 } from '../export/delivery.js';
 
 /**
@@ -148,20 +150,22 @@ export interface ExportProps {
    * and whether the person exporting has said they know.
    */
   readonly hotCaptions: readonly ExportFinding[];
-  readonly hotCaptionsConfirmed: boolean;
   readonly plan: ExportPlan | null;
   readonly planning: boolean;
   readonly busy: boolean;
   readonly error: string | null;
   /** The export that was queued, followed to its files. Null before one is. */
   readonly delivery: Delivery | null;
+  readonly mediaSeconds?: number;
   readonly archive: { readonly path: string; readonly entryCount: number } | null;
   readonly onDestinationChange: (value: string) => void;
   readonly onPatternChange: (value: string) => void;
   readonly onChooseFolder: () => void;
   readonly onRightsGateChange: (passed: boolean) => void;
-  readonly onHotCaptionsChange: (confirmed: boolean) => void;
   readonly onExport: () => void;
+  readonly onCancel?: (() => void) | undefined;
+  readonly onRetry?: (() => void) | undefined;
+  readonly onRelink?: (() => void) | undefined;
   readonly onArchive: () => void;
   /** Show a delivered file in the file manager. */
   readonly onReveal: (path: string) => void;
@@ -219,6 +223,11 @@ export function Export(props: ExportProps): JSX.Element {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {props.onRelink && (
+            <Button variant="outline" size="sm" disabled={props.busy} onClick={props.onRelink}>
+              <Link2 className="size-4" /> Locate recording…
+            </Button>
+          )}
           {props.onBatch && (
             <Button variant="outline" size="sm" onClick={props.onBatch}>
               Export a collection
@@ -336,31 +345,12 @@ export function Export(props: ExportProps): JSX.Element {
               )}
 
               {props.hotCaptions.length > 0 && (
-                <div className="space-y-2">
-                  <label
-                    className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs"
-                    data-testid="hot-captions-gate"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={props.hotCaptionsConfirmed}
-                      disabled={props.busy || props.planning}
-                      onChange={(event) => props.onHotCaptionsChange(event.target.checked)}
-                    />
-                    <span>
-                      {props.hotCaptions.length === 1
-                        ? 'One caption'
-                        : `${props.hotCaptions.length} captions`}{' '}
-                      in the subtitle file exceed the reading-speed target (
-                      {hottestRate(props.hotCaptions)}). I reviewed them and want to export them as
-                      they are.
-                    </span>
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    {props.hotCaptionsConfirmed
-                      ? 'Confirmed for this version of the edit.'
-                      : 'Review required before export. You can also adjust these captions in the editor.'}
+                <div className="space-y-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs">
+                  <p>
+                    {props.hotCaptions.length} fast subtitle{' '}
+                    {props.hotCaptions.length === 1 ? 'passage' : 'passages'} (
+                    {hottestRate(props.hotCaptions)}). You can review them in Captions; they do not
+                    hold up export.
                   </p>
                   <details className="rounded-lg border px-3 py-2 text-xs">
                     <summary className="cursor-pointer text-muted-foreground">
@@ -487,7 +477,13 @@ export function Export(props: ExportProps): JSX.Element {
       )}
 
       {props.delivery !== null && (
-        <DeliveryCard delivery={props.delivery} onReveal={props.onReveal} />
+        <DeliveryCard
+          delivery={props.delivery}
+          mediaSeconds={props.mediaSeconds ?? 0}
+          onReveal={props.onReveal}
+          onCancel={props.onCancel}
+          onRetry={props.onRetry}
+        />
       )}
 
       {props.audition && props.delivery && (
@@ -568,11 +564,33 @@ function stageWord(stage: DeliveryStage): string {
  */
 function DeliveryCard({
   delivery,
+  mediaSeconds,
   onReveal,
+  onCancel,
+  onRetry,
 }: {
   readonly delivery: Delivery;
+  readonly mediaSeconds: number;
   readonly onReveal: (path: string) => void;
+  readonly onCancel?: (() => void) | undefined;
+  readonly onRetry?: (() => void) | undefined;
 }): JSX.Element {
+  const render = delivery.stages.find((stage) => stage.kind === 'render');
+  const progress = render?.progress;
+  const percent = progress?.unit.startsWith('export.')
+    ? Math.min(100, Math.round((100 * progress.done) / Math.max(1, progress.total)))
+    : 0;
+  const remaining = estimatedExportSeconds(mediaSeconds, percent / 100);
+  const plainFailure = delivery.failure?.includes('stopped making progress')
+    ? 'Rendering stopped advancing. Try the export again.'
+    : delivery.failure?.includes('overall safety limit')
+      ? 'Rendering took too long. Try the export again.'
+      : delivery.failure?.includes('invalid local source') ||
+          delivery.failure?.includes('path does not exist')
+        ? 'The source recording could not be found. Locate it, then retry.'
+        : delivery.failure
+          ? 'The export could not finish. You can try again.'
+          : null;
   return (
     <Card data-testid="delivery">
       <CardHeader>
@@ -587,6 +605,30 @@ function DeliveryCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="font-mono text-[11px] text-[var(--cm-ink-3)]">{delivery.destinationDir}</p>
+        {progress?.unit.startsWith('export.') && !delivery.settled && (
+          <div
+            role="progressbar"
+            aria-label="Export progress"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="space-y-1"
+          >
+            <div className="h-2 overflow-hidden rounded-full bg-[var(--cm-line-1)]">
+              <div
+                className="h-full bg-[var(--cm-accent)] transition-[width]"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <p className="text-xs text-[var(--cm-ink-2)]">{deliveryProgressText(progress)}</p>
+            {remaining !== null && (
+              <p className="text-xs text-[var(--cm-ink-3)]">
+                About {Math.max(1, Math.ceil(remaining / 60))} min remaining based on recent exports
+                on this machine
+              </p>
+            )}
+          </div>
+        )}
         <ul className="space-y-1 text-xs" aria-label="Delivery stages">
           {delivery.stages.map((stage) => (
             <li key={stage.kind} className="flex justify-between gap-4">
@@ -615,11 +657,33 @@ function DeliveryCard({
         {delivery.failure !== null && (
           <Alert variant="destructive">
             <AlertTriangle />
-            <AlertDescription>
-              {delivery.failure} The folder holds nothing from this export; fix the cause and export
-              again.
-            </AlertDescription>
+            <AlertDescription>{plainFailure}</AlertDescription>
           </Alert>
+        )}
+        {delivery.failure !== null && (
+          <div className="flex flex-wrap items-center gap-2">
+            {onRetry && (
+              <Button size="sm" onClick={onRetry}>
+                Retry export
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void navigator.clipboard?.writeText(delivery.failure ?? '')}
+            >
+              Copy details
+            </Button>
+            <details className="w-full text-xs text-muted-foreground">
+              <summary>Technical details</summary>
+              <p className="mt-1 break-words font-mono">{delivery.failure}</p>
+            </details>
+          </div>
+        )}
+        {!delivery.settled && onCancel && (
+          <Button size="sm" variant="outline" className="self-start" onClick={onCancel}>
+            Cancel export
+          </Button>
         )}
         {delivery.files !== null && (
           <ul className="space-y-1" aria-label="Delivered files">

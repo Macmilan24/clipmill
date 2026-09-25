@@ -363,6 +363,9 @@ pub enum CaptionCase {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CaptionOptions {
+    /// Override the preset's spoken-word sweep without changing typography.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub highlight_spoken_word: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

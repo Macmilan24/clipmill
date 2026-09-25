@@ -342,6 +342,18 @@ fn exact_declared_files_are_enforced_and_failures_are_quarantined() {
             .count(),
         1
     );
+    // The failed recipe can be staged and committed again in this process.
+    let retry = prepare_miss(&mut store, recipe(3));
+    retry
+        .create_file(&second)
+        .expect("retry file")
+        .write_all(b"recovered")
+        .expect("retry write");
+    drop(
+        store
+            .commit(retry.id(), vec![second], BTreeMap::new())
+            .expect("retry commit"),
+    );
 
     let missing_stage = prepare_miss(&mut store, recipe(17));
     let actual = "actual.bin".parse::<ArtifactPath>().expect("actual");

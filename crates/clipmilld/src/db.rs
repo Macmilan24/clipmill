@@ -69,6 +69,8 @@ impl From<ProjectRecord> for Project {
 pub(crate) enum StoreError {
     #[error("request id was already used with a different request body")]
     Conflict,
+    #[error("This is a different recording. Choose the original recording to relink it.")]
+    RelinkMismatch,
     #[error(
         "This project already has this video at a different quality. Use its existing import, or create a new project for the selected quality."
     )]
@@ -453,6 +455,25 @@ impl DbActor {
                                         &source_id,
                                         &inspection,
                                         created_unix_millis,
+                                    ));
+                                }
+                                Command::RelinkSource {
+                                    request_id,
+                                    request_hash,
+                                    project_id,
+                                    source_id,
+                                    inspection,
+                                    now,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(source_store::relink_source(
+                                        &mut connection,
+                                        &request_id,
+                                        &request_hash,
+                                        &project_id,
+                                        &source_id,
+                                        &inspection,
+                                        now,
                                     ));
                                 }
                                 Command::RememberSourceHit {
@@ -1257,6 +1278,31 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    pub(crate) async fn relink_source(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        source_id: String,
+        inspection: crate::sources::InspectedSource,
+        now: u64,
+    ) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::RelinkSource {
+                request_id,
+                request_hash,
+                project_id,
+                source_id,
+                inspection,
+                now,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn get_source(&self, source_id: String) -> Result<SourceRecord, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
@@ -1794,6 +1840,15 @@ enum Command {
         source_id: String,
         inspection: crate::sources::InspectedSource,
         created_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
+    RelinkSource {
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: String,
+        source_id: String,
+        inspection: crate::sources::InspectedSource,
+        now: u64,
         reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
     },
     RememberSourceHit {
@@ -4944,6 +4999,95 @@ mod tests {
             None,
             "the job's own kind reaches only its final task, which has not run",
         );
+    }
+
+    #[test]
+    fn relink_preserves_source_identity_and_refuses_a_different_recording() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Relink", 10);
+        create_project(&mut connection, "create-relink", &[1; 32], &project).expect("project");
+        let source_id = SourceId::new().to_string();
+        let original = InspectedSource {
+            observation: FileObservation {
+                absolute_path: "/old/recording.mov".to_owned(),
+                byte_size: 123,
+                sample_sha256: format!("sha256:{}", "11".repeat(32)),
+                device_id: 1,
+                inode: 2,
+                modified_unix_nanos: 3,
+            },
+            source_fingerprint: format!("sha256:{}", "22".repeat(32)),
+            source_map_json: b"{\"schema_version\":\"clipmill.source_map.v1\"}".to_vec(),
+        };
+        source_store::register_source(
+            &mut connection,
+            "register-relink",
+            &[2; 32],
+            &project.project_id,
+            &source_id,
+            &original,
+            20,
+        )
+        .expect("registered");
+        let mut moved = original.clone();
+        moved.observation.absolute_path = "/new/recording.mov".to_owned();
+        moved.observation.device_id = 9;
+        moved.observation.inode = 10;
+        let different = InspectedSource {
+            source_fingerprint: format!("sha256:{}", "33".repeat(32)),
+            ..moved.clone()
+        };
+        assert!(matches!(
+            source_store::relink_source(
+                &mut connection,
+                "wrong-relink",
+                &[3; 32],
+                &project.project_id,
+                &source_id,
+                &different,
+                21,
+            ),
+            Err(StoreError::RelinkMismatch)
+        ));
+        assert_eq!(
+            source_store::get_source(&connection, &source_id)
+                .expect("original remains")
+                .observation
+                .absolute_path,
+            original.observation.absolute_path,
+        );
+        let linked = source_store::relink_source(
+            &mut connection,
+            "right-relink",
+            &[4; 32],
+            &project.project_id,
+            &source_id,
+            &moved,
+            22,
+        )
+        .expect("same recording relinked");
+        assert_eq!(
+            linked,
+            source_store::relink_source(
+                &mut connection,
+                "right-relink",
+                &[4; 32],
+                &project.project_id,
+                &source_id,
+                &moved,
+                23,
+            )
+            .expect("idempotent replay")
+        );
+        let record = source_store::get_source(&connection, &source_id).expect("linked source");
+        assert_eq!(record.source_id, source_id);
+        assert_eq!(
+            record.observation.absolute_path,
+            moved.observation.absolute_path
+        );
+        assert_eq!(record.source_fingerprint, original.source_fingerprint);
+        assert_eq!(record.source_map_json, original.source_map_json);
     }
 
     #[test]

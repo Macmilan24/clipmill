@@ -49,6 +49,13 @@ export class LibraryLoader {
     return this.api.revealPath(path);
   }
 
+  async relink(projectId: string, sourceId: string): Promise<boolean> {
+    const chosen = await this.api.chooseSourceFile();
+    if (chosen === null) return false;
+    await this.api.relinkSource(projectId, sourceId, chosen);
+    return true;
+  }
+
   /** One project, whole. Used for the first load and for every refresh. */
   async loadProject(project: Project): Promise<LibraryProject> {
     const [jobs, sources] = await Promise.all([

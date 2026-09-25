@@ -1800,8 +1800,9 @@ impl Service {
         )
         .await
         .map_err(|error| (ErrorCode::Conflict, error.message()))?;
-        let document =
+        let mut document =
             assemble(&evidence, direct).map_err(|message| (ErrorCode::InvalidArgument, message))?;
+        document.captions.options.highlight_spoken_word = direct.highlight_spoken_word;
         if document.video.segments.is_empty() {
             return Err((
                 ErrorCode::Internal,
@@ -2688,10 +2689,20 @@ impl Service {
                 "the stored document did not parse",
             );
         };
-        let plan = match clipmill_render::preview_plan(
-            &document,
-            &clipmill_render::RenderProfile::default(),
-        ) {
+        let sources_for_rate = match self.database.list_sources(project_id.to_string()).await {
+            Ok(sources) => sources,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let mut profile = clipmill_render::RenderProfile::default();
+        if let Some(first) = document.video.segments.first()
+            && let Some(rate) = sources_for_rate
+                .iter()
+                .find(|source| source.source_fingerprint == first.source_fingerprint)
+                .and_then(|source| crate::inspector::frame_rate_of(&source.source_map_json))
+        {
+            profile.frame_rate = rate;
+        }
+        let plan = match clipmill_render::preview_plan(&document, &profile) {
             Ok(plan) => plan,
             Err(error) => {
                 return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
@@ -3020,6 +3031,41 @@ impl Service {
             Ok(value) => value,
             Err(error) => return source_probe_error_reply(request_id, &error),
         };
+        if !register.source_id.is_empty() {
+            if register.source_id.parse::<SourceId>().is_err() {
+                return error_reply(
+                    request_id,
+                    ErrorCode::InvalidArgument,
+                    "source id is invalid",
+                );
+            }
+            let inspection = match inspector.complete(sampled).await {
+                Ok(value) => value,
+                Err(error) => return source_probe_error_reply(request_id, &error),
+            };
+            let now = match unix_millis() {
+                Ok(value) => value,
+                Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+            };
+            return match self
+                .database
+                .relink_source(
+                    request_id.clone(),
+                    request_hash,
+                    project_id.to_string(),
+                    register.source_id.clone(),
+                    inspection,
+                    now,
+                )
+                .await
+            {
+                Ok(bytes) => Reply {
+                    bytes,
+                    outcome: Outcome::Success,
+                },
+                Err(error) => store_error_reply(request_id, &error),
+            };
+        }
         let existing = self
             .database
             .find_source_observation(project_id.to_string(), sampled.observation().clone())
@@ -3348,6 +3394,7 @@ fn error_reply(request_id: String, code: ErrorCode, message: impl Into<String>) 
 fn store_error_reply(request_id: String, error: &StoreError) -> Reply {
     match error {
         StoreError::Conflict
+        | StoreError::RelinkMismatch
         | StoreError::ImportQualityConflict
         | StoreError::PublishingConflict(_) => {
             error_reply(request_id, ErrorCode::Conflict, error.to_string())

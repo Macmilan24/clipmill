@@ -3,7 +3,7 @@
  * approved clip. Every picture, crop and caption comes from the preview plan the
  * render code computed; the player maps media time onto the plan's program frames.
  */
-import { ArrowLeft, Check, Maximize2, Minimize2, Redo2, Undo2, Upload } from 'lucide-react';
+import { ArrowLeft, Check, Link2, Maximize2, Minimize2, Redo2, Undo2, Upload } from 'lucide-react';
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -53,6 +53,7 @@ import {
 import { cutWords, programWords, rippleRange, shownCues } from '../editor/transcript.js';
 import { useDraftAudio } from '../editor/useDraftAudio.js';
 import { useEditorKeys } from '../editor/useEditorKeys.js';
+import type { EditorFocus } from '../shell/route.js';
 import {
   gainAt,
   proxySecondsAt,
@@ -79,6 +80,7 @@ export interface EditorProps {
   readonly docId: string | null;
   /** What the clip is called — the project and the clip — when the route knew. */
   readonly labels: { readonly project?: string; readonly clip?: string } | null;
+  readonly focus?: EditorFocus | null;
   readonly loading: boolean;
   readonly problem: string | null;
   readonly busy: boolean;
@@ -96,6 +98,8 @@ export interface EditorProps {
   readonly onOpenResults: () => void;
   /** Take this clip to the export screen. Null when no clip is open. */
   readonly onExport: (() => void) | null;
+  readonly onRelink?: (() => void) | null;
+  readonly relinking?: boolean;
   readonly onApply: (command: EditCommandJson) => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
@@ -132,6 +136,7 @@ export function Editor({
   proxyUrls,
   docId,
   labels,
+  focus = null,
   loading,
   problem,
   busy,
@@ -142,6 +147,8 @@ export function Editor({
   picker,
   onOpenResults,
   onExport,
+  onRelink = null,
+  relinking = false,
   onApply,
   onUndo,
   onRedo,
@@ -271,6 +278,20 @@ export function Editor({
     },
     [plan, proxyUrls, updateFrame],
   );
+
+  const focusedCue = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focus || !plan || !docId) return;
+    const key = `${docId}:${focus.track}:${focus.cueId ?? ''}`;
+    if (focusedCue.current === key) return;
+    const cues = focus.track === 'reading' ? (plan.readingCues ?? plan.cues) : plan.cues;
+    const target = cues.find((cue) => cue.cueId === focus.cueId) ?? cues[0];
+    if (!target) return;
+    focusedCue.current = key;
+    setTab('captions');
+    setSelection({ kind: 'cue', cueId: target.cueId });
+    seek(target.firstFrame);
+  }, [docId, focus, plan, seek]);
 
   // A new plan is a new mapping. A trim moved the segment's window, so the
   // frame the playhead is on now shows different footage and may not exist
@@ -695,6 +716,12 @@ export function Editor({
             </EmptyDescription>
           </EmptyHeader>
           {picker}
+          {onRelink && (
+            <Button variant="outline" disabled={relinking} onClick={onRelink}>
+              <Link2 className="size-4" />
+              {relinking ? 'Checking recording…' : 'Locate recording…'}
+            </Button>
+          )}
           <Button variant="outline" onClick={onOpenResults}>
             Go to Results
           </Button>
@@ -773,6 +800,12 @@ export function Editor({
             <Redo2 className="size-4" />
           </TipButton>
           <span className="review-divider" aria-hidden="true" />
+          {onRelink && (
+            <Button variant="outline" size="sm" disabled={relinking} onClick={onRelink}>
+              <Link2 className="size-4" aria-hidden="true" />
+              {relinking ? 'Checking…' : 'Locate recording…'}
+            </Button>
+          )}
           <TipButton
             label={focused ? 'Restore editing panels' : 'Focus preview'}
             pressed={focused}
@@ -845,6 +878,7 @@ export function Editor({
         />
         <EditorProperties
           plan={plan}
+          focus={focus}
           document={document}
           frame={frame}
           selection={selection}

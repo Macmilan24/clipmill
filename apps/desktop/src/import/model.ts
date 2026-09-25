@@ -97,6 +97,7 @@ export interface ImportSettings {
   readonly rightsAttested: boolean;
   /** The caption look this project's clips start with. */
   readonly captionLook?: string;
+  readonly highlightSpokenWord?: boolean;
 }
 
 export const DEFAULT_SETTINGS: ImportSettings = {
@@ -107,6 +108,7 @@ export const DEFAULT_SETTINGS: ImportSettings = {
   count: 5,
   language: AUTO_LANGUAGE,
   rightsAttested: false,
+  highlightSpokenWord: true,
 };
 
 /** What the payload carries: a BCP 47 primary subtag, or empty for auto. */

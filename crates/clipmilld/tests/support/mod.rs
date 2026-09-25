@@ -173,6 +173,7 @@ pub async fn register_source(
             body: Some(request::Body::RegisterSource(RegisterSourceRequest {
                 project_id: project_id.to_owned(),
                 absolute_path: path.to_owned(),
+                source_id: String::new(),
             })),
         },
     )

@@ -197,7 +197,7 @@ fn the_encode_pass_is_pinned_to_a_deterministic_profile() {
     });
     let joined = args.join(" ");
     for expected in [
-        "-threads 1",
+        "-threads:v 4",
         "-fflags +bitexact",
         "-flags:v +bitexact",
         "-flags:a +bitexact",
@@ -215,9 +215,70 @@ fn the_encode_pass_is_pinned_to_a_deterministic_profile() {
     );
     assert!(joined.contains("measured_I=-19.500000"));
     assert!(joined.contains("loudnorm=I=-14:TP=-1:LRA=11"));
-    // One input per span, each pre-seeked to its own keyframe.
+    // Disjoint source windows still need separate seek targets.
     assert_eq!(args.iter().filter(|arg| *arg == "-i").count(), 2);
     assert_eq!(args.iter().filter(|arg| *arg == "-ss").count(), 2);
+}
+
+#[test]
+fn adjacent_sections_share_one_seek_and_decoder() {
+    let mut document = fit_document();
+    document.video.segments[0].out_ticks = 360_000;
+    document.video.segments.push(segment(
+        "seg_2",
+        360_000,
+        540_000,
+        Layout {
+            state: LayoutState::Fit,
+            crop_path: Vec::new(),
+            secondary_crop_path: Vec::new(),
+        },
+    ));
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    let args = plan.encode_args(LoudnessMeasurement {
+        input_lufs: -19.5,
+        input_true_peak_dbtp: -2.0,
+        input_range_lu: 7.5,
+        input_threshold_lufs: -29.5,
+        target_offset_lu: 0.25,
+    });
+    assert_eq!(args.iter().filter(|arg| *arg == "-i").count(), 1);
+    assert_eq!(args.iter().filter(|arg| *arg == "-ss").count(), 1);
+    let graph = args
+        .windows(2)
+        .find(|pair| pair[0] == "-filter_complex")
+        .expect("filter graph")[1]
+        .as_str();
+    assert!(graph.contains("[0:v]split=2[decode_v0][decode_v1]"));
+    assert!(graph.contains("[0:a]asplit=2[decode_a0][decode_a1]"));
+}
+
+#[test]
+fn spoken_word_highlight_is_independent_of_the_typography_preset() {
+    let mut document = fit_document();
+    document.captions.style_ref = "clipmill.captions.minimal.v1".to_owned();
+    document.captions.cues = vec![cue("cue_1", 0, 60, &[("the", 0, 25), ("speaker", 25, 60)])];
+    document.captions.cues[0].anim = CaptionAnimation::None;
+    let profile = RenderProfile::default();
+    document.captions.options.highlight_spoken_word = Some(true);
+    let enabled = compile(&document, &[source()], &profile).expect("highlighted minimal compiles");
+    let enabled_preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert!(enabled.ass.contains("{\\k"));
+    assert!(enabled_preview.cues[0].karaoke);
+    assert_ne!(
+        enabled_preview.caption_style.spoken,
+        enabled_preview.caption_style.unspoken
+    );
+
+    document.captions.options.highlight_spoken_word = Some(false);
+    let disabled = compile(&document, &[source()], &profile).expect("plain minimal compiles");
+    let disabled_preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert!(!disabled.ass.contains("{\\k"));
+    assert!(!disabled_preview.cues[0].karaoke);
+    assert_eq!(
+        disabled_preview.caption_style.spoken,
+        disabled_preview.caption_style.unspoken
+    );
 }
 
 #[test]

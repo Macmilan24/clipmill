@@ -908,12 +908,14 @@ class Source(_message.Message):
     def __init__(self, source_id: _Optional[str] = ..., project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ..., byte_size: _Optional[int] = ..., sample_sha256: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., source_map_artifact_id: _Optional[str] = ..., created_unix_millis: _Optional[int] = ...) -> None: ...
 
 class RegisterSourceRequest(_message.Message):
-    __slots__ = ("project_id", "absolute_path")
+    __slots__ = ("project_id", "absolute_path", "source_id")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     ABSOLUTE_PATH_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     absolute_path: str
-    def __init__(self, project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ...) -> None: ...
+    source_id: str
+    def __init__(self, project_id: _Optional[str] = ..., absolute_path: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
 
 class RegisterSourceResponse(_message.Message):
     __slots__ = ("source", "observation_cache_hit", "source_map_json")
@@ -1284,7 +1286,7 @@ class ListClipDecisionsResponse(_message.Message):
     def __init__(self, decisions: _Optional[_Iterable[_Union[ClipDecisionRecordV1, _Mapping]]] = ...) -> None: ...
 
 class DirectClipRequest(_message.Message):
-    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id", "allow_declined", "manual_span")
+    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id", "allow_declined", "manual_span", "highlight_spoken_word")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -1297,6 +1299,7 @@ class DirectClipRequest(_message.Message):
     JOB_ID_FIELD_NUMBER: _ClassVar[int]
     ALLOW_DECLINED_FIELD_NUMBER: _ClassVar[int]
     MANUAL_SPAN_FIELD_NUMBER: _ClassVar[int]
+    HIGHLIGHT_SPOKEN_WORD_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     source_id: str
     candidate_id: str
@@ -1309,7 +1312,8 @@ class DirectClipRequest(_message.Message):
     job_id: str
     allow_declined: bool
     manual_span: bool
-    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ..., allow_declined: _Optional[bool] = ..., manual_span: _Optional[bool] = ...) -> None: ...
+    highlight_spoken_word: bool
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ..., allow_declined: _Optional[bool] = ..., manual_span: _Optional[bool] = ..., highlight_spoken_word: _Optional[bool] = ...) -> None: ...
 
 class DirectClipResponse(_message.Message):
     __slots__ = ("doc", "start_ticks", "end_ticks", "decisions", "reopened")

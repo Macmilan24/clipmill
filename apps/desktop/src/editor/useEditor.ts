@@ -91,7 +91,11 @@ export function mediaRun(jobs: readonly Job[], clip: ClipRef): Job | null {
   );
 }
 
-export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): EditorState {
+export function useEditor(
+  clip: ClipRef | null,
+  api: ShellApi = daemonApi,
+  sourceRefresh = 0,
+): EditorState {
   const [revision, setRevision] = useState(0);
   const [plan, setPlan] = useState<PreviewPlan | null>(null);
   const [document, setDocument] = useState<EditIr | null>(null);
@@ -225,7 +229,7 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
     return () => {
       live = false;
     };
-  }, [api, projectId, docId, sourceId, jobId]);
+  }, [api, projectId, docId, sourceId, jobId, sourceRefresh]);
 
   /**
    * Send a command, take the inverse, and re-read the plan.

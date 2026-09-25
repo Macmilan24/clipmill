@@ -114,13 +114,25 @@ pub(crate) fn assemble(
         let spread = spread_words(segment, alignment, &measured);
         let mut ordered = Vec::new();
         for word in measured {
+            // A timestamp pair on the same aligner tick is not a measured
+            // interval. Keep the spoken text, give it a nonempty placeholder
+            // for downstream contracts, and mark the timing as inferred.
+            let collapsed = word.end_ticks <= word.start_ticks;
             ordered.push((
                 word.start_ticks,
-                word.end_ticks,
+                if collapsed {
+                    word.start_ticks.saturating_add(1)
+                } else {
+                    word.end_ticks
+                },
                 (*word.text).clone(),
-                transcript::WordTiming::Aligned,
-                word.confidence.p50,
-                word.confidence.p10,
+                if collapsed {
+                    transcript::WordTiming::Interpolated
+                } else {
+                    transcript::WordTiming::Aligned
+                },
+                if collapsed { 0.0 } else { word.confidence.p50 },
+                if collapsed { 0.0 } else { word.confidence.p10 },
             ));
         }
         ordered.extend(spread);

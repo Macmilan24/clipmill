@@ -992,6 +992,9 @@ pub struct RegisterSourceRequest {
     pub project_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub absolute_path: ::prost::alloc::string::String,
+    /// When set, update this source's path only if the new file has its fingerprint.
+    #[prost(string, tag = "3")]
+    pub source_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RegisterSourceResponse {
@@ -1546,6 +1549,9 @@ pub struct DirectClipRequest {
     /// Requires a named run and start/end ticks; candidate_id is ignored.
     #[prost(bool, tag = "12")]
     pub manual_span: bool,
+    /// Separately override the caption look's spoken-word highlight.
+    #[prost(bool, optional, tag = "13")]
+    pub highlight_spoken_word: ::core::option::Option<bool>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {

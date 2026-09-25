@@ -5,15 +5,13 @@
 //! pixel tolerances, but words, crop rectangles, and cue frames must agree.
 //! `gate-editor` compares rendered fixture documents.
 
-use clipmill_edit_ir::{
-    CaptionAnimation, CaptionCue, CaptionRegion, EditDocument, LayoutState, Presentation,
-};
+use clipmill_edit_ir::{CaptionCue, CaptionRegion, EditDocument, LayoutState, Presentation};
 
 use crate::{
     graph::crop_rect_at,
     plan::RenderError,
     profile::{CaptionStyle, RenderProfile},
-    subtitles::{Sweep, burned_text, sweep},
+    subtitles::{Sweep, burned_text, highlight_enabled, sweep},
     timing::FrameRate,
 };
 
@@ -164,8 +162,18 @@ pub fn preview_plan(
         frame_count,
         crops: crops(document, rate, frame_count, false),
         secondary_crops: crops(document, rate, frame_count, true),
-        cues: cues(document.captions.burned(), rate),
-        reading_cues: cues(&document.captions.cues, rate),
+        cues: cues(
+            document.captions.burned(),
+            rate,
+            document.captions.options.text_case,
+            document.captions.options.highlight_spoken_word,
+        ),
+        reading_cues: cues(
+            &document.captions.cues,
+            rate,
+            document.captions.options.text_case,
+            document.captions.options.highlight_spoken_word,
+        ),
         segments: segments(document, rate),
         presentation: document.captions.burned_presentation(),
         gain: document
@@ -263,12 +271,17 @@ fn crops(
 /// The burned-in list, not the reading one: the player is showing what a viewer
 /// watching the export would see, and the sidecars are a different surface with
 /// a different grouping.
-fn cues(cues: &[CaptionCue], rate: FrameRate) -> Vec<PreviewCue> {
+fn cues(
+    cues: &[CaptionCue],
+    rate: FrameRate,
+    text_case: clipmill_edit_ir::CaptionCase,
+    highlight_override: Option<bool>,
+) -> Vec<PreviewCue> {
     cues.iter()
         .map(|cue| {
             let first_frame = rate.frame_ceil(cue.start_ticks);
             let end_frame = rate.frame_ceil(cue.end_ticks);
-            let karaoke = matches!(cue.anim, CaptionAnimation::Karaoke);
+            let karaoke = highlight_enabled(cue, highlight_override);
             let swept = if karaoke {
                 sweep(
                     cue,
@@ -291,7 +304,7 @@ fn cues(cues: &[CaptionCue], rate: FrameRate) -> Vec<PreviewCue> {
                 region: cue.region,
                 karaoke,
                 lead_in_centis: swept.lead_in_centis,
-                lines: lines(cue, &swept, document.captions.options.text_case),
+                lines: lines(cue, &swept, text_case),
             }
         })
         .collect()

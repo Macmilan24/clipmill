@@ -19,6 +19,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
 import type { EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
 import { clockTenths, timecode } from '../inspector/review.js';
+import type { EditorFocus } from '../shell/route.js';
+import { repairAll, shortCues } from './captionRepairs.js';
+import { CueTiming } from './CueTiming.js';
 import {
   batch,
   correctWord,
@@ -41,6 +44,7 @@ import { cropAt, gainAt, segmentAt, sourceOf } from './player.js';
 import type { EditorSelection, PropertiesTab } from './selection.js';
 import { freshCueId, programTicks, ticksOfFrame } from './timeline.js';
 import { shownCues } from './transcript.js';
+import { CaptionLookSample } from '../results/CaptionLookSample.js';
 
 const PRESETS = [
   { label: 'Clean', ref: 'clipmill.captions.clean.v1' },
@@ -56,10 +60,10 @@ const REGIONS = [
 
 type Region = (typeof REGIONS)[number][0];
 type Easing = 'linear' | 'ease_in' | 'ease_out' | 'ease_in_out';
-const FRAME = 3_003;
 
 export interface EditorPropertiesProps {
   readonly plan: PreviewPlan;
+  readonly focus?: EditorFocus | null;
   readonly document: EditIr | null;
   readonly frame: number;
   readonly selection: EditorSelection;
@@ -76,6 +80,16 @@ export interface EditorPropertiesProps {
 
 export function EditorProperties(props: EditorPropertiesProps) {
   const { tab, onTab } = props;
+  const [captionTrack, setCaptionTrack] = useState<'on-screen' | 'reading'>(
+    props.focus?.track ?? 'on-screen',
+  );
+  useEffect(() => {
+    if (props.focus?.panel === 'captions') setCaptionTrack(props.focus.track);
+  }, [props.focus]);
+  const captionPlan: PreviewPlan =
+    captionTrack === 'reading' && props.plan.readingCues
+      ? { ...props.plan, cues: props.plan.readingCues, presentation: 'reading' }
+      : props.plan;
   return (
     <aside className="review-side edit-side" aria-label="Properties">
       <Tabs
@@ -102,7 +116,28 @@ export function EditorProperties(props: EditorPropertiesProps) {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="captions" className="review-tab-panel">
-          <CaptionsTab {...props} />
+          <div
+            className="review-segmented edit-wide mx-3 mt-3"
+            role="group"
+            aria-label="Caption track"
+          >
+            <button
+              type="button"
+              aria-pressed={captionTrack === 'on-screen'}
+              onClick={() => setCaptionTrack('on-screen')}
+            >
+              On-screen
+            </button>
+            <button
+              type="button"
+              aria-pressed={captionTrack === 'reading'}
+              disabled={!props.plan.readingCues}
+              onClick={() => setCaptionTrack('reading')}
+            >
+              Subtitle file
+            </button>
+          </div>
+          <CaptionsTab {...props} plan={captionPlan} />
         </TabsContent>
         <TabsContent value="framing" className="review-tab-panel">
           <FramingTab {...props} />
@@ -133,13 +168,24 @@ function CaptionsTab({
     selection.kind === 'cue' ? plan.cues.find((item) => item.cueId === selection.cueId) : undefined;
   const styleRef = document?.captions.style_ref ?? plan.captionStyle?.styleRef ?? PRESETS[0].ref;
   const options = document?.captions.options ?? {};
+  const highlightEnabled = options.highlight_spoken_word ?? !styleRef.includes('.minimal.');
   const update = (change: Partial<typeof options>) =>
     onApply(setCaptionOptions({ ...options, ...change }));
+  const chooseLook = (ref: string) =>
+    onApply(
+      options.highlight_spoken_word === undefined
+        ? batch([
+            setCaptionOptions({ ...options, highlight_spoken_word: highlightEnabled }),
+            setCaptionStyle(ref),
+          ])
+        : setCaptionStyle(ref),
+    );
   const style = plan.captionStyle;
   const regionOfAll = plan.cues.every((item) => item.region === plan.cues[0]?.region)
     ? plan.cues[0]?.region
     : null;
   const [perLine, setPerLine] = useState(4);
+  const problems = plan.presentation === 'reading' ? shortCues(plan) : [];
 
   if (plan.cues.length === 0) {
     return <p className="review-empty-note">This clip has no captions. Nothing was said in it.</p>;
@@ -147,6 +193,59 @@ function CaptionsTab({
 
   return (
     <div className="review-panel-body">
+      {problems.length > 0 && (
+        <section className="review-section" aria-label="Caption problems">
+          <h3 className="review-section-title">Subtitle timing · {problems.length} to review</h3>
+          <p className="review-footnote">
+            Captions shorter than the reading guideline appear here. Only flashes under a third of a
+            second block export.
+          </p>
+          {problems.map((problem) => (
+            <div
+              key={problem.cue.cueId}
+              className="flex items-center justify-between gap-2 py-1 text-xs"
+            >
+              <button
+                type="button"
+                className="min-w-0 truncate text-left underline"
+                onClick={() => {
+                  onSelect({ kind: 'cue', cueId: problem.cue.cueId });
+                  onSeek(problem.cue.firstFrame);
+                }}
+              >
+                {problem.cue.lines
+                  .flat()
+                  .map((word) => word.text)
+                  .join(' ')}{' '}
+                · {((problem.endTicks - problem.startTicks) / 90_000).toFixed(2)}s
+              </button>
+              {problem.repair && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onApply(problem.repair!.command)}
+                >
+                  Fix
+                </Button>
+              )}
+            </div>
+          ))}
+          {problems.length > 1 && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                const command = repairAll(plan);
+                if (command) onApply(command);
+              }}
+            >
+              Fix all
+            </Button>
+          )}
+        </section>
+      )}
       {cue && (
         <SelectedCaption
           key={`${cue.cueId}:${plan.revision}`}
@@ -167,14 +266,28 @@ function CaptionsTab({
             <button
               key={preset.ref}
               type="button"
+              className="edit-look-button"
               aria-pressed={styleRef.includes(`.${preset.label.toLowerCase()}.`)}
               disabled={busy}
-              onClick={() => onApply(setCaptionStyle(preset.ref))}
+              onClick={() => chooseLook(preset.ref)}
             >
+              <CaptionLookSample
+                look={preset.label.toLowerCase() as 'clean' | 'minimal' | 'boxed'}
+                highlight={highlightEnabled}
+              />
               {preset.label}
             </button>
           ))}
         </div>
+        <label className="mt-3 flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={highlightEnabled}
+            disabled={busy}
+            onChange={(event) => update({ highlight_spoken_word: event.target.checked })}
+          />
+          Highlight the spoken word
+        </label>
         <Field label="Size">
           <CommitSlider
             label="Caption size"
@@ -188,14 +301,16 @@ function CaptionsTab({
         </Field>
         <Field label="Colours">
           <div className="edit-swatches">
+            {highlightEnabled && (
+              <Swatch
+                label="Spoken word"
+                value={options.spoken ?? style?.spoken ?? '#ffd65c'}
+                disabled={busy}
+                onCommit={(value) => update({ spoken: value })}
+              />
+            )}
             <Swatch
-              label="Highlight"
-              value={options.spoken ?? style?.spoken ?? '#ffd65c'}
-              disabled={busy}
-              onCommit={(value) => update({ spoken: value })}
-            />
-            <Swatch
-              label="Text"
+              label="Words"
               value={options.unspoken ?? style?.unspoken ?? '#ffffff'}
               disabled={busy}
               onCommit={(value) => update({ unspoken: value })}
@@ -314,7 +429,7 @@ function SelectedCaption({
         ? (inner[0]?.start_ticks ?? saved.start_ticks)
         : (cues[position + 1]?.start_ticks ?? duration);
     const current = edge === 'start' ? saved.start_ticks : saved.end_ticks;
-    const moved = Math.max(low, Math.min(high, current + direction * FRAME));
+    const moved = Math.max(low, Math.min(high, current + direction * ticksOfFrame(plan, 1)));
     if (moved === current) return;
     onApply(
       edge === 'start'
@@ -387,6 +502,7 @@ function SelectedCaption({
           </Field>
         </>
       )}
+      <CueTiming plan={plan} cue={cue} busy={busy} onApply={onApply} />
       <Field label="Position">
         <RegionPicker
           label="Where this caption sits"

@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::{
-    graph::{self, DecodeSpan, FilterGraph, GraphRequest},
+    graph::{self, DecodeSpan, FilterGraph, GraphRequest, decoder_groups},
     profile::RenderProfile,
     subtitles::{self, CueWindow, unrenderable_character},
     timing::ticks_to_seconds,
@@ -25,6 +25,8 @@ pub const ASS_FILE: &str = "clip.ass";
 pub const SRT_FILE: &str = "clip.srt";
 pub const VTT_FILE: &str = "clip.vtt";
 pub const MANIFEST_FILE: &str = "render-manifest.json";
+/// Fixed worker count keeps the x264 output independent of machine defaults.
+pub const ENCODER_THREADS: u32 = 4;
 
 /// A source the document's segments may reference, resolved to something the
 /// decoder can open.
@@ -139,6 +141,7 @@ impl RenderPlan {
         );
         config.insert("frame_count".to_owned(), json!(self.frame_count));
         config.insert("duration_ticks".to_owned(), json!(self.duration_ticks));
+        config.insert("encoder_threads".to_owned(), json!(ENCODER_THREADS));
         config.insert(
             "segments".to_owned(),
             json!(
@@ -180,9 +183,8 @@ impl RenderPlan {
 
     /// FFmpeg arguments for the encode.
     ///
-    /// The determinism flags are the profile's contract: one encoder thread so
-    /// libx264's slice decisions cannot depend on scheduling, and bitexact on
-    /// every layer so the container carries no build string and no clock.
+    /// A fixed encoder thread count and bitexact flags keep the output stable
+    /// across machines while allowing more than one core to encode.
     pub fn encode_args(&self, measurement: LoudnessMeasurement) -> Vec<String> {
         let graph = self.encode_graph(measurement);
         let profile = &self.profile;
@@ -204,6 +206,8 @@ impl RenderPlan {
             profile.pixel_format.clone(),
             "-profile:v".to_owned(),
             "high".to_owned(),
+            "-threads:v".to_owned(),
+            ENCODER_THREADS.to_string(),
             "-r".to_owned(),
             format!("{}/{}", profile.frame_rate.num, profile.frame_rate.den),
             "-frames:v".to_owned(),
@@ -216,8 +220,6 @@ impl RenderPlan {
             profile.audio_sample_rate.to_string(),
             "-ac".to_owned(),
             profile.audio_channels.to_string(),
-            "-threads".to_owned(),
-            "1".to_owned(),
             "-fflags".to_owned(),
             "+bitexact".to_owned(),
             "-flags:v".to_owned(),
@@ -291,7 +293,8 @@ impl RenderPlan {
 
     fn input_args(&self) -> Vec<String> {
         let mut args = Vec::new();
-        for span in &self.spans {
+        for group in decoder_groups(&self.spans) {
+            let span = &self.spans[group.start];
             let path = self
                 .paths
                 .get(&span.source_fingerprint)
@@ -354,8 +357,8 @@ pub fn compile(
     let duration_ticks = document.program_duration_ticks();
     check_captions(document, duration_ticks)?;
 
-    let mut spans = Vec::with_capacity(document.video.segments.len());
-    let mut segments = Vec::with_capacity(document.video.segments.len());
+    let mut spans: Vec<DecodeSpan> = Vec::with_capacity(document.video.segments.len());
+    let mut segments: Vec<SegmentReport> = Vec::with_capacity(document.video.segments.len());
     let mut paths = BTreeMap::new();
     let mut program_start = 0;
     for segment in &document.video.segments {
@@ -374,7 +377,15 @@ pub fn compile(
         let frame_count = rate.frame_ceil(program_end) - rate.frame_ceil(program_start);
         let video_offset_ticks = rate.frame_ticks(rate.frame_ceil(program_start)) - program_start;
         program_start = program_end;
-        let seek_ticks = source.seek_target(segment.in_ticks);
+        let seek_ticks = spans
+            .last()
+            .and_then(|previous: &DecodeSpan| {
+                let preceding = segments.last()?;
+                (preceding.source_fingerprint == segment.source_fingerprint
+                    && preceding.out_ticks == segment.in_ticks)
+                    .then_some(previous.seek_ticks)
+            })
+            .unwrap_or_else(|| source.seek_target(segment.in_ticks));
         spans.push(DecodeSpan {
             segment_id: segment.segment_id.clone(),
             source_fingerprint: segment.source_fingerprint.clone(),
