@@ -24,15 +24,15 @@ pub use manifest::{
 };
 pub use plan::{
     ASS_FILE, CLIP_FILE, LoudnessMeasurement, MANIFEST_FILE, RenderError, RenderPlan, SRT_FILE,
-    SegmentReport, SourceInput, VTT_FILE, compile,
+    SegmentReport, SourceInput, VTT_FILE, compile, largest_upscale,
 };
 pub use preview::{
     PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewPlan, PreviewWord, preview_plan,
     text_at,
 };
 pub use profile::{
-    CaptionStyle, Colour, DEFAULT_STYLE_REF, FONT_FAMILY, FONTS_DIR, FrameRateSpec, LoudnessTarget,
-    PROFILE_ID, RenderProfile,
+    CaptionStyle, Colour, DEFAULT_STYLE_REF, DESIGN_HEIGHT, FONT_FAMILY, FONTS_DIR, FrameRateSpec,
+    LoudnessTarget, OUTPUT_HEIGHTS, PROFILE_ID, RenderProfile, design_resolution,
 };
 pub use subtitles::{CueWindow, Sweep, unrenderable_character};
 pub use timing::{FrameRate, centis_to_ass, millis_to_srt, millis_to_vtt, ticks_to_seconds};

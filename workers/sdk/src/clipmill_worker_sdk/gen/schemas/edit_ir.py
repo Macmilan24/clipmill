@@ -27,7 +27,10 @@ class Options(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    highlight_spoken_word: bool | None = None
+    highlight_spoken_word: bool | None = Field(
+        None,
+        description="Override the preset's spoken-word highlight independently of its typography.",
+    )
     font_size: conint(ge=24, le=160) | None = None
     spoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
     unspoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None

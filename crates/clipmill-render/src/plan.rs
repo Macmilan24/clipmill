@@ -333,30 +333,18 @@ fn check_captions(document: &EditDocument, duration_ticks: i64) -> Result<(), Re
     Ok(())
 }
 
-pub fn compile(
+/// Each segment's decode span and report, on the program's frame grid.
+struct LaidOut {
+    spans: Vec<DecodeSpan>,
+    segments: Vec<SegmentReport>,
+    paths: BTreeMap<String, String>,
+}
+
+fn lay_out(
     document: &EditDocument,
     sources: &[SourceInput],
-    profile: &RenderProfile,
-) -> Result<RenderPlan, RenderError> {
-    document.validate()?;
-    if document.video.segments.is_empty() {
-        return Err(RenderError::EmptyProgram);
-    }
-    let mut effective_profile = profile.clone();
-    effective_profile.caption_style = crate::profile::CaptionStyle::for_track(&document.captions)
-        .or_else(|| {
-            document
-                .captions
-                .cues
-                .is_empty()
-                .then(|| profile.caption_style.clone())
-        })
-        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
-    let profile = &effective_profile;
-    let rate = profile.rate();
-    let duration_ticks = document.program_duration_ticks();
-    check_captions(document, duration_ticks)?;
-
+    rate: crate::timing::FrameRate,
+) -> Result<LaidOut, RenderError> {
     let mut spans: Vec<DecodeSpan> = Vec::with_capacity(document.video.segments.len());
     let mut segments: Vec<SegmentReport> = Vec::with_capacity(document.video.segments.len());
     let mut paths = BTreeMap::new();
@@ -411,6 +399,43 @@ pub fn compile(
         });
         paths.insert(segment.source_fingerprint.clone(), source.path.clone());
     }
+
+    Ok(LaidOut {
+        spans,
+        segments,
+        paths,
+    })
+}
+
+pub fn compile(
+    document: &EditDocument,
+    sources: &[SourceInput],
+    profile: &RenderProfile,
+) -> Result<RenderPlan, RenderError> {
+    document.validate()?;
+    if document.video.segments.is_empty() {
+        return Err(RenderError::EmptyProgram);
+    }
+    let mut effective_profile = profile.clone();
+    effective_profile.caption_style = crate::profile::CaptionStyle::for_track(&document.captions)
+        .or_else(|| {
+            document
+                .captions
+                .cues
+                .is_empty()
+                .then(|| profile.caption_style.clone())
+        })
+        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
+    let profile = &effective_profile;
+    let rate = profile.rate();
+    let duration_ticks = document.program_duration_ticks();
+    check_captions(document, duration_ticks)?;
+
+    let LaidOut {
+        spans,
+        segments,
+        paths,
+    } = lay_out(document, sources, rate)?;
 
     let burn = (!document.captions.cues.is_empty()).then_some(ASS_FILE);
     let graph = graph::build(&GraphRequest {
@@ -481,4 +506,61 @@ pub enum RenderError {
     CropOutsideFrame(String),
     #[error("segment {0} has two crop keyframes on the same output frame")]
     CropKeyframesTooDense(String),
+}
+
+/// How many times the most-enlarged section of the program magnifies the
+/// recording's own pixels, or `None` when the program has no picture.
+///
+/// A 9:16 crop of a 1080p recording is already a 1.78× enlargement at
+/// 1080 × 1920; at 4K the same crop is 3.56×, and no encoder setting makes
+/// detail the recording never had. The export screen warns from this number
+/// rather than refusing, because a creator may want the larger file anyway.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "frame dimensions, far inside a double's exact integers"
+)]
+pub fn largest_upscale(
+    document: &EditDocument,
+    sources: &[SourceInput],
+    profile: &RenderProfile,
+) -> Option<f64> {
+    let mut largest: Option<f64> = None;
+    for segment in &document.video.segments {
+        let Some(source) = sources
+            .iter()
+            .find(|source| source.fingerprint == segment.source_fingerprint)
+        else {
+            continue;
+        };
+        let factor = match segment.layout.state {
+            LayoutState::Fit => {
+                if source.width <= 0 || source.height <= 0 {
+                    continue;
+                }
+                (profile.width as f64 / source.width as f64)
+                    .min(profile.height as f64 / source.height as f64)
+            }
+            LayoutState::SpeakerFill | LayoutState::TwoUp => {
+                let viewport = if segment.layout.state == LayoutState::TwoUp {
+                    profile.height / 2
+                } else {
+                    profile.height
+                };
+                let Some(crop) = segment
+                    .layout
+                    .crop_path
+                    .iter()
+                    .chain(&segment.layout.secondary_crop_path)
+                    .map(|keyframe| keyframe.rect.height)
+                    .filter(|height| *height > 0)
+                    .min()
+                else {
+                    continue;
+                };
+                viewport as f64 / crop as f64
+            }
+        };
+        largest = Some(largest.map_or(factor, |current: f64| current.max(factor)));
+    }
+    largest
 }

@@ -113,31 +113,44 @@ pub(crate) fn assemble(
         let measured = placed.remove(&segment.index).unwrap_or_default();
         let spread = spread_words(segment, alignment, &measured);
         let mut ordered = Vec::new();
+        let mut collapsed = Vec::new();
         for word in measured {
             // A timestamp pair on the same aligner tick is not a measured
-            // interval. Keep the spoken text, give it a nonempty placeholder
-            // for downstream contracts, and mark the timing as inferred.
-            let collapsed = word.end_ticks <= word.start_ticks;
+            // interval. Keep the spoken text and mark the timing as inferred;
+            // the run it collapsed with is spread out below.
+            let is_collapsed = word.end_ticks <= word.start_ticks;
+            collapsed.push(is_collapsed);
             ordered.push((
                 word.start_ticks,
-                if collapsed {
+                if is_collapsed {
                     word.start_ticks.saturating_add(1)
                 } else {
                     word.end_ticks
                 },
                 (*word.text).clone(),
-                if collapsed {
+                if is_collapsed {
                     transcript::WordTiming::Interpolated
                 } else {
                     transcript::WordTiming::Aligned
                 },
-                if collapsed { 0.0 } else { word.confidence.p50 },
-                if collapsed { 0.0 } else { word.confidence.p10 },
+                if is_collapsed {
+                    0.0
+                } else {
+                    word.confidence.p50
+                },
+                if is_collapsed {
+                    0.0
+                } else {
+                    word.confidence.p10
+                },
             ));
         }
+        spread_collapsed_runs(&mut ordered, &collapsed, &activity.silences);
         ordered.extend(spread);
         ordered.sort_by_key(|entry| (entry.0, entry.1));
 
+        let (ordered, loops) = drop_repeated_loops(&ordered);
+        invalid.extend(loops);
         for (start, end, text, timing, p50, p10) in ordered {
             if matches!(timing, transcript::WordTiming::Interpolated) {
                 invalid.push(transcript::InvalidRegion {
@@ -302,6 +315,136 @@ pub(crate) fn assemble(
             invalid_regions: invalid,
         };
     Ok(Assembled { document })
+}
+
+/// The longest a collapsed word may be stretched to, when nothing measured
+/// bounds it: about one syllable-heavy word at conversational speed.
+const COLLAPSED_WORD_MAX_TICKS: u64 = 36_000;
+/// The fewest times one word may repeat back to back before the run is read
+/// as a recognizer loop rather than speech.
+const LOOP_MIN_REPEATS: usize = 5;
+/// How many of a looped word are kept: a stutter is real speech, twenty of
+/// them in a row is the decoder repeating itself.
+const LOOP_KEPT: usize = 2;
+
+/// Give each run of words the aligner collapsed onto one tick its own time.
+///
+/// The Qwen3 aligner reports on an 80 ms grid, and a fast run of short words
+/// can land on a single tick with no length at all. Left there, every word of
+/// the run starts together and a karaoke highlight jumps over all of them at
+/// once. The run is spread from where it was placed toward the next measured
+/// word, in proportion to each word's syllables, never into a silence the
+/// voice detector found and never past a plausible speaking pace. The words
+/// stay labelled interpolated: this is a better guess, not a measurement.
+fn spread_collapsed_runs(
+    ordered: &mut [SpreadWord],
+    collapsed: &[bool],
+    silences: &[clipmill_contracts::schemas::speech_vad::Interval],
+) {
+    let mut index = 0;
+    while index < collapsed.len() {
+        if !collapsed[index] {
+            index += 1;
+            continue;
+        }
+        let mut end = index + 1;
+        while end < collapsed.len() && collapsed[end] && ordered[end].0 == ordered[index].0 {
+            end += 1;
+        }
+        let run_start = ordered[index].0;
+        let previous_end = index
+            .checked_sub(1)
+            .map_or(run_start, |before| ordered[before].1.max(run_start));
+        let count = u64::try_from(end - index).unwrap_or(1).max(1);
+        let mut limit = run_start.saturating_add(COLLAPSED_WORD_MAX_TICKS.saturating_mul(count));
+        if let Some(next) = ordered.get(end) {
+            limit = limit.min(next.0);
+        }
+        if let Some(silence) = silences
+            .iter()
+            .find(|gap| gap.start_ticks > previous_end && gap.start_ticks < limit)
+        {
+            limit = silence.start_ticks;
+        }
+        let span = limit.saturating_sub(previous_end);
+        if span >= count {
+            let weights = ordered[index..end]
+                .iter()
+                .map(|word| syllables(&word.2))
+                .collect::<Vec<_>>();
+            let total = weights.iter().sum::<u64>().max(1);
+            let mut cursor = previous_end;
+            let mut spent = 0;
+            for (word, weight) in ordered[index..end].iter_mut().zip(&weights) {
+                spent += weight;
+                let next = previous_end + span * spent / total;
+                word.0 = cursor;
+                word.1 = next.max(cursor + 1);
+                cursor = word.1;
+            }
+        }
+        index = end;
+    }
+}
+
+/// A rough syllable count: groups of vowels, at least one per word.
+fn syllables(text: &str) -> u64 {
+    let mut groups = 0_u64;
+    let mut in_vowel = false;
+    for character in text.chars().flat_map(char::to_lowercase) {
+        let vowel = matches!(character, 'a' | 'e' | 'i' | 'o' | 'u' | 'y');
+        if vowel && !in_vowel {
+            groups += 1;
+        }
+        in_vowel = vowel;
+    }
+    groups.max(1)
+}
+
+/// Remove a word the recognizer repeated far past anything a speaker says.
+///
+/// Whisper's small models fall into loops on noise and music: "it" twenty
+/// times, "I" thirteen. Captions and the editorial model would read those as
+/// speech. A run of one normalized word repeated [`LOOP_MIN_REPEATS`] or more
+/// times keeps its first [`LOOP_KEPT`] and the rest is declared invalid, so
+/// the gap stays visible to anyone reading the transcript.
+fn drop_repeated_loops(
+    ordered: &[SpreadWord],
+) -> (Vec<SpreadWord>, Vec<transcript::InvalidRegion>) {
+    let key = |text: &str| {
+        text.chars()
+            .filter(|character| character.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+    };
+    let mut kept = Vec::with_capacity(ordered.len());
+    let mut invalid = Vec::new();
+    let mut index = 0;
+    while index < ordered.len() {
+        let word = key(&ordered[index].2);
+        let mut end = index + 1;
+        while end < ordered.len() && !word.is_empty() && key(&ordered[end].2) == word {
+            end += 1;
+        }
+        if end - index >= LOOP_MIN_REPEATS {
+            kept.extend(ordered[index..index + LOOP_KEPT].iter().cloned());
+            invalid.push(transcript::InvalidRegion {
+                start_ticks: ordered[index + LOOP_KEPT].0,
+                end_ticks: ordered[end - 1].1,
+                reason: transcript::InvalidRegionReason::DecodeFailed,
+                detail: Some(
+                    "the recognizer repeated one word in a loop; the repeats were removed"
+                        .to_owned()
+                        .try_into()
+                        .unwrap_or_else(|_| unreachable!("a non-empty literal")),
+                ),
+            });
+        } else {
+            kept.extend(ordered[index..end].iter().cloned());
+        }
+        index = end;
+    }
+    (kept, invalid)
 }
 
 /// The artifacts this transcript was fused from.
@@ -507,7 +650,7 @@ fn producer(
 
 /// The task kind this module executes.
 pub(crate) const KIND_TRANSCRIPT: &str = "speech-transcript";
-pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.0.0";
+pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.1.0";
 const OUTPUT_FILE: &str = "transcript.json";
 
 /// Read the three published artifacts and publish the transcript that fuses

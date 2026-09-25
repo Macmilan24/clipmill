@@ -22,6 +22,20 @@ pub const FONT_FAMILY: &str = "Inter";
 /// Where the executor stages the pinned font, relative to the working
 /// directory FFmpeg runs in. Nothing else may be visible to libass.
 pub const FONTS_DIR: &str = "fonts";
+/// The frame height caption styles are designed at. Sizes, margins, outline
+/// and shadow are all stated at this height and libass scales them to the
+/// output, so a larger or smaller render keeps the same proportions.
+pub const DESIGN_HEIGHT: i64 = 1_920;
+
+/// The ASS script resolution for an output frame: the design height, and the
+/// width that keeps the output's shape.
+pub fn design_resolution(width: i64, height: i64) -> (i64, i64) {
+    if height <= 0 {
+        return (width, height);
+    }
+    let scaled = (width * DESIGN_HEIGHT + height / 2) / height;
+    (scaled, DESIGN_HEIGHT)
+}
 
 /// An ASS colour, written `&HAABBGGRR`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -48,6 +62,11 @@ impl Colour {
             "&H{:02X}{:02X}{:02X}{:02X}",
             self.transparency, self.blue, self.green, self.red
         )
+    }
+
+    /// The colour as an inline override tag takes it: `&HBBGGRR&`, no alpha.
+    pub fn to_ass_override(self) -> String {
+        format!("&H{:02X}{:02X}{:02X}&", self.blue, self.green, self.red)
     }
 
     fn from_hex(value: &str) -> Option<Self> {
@@ -225,9 +244,40 @@ impl Default for RenderProfile {
     }
 }
 
+/// The output heights a creator may choose for the 9:16 frame.
+pub const OUTPUT_HEIGHTS: [i64; 3] = [1_920, 2_560, 3_840];
+
 impl RenderProfile {
     pub fn rate(&self) -> FrameRate {
         self.frame_rate.into()
+    }
+
+    /// The default profile at another frame rate and frame height.
+    ///
+    /// Only the picture's size and clock change. Caption styles are stated at
+    /// the design height and libass scales them, and the letterbox blur is
+    /// scaled here so a larger frame is the same picture, sharper.
+    pub fn for_output(height: i64, frame_rate: FrameRateSpec) -> Option<Self> {
+        if !OUTPUT_HEIGHTS.contains(&height) || frame_rate.num <= 0 || frame_rate.den <= 0 {
+            return None;
+        }
+        let base = Self::default();
+        let width = height * base.width / base.height;
+        let sigma = u32::try_from(i64::from(base.fit_background_sigma) * height / base.height)
+            .unwrap_or(base.fit_background_sigma);
+        let profile_id = if height == base.height {
+            base.profile_id.clone()
+        } else {
+            format!("clipmill.render.vertical_{width}x{height}.v1")
+        };
+        Some(Self {
+            profile_id,
+            width,
+            height,
+            frame_rate,
+            fit_background_sigma: sigma,
+            ..base
+        })
     }
 }
 
@@ -251,6 +301,24 @@ mod tests {
             .to_ass(),
             "&H80332211"
         );
+    }
+
+    #[test]
+    fn larger_outputs_keep_the_shape_and_scale_the_fill() {
+        use super::FrameRateSpec;
+        let rate = FrameRateSpec {
+            num: 24_000,
+            den: 1_001,
+        };
+        let four_k = RenderProfile::for_output(3_840, rate).expect("4K");
+        assert_eq!((four_k.width, four_k.height), (2_160, 3_840));
+        assert_eq!(four_k.fit_background_sigma, 80);
+        assert_eq!(four_k.frame_rate, rate);
+        assert_ne!(four_k.profile_id, RenderProfile::default().profile_id);
+        let same = RenderProfile::for_output(1_920, RenderProfile::default().frame_rate)
+            .expect("default size");
+        assert_eq!(same, RenderProfile::default());
+        assert!(RenderProfile::for_output(1_000, rate).is_none());
     }
 
     #[test]

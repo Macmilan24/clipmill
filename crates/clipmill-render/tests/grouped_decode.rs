@@ -64,11 +64,12 @@ fn adjacent_sections_encode_with_one_decoder() {
         })
         .collect();
     document.captions.style_ref = RenderProfile::default().caption_style.style_ref;
-    let mut profile = RenderProfile::default();
-    profile.width = 270;
-    profile.height = 480;
-    profile.frame_rate.num = 30;
-    profile.frame_rate.den = 1;
+    let profile = RenderProfile {
+        width: 270,
+        height: 480,
+        frame_rate: clipmill_render::FrameRateSpec { num: 30, den: 1 },
+        ..RenderProfile::default()
+    };
     let input = SourceInput {
         fingerprint: FINGERPRINT.to_owned(),
         path: source.to_string_lossy().into_owned(),
