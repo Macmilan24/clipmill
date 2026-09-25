@@ -20,7 +20,7 @@ use std::{
 use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, StagingArea, Timebase,
 };
-use clipmill_contracts::proto::ipc::v1::RenderClipPayloadV1;
+use clipmill_contracts::proto::ipc::v1::{OutputFormatV1, RenderClipPayloadV1};
 use clipmill_core::{ArtifactId, Sha256Digest};
 use clipmill_edit_ir::EditDocument;
 use clipmill_render::{
@@ -57,6 +57,54 @@ const PUBLISHED_FILES: [&str; 4] = [CLIP_FILE, ASS_FILE, SRT_FILE, VTT_FILE];
 
 pub(crate) fn is_render_kind(kind: &str) -> bool {
     kind == KIND_RENDER_CLIP
+}
+
+/// Frame rates an export may ask for by name, besides the recording's own.
+const OUTPUT_RATES: [(u32, u32); 8] = [
+    (24_000, 1_001),
+    (24, 1),
+    (25, 1),
+    (30_000, 1_001),
+    (30, 1),
+    (50, 1),
+    (60_000, 1_001),
+    (60, 1),
+];
+
+/// The frame height and rate an export asked for, checked: the height of the
+/// 9:16 frame, and a rate when one was named rather than the recording's own.
+pub(crate) fn output_request(
+    format: Option<&OutputFormatV1>,
+) -> Result<(i64, Option<clipmill_render::FrameRateSpec>), String> {
+    let Some(format) = format else {
+        return Ok((RenderProfile::default().height, None));
+    };
+    let height = if format.height == 0 {
+        RenderProfile::default().height
+    } else {
+        i64::from(format.height)
+    };
+    if !clipmill_render::OUTPUT_HEIGHTS.contains(&height) {
+        return Err(format!(
+            "an output {height} pixels tall is not offered; choose 1920, 2560 or 3840"
+        ));
+    }
+    if format.frame_rate_num == 0 {
+        return Ok((height, None));
+    }
+    if !OUTPUT_RATES.contains(&(format.frame_rate_num, format.frame_rate_den)) {
+        return Err(format!(
+            "{}/{} frames a second is not an offered output rate",
+            format.frame_rate_num, format.frame_rate_den
+        ));
+    }
+    Ok((
+        height,
+        Some(clipmill_render::FrameRateSpec {
+            num: i64::from(format.frame_rate_num),
+            den: i64::from(format.frame_rate_den),
+        }),
+    ))
 }
 
 pub(crate) fn ai_assistance_is_known(token: &str) -> bool {
@@ -96,10 +144,14 @@ pub(crate) async fn execute_render_task(
 
     let font = stage_font_source(context.fonts_dir)?;
     let (inputs, source_rate) = resolve_sources(context, &task.project_id, &document).await?;
-    let mut profile = RenderProfile::default();
-    if let Some(rate) = source_rate {
-        profile.frame_rate = rate;
-    }
+    let (height, chosen_rate) =
+        output_request(payload.format.as_ref()).map_err(TaskExecutionError::deterministic)?;
+    let rate = chosen_rate
+        .or(source_rate)
+        .unwrap_or(RenderProfile::default().frame_rate);
+    let profile = RenderProfile::for_output(height, rate).ok_or_else(|| {
+        TaskExecutionError::deterministic("the requested output format is not supported")
+    })?;
     let plan = clipmill_render::compile(&document, &inputs, &profile)
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
 

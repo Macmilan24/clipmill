@@ -800,12 +800,6 @@ export function Editor({
             <Redo2 className="size-4" />
           </TipButton>
           <span className="review-divider" aria-hidden="true" />
-          {onRelink && (
-            <Button variant="outline" size="sm" disabled={relinking} onClick={onRelink}>
-              <Link2 className="size-4" aria-hidden="true" />
-              {relinking ? 'Checking…' : 'Locate recording…'}
-            </Button>
-          )}
           <TipButton
             label={focused ? 'Restore editing panels' : 'Focus preview'}
             pressed={focused}
@@ -825,6 +819,18 @@ export function Editor({
         <p role="alert" className="edit-alert">
           {alert}
         </p>
+      )}
+      {onRelink && (
+        <div role="status" className="edit-alert edit-alert-action">
+          <span>
+            The original recording is no longer where it was imported from. Editing continues from
+            the preview copy; exporting needs the original.
+          </span>
+          <Button variant="outline" size="sm" disabled={relinking} onClick={onRelink}>
+            <Link2 className="size-4" aria-hidden="true" />
+            {relinking ? 'Checking recording…' : 'Locate recording…'}
+          </Button>
+        </div>
       )}
       <div
         className="edit-body"

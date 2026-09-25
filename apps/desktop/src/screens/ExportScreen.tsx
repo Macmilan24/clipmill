@@ -11,6 +11,13 @@ import type { ExportPlan, ExportRequest, QueuedExport } from '../daemon/client.j
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
 import { latestExportOf, rememberExportRate, useDelivery } from '../export/delivery.js';
+import {
+  type FormatChoice,
+  outputFormat,
+  recallFormat,
+  rememberFormat,
+  sourceFpsOf,
+} from '../export/format.js';
 import type { ClipRef, EditorFocus } from '../shell/route.js';
 import { Export } from './Export.js';
 import { BatchExportScreen } from './BatchExportScreen.js';
@@ -79,6 +86,32 @@ export function ExportScreen({
   const [error, setError] = useState<string | null>(null);
   const [queued, setQueued] = useState<QueuedExport | null>(null);
   const [archive, setArchive] = useState<{ path: string; entryCount: number } | null>(null);
+  const [format, setFormat] = useState<FormatChoice>(() => recallFormat());
+  const [sourceFps, setSourceFps] = useState<number | null>(null);
+  const sourceId = clip?.sourceId ?? null;
+  useEffect(() => {
+    setSourceFps(null);
+    if (!sourceId) return undefined;
+    let live = true;
+    // A shell without source details answers nothing, rather than stopping
+    // the screen: this is information, not a precondition.
+    Promise.resolve()
+      .then(() => api.getSource(sourceId))
+      .then((details) => {
+        if (live) setSourceFps(sourceFpsOf(details.sourceMapJson));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, sourceId]);
+  // Read when the document loads, not a reason to reload it.
+  const clipTitle = useRef('');
+  clipTitle.current = clip?.labels?.clip?.trim() ?? '';
+  const onFormatChange = useCallback((next: FormatChoice) => {
+    setFormat(next);
+    rememberFormat(next);
+  }, []);
   /** Bumped to plan again over the document as it is now, after a conflict. */
   const [replan, setReplan] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -167,7 +200,10 @@ export function ExportScreen({
         }
         const seconds = (preview.frameCount * preview.rateDen) / preview.rateNum;
         setDurationTicks(Math.round(seconds * 90_000));
-        setTitle(firstWords(preview));
+        // The clip's title when it has one, as the pickers and the batch
+        // export name it; its opening words only when nothing named it.
+        const named = clipTitle.current;
+        setTitle(named && !/^Clip \d+$/.test(named) ? named : firstWords(preview));
       } catch (cause) {
         if (live) {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -211,8 +247,9 @@ export function ExportScreen({
       index: 1,
       date: today(),
       title,
+      format: outputFormat(format),
     };
-  }, [docId, destination, pattern, gatePassed, title, attestation]);
+  }, [docId, destination, pattern, gatePassed, title, attestation, format]);
 
   // The captions the strip named as too fast to read. Once confirmed they
   // come back as advisories under the same code, so the confirmation stays
@@ -417,6 +454,9 @@ export function ExportScreen({
       error={error}
       delivery={delivery}
       mediaSeconds={durationTicks / 90_000}
+      format={format}
+      sourceFps={sourceFps}
+      onFormatChange={onFormatChange}
       archive={archive}
       onDestinationChange={setDestination}
       onPatternChange={setPattern}

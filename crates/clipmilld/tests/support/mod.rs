@@ -552,6 +552,7 @@ pub async fn submit_render(
         source_attestation: render.source_attestation.to_owned(),
         gates_passed: vec!["duration_60s".to_owned()],
         ai_assistance: render.ai_assistance.clone(),
+        format: None,
     }
     .encode_to_vec();
     let response = send(

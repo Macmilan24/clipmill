@@ -122,7 +122,9 @@ export function ResultsScreen({
     const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
     return {
       ...(project ? { project: project.name } : {}),
-      ...(row ? { clip: `Clip ${String(row.rank).padStart(2, '0')}` } : {}),
+      // The clip's own title, as everywhere else it is named; the rank is a
+      // position on this board and means nothing on the next screen.
+      ...(row ? { clip: row.headline.trim() || `Clip ${String(row.rank).padStart(2, '0')}` } : {}),
     };
   };
 

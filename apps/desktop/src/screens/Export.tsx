@@ -48,6 +48,17 @@ import {
   deliveryWaitText,
   estimatedExportSeconds,
 } from '../export/delivery.js';
+import {
+  DEFAULT_FORMAT,
+  type FormatChoice,
+  HEIGHT_CHOICES,
+  type HeightChoice,
+  RATE_CHOICES,
+  type RateChoice,
+  formatSummary,
+  heightLabel,
+  rateLabel,
+} from '../export/format.js';
 
 /**
  * Display fixed renderer settings as delivery information.
@@ -118,12 +129,14 @@ function patternProblemOf(error: string | null): string | null {
   return error !== null && error.includes('pattern') ? error : null;
 }
 
-const DELIVERY: readonly (readonly [string, string])[] = [
-  ['Video', '1080 × 1920, H.264, CRF 18'],
-  ['Audio', 'AAC, −14 LUFS integrated, −1.0 dBTP target'],
-  ['Captions', 'Burned in, with SRT and WebVTT files'],
-  ['Additional files', 'Thumbnail, metadata, render manifest and checksums'],
-];
+function deliverySpecs(format: FormatChoice): readonly (readonly [string, string])[] {
+  return [
+    ['Video', `${(format.height * 9) / 16} × ${format.height}, H.264, CRF 18`],
+    ['Audio', 'AAC, −14 LUFS integrated, −1.0 dBTP target'],
+    ['Captions', 'Burned in, with SRT and WebVTT files'],
+    ['Additional files', 'Thumbnail, metadata, render manifest and checksums'],
+  ];
+}
 
 export interface ExportProps {
   /** Open the editor — on a particular caption, when handed the focus for one. */
@@ -166,6 +179,11 @@ export interface ExportProps {
   readonly onCancel?: (() => void) | undefined;
   readonly onRetry?: (() => void) | undefined;
   readonly onRelink?: (() => void) | undefined;
+  /** Frame rate and size of the delivered picture. */
+  readonly format?: FormatChoice;
+  /** The recording's own frame rate, for "Match recording". Null when unknown. */
+  readonly sourceFps?: number | null;
+  readonly onFormatChange?: (format: FormatChoice) => void;
   readonly onArchive: () => void;
   /** Show a delivered file in the file manager. */
   readonly onReveal: (path: string) => void;
@@ -223,11 +241,6 @@ export function Export(props: ExportProps): JSX.Element {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {props.onRelink && (
-            <Button variant="outline" size="sm" disabled={props.busy} onClick={props.onRelink}>
-              <Link2 className="size-4" /> Locate recording…
-            </Button>
-          )}
           {props.onBatch && (
             <Button variant="outline" size="sm" onClick={props.onBatch}>
               Export a collection
@@ -401,6 +414,17 @@ export function Export(props: ExportProps): JSX.Element {
                   <AlertDescription>
                     <span className="font-medium">{findingTitle(finding.code)}</span>
                     <span className="mt-1 block">{finding.detail}</span>
+                    {finding.code === 'source.missing' && props.onRelink && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        disabled={props.busy}
+                        onClick={props.onRelink}
+                      >
+                        <Link2 className="size-4" /> Locate recording…
+                      </Button>
+                    )}
                   </AlertDescription>
                 </Alert>
               ))}
@@ -428,14 +452,66 @@ export function Export(props: ExportProps): JSX.Element {
               <CardTitle className="text-sm">Delivery format</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm font-medium">1080 × 1920 · MP4</p>
+              <p className="text-sm font-medium">
+                {formatSummary(props.format ?? DEFAULT_FORMAT, props.sourceFps ?? null)}
+              </p>
               <p className="mt-1 mb-4 text-xs text-muted-foreground">
                 Captions and mastered audio included.
               </p>
+              {props.onFormatChange && (
+                <div className="mb-4 grid gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="export-rate">Frame rate</Label>
+                    <Select
+                      value={(props.format ?? DEFAULT_FORMAT).rate}
+                      onValueChange={(rate) =>
+                        props.onFormatChange?.({
+                          ...(props.format ?? DEFAULT_FORMAT),
+                          rate: rate as RateChoice,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="export-rate" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {RATE_CHOICES.map((rate) => (
+                          <SelectItem key={rate} value={rate}>
+                            {rateLabel(rate, props.sourceFps ?? null)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="export-size">Resolution</Label>
+                    <Select
+                      value={String((props.format ?? DEFAULT_FORMAT).height)}
+                      onValueChange={(height) =>
+                        props.onFormatChange?.({
+                          ...(props.format ?? DEFAULT_FORMAT),
+                          height: Number(height) as HeightChoice,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="export-size" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {HEIGHT_CHOICES.map((height) => (
+                          <SelectItem key={height} value={String(height)}>
+                            {heightLabel(height)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
               <details className="export-specifications">
                 <summary>Format specifications</summary>
                 <dl className="space-y-2 text-xs">
-                  {DELIVERY.map(([label, value]) => (
+                  {deliverySpecs(props.format ?? DEFAULT_FORMAT).map(([label, value]) => (
                     <div key={label} className="flex justify-between gap-4">
                       <dt className="text-[var(--cm-ink-2)]">{label}</dt>
                       <dd className="text-right text-[var(--cm-ink-1)]">{value}</dd>
@@ -521,6 +597,9 @@ export function Export(props: ExportProps): JSX.Element {
         <Button onClick={props.onExport} disabled={!ready || delivering}>
           {props.busy ? 'Working…' : 'Export clip'}
         </Button>
+        <span className="text-xs text-[var(--cm-ink-2)]" role="status">
+          {readiness(props, blocking.length, delivering)}
+        </span>
         <Button variant="outline" onClick={props.onArchive} disabled={props.busy}>
           Save project archive
         </Button>
@@ -537,6 +616,20 @@ export function Export(props: ExportProps): JSX.Element {
       </p>
     </div>
   );
+}
+
+/** What still stands between this screen and an export, in one line. */
+function readiness(props: ExportProps, blocking: number, delivering: boolean): string {
+  if (delivering) return 'Exporting…';
+  if (!props.destination.trim()) return 'Choose a folder to export into.';
+  if (props.planning) return 'Checking…';
+  if (!props.attestation) return 'Choose the permission you hold for this footage.';
+  if (props.rightsGateNeeded && !props.rightsGatePassed)
+    return 'Confirm your permission covers a clip longer than a minute.';
+  if (blocking > 0)
+    return blocking === 1 ? 'One check to fix first.' : `${blocking} checks to fix first.`;
+  if (props.plan?.passes === true) return 'Ready to export.';
+  return '';
 }
 
 /** What a stage is doing, in a word a person reads. */

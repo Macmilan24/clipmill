@@ -649,6 +649,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
             candidate_id: candidate_id.clone(),
             cut: ClipCutV1::Chosen as i32,
             style_ref: String::new(),
+            highlight_spoken_word: None,
             start_ticks: 0,
             end_ticks: 0,
             variation: false,
@@ -685,6 +686,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
             candidate_id: candidate_id.clone(),
             cut: ClipCutV1::Chosen as i32,
             style_ref: String::new(),
+            highlight_spoken_word: None,
             start_ticks: 0,
             end_ticks: 0,
             variation: false,
@@ -1069,6 +1071,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
             candidate_id: candidate_id.clone(),
             cut: ClipCutV1::Chosen as i32,
             style_ref: String::new(),
+            highlight_spoken_word: None,
             start_ticks: 0,
             end_ticks: 0,
             variation: false,
@@ -1111,6 +1114,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
         date: "2026-09-17".to_owned(),
         title: "older clip".to_owned(),
         expected_revision: Some(reviewed_revision),
+        format: None,
     };
     let planned = client
         .plan_export(request.clone())

@@ -91,7 +91,7 @@ export function ProjectActions({
               {revealLabel()}
             </DropdownMenuItem>
           )}
-          {entry.source !== null && onRelink && (
+          {entry.source?.missing === true && onRelink && (
             <DropdownMenuItem
               onSelect={() => {
                 void onRelink(entry);

@@ -41,6 +41,12 @@ export interface Source {
   readonly sourceFingerprint: string;
   readonly sourceMapArtifactId: string;
   readonly createdUnixMillis: number;
+  /**
+   * The file is not where it was registered: moved, renamed, replaced or
+   * deleted. Editing still works from the preview copies; exporting needs the
+   * original, which "Locate recording…" relinks. Absent from older daemons.
+   */
+  readonly missing?: boolean;
 }
 
 export interface SourceDetails {
@@ -980,6 +986,19 @@ export interface ExportRequest {
    * nobody looked at.
    */
   readonly expectedRevision?: number;
+  /** Frame rate and size of the delivered picture. Absent is the recording's rate at 1080p. */
+  readonly format?: OutputFormat;
+}
+
+/**
+ * The delivered picture. A zero numerator keeps the recording's own frame
+ * rate, which is the default: converting 23.976 or 25 to 29.97 repeats frames.
+ */
+export interface OutputFormat {
+  readonly frameRateNum: number;
+  readonly frameRateDen: number;
+  /** 1920 (1080p), 2560 (1440p) or 3840 (4K); zero is 1920. */
+  readonly height: number;
 }
 
 export interface ExportFinding {

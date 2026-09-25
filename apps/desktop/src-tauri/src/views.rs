@@ -117,6 +117,8 @@ pub struct SourceView {
     pub source_map_artifact_id: String,
     #[serde(rename = "createdUnixMillis")]
     pub created_unix_millis: u64,
+    /// The file is not where it was registered; exporting needs it relinked.
+    pub missing: bool,
 }
 
 impl From<Source> for SourceView {
@@ -129,6 +131,7 @@ impl From<Source> for SourceView {
             source_fingerprint: source.source_fingerprint,
             source_map_artifact_id: source.source_map_artifact_id,
             created_unix_millis: source.created_unix_millis,
+            missing: source.missing,
         }
     }
 }
@@ -1256,6 +1259,43 @@ pub struct ExportRequestInput {
     /// other. Absent takes the current revision.
     #[serde(default)]
     pub expected_revision: Option<u64>,
+    /// Frame rate and size of the delivered picture. Absent keeps the
+    /// recording's frame rate at 1080 x 1920.
+    #[serde(default)]
+    pub format: Option<OutputFormatInput>,
+}
+
+/// The delivered picture's frame rate and height. A zero numerator keeps the
+/// recording's own rate; a zero height is 1920.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputFormatInput {
+    #[serde(default)]
+    pub frame_rate_num: u32,
+    #[serde(default)]
+    pub frame_rate_den: u32,
+    #[serde(default)]
+    pub height: u32,
+}
+
+impl From<OutputFormatInput> for clipmill_contracts::proto::ipc::v1::OutputFormatV1 {
+    fn from(input: OutputFormatInput) -> Self {
+        Self {
+            frame_rate_num: input.frame_rate_num,
+            frame_rate_den: input.frame_rate_den,
+            height: input.height,
+        }
+    }
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::OutputFormatV1> for OutputFormatInput {
+    fn from(format: clipmill_contracts::proto::ipc::v1::OutputFormatV1) -> Self {
+        Self {
+            frame_rate_num: format.frame_rate_num,
+            frame_rate_den: format.frame_rate_den,
+            height: format.height,
+        }
+    }
 }
 
 impl From<ExportRequestInput> for ExportRequestV1 {
@@ -1271,6 +1311,7 @@ impl From<ExportRequestInput> for ExportRequestV1 {
             date: input.date,
             title: input.title,
             expected_revision: input.expected_revision,
+            format: input.format.map(Into::into),
         }
     }
 }
@@ -1288,6 +1329,7 @@ impl From<ExportRequestV1> for ExportRequestInput {
             date: request.date,
             title: request.title,
             expected_revision: request.expected_revision,
+            format: request.format.map(Into::into),
         }
     }
 }

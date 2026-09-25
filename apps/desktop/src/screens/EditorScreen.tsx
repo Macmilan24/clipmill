@@ -48,6 +48,29 @@ export function EditorScreen({
     setResolving(false);
   }, [clip?.docId, editor.plan?.revision]);
 
+  // Whether the recording is still where it was registered. The editor runs
+  // from preview copies either way; only an export needs the original, so a
+  // moved file is said once, with the way to fix it, rather than discovered
+  // when an export fails.
+  const [sourceMissing, setSourceMissing] = useState(false);
+  const sourceId = clip?.sourceId ?? null;
+  useEffect(() => {
+    setSourceMissing(false);
+    if (!sourceId) return undefined;
+    let live = true;
+    // A shell without source details answers nothing, rather than stopping
+    // the screen: this is information, not a precondition.
+    Promise.resolve()
+      .then(() => api.getSource(sourceId))
+      .then((details) => {
+        if (live) setSourceMissing(details.source.missing === true);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, sourceId, sourceRefresh]);
+
   const onRelink = useCallback(async () => {
     if (!clip || relinking) return;
     setRelinking(true);
@@ -163,7 +186,7 @@ export function EditorScreen({
       picker={clip === null ? <ClipList onOpen={onOpen} api={api} /> : null}
       onOpenResults={onOpenResults}
       onExport={clip === null ? null : () => onExport(clip)}
-      onRelink={clip === null ? null : () => void onRelink()}
+      onRelink={clip === null || !sourceMissing ? null : () => void onRelink()}
       relinking={relinking}
       onApply={(command) => {
         void editor.apply(command);

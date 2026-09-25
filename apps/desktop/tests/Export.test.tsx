@@ -66,6 +66,72 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
   return { onExport, props };
 }
 
+describe('what the export screen says is left', () => {
+  it('names the one thing still missing and then says it is ready', () => {
+    show({ destination: '' });
+    expect(screen.getByText('Choose a folder to export into.')).toBeTruthy();
+  });
+
+  it('says ready when every check passes', () => {
+    show();
+    expect(screen.getByText('Ready to export.')).toBeTruthy();
+  });
+
+  it('counts the blocking checks', () => {
+    show({
+      plan: plan({
+        passes: false,
+        findings: [
+          { code: 'destination.unusable', severity: 'blocking', detail: 'Not writable.' },
+          { code: 'source.missing', severity: 'blocking', detail: 'The recording moved.' },
+        ],
+      }),
+    });
+    expect(screen.getByText('2 checks to fix first.')).toBeTruthy();
+  });
+});
+
+describe('a moved recording', () => {
+  it('offers to locate it on the finding and nowhere else', () => {
+    const onRelink = vi.fn();
+    show({
+      onRelink,
+      plan: plan({
+        passes: false,
+        findings: [
+          {
+            code: 'source.missing',
+            severity: 'blocking',
+            detail: 'The recording ep41.mov is no longer where it was imported from.',
+          },
+        ],
+      }),
+    });
+    const buttons = screen.getAllByRole('button', { name: /Locate recording/ });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]!);
+    expect(onRelink).toHaveBeenCalledOnce();
+  });
+
+  it('shows no relink when the recording is where it was', () => {
+    show({ onRelink: vi.fn() });
+    expect(screen.queryByRole('button', { name: /Locate recording/ })).toBeNull();
+  });
+});
+
+describe('the delivery format', () => {
+  it('states the recording rate and the chosen size', () => {
+    show({
+      format: { rate: 'source', height: 2560 },
+      sourceFps: 24_000 / 1_001,
+      onFormatChange: vi.fn(),
+    });
+    expect(screen.getByText('1440 × 2560 · 23.98 fps · MP4')).toBeTruthy();
+    expect(screen.getByLabelText('Frame rate')).toBeTruthy();
+    expect(screen.getByLabelText('Resolution')).toBeTruthy();
+  });
+});
+
 describe('the export screen', () => {
   it('offers an editor recovery path for a blocked subtitle', () => {
     const onEdit = vi.fn();
