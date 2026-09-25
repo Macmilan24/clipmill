@@ -95,7 +95,7 @@ pub(crate) const INGEST_SOURCE_KEY_VERSION: &str = "clipmill.ingest-source.v1";
 pub(crate) const SHOTS_IMPLEMENTATION: &str = "clipmill-worker-shots@0.1.0+pyscenedetect-content";
 /// The face detector's identity, which reaches the artifact key beside the
 /// model digest the capability binds.
-pub(crate) const FACES_IMPLEMENTATION: &str = "clipmill-worker-faces@0.1.1+yunet-2023mar";
+pub(crate) const FACES_IMPLEMENTATION: &str = "clipmill-worker-faces@0.1.1+yunet-2023mar+mouth-1";
 pub(crate) const FACES_STAGE_KEY_VERSION: &str = "clipmill.faces-stage.v1";
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);

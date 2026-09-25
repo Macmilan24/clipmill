@@ -41,6 +41,7 @@ fn face(t_ticks: u64, cx: f64, cy: f64) -> FaceBox {
         h: FACE_HEIGHT,
         score: 0.93,
         interpolated: None,
+        mouth_motion: None,
     }
 }
 

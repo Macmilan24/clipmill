@@ -11,6 +11,7 @@
 
 pub mod lattice;
 mod placement;
+mod speakers;
 pub mod words;
 
 use clipmill_captions::{DeriveRequest, Inputs};
@@ -33,7 +34,7 @@ pub use lattice::{Boundary, Duration, Lattice, is_legal};
 pub use words::{Severed, keep_whole_words, severed};
 
 /// The implementation the produced document was assembled by.
-pub const IMPLEMENTATION: &str = "clipmill-director@1.2.0";
+pub const IMPLEMENTATION: &str = "clipmill-director@1.3.0";
 /// The one segment a directed clip has. Named rather than generated: an id that
 /// changed run to run would make two identical edits different documents.
 const SEGMENT_ID: &str = "seg_1";
@@ -328,28 +329,71 @@ fn direct_shots(
     }
     cuts.sort_unstable();
     cuts.dedup();
-    cuts.windows(2)
-        .enumerate()
-        .map(|(index, span)| {
-            let shot = Boundary {
-                start_ticks: span[0],
-                end_ticks: span[1],
-            };
+    let mut segments: Vec<VideoSegment> = Vec::new();
+    let mut place = |span: Boundary, layout: Layout| {
+        let index = segments.len();
+        segments.push(VideoSegment {
+            segment_id: if index == 0 {
+                SEGMENT_ID.to_owned()
+            } else {
+                format!("seg_{}", index + 1)
+            },
+            source_fingerprint: fingerprint.to_owned(),
+            in_ticks: span.start_ticks,
+            out_ticks: span.end_ticks,
+            layout,
+        });
+    };
+    for pair in cuts.windows(2) {
+        let shot = Boundary {
+            start_ticks: pair[0],
+            end_ticks: pair[1],
+        };
+        let turns = evidence
+            .faces
+            .and_then(|faces| Some((faces, speakers::turns(faces, evidence.index, shot)?)));
+        let Some((faces, turns)) = turns else {
             let (layout, camera) = layout_for(evidence.faces, shot, request);
             decisions.push(camera);
-            VideoSegment {
-                segment_id: if index == 0 {
-                    SEGMENT_ID.to_owned()
-                } else {
-                    format!("seg_{}", index + 1)
-                },
-                source_fingerprint: fingerprint.to_owned(),
-                in_ticks: shot.start_ticks,
-                out_ticks: shot.end_ticks,
-                layout,
-            }
-        })
-        .collect()
+            place(shot, layout);
+            continue;
+        };
+        let switches = turns.len().saturating_sub(1);
+        for turn in turns {
+            let layout = turn
+                .track
+                .and_then(|id| follow(faces, id, turn.span, request))
+                .unwrap_or_else(|| layout_for(evidence.faces, turn.span, request).0);
+            place(turn.span, layout);
+        }
+        decisions.push(if switches == 0 {
+            "Following the one person talking through this shot, read from mouth movement."
+                .to_owned()
+        } else {
+            format!(
+                "Following whoever is talking, read from mouth movement: {switches} {} between people, each at a sentence break.",
+                if switches == 1 { "switch" } else { "switches" }
+            )
+        });
+    }
+    segments
+}
+
+/// The camera following one face through a span, when the solver can hold it.
+fn follow(
+    faces: &VisionFaceTrack,
+    track_id: u64,
+    span: Boundary,
+    request: &Request,
+) -> Option<Layout> {
+    let mut one = faces.clone();
+    one.tracks.retain(|track| track.track_id == track_id);
+    let crop_path = solve_layout(&one, span, request)?;
+    Some(Layout {
+        state: LayoutState::SpeakerFill,
+        crop_path,
+        secondary_crop_path: Vec::new(),
+    })
 }
 
 /// The boundary the request names, as ticks.

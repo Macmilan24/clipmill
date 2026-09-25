@@ -182,7 +182,9 @@ def _verify_faces(bom: dict, fonts_dir: Path) -> None:
     for face_id in ids:
         face = faces[face_id]
         if face.get("license") not in FONT_LICENSE_ALLOWLIST:
-            raise ValueError(f"caption face {face_id} license {face.get('license')!r} is not permitted")
+            raise ValueError(
+                f"caption face {face_id} license {face.get('license')!r} is not permitted"
+            )
         for url_key in ("url", "license_url"):
             url = urlparse(str(face[url_key]))
             if (

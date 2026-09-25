@@ -260,6 +260,92 @@ pub fn resolve_pair(document: &VisionFaceTrack, start: u64, end: u64) -> Option<
     }
 }
 
+/// The bar a face's mouth must clear to be called the one talking.
+#[derive(Clone, Copy, Debug)]
+pub struct SpeakerGate {
+    /// Least share of the span the face must be seen in.
+    pub min_presence: f64,
+    /// Least measured boxes with mouth motion inside the span.
+    pub min_measured: usize,
+    /// Least mean mouth motion: below it nobody visible is talking, which is
+    /// a narrator off screen or a pause, and no face earns the frame for it.
+    pub min_motion: f64,
+    /// How many times the runner-up's motion the talker's must be. Two people
+    /// laughing together, or a nodding listener, stay below it.
+    pub min_ratio: f64,
+}
+
+impl Default for SpeakerGate {
+    /// Conservative, and read against a real conversation rather than tuned
+    /// on one: a listener's still mouth measures around 0.04 to 0.10 and a
+    /// talker's 0.15 to 0.25, so a talker is called only when their motion is
+    /// half again the listener's and clearly above stillness.
+    fn default() -> Self {
+        Self {
+            min_presence: 0.5,
+            min_measured: 3,
+            min_motion: 0.1,
+            min_ratio: 1.5,
+        }
+    }
+}
+
+/// The face that is talking over `[start, end)`, when the faces say so clearly.
+///
+/// Read from each track's mouth motion, which the detector measured from the
+/// lower face against the upper one. `None` is not a failure: it is a span
+/// where nobody visible is clearly the one speaking — a pause, laughter, an
+/// off-screen voice, or a document measured before mouth motion existed — and
+/// the caller keeps whatever framing it would have used without this.
+pub fn speaker(document: &VisionFaceTrack, start: u64, end: u64, gate: SpeakerGate) -> Option<u64> {
+    if !document.coverage.analyzed || end <= start {
+        return None;
+    }
+    let total = frames_in_span(document, start, end);
+    let mut talking: Vec<(u64, f64)> = document
+        .tracks
+        .iter()
+        .filter_map(|track| {
+            let (presence, _) = presence_in_span(track, start, end, total);
+            if presence < gate.min_presence {
+                return None;
+            }
+            let motions: Vec<f64> = track
+                .boxes
+                .iter()
+                .filter(|b| b.t_ticks >= start && b.t_ticks < end)
+                .filter_map(|b| b.mouth_motion)
+                .collect();
+            if motions.len() < gate.min_measured {
+                return None;
+            }
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "sample count is bounded by recording length"
+            )]
+            let mean = motions.iter().sum::<f64>() / motions.len() as f64;
+            Some((track.track_id, mean))
+        })
+        .collect();
+    talking.sort_by(|left, right| {
+        right
+            .1
+            .partial_cmp(&left.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(left.0.cmp(&right.0))
+    });
+    let (track_id, motion) = *talking.first()?;
+    if motion < gate.min_motion {
+        return None;
+    }
+    if let Some((_, runner_up)) = talking.get(1)
+        && motion < gate.min_ratio * runner_up
+    {
+        return None;
+    }
+    Some(track_id)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -350,6 +436,54 @@ mod tests {
                 reason: FitReason::NotAnalyzed
             }
         );
+    }
+
+    fn with_motion(
+        mut doc: clipmill_contracts::schemas::vision_face_track::VisionFaceTrack,
+        id: u64,
+        motion: f64,
+    ) -> clipmill_contracts::schemas::vision_face_track::VisionFaceTrack {
+        for track in &mut doc.tracks {
+            if track.track_id == id {
+                for box_ in &mut track.boxes {
+                    box_.mouth_motion = Some(motion);
+                }
+            }
+        }
+        doc
+    }
+
+    #[test]
+    fn the_face_whose_mouth_moves_is_the_one_talking() {
+        use super::{SpeakerGate, speaker};
+        let doc = document(vec![track(0, 0, 10, 0.9), track(1, 0, 10, 0.88)]);
+        let doc = with_motion(with_motion(doc, 0, 0.05), 1, 0.2);
+        assert_eq!(
+            speaker(&doc, 0, 10 * SECOND, SpeakerGate::default()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn two_faces_moving_alike_name_nobody() {
+        use super::{SpeakerGate, speaker};
+        // Laughing together, or both nodding: a switch here would be a guess.
+        let doc = document(vec![track(0, 0, 10, 0.9), track(1, 0, 10, 0.88)]);
+        let doc = with_motion(with_motion(doc, 0, 0.18), 1, 0.2);
+        assert_eq!(speaker(&doc, 0, 10 * SECOND, SpeakerGate::default()), None);
+        // Nobody visible talking: an off-screen voice, or a pause.
+        let quiet = with_motion(
+            with_motion(document(vec![track(0, 0, 10, 0.9)]), 0, 0.04),
+            1,
+            0.0,
+        );
+        assert_eq!(
+            speaker(&quiet, 0, 10 * SECOND, SpeakerGate::default()),
+            None
+        );
+        // Measured before mouth motion existed: nothing to read.
+        let old = document(vec![track(0, 0, 10, 0.9), track(1, 0, 10, 0.88)]);
+        assert_eq!(speaker(&old, 0, 10 * SECOND, SpeakerGate::default()), None);
     }
 
     /// Every refusal says something a person can act on.
