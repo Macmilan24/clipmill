@@ -78,6 +78,10 @@ pub mod error {
 #[doc = "                \"text\""]
 #[doc = "              ],"]
 #[doc = "              \"properties\": {"]
+#[doc = "                \"emphasis\": {"]
+#[doc = "                  \"description\": \"A key word, set in the accent colour so it stands out of its line.\","]
+#[doc = "                  \"type\": \"boolean\""]
+#[doc = "                },"]
 #[doc = "                \"end_ticks\": {"]
 #[doc = "                  \"type\": \"integer\","]
 #[doc = "                  \"minimum\": 1.0"]
@@ -105,6 +109,10 @@ pub mod error {
 #[doc = "      },"]
 #[doc = "      \"minItems\": 1"]
 #[doc = "    },"]
+#[doc = "    \"position\": {"]
+#[doc = "      \"description\": \"Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position.\","]
+#[doc = "      \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "    },"]
 #[doc = "    \"region\": {"]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"lower_safe\","]
@@ -129,6 +137,9 @@ pub struct CaptionCue {
     pub end_ticks: ::std::num::NonZeroU64,
     #[doc = "Line breaks are decided once and stored here — the parity keystone. Preview and render must never re-wrap text independently."]
     pub lines: ::std::vec::Vec<CaptionCueLinesItem>,
+    #[doc = "Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub position: ::std::option::Option<CaptionPosition>,
     pub region: CaptionCueRegion,
     pub start_ticks: u64,
 }
@@ -297,6 +308,10 @@ impl<'de> ::serde::Deserialize<'de> for CaptionCueCueId {
 #[doc = "          \"text\""]
 #[doc = "        ],"]
 #[doc = "        \"properties\": {"]
+#[doc = "          \"emphasis\": {"]
+#[doc = "            \"description\": \"A key word, set in the accent colour so it stands out of its line.\","]
+#[doc = "            \"type\": \"boolean\""]
+#[doc = "          },"]
 #[doc = "          \"end_ticks\": {"]
 #[doc = "            \"type\": \"integer\","]
 #[doc = "            \"minimum\": 1.0"]
@@ -347,6 +362,10 @@ impl CaptionCueLinesItem {
 #[doc = "    \"text\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"emphasis\": {"]
+#[doc = "      \"description\": \"A key word, set in the accent colour so it stands out of its line.\","]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
 #[doc = "    \"end_ticks\": {"]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 1.0"]
@@ -372,6 +391,9 @@ impl CaptionCueLinesItem {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct CaptionCueLinesItemWordsItem {
+    #[doc = "A key word, set in the accent colour so it stands out of its line."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub emphasis: ::std::option::Option<bool>,
     pub end_ticks: ::std::num::NonZeroU64,
     pub start_ticks: u64,
     pub text: CaptionCueLinesItemWordsItemText,
@@ -597,6 +619,45 @@ impl ::std::convert::TryFrom<::std::string::String> for CaptionCueRegion {
         value.parse()
     }
 }
+#[doc = "A caption's centre on the frame, in thousandths of its width and height."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"A caption's centre on the frame, in thousandths of its width and height.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"x\","]
+#[doc = "    \"y\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"x\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 1000.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"y\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 1000.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptionPosition {
+    pub x: i64,
+    pub y: i64,
+}
+impl CaptionPosition {
+    pub fn builder() -> builder::CaptionPosition {
+        Default::default()
+    }
+}
 #[doc = "Integer pixel rectangle in the source frame's coordinate space."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -745,6 +806,23 @@ impl CropRect {
 #[doc = "          \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
 #[doc = "          \"type\": \"object\","]
 #[doc = "          \"properties\": {"]
+#[doc = "            \"accent\": {"]
+#[doc = "              \"description\": \"The colour key words are set in.\","]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"font_family\": {"]
+#[doc = "              \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"Inter\","]
+#[doc = "                \"Montserrat Black\","]
+#[doc = "                \"Poppins ExtraBold\","]
+#[doc = "                \"Anton\","]
+#[doc = "                \"Bebas Neue\","]
+#[doc = "                \"Luckiest Guy\","]
+#[doc = "                \"DM Serif Display\""]
+#[doc = "              ]"]
+#[doc = "            },"]
 #[doc = "            \"font_size\": {"]
 #[doc = "              \"type\": \"integer\","]
 #[doc = "              \"maximum\": 160.0,"]
@@ -754,9 +832,41 @@ impl CropRect {
 #[doc = "              \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
 #[doc = "              \"type\": \"boolean\""]
 #[doc = "            },"]
+#[doc = "            \"highlight_style\": {"]
+#[doc = "              \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"fill\","]
+#[doc = "                \"word\","]
+#[doc = "                \"box\","]
+#[doc = "                \"pop\","]
+#[doc = "                \"underline\""]
+#[doc = "              ]"]
+#[doc = "            },"]
 #[doc = "            \"outline\": {"]
 #[doc = "              \"type\": \"string\","]
 #[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"outline_width\": {"]
+#[doc = "              \"description\": \"Outline thickness at the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 16.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"plate_opacity\": {"]
+#[doc = "              \"description\": \"How opaque a boxed look's plate is, in percent.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 100.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"position\": {"]
+#[doc = "              \"description\": \"Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.\","]
+#[doc = "              \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "            },"]
+#[doc = "            \"shadow_depth\": {"]
+#[doc = "              \"description\": \"Drop-shadow offset at the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 12.0,"]
+#[doc = "              \"minimum\": 0.0"]
 #[doc = "            },"]
 #[doc = "            \"spoken\": {"]
 #[doc = "              \"type\": \"string\","]
@@ -772,6 +882,12 @@ impl CropRect {
 #[doc = "            \"unspoken\": {"]
 #[doc = "              \"type\": \"string\","]
 #[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"words_on_screen\": {"]
+#[doc = "              \"description\": \"The most words the on-screen captions were last grouped into.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 8.0,"]
+#[doc = "              \"minimum\": 1.0"]
 #[doc = "            }"]
 #[doc = "          },"]
 #[doc = "          \"additionalProperties\": false"]
@@ -815,6 +931,12 @@ impl CropRect {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"title\": {"]
+#[doc = "      \"description\": \"What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 120,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
 #[doc = "    \"version\": {"]
 #[doc = "      \"const\": \"ir/1\""]
 #[doc = "    },"]
@@ -852,6 +974,9 @@ pub struct EditIr {
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub rationale: ::std::option::Option<EditIrRationale>,
     pub timebase: EditIrTimebase,
+    #[doc = "What the clip is called, when somebody named it. Never consumed by any render path, like the rationale."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub title: ::std::option::Option<EditIrTitle>,
     pub version: ::serde_json::Value,
     pub video: EditIrVideo,
 }
@@ -1016,6 +1141,23 @@ impl EditIrAudioGainCurveItem {
 #[doc = "      \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"accent\": {"]
+#[doc = "          \"description\": \"The colour key words are set in.\","]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"font_family\": {"]
+#[doc = "          \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"Inter\","]
+#[doc = "            \"Montserrat Black\","]
+#[doc = "            \"Poppins ExtraBold\","]
+#[doc = "            \"Anton\","]
+#[doc = "            \"Bebas Neue\","]
+#[doc = "            \"Luckiest Guy\","]
+#[doc = "            \"DM Serif Display\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"font_size\": {"]
 #[doc = "          \"type\": \"integer\","]
 #[doc = "          \"maximum\": 160.0,"]
@@ -1025,9 +1167,41 @@ impl EditIrAudioGainCurveItem {
 #[doc = "          \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
 #[doc = "          \"type\": \"boolean\""]
 #[doc = "        },"]
+#[doc = "        \"highlight_style\": {"]
+#[doc = "          \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"fill\","]
+#[doc = "            \"word\","]
+#[doc = "            \"box\","]
+#[doc = "            \"pop\","]
+#[doc = "            \"underline\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"outline\": {"]
 #[doc = "          \"type\": \"string\","]
 #[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"outline_width\": {"]
+#[doc = "          \"description\": \"Outline thickness at the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 16.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"plate_opacity\": {"]
+#[doc = "          \"description\": \"How opaque a boxed look's plate is, in percent.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 100.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"position\": {"]
+#[doc = "          \"description\": \"Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.\","]
+#[doc = "          \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "        },"]
+#[doc = "        \"shadow_depth\": {"]
+#[doc = "          \"description\": \"Drop-shadow offset at the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 12.0,"]
+#[doc = "          \"minimum\": 0.0"]
 #[doc = "        },"]
 #[doc = "        \"spoken\": {"]
 #[doc = "          \"type\": \"string\","]
@@ -1043,6 +1217,12 @@ impl EditIrAudioGainCurveItem {
 #[doc = "        \"unspoken\": {"]
 #[doc = "          \"type\": \"string\","]
 #[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"words_on_screen\": {"]
+#[doc = "          \"description\": \"The most words the on-screen captions were last grouped into.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 8.0,"]
+#[doc = "          \"minimum\": 1.0"]
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
@@ -1084,6 +1264,23 @@ impl EditIrCaptions {
 #[doc = "  \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"accent\": {"]
+#[doc = "      \"description\": \"The colour key words are set in.\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"font_family\": {"]
+#[doc = "      \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"Inter\","]
+#[doc = "        \"Montserrat Black\","]
+#[doc = "        \"Poppins ExtraBold\","]
+#[doc = "        \"Anton\","]
+#[doc = "        \"Bebas Neue\","]
+#[doc = "        \"Luckiest Guy\","]
+#[doc = "        \"DM Serif Display\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"font_size\": {"]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"maximum\": 160.0,"]
@@ -1093,9 +1290,41 @@ impl EditIrCaptions {
 #[doc = "      \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
 #[doc = "      \"type\": \"boolean\""]
 #[doc = "    },"]
+#[doc = "    \"highlight_style\": {"]
+#[doc = "      \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"fill\","]
+#[doc = "        \"word\","]
+#[doc = "        \"box\","]
+#[doc = "        \"pop\","]
+#[doc = "        \"underline\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"outline\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"outline_width\": {"]
+#[doc = "      \"description\": \"Outline thickness at the 1920-pixel design height.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 16.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"plate_opacity\": {"]
+#[doc = "      \"description\": \"How opaque a boxed look's plate is, in percent.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 100.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"position\": {"]
+#[doc = "      \"description\": \"Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.\","]
+#[doc = "      \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "    },"]
+#[doc = "    \"shadow_depth\": {"]
+#[doc = "      \"description\": \"Drop-shadow offset at the 1920-pixel design height.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 12.0,"]
+#[doc = "      \"minimum\": 0.0"]
 #[doc = "    },"]
 #[doc = "    \"spoken\": {"]
 #[doc = "      \"type\": \"string\","]
@@ -1111,6 +1340,12 @@ impl EditIrCaptions {
 #[doc = "    \"unspoken\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"words_on_screen\": {"]
+#[doc = "      \"description\": \"The most words the on-screen captions were last grouped into.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 8.0,"]
+#[doc = "      \"minimum\": 1.0"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -1120,35 +1355,320 @@ impl EditIrCaptions {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct EditIrCaptionsOptions {
+    #[doc = "The colour key words are set in."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub accent: ::std::option::Option<EditIrCaptionsOptionsAccent>,
+    #[doc = "One of the caption fonts, by family name. Absent is the look's own."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub font_family: ::std::option::Option<EditIrCaptionsOptionsFontFamily>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub font_size: ::std::option::Option<i64>,
     #[doc = "Override the preset's spoken-word highlight independently of its typography."]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub highlight_spoken_word: ::std::option::Option<bool>,
+    #[doc = "How the spoken word is marked. Absent is the sweep."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub highlight_style: ::std::option::Option<EditIrCaptionsOptionsHighlightStyle>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub outline: ::std::option::Option<EditIrCaptionsOptionsOutline>,
+    #[doc = "Outline thickness at the 1920-pixel design height."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub outline_width: ::std::option::Option<i64>,
+    #[doc = "How opaque a boxed look's plate is, in percent."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub plate_opacity: ::std::option::Option<i64>,
+    #[doc = "Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub position: ::std::option::Option<CaptionPosition>,
+    #[doc = "Drop-shadow offset at the 1920-pixel design height."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub shadow_depth: ::std::option::Option<i64>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub spoken: ::std::option::Option<EditIrCaptionsOptionsSpoken>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub text_case: ::std::option::Option<EditIrCaptionsOptionsTextCase>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub unspoken: ::std::option::Option<EditIrCaptionsOptionsUnspoken>,
+    #[doc = "The most words the on-screen captions were last grouped into."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub words_on_screen: ::std::option::Option<::std::num::NonZeroU64>,
 }
 impl ::std::default::Default for EditIrCaptionsOptions {
     fn default() -> Self {
         Self {
+            accent: Default::default(),
+            font_family: Default::default(),
             font_size: Default::default(),
             highlight_spoken_word: Default::default(),
+            highlight_style: Default::default(),
             outline: Default::default(),
+            outline_width: Default::default(),
+            plate_opacity: Default::default(),
+            position: Default::default(),
+            shadow_depth: Default::default(),
             spoken: Default::default(),
             text_case: Default::default(),
             unspoken: Default::default(),
+            words_on_screen: Default::default(),
         }
     }
 }
 impl EditIrCaptionsOptions {
     pub fn builder() -> builder::EditIrCaptionsOptions {
         Default::default()
+    }
+}
+#[doc = "The colour key words are set in."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The colour key words are set in.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrCaptionsOptionsAccent(::std::string::String);
+impl ::std::ops::Deref for EditIrCaptionsOptionsAccent {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrCaptionsOptionsAccent> for ::std::string::String {
+    fn from(value: EditIrCaptionsOptionsAccent) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsAccent {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9a-fA-F]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9a-fA-F]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsAccent {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsAccent {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsAccent {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrCaptionsOptionsAccent {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "One of the caption fonts, by family name. Absent is the look's own."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"Inter\","]
+#[doc = "    \"Montserrat Black\","]
+#[doc = "    \"Poppins ExtraBold\","]
+#[doc = "    \"Anton\","]
+#[doc = "    \"Bebas Neue\","]
+#[doc = "    \"Luckiest Guy\","]
+#[doc = "    \"DM Serif Display\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrCaptionsOptionsFontFamily {
+    Inter,
+    #[serde(rename = "Montserrat Black")]
+    MontserratBlack,
+    #[serde(rename = "Poppins ExtraBold")]
+    PoppinsExtraBold,
+    Anton,
+    #[serde(rename = "Bebas Neue")]
+    BebasNeue,
+    #[serde(rename = "Luckiest Guy")]
+    LuckiestGuy,
+    #[serde(rename = "DM Serif Display")]
+    DmSerifDisplay,
+}
+impl ::std::fmt::Display for EditIrCaptionsOptionsFontFamily {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Inter => f.write_str("Inter"),
+            Self::MontserratBlack => f.write_str("Montserrat Black"),
+            Self::PoppinsExtraBold => f.write_str("Poppins ExtraBold"),
+            Self::Anton => f.write_str("Anton"),
+            Self::BebasNeue => f.write_str("Bebas Neue"),
+            Self::LuckiestGuy => f.write_str("Luckiest Guy"),
+            Self::DmSerifDisplay => f.write_str("DM Serif Display"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsFontFamily {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "Inter" => Ok(Self::Inter),
+            "Montserrat Black" => Ok(Self::MontserratBlack),
+            "Poppins ExtraBold" => Ok(Self::PoppinsExtraBold),
+            "Anton" => Ok(Self::Anton),
+            "Bebas Neue" => Ok(Self::BebasNeue),
+            "Luckiest Guy" => Ok(Self::LuckiestGuy),
+            "DM Serif Display" => Ok(Self::DmSerifDisplay),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsFontFamily {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsFontFamily {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsFontFamily {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "How the spoken word is marked. Absent is the sweep."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"fill\","]
+#[doc = "    \"word\","]
+#[doc = "    \"box\","]
+#[doc = "    \"pop\","]
+#[doc = "    \"underline\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrCaptionsOptionsHighlightStyle {
+    #[serde(rename = "fill")]
+    Fill,
+    #[serde(rename = "word")]
+    Word,
+    #[serde(rename = "box")]
+    Box,
+    #[serde(rename = "pop")]
+    Pop,
+    #[serde(rename = "underline")]
+    Underline,
+}
+impl ::std::fmt::Display for EditIrCaptionsOptionsHighlightStyle {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Fill => f.write_str("fill"),
+            Self::Word => f.write_str("word"),
+            Self::Box => f.write_str("box"),
+            Self::Pop => f.write_str("pop"),
+            Self::Underline => f.write_str("underline"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsHighlightStyle {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "fill" => Ok(Self::Fill),
+            "word" => Ok(Self::Word),
+            "box" => Ok(Self::Box),
+            "pop" => Ok(Self::Pop),
+            "underline" => Ok(Self::Underline),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsHighlightStyle {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsHighlightStyle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsHighlightStyle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`EditIrCaptionsOptionsOutline`"]
@@ -1513,6 +2033,79 @@ pub struct EditIrTimebase {
 impl EditIrTimebase {
     pub fn builder() -> builder::EditIrTimebase {
         Default::default()
+    }
+}
+#[doc = "What the clip is called, when somebody named it. Never consumed by any render path, like the rationale."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 120,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrTitle(::std::string::String);
+impl ::std::ops::Deref for EditIrTitle {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrTitle> for ::std::string::String {
+    fn from(value: EditIrTitle) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrTitle {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 120usize {
+            return Err("longer than 120 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrTitle {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "`EditIrVideo`"]
@@ -2263,6 +2856,10 @@ pub mod builder {
             ::std::vec::Vec<super::CaptionCueLinesItem>,
             ::std::string::String,
         >,
+        position: ::std::result::Result<
+            ::std::option::Option<super::CaptionPosition>,
+            ::std::string::String,
+        >,
         region: ::std::result::Result<super::CaptionCueRegion, ::std::string::String>,
         start_ticks: ::std::result::Result<u64, ::std::string::String>,
     }
@@ -2273,6 +2870,7 @@ pub mod builder {
                 cue_id: Err("no value supplied for cue_id".to_string()),
                 end_ticks: Err("no value supplied for end_ticks".to_string()),
                 lines: Err("no value supplied for lines".to_string()),
+                position: Ok(Default::default()),
                 region: Err("no value supplied for region".to_string()),
                 start_ticks: Err("no value supplied for start_ticks".to_string()),
             }
@@ -2319,6 +2917,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for lines: {e}"));
             self
         }
+        pub fn position<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::CaptionPosition>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.position = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for position: {e}"));
+            self
+        }
         pub fn region<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::CaptionCueRegion>,
@@ -2350,6 +2958,7 @@ pub mod builder {
                 cue_id: value.cue_id?,
                 end_ticks: value.end_ticks?,
                 lines: value.lines?,
+                position: value.position?,
                 region: value.region?,
                 start_ticks: value.start_ticks?,
             })
@@ -2362,6 +2971,7 @@ pub mod builder {
                 cue_id: Ok(value.cue_id),
                 end_ticks: Ok(value.end_ticks),
                 lines: Ok(value.lines),
+                position: Ok(value.position),
                 region: Ok(value.region),
                 start_ticks: Ok(value.start_ticks),
             }
@@ -2412,6 +3022,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct CaptionCueLinesItemWordsItem {
+        emphasis: ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
         end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
         start_ticks: ::std::result::Result<u64, ::std::string::String>,
         text: ::std::result::Result<super::CaptionCueLinesItemWordsItemText, ::std::string::String>,
@@ -2423,6 +3034,7 @@ pub mod builder {
     impl ::std::default::Default for CaptionCueLinesItemWordsItem {
         fn default() -> Self {
             Self {
+                emphasis: Ok(Default::default()),
                 end_ticks: Err("no value supplied for end_ticks".to_string()),
                 start_ticks: Err("no value supplied for start_ticks".to_string()),
                 text: Err("no value supplied for text".to_string()),
@@ -2431,6 +3043,16 @@ pub mod builder {
         }
     }
     impl CaptionCueLinesItemWordsItem {
+        pub fn emphasis<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<bool>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.emphasis = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for emphasis: {e}"));
+            self
+        }
         pub fn end_ticks<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::num::NonZeroU64>,
@@ -2480,6 +3102,7 @@ pub mod builder {
             value: CaptionCueLinesItemWordsItem,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                emphasis: value.emphasis?,
                 end_ticks: value.end_ticks?,
                 start_ticks: value.start_ticks?,
                 text: value.text?,
@@ -2490,10 +3113,65 @@ pub mod builder {
     impl ::std::convert::From<super::CaptionCueLinesItemWordsItem> for CaptionCueLinesItemWordsItem {
         fn from(value: super::CaptionCueLinesItemWordsItem) -> Self {
             Self {
+                emphasis: Ok(value.emphasis),
                 end_ticks: Ok(value.end_ticks),
                 start_ticks: Ok(value.start_ticks),
                 text: Ok(value.text),
                 word_id: Ok(value.word_id),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct CaptionPosition {
+        x: ::std::result::Result<i64, ::std::string::String>,
+        y: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for CaptionPosition {
+        fn default() -> Self {
+            Self {
+                x: Err("no value supplied for x".to_string()),
+                y: Err("no value supplied for y".to_string()),
+            }
+        }
+    }
+    impl CaptionPosition {
+        pub fn x<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.x = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for x: {e}"));
+            self
+        }
+        pub fn y<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.y = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for y: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<CaptionPosition> for super::CaptionPosition {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: CaptionPosition,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                x: value.x?,
+                y: value.y?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::CaptionPosition> for CaptionPosition {
+        fn from(value: super::CaptionPosition) -> Self {
+            Self {
+                x: Ok(value.x),
+                y: Ok(value.y),
             }
         }
     }
@@ -2588,6 +3266,8 @@ pub mod builder {
             ::std::string::String,
         >,
         timebase: ::std::result::Result<super::EditIrTimebase, ::std::string::String>,
+        title:
+            ::std::result::Result<::std::option::Option<super::EditIrTitle>, ::std::string::String>,
         version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         video: ::std::result::Result<super::EditIrVideo, ::std::string::String>,
     }
@@ -2599,6 +3279,7 @@ pub mod builder {
                 captions: Err("no value supplied for captions".to_string()),
                 rationale: Ok(Default::default()),
                 timebase: Err("no value supplied for timebase".to_string()),
+                title: Ok(Default::default()),
                 version: Err("no value supplied for version".to_string()),
                 video: Err("no value supplied for video".to_string()),
             }
@@ -2655,6 +3336,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for timebase: {e}"));
             self
         }
+        pub fn title<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrTitle>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.title = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for title: {e}"));
+            self
+        }
         pub fn version<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::serde_json::Value>,
@@ -2685,6 +3376,7 @@ pub mod builder {
                 captions: value.captions?,
                 rationale: value.rationale?,
                 timebase: value.timebase?,
+                title: value.title?,
                 version: value.version?,
                 video: value.video?,
             })
@@ -2698,6 +3390,7 @@ pub mod builder {
                 captions: Ok(value.captions),
                 rationale: Ok(value.rationale),
                 timebase: Ok(value.timebase),
+                title: Ok(value.title),
                 version: Ok(value.version),
                 video: Ok(value.video),
             }
@@ -2969,13 +3662,32 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct EditIrCaptionsOptions {
+        accent: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsAccent>,
+            ::std::string::String,
+        >,
+        font_family: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsFontFamily>,
+            ::std::string::String,
+        >,
         font_size: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
         highlight_spoken_word:
             ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
+        highlight_style: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsHighlightStyle>,
+            ::std::string::String,
+        >,
         outline: ::std::result::Result<
             ::std::option::Option<super::EditIrCaptionsOptionsOutline>,
             ::std::string::String,
         >,
+        outline_width: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        plate_opacity: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        position: ::std::result::Result<
+            ::std::option::Option<super::CaptionPosition>,
+            ::std::string::String,
+        >,
+        shadow_depth: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
         spoken: ::std::result::Result<
             ::std::option::Option<super::EditIrCaptionsOptionsSpoken>,
             ::std::string::String,
@@ -2988,20 +3700,54 @@ pub mod builder {
             ::std::option::Option<super::EditIrCaptionsOptionsUnspoken>,
             ::std::string::String,
         >,
+        words_on_screen: ::std::result::Result<
+            ::std::option::Option<::std::num::NonZeroU64>,
+            ::std::string::String,
+        >,
     }
     impl ::std::default::Default for EditIrCaptionsOptions {
         fn default() -> Self {
             Self {
+                accent: Ok(Default::default()),
+                font_family: Ok(Default::default()),
                 font_size: Ok(Default::default()),
                 highlight_spoken_word: Ok(Default::default()),
+                highlight_style: Ok(Default::default()),
                 outline: Ok(Default::default()),
+                outline_width: Ok(Default::default()),
+                plate_opacity: Ok(Default::default()),
+                position: Ok(Default::default()),
+                shadow_depth: Ok(Default::default()),
                 spoken: Ok(Default::default()),
                 text_case: Ok(Default::default()),
                 unspoken: Ok(Default::default()),
+                words_on_screen: Ok(Default::default()),
             }
         }
     }
     impl EditIrCaptionsOptions {
+        pub fn accent<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsAccent>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.accent = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for accent: {e}"));
+            self
+        }
+        pub fn font_family<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::option::Option<super::EditIrCaptionsOptionsFontFamily>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.font_family = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for font_family: {e}"));
+            self
+        }
         pub fn font_size<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::option::Option<i64>>,
@@ -3022,6 +3768,18 @@ pub mod builder {
             });
             self
         }
+        pub fn highlight_style<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::option::Option<super::EditIrCaptionsOptionsHighlightStyle>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.highlight_style = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for highlight_style: {e}"));
+            self
+        }
         pub fn outline<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsOutline>>,
@@ -3030,6 +3788,46 @@ pub mod builder {
             self.outline = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for outline: {e}"));
+            self
+        }
+        pub fn outline_width<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.outline_width = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for outline_width: {e}"));
+            self
+        }
+        pub fn plate_opacity<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.plate_opacity = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for plate_opacity: {e}"));
+            self
+        }
+        pub fn position<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::CaptionPosition>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.position = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for position: {e}"));
+            self
+        }
+        pub fn shadow_depth<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.shadow_depth = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for shadow_depth: {e}"));
             self
         }
         pub fn spoken<T>(mut self, value: T) -> Self
@@ -3062,6 +3860,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for unspoken: {e}"));
             self
         }
+        pub fn words_on_screen<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<::std::num::NonZeroU64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.words_on_screen = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for words_on_screen: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<EditIrCaptionsOptions> for super::EditIrCaptionsOptions {
         type Error = super::error::ConversionError;
@@ -3069,24 +3877,40 @@ pub mod builder {
             value: EditIrCaptionsOptions,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                accent: value.accent?,
+                font_family: value.font_family?,
                 font_size: value.font_size?,
                 highlight_spoken_word: value.highlight_spoken_word?,
+                highlight_style: value.highlight_style?,
                 outline: value.outline?,
+                outline_width: value.outline_width?,
+                plate_opacity: value.plate_opacity?,
+                position: value.position?,
+                shadow_depth: value.shadow_depth?,
                 spoken: value.spoken?,
                 text_case: value.text_case?,
                 unspoken: value.unspoken?,
+                words_on_screen: value.words_on_screen?,
             })
         }
     }
     impl ::std::convert::From<super::EditIrCaptionsOptions> for EditIrCaptionsOptions {
         fn from(value: super::EditIrCaptionsOptions) -> Self {
             Self {
+                accent: Ok(value.accent),
+                font_family: Ok(value.font_family),
                 font_size: Ok(value.font_size),
                 highlight_spoken_word: Ok(value.highlight_spoken_word),
+                highlight_style: Ok(value.highlight_style),
                 outline: Ok(value.outline),
+                outline_width: Ok(value.outline_width),
+                plate_opacity: Ok(value.plate_opacity),
+                position: Ok(value.position),
+                shadow_depth: Ok(value.shadow_depth),
                 spoken: Ok(value.spoken),
                 text_case: Ok(value.text_case),
                 unspoken: Ok(value.unspoken),
+                words_on_screen: Ok(value.words_on_screen),
             }
         }
     }

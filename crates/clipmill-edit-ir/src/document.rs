@@ -247,6 +247,17 @@ pub struct CaptionWord {
     /// ever a document nobody has migrated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub word_id: Option<String>,
+    /// A key word, set in the accent colour so it stands out of its line.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub emphasis: bool,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if requires a reference"
+)]
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// One rendered line. Line breaks are **decided once and stored here** — the
@@ -285,6 +296,47 @@ pub struct CaptionCue {
     pub region: CaptionRegion,
     pub anim: CaptionAnimation,
     pub lines: Vec<CaptionLine>,
+    /// Where this cue sits, when it was placed by hand rather than by its
+    /// region. Overrides the region and the clip-wide position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<CaptionPosition>,
+}
+
+/// A caption's centre on the frame, in thousandths of its width and height.
+///
+/// Thousandths rather than pixels so a position means the same place at any
+/// output size, and integers so two renders of one document agree exactly.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaptionPosition {
+    pub x: u32,
+    pub y: u32,
+}
+
+impl CaptionPosition {
+    /// The largest coordinate: the right or bottom edge of the frame.
+    pub const FULL: u32 = 1_000;
+
+    pub fn is_valid(self) -> bool {
+        self.x <= Self::FULL && self.y <= Self::FULL
+    }
+}
+
+/// How the word being spoken is marked while its caption is on screen.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HighlightStyle {
+    /// Words take the spoken colour as they are said and keep it.
+    #[default]
+    Fill,
+    /// Only the word being said takes the spoken colour.
+    Word,
+    /// The word being said sits on a box in the spoken colour.
+    Box,
+    /// The word being said grows briefly, in the spoken colour.
+    Pop,
+    /// The word being said is underlined, in the spoken colour.
+    Underline,
 }
 
 impl CaptionCue {
@@ -376,6 +428,33 @@ pub struct CaptionOptions {
     pub outline: Option<String>,
     #[serde(default, skip_serializing_if = "is_original_case")]
     pub text_case: CaptionCase,
+    /// How the spoken word is marked, when it is. Absent is the sweep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub highlight_style: Option<HighlightStyle>,
+    /// One of the caption fonts, by family name. Absent is the look's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    /// Outline thickness at the design height, in pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline_width: Option<u32>,
+    /// Drop-shadow offset at the design height, in pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow_depth: Option<u32>,
+    /// How opaque a boxed look's plate is, in percent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plate_opacity: Option<u32>,
+    /// The colour key words are set in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    /// Where every caption sits, unless a cue was placed on its own. Absent
+    /// leaves each cue in its region.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<CaptionPosition>,
+    /// The most words the on-screen captions were last grouped into, which
+    /// is what the editor shows as chosen. The cues themselves carry the
+    /// grouping; this only remembers the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words_on_screen: Option<u32>,
 }
 
 impl CaptionOptions {
@@ -498,6 +577,9 @@ fn validate_cues(cues: &[CaptionCue]) -> Result<(), DocumentError> {
         previous_end = Some(cue.end_ticks);
         if cue.lines.is_empty() || cue.lines.iter().any(|line| line.words.is_empty()) {
             return Err(DocumentError::EmptyCaptionLine);
+        }
+        if cue.position.is_some_and(|position| !position.is_valid()) {
+            return Err(DocumentError::InvalidCaptionOptions);
         }
         let mut word_cursor: Option<i64> = None;
         for word in cue.words() {
@@ -642,6 +724,10 @@ pub struct EditDocument {
     pub assets: Vec<Asset>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rationale: Option<Rationale>,
+    /// What the clip is called, when somebody named it. Kept out of every
+    /// render path like the rationale: renaming a clip is not a new picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 impl Default for EditDocument {
@@ -654,6 +740,7 @@ impl Default for EditDocument {
             audio: AudioTrack::default(),
             assets: Vec::new(),
             rationale: None,
+            title: None,
         }
     }
 }
@@ -681,6 +768,7 @@ impl EditDocument {
             serde_json::to_value(self).map_err(|error| DocumentError::Json(error.to_string()))?;
         if let Some(object) = value.as_object_mut() {
             object.remove("rationale");
+            object.remove("title");
         }
         Ok(value)
     }
@@ -1122,6 +1210,13 @@ impl EditDocument {
             }
         }
 
+        if self
+            .title
+            .as_ref()
+            .is_some_and(|title| title.trim().is_empty() || title.chars().count() > 120)
+        {
+            return Err(DocumentError::InvalidTitle);
+        }
         validate_cues(&self.captions.cues)?;
         validate_cues(&self.captions.burn_in)?;
         validate_shared_words(&self.captions)?;
@@ -1133,10 +1228,28 @@ impl EditDocument {
         {
             return Err(DocumentError::InvalidCaptionOptions);
         }
+        let options = &self.captions.options;
+        if options.outline_width.is_some_and(|width| width > 16)
+            || options.shadow_depth.is_some_and(|depth| depth > 12)
+            || options.plate_opacity.is_some_and(|opacity| opacity > 100)
+            || options
+                .words_on_screen
+                .is_some_and(|words| !(1..=8).contains(&words))
+            || options
+                .position
+                .is_some_and(|position| !position.is_valid())
+            || options
+                .font_family
+                .as_deref()
+                .is_some_and(|family| clipmill_captions::font(family).is_none())
+        {
+            return Err(DocumentError::InvalidCaptionOptions);
+        }
         for colour in [
             &self.captions.options.spoken,
             &self.captions.options.unspoken,
             &self.captions.options.outline,
+            &self.captions.options.accent,
         ] {
             if colour.as_ref().is_some_and(|hex| {
                 hex.len() != 7
@@ -1169,10 +1282,12 @@ impl EditDocument {
 
 #[derive(Debug, Error)]
 pub enum DocumentError {
-    #[error("caption size or colour is outside the supported range")]
+    #[error("caption size, colour, font or position is outside the supported range")]
     InvalidCaptionOptions,
     #[error("soft cuts must be between zero and 250 milliseconds")]
     InvalidTransitionDuration,
+    #[error("a clip title has between one and 120 characters")]
+    InvalidTitle,
     #[error("edit document version {0} is not supported")]
     UnsupportedVersion(String),
     #[error("edit documents must use the 1/90000 edit timebase")]

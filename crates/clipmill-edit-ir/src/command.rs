@@ -3,8 +3,8 @@ use thiserror::Error;
 
 use crate::{
     document::{
-        CaptionCue, CaptionOptions, CaptionRegion, CropEasing, CropKeyframe, CropRect,
-        DocumentError, EditDocument, GainPoint, LayoutState, Presentation, VideoSegment,
+        CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing, CropKeyframe,
+        CropRect, DocumentError, EditDocument, GainPoint, LayoutState, Presentation, VideoSegment,
         crop_along_keyframes,
     },
     reflow,
@@ -28,6 +28,11 @@ pub enum EditCommand {
     /// This changes no source interval, audio, caption or program timing.
     SetTransition {
         duration_ticks: i64,
+    },
+    /// Name the clip, or clear its name with `None`.
+    SetTitle {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
     },
     /// Change the clip's named caption preset without rewriting its words.
     SetCaptionStyle {
@@ -147,6 +152,38 @@ pub enum EditCommand {
         #[serde(default, skip_serializing_if = "is_reading")]
         presentation: Presentation,
     },
+    /// Place one cue by hand, or hand it back to its region with `None`.
+    SetCuePosition {
+        cue_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        position: Option<CaptionPosition>,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
+    },
+    /// Mark or unmark a key word, wherever it appears. Emphasis belongs to
+    /// the word, like a correction, so both presentations carry it.
+    SetWordEmphasis {
+        word_id: String,
+        emphasis: bool,
+    },
+    /// Regroup the on-screen captions to show at most this many words at
+    /// once. Only the burned-in list changes; the sidecar grouping stays.
+    RegroupOnScreen {
+        max_words: u32,
+    },
+    /// Remove words that are not speech — a recognizer's dash, a silence
+    /// marker, a bracketed annotation — from both presentations.
+    DropNonSpeechWords {},
+    /// Replace one presentation's cues whole.
+    ///
+    /// A regrouping or a re-derivation is computed where the segmenter lives
+    /// and carried here in full, so replaying the log needs nothing but the
+    /// log. The inverse carries the list it replaced.
+    ReplaceCues {
+        cues: Vec<CaptionCue>,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
+    },
     /// Move a display window while every spoken word keeps its timing.
     SetCueTiming {
         cue_id: String,
@@ -232,6 +269,13 @@ impl EditCommand {
                 Ok(Self::SetTransition {
                     duration_ticks: previous,
                 })
+            }
+            Self::SetTitle { title } => {
+                let previous = std::mem::replace(
+                    &mut document.title,
+                    title.as_ref().map(|title| title.trim().to_owned()),
+                );
+                Ok(Self::SetTitle { title: previous })
             }
             Self::SetCaptionStyle { style_ref } => {
                 if clipmill_captions::preset(style_ref).is_none() {
@@ -412,6 +456,94 @@ impl EditCommand {
                 Ok(Self::SetCueRegion {
                     cue_id: cue_id.clone(),
                     region: previous,
+                    presentation: *presentation,
+                })
+            }
+            Self::SetCuePosition {
+                cue_id,
+                position,
+                presentation,
+            } => {
+                let index = document.cue_index(*presentation, cue_id)?;
+                let cue = &mut document.captions.list_mut(*presentation)[index];
+                let previous = std::mem::replace(&mut cue.position, *position);
+                Ok(Self::SetCuePosition {
+                    cue_id: cue_id.clone(),
+                    position: previous,
+                    presentation: *presentation,
+                })
+            }
+            Self::SetWordEmphasis { word_id, emphasis } => {
+                let mut previous = None;
+                for word in document.captions.words_mut() {
+                    if word.word_id.as_deref() == Some(word_id.as_str()) {
+                        previous.get_or_insert(word.emphasis);
+                        word.emphasis = *emphasis;
+                    }
+                }
+                let previous =
+                    previous.ok_or_else(|| DocumentError::UnknownWord(word_id.clone()))?;
+                Ok(Self::SetWordEmphasis {
+                    word_id: word_id.clone(),
+                    emphasis: previous,
+                })
+            }
+            Self::RegroupOnScreen { max_words } => {
+                if !(1..=8).contains(max_words) {
+                    return Err(CommandError::InvalidWordsOnScreen);
+                }
+                let previous_cues = document.captions.burn_in.clone();
+                let previous_options = document.captions.options.clone();
+                let regrouped = crate::regroup::regroup(
+                    document.captions.burned(),
+                    usize::try_from(*max_words).unwrap_or(1),
+                );
+                document.captions.burn_in = regrouped;
+                document.captions.options.words_on_screen = Some(*max_words);
+                Ok(Self::Batch {
+                    commands: vec![
+                        Self::SetCaptionOptions {
+                            options: previous_options,
+                        },
+                        Self::ReplaceCues {
+                            cues: previous_cues,
+                            presentation: Presentation::BurnIn,
+                        },
+                    ],
+                })
+            }
+            Self::DropNonSpeechWords {} => {
+                let previous_reading = document.captions.cues.clone();
+                let previous_burn_in = document.captions.burn_in.clone();
+                for presentation in [Presentation::Reading, Presentation::BurnIn] {
+                    let cues = document.captions.list_mut(presentation);
+                    for cue in cues.iter_mut() {
+                        for line in &mut cue.lines {
+                            line.words
+                                .retain(|word| clipmill_captions::captionable_word(&word.text));
+                        }
+                        cue.lines.retain(|line| !line.words.is_empty());
+                    }
+                    cues.retain(|cue| !cue.lines.is_empty());
+                }
+                Ok(Self::Batch {
+                    commands: vec![
+                        Self::ReplaceCues {
+                            cues: previous_reading,
+                            presentation: Presentation::Reading,
+                        },
+                        Self::ReplaceCues {
+                            cues: previous_burn_in,
+                            presentation: Presentation::BurnIn,
+                        },
+                    ],
+                })
+            }
+            Self::ReplaceCues { cues, presentation } => {
+                let previous =
+                    std::mem::replace(document.captions.list_mut(*presentation), cues.clone());
+                Ok(Self::ReplaceCues {
+                    cues: previous,
                     presentation: *presentation,
                 })
             }
@@ -1195,6 +1327,8 @@ pub enum CommandError {
     NotTwoUp,
     #[error("unknown caption preset {0}")]
     UnknownCaptionStyle(String),
+    #[error("captions can show between one and eight words at a time")]
+    InvalidWordsOnScreen,
     #[error("the new section id {0} already exists")]
     SegmentAlreadyExists(String),
     #[error("split must be inside the selected section")]

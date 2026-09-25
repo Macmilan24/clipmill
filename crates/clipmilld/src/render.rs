@@ -142,7 +142,6 @@ pub(crate) async fn execute_render_task(
     let document_digest = Sha256Digest::from_bytes(Sha256::digest(&document_bytes).into());
     drop(lease);
 
-    let font = stage_font_source(context.fonts_dir)?;
     let (inputs, source_rate) = resolve_sources(context, &task.project_id, &document).await?;
     let (height, chosen_rate) =
         output_request(payload.format.as_ref()).map_err(TaskExecutionError::deterministic)?;
@@ -154,6 +153,8 @@ pub(crate) async fn execute_render_task(
     })?;
     let plan = clipmill_render::compile(&document, &inputs, &profile)
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    // The face the captions are set in, which the compiled style names.
+    let font = stage_font_source(context.fonts_dir, &plan.profile.caption_style.font_family)?;
 
     let ir_hash = format!("sha256:{document_digest}");
     let recipe = render_recipe(
@@ -201,19 +202,22 @@ struct PinnedFont {
     sha256: String,
 }
 
-fn stage_font_source(fonts_dir: &Path) -> Result<PinnedFont, TaskExecutionError> {
-    let family = clipmill_render::FONT_FAMILY;
-    let file_name = format!("{family}-Bold.ttf");
+fn stage_font_source(fonts_dir: &Path, family: &str) -> Result<PinnedFont, TaskExecutionError> {
+    let face = clipmill_captions::font(family).ok_or_else(|| {
+        TaskExecutionError::deterministic(format!("{family} is not one of the caption fonts"))
+    })?;
+    let file_name = face.file.to_owned();
     let path = fonts_dir.join(&file_name);
     let bytes = fs::read(&path).map_err(|_| {
-        TaskExecutionError::deterministic(
-            "the pinned caption font is not installed; run ./tools/fetch-ffmpeg.sh",
-        )
+        TaskExecutionError::deterministic(format!(
+            "the caption font {} is not installed; run ./tools/fetch-ffmpeg.sh",
+            face.label
+        ))
     })?;
     Ok(PinnedFont {
         path,
         file_name,
-        family: family.to_owned(),
+        family: face.family.to_owned(),
         sha256: format!(
             "sha256:{}",
             Sha256Digest::from_bytes(Sha256::digest(&bytes).into())

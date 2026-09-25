@@ -107,6 +107,10 @@ pub struct CaptionStyle {
     pub margin_horizontal: u32,
     /// Distance from the frame edge the anchored region keeps clear.
     pub margin_vertical: u32,
+    /// How the spoken word is marked, when the cue marks it.
+    pub highlight: clipmill_edit_ir::HighlightStyle,
+    /// The colour key words are set in.
+    pub accent: Colour,
 }
 
 impl CaptionStyle {
@@ -126,12 +130,34 @@ impl CaptionStyle {
         if let Some(value) = &options.outline {
             style.outline = Colour::from_hex(value)?;
         }
+        if let Some(value) = &options.accent {
+            style.accent = Colour::from_hex(value)?;
+        }
         if options.highlight_spoken_word == Some(true) && style.spoken == style.unspoken {
             style.spoken = Colour::opaque(0xFF, 0xD6, 0x5C);
         }
         if options.highlight_spoken_word == Some(false) {
             style.spoken = style.unspoken;
         }
+        if let Some(family) = &options.font_family {
+            let face = clipmill_captions::font(family)?;
+            face.family.clone_into(&mut style.font_family);
+            style.bold = face.bold;
+        }
+        if let Some(width) = options.outline_width {
+            style.outline_width = width;
+        }
+        if let Some(depth) = options.shadow_depth {
+            style.shadow_depth = depth;
+        }
+        if let Some(opacity) = options.plate_opacity
+            && style.boxed
+        {
+            let opacity = u8::try_from(opacity.min(100) * 255 / 100).unwrap_or(u8::MAX);
+            style.outline.transparency = u8::MAX - opacity;
+            style.shadow.transparency = u8::MAX - opacity;
+        }
+        style.highlight = options.highlight_style.unwrap_or_default();
         Some(style)
     }
     /// The default look: heavy outline, no plate, high contrast, and a spoken
@@ -157,6 +183,8 @@ impl CaptionStyle {
                 boxed: false,
                 margin_horizontal: 90,
                 margin_vertical: 260,
+                highlight: clipmill_edit_ir::HighlightStyle::Fill,
+                accent: Colour::opaque(0x4A, 0xDE, 0x80),
             },
             Self::from_preset,
         )

@@ -51,6 +51,67 @@ member_sha256 = "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947
 license_member = "LICENSE.txt"
 license_sha256 = "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
 
+# The other caption faces a creator may choose. Each is one static file taken
+# from its upstream repository at a pinned commit, with its licence, and each
+# name matches crates/clipmill-captions/src/fonts.rs. A render stages only the
+# face its captions use, and the manifest records that face's digest.
+[fonts.faces]
+ids = "montserrat,poppins,anton,bebasneue,luckiestguy,dmserifdisplay"
+
+[fonts.face.montserrat]
+file = "Montserrat-Black.ttf"
+license = "OFL-1.1"
+url = "https://raw.githubusercontent.com/JulietaUla/Montserrat/555facfb2a18c72c3c0380f0d9c0f060453a9058/fonts/ttf/Montserrat-Black.ttf"
+sha256 = "ea67b37f8776eebea135cd1fe9adeaf6f9427683e8dc11ab8398b6be5f102c60"
+license_url = "https://raw.githubusercontent.com/JulietaUla/Montserrat/555facfb2a18c72c3c0380f0d9c0f060453a9058/OFL.txt"
+license_sha256 = "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e"
+license_file = "Montserrat-LICENSE.txt"
+
+[fonts.face.poppins]
+file = "Poppins-ExtraBold.ttf"
+license = "OFL-1.1"
+url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/poppins/Poppins-ExtraBold.ttf"
+sha256 = "f2ab17c1a63a0ecc12c2461848fc8a469395e3cd2d641803e889c643d9f958e1"
+license_url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/poppins/OFL.txt"
+license_sha256 = "6be04893d770899a015649c7aa3b582f871b272f8747a92b78b17c3e5c8b2573"
+license_file = "Poppins-LICENSE.txt"
+
+[fonts.face.anton]
+file = "Anton-Regular.ttf"
+license = "OFL-1.1"
+url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/anton/Anton-Regular.ttf"
+sha256 = "a4ba3a92350ebb031da0cb47630ac49eb265082ca1bc0450442f4a83ab947cab"
+license_url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/anton/OFL.txt"
+license_sha256 = "ee67e6ee22790b7929f1a3769ca2801d565c64b5a9096942c1adf5596de9c9e4"
+license_file = "Anton-LICENSE.txt"
+
+[fonts.face.bebasneue]
+file = "BebasNeue-Regular.ttf"
+license = "OFL-1.1"
+url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/bebasneue/BebasNeue-Regular.ttf"
+sha256 = "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73"
+license_url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/bebasneue/OFL.txt"
+license_sha256 = "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341"
+license_file = "BebasNeue-LICENSE.txt"
+
+[fonts.face.luckiestguy]
+file = "LuckiestGuy-Regular.ttf"
+license = "Apache-2.0"
+url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/apache/luckiestguy/LuckiestGuy-Regular.ttf"
+sha256 = "cfbdd68a039f92df51cf3721506af6242e64594c6325fe0bedbeff3fe385d980"
+license_url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/apache/luckiestguy/LICENSE.txt"
+license_sha256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+license_file = "LuckiestGuy-LICENSE.txt"
+
+[fonts.face.dmserifdisplay]
+file = "DMSerifDisplay-Regular.ttf"
+license = "OFL-1.1"
+url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf"
+sha256 = "8cc3643535edf039aa5d95440a8542735e9197e4f4b8d9303e980fefbf5ab616"
+license_url = "https://raw.githubusercontent.com/google/fonts/23e54b51ddffbc7713c583748e3bd86f62b1fa4a/ofl/dmserifdisplay/OFL.txt"
+license_sha256 = "a3e5cdd67d4571dd0a24fcc968de0efde7ae97ef752daf0906e4767619dd7231"
+license_file = "DMSerifDisplay-LICENSE.txt"
+
 [sqlite]
 # WAL-reset corruption race fixed in 3.51.3 (2026-03-13); the daemon refuses
 # to enable WAL below this version at runtime (decision R3).

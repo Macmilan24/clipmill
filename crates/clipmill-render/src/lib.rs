@@ -8,6 +8,7 @@
 
 pub mod captions;
 mod graph;
+mod kinetic;
 mod manifest;
 mod plan;
 pub mod preview;
@@ -27,8 +28,8 @@ pub use plan::{
     SegmentReport, SourceInput, VTT_FILE, compile, largest_upscale,
 };
 pub use preview::{
-    PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewPlan, PreviewWord, preview_plan,
-    text_at,
+    PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewPlan, PreviewWord, caption_ass,
+    preview_plan, text_at,
 };
 pub use profile::{
     CaptionStyle, Colour, DEFAULT_STYLE_REF, DESIGN_HEIGHT, FONT_FAMILY, FONTS_DIR, FrameRateSpec,

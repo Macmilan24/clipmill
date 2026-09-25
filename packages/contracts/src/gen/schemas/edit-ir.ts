@@ -41,6 +41,42 @@ export interface EditIr {
       unspoken?: string;
       outline?: string;
       text_case?: "original" | "upper" | "lower";
+      /**
+       * How the spoken word is marked. Absent is the sweep.
+       */
+      highlight_style?: "fill" | "word" | "box" | "pop" | "underline";
+      /**
+       * One of the caption fonts, by family name. Absent is the look's own.
+       */
+      font_family?:
+        | "Inter"
+        | "Montserrat Black"
+        | "Poppins ExtraBold"
+        | "Anton"
+        | "Bebas Neue"
+        | "Luckiest Guy"
+        | "DM Serif Display";
+      /**
+       * Outline thickness at the 1920-pixel design height.
+       */
+      outline_width?: number;
+      /**
+       * Drop-shadow offset at the 1920-pixel design height.
+       */
+      shadow_depth?: number;
+      /**
+       * How opaque a boxed look's plate is, in percent.
+       */
+      plate_opacity?: number;
+      /**
+       * The colour key words are set in.
+       */
+      accent?: string;
+      position?: CaptionPosition;
+      /**
+       * The most words the on-screen captions were last grouped into.
+       */
+      words_on_screen?: number;
     };
     /**
      * What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always.
@@ -76,6 +112,10 @@ export interface EditIr {
     candidate_id?: string;
     decisions?: string[];
   };
+  /**
+   * What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.
+   */
+  title?: string;
 }
 export interface VideoSegment {
   segment_id: string;
@@ -111,6 +151,13 @@ export interface CropRect {
   width: number;
   height: number;
 }
+/**
+ * Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.
+ */
+export interface CaptionPosition {
+  x: number;
+  y: number;
+}
 export interface CaptionCue {
   cue_id: string;
   start_ticks: number;
@@ -136,6 +183,10 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         },
         ...{
           text: string;
@@ -145,6 +196,10 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         }[]
       ];
     },
@@ -161,6 +216,10 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         },
         ...{
           text: string;
@@ -170,8 +229,20 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         }[]
       ];
     }[]
   ];
+  position?: CaptionPosition1;
+}
+/**
+ * Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position.
+ */
+export interface CaptionPosition1 {
+  x: number;
+  y: number;
 }

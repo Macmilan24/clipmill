@@ -23,19 +23,22 @@ class TextCase(Enum):
     lower = 'lower'
 
 
-class Options(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    highlight_spoken_word: bool | None = Field(
-        None,
-        description="Override the preset's spoken-word highlight independently of its typography.",
-    )
-    font_size: conint(ge=24, le=160) | None = None
-    spoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
-    unspoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
-    outline: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
-    text_case: TextCase | None = None
+class HighlightStyle(Enum):
+    fill = 'fill'
+    word = 'word'
+    box = 'box'
+    pop = 'pop'
+    underline = 'underline'
+
+
+class FontFamily(Enum):
+    Inter = 'Inter'
+    Montserrat_Black = 'Montserrat Black'
+    Poppins_ExtraBold = 'Poppins ExtraBold'
+    Anton = 'Anton'
+    Bebas_Neue = 'Bebas Neue'
+    Luckiest_Guy = 'Luckiest Guy'
+    DM_Serif_Display = 'DM Serif Display'
 
 
 class GainCurveItem(BaseModel):
@@ -159,6 +162,10 @@ class Word(BaseModel):
         None,
         description='Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.',
     )
+    emphasis: bool | None = Field(
+        None,
+        description='A key word, set in the accent colour so it stands out of its line.',
+    )
 
 
 class Line(BaseModel):
@@ -166,6 +173,75 @@ class Line(BaseModel):
         extra='forbid',
     )
     words: list[Word] = Field(..., min_length=1)
+
+
+class CaptionPosition(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    x: conint(ge=0, le=1000)
+    y: conint(ge=0, le=1000)
+
+
+class Video(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    transition_ticks: conint(ge=0, le=22500) | None = Field(
+        None,
+        description='Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.',
+    )
+    segments: list[VideoSegment] | None = None
+
+
+class Options(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    highlight_spoken_word: bool | None = Field(
+        None,
+        description="Override the preset's spoken-word highlight independently of its typography.",
+    )
+    font_size: conint(ge=24, le=160) | None = None
+    spoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    unspoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    outline: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    text_case: TextCase | None = None
+    highlight_style: HighlightStyle | None = Field(
+        None, description='How the spoken word is marked. Absent is the sweep.'
+    )
+    font_family: FontFamily | None = Field(
+        None,
+        description="One of the caption fonts, by family name. Absent is the look's own.",
+    )
+    outline_width: conint(ge=0, le=16) | None = Field(
+        None, description='Outline thickness at the 1920-pixel design height.'
+    )
+    shadow_depth: conint(ge=0, le=12) | None = Field(
+        None, description='Drop-shadow offset at the 1920-pixel design height.'
+    )
+    plate_opacity: conint(ge=0, le=100) | None = Field(
+        None, description="How opaque a boxed look's plate is, in percent."
+    )
+    accent: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = Field(
+        None, description='The colour key words are set in.'
+    )
+    position: CaptionPosition | None = Field(
+        None,
+        description='Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.',
+    )
+    words_on_screen: conint(ge=1, le=8) | None = Field(
+        None,
+        description='The most words the on-screen captions were last grouped into.',
+    )
+
+
+class Asset(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    hash: Sha256
+    license: str
 
 
 class CaptionCue(BaseModel):
@@ -182,17 +258,10 @@ class CaptionCue(BaseModel):
         description='Line breaks are decided once and stored here — the parity keystone. Preview and render must never re-wrap text independently.',
         min_length=1,
     )
-
-
-class Video(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    transition_ticks: conint(ge=0, le=22500) | None = Field(
+    position: CaptionPosition | None = Field(
         None,
-        description='Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.',
+        description='Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position.',
     )
-    segments: list[VideoSegment] | None = None
 
 
 class Captions(BaseModel):
@@ -217,14 +286,6 @@ class Captions(BaseModel):
     )
 
 
-class Asset(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    hash: Sha256
-    license: str
-
-
 class EditIr(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -241,4 +302,8 @@ class EditIr(BaseModel):
     rationale: Rationale | None = Field(
         None,
         description='Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels.',
+    )
+    title: constr(min_length=1, max_length=120) | None = Field(
+        None,
+        description='What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.',
     )

@@ -695,6 +695,10 @@ pub struct PreviewPlanView {
     pub reading_cues: Vec<PreviewCueView>,
     pub reading_min_duration_ticks: i64,
     pub reading_min_gap_ticks: i64,
+    /// The burned-in captions exactly as the export writes them.
+    pub ass: String,
+    /// Every caption typeface, with whether this installation has it.
+    pub fonts: Vec<CaptionFontView>,
     pub gain: Vec<PreviewGainView>,
     pub width: i64,
     pub height: i64,
@@ -734,6 +738,18 @@ pub struct PreviewCaptionStyleView {
     pub boxed: bool,
     pub margin_horizontal: u32,
     pub margin_vertical: u32,
+    pub accent: String,
+    pub highlight: String,
+}
+
+/// One caption typeface and whether this installation has it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionFontView {
+    pub family: String,
+    pub label: String,
+    pub file: String,
+    pub installed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -777,6 +793,8 @@ pub struct PreviewProxyView {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewCueView {
     pub cue_id: String,
+    /// `[x, y]` in thousandths of the frame when the cue was placed by hand.
+    pub position: Option<[u32; 2]>,
     pub start_ticks: i64,
     pub end_ticks: i64,
     pub first_frame: i64,
@@ -808,6 +826,7 @@ impl From<clipmill_contracts::proto::ipc::v1::PreviewCueV1> for PreviewCueView {
     fn from(cue: clipmill_contracts::proto::ipc::v1::PreviewCueV1) -> Self {
         PreviewCueView {
             cue_id: cue.cue_id,
+            position: cue.positioned.then_some([cue.position_x, cue.position_y]),
             start_ticks: cue.start_ticks,
             end_ticks: cue.end_ticks,
             first_frame: cue.first_frame,
@@ -877,7 +896,20 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 boxed: style.boxed,
                 margin_horizontal: style.margin_horizontal,
                 margin_vertical: style.margin_vertical,
+                accent: style.accent,
+                highlight: style.highlight,
             }),
+            ass: reply.ass,
+            fonts: reply
+                .fonts
+                .into_iter()
+                .map(|font| CaptionFontView {
+                    family: font.family,
+                    label: font.label,
+                    file: font.file,
+                    installed: font.installed,
+                })
+                .collect(),
             secondary_crops: reply
                 .secondary_crops
                 .into_iter()
@@ -964,11 +996,19 @@ pub struct EditDocView {
     pub revision: u64,
     pub created_unix_millis: u64,
     pub updated_unix_millis: u64,
+    /// What somebody named the clip, when they did.
+    pub title: Option<String>,
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
     fn from(doc: clipmill_contracts::proto::ipc::v1::EditDoc) -> Self {
+        // Read from the document itself, where the title is an edit like any
+        // other; a document that does not parse simply has no title here.
+        let title = serde_json::from_str::<serde_json::Value>(&doc.document_json)
+            .ok()
+            .and_then(|value| value.get("title")?.as_str().map(str::to_owned));
         Self {
+            title,
             doc_id: doc.doc_id,
             project_id: doc.project_id,
             source_id: doc.source_id,
@@ -1425,4 +1465,22 @@ mod youtube_view_tests {
         });
         assert_eq!(serde_json::to_value(view).unwrap()["maxHeight"], 360);
     }
+}
+
+/// One logged edit, with the command that undoes it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditHistoryEntryView {
+    pub revision: u64,
+    pub command_json: String,
+    pub inverse_json: String,
+    pub applied_unix_millis: u64,
+}
+
+/// Captions drawn under a look that has not been chosen yet.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionPreviewView {
+    pub ass: String,
+    pub revision: u64,
 }

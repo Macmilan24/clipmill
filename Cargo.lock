@@ -594,6 +594,7 @@ dependencies = [
 name = "clipmill-shell"
 version = "0.0.1"
 dependencies = [
+ "clipmill-captions",
  "clipmill-contracts",
  "clipmilld",
  "prost",

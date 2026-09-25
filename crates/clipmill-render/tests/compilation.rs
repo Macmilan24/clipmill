@@ -74,9 +74,11 @@ fn cue(id: &str, start_frame: i64, end_frame: i64, words: &[(&str, i64, i64)]) -
                     start_ticks: start * FRAME_TICKS,
                     end_ticks: end * FRAME_TICKS,
                     word_id: None,
+                    emphasis: false,
                 })
                 .collect(),
         }],
+        position: None,
     }
 }
 

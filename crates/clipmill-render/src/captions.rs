@@ -77,6 +77,7 @@ pub fn project(
             region: region_of(cue),
             anim: animation,
             lines: lines_of(document, cue, offset_ticks, (start.max(0), end))?,
+            position: None,
         });
     }
     Ok(CaptionTrack {
@@ -144,6 +145,7 @@ fn lines_of(
                     // groupings were built from, so the same word carries the
                     // same id in each and a correction can find it in both.
                     word_id: Some(word_id(token.word_index)),
+                    emphasis: false,
                 }
             })
             .collect();
@@ -194,6 +196,8 @@ impl CaptionStyle {
             boxed: matches!(preset.border, Border::Box),
             margin_horizontal: preset.margin_horizontal,
             margin_vertical: preset.margin_vertical,
+            highlight: clipmill_edit_ir::HighlightStyle::Fill,
+            accent: Colour::opaque(0x4A, 0xDE, 0x80),
         }
     }
 }

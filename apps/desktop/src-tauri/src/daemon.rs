@@ -310,6 +310,38 @@ impl DaemonClient {
         }
     }
 
+    /// The burned-in captions a document would have under another look.
+    pub async fn preview_captions(
+        &self,
+        doc_id: &str,
+        style_ref: &str,
+        options_json: &str,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::PreviewCaptionsResponse, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::PreviewCaptionsRequest {
+            doc_id: doc_id.to_owned(),
+            style_ref: style_ref.to_owned(),
+            options_json: options_json.to_owned(),
+        };
+        match self.call(request::Body::PreviewCaptions(request)).await? {
+            response::Body::PreviewCaptions(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Every command a document has had, oldest first, with its inverse.
+    pub async fn list_edit_history(
+        &self,
+        doc_id: &str,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::EditHistoryEntryV1>, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ListEditHistoryRequest {
+            doc_id: doc_id.to_owned(),
+        };
+        match self.call(request::Body::ListEditHistory(request)).await? {
+            response::Body::ListEditHistory(reply) => Ok(reply.entries),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     /// Read the live edit document and its revision for contextual controls.
     pub async fn get_edit_doc(&self, doc_id: &str) -> Result<GetEditDocResponse, DaemonLinkError> {
         match self

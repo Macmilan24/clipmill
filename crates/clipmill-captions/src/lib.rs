@@ -7,13 +7,15 @@
 //! still violate a profile on dense speech.
 
 mod document;
+pub mod fonts;
 pub mod lexicon;
 pub mod presets;
 pub mod profile;
 pub mod segment;
 pub mod validate;
 
-pub use document::{DeriveError, DeriveRequest, Inputs, derive};
+pub use document::{DeriveError, DeriveRequest, Inputs, captionable_word, derive};
+pub use fonts::{CaptionFont, DEFAULT_FONT, FONTS, font};
 pub use lexicon::{Break, FILLER_LEXICON};
 pub use presets::{Animation, Border, Colour, DEFAULT_STYLE_REF, PRESETS, Preset, preset};
 pub use profile::{Direction, Profile, Profiles, TICKS_PER_SECOND};

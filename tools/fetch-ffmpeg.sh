@@ -93,6 +93,33 @@ else
   echo "$font_want" > "$font_marker"
 fi
 
+# ---- Other caption faces ---------------------------------------------------
+# Single files, each pinned by digest together with its licence. A face that is
+# already installed at its pin is left alone.
+
+for face in $(bom_get fonts.faces ids | tr ',' ' '); do
+  face_file="$(bom_get "fonts.face.$face" file)"
+  face_want="$(bom_get "fonts.face.$face" sha256)"
+  face_url="$(bom_get "fonts.face.$face" url)"
+  face_license="$(bom_get "fonts.face.$face" license_file)"
+  face_license_url="$(bom_get "fonts.face.$face" license_url)"
+  face_license_want="$(bom_get "fonts.face.$face" license_sha256)"
+  [ -n "$face_file" ] && [ -n "$face_want" ] && [ -n "$face_url" ] \
+    || { echo "fetch-ffmpeg: incomplete font pin for $face in bom.toml" >&2; exit 1; }
+  if [ -f ".cache/fonts/$face_file" ] && [ "$(sha256 ".cache/fonts/$face_file")" = "$face_want" ] \
+    && [ -f ".cache/fonts/$face_license" ]; then
+    echo "font: pinned $face_file already installed"
+    continue
+  fi
+  echo "font: downloading $face_url"
+  curl -sSfL "$face_url" -o ".cache/fonts/$face_file.part"
+  verify "$face_file" ".cache/fonts/$face_file.part" "$face_want"
+  curl -sSfL "$face_license_url" -o ".cache/fonts/$face_license.part"
+  verify "$face_license" ".cache/fonts/$face_license.part" "$face_license_want"
+  mv ".cache/fonts/$face_file.part" ".cache/fonts/$face_file"
+  mv ".cache/fonts/$face_license.part" ".cache/fonts/$face_license"
+done
+
 # ---- Capability probe -------------------------------------------------------
 # Burned-in captions are not optional, so a build without libass is a failed
 # fetch rather than a render that discovers it hours later.
