@@ -181,6 +181,13 @@
         }
       }
     },
+    "overlays": {
+      "description": "Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/overlay"
+      }
+    },
     "assets": {
       "description": "Assets referenced by content hash, each carrying the licence record the render manifest echoes.",
       "type": "array",
@@ -225,6 +232,80 @@
     "sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "hexColour": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "overlay": {
+      "description": "Something laid over the program for a span of it.",
+      "type": "object",
+      "required": ["overlay_id", "start_ticks", "end_ticks", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "overlay_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content": {
+          "oneOf": [
+            {
+              "description": "Words set in the clip's caption font by the caption renderer. Lines break only where the text says.",
+              "type": "object",
+              "required": ["kind", "text", "x", "y", "size", "colour"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "text"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[^{}\\\\]*$"
+                },
+                "role": {
+                  "description": "A hook opens the clip and names what it is about. Absent is a label.",
+                  "enum": ["hook", "label"]
+                },
+                "x": {
+                  "description": "Where its centre sits, per mille of the frame's width.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "y": {
+                  "description": "Where its centre sits, per mille of the frame's height.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "size": {
+                  "description": "Its size at the 1920-pixel design height.",
+                  "type": "integer",
+                  "minimum": 24,
+                  "maximum": 240
+                },
+                "colour": {
+                  "$ref": "#/$defs/hexColour"
+                },
+                "plate": {
+                  "description": "An opaque plate behind the text. Absent draws an outline.",
+                  "$ref": "#/$defs/hexColour"
+                }
+              }
+            }
+          ]
+        }
+      }
     },
     "cropRect": {
       "description": "Integer pixel rectangle in the source frame's coordinate space.",

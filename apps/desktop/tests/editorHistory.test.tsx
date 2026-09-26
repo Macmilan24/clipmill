@@ -54,6 +54,17 @@ describe('the history', () => {
         ],
       }),
     ).toBe('Shape: 16:9');
+    expect(
+      describeCommand({
+        op: 'add_overlay',
+        overlay: { overlay_id: 'ovl_1', content: { kind: 'text', role: 'hook' } },
+      }),
+    ).toBe('Add a hook title');
+    expect(describeCommand({ op: 'add_overlay', overlay: { content: { kind: 'text' } } })).toBe(
+      'Add text',
+    );
+    expect(describeCommand({ op: 'set_overlay' })).toBe('Change text');
+    expect(describeCommand({ op: 'remove_overlay', overlay_id: 'ovl_1' })).toBe('Remove text');
   });
 
   it('goes back to a point by undoing everything since, newest first', () => {

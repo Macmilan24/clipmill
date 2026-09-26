@@ -1372,6 +1372,27 @@ message PreviewGainV1 {
   double gain_db = 2;
 }
 
+// A text laid over the program, for the editor to show, select and move. Its
+// pixels come from the plan's script, which draws it as the render will.
+message PreviewOverlayV1 {
+  string overlay_id = 1;
+  int64 start_ticks = 2;
+  int64 end_ticks = 3;
+  int64 first_frame = 4;
+  int64 end_frame = 5;
+  string text = 6;
+  // hook or label.
+  string role = 7;
+  // Its centre, per mille of the frame's width and height.
+  uint32 x = 8;
+  uint32 y = 9;
+  // Its size at the 1920-pixel design height.
+  uint32 size = 10;
+  string colour = 11;
+  // The plate behind it; empty draws an outline.
+  string plate = 12;
+}
+
 // One segment of the program, and where in the source it plays.
 //
 // This is the mapping the player used to lack. A clip cut from ten minutes
@@ -1525,6 +1546,8 @@ message GetPreviewPlanResponse {
   // Why the director framed and captioned the clip as it did. Filled for a
   // dry run, whose document is nowhere else to read it from.
   repeated string decisions = 23;
+  // Titles and labels over the program, bottom first.
+  repeated PreviewOverlayV1 overlays = 24;
 }
 
 // Where the camera would point at a few moments, so a board of clips can show

@@ -80,6 +80,50 @@ class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
 
+class HexColour(RootModel[constr(pattern=r'^#[0-9A-Fa-f]{6}$')]):
+    root: constr(pattern=r'^#[0-9A-Fa-f]{6}$')
+
+
+class Role(Enum):
+    hook = 'hook'
+    label = 'label'
+
+
+class Content(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['text']
+    text: constr(pattern=r'^[^{}\\]*$', min_length=1, max_length=160)
+    role: Role | None = Field(
+        None,
+        description='A hook opens the clip and names what it is about. Absent is a label.',
+    )
+    x: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's width."
+    )
+    y: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's height."
+    )
+    size: conint(ge=24, le=240) = Field(
+        ..., description='Its size at the 1920-pixel design height.'
+    )
+    colour: HexColour
+    plate: HexColour | None = Field(
+        None, description='An opaque plate behind the text. Absent draws an outline.'
+    )
+
+
+class Overlay(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    overlay_id: constr(min_length=1)
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=1)
+    content: Content
+
+
 class CropRect(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -356,6 +400,10 @@ class EditIr(BaseModel):
     video: Video
     captions: Captions
     audio: Audio
+    overlays: list[Overlay] | None = Field(
+        None,
+        description="Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.",
+    )
     assets: list[Asset] | None = Field(
         None,
         description='Assets referenced by content hash, each carrying the licence record the render manifest echoes.',

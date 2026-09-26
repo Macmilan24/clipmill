@@ -985,6 +985,28 @@ export interface PreviewTransition {
   readonly endFrame: number;
 }
 
+/**
+ * A text laid over the program, for the editor to show, select and move. Its
+ * pixels come from the plan's script, which draws it as the render will.
+ */
+export interface PreviewOverlay {
+  readonly overlayId: string;
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly firstFrame: number;
+  readonly endFrame: number;
+  readonly text: string;
+  readonly role: 'hook' | 'label';
+  /** Its centre, per mille of the frame's width and height. */
+  readonly x: number;
+  readonly y: number;
+  /** Its size at the 1920-pixel design height. */
+  readonly size: number;
+  readonly colour: string;
+  /** The plate behind it; absent draws an outline. */
+  readonly plate?: string | null;
+}
+
 export interface PreviewPlan {
   readonly captionStyle?: PreviewCaptionStyle;
   /** Requested clip-wide blend duration; absent in older plans means off. */
@@ -1026,6 +1048,8 @@ export interface PreviewPlan {
   readonly presentation: 'reading' | 'burn_in';
   /** Why the director built the clip as it did. Only a dry run carries it. */
   readonly decisions?: readonly string[];
+  /** Titles and labels over the program, bottom first. Absent from older hosts. */
+  readonly overlays?: readonly PreviewOverlay[];
 }
 
 /**

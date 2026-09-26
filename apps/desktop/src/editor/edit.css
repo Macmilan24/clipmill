@@ -94,7 +94,13 @@
   container-type: inline-size;
 }
 
-@container (max-width: 304px) {
+/* The five tabs sit in from the panel's edge, as its sections do. */
+.edit-side .review-tabs .review-tab-list[data-slot] {
+  padding-inline: 12px;
+}
+
+/* Below this their names alone fit the panel, without icons. */
+@container (max-width: 400px) {
   .edit-side .review-tab-list svg {
     display: none;
   }
@@ -354,6 +360,109 @@
   display: flex;
   align-items: center;
   min-width: 0;
+}
+
+/* A label above its control, for fields too wide to sit beside one. */
+.edit-field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.edit-link {
+  color: var(--cm-accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.edit-link:disabled {
+  opacity: 0.5;
+}
+
+/* The Text tab: the clip's texts, and the one being changed. */
+.edit-text-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.edit-text-list button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  text-align: left;
+}
+
+.edit-text-list button:hover {
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+}
+
+.edit-text-list button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-text-role {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--cm-recessed);
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+}
+
+.edit-text-words {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-text-time {
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+}
+
+.edit-text-input {
+  width: 100%;
+  min-height: 64px;
+  padding: 7px 9px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.edit-text-looks {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.edit-text-looks button {
+  height: 30px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.edit-text-looks button[aria-pressed='true'] {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: 1px;
 }
 
 .edit-wide {
@@ -830,6 +939,41 @@
   text-decoration: none !important;
 }
 
+/* A text over the picture, at its centre; exact pixels come from libass. */
+.edit-overlay-text {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  white-space: pre;
+  paint-order: stroke fill;
+  cursor: grab;
+  touch-action: none;
+}
+
+.edit-overlay-text:hover,
+.edit-overlay-text[data-selected='true'] {
+  outline: 1px dashed rgb(255 255 255 / 0.7);
+  outline-offset: 5px;
+}
+
+.edit-overlay-text[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.edit-overlay-text[data-exact='true']:not([data-dragging='true']) {
+  color: transparent !important;
+  -webkit-text-stroke: 0 transparent !important;
+  background: transparent !important;
+}
+
+.edit-stage:has(.edit-overlay-text[data-dragging='true']) .edit-caption-layer {
+  opacity: 0.25;
+}
+
 .edit-stage:has(.edit-caption[data-dragging='true']) .edit-caption-layer {
   opacity: 0.25;
 }
@@ -918,7 +1062,8 @@
   display: grid;
   grid-template-rows:
     18px calc(42px * var(--edit-lane-scale, 1)) calc(26px * var(--edit-lane-scale, 1))
-    calc(22px * var(--edit-lane-scale, 1)) calc(42px * var(--edit-lane-scale, 1));
+    calc(20px * var(--edit-lane-scale, 1)) calc(22px * var(--edit-lane-scale, 1))
+    calc(42px * var(--edit-lane-scale, 1));
   align-items: center;
   padding-top: 1px;
   color: var(--cm-text-muted);
@@ -928,7 +1073,8 @@
 .edit-track {
   grid-template-rows:
     18px calc(42px * var(--edit-lane-scale, 1)) calc(26px * var(--edit-lane-scale, 1))
-    calc(22px * var(--edit-lane-scale, 1)) calc(42px * var(--edit-lane-scale, 1));
+    calc(20px * var(--edit-lane-scale, 1)) calc(22px * var(--edit-lane-scale, 1))
+    calc(42px * var(--edit-lane-scale, 1));
   cursor: default;
 }
 
@@ -1084,6 +1230,36 @@
   font-size: 10.5px;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* A text over the picture, on its own lane under the captions. */
+.edit-text-block {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 3px;
+  overflow: hidden;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, #e0a13a 55%, var(--cm-glass-border));
+  border-radius: 3px;
+  background: color-mix(in srgb, #e0a13a 20%, var(--cm-glass));
+  color: var(--cm-text-primary);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.edit-text-block[data-selected='true'] {
+  box-shadow: 0 0 0 1.5px #e0a13a;
+}
+
+.edit-text-block > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 .edit-cue > span {
@@ -1257,7 +1433,8 @@
   .edit-track-labels {
     grid-template-rows:
       18px calc(34px * var(--edit-lane-scale, 1)) calc(22px * var(--edit-lane-scale, 1))
-      calc(20px * var(--edit-lane-scale, 1)) calc(32px * var(--edit-lane-scale, 1));
+      calc(18px * var(--edit-lane-scale, 1)) calc(20px * var(--edit-lane-scale, 1))
+      calc(32px * var(--edit-lane-scale, 1));
   }
 }
 

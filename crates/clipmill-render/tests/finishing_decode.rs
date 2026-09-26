@@ -1233,3 +1233,136 @@ fn a_landscape_split_and_a_square_fit_render_in_their_own_frames() {
     assert!(green(at(540, 1_020)), "{:?}", at(540, 1_020));
     eprintln!("Shapes decoded; renders in {}", work.display());
 }
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one explicit end-to-end encoder scenario"
+)]
+#[ignore = "requires the pinned .cache/bin/ffmpeg and fonts; renders and decodes actual pixels"]
+fn a_text_on_its_plate_is_drawn_where_the_document_puts_it() {
+    use clipmill_edit_ir::{FitBackground, Overlay, OverlayContent, TextRole};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-text-{nonce}"));
+    std::fs::create_dir_all(work.join("fonts")).expect("scratch directory");
+    std::fs::copy(
+        root.join(".cache/fonts/Inter-Bold.ttf"),
+        work.join("fonts/Inter-Bold.ttf"),
+    )
+    .expect("pinned font");
+    // Red on the left half, blue on the right.
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:r=30:d=2,drawbox=x=960:y=0:w=960:h=1080:color=blue:t=fill",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let mut document = EditDocument::default();
+    document.video.transition_ticks = 0;
+    document.video.segments = vec![VideoSegment {
+        segment_id: "seg_1".to_owned(),
+        source_fingerprint: fingerprint.clone(),
+        in_ticks: 0,
+        out_ticks: 2 * 90_000,
+        layout: Layout {
+            state: LayoutState::Fit,
+            background: Some(FitBackground::Colour {
+                colour: "#000000".to_owned(),
+            }),
+            ..Layout::default()
+        },
+    }];
+    // A thin letter on a green plate, in the middle of the frame.
+    document.overlays = vec![Overlay {
+        overlay_id: "ovl_hook".to_owned(),
+        start_ticks: 0,
+        end_ticks: 2 * 90_000,
+        content: OverlayContent::Text {
+            text: "I".to_owned(),
+            role: TextRole::Hook,
+            x: 500,
+            y: 500,
+            size: 120,
+            colour: "#FFFFFF".to_owned(),
+            plate: Some("#00FF00".to_owned()),
+        },
+    }];
+    document.captions.style_ref = RenderProfile::default().caption_style.style_ref;
+    let source = SourceInput {
+        fingerprint,
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 2 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let plan = compile(&document, &[source], &RenderProfile::default()).expect("compile");
+    std::fs::write(work.join("clip.ass"), &plan.ass).expect("script");
+    let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+    let measurement =
+        LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+            .expect("measured loudness");
+    ffmpeg(&binary, &work, &plan.encode_args(measurement));
+    let pixel = |x: u32, y: u32| {
+        let decoded = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                "1",
+                "-i",
+                "clip.mp4",
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("crop=2:2:{x}:{y},scale=1:1"),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ]),
+        );
+        assert_eq!(decoded.stdout.len(), 3);
+        [decoded.stdout[0], decoded.stdout[1], decoded.stdout[2]]
+    };
+    let white = |[r, g, b]: [u8; 3]| r > 200 && g > 200 && b > 200;
+    let green = |[r, g, b]: [u8; 3]| g > 180 && r < 80 && b < 80;
+    let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;
+    // The letter's stroke at the centre, its plate just beside it, and the
+    // picture carrying on beyond the plate.
+    assert!(white(pixel(539, 959)), "{:?}", pixel(539, 959));
+    assert!(green(pixel(505, 959)), "{:?}", pixel(505, 959));
+    assert!(red(pixel(200, 959)), "{:?}", pixel(200, 959));
+    eprintln!("Text decoded; render in {}", work.display());
+}

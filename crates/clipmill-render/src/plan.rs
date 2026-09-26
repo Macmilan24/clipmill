@@ -314,6 +314,17 @@ impl RenderPlan {
 /// Everything about the caption track that must hold before an encoder is
 /// asked to burn it in.
 fn check_captions(document: &EditDocument, duration_ticks: i64) -> Result<(), RenderError> {
+    // An overlay may run on to the end of the program, which ends it; one
+    // that would start after it was left behind by an edit and says so.
+    if let Some(overlay) = document
+        .overlays
+        .iter()
+        .find(|overlay| overlay.start_ticks >= duration_ticks)
+    {
+        return Err(RenderError::OverlayOutsideProgram(
+            overlay.overlay_id.clone(),
+        ));
+    }
     for cue in &document.captions.cues {
         if cue.start_ticks >= duration_ticks {
             return Err(RenderError::CueOutsideProgram(cue.cue_id.clone()));
@@ -456,7 +467,8 @@ pub fn compile(
         paths,
     } = lay_out(document, sources, rate)?;
 
-    let burn = (!document.captions.cues.is_empty()).then_some(ASS_FILE);
+    let burn =
+        (!document.captions.cues.is_empty() || !document.overlays.is_empty()).then_some(ASS_FILE);
     let graph = graph::build(&GraphRequest {
         document,
         profile,
@@ -482,7 +494,7 @@ pub fn compile(
     })?;
 
     Ok(RenderPlan {
-        ass: subtitles::write_ass(&document.captions, profile),
+        ass: subtitles::write_ass(&document.captions, &document.overlays, profile),
         srt: subtitles::write_srt(&document.captions, rate),
         vtt: subtitles::write_vtt(&document.captions, rate),
         cue_windows: subtitles::cue_windows(&document.captions, rate),
@@ -513,6 +525,8 @@ pub enum RenderError {
     UnknownCaptionStyle(String),
     #[error("cue {0} starts after the program ends")]
     CueOutsideProgram(String),
+    #[error("overlay {0} starts after the end of the program")]
+    OverlayOutsideProgram(String),
     #[error("cue {cue_id} carries {character:?}, which cannot be rendered as caption text")]
     UnrenderableCaptionText { cue_id: String, character: char },
     #[error("segment {0} asks for speaker fill without a crop path")]

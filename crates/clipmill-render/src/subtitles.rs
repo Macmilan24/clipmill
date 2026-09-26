@@ -5,7 +5,9 @@
 //! Burn-in uses kinetic cues when present and reading cues otherwise. Sidecars
 //! always use reading cues, with no kinetic fallback.
 
-use clipmill_edit_ir::{CaptionAnimation, CaptionCase, CaptionCue, CaptionRegion, CaptionTrack};
+use clipmill_edit_ir::{
+    CaptionAnimation, CaptionCase, CaptionCue, CaptionRegion, CaptionTrack, Overlay,
+};
 
 pub(crate) fn burned_text(text: &str, text_case: CaptionCase) -> String {
     match text_case {
@@ -69,7 +71,12 @@ fn plain_text(cue: &CaptionCue, separator: &str) -> String {
         .join(separator)
 }
 
-pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String {
+/// The burned-in captions, and the text laid over the program, as one script.
+pub(crate) fn write_ass(
+    track: &CaptionTrack,
+    overlays: &[Overlay],
+    profile: &RenderProfile,
+) -> String {
     let rate = profile.rate();
     let style = &profile.caption_style;
     let (play_x, play_y) = crate::profile::design_resolution(profile.width, profile.height);
@@ -111,6 +118,10 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
             lines.push(word_style_line(style, region));
         }
     }
+    // Likewise the text styles, only for a clip with text over it.
+    if !overlays.is_empty() {
+        lines.extend(crate::overlays::style_lines(style));
+    }
     lines.push(String::new());
     lines.push("[Events]".to_owned());
     lines.push(
@@ -131,6 +142,7 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
             &context,
         ));
     }
+    lines.extend(crate::overlays::dialogues(overlays, rate, (play_x, play_y)));
     lines.push(String::new());
     lines.join("\n")
 }
@@ -386,7 +398,7 @@ mod tests {
 
     #[test]
     fn karaoke_durations_sum_to_the_cue_length() {
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         let dialogue = ass
             .lines()
             .find(|line| line.starts_with("Dialogue:"))
@@ -408,7 +420,7 @@ mod tests {
 
     #[test]
     fn a_word_holds_the_highlight_until_the_next_one_starts() {
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         let dialogue = ass
             .lines()
             .find(|line| line.starts_with("Dialogue:"))
@@ -446,7 +458,7 @@ mod tests {
     #[test]
     fn stored_line_breaks_survive_into_every_output() {
         let profile = RenderProfile::default();
-        let ass = write_ass(&track(), &profile);
+        let ass = write_ass(&track(), &[], &profile);
         assert!(ass.contains("WrapStyle: 2"), "libass must not re-wrap");
         assert!(ass.contains("\\Npoint") || ass.contains("\\N{\\k"));
         let srt = write_srt(&track(), RATE);
@@ -483,7 +495,7 @@ mod tests {
         let mut both = track();
         both.burn_in = kinetic();
 
-        let ass = write_ass(&both, &RenderProfile::default());
+        let ass = write_ass(&both, &[], &RenderProfile::default());
         let srt = write_srt(&both, RATE);
         let vtt = write_vtt(&both, RATE);
 
@@ -506,7 +518,7 @@ mod tests {
     fn without_a_kinetic_grouping_the_reading_cues_are_what_gets_burned_in() {
         // Every document written before the second track existed behaves this
         // way, and must keep behaving this way.
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         assert_eq!(
             ass.lines()
                 .filter(|line| line.starts_with("Dialogue:"))
@@ -563,7 +575,7 @@ mod tests {
 
     #[test]
     fn every_region_has_a_style_with_its_own_anchor() {
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         assert!(ass.contains("Style: lower_safe,Inter,84,"));
         assert!(ass.contains("Style: upper_safe,"));
         assert!(ass.contains("Style: center,"));

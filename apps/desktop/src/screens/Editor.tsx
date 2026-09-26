@@ -40,6 +40,7 @@ import {
   removeGainPoint,
   splitSegment,
 } from '../editor/commands.js';
+import { removeOverlay, suggestedHook } from '../editor/overlays.js';
 import { EditorMonitor, type MonitorPlayback } from '../editor/EditorMonitor.js';
 import { EditorProperties } from '../editor/EditorProperties.js';
 import { EditorTimeline, type Tool, deleteRange } from '../editor/EditorTimeline.js';
@@ -265,6 +266,16 @@ export function Editor({
     },
     [previewCaptions, plan],
   );
+  // A hook title starts as what the clip is called, or the first thing said.
+  const hook = useMemo(() => {
+    if (!plan) return 'Your hook here';
+    const opening: string[] = [];
+    for (const word of programWords(plan, transcript)) {
+      opening.push(word.text);
+      if (/[.?!]$/.test(word.text) || opening.length >= 14) break;
+    }
+    return suggestedHook(document?.title ?? labels?.clip, opening.join(' '));
+  }, [plan, transcript, document?.title, labels?.clip]);
   const exactCaptions = useMemo(
     () =>
       exactCaptionsOf(
@@ -685,6 +696,8 @@ export function Editor({
       command = removeCropKeyframe(selection.tTicks, selection.segmentId, selection.secondary);
     } else if (selection.kind === 'gain') {
       command = removeGainPoint(selection.tTicks);
+    } else if (selection.kind === 'overlay') {
+      command = removeOverlay(selection.overlayId);
     } else if (selection.kind === 'cue') {
       const cue = plan.cues.find((item) => item.cueId === selection.cueId);
       const count = cue?.lines.flat().length ?? 0;
@@ -1074,6 +1087,7 @@ export function Editor({
           onSeek={seek}
           onTryLook={previewCaptions ? tryLook : null}
           fonts={plan.fonts ?? []}
+          hook={hook}
         />
       </div>
       <div

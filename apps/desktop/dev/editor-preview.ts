@@ -160,6 +160,44 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: { ...document, audio: { ...document.audio, gain_curve: curve } },
       };
     }
+    case 'add_overlay':
+    case 'remove_overlay':
+    case 'set_overlay': {
+      const overlays = [...(document.overlays ?? [])];
+      if (command.op === 'add_overlay') {
+        const added = command.overlay as (typeof overlays)[number];
+        overlays.splice(typeof command.at === 'number' ? command.at : overlays.length, 0, added);
+      } else if (command.op === 'remove_overlay') {
+        const at = overlays.findIndex((item) => item.overlay_id === command.overlay_id);
+        if (at < 0) return null;
+        overlays.splice(at, 1);
+      } else {
+        const changed = command.overlay as (typeof overlays)[number];
+        const at = overlays.findIndex((item) => item.overlay_id === changed.overlay_id);
+        if (at < 0) return null;
+        overlays[at] = changed;
+      }
+      const next = { ...document, overlays };
+      return {
+        plan: bumped({
+          overlays: overlays.map((overlay) => ({
+            overlayId: overlay.overlay_id,
+            startTicks: overlay.start_ticks,
+            endTicks: overlay.end_ticks,
+            firstFrame: frame(overlay.start_ticks),
+            endFrame: Math.min(plan.frameCount, frame(overlay.end_ticks)),
+            text: overlay.content.text,
+            role: overlay.content.role === 'hook' ? 'hook' : 'label',
+            x: overlay.content.x,
+            y: overlay.content.y,
+            size: overlay.content.size,
+            colour: overlay.content.colour,
+            plate: overlay.content.plate ?? null,
+          })),
+        }),
+        document: next,
+      };
+    }
     case 'set_frame_shape': {
       const shape = command.shape as FrameShape;
       const next = { ...document, video: { ...document.video, shape } };

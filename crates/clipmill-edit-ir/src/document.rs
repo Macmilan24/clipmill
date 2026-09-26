@@ -903,6 +903,98 @@ impl Default for AudioTrack {
     }
 }
 
+/// Something laid over the program for a span of it: a title, a label.
+///
+/// Its span is program time, like a cue's, so a cut moves it with the
+/// material around it and takes whatever it removed.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Overlay {
+    pub overlay_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub content: OverlayContent,
+}
+
+/// What an overlay shows.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OverlayContent {
+    /// Words set in the clip's caption font, by the same renderer as the
+    /// captions. Lines break where the text says, never elsewhere.
+    Text {
+        text: String,
+        /// A hook opens the clip and names what it is about; any other text
+        /// is a label.
+        #[serde(default, skip_serializing_if = "TextRole::is_label")]
+        role: TextRole,
+        /// Where its centre sits, per mille of the frame's width and height.
+        x: u16,
+        y: u16,
+        /// Its size at the 1920-pixel design height, as a caption's.
+        size: u16,
+        /// `#RRGGBB`.
+        colour: String,
+        /// An opaque plate behind it, `#RRGGBB`; absent draws an outline.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plate: Option<String>,
+    },
+}
+
+/// What a text overlay is for.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextRole {
+    Hook,
+    #[default]
+    Label,
+}
+
+impl TextRole {
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde skip_serializing_if requires a reference"
+    )]
+    pub fn is_label(&self) -> bool {
+        *self == Self::Label
+    }
+}
+
+impl Overlay {
+    /// The sizes a text may be set at, at the design height.
+    pub const TEXT_SIZES: std::ops::RangeInclusive<u16> = 24..=240;
+    /// The most characters a text may hold.
+    pub const TEXT_LENGTH: usize = 160;
+
+    fn is_valid(&self) -> bool {
+        match &self.content {
+            OverlayContent::Text {
+                text,
+                x,
+                y,
+                size,
+                colour,
+                plate,
+                ..
+            } => {
+                !text.trim().is_empty()
+                    && text.chars().count() <= Self::TEXT_LENGTH
+                    && !text
+                        .chars()
+                        .any(|character| matches!(character, '{' | '}' | '\\'))
+                    && !text
+                        .chars()
+                        .any(|character| character.is_control() && character != '\n')
+                    && *x <= 1_000
+                    && *y <= 1_000
+                    && Self::TEXT_SIZES.contains(size)
+                    && is_hex_colour(colour)
+                    && plate.as_deref().is_none_or(is_hex_colour)
+            }
+        }
+    }
+}
+
 /// An asset referenced by content hash, carrying the licence record that lets
 /// the render manifest state its rights position without guessing.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -931,6 +1023,9 @@ pub struct EditDocument {
     pub video: VideoTrack,
     pub captions: CaptionTrack,
     pub audio: AudioTrack,
+    /// Titles and labels over the program, bottom first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overlays: Vec<Overlay>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assets: Vec<Asset>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -949,6 +1044,7 @@ impl Default for EditDocument {
             video: VideoTrack::default(),
             captions: CaptionTrack::default(),
             audio: AudioTrack::default(),
+            overlays: Vec::new(),
             assets: Vec::new(),
             rationale: None,
             title: None,
@@ -1148,7 +1244,25 @@ impl EditDocument {
         let cues_before = self.caption_cue_count();
         let gain_before = self.audio.gain_curve.len();
         let gain_was = self.audio.gain_curve.clone();
+        let overlays_were = self.overlays.clone();
         if remove > 0 {
+            // An overlay the cut fell inside closes up around it; one it
+            // reached into from either side keeps what is left; one wholly
+            // inside it is gone with the material it was over.
+            for overlay in &mut self.overlays {
+                if overlay.end_ticks <= at || overlay.start_ticks >= removed_end {
+                    continue;
+                }
+                if at <= overlay.start_ticks {
+                    overlay.start_ticks = removed_end.min(overlay.end_ticks);
+                } else if removed_end >= overlay.end_ticks {
+                    overlay.end_ticks = at;
+                } else {
+                    overlay.end_ticks = overlay.end_ticks.saturating_add(delta);
+                }
+            }
+            self.overlays
+                .retain(|overlay| overlay.end_ticks > overlay.start_ticks);
             // Both presentations: they are two groupings of one word list and
             // a word that no longer plays is gone from each. Splicing only the
             // reading cues left the burned-in ones showing a caption over
@@ -1200,7 +1314,8 @@ impl EditDocument {
         let destroyed = self.caption_word_count() != words_before
             || self.caption_cue_count() != cues_before
             || self.audio.gain_curve.len() != gain_before
-            || self.audio.gain_curve != gain_was;
+            || self.audio.gain_curve != gain_was
+            || self.overlays != overlays_were;
         if delta == 0 {
             return destroyed;
         }
@@ -1223,6 +1338,12 @@ impl EditDocument {
         for point in &mut self.audio.gain_curve {
             if point.t_ticks >= shift_from {
                 point.t_ticks = point.t_ticks.saturating_add(delta).max(0);
+            }
+        }
+        for overlay in &mut self.overlays {
+            if overlay.start_ticks >= shift_from {
+                overlay.start_ticks = overlay.start_ticks.saturating_add(delta).max(0);
+                overlay.end_ticks = overlay.end_ticks.saturating_add(delta).max(0);
             }
         }
         destroyed
@@ -1272,6 +1393,14 @@ impl EditDocument {
         }
         self.audio.gain_curve.extend(pins);
         self.audio.gain_curve.sort_by_key(|point| point.t_ticks);
+    }
+
+    /// Where an overlay sits in the stack.
+    pub(crate) fn overlay_index(&self, overlay_id: &str) -> Result<usize, DocumentError> {
+        self.overlays
+            .iter()
+            .position(|overlay| overlay.overlay_id == overlay_id)
+            .ok_or_else(|| DocumentError::UnknownOverlay(overlay_id.to_owned()))
     }
 
     fn caption_word_count(&self) -> usize {
@@ -1440,6 +1569,22 @@ impl EditDocument {
         {
             return Err(DocumentError::InvalidTitle);
         }
+        let mut seen_overlays = Vec::with_capacity(self.overlays.len());
+        for overlay in &self.overlays {
+            if overlay.overlay_id.is_empty() {
+                return Err(DocumentError::EmptyIdentifier);
+            }
+            if seen_overlays.contains(&overlay.overlay_id.as_str()) {
+                return Err(DocumentError::DuplicateOverlay(overlay.overlay_id.clone()));
+            }
+            seen_overlays.push(overlay.overlay_id.as_str());
+            if overlay.start_ticks < 0 || overlay.end_ticks <= overlay.start_ticks {
+                return Err(DocumentError::EmptyOverlay(overlay.overlay_id.clone()));
+            }
+            if !overlay.is_valid() {
+                return Err(DocumentError::InvalidOverlay(overlay.overlay_id.clone()));
+            }
+        }
         validate_cues(&self.captions.cues)?;
         validate_cues(&self.captions.burn_in)?;
         validate_shared_words(&self.captions)?;
@@ -1561,6 +1706,14 @@ pub enum DocumentError {
     InsetWithoutCropPath(String),
     #[error("segment {0} asks for a split, zoom, inset or background it cannot draw")]
     InvalidLayoutStyle(String),
+    #[error("overlay {0} appears more than once")]
+    DuplicateOverlay(String),
+    #[error("overlay {0} has an empty or negative time span")]
+    EmptyOverlay(String),
+    #[error("overlay {0} has text, a size, a colour or a place it cannot be drawn with")]
+    InvalidOverlay(String),
+    #[error("no overlay named {0}")]
+    UnknownOverlay(String),
     #[error("no segment named {0}")]
     UnknownSegment(String),
     #[error("no cue named {0}")]

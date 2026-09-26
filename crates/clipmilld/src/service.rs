@@ -26,14 +26,14 @@ use clipmill_contracts::proto::ipc::v1::{
     ListClipDecisionsResponse, ListEditDocsResponse, ListFacesRequest, ListFacesResponse,
     ListJobsResponse, ListProjectsResponse, ListSourcesResponse, LocalLockStatusV1, MediaFileV1,
     PingResponse, PlanExportRequest, PlanExportResponse, PreviewCropV1, PreviewCueV1,
-    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1,
-    PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
-    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
-    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
-    StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
-    ThumbnailFramingRequest, ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1,
-    request, response,
+    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewOverlayV1, PreviewProxyV1,
+    PreviewSegmentV1, PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1,
+    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
+    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
+    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
+    SolveCropPathResponse, StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest,
+    SubscribeTaskEventsResponse, ThumbnailFramingRequest, ThumbnailFramingResponse,
+    TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
 };
 use clipmill_contracts::schemas::vision_face_track::VisionFaceTrack;
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
@@ -4190,6 +4190,24 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
             .map(|point| PreviewGainV1 {
                 frame: point.frame,
                 gain_db: point.gain_db,
+            })
+            .collect(),
+        overlays: plan
+            .overlays
+            .iter()
+            .map(|overlay| PreviewOverlayV1 {
+                overlay_id: overlay.overlay_id.clone(),
+                start_ticks: overlay.start_ticks,
+                end_ticks: overlay.end_ticks,
+                first_frame: overlay.first_frame,
+                end_frame: overlay.end_frame,
+                text: overlay.text.clone(),
+                role: overlay.role.to_owned(),
+                x: u32::from(overlay.x),
+                y: u32::from(overlay.y),
+                size: u32::from(overlay.size),
+                colour: overlay.colour.clone(),
+                plate: overlay.plate.clone().unwrap_or_default(),
             })
             .collect(),
         width: plan.width,
