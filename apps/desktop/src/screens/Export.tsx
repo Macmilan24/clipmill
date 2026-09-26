@@ -40,6 +40,7 @@ import { Spinner } from '@/components/ui/spinner';
 
 import type { ExportFinding, ExportPlan } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
+import type { FrameShape } from '../editor/layouts.js';
 import type { EditorFocus } from '../shell/route.js';
 import {
   type Delivery,
@@ -183,6 +184,8 @@ export interface ExportProps {
   readonly onRelink?: (() => void) | undefined;
   /** Frame rate and size of the delivered picture. */
   readonly format?: FormatChoice;
+  /** The clip's shape, which the sizes are given in. */
+  readonly shape?: FrameShape;
   /** The recording's own frame rate, for "Match recording". Null when unknown. */
   readonly sourceFps?: number | null;
   readonly onFormatChange?: (format: FormatChoice) => void;
@@ -456,7 +459,11 @@ export function Export(props: ExportProps): JSX.Element {
             </CardHeader>
             <CardContent>
               <p className="text-sm font-medium">
-                {formatSummary(props.format ?? DEFAULT_FORMAT, props.sourceFps ?? null)}
+                {formatSummary(
+                  props.format ?? DEFAULT_FORMAT,
+                  props.sourceFps ?? null,
+                  props.shape,
+                )}
               </p>
               <p className="mt-1 mb-4 text-xs text-muted-foreground">
                 Captions and mastered audio included.
@@ -503,7 +510,7 @@ export function Export(props: ExportProps): JSX.Element {
                       <SelectContent>
                         {HEIGHT_CHOICES.map((height) => (
                           <SelectItem key={height} value={String(height)}>
-                            {heightLabel(height)}
+                            {heightLabel(height, props.shape)}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -408,6 +408,23 @@ fn lay_out(
     })
 }
 
+/// A profile of another shape than the document's would render every fitted
+/// section in the wrong frame without a word; refuse it instead.
+pub(crate) fn check_shape(
+    document: &EditDocument,
+    profile: &RenderProfile,
+) -> Result<(), RenderError> {
+    let (width, height) = document.video.shape.ratio();
+    if profile.width * i64::from(height) == profile.height * i64::from(width) {
+        Ok(())
+    } else {
+        Err(RenderError::ShapeMismatch {
+            width: profile.width,
+            height: profile.height,
+        })
+    }
+}
+
 pub fn compile(
     document: &EditDocument,
     sources: &[SourceInput],
@@ -417,6 +434,7 @@ pub fn compile(
     if document.video.segments.is_empty() {
         return Err(RenderError::EmptyProgram);
     }
+    check_shape(document, profile)?;
     let mut effective_profile = profile.clone();
     effective_profile.caption_style = crate::profile::CaptionStyle::for_track(&document.captions)
         .or_else(|| {
@@ -503,6 +521,8 @@ pub enum RenderError {
     ZoomingCropPath(String),
     #[error("segment {0} has a crop path whose aspect ratio is not the output's")]
     CropAspectMismatch(String),
+    #[error("a {width} x {height} output is not the shape this clip is edited in")]
+    ShapeMismatch { width: i64, height: i64 },
     #[error("segment {0} has a crop rectangle reaching outside the source frame")]
     CropOutsideFrame(String),
     #[error("segment {0} has two crop keyframes on the same output frame")]
@@ -554,10 +574,10 @@ pub fn largest_upscale(
             LayoutState::Fit => vec![fitted()],
             LayoutState::SpeakerFill => vec![stretched(&layout.crop_path, profile.height)],
             LayoutState::TwoUp => {
-                let (upper, lower) = layout.viewport_heights(profile.height);
+                let ((_, first), (_, second)) = layout.viewports(profile.width, profile.height);
                 vec![
-                    stretched(&layout.crop_path, upper),
-                    stretched(&layout.secondary_crop_path, lower),
+                    stretched(&layout.crop_path, first),
+                    stretched(&layout.secondary_crop_path, second),
                 ]
             }
             LayoutState::PictureInPicture => {

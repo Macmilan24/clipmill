@@ -11,7 +11,7 @@
 
 use clipmill_edit_ir::{
     CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionWord, CropKeyframe, CropRect,
-    EditCommand, EditDocument, GainPoint, Layout, LayoutState, VideoSegment,
+    EditCommand, EditDocument, FrameShape, GainPoint, Layout, LayoutState, VideoSegment,
 };
 use clipmill_render::{
     CLIP_FILE, LOUDNORM_SLOT, LoudnessMeasurement, RenderError, RenderProfile, SourceInput,
@@ -946,6 +946,46 @@ fn a_screen_over_a_face_shares_the_height_at_its_split() {
         refuses(&document, &[source()]),
         RenderError::CropAspectMismatch(_)
     ));
+}
+
+#[test]
+fn a_landscape_frame_splits_side_by_side_and_the_shape_sizes_the_render() {
+    // Each half of the recording in its own half of a 16:9 frame.
+    let mut document = crop_document(still(0, 0, 960, 1_080));
+    document.video.shape = FrameShape::Landscape;
+    let layout = &mut document.video.segments[0].layout;
+    layout.state = LayoutState::TwoUp;
+    layout.secondary_crop_path = still(960, 0, 960, 1_080);
+    let profile = RenderProfile::for_output(
+        FrameShape::Landscape,
+        1_920,
+        RenderProfile::default().frame_rate,
+    )
+    .expect("offered");
+    let plan = compile(&document, &[source()], &profile).expect("side by side compiles");
+    assert!(
+        plan.graph.graph.contains("hstack=inputs=2"),
+        "{}",
+        plan.graph.graph
+    );
+    assert!(plan.graph.graph.contains("scale=960:1080"));
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert_eq!((preview.width, preview.height), (1_920, 1_080));
+    assert_eq!(preview.segments[0].upper_height, 960);
+
+    // A portrait crop does not fill a landscape half.
+    let mut portrait = document.clone();
+    portrait.video.segments[0].layout.crop_path = still(0, 0, 608, 1_080);
+    assert!(matches!(
+        compile(&portrait, &[source()], &profile),
+        Err(RenderError::CropAspectMismatch(_))
+    ));
+    // Nor does a 9:16 profile render a landscape clip.
+    assert!(matches!(
+        compile(&document, &[source()], &RenderProfile::default()),
+        Err(RenderError::ShapeMismatch { .. })
+    ));
+    assert!(clipmill_render::preview_plan(&document, &RenderProfile::default()).is_err());
 }
 
 #[test]

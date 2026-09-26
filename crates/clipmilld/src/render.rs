@@ -148,9 +148,10 @@ pub(crate) async fn execute_render_task(
     let rate = chosen_rate
         .or(source_rate)
         .unwrap_or(RenderProfile::default().frame_rate);
-    let profile = RenderProfile::for_output(height, rate).ok_or_else(|| {
-        TaskExecutionError::deterministic("the requested output format is not supported")
-    })?;
+    let profile =
+        RenderProfile::for_output(document.video.shape, height, rate).ok_or_else(|| {
+            TaskExecutionError::deterministic("the requested output format is not supported")
+        })?;
     let plan = clipmill_render::compile(&document, &inputs, &profile)
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
     // The face the captions are set in, which the compiled style names.

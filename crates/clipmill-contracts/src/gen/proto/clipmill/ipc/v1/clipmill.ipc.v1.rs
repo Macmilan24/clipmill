@@ -446,8 +446,9 @@ pub struct OutputFormatV1 {
     pub frame_rate_num: u32,
     #[prost(uint32, tag = "2")]
     pub frame_rate_den: u32,
-    /// Height of the 9:16 frame in pixels: 1920 (1080p), 2560 (1440p) or 3840
-    /// (4K). Zero is 1920.
+    /// The size, named by the height the 9:16 frame has at it: 1920 (1080p),
+    /// 2560 (1440p) or 3840 (4K). Zero is 1920. A clip in another shape keeps
+    /// that size's short side: 1080p square is 1080 x 1080, landscape 1920 x 1080.
     #[prost(uint32, tag = "3")]
     pub height: u32,
 }
@@ -1342,8 +1343,9 @@ pub struct SolveCropPathRequest {
     #[prost(bool, tag = "9")]
     pub follow_track: bool,
     /// Solve the two-person layout instead: the pair the two-up gate finds, each
-    /// in its own half-height portrait, the left-hand face on top. Refused, with
-    /// a reason, when two people are not both clearly in the span.
+    /// in its own half of the frame — stacked, the left-hand face on top, or
+    /// side by side for a landscape aspect. Refused, with a reason, when two
+    /// people are not both clearly in the span.
     #[prost(bool, tag = "10")]
     pub two_up: bool,
 }
@@ -1820,7 +1822,8 @@ pub struct PreviewSegmentV1 {
     /// pixels, so a player draws what the export will rather than working it out.
     #[prost(string, tag = "10")]
     pub layout: ::prost::alloc::string::String,
-    /// Two viewports: the upper one's height.
+    /// Two viewports: the first one's length along the split — its height when
+    /// stacked, its width side by side in a landscape frame.
     #[prost(int64, tag = "11")]
     pub upper_height: i64,
     /// Picture in picture: the inset's square.

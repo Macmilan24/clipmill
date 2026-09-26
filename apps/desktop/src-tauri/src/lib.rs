@@ -732,9 +732,14 @@ async fn local_lock(
 /// The crop path for a span, as a proposal. Nothing is written, so the
 /// Inspector may ask again every time a boundary moves.
 ///
-/// `track_id` follows that face instead of the one the gate would choose, and
-/// `two_up` solves both portraits of a two-person layout.
+/// `track_id` follows that face instead of the one the gate would choose,
+/// `two_up` solves both portraits of a two-person layout, and the aspect is
+/// the clip's frame, 9:16 when absent.
 #[tauri::command]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "a Tauri command's arguments are its JSON fields"
+)]
 async fn solve_crop_path(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
     project_id: String,
@@ -743,14 +748,20 @@ async fn solve_crop_path(
     end_ticks: u64,
     track_id: Option<u32>,
     two_up: Option<bool>,
+    aspect_width: Option<u32>,
+    aspect_height: Option<u32>,
 ) -> Result<views::CropPathView, String> {
+    let (aspect_width, aspect_height) = match (aspect_width, aspect_height) {
+        (Some(width), Some(height)) if width > 0 && height > 0 => (width, height),
+        _ => (9, 16),
+    };
     let request = clipmill_contracts::proto::ipc::v1::SolveCropPathRequest {
         project_id,
         face_track_artifact_id,
         start_ticks,
         end_ticks,
-        aspect_width: 9,
-        aspect_height: 16,
+        aspect_width,
+        aspect_height,
         weights: None,
         track_id: track_id.unwrap_or(0),
         follow_track: track_id.is_some(),

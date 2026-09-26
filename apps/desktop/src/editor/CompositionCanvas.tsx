@@ -94,7 +94,12 @@ export function drawComposition(
     return true;
   }
   if (crop && layout !== 'fit') {
-    if (secondary) {
+    if (secondary && width > height) {
+      // Side by side across a landscape frame.
+      const left = segment?.upperHeight || width / 2;
+      portrait(crop, 0, height, 0, left);
+      portrait(secondary, 0, height, left, width - left);
+    } else if (secondary) {
       const upper = segment?.upperHeight || height / 2;
       portrait(crop, 0, upper);
       portrait(secondary, upper, height - upper);

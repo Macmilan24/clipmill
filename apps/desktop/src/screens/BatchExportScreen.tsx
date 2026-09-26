@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import { outputFormat, recallFormat } from '../export/format.js';
+import { outputFormat, recallFormat, sizeName } from '../export/format.js';
 import type { ExportBatch, ExportBatchItem } from '../daemon/client.js';
 import { useEditDocuments } from '../editor/documents.js';
 import { deliveryProgressText, deliveryWaitText, useDelivery } from '../export/delivery.js';
@@ -507,7 +507,7 @@ export function BatchExportScreen({ api = daemonApi, onBack, onEdit }: BatchExpo
               </p>
             </div>
             <div className="space-y-2 border-y py-4 text-xs text-muted-foreground">
-              <p>1080 × 1920 · H.264 / AAC</p>
+              <p>{sizeName(recallFormat().height)}, each clip in its own shape · H.264 / AAC</p>
               <p>Burned captions + SRT and VTT</p>
               <p>Metadata, thumbnail and checksums</p>
             </div>

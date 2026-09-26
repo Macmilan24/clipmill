@@ -8,6 +8,7 @@
  */
 import type { EditCommandJson, EditHistoryEntry } from '../daemon/client.js';
 import { batch } from './commands.js';
+import { FRAME_SHAPES } from './layouts.js';
 
 const LAYOUTS: Record<string, string> = {
   fit: 'Whole frame',
@@ -29,6 +30,8 @@ export function describeCommand(command: EditCommandJson): string {
       const inner = (command.commands as readonly EditCommandJson[] | undefined) ?? [];
       const first = inner[0];
       if (!first) return 'Edit';
+      // A new shape carries its reshaped crops along; the shape is the edit.
+      if (first.op === 'set_frame_shape') return describeCommand(first);
       const labels = new Set(inner.map(describeCommand));
       return labels.size === 1 ? describeCommand(first) : `${describeCommand(first)} and more`;
     }
@@ -94,6 +97,8 @@ export function describeCommand(command: EditCommandJson): string {
       return 'Refresh captions';
     case 'set_title':
       return command.title ? `Rename: ${String(command.title)}` : 'Clear the title';
+    case 'set_frame_shape':
+      return `Shape: ${FRAME_SHAPES.find((item) => item.shape === command.shape)?.ratio ?? 'changed'}`;
     default:
       return 'Edit';
   }

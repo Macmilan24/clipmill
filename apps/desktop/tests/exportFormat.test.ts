@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_FORMAT,
   formatSummary,
+  heightLabel,
   outputFormat,
   rateLabel,
   recallFormat,
@@ -46,5 +47,13 @@ describe('the export format', () => {
     expect(rateLabel('source', 25)).toBe('Match recording (25 fps)');
     expect(formatSummary(DEFAULT_FORMAT, 25)).toBe('1080 × 1920 · 25 fps · MP4');
     expect(formatSummary({ rate: '30', height: 3840 }, null)).toBe('2160 × 3840 · 30 fps · MP4');
+  });
+
+  it('gives each size in the clip’s own shape, keeping its short side', () => {
+    expect(heightLabel(1920)).toBe('1080p · 1080 × 1920');
+    expect(heightLabel(1920, 'landscape')).toBe('1080p · 1920 × 1080');
+    expect(heightLabel(2560, 'portrait')).toBe('1440p · 1440 × 1800');
+    expect(heightLabel(3840, 'square')).toBe('4K · 2160 × 2160');
+    expect(formatSummary(DEFAULT_FORMAT, 25, 'landscape')).toBe('1920 × 1080 · 25 fps · MP4');
   });
 });

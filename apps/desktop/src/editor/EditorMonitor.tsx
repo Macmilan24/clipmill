@@ -15,6 +15,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import {
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
@@ -51,6 +52,7 @@ import { CompositionCanvas } from './CompositionCanvas.js';
 import { type FaceNow, byTrack, facesAt, fittedFrame } from './faces.js';
 import { pressOrDrag } from './gesture.js';
 import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf, sourceTicksAt } from './player.js';
+import { FRAME_SHAPES, shapeOfFrame } from './layouts.js';
 import type { EditorSelection } from './selection.js';
 
 export type MonitorView = 'edit' | 'original';
@@ -164,6 +166,8 @@ export function EditorMonitor({
   const [safe, setSafe] = useState<SafePlatform>('off');
   const [grid, setGrid] = useState(false);
   const segment = segmentAt(plan, playback.frame);
+  // The apps' own buttons and captions are mapped over a 9:16 frame only.
+  const vertical = shapeOfFrame(plan) === 'vertical';
   const twoUp = cropAt(plan, playback.frame, true) !== null;
   const fitted = cropAt(plan, playback.frame) === null;
   const inset = segment?.layout === 'picture_in_picture';
@@ -235,23 +239,25 @@ export function EditorMonitor({
             : ''}
         </span>
         <span className="review-spacer" />
-        <Select value={safe} onValueChange={(value) => setSafe(value as SafePlatform)}>
-          <SelectTrigger
-            aria-label="Safe area"
-            className="edit-viewer-select"
-            data-active={safe !== 'off' ? 'true' : undefined}
-            disabled={view !== 'edit'}
-          >
-            <SelectValue>{safe === 'off' ? 'Safe area' : SAFE_LABELS[safe]}</SelectValue>
-          </SelectTrigger>
-          <SelectContent align="end">
-            {(Object.keys(SAFE_LABELS) as SafePlatform[]).map((platform) => (
-              <SelectItem key={platform} value={platform}>
-                {platform === 'off' ? 'Off' : SAFE_LABELS[platform]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {vertical && (
+          <Select value={safe} onValueChange={(value) => setSafe(value as SafePlatform)}>
+            <SelectTrigger
+              aria-label="Safe area"
+              className="edit-viewer-select"
+              data-active={safe !== 'off' ? 'true' : undefined}
+              disabled={view !== 'edit'}
+            >
+              <SelectValue>{safe === 'off' ? 'Safe area' : SAFE_LABELS[safe]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end">
+              {(Object.keys(SAFE_LABELS) as SafePlatform[]).map((platform) => (
+                <SelectItem key={platform} value={platform}>
+                  {platform === 'off' ? 'Off' : SAFE_LABELS[platform]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <button
           type="button"
           className="review-viewer-toggle"
@@ -261,7 +267,9 @@ export function EditorMonitor({
         >
           Grid
         </button>
-        <span className="review-viewer-note mono">9:16</span>
+        <span className="review-viewer-note mono">
+          {FRAME_SHAPES.find((item) => item.shape === shapeOfFrame(plan))?.ratio ?? '9:16'}
+        </span>
       </div>
 
       <div className="review-stage-wrap">
@@ -274,7 +282,7 @@ export function EditorMonitor({
           startSeconds={startSeconds}
           playback={playback}
           view={view}
-          safe={view === 'edit' ? safe : 'off'}
+          safe={view === 'edit' && vertical ? safe : 'off'}
           grid={grid && view === 'edit'}
           busy={busy}
           selection={selection}
@@ -423,7 +431,8 @@ function Stage({
 
   /**
    * Where a viewport sits on the output frame, in output pixels: the whole
-   * frame, one of two stacked viewports at the section's split, or the inset.
+   * frame, one of two viewports at the section's split — stacked, or side by
+   * side in a landscape frame — or the inset.
    */
   const viewportOf = (secondary: boolean): Rect => {
     const whole = { x: 0, y: 0, width: plan.width, height: plan.height };
@@ -434,6 +443,12 @@ function Stage({
         : whole;
     }
     if (cropAt(plan, frame, true) === null) return whole;
+    if (plan.width > plan.height) {
+      const left = part?.upperHeight || plan.width / 2;
+      return secondary
+        ? { x: left, y: 0, width: plan.width - left, height: plan.height }
+        : { x: 0, y: 0, width: left, height: plan.height };
+    }
     const upper = part?.upperHeight || plan.height / 2;
     return secondary
       ? { x: 0, y: upper, width: plan.width, height: plan.height - upper }
@@ -665,7 +680,12 @@ function Stage({
       className="review-stage edit-stage"
       data-view="result"
       data-testid="stage"
-      style={{ containerType: 'inline-size' }}
+      style={
+        {
+          containerType: 'inline-size',
+          '--output-aspect': String(plan.width / Math.max(1, plan.height)),
+        } as CSSProperties
+      }
     >
       {proxyUrl ? (
         <>

@@ -10,6 +10,7 @@ import type { CropKeyframe, CropPath, SolveOptions } from '../daemon/client.js';
 import { batch, setLayout, solvedKeyframe } from '../editor/commands.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import { SPLITS, viewports } from '../editor/layouts.js';
 import { segmentAt, sourceOf } from '../editor/player.js';
 import { useEditor } from '../editor/useEditor.js';
 import { historySteps } from '../editor/history.js';
@@ -127,13 +128,14 @@ export function EditorScreen({
       const version = ++resolveVersion.current;
       setResolving(true);
       setResolveProblem(null);
+      const output = { width: plan.width, height: plan.height };
       const ask = (options: SolveOptions = {}) =>
         api.solveCropPath(
           faceTrack.projectId,
           faceTrack.artifactId,
           segment.inTicks,
           segment.outTicks,
-          options,
+          { ...options, aspect: output },
         );
       const path = (
         keyframes: readonly CropKeyframe[],
@@ -159,20 +161,24 @@ export function EditorScreen({
           if (version !== resolveVersion.current) return;
           const pair = solved.secondaryKeyframes ?? [];
           if (segment.hasTwoUpPaths && !solved.fit && pair.length > 0) {
-            // Each portrait is half the frame tall.
-            const half = { width: plan.width, height: plan.height / 2 };
+            // Each portrait keeps its centre and closeness, in the viewport
+            // the section's split gives it — stacked, or side by side.
+            const saved = editor.document?.video.segments?.find(
+              (item) => item.segment_id === segment.segmentId,
+            );
+            const [first, second] = viewports(saved?.layout.split ?? SPLITS.even, output);
             await editor.apply(
               batch([
                 setLayout('two_up', segment.segmentId),
                 {
                   op: 'replace_crop_path',
                   segment_id: segment.segmentId,
-                  path: path(solved.keyframes, half),
+                  path: path(solved.keyframes, first),
                 },
                 {
                   op: 'replace_secondary_crop_path',
                   segment_id: segment.segmentId,
-                  path: path(pair, half),
+                  path: path(pair, second),
                 },
               ]),
             );
@@ -194,7 +200,7 @@ export function EditorScreen({
             {
               op: 'replace_crop_path',
               segment_id: segment.segmentId,
-              path: path(solved.keyframes, { width: plan.width, height: plan.height }),
+              path: path(solved.keyframes, output),
             },
           ]),
         );

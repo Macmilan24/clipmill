@@ -565,6 +565,57 @@ fn a_layout_style_sets_and_undoes_in_one_step_and_refuses_what_it_cannot_draw() 
 }
 
 #[test]
+fn a_frame_shape_sets_and_undoes_and_only_a_landscape_frame_splits_across() {
+    use clipmill_edit_ir::{FrameShape, Inset, InsetCorner, Layout, splits_across};
+    let original = document(Vec::new());
+    let mut edited = original.clone();
+    let undo = EditCommand::SetFrameShape {
+        shape: FrameShape::Square,
+    }
+    .apply(&mut edited)
+    .expect("a shape");
+    assert_eq!(edited.video.shape, FrameShape::Square);
+    let bytes = edited.to_canonical_json().expect("canonical");
+    assert!(
+        String::from_utf8(bytes)
+            .expect("utf-8")
+            .contains(r#""shape":"square""#)
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+    // A 9:16 document never writes its shape, so its address is unchanged.
+    let bytes = original.to_canonical_json().expect("canonical");
+    assert!(!String::from_utf8(bytes).expect("utf-8").contains("shape"));
+
+    assert_eq!(FrameShape::Vertical.frame(1_080), (1_080, 1_920));
+    assert_eq!(FrameShape::Portrait.frame(1_080), (1_080, 1_350));
+    assert_eq!(FrameShape::Square.frame(1_440), (1_440, 1_440));
+    assert_eq!(FrameShape::Landscape.frame(2_160), (3_840, 2_160));
+
+    let layout = Layout {
+        split: Some(400),
+        ..Layout::default()
+    };
+    assert!(!splits_across(1_080, 1_080) && splits_across(1_920, 1_080));
+    assert_eq!(
+        layout.viewports(1_080, 1_920),
+        ((1_080, 768), (1_080, 1_152))
+    );
+    assert_eq!(
+        layout.viewports(1_920, 1_080),
+        ((768, 1_080), (1_152, 1_080))
+    );
+
+    // An inset is a share of the short side, clear of the captions below.
+    let inset = Inset {
+        corner: InsetCorner::BottomRight,
+        size: 350,
+    };
+    assert_eq!(inset.place(1_080, 1_920), (660, 1_042, 378));
+    assert_eq!(inset.place(1_920, 1_080), (1_500, 486, 378));
+}
+
+#[test]
 fn a_picture_in_picture_needs_its_inset_but_not_a_main_crop() {
     let original = document(Vec::new());
     let mut edited = original.clone();

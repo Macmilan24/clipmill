@@ -184,6 +184,60 @@ pub enum FitBackground {
     Colour { colour: String },
 }
 
+/// The shape of the delivered frame. Crops are fitted to it and the render is
+/// sized by it; captions keep their proportions at every shape.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrameShape {
+    /// 9:16, the frame of the vertical short-video apps.
+    #[default]
+    Vertical,
+    /// 4:5, the tallest a feed shows whole.
+    Portrait,
+    /// 1:1.
+    Square,
+    /// 16:9, for a landscape player.
+    Landscape,
+}
+
+impl FrameShape {
+    /// Width to height, in lowest terms.
+    pub const fn ratio(self) -> (u32, u32) {
+        match self {
+            Self::Vertical => (9, 16),
+            Self::Portrait => (4, 5),
+            Self::Square => (1, 1),
+            Self::Landscape => (16, 9),
+        }
+    }
+
+    /// The frame whose short side is `short`, in even pixels.
+    pub fn frame(self, short: i64) -> (i64, i64) {
+        let (width, height) = self.ratio();
+        let (width, height) = (i64::from(width), i64::from(height));
+        let long = |across: i64, along: i64| (short * along / across) & !1;
+        if width <= height {
+            (short, long(width, height))
+        } else {
+            (long(height, width), short)
+        }
+    }
+
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde skip_serializing_if requires a reference"
+    )]
+    pub fn is_vertical(&self) -> bool {
+        *self == Self::Vertical
+    }
+}
+
+/// Whether two viewports sit side by side in a frame this size, rather than
+/// one above the other: across a frame wider than it is tall.
+pub const fn splits_across(width: i64, height: i64) -> bool {
+    width > height
+}
+
 /// The corner a picture-in-picture inset sits in.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -200,7 +254,7 @@ pub enum InsetCorner {
 #[serde(deny_unknown_fields)]
 pub struct Inset {
     pub corner: InsetCorner,
-    /// Its side as a share of the frame's width, per mille.
+    /// Its side as a share of the frame's short side, per mille.
     pub size: u16,
 }
 
@@ -216,23 +270,29 @@ impl Default for Inset {
 impl Inset {
     /// The sizes offered: from a corner badge to most of the width.
     pub const SIZES: std::ops::RangeInclusive<u16> = 200..=600;
-    /// The gap between the inset and the frame's edges, per mille of the width.
+    /// The gap between the inset and the frame's edges, per mille of the
+    /// short side.
     pub const MARGIN: i64 = 40;
 
     /// The inset's square in pixels of a frame this size: `(x, y, side)`.
     pub fn place(self, width: i64, height: i64) -> (i64, i64, i64) {
-        let side = (width * i64::from(self.size) / 1_000) & !1;
-        let margin = (width * Self::MARGIN / 1_000) & !1;
+        let short = width.min(height);
+        let side = (short * i64::from(self.size) / 1_000) & !1;
+        let margin = (short * Self::MARGIN / 1_000) & !1;
         let x = match self.corner {
             InsetCorner::TopLeft | InsetCorner::BottomLeft => margin,
             InsetCorner::TopRight | InsetCorner::BottomRight => width - margin - side,
         };
-        // Clear of the platforms' top bar, and of the caption and button
-        // block along the bottom.
+        // A tall frame keeps clear of the platforms' top bar and of the
+        // caption and button block along the bottom; any other keeps its
+        // margin at the top and clear of the captions at the bottom.
+        let tall = height > width;
         let y = match self.corner {
-            InsetCorner::TopLeft | InsetCorner::TopRight => (height * 90 / 1_000) & !1,
+            InsetCorner::TopLeft | InsetCorner::TopRight if tall => (height * 90 / 1_000) & !1,
+            InsetCorner::TopLeft | InsetCorner::TopRight => margin,
             InsetCorner::BottomLeft | InsetCorner::BottomRight => {
-                (height - (height * 260 / 1_000) - side) & !1
+                let clear = if tall { 260 } else { 200 };
+                (height - (height * clear / 1_000) - side) & !1
             }
         };
         (x, y.max(0), side)
@@ -249,9 +309,10 @@ pub struct Layout {
     /// picture-in-picture, inert in other layouts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secondary_crop_path: Vec<CropKeyframe>,
-    /// Two viewports: the upper one's share of the frame height, per mille.
-    /// Absent is an even split; a screen share over a face is the upper
-    /// viewport at the recording's own shape.
+    /// Two viewports: the first one's share of the frame, per mille — of the
+    /// height when they are stacked, of the width when they sit side by side
+    /// in a landscape frame. Absent is an even split; a screen share over a
+    /// face is the first viewport at the recording's own shape.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub split: Option<u16>,
     /// What fills around a fitted picture. Absent is the blurred picture.
@@ -288,11 +349,23 @@ impl Layout {
         self.split.unwrap_or(500)
     }
 
-    /// The two viewports' heights in a frame this tall, upper first. Both
-    /// even, so each encodes.
+    /// The two viewports' lengths along a split of this length, first
+    /// first. Both even, so each encodes.
     pub fn viewport_heights(&self, height: i64) -> (i64, i64) {
         let upper = (height * i64::from(self.split_permille()) / 1_000) & !1;
         (upper, height - upper)
+    }
+
+    /// The two viewports of a frame this size, as `(width, height)`, first
+    /// first: stacked, or side by side when the frame is landscape.
+    pub fn viewports(&self, width: i64, height: i64) -> ((i64, i64), (i64, i64)) {
+        if splits_across(width, height) {
+            let (first, second) = self.viewport_heights(width);
+            ((first, height), (second, height))
+        } else {
+            let (first, second) = self.viewport_heights(height);
+            ((width, first), (width, second))
+        }
     }
 
     /// The fitted picture's zoom, in percent.
@@ -349,6 +422,9 @@ impl VideoSegment {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct VideoTrack {
+    /// The delivered frame's shape. Absent is 9:16.
+    #[serde(default, skip_serializing_if = "FrameShape::is_vertical")]
+    pub shape: FrameShape,
     /// Requested soft-cut duration. Zero preserves legacy hard cuts. The
     /// renderer bounds each blend by its incoming shot's frame allocation.
     #[serde(default, skip_serializing_if = "is_zero")]

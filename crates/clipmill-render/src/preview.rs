@@ -61,7 +61,8 @@ pub struct PreviewSegment {
     /// `picture_in_picture`, and the geometry the render uses for it, in
     /// output pixels, so the player draws what the export will.
     pub layout: &'static str,
-    /// Two viewports: the upper one's height.
+    /// Two viewports: the first one's length along the split — its height
+    /// when stacked, its width side by side in a landscape frame.
     pub upper_height: i64,
     /// Picture in picture: the inset's square, `(x, y, side)`.
     pub inset: Option<(i64, i64, i64)>,
@@ -179,6 +180,7 @@ pub fn preview_plan(
     profile: &RenderProfile,
 ) -> Result<PreviewPlan, RenderError> {
     document.validate()?;
+    crate::plan::check_shape(document, profile)?;
     let rate = profile.rate();
     let duration: i64 = document
         .video
@@ -270,7 +272,12 @@ fn segments(
                     LayoutState::PictureInPicture => "picture_in_picture",
                 },
                 upper_height: if segment.layout.state == LayoutState::TwoUp {
-                    segment.layout.viewport_heights(profile.height).0
+                    let (first, _) = segment.layout.viewports(profile.width, profile.height);
+                    if clipmill_edit_ir::splits_across(profile.width, profile.height) {
+                        first.0
+                    } else {
+                        first.1
+                    }
                 } else {
                     0
                 },

@@ -643,6 +643,87 @@
   cursor: default;
 }
 
+/* The clip's shape: four frames drawn at their own proportions. */
+.edit-shapes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--cm-recessed-border);
+  border-radius: calc(var(--cm-radius-control) + 2px);
+  background: var(--cm-recessed);
+}
+
+.edit-shapes button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 4px 5px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+}
+
+.edit-shapes button:hover:not(:disabled) {
+  color: var(--cm-text-primary);
+}
+
+.edit-shapes button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-shapes button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.edit-shape-glyph {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+}
+
+.edit-shape-glyph::before {
+  content: '';
+  display: block;
+  border: 1.5px solid currentcolor;
+  border-radius: 2px;
+}
+
+.edit-shape-glyph[data-shape='vertical']::before {
+  width: 11px;
+  height: 20px;
+}
+
+.edit-shape-glyph[data-shape='portrait']::before {
+  width: 15px;
+  height: 19px;
+}
+
+.edit-shape-glyph[data-shape='square']::before {
+  width: 17px;
+  height: 17px;
+}
+
+.edit-shape-glyph[data-shape='landscape']::before {
+  width: 21px;
+  height: 12px;
+}
+
+.edit-shape-label {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /*
  * The Original view's faces: each detected person is a button over the whole
  * frame, and clicking one follows them through the section.
