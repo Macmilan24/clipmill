@@ -143,6 +143,8 @@ export interface ExportProps {
   readonly onEdit?: ((focus?: EditorFocus) => void) | undefined;
   readonly onBatch?: () => void;
   readonly publishing?: ReactNode;
+  /** The clip itself, playing, above what it will be delivered as. */
+  readonly preview?: ReactNode;
   readonly docId: string | null;
   /** What the clip is called — the project and the clip — when the route knew. */
   readonly labels: { readonly project?: string; readonly clip?: string } | null;
@@ -447,6 +449,7 @@ export function Export(props: ExportProps): JSX.Element {
           </Card>
         </div>
         <div className="export-column">
+          {props.preview}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Delivery format</CardTitle>

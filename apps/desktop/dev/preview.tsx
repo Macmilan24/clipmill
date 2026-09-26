@@ -51,6 +51,7 @@ import {
   reviewTranscript,
 } from './review-fixtures.js';
 import { reviewPlanOf } from './review-preview.js';
+import { ClipLoop } from '../src/export/ClipLoop.js';
 import { exactCaptionsOf } from '../src/editor/exactCaptions.js';
 import '../src/styles.css';
 
@@ -434,6 +435,27 @@ function Preview() {
               )}
               {page === 'export' && (
                 <Export
+                  preview={
+                    media ? (
+                      <ClipLoop
+                        api={{
+                          ...daemonApi,
+                          mediaUrl: () => media,
+                          ...(fontsDir ? { captionFontUrl: (file) => `${fontsDir}/${file}` } : {}),
+                        }}
+                        projectId="preview"
+                        plan={
+                          editorAss
+                            ? {
+                                ...plan,
+                                ass: editorAss,
+                                fonts: CAPTION_FONTS.map((font) => ({ ...font, installed: true })),
+                              }
+                            : plan
+                        }
+                      />
+                    ) : null
+                  }
                   publishing={
                     <UploadPanel
                       api={publishingApi}
