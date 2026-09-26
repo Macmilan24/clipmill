@@ -563,10 +563,13 @@ function Preview() {
         open={manualOpen}
         onOpenChange={setManualOpen}
         sourceName={project.name}
-        sourceDurationTicks={90_000 * 720}
+        sourceDurationTicks={REVIEW_DURATION_TICKS}
         proxyUrl={media}
         busy={false}
         notice={notice}
+        transcript={reviewTranscript}
+        peaks={reviewPeaks}
+        tileUrl={() => still}
         onCreate={async () => {
           setNotice(
             'Development preview: the source selection was validated, but no edit was saved.',

@@ -266,6 +266,17 @@ export function ResultsScreen({
     [planned, api],
   );
   const { previewFor } = results;
+  // The manual clip's own preview: asked for by the sheet as its span moves.
+  const manualPlanned =
+    manualOpen && results.preview?.candidateId === '' ? results.preview.plan : null;
+  const manualCaptions = useMemo(
+    () => exactCaptionsOf(manualPlanned, api.captionFontUrl ?? null),
+    [manualPlanned, api],
+  );
+  // The sheet snaps to words, so it needs them read.
+  useEffect(() => {
+    if (manualOpen) requestTranscript();
+  }, [manualOpen, requestTranscript]);
 
   if (candidateId && (projectsLoading || results.loading))
     return (
@@ -333,6 +344,12 @@ export function ResultsScreen({
         proxyUrl={results.proxyUrl}
         busy={results.busy}
         notice={results.notice}
+        transcript={results.transcript.status === 'ready' ? results.transcript.transcript : null}
+        peaks={snapshot.peaks}
+        tileUrl={results.tileUrl}
+        preview={manualPlanned}
+        previewCaptions={manualCaptions}
+        onPreview={(cut) => previewFor('', cut)}
         onCreate={async (startTicks, endTicks) => {
           const directed = await results.manual(startTicks, endTicks);
           if (!directed || !mounted.current || intentRef.current !== intent) return false;
