@@ -38,6 +38,17 @@ pub struct RightsAttestation {
     /// What the user attested about the footage, echoed verbatim.
     pub source_attestation: String,
     pub gates_passed: Vec<String>,
+    /// Every picture and sound the render drew or played besides the
+    /// footage — a logo, a music bed — with the licence the person stated
+    /// when they brought it in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assets: Vec<AssetRight>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AssetRight {
+    pub hash: String,
+    pub license: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -167,8 +178,22 @@ mod tests {
         let rights = RightsAttestation {
             source_attestation: "own_content".to_owned(),
             gates_passed: vec!["duration_60s".to_owned()],
+            assets: Vec::new(),
         };
         assert_eq!(rights.source_attestation, "own_content");
         assert_eq!(rights.gates_passed, vec!["duration_60s".to_owned()]);
+        // A render with nothing but footage says nothing about assets, so
+        // manifests written before there were any read as they always have.
+        let json = serde_json::to_value(&rights).expect("json");
+        assert!(json.get("assets").is_none());
+        let with = RightsAttestation {
+            assets: vec![super::AssetRight {
+                hash: format!("sha256:{}", "3".repeat(64)),
+                license: "royalty_free".to_owned(),
+            }],
+            ..rights
+        };
+        let json = serde_json::to_value(&with).expect("json");
+        assert_eq!(json["assets"][0]["license"], "royalty_free");
     }
 }

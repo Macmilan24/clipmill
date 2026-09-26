@@ -1447,6 +1447,14 @@ message PreviewProgressV1 {
   int64 thickness = 3;
 }
 
+// Music as the render mixes it: which sound, from where in it, and its level
+// in decibels at frames through the program, to interpolate between.
+message PreviewMusicV1 {
+  string asset = 1;
+  int64 offset_ticks = 2;
+  repeated PreviewGainV1 levels = 3;
+}
+
 // A logo as the render draws it: which asset, which corner, its longer side
 // and its distance from the corner's two edges, in output pixels.
 message PreviewLogoV1 {
@@ -1640,6 +1648,8 @@ message GetPreviewPlanResponse {
   PreviewProgressV1 progress = 25;
   // The logo, when the clip has one.
   PreviewLogoV1 logo = 26;
+  // The music, when the clip has some.
+  PreviewMusicV1 music = 27;
 }
 
 // Where the camera would point at a few moments, so a board of clips can show

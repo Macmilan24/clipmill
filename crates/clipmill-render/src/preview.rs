@@ -138,6 +138,15 @@ pub struct PreviewProgress {
     pub thickness: i64,
 }
 
+/// Music as the render mixes it: which sound, from where in it, and its
+/// level in decibels at points through the program, by frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewMusic {
+    pub asset: String,
+    pub offset_ticks: i64,
+    pub levels: Vec<PreviewGain>,
+}
+
 /// A logo as the render draws it: which picture, which corner, and its
 /// place in output pixels.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -177,6 +186,8 @@ pub struct PreviewPlan {
     pub progress: Option<PreviewProgress>,
     /// The logo, where the render puts it.
     pub logo: Option<PreviewLogo>,
+    /// The music, and its level through the program as the render plays it.
+    pub music: Option<PreviewMusic>,
     /// The output frame the crops are fitted into.
     pub width: i64,
     pub height: i64,
@@ -285,6 +296,17 @@ pub fn preview_plan(
         overlays: overlays(document, rate, frame_count),
         progress: progress(document, profile),
         logo: logo(document, profile),
+        music: document.audio.music.as_ref().map(|music| PreviewMusic {
+            asset: music.asset.clone(),
+            offset_ticks: music.offset_ticks,
+            levels: crate::music::music_envelope(document, duration)
+                .iter()
+                .map(|point| PreviewGain {
+                    frame: rate.frame_ceil(point.t_ticks),
+                    gain_db: point.gain_db,
+                })
+                .collect(),
+        }),
         width: profile.width,
         height: profile.height,
     })

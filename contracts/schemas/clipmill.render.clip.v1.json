@@ -88,6 +88,19 @@
         "gates_passed": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "assets": {
+          "description": "Every picture and sound drawn or played besides the footage, with the licence the person stated when they brought it in.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["hash", "license"],
+            "additionalProperties": false,
+            "properties": {
+              "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+              "license": { "enum": ["own_content", "licensed", "royalty_free", "public_domain"] }
+            }
+          }
         }
       }
     },

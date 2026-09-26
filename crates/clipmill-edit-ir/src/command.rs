@@ -5,8 +5,8 @@ use crate::{
     document::{
         Asset, Brand, CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing,
         CropKeyframe, CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint,
-        Inset, LayoutState, Overlay, Presentation, Punch, VideoSegment, crop_along_keyframes,
-        retime_punches, split_punches,
+        Inset, LayoutState, MusicBed, Overlay, Presentation, Punch, VideoSegment, VoiceCleanup,
+        crop_along_keyframes, retime_punches, split_punches,
     },
     reflow,
 };
@@ -44,6 +44,19 @@ pub enum EditCommand {
         /// the list as it was.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         assets: Option<Vec<Asset>>,
+    },
+    /// Set or take away the music under the voice, and list the assets it
+    /// plays from. `None` takes the music away.
+    SetMusic {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        music: Option<MusicBed>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assets: Option<Vec<Asset>>,
+    },
+    /// Clean the voice, or stop cleaning it with `None`.
+    SetCleanup {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cleanup: Option<VoiceCleanup>,
     },
     /// Deliver the clip in another frame shape. Only the shape: the crops
     /// that fit it are replaced by commands of their own, batched with this.
@@ -345,6 +358,20 @@ impl EditCommand {
                     segment_id: segment_id.clone(),
                     punches: previous,
                 })
+            }
+            Self::SetMusic { music, assets } => {
+                let previous = std::mem::replace(&mut document.audio.music, music.clone());
+                let previous_assets = assets
+                    .as_ref()
+                    .map(|assets| std::mem::replace(&mut document.assets, assets.clone()));
+                Ok(Self::SetMusic {
+                    music: previous,
+                    assets: previous_assets,
+                })
+            }
+            Self::SetCleanup { cleanup } => {
+                let previous = std::mem::replace(&mut document.audio.cleanup, *cleanup);
+                Ok(Self::SetCleanup { cleanup: previous })
             }
             Self::SetBrand { brand, assets } => {
                 let previous = std::mem::replace(&mut document.brand, brand.clone());

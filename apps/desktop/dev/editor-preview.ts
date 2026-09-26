@@ -198,6 +198,23 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: next,
       };
     }
+    case 'set_music':
+    case 'set_cleanup': {
+      const audio = { ...document.audio };
+      if (command.op === 'set_music') {
+        if (command.music) audio.music = command.music as NonNullable<EditIr['audio']['music']>;
+        else delete audio.music;
+      } else if (command.cleanup) {
+        audio.cleanup = command.cleanup as NonNullable<EditIr['audio']['cleanup']>;
+      } else {
+        delete audio.cleanup;
+      }
+      const assets = (command.assets as EditIr['assets'] | undefined) ?? document.assets;
+      return {
+        plan: bumped({}),
+        document: { ...document, audio, ...(assets ? { assets } : {}) } as EditIr,
+      };
+    }
     case 'set_brand': {
       const brand = command.brand as EditIr['brand'] | undefined;
       const assets = (command.assets as EditIr['assets'] | undefined) ?? document.assets;

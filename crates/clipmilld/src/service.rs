@@ -27,14 +27,15 @@ use clipmill_contracts::proto::ipc::v1::{
     ListClipDecisionsResponse, ListEditDocsResponse, ListFacesRequest, ListFacesResponse,
     ListJobsResponse, ListProjectsResponse, ListSourcesResponse, LocalLockStatusV1, MediaFileV1,
     PingResponse, PlanExportRequest, PlanExportResponse, PreviewCropV1, PreviewCueV1,
-    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewLogoV1, PreviewOverlayV1,
-    PreviewProgressV1, PreviewProxyV1, PreviewSegmentV1, PreviewSourceV1, PreviewWordV1,
-    ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse,
-    RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse,
-    Response, SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse,
-    SolveCropPathRequest, SolveCropPathResponse, StageReadinessV1, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, ThumbnailFramingRequest,
-    ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
+    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewLogoV1, PreviewMusicV1,
+    PreviewOverlayV1, PreviewProgressV1, PreviewProxyV1, PreviewSegmentV1, PreviewSourceV1,
+    PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest,
+    ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest,
+    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
+    SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse, StageReadinessV1,
+    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    ThumbnailFramingRequest, ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1,
+    request, response,
 };
 use clipmill_contracts::schemas::vision_face_track::VisionFaceTrack;
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
@@ -4247,6 +4248,18 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 gain_db: point.gain_db,
             })
             .collect(),
+        music: plan.music.as_ref().map(|music| PreviewMusicV1 {
+            asset: music.asset.clone(),
+            offset_ticks: music.offset_ticks,
+            levels: music
+                .levels
+                .iter()
+                .map(|point| PreviewGainV1 {
+                    frame: point.frame,
+                    gain_db: point.gain_db,
+                })
+                .collect(),
+        }),
         logo: plan.logo.as_ref().map(|logo| PreviewLogoV1 {
             asset: logo.asset.clone(),
             corner: logo.corner.to_owned(),

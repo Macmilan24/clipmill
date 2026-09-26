@@ -174,6 +174,34 @@ pub(crate) async fn execute_render_task(
         .and_then(|brand| brand.logo.as_ref())
         .map(|logo| verified_asset(context.assets_dir, &logo.asset))
         .transpose()?;
+    // Whatever the render draws or plays besides the footage, with the
+    // licence the document holds for it, for the manifest to state.
+    let assets = document
+        .brand
+        .as_ref()
+        .and_then(|brand| brand.logo.as_ref())
+        .map(|logo| logo.asset.as_str())
+        .into_iter()
+        .chain(
+            document
+                .audio
+                .music
+                .as_ref()
+                .map(|music| music.asset.as_str()),
+        )
+        .filter_map(|hash| document.assets.iter().find(|asset| asset.hash == hash))
+        .map(|asset| clipmill_render::AssetRight {
+            hash: asset.hash.clone(),
+            license: asset.license.clone(),
+        })
+        .collect::<Vec<_>>();
+    // The music under the voice, likewise.
+    let music = document
+        .audio
+        .music
+        .as_ref()
+        .map(|music| verified_asset(context.assets_dir, &music.asset))
+        .transpose()?;
 
     let ir_hash = format!("sha256:{document_digest}");
     let recipe = render_recipe(
@@ -197,6 +225,8 @@ pub(crate) async fn execute_render_task(
             plan: &plan,
             font: &font,
             logo: logo.as_deref(),
+            music: music.as_deref(),
+            assets: &assets,
             payload: &payload,
             ir_artifact_id,
             ir_hash,
@@ -493,6 +523,10 @@ struct Rendered<'a> {
     font: &'a PinnedFont,
     /// The logo's file in the asset folder, when the brand has one.
     logo: Option<&'a Path>,
+    /// The music's file in the asset folder, when the clip has some.
+    music: Option<&'a Path>,
+    /// The pictures and sounds drawn or played, with their licences.
+    assets: &'a [clipmill_render::AssetRight],
     payload: &'a RenderClipPayloadV1,
     ir_artifact_id: ArtifactId,
     ir_hash: String,
@@ -518,6 +552,11 @@ async fn render_into(
     let logo_file = work.join(clipmill_render::LOGO_FILE);
     if let Some(logo) = rendered.logo {
         fs::copy(logo, &logo_file)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
+    let music_file = work.join(clipmill_render::MUSIC_FILE);
+    if let Some(music) = rendered.music {
+        fs::copy(music, &music_file)
             .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     }
 
@@ -572,6 +611,10 @@ async fn render_into(
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     if rendered.logo.is_some() {
         fs::remove_file(&logo_file)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
+    if rendered.music.is_some() {
+        fs::remove_file(&music_file)
             .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     }
 
@@ -747,6 +790,7 @@ fn build_manifest(
         rights: RightsAttestation {
             source_attestation: payload.source_attestation.clone(),
             gates_passed: payload.gates_passed.clone(),
+            assets: rendered.assets.to_vec(),
         },
         input_source_fingerprints: input_fingerprints(plan),
         program: ProgramReport {

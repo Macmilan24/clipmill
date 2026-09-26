@@ -774,6 +774,16 @@ pub struct PreviewPlanView {
     pub progress: Option<PreviewProgressView>,
     /// The logo, when the clip has one.
     pub logo: Option<PreviewLogoView>,
+    /// The music, when the clip has some.
+    pub music: Option<PreviewMusicView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewMusicView {
+    pub asset: String,
+    pub offset_ticks: i64,
+    pub levels: Vec<PreviewGainView>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1022,6 +1032,18 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 })
                 .collect(),
             decisions: reply.decisions,
+            music: reply.music.map(|music| PreviewMusicView {
+                asset: music.asset,
+                offset_ticks: music.offset_ticks,
+                levels: music
+                    .levels
+                    .into_iter()
+                    .map(|point| PreviewGainView {
+                        frame: point.frame,
+                        gain_db: point.gain_db,
+                    })
+                    .collect(),
+            }),
             logo: reply.logo.map(|logo| PreviewLogoView {
                 asset: logo.asset,
                 corner: logo.corner,

@@ -137,6 +137,8 @@ fn sample_document() -> EditDocument {
             burn_in: Vec::new(),
         },
         audio: AudioTrack {
+            music: None,
+            cleanup: None,
             target_lufs: -14.0,
             true_peak_dbtp: -1.0,
             gain_curve: vec![

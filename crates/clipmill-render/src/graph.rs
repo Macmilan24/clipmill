@@ -204,19 +204,7 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         chains.push(concat_chain(&video_labels, true));
     }
 
-    let mut audio_chain = vec!["[acat]".to_owned()];
-    if let Some(gain) = gain_filter(request.document) {
-        audio_chain.push(gain);
-        audio_chain.push(",".to_owned());
-    }
-    audio_chain.push(
-        request
-            .loudnorm
-            .clone()
-            .unwrap_or_else(|| LOUDNORM_SLOT.to_owned()),
-    );
-    audio_chain.push("[aout]".to_owned());
-    chains.push(audio_chain.concat());
+    chains.extend(audio_chains(request));
 
     if !request.audio_only {
         finish_picture(request, &mut chains);
@@ -741,8 +729,64 @@ fn axis_expression(
 
 /// The program-time gain curve as a `volume` expression, or nothing when the
 /// document carries no automation.
+/// The program's sound made final: the voice with its gain and cleanup, the
+/// music under it when there is some, and the loudness pass over the mix.
+fn audio_chains(request: &GraphRequest<'_>) -> Vec<String> {
+    let audio = &request.document.audio;
+    let mut voice: Vec<String> = Vec::new();
+    if let Some(gain) = gain_filter(request.document) {
+        voice.push(gain);
+    }
+    if let Some(cleanup) = audio.cleanup {
+        voice.push(crate::music::cleanup_filters(cleanup).to_owned());
+    }
+    let loudnorm = request
+        .loudnorm
+        .clone()
+        .unwrap_or_else(|| LOUDNORM_SLOT.to_owned());
+    let joined = |filters: &[String]| {
+        if filters.is_empty() {
+            "anull".to_owned()
+        } else {
+            filters.join(",")
+        }
+    };
+    let Some(music) = &audio.music else {
+        voice.push(loudnorm);
+        return vec![format!("[acat]{}[aout]", voice.join(","))];
+    };
+    let duration: i64 = request
+        .spans
+        .iter()
+        .map(|span| span.trim_end_ticks - span.trim_start_ticks)
+        .sum();
+    let envelope = crate::music::music_envelope(request.document, duration);
+    let level = volume_filter(&envelope).unwrap_or_else(|| "anull".to_owned());
+    vec![
+        format!("[acat]{}[voice]", joined(&voice)),
+        // The music, looped if it is shorter than the clip, from its start
+        // point for exactly the program's length, at the envelope's level.
+        format!(
+            "amovie=filename={file}:loop=0,asetpts=N/SR/TB,\
+             atrim=start={offset}:duration={length},asetpts=PTS-STARTPTS,\
+             aformat=sample_fmts=fltp:sample_rates={rate_hz}:channel_layouts=stereo,{level}[bed]",
+            file = crate::music::MUSIC_FILE,
+            offset = ticks_to_seconds(music.offset_ticks),
+            length = ticks_to_seconds(duration),
+            rate_hz = request.profile.audio_sample_rate,
+        ),
+        format!(
+            "[voice][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,{loudnorm}[aout]"
+        ),
+    ]
+}
+
 fn gain_filter(document: &EditDocument) -> Option<String> {
-    let curve = &document.audio.gain_curve;
+    volume_filter(&document.audio.gain_curve)
+}
+
+/// A volume filter following a curve of decibel points through program time.
+fn volume_filter(curve: &[clipmill_edit_ir::GainPoint]) -> Option<String> {
     let last = curve.last()?;
     let mut expression = format_db(last.gain_db);
     for index in (0..curve.len().saturating_sub(1)).rev() {

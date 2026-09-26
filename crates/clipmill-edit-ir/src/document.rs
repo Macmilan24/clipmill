@@ -1065,6 +1065,13 @@ pub struct AudioTrack {
     pub true_peak_dbtp: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gain_curve: Vec<GainPoint>,
+    /// Music under the voice, dropping wherever someone speaks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub music: Option<MusicBed>,
+    /// The voice cleaned before it is mixed: rumble cut, noise lowered,
+    /// level evened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cleanup: Option<VoiceCleanup>,
 }
 
 impl Default for AudioTrack {
@@ -1073,8 +1080,47 @@ impl Default for AudioTrack {
             target_lufs: -14.0,
             true_peak_dbtp: -1.0,
             gain_curve: Vec::new(),
+            music: None,
+            cleanup: None,
         }
     }
+}
+
+/// A sound played under the whole clip, from one of the clip's assets.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MusicBed {
+    /// The sound's content hash, one of the clip's assets.
+    pub asset: String,
+    /// Its level where nobody speaks, in decibels.
+    pub level_db: f64,
+    /// How much further it drops under speech, in decibels.
+    pub duck_db: f64,
+    /// Where in the sound the clip starts.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset_ticks: i64,
+}
+
+impl MusicBed {
+    pub const LEVELS: std::ops::RangeInclusive<f64> = -40.0..=0.0;
+    pub const DUCKS: std::ops::RangeInclusive<f64> = -30.0..=0.0;
+
+    fn is_valid(&self, assets: &[Asset]) -> bool {
+        Self::LEVELS.contains(&self.level_db)
+            && Self::DUCKS.contains(&self.duck_db)
+            && self.offset_ticks >= 0
+            && assets.iter().any(|asset| asset.hash == self.asset)
+    }
+}
+
+/// How much the voice is cleaned.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceCleanup {
+    /// A quiet room: rumble cut, a little hiss lowered, level evened.
+    Light,
+    /// A noisy one: more noise lowered, sibilance softened, level held.
+    Strong,
 }
 
 /// Something laid over the program for a span of it: a title, a label.
@@ -1896,6 +1942,14 @@ impl EditDocument {
         if !self.audio.target_lufs.is_finite() || !self.audio.true_peak_dbtp.is_finite() {
             return Err(DocumentError::NonFiniteGain);
         }
+        if self
+            .audio
+            .music
+            .as_ref()
+            .is_some_and(|music| !music.is_valid(&self.assets))
+        {
+            return Err(DocumentError::InvalidMusic);
+        }
         Ok(())
     }
 }
@@ -1956,6 +2010,10 @@ pub enum DocumentError {
     UnorderedGainCurve,
     #[error("loudness and gain values must be finite")]
     NonFiniteGain,
+    #[error(
+        "the music's level, drop or start is outside what can be played, or it is not an asset of the clip"
+    )]
+    InvalidMusic,
     #[error("two-person layout on segment {0} requires both crop paths")]
     TwoUpWithoutCropPaths(String),
     #[error("picture-in-picture on segment {0} requires an inset crop path")]

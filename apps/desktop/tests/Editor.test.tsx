@@ -433,6 +433,65 @@ describe('decoded playback across shots and documents', () => {
     }
   });
 
+  it('plays the music with the picture, at the render’s level for each frame', () => {
+    control = playback();
+    const hash = `sha256:${'3'.repeat(64)}`;
+    const scored: PreviewPlan = {
+      ...program(900, 600),
+      music: {
+        asset: hash,
+        offsetTicks: 90_000,
+        levels: [
+          { frame: 0, gainDb: -20 },
+          { frame: 60, gainDb: -20 },
+          { frame: 90, gainDb: -40 },
+        ],
+      },
+    };
+    render(
+      <TooltipProvider>
+        <Editor
+          plan={scored}
+          proxyUrls={new Map(scored.proxies.map((proxy) => [proxy.sourceFingerprint, PROXY_URL]))}
+          docId="edt_A"
+          labels={null}
+          loading={false}
+          problem={null}
+          busy={false}
+          canUndo={false}
+          canRedo={false}
+          resolving={false}
+          resolveRefusal={null}
+          picker={null}
+          onOpenResults={() => {}}
+          onExport={null}
+          onApply={() => {}}
+          onUndo={() => {}}
+          onRedo={() => {}}
+          onResolve={() => {}}
+          assets={{
+            list: vi.fn().mockResolvedValue([]),
+            bring: vi.fn().mockResolvedValue(null),
+            url: (asset) => `asset://${asset}`,
+          }}
+        />
+      </TooltipProvider>,
+    );
+    const music = screen.getByTestId('music') as HTMLAudioElement;
+    expect(music.getAttribute('src')).toBe(`asset://${hash}`);
+    expect(music.volume).toBeCloseTo(0.1, 6);
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    expect(control.state(music).paused).toBe(false);
+    control.decode(element, 600 + 75 / 30);
+    // A second in the music, and two and a half more of the program.
+    expect(music.currentTime).toBeCloseTo(1 + 75 / 30, 3);
+    expect(music.volume).toBeCloseTo(10 ** (-30 / 20), 6);
+    fireEvent.click(screen.getByRole('button', { name: /^pause$/i }));
+    expect(control.state(music).paused).toBe(true);
+  });
+
   it('honors Pause during buffering instead of resuming when the reference arrives', () => {
     control = playback();
     show(softShots());
