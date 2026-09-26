@@ -7,9 +7,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { ExportPlan, ExportRequest, QueuedExport } from '../daemon/client.js';
+import type { ExportPlan, ExportRequest, PreviewPlan, QueuedExport } from '../daemon/client.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import { ClipLoop } from '../export/ClipLoop.js';
 import { latestExportOf, rememberExportRate, useDelivery } from '../export/delivery.js';
 import {
   type FormatChoice,
@@ -83,6 +84,8 @@ export function ExportScreen({
   const [attestation, setAttestation] = useState('');
   const [rightsApproval, setRightsApproval] = useState<string | null>(null);
   const [plan, setPlan] = useState<ExportPlan | null>(null);
+  // The clip's own preview plan, for its length, its words and its loop.
+  const [previewPlan, setPreviewPlan] = useState<PreviewPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +190,7 @@ export function ExportScreen({
     setDurationTicks(0);
     setTitle('');
     setPlan(null);
+    setPreviewPlan(null);
     setQueued(null);
     setArchive(null);
     setError(null);
@@ -200,6 +204,7 @@ export function ExportScreen({
         if (!live) {
           return;
         }
+        setPreviewPlan(preview);
         const seconds = (preview.frameCount * preview.rateDen) / preview.rateNum;
         setDurationTicks(Math.round(seconds * 90_000));
         // The clip's title when it has one, as the pickers and the batch
@@ -409,6 +414,7 @@ export function ExportScreen({
     );
   return (
     <Export
+      preview={projectId ? <ClipLoop api={api} projectId={projectId} plan={previewPlan} /> : null}
       publishing={
         projectId && docId ? (
           <UploadPanel

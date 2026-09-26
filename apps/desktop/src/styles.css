@@ -377,6 +377,34 @@
   gap: 20px;
   min-width: 0;
 }
+/* The clip being exported, looping above its delivery format. */
+.export-loop {
+  position: relative;
+  width: min(100%, 220px);
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #000;
+  box-shadow: 0 3px 18px #0004;
+}
+.export-loop-decoder {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.export-loop .edit-caption-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.export-loop .edit-caption-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .export-actions {
   display: flex;
   align-items: center;
