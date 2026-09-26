@@ -2,7 +2,14 @@ import { Film } from 'lucide-react';
 import { useState } from 'react';
 
 /** A missing or collected thumbnail should never leave a broken-image icon. */
-export function MediaStill({ src }: { readonly src: string | null }) {
+export function MediaStill({
+  src,
+  position,
+}: {
+  readonly src: string | null;
+  /** Where the still sits in a box of another shape, as `object-position`. */
+  readonly position?: string | undefined;
+}) {
   const [failed, setFailed] = useState<string | null>(null);
   if (src && src !== failed)
     return (
@@ -10,6 +17,7 @@ export function MediaStill({ src }: { readonly src: string | null }) {
         src={src}
         alt=""
         className="size-full object-cover"
+        style={position ? { objectPosition: position } : undefined}
         loading="lazy"
         onError={() => setFailed(src)}
       />

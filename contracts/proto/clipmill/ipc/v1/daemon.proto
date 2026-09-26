@@ -78,6 +78,7 @@ message Request {
     ListEditHistoryRequest list_edit_history = 72;
     ListFacesRequest list_faces = 73;
     PreviewDirectRequest preview_direct = 74;
+    ThumbnailFramingRequest thumbnail_framing = 75;
   }
 }
 
@@ -139,6 +140,7 @@ message Response {
     ListEditHistoryResponse list_edit_history = 58;
     ListFacesResponse list_faces = 59;
     GetPreviewPlanResponse preview_direct = 60;
+    ThumbnailFramingResponse thumbnail_framing = 61;
   }
 }
 
@@ -1520,6 +1522,24 @@ message GetPreviewPlanResponse {
   // Why the director framed and captioned the clip as it did. Filled for a
   // dry run, whose document is nowhere else to read it from.
   repeated string decisions = 23;
+}
+
+// Where the camera would point at a few moments, so a board of clips can show
+// each as the vertical frame it will have rather than a strip of the source.
+// One face track read for all of them; a proposal surface, writing nothing.
+message ThumbnailFramingRequest {
+  string project_id = 1;
+  string face_track_artifact_id = 2;
+  // Source ticks, one per thumbnail, each judged over the two seconds after
+  // it. At most 500.
+  repeated uint64 moments = 3;
+}
+
+message ThumbnailFramingResponse {
+  // The crop's centre across the source frame, 0..1, one per moment in
+  // order: the face the camera would follow, or the middle where it would
+  // fit the whole frame.
+  repeated double centres = 1;
 }
 
 // The clip approving would build, as the Editor's player would draw it: the

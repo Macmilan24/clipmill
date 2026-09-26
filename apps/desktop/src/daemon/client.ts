@@ -787,6 +787,22 @@ export interface FaceSighting {
   readonly height: number;
 }
 
+/**
+ * Where the camera would point at each moment, as the crop's centre across the
+ * source frame (0..1): the middle where it would fit the whole frame.
+ */
+export async function thumbnailFraming(
+  projectId: string,
+  faceTrackArtifactId: string,
+  moments: readonly number[],
+): Promise<readonly number[]> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<number[]>('thumbnail_framing', { projectId, faceTrackArtifactId, moments });
+}
+
 /** The faces seen over a span, for picking who the camera follows. */
 export async function listFaces(
   projectId: string,

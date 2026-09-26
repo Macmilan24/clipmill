@@ -342,6 +342,17 @@ impl DaemonClient {
         }
     }
 
+    /// Where the camera would point at each of a board's thumbnails.
+    pub async fn thumbnail_framing(
+        &self,
+        request: clipmill_contracts::proto::ipc::v1::ThumbnailFramingRequest,
+    ) -> Result<Vec<f64>, DaemonLinkError> {
+        match self.call(request::Body::ThumbnailFraming(request)).await? {
+            response::Body::ThumbnailFraming(reply) => Ok(reply.centres),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     /// The faces seen over a span of one face track.
     pub async fn list_faces(
         &self,

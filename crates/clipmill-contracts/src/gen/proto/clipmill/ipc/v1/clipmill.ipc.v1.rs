@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -157,6 +157,8 @@ pub mod request {
         ListFaces(super::ListFacesRequest),
         #[prost(message, tag = "74")]
         PreviewDirect(super::PreviewDirectRequest),
+        #[prost(message, tag = "75")]
+        ThumbnailFraming(super::ThumbnailFramingRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -167,7 +169,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -280,6 +282,8 @@ pub mod response {
         ListFaces(super::ListFacesResponse),
         #[prost(message, tag = "60")]
         PreviewDirect(super::GetPreviewPlanResponse),
+        #[prost(message, tag = "61")]
+        ThumbnailFraming(super::ThumbnailFramingResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2010,6 +2014,28 @@ pub struct GetPreviewPlanResponse {
     /// dry run, whose document is nowhere else to read it from.
     #[prost(string, repeated, tag = "23")]
     pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Where the camera would point at a few moments, so a board of clips can show
+/// each as the vertical frame it will have rather than a strip of the source.
+/// One face track read for all of them; a proposal surface, writing nothing.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ThumbnailFramingRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub face_track_artifact_id: ::prost::alloc::string::String,
+    /// Source ticks, one per thumbnail, each judged over the two seconds after
+    /// it. At most 500.
+    #[prost(uint64, repeated, tag = "3")]
+    pub moments: ::prost::alloc::vec::Vec<u64>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ThumbnailFramingResponse {
+    /// The crop's centre across the source frame, 0..1, one per moment in
+    /// order: the face the camera would follow, or the middle where it would
+    /// fit the whole frame.
+    #[prost(double, repeated, tag = "1")]
+    pub centres: ::prost::alloc::vec::Vec<f64>,
 }
 /// The clip approving would build, as the Editor's player would draw it: the
 /// director's document for this request, built and not saved. The Inspector

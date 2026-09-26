@@ -58,6 +58,8 @@ export interface ClipInspectorProps {
   readonly previewCaptions?: ExactCaptions | null;
   /** Ask for that clip for a cut: `null` is the search's own. */
   readonly onPreview?: ((cut: Cut | null) => void) | null;
+  /** Where each clip's camera would point, by candidate, for the queue. */
+  readonly framing?: ReadonlyMap<string, number>;
   readonly peaks: Peaks | null;
   readonly tileUrl: (atTicks: number) => string | null;
   readonly transcript: TranscriptState;
@@ -130,6 +132,7 @@ function Review({
   preview = null,
   previewCaptions = null,
   onPreview = null,
+  framing,
   peaks,
   tileUrl,
   transcript,
@@ -399,6 +402,7 @@ function Review({
         {queueOpen && (
           <Queue
             rows={rows}
+            framing={framing}
             candidateId={row.candidateId}
             filter={filter}
             onFilter={(next) => {

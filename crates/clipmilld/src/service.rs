@@ -32,7 +32,8 @@ use clipmill_contracts::proto::ipc::v1::{
     ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
     SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
     StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
-    TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
+    ThumbnailFramingRequest, ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1,
+    request, response,
 };
 use clipmill_contracts::schemas::vision_face_track::VisionFaceTrack;
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
@@ -487,6 +488,9 @@ impl Service {
             request::Body::ListFaces(list) => self.list_faces(request_id, &list).await,
             request::Body::PreviewDirect(preview) => {
                 self.preview_direct(request_id, &preview).await
+            }
+            request::Body::ThumbnailFraming(framing) => {
+                self.thumbnail_framing(request_id, &framing).await
             }
             request::Body::SnapshotEditDoc(snapshot) => {
                 self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
@@ -2190,6 +2194,41 @@ impl Service {
         }
     }
 
+    /// Where the camera would point at each of a board's thumbnails.
+    async fn thumbnail_framing(
+        &self,
+        request_id: String,
+        framing: &ThumbnailFramingRequest,
+    ) -> Reply {
+        if framing.moments.len() > MAX_THUMBNAILS {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "ask for at most 500 thumbnails at once",
+            );
+        }
+        let (document, _) = match self
+            .face_track(
+                &request_id,
+                &framing.project_id,
+                &framing.face_track_artifact_id,
+            )
+            .await
+        {
+            Ok(found) => found,
+            Err(reply) => return reply,
+        };
+        let centres = framing
+            .moments
+            .iter()
+            .map(|&moment| framing_centre(&document, moment))
+            .collect();
+        response_reply(
+            request_id,
+            response::Body::ThumbnailFraming(ThumbnailFramingResponse { centres }),
+        )
+    }
+
     /// The faces seen over a span, so a person can point at the one to follow.
     async fn list_faces(&self, request_id: String, list: &ListFacesRequest) -> Reply {
         if list.end_ticks <= list.start_ticks
@@ -3669,6 +3708,37 @@ const CHOSEN_FACE: FocusGate = FocusGate {
     min_margin: 0.0,
 };
 
+/// The most thumbnails one `ThumbnailFraming` answers for.
+const MAX_THUMBNAILS: usize = 500;
+
+/// Where the camera would point in the two seconds after `moment`: the centre
+/// of the face the focus gate would follow, or the middle of the frame.
+fn framing_centre(document: &VisionFaceTrack, moment: u64) -> f64 {
+    let end = moment.saturating_add(2 * 90_000);
+    let clipmill_reframe::Focus::Track { track_id, .. } =
+        clipmill_reframe::resolve(document, moment, end, FocusGate::default())
+    else {
+        return 0.5;
+    };
+    let centres: Vec<f64> = document
+        .tracks
+        .iter()
+        .filter(|track| track.track_id == track_id)
+        .flat_map(|track| track.boxes.iter())
+        .filter(|seen| seen.t_ticks >= moment && seen.t_ticks < end)
+        .map(|seen| seen.x + seen.w / 2.0)
+        .collect();
+    if centres.is_empty() {
+        return 0.5;
+    }
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "a thumbnail's two seconds hold a handful of boxes"
+    )]
+    let mean = centres.iter().sum::<f64>() / centres.len() as f64;
+    mean.clamp(0.0, 1.0)
+}
+
 /// The longest span `ListFaces` answers for: a clip's section, not a recording.
 const MAX_FACE_SPAN_TICKS: u64 = 10 * 60 * 90_000;
 
@@ -3869,6 +3939,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ListEditHistory(_)) => "list_edit_history",
         Some(request::Body::ListFaces(_)) => "list_faces",
         Some(request::Body::PreviewDirect(_)) => "preview_direct",
+        Some(request::Body::ThumbnailFraming(_)) => "thumbnail_framing",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         Some(request::Body::ListModels(_)) => "list_models",
         Some(request::Body::DownloadModels(_)) => "download_models",
@@ -5346,6 +5417,16 @@ mod tests {
         };
         adjust(&mut solve);
         solve
+    }
+
+    #[test]
+    fn a_thumbnail_centres_on_the_face_the_camera_would_follow() {
+        let mut alone = two_people();
+        alone.tracks.retain(|track| track.track_id == 1);
+        let centre = super::framing_centre(&alone, 0);
+        assert!((centre - 0.75).abs() < 0.01, "{centre}");
+        // Two alike: the camera would fit the frame, so the middle it is.
+        assert!((super::framing_centre(&two_people(), 0) - 0.5).abs() < f64::EPSILON);
     }
 
     #[test]

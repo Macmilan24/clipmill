@@ -286,6 +286,7 @@ export function ResultsScreen({
         preview={planned}
         previewCaptions={plannedCaptions}
         onPreview={(cut) => previewFor(candidateId, cut)}
+        framing={results.framing}
         peaks={snapshot.peaks}
         tileUrl={results.tileUrl}
         transcript={results.transcript}
@@ -366,6 +367,7 @@ export function ResultsScreen({
         sourceName={sourceName}
         run={snapshot.run}
         tileUrl={results.tileUrl}
+        framing={results.framing}
         projects={projects}
         activeProjectId={project?.projectId ?? null}
         busy={results.busy}
