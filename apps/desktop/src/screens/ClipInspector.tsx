@@ -23,11 +23,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
-import type { CropPath } from '../daemon/client.js';
+import type { CropPath, PreviewPlan } from '../daemon/client.js';
+import type { ExactCaptions } from '../editor/exactCaptions.js';
 import { DetailsPanel } from '../inspector/DetailsPanel.js';
 import { Monitor, type MonitorView } from '../inspector/Monitor.js';
 import { PlaybackController } from '../inspector/playback.js';
@@ -49,6 +50,14 @@ export interface ClipInspectorProps {
   readonly candidateId: string;
   readonly proxyUrl: string | null;
   readonly crop: CropPath | null;
+  /**
+   * The clip an approval of the cut on screen would build, and its captions.
+   * Absent on a shell that cannot build one; the solver's crop stands in.
+   */
+  readonly preview?: PreviewPlan | null;
+  readonly previewCaptions?: ExactCaptions | null;
+  /** Ask for that clip for a cut: `null` is the search's own. */
+  readonly onPreview?: ((cut: Cut | null) => void) | null;
   readonly peaks: Peaks | null;
   readonly tileUrl: (atTicks: number) => string | null;
   readonly transcript: TranscriptState;
@@ -118,6 +127,9 @@ function Review({
   rows,
   proxyUrl,
   crop,
+  preview = null,
+  previewCaptions = null,
+  onPreview = null,
   peaks,
   tileUrl,
   transcript,
@@ -171,6 +183,16 @@ function Review({
   useEffect(() => {
     controller.setCut(shown);
   }, [controller, shown.startTicks, shown.endTicks]);
+
+  // Ask for the clip an approval of the cut on screen would build, once the
+  // cut has stopped moving: a drag is many cuts, and only the last is judged.
+  const askPreview = useRef(onPreview);
+  askPreview.current = onPreview;
+  useEffect(() => {
+    const timer = setTimeout(() => askPreview.current?.(moved ? shown : null), 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cut is the signal
+  }, [moved, shown.startTicks, shown.endTicks]);
 
   const words = transcript.status === 'ready' ? transcript.transcript : null;
   const index = rows.indexOf(row);
@@ -394,6 +416,8 @@ function Review({
         <Monitor
           src={proxyUrl}
           crop={crop}
+          plan={preview}
+          captions={previewCaptions}
           controller={controller}
           cut={shown}
           view={monitorView}

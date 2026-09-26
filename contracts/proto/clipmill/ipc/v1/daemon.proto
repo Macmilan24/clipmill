@@ -77,6 +77,7 @@ message Request {
     PreviewCaptionsRequest preview_captions = 71;
     ListEditHistoryRequest list_edit_history = 72;
     ListFacesRequest list_faces = 73;
+    PreviewDirectRequest preview_direct = 74;
   }
 }
 
@@ -137,6 +138,7 @@ message Response {
     PreviewCaptionsResponse preview_captions = 57;
     ListEditHistoryResponse list_edit_history = 58;
     ListFacesResponse list_faces = 59;
+    GetPreviewPlanResponse preview_direct = 60;
   }
 }
 
@@ -1501,6 +1503,18 @@ message GetPreviewPlanResponse {
   string ass = 21;
   // Every caption typeface, with whether this installation has it.
   repeated CaptionFontV1 fonts = 22;
+  // Why the director framed and captioned the clip as it did. Filled for a
+  // dry run, whose document is nowhere else to read it from.
+  repeated string decisions = 23;
+}
+
+// The clip approving would build, as the Editor's player would draw it: the
+// director's document for this request, built and not saved. The Inspector
+// shows it, so the clip judged is the clip an approval makes — the same
+// sections, framing and captions. Nothing is written and nothing is recorded.
+message PreviewDirectRequest {
+  // As approval would send it; `approve` and `variation` are ignored.
+  DirectClipRequest direct = 1;
 }
 
 // The edit documents a project holds, oldest first.

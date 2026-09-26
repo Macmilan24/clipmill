@@ -5,11 +5,12 @@
  * full clip identity to the editor when opening it; review decisions stay on the
  * Inspector, advance through the queue, and can be undone most recent first.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { ClipDecision, Project } from '../daemon/client.js';
+import { exactCaptionsOf } from '../editor/exactCaptions.js';
 import { nextUndecided } from '../inspector/review.js';
 import type { ClipRow } from '../results/model.js';
 import { ManualClip } from '../results/ManualClip.js';
@@ -256,6 +257,16 @@ export function ResultsScreen({
     }
   }, [candidateId, solveFor, requestTranscript]);
 
+  // The clip an approval would build, for the clip on screen only: another
+  // clip's plan would frame this one by the wrong sections.
+  const planned =
+    candidateId && results.preview?.candidateId === candidateId ? results.preview.plan : null;
+  const plannedCaptions = useMemo(
+    () => exactCaptionsOf(planned, api.captionFontUrl ?? null),
+    [planned, api],
+  );
+  const { previewFor } = results;
+
   if (candidateId && (projectsLoading || results.loading))
     return (
       <div className="workspace-page" aria-label="Loading clip" aria-busy="true">
@@ -272,6 +283,9 @@ export function ResultsScreen({
         candidateId={candidateId}
         proxyUrl={results.proxyUrl}
         crop={results.crop}
+        preview={planned}
+        previewCaptions={plannedCaptions}
+        onPreview={(cut) => previewFor(candidateId, cut)}
         peaks={snapshot.peaks}
         tileUrl={results.tileUrl}
         transcript={results.transcript}

@@ -999,6 +999,20 @@ export interface PreviewPlan {
    * names the list it means, because each list numbers its own cues.
    */
   readonly presentation: 'reading' | 'burn_in';
+  /** Why the director built the clip as it did. Only a dry run carries it. */
+  readonly decisions?: readonly string[];
+}
+
+/**
+ * The clip approving would build, drawn as the Editor draws it — built by the
+ * director and not saved. Nothing is written and nothing is decided.
+ */
+export async function previewDirect(request: DirectClipInput): Promise<PreviewPlan> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<PreviewPlan>('preview_direct', { request });
 }
 
 export async function previewPlan(projectId: string, docId: string): Promise<PreviewPlan> {

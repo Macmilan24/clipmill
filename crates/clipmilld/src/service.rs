@@ -26,13 +26,13 @@ use clipmill_contracts::proto::ipc::v1::{
     ListClipDecisionsResponse, ListEditDocsResponse, ListFacesRequest, ListFacesResponse,
     ListJobsResponse, ListProjectsResponse, ListSourcesResponse, LocalLockStatusV1, MediaFileV1,
     PingResponse, PlanExportRequest, PlanExportResponse, PreviewCropV1, PreviewCueV1,
-    PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1, PreviewSourceV1, PreviewWordV1,
-    ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse,
-    RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse,
-    Response, SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse,
-    SolveCropPathRequest, SolveCropPathResponse, StageReadinessV1, SubmitJobRequest,
-    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, TranscribeSourcePayloadV1,
-    WorkerPresenceV1, request, response,
+    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1,
+    PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
+    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
+    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
+    StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
 };
 use clipmill_contracts::schemas::vision_face_track::VisionFaceTrack;
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
@@ -104,6 +104,8 @@ pub(crate) struct Service {
     /// The loop every artifact collection runs through, for the clean-ups
     /// Settings asks for. Absent where no daemon runs that loop.
     collector: Option<crate::collector::Collector>,
+    /// The evidence the last clip was directed from, for the next one.
+    evidence: crate::inspector::EvidenceCache,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -168,6 +170,7 @@ impl Service {
             publishing: std::sync::Arc::default(),
             library: None,
             collector: None,
+            evidence: crate::inspector::EvidenceCache::default(),
         }
     }
 
@@ -218,6 +221,7 @@ impl Service {
             publishing: std::sync::Arc::default(),
             library: None,
             collector: None,
+            evidence: crate::inspector::EvidenceCache::default(),
         }
     }
 
@@ -481,6 +485,9 @@ impl Service {
                 self.list_edit_history(request_id, &list.doc_id).await
             }
             request::Body::ListFaces(list) => self.list_faces(request_id, &list).await,
+            request::Body::PreviewDirect(preview) => {
+                self.preview_direct(request_id, &preview).await
+            }
             request::Body::SnapshotEditDoc(snapshot) => {
                 self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
             }
@@ -1700,20 +1707,19 @@ impl Service {
         clippy::too_many_lines,
         reason = "explicit selection admission and retry recovery precede one document transaction"
     )]
-    async fn direct_clip(
+    /// A clip request with its names checked and a manual span given its
+    /// identity: where approving and a dry run both start.
+    async fn check_clip(
         &self,
-        request_id: String,
-        request_hash: [u8; 32],
         direct: &DirectClipRequest,
-    ) -> Reply {
+    ) -> Result<CheckedClip, (ErrorCode, String)> {
         let mut normalized = direct.clone();
         if direct.manual_span {
             if direct.job_id.is_empty() || direct.start_ticks >= direct.end_ticks {
-                return error_reply(
-                    request_id,
+                return Err((
                     ErrorCode::InvalidArgument,
-                    "Choose an analysis run and a nonempty source interval",
-                );
+                    "Choose an analysis run and a nonempty source interval".to_owned(),
+                ));
             }
             let identity = format!(
                 "{}:{}:{}:{}",
@@ -1725,43 +1731,72 @@ impl Service {
             );
             normalized.approve = false;
         }
-        let direct = &normalized;
-        let Ok(project_id) = direct.project_id.parse::<ProjectId>() else {
-            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        let Ok(project_id) = normalized.project_id.parse::<ProjectId>() else {
+            return Err((ErrorCode::InvalidArgument, "no project named".to_owned()));
         };
-        let Ok(source_id) = direct.source_id.parse::<SourceId>() else {
-            return error_reply(request_id, ErrorCode::InvalidArgument, "no source named");
+        let Ok(source_id) = normalized.source_id.parse::<SourceId>() else {
+            return Err((ErrorCode::InvalidArgument, "no source named".to_owned()));
         };
-        let Some(artifacts) = self.artifacts.as_ref() else {
-            return error_reply(
-                request_id,
+        if self.artifacts.is_none() {
+            return Err((
                 ErrorCode::Unavailable,
-                "this daemon serves no artifact store",
-            );
-        };
-        let source = match self.database.get_source(source_id.to_string()).await {
-            Ok(source) => source,
-            Err(error) => return store_error_reply(request_id, &error),
-        };
+                "this daemon serves no artifact store".to_owned(),
+            ));
+        }
+        let source = self
+            .database
+            .get_source(source_id.to_string())
+            .await
+            .map_err(|error| {
+                let code = store_error_code(&error);
+                let message = if code == ErrorCode::Internal {
+                    tracing::warn!(error = %error, "store request failed");
+                    "internal database error".to_owned()
+                } else {
+                    error.to_string()
+                };
+                (code, message)
+            })?;
         if source.project_id != project_id.as_str() {
-            return error_reply(
-                request_id,
+            return Err((
                 ErrorCode::InvalidArgument,
-                "source does not belong to the requested project",
-            );
+                "source does not belong to the requested project".to_owned(),
+            ));
         }
-        if direct.candidate_id.is_empty() {
-            return error_reply(request_id, ErrorCode::InvalidArgument, "no candidate named");
+        if normalized.candidate_id.is_empty() {
+            return Err((ErrorCode::InvalidArgument, "no candidate named".to_owned()));
         }
-        let now = match unix_millis() {
-            Ok(now) => now,
-            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
-        };
         let identity = crate::db::ClipIdentity {
             project: project_id.to_string(),
             source: source_id.to_string(),
-            candidate: direct.candidate_id.clone(),
-            run: (!direct.job_id.is_empty()).then(|| direct.job_id.clone()),
+            candidate: normalized.candidate_id.clone(),
+            run: (!normalized.job_id.is_empty()).then(|| normalized.job_id.clone()),
+        };
+        Ok(CheckedClip {
+            direct: normalized,
+            source,
+            identity,
+        })
+    }
+
+    async fn direct_clip(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        direct: &DirectClipRequest,
+    ) -> Reply {
+        let CheckedClip {
+            direct,
+            source,
+            identity,
+        } = match self.check_clip(direct).await {
+            Ok(checked) => checked,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        let direct = &direct;
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
 
         if !direct.variation {
@@ -1788,9 +1823,16 @@ impl Service {
         }
 
         let document_json = match self
-            .assemble_clip(artifacts, &source.source_map_json, identity.clone(), direct)
+            .assemble_clip(&source.source_map_json, identity.clone(), direct)
             .await
-        {
+            .and_then(|document| {
+                serde_json::to_string(&document).map_err(|_| {
+                    (
+                        ErrorCode::Internal,
+                        "the directed document did not serialize".to_owned(),
+                    )
+                })
+            }) {
             Ok(json) => json,
             Err((code, message)) => return error_reply(request_id, code, message),
         };
@@ -1821,20 +1863,69 @@ impl Service {
         }
     }
 
+    /// The clip approving would build, drawn as the Editor draws it, and not
+    /// saved: what the Inspector shows, so the clip judged is the clip made.
+    async fn preview_direct(&self, request_id: String, preview: &PreviewDirectRequest) -> Reply {
+        let Some(direct) = preview.direct.as_ref() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no clip named");
+        };
+        let checked = match self.check_clip(direct).await {
+            Ok(checked) => checked,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        let document = match self
+            .assemble_clip(
+                &checked.source.source_map_json,
+                checked.identity.clone(),
+                &checked.direct,
+            )
+            .await
+        {
+            Ok(document) => document,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        let Ok(project_id) = checked.identity.project.parse::<ProjectId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        };
+        let profile = self.preview_profile(project_id.as_str(), &document).await;
+        let plan = match clipmill_render::preview_plan(&document, &profile) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let (sources, proxies) = self.preview_media(&project_id, &document).await;
+        let mut reply = preview_response(0, &plan);
+        reply.sources = sources;
+        reply.proxies = proxies;
+        reply.fonts = self.caption_fonts();
+        reply.decisions = document
+            .rationale
+            .map(|rationale| rationale.decisions)
+            .unwrap_or_default();
+        response_reply(request_id, response::Body::PreviewDirect(reply))
+    }
+
     /// Read the clip's run and build the document the director proposes.
     async fn assemble_clip(
         &self,
-        artifacts: &ArtifactHandle,
         source_map_json: &[u8],
         identity: crate::db::ClipIdentity,
         direct: &DirectClipRequest,
-    ) -> Result<String, (ErrorCode, String)> {
-        let evidence = crate::inspector::load(
+    ) -> Result<clipmill_edit_ir::EditDocument, (ErrorCode, String)> {
+        let Some(artifacts) = self.artifacts.as_ref() else {
+            return Err((
+                ErrorCode::Unavailable,
+                "this daemon serves no artifact store".to_owned(),
+            ));
+        };
+        let evidence = crate::inspector::load_cached(
             &self.database,
             artifacts,
             &identity.source,
             source_map_json,
             identity.run.as_deref(),
+            &self.evidence,
         )
         .await
         .map_err(|error| (ErrorCode::Conflict, error.message()))?;
@@ -1847,12 +1938,7 @@ impl Service {
                 "the director produced a document with no segment".to_owned(),
             ));
         }
-        serde_json::to_string(&document).map_err(|_| {
-            (
-                ErrorCode::Internal,
-                "the directed document did not serialize".to_owned(),
-            )
-        })
+        Ok(document)
     }
 
     async fn set_clip_decision(
@@ -3542,6 +3628,13 @@ fn crop_weights(asked: Option<&CropWeightsV1>) -> Weights {
     }
 }
 
+/// A clip request ready to direct: normalized, with its source and identity.
+struct CheckedClip {
+    direct: DirectClipRequest,
+    source: crate::db::SourceRecord,
+    identity: crate::db::ClipIdentity,
+}
+
 /// The gate for a face somebody picked: it only has to be seen in the span.
 /// Presence, score and margin keep the automatic camera honest; a person who
 /// points at a face has already made the call they guard.
@@ -3750,6 +3843,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::PreviewCaptions(_)) => "preview_captions",
         Some(request::Body::ListEditHistory(_)) => "list_edit_history",
         Some(request::Body::ListFaces(_)) => "list_faces",
+        Some(request::Body::PreviewDirect(_)) => "preview_direct",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         Some(request::Body::ListModels(_)) => "list_models",
         Some(request::Body::DownloadModels(_)) => "download_models",
@@ -3794,6 +3888,21 @@ fn error_reply(request_id: String, code: ErrorCode, message: impl Into<String>) 
         }
         .encode_to_vec(),
         outcome,
+    }
+}
+
+/// The code a store failure is reported with, for a caller that builds its
+/// own reply. The reason for an internal failure stays in the log.
+fn store_error_code(error: &StoreError) -> ErrorCode {
+    match error {
+        StoreError::Conflict
+        | StoreError::RelinkMismatch
+        | StoreError::ImportQualityConflict
+        | StoreError::PublishingConflict(_) => ErrorCode::Conflict,
+        StoreError::NotFound => ErrorCode::NotFound,
+        StoreError::Database(_) | StoreError::InvalidData(_) | StoreError::Stopped => {
+            ErrorCode::Internal
+        }
     }
 }
 
@@ -3951,6 +4060,8 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
         ass: plan.ass.clone(),
         // Filled by the caller, which knows where the fonts are installed.
         fonts: Vec::new(),
+        // Filled for a dry run, whose document is nowhere else to read.
+        decisions: Vec::new(),
         secondary_crops: plan
             .secondary_crops
             .iter()

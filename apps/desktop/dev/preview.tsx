@@ -1,5 +1,5 @@
 /** Deliberately separate from main.tsx and the production build. No daemon calls. */
-import { useEffect, useLayoutEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   DEFAULT_WORKSPACE_THEME,
   ThemeController,
@@ -50,6 +50,8 @@ import {
   reviewRows as fixtures,
   reviewTranscript,
 } from './review-fixtures.js';
+import { reviewPlanOf } from './review-preview.js';
+import { exactCaptionsOf } from '../src/editor/exactCaptions.js';
 import '../src/styles.css';
 
 const noAction = () => {};
@@ -162,6 +164,29 @@ function Preview() {
   // naming the pinned font directory, the editor draws the render's own ASS.
   const fontsDir = search.get('fonts');
   const [editorAss, setEditorAss] = useState<string | null>(null);
+  // The Inspector's dry run: what approving the clip on screen would build.
+  const reviewRow = rows.find((row) => row.candidateId === candidate);
+  const reviewPlan = useMemo(
+    () =>
+      reviewRow
+        ? reviewPlanOf(
+            { startTicks: reviewRow.startTicks, endTicks: reviewRow.endTicks },
+            reviewTranscript,
+          )
+        : null,
+    [reviewRow],
+  );
+  const [reviewAss, setReviewAss] = useState<string | null>(null);
+  useEffect(() => {
+    if (!fontsDir || !reviewPlan) return;
+    let live = true;
+    void captionAssOf(reviewPlan.captions, 30, 1).then((ass) => {
+      if (live) setReviewAss(ass);
+    });
+    return () => {
+      live = false;
+    };
+  }, [fontsDir, reviewPlan]);
   useEffect(() => {
     if (!fontsDir) return;
     let live = true;
@@ -288,6 +313,19 @@ function Preview() {
                   candidateId={candidate}
                   proxyUrl={media}
                   crop={reviewCrop}
+                  preview={reviewPlan?.plan ?? null}
+                  previewCaptions={
+                    reviewPlan && reviewAss && fontsDir
+                      ? exactCaptionsOf(
+                          {
+                            ...reviewPlan.plan,
+                            ass: reviewAss,
+                            fonts: CAPTION_FONTS.map((font) => ({ ...font, installed: true })),
+                          },
+                          (file) => `${fontsDir}/${file}`,
+                        )
+                      : null
+                  }
                   peaks={reviewPeaks}
                   tileUrl={() => still}
                   transcript={{ status: 'ready', transcript: reviewTranscript }}

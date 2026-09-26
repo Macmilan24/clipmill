@@ -53,6 +53,7 @@ import {
   listEditDocs,
   getEditDoc,
   previewPlan,
+  previewDirect,
   solveCropPath,
   listFaces,
   readDocument,
@@ -120,6 +121,8 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   updateYoutubeImport(importId: string, action: 'cancel' | 'retry'): Promise<YoutubeImport>;
   submitAnalyze(projectId: string, request: AnalyzeRequest): Promise<Job>;
   directClip(request: DirectClipInput): Promise<DirectedClip>;
+  /** The clip approving would build, not saved. Absent from shells without it. */
+  previewDirect?(request: DirectClipInput): Promise<PreviewPlan>;
   solveCropPath(
     projectId: string,
     faceTrackArtifactId: string,
@@ -196,6 +199,7 @@ export const daemonApi: ShellApi = {
   updateYoutubeImport,
   submitAnalyze,
   directClip,
+  previewDirect,
   solveCropPath,
   listFaces,
   previewPlan,
