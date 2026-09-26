@@ -591,6 +591,20 @@
   cursor: grabbing;
 }
 
+/* The filler review's opt-ins, and words whose timing was estimated. */
+.edit-filler-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+}
+
+.edit-word[data-guessed='true'] {
+  text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+}
+
 /* The Framing tab's layouts: a grid, since five names do not fit one row. */
 .edit-layouts {
   display: grid;

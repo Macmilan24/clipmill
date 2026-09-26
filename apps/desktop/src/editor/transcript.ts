@@ -14,6 +14,14 @@ export interface ProgramWord {
   readonly segmentId: string;
   readonly startTicks: number;
   readonly endTicks: number;
+  /** Said, but its timing spread across a span rather than measured. */
+  readonly guessed?: boolean;
+}
+
+/** A stretch of the program, in program ticks. */
+export interface ProgramSpan {
+  readonly startTicks: number;
+  readonly endTicks: number;
 }
 
 export function programWords(plan: PreviewPlan, transcript: Transcript | null): ProgramWord[] {
@@ -31,10 +39,95 @@ export function programWords(plan: PreviewPlan, transcript: Transcript | null): 
           endTicks:
             segment.programStartTicks +
             Math.min(segment.outTicks - segment.inTicks, word.endTicks - segment.inTicks),
+          ...(word.guessed ? { guessed: true } : {}),
         },
       ];
     }),
   );
+}
+
+/** The measured silences the program plays, in program ticks. */
+export function programSilences(plan: PreviewPlan, transcript: Transcript | null): ProgramSpan[] {
+  const silences = transcript?.silences ?? [];
+  return plan.segments.flatMap((segment) =>
+    silences.flatMap((silence) => {
+      const from = Math.max(silence.startTicks, segment.inTicks);
+      const to = Math.min(silence.endTicks, segment.outTicks);
+      if (to <= from) return [];
+      return [
+        {
+          startTicks: segment.programStartTicks + from - segment.inTicks,
+          endTicks: segment.programStartTicks + to - segment.inTicks,
+        },
+      ];
+    }),
+  );
+}
+
+/** How far a guessed word's edge may be from the silence it snaps to. */
+const SNAP_REACH_TICKS = 27_000;
+
+/** Where speech resumes near `ticks`: the end of a measured silence close by. */
+function speechStartsNear(ticks: number, silences: readonly ProgramSpan[]): number | null {
+  let best: number | null = null;
+  for (const silence of silences) {
+    const distance = Math.abs(silence.endTicks - ticks);
+    if (distance <= SNAP_REACH_TICKS && (best === null || distance < Math.abs(best - ticks))) {
+      best = silence.endTicks;
+    }
+  }
+  return best;
+}
+
+/** Where speech stops near `ticks`: the start of a measured silence close by. */
+function speechStopsNear(ticks: number, silences: readonly ProgramSpan[]): number | null {
+  let best: number | null = null;
+  for (const silence of silences) {
+    const distance = Math.abs(silence.startTicks - ticks);
+    if (distance <= SNAP_REACH_TICKS && (best === null || distance < Math.abs(best - ticks))) {
+      best = silence.startTicks;
+    }
+  }
+  return best;
+}
+
+/** The fillers a person may also ask to find, beside the hesitations. */
+export interface FillerChoices {
+  readonly like: boolean;
+  readonly youKnow: boolean;
+}
+
+/**
+ * The program's fillers, as runs of word positions.
+ *
+ * Hesitations always. "Like" and "you know" only when asked for, and then
+ * only where the recognizer set them off with a comma — "it was, like, huge"
+ * — which is how a filler is punctuated and a verb is not.
+ */
+export function fillerRuns(
+  words: readonly ProgramWord[],
+  choices: FillerChoices,
+): (readonly number[])[] {
+  const plain = (at: number) => (words[at]?.text ?? '').toLowerCase().replaceAll(/[^a-z']/g, '');
+  const commaAfter = (at: number) => /,\s*$/.test(words[at]?.text ?? '');
+  const runs: (readonly number[])[] = [];
+  for (let at = 0; at < words.length; at += 1) {
+    const word = plain(at);
+    if (FILLERS.has(word)) {
+      runs.push([at]);
+    } else if (choices.like && word === 'like' && (commaAfter(at) || commaAfter(at - 1))) {
+      runs.push([at]);
+    } else if (
+      choices.youKnow &&
+      word === 'you' &&
+      plain(at + 1) === 'know' &&
+      (commaAfter(at + 1) || commaAfter(at - 1))
+    ) {
+      runs.push([at, at + 1]);
+      at += 1;
+    }
+  }
+  return runs;
 }
 
 export function isFiller(text: string): boolean {
@@ -65,7 +158,17 @@ export function cutWords(
   plan: PreviewPlan,
   words: readonly ProgramWord[],
   positions: readonly number[],
+  silences: readonly ProgramSpan[] = [],
 ): EditCommandJson | null {
+  // An edge taken from a word the aligner could not place moves to where the
+  // audio says speech starts or stops, when a measured silence is close by:
+  // a guessed edge would otherwise clip the word or leave half of it behind.
+  const start = (word: ProgramWord) =>
+    (word.guessed ? speechStartsNear(word.startTicks, silences) : null) ?? word.startTicks;
+  const end = (word: ProgramWord) =>
+    (word.guessed ? speechStopsNear(word.endTicks, silences) : null) ?? word.endTicks;
+  const range = (from: number, to: number, fallback: [number, number]) =>
+    to > from ? rippleRange(plan, from, to) : rippleRange(plan, fallback[0], fallback[1]);
   const chosen = [...new Set(positions)]
     .filter((at) => words[at] !== undefined)
     .toSorted((a, b) => a - b);
@@ -83,12 +186,12 @@ export function cutWords(
       const after = words[last + 1];
       const before = words[first - 1];
       if (after && after.segmentId === tail.segmentId) {
-        return rippleRange(plan, head.startTicks, after.startTicks);
+        return range(start(head), start(after), [head.startTicks, after.startTicks]);
       }
       if (before && before.segmentId === head.segmentId) {
-        return rippleRange(plan, before.endTicks, tail.endTicks);
+        return range(end(before), end(tail), [before.endTicks, tail.endTicks]);
       }
-      return rippleRange(plan, head.startTicks, tail.endTicks);
+      return range(start(head), end(tail), [head.startTicks, tail.endTicks]);
     })
     .filter((cut): cut is EditCommandJson => cut !== null)
     .toReversed();

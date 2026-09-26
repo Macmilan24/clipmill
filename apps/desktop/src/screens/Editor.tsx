@@ -60,7 +60,13 @@ import {
   ticksOfFrame,
   zoomSpan,
 } from '../editor/timeline.js';
-import { cutWords, programWords, rippleRange, shownCues } from '../editor/transcript.js';
+import {
+  cutWords,
+  programSilences,
+  programWords,
+  rippleRange,
+  shownCues,
+} from '../editor/transcript.js';
 import { useDraftAudio } from '../editor/useDraftAudio.js';
 import { useEditorKeys } from '../editor/useEditorKeys.js';
 import { ClipTitle, HistoryButton } from '../editor/EditorHistory.js';
@@ -640,7 +646,12 @@ export function Editor({
     if (!plan || busy) return;
     let command: EditCommandJson | null = null;
     if (selection.kind === 'words') {
-      command = cutWords(plan, programWords(plan, transcript), positions(selection.range));
+      command = cutWords(
+        plan,
+        programWords(plan, transcript),
+        positions(selection.range),
+        programSilences(plan, transcript),
+      );
     } else if (selection.kind === 'keyframe') {
       command = removeCropKeyframe(selection.tTicks, selection.segmentId, selection.secondary);
     } else if (selection.kind === 'gain') {

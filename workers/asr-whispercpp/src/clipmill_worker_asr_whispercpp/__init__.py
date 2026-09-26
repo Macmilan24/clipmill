@@ -41,7 +41,13 @@ from clipmill_worker_sdk.inputs import LeaseInputs, MissingInputError
 from clipmill_worker_sdk.ticks import samples_to_ticks, samples_to_ticks_ceil, ticks_to_samples
 from clipmill_worker_sdk.weights import ModelVerificationError, VerifiedModel, require_model
 
-from .engine import IMPLEMENTATION, WhisperCppRecognizer, decode_pcm16
+from .engine import (
+    IMPLEMENTATION,
+    VERBATIM,
+    VERBATIM_PROMPTS,
+    WhisperCppRecognizer,
+    decode_pcm16,
+)
 
 __version__ = "0.1.0"
 CAPABILITIES = ("speech-asr",)
@@ -93,6 +99,11 @@ def execute_asr(context: TaskContext) -> tuple[str, ...]:
         weights=weights_file(model),
     )
     language, language_confidence = _language(recognizer, payload, samples, windows)
+    # Asked for what was said, fillers included, where there is a prompt for
+    # the language: decided once, for every window, after the language is.
+    prompt = VERBATIM_PROMPTS.get(language) if payload.recognition.verbatim else None
+    if prompt:
+        recognizer.use_prompt(prompt)
 
     segments: list[AsrSegment] = []
     undecodable: list[DecodeWindow] = []
@@ -133,6 +144,7 @@ def execute_asr(context: TaskContext) -> tuple[str, ...]:
         language_confidence=language_confidence,
         segments=segments,
         undecodable=undecodable,
+        verbatim=prompt is not None,
     )
     context.staging.write_bytes(OUTPUT_FILE, canonical_bytes(document))
     return (OUTPUT_FILE,)
@@ -242,6 +254,7 @@ def _document(
     language_confidence: float | None,
     segments: list[AsrSegment],
     undecodable: list[DecodeWindow],
+    verbatim: bool = False,
 ) -> SpeechAsr:
     rate = audio.sample_rate
     return SpeechAsr(
@@ -251,7 +264,10 @@ def _document(
         vad_artifact_id=vad_artifact_id,
         producer=Producer(
             stage="speech-asr",
-            implementation=f"clipmill-worker-asr@{__version__}+{IMPLEMENTATION}/{model.name}",
+            implementation=(
+                f"clipmill-worker-asr@{__version__}+{IMPLEMENTATION}"
+                f"{'+' + VERBATIM if verbatim else ''}/{model.name}"
+            ),
             model_digest=model.digest,
         ),
         language=language,

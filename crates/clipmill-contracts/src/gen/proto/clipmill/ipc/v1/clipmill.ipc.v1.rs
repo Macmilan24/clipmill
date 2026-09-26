@@ -512,6 +512,12 @@ pub struct SpeechRecognitionV1 {
     /// one bad window should not be able to poison the rest of the recording.
     #[prost(bool, tag = "2")]
     pub conditioned_on_previous: bool,
+    /// Write what was said, fillers included. Whisper otherwise writes clean
+    /// text — no "um", no "uh" — which leaves nothing for a filler cut to find.
+    /// A recognizer that has a way to be asked primes each window with it; one
+    /// that has none for the language decodes as it always has, and says so.
+    #[prost(bool, tag = "3")]
+    pub verbatim: bool,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SpeechAlignmentV1 {
