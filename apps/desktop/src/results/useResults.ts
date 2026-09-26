@@ -14,7 +14,7 @@ import type {
   DirectedClip,
   PreviewPlan,
 } from '../daemon/client.js';
-import { highlightFor, lookFor } from './captionLook.js';
+import { highlightFor, lookFor, optionsFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { TICKS_PER_SECOND } from './model.js';
 import type { Transcript } from './transcript.js';
@@ -346,12 +346,14 @@ export function useResults(
           ? 'alternative'
           : 'exact';
       const look = lookFor(projectId);
+      const options = optionsFor(projectId);
       return {
         projectId,
         sourceId: snapshot.source.sourceId,
         candidateId,
         cut,
         ...(look ? { styleRef: look } : {}),
+        ...(options ? { captionOptionsJson: options } : {}),
         highlightSpokenWord: highlightFor(projectId),
         ...(cut === 'exact' && window
           ? { startTicks: window.startTicks, endTicks: window.endTicks }
@@ -448,6 +450,7 @@ export function useResults(
       setNotice(null);
       try {
         const look = lookFor(projectId);
+        const options = optionsFor(projectId);
         const directed = await api.directClip({
           projectId,
           sourceId: snapshot.source.sourceId,
@@ -455,6 +458,7 @@ export function useResults(
           candidateId: '',
           cut: 'exact',
           ...(look ? { styleRef: look } : {}),
+          ...(options ? { captionOptionsJson: options } : {}),
           highlightSpokenWord: highlightFor(projectId),
           startTicks,
           endTicks,

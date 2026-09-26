@@ -1931,7 +1931,32 @@ impl Service {
         .map_err(|error| (ErrorCode::Conflict, error.message()))?;
         let mut document =
             assemble(&evidence, direct).map_err(|message| (ErrorCode::InvalidArgument, message))?;
-        document.captions.options.highlight_spoken_word = direct.highlight_spoken_word;
+        if !direct.caption_options_json.is_empty() {
+            document.captions.options = serde_json::from_str(&direct.caption_options_json)
+                .map_err(|_| {
+                    (
+                        ErrorCode::InvalidArgument,
+                        "the caption style could not be read".to_owned(),
+                    )
+                })?;
+        }
+        // The request's own highlight choice, when it makes one, is the last word.
+        if direct.highlight_spoken_word.is_some() {
+            document.captions.options.highlight_spoken_word = direct.highlight_spoken_word;
+        }
+        document.validate().map_err(|error| {
+            (
+                ErrorCode::InvalidArgument,
+                format!("the caption style cannot be used: {error}"),
+            )
+        })?;
+        // How many words show at once regroups the burned-in captions, which
+        // the option alone would only claim.
+        if let Some(max_words) = document.captions.options.words_on_screen {
+            clipmill_edit_ir::EditCommand::RegroupOnScreen { max_words }
+                .apply(&mut document)
+                .map_err(|error| (ErrorCode::InvalidArgument, error.to_string()))?;
+        }
         if document.video.segments.is_empty() {
             return Err((
                 ErrorCode::Internal,

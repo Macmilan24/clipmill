@@ -98,6 +98,16 @@ export interface ImportSettings {
   /** The caption look this project's clips start with. */
   readonly captionLook?: string;
   readonly highlightSpokenWord?: boolean;
+  /**
+   * A saved style's name and options, when one was chosen rather than a
+   * plain look: its font, colours and highlight start every clip too.
+   */
+  readonly captionStyle?:
+    | {
+        readonly name: string;
+        readonly options: Readonly<Record<string, unknown>>;
+      }
+    | undefined;
 }
 
 export const DEFAULT_SETTINGS: ImportSettings = {

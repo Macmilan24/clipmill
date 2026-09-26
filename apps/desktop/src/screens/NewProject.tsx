@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  Bookmark,
   Check,
   ChevronDown,
   FileVideo,
@@ -43,6 +44,8 @@ import {
 import type { ConnectionState, Readiness } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
 import { type ChosenSource, ImportLoader, isVideoPath } from '../import/loader.js';
+import { formatEstimate, runEstimate } from '../analysis/estimates.js';
+import { savedStyles } from '../editor/captionStyles.js';
 import { CAPTION_LOOKS, DEFAULT_LOOK } from '../results/captionLook.js';
 import { CaptionLookSample } from '../results/CaptionLookSample.js';
 import { YouTubeImport } from '../import/YouTubeImport.js';
@@ -205,6 +208,8 @@ export function NewProject({
 }: NewProjectProps): JSX.Element {
   const [importer] = useState(() => loader ?? new ImportLoader());
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  // Styles saved from the Editor, offered as a project's starting look.
+  const [styles] = useState(() => savedStyles());
   const [chosen, setChosen] = useState<ChosenSource | null>(null);
   const [sourceKind, setSourceKind] = useState<'local' | 'youtube'>(() =>
     recallYoutube() ? 'youtube' : 'local',
@@ -218,6 +223,13 @@ export function NewProject({
   // said out loud, since the run would sit on that stage until one is.
   const { readiness, problem: readinessProblem, refresh } = useReadiness(connected, importer.api);
   const route = settings.editorialRoute ?? 'local';
+  // This machine's own pace, from the runs it has finished before.
+  const estimate = chosen
+    ? runEstimate(
+        (chosen.sourceMap?.container.duration_ticks ?? 0) / 90_000,
+        route === 'heuristic' ? 'baseline' : route,
+      )
+    : null;
   const routeReadiness = readiness
     ? {
         ...readiness,
@@ -434,6 +446,12 @@ export function NewProject({
                       {formatDuration(chosen.sourceMap)} · {formatVideoSpec(chosen.sourceMap)} ·{' '}
                       {formatBytes(chosen.source.byteSize)}
                     </div>
+                    {estimate !== null && (
+                      <div className={cn('text-meta', SECONDARY)} data-testid="analysis-estimate">
+                        Analysis takes {formatEstimate(estimate)} on this machine
+                        {route === 'local' ? ', with the editorial model' : ''}.
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2 flex items-center gap-1.5">
@@ -563,11 +581,17 @@ export function NewProject({
                   <button
                     key={look.ref}
                     type="button"
-                    aria-pressed={(settings.captionLook ?? DEFAULT_LOOK) === look.ref}
+                    aria-pressed={
+                      !settings.captionStyle && (settings.captionLook ?? DEFAULT_LOOK) === look.ref
+                    }
                     data-look={look.label.toLowerCase()}
                     disabled={busy}
                     onClick={() =>
-                      setSettings((current) => ({ ...current, captionLook: look.ref }))
+                      setSettings((current) => ({
+                        ...current,
+                        captionLook: look.ref,
+                        captionStyle: undefined,
+                      }))
                     }
                   >
                     <CaptionLookSample
@@ -578,6 +602,33 @@ export function NewProject({
                   </button>
                 ))}
               </div>
+              {styles.length > 0 && (
+                <div className="import-styles" role="group" aria-label="Your styles">
+                  <span className="text-[11px] text-[var(--cm-text-secondary)]">Your styles</span>
+                  {styles.map((style) => (
+                    <button
+                      key={style.name}
+                      type="button"
+                      aria-pressed={settings.captionStyle?.name === style.name}
+                      disabled={busy}
+                      onClick={() =>
+                        setSettings((current) =>
+                          current.captionStyle?.name === style.name
+                            ? { ...current, captionStyle: undefined }
+                            : {
+                                ...current,
+                                captionLook: style.styleRef,
+                                captionStyle: { name: style.name, options: style.options },
+                              },
+                        )
+                      }
+                    >
+                      <Bookmark className="size-3.5" aria-hidden="true" />
+                      {style.name}
+                    </button>
+                  ))}
+                </div>
+              )}
               <p className="text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
                 Every clip from this recording starts with it. Change any clip in the Editor.
               </p>

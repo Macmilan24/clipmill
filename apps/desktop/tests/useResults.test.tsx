@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CropPath } from '../src/daemon/client.js';
-import { rememberLook } from '../src/results/captionLook.js';
+import { rememberLook, rememberOptions } from '../src/results/captionLook.js';
 import { EMPTY_SNAPSHOT, ResultsLoader, type ResultsSnapshot } from '../src/results/loader.js';
 import { useResults } from '../src/results/useResults.js';
 import { emptyWorld, fakeApi, source } from './support/library.js';
@@ -307,6 +307,31 @@ describe('previewing what an approval builds', () => {
       'clipmill.captions.boxed.v1',
       'clipmill.captions.boxed.v1',
     ]);
+    localStorage.removeItem(`clipmill.captionLook.${OLD}`);
+  });
+});
+
+describe('a project started from a saved style', () => {
+  it('builds every clip with that style’s options', async () => {
+    rememberLook(OLD, 'clipmill.captions.boxed.v1');
+    rememberOptions(OLD, { font_family: 'Anton', accent: '#FF5A1F' });
+    const api = fakeApi(twoProjects());
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, null);
+    });
+    await act(async () => {
+      await hook.result.current.manual(600 * 90_000, 630 * 90_000);
+    });
+    for (const [request] of direct.mock.calls) {
+      expect(JSON.parse(request.captionOptionsJson ?? '{}')).toEqual({
+        font_family: 'Anton',
+        accent: '#FF5A1F',
+      });
+    }
+    rememberOptions(OLD, null);
     localStorage.removeItem(`clipmill.captionLook.${OLD}`);
   });
 });

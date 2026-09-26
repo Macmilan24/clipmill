@@ -472,6 +472,18 @@ async fn preview_captions(
         .map_err(|error| error.to_string())
 }
 
+/// Ask for attention when a long run finishes while the window is behind
+/// others: the Dock icon bounces once, and nothing else changes.
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects the calling window by value"
+)]
+fn request_attention(window: tauri::WebviewWindow) {
+    // Nothing to do when the platform will not bounce anything.
+    let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+}
+
 /// The faces seen over a span, for picking who the camera follows.
 #[tauri::command]
 async fn list_faces(
@@ -921,6 +933,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_edit_history,
             list_faces,
             preview_direct,
+            request_attention,
             get_source,
             start_youtube_import,
             get_youtube_import,

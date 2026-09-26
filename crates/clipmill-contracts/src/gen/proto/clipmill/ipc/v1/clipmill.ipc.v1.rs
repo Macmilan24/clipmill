@@ -976,6 +976,13 @@ pub struct Task {
     /// learn that the daemon calls that work "ingest-filmstrip".
     #[prost(string, tag = "9")]
     pub output_kind: ::prost::alloc::string::String,
+    /// When it first started running and when it succeeded, from its own event
+    /// log; zero until it has. Measured, so a machine's past runs can say how
+    /// long the next one will take.
+    #[prost(uint64, tag = "10")]
+    pub started_unix_millis: u64,
+    #[prost(uint64, tag = "11")]
+    pub finished_unix_millis: u64,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetJobRequest {
@@ -1659,6 +1666,11 @@ pub struct DirectClipRequest {
     /// Separately override the caption look's spoken-word highlight.
     #[prost(bool, optional, tag = "13")]
     pub highlight_spoken_word: ::core::option::Option<bool>,
+    /// The clip-wide caption options the document starts with — a saved style's
+    /// font, colours and highlight — as the edit IR's JSON. Empty keeps the
+    /// look's own. Checked like any edit: options the IR refuses are refused.
+    #[prost(string, tag = "14")]
+    pub caption_options_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {

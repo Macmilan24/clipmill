@@ -1907,6 +1907,38 @@ fn get_job_tx(transaction: &Transaction<'_>, job_id: &str) -> Result<JobRecord, 
     complete_job_record(transaction, header)
 }
 
+/// When each of a job's tasks first ran and when it succeeded, in one pass
+/// over the job's own events.
+fn time_tasks(
+    connection: &Connection,
+    job_id: &str,
+    tasks: &mut [TaskRecord],
+) -> Result<(), StoreError> {
+    let mut timing = connection.prepare(
+        "SELECT task_id,
+                COALESCE(MIN(CASE WHEN state = ?2 THEN at_unix_millis END), 0),
+                COALESCE(MAX(CASE WHEN state = ?3 THEN at_unix_millis END), 0)
+         FROM task_events WHERE job_id = ?1 GROUP BY task_id",
+    )?;
+    let times = timing
+        .query_map(
+            rusqlite::params![
+                job_id,
+                TaskState::Running as i32,
+                TaskState::Succeeded as i32
+            ],
+            |row| Ok((row.get::<_, String>(0)?, sql_u64(row, 1)?, sql_u64(row, 2)?)),
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    for (task_id, started, finished) in times {
+        if let Some(task) = tasks.iter_mut().find(|task| task.task_id == task_id) {
+            task.started_unix_millis = started;
+            task.finished_unix_millis = finished;
+        }
+    }
+    Ok(())
+}
+
 fn complete_job_record(
     connection: &Connection,
     header: JobHeader,
@@ -1917,9 +1949,10 @@ fn complete_job_record(
                 COALESCE(output_artifact_id, '')
          FROM tasks WHERE job_id = ?1 ORDER BY ordinal",
     )?;
-    let tasks = statement
+    let mut tasks = statement
         .query_map([&header.job_id], task_from_row)?
         .collect::<Result<Vec<_>, _>>()?;
+    time_tasks(connection, &header.job_id, &mut tasks)?;
     let output_artifact_ids = tasks
         .iter()
         .filter(|task| {
@@ -2037,6 +2070,8 @@ fn task_from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         progress_total: sql_u64(row, 8)?,
         wait_reason: row.get(9)?,
         output_artifact_id: row.get(10)?,
+        started_unix_millis: 0,
+        finished_unix_millis: 0,
     })
 }
 
