@@ -1567,3 +1567,18 @@
   flex: 1;
   min-width: 0;
 }
+
+/* Result and source side by side, when the viewer has the width for both. */
+.review-stage-pair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100cqw;
+  height: 100cqh;
+}
+
+.review-stage-pair > .review-stage {
+  width: auto;
+  height: min(100cqh, calc((100cqw - 12px) / (0.5625 + var(--review-source-aspect, 1.7778))));
+}

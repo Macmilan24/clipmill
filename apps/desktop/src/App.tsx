@@ -178,6 +178,12 @@ export function App(): JSX.Element {
 
   const { section, trail } = placementOf(route);
   const shortcuts = useShortcutSheet();
+  // The two workspaces give the picture the room: the rail shows icons only,
+  // and the trail and engine line fold away — the workspace's own heading
+  // names the clip and leads back — unless the engine is not ready, which is
+  // then the first thing on screen.
+  const workspace = route.kind === 'inspector' || route.kind === 'editor';
+  const folded = workspace && state.status === 'connected';
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -186,6 +192,7 @@ export function App(): JSX.Element {
         // The sidebar becomes an icon rail in compact desktop windows.
         style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
         className="studio-shell relative h-full min-h-0"
+        data-workspace={workspace ? 'true' : undefined}
       >
         <AppSidebar
           activeId={section.id}
@@ -194,13 +201,15 @@ export function App(): JSX.Element {
           analysisBusy={analysisActivity.active}
         />
         <SidebarInset className="min-h-0 min-w-0 bg-transparent">
-          <TopBar
-            trail={trail}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-            state={state}
-            profile={profile}
-          />
+          {!folded && (
+            <TopBar
+              trail={trail}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              state={state}
+              profile={profile}
+            />
+          )}
           <main
             className={`studio-main ${['results', 'editor'].includes(section.id) ? 'studio-main-workspace' : 'studio-main-page'}`}
           >

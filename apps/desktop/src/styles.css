@@ -453,6 +453,25 @@ input[type='range'] {
     padding-inline: 0;
   }
 }
+/* In the Inspector and the Editor the rail is icons only, as in a small
+   window: the picture takes the width. */
+.studio-shell[data-workspace='true'] {
+  --sidebar-width: 64px !important;
+}
+.studio-shell[data-workspace='true'] .studio-sidebar .sidebar-label,
+.studio-shell[data-workspace='true'] .sidebar-wordmark {
+  display: none;
+}
+.studio-shell[data-workspace='true'] .studio-sidebar [data-slot='sidebar-header'] {
+  padding-inline: 20px;
+}
+.studio-shell[data-workspace='true'] .studio-sidebar [data-slot='sidebar-content'] {
+  padding-inline: 10px;
+}
+.studio-shell[data-workspace='true'] .studio-sidebar .nav-row {
+  justify-content: center;
+  padding-inline: 0;
+}
 @media (max-width: 1199px) {
   .workspace-page {
     padding: 20px;
