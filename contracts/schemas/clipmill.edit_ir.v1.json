@@ -178,6 +178,38 @@
               }
             }
           }
+        },
+        "music": {
+          "description": "Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.",
+          "type": "object",
+          "required": ["asset", "level_db", "duck_db"],
+          "additionalProperties": false,
+          "properties": {
+            "asset": {
+              "$ref": "#/$defs/sha256"
+            },
+            "level_db": {
+              "description": "Its level where nobody speaks.",
+              "type": "number",
+              "minimum": -40,
+              "maximum": 0
+            },
+            "duck_db": {
+              "description": "How much further it drops under speech.",
+              "type": "number",
+              "minimum": -30,
+              "maximum": 0
+            },
+            "offset_ticks": {
+              "description": "Where in the sound the clip starts.",
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "cleanup": {
+          "description": "The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.",
+          "enum": ["light", "strong"]
         }
       }
     },

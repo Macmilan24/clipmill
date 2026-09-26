@@ -752,6 +752,13 @@ impl CropRect {
 #[doc = "        \"true_peak_dbtp\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"cleanup\": {"]
+#[doc = "          \"description\": \"The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"light\","]
+#[doc = "            \"strong\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"gain_curve\": {"]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
@@ -771,6 +778,38 @@ impl CropRect {
 #[doc = "            },"]
 #[doc = "            \"additionalProperties\": false"]
 #[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"music\": {"]
+#[doc = "          \"description\": \"Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"asset\","]
+#[doc = "            \"duck_db\","]
+#[doc = "            \"level_db\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"asset\": {"]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            },"]
+#[doc = "            \"duck_db\": {"]
+#[doc = "              \"description\": \"How much further it drops under speech.\","]
+#[doc = "              \"type\": \"number\","]
+#[doc = "              \"maximum\": 0.0,"]
+#[doc = "              \"minimum\": -30.0"]
+#[doc = "            },"]
+#[doc = "            \"level_db\": {"]
+#[doc = "              \"description\": \"Its level where nobody speaks.\","]
+#[doc = "              \"type\": \"number\","]
+#[doc = "              \"maximum\": 0.0,"]
+#[doc = "              \"minimum\": -40.0"]
+#[doc = "            },"]
+#[doc = "            \"offset_ticks\": {"]
+#[doc = "              \"description\": \"Where in the sound the clip starts.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
 #[doc = "        },"]
 #[doc = "        \"target_lufs\": {"]
 #[doc = "          \"description\": \"Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.\","]
@@ -1122,6 +1161,13 @@ impl EditIrAssetsItem {
 #[doc = "    \"true_peak_dbtp\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"cleanup\": {"]
+#[doc = "      \"description\": \"The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"light\","]
+#[doc = "        \"strong\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"gain_curve\": {"]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
@@ -1142,6 +1188,38 @@ impl EditIrAssetsItem {
 #[doc = "        \"additionalProperties\": false"]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"music\": {"]
+#[doc = "      \"description\": \"Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"asset\","]
+#[doc = "        \"duck_db\","]
+#[doc = "        \"level_db\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"asset\": {"]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        },"]
+#[doc = "        \"duck_db\": {"]
+#[doc = "          \"description\": \"How much further it drops under speech.\","]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"maximum\": 0.0,"]
+#[doc = "          \"minimum\": -30.0"]
+#[doc = "        },"]
+#[doc = "        \"level_db\": {"]
+#[doc = "          \"description\": \"Its level where nobody speaks.\","]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"maximum\": 0.0,"]
+#[doc = "          \"minimum\": -40.0"]
+#[doc = "        },"]
+#[doc = "        \"offset_ticks\": {"]
+#[doc = "          \"description\": \"Where in the sound the clip starts.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"target_lufs\": {"]
 #[doc = "      \"description\": \"Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.\","]
 #[doc = "      \"type\": \"number\""]
@@ -1157,8 +1235,13 @@ impl EditIrAssetsItem {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct EditIrAudio {
+    #[doc = "The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub cleanup: ::std::option::Option<EditIrAudioCleanup>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub gain_curve: ::std::vec::Vec<EditIrAudioGainCurveItem>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub music: ::std::option::Option<EditIrAudioMusic>,
     #[doc = "Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued."]
     pub target_lufs: f64,
     pub true_peak_dbtp: f64,
@@ -1166,6 +1249,78 @@ pub struct EditIrAudio {
 impl EditIrAudio {
     pub fn builder() -> builder::EditIrAudio {
         Default::default()
+    }
+}
+#[doc = "The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"light\","]
+#[doc = "    \"strong\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrAudioCleanup {
+    #[serde(rename = "light")]
+    Light,
+    #[serde(rename = "strong")]
+    Strong,
+}
+impl ::std::fmt::Display for EditIrAudioCleanup {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Light => f.write_str("light"),
+            Self::Strong => f.write_str("strong"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrAudioCleanup {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "light" => Ok(Self::Light),
+            "strong" => Ok(Self::Strong),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrAudioCleanup {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrAudioCleanup {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrAudioCleanup {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`EditIrAudioGainCurveItem`"]
@@ -1200,6 +1355,62 @@ pub struct EditIrAudioGainCurveItem {
 }
 impl EditIrAudioGainCurveItem {
     pub fn builder() -> builder::EditIrAudioGainCurveItem {
+        Default::default()
+    }
+}
+#[doc = "Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"asset\","]
+#[doc = "    \"duck_db\","]
+#[doc = "    \"level_db\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"asset\": {"]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
+#[doc = "    },"]
+#[doc = "    \"duck_db\": {"]
+#[doc = "      \"description\": \"How much further it drops under speech.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 0.0,"]
+#[doc = "      \"minimum\": -30.0"]
+#[doc = "    },"]
+#[doc = "    \"level_db\": {"]
+#[doc = "      \"description\": \"Its level where nobody speaks.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 0.0,"]
+#[doc = "      \"minimum\": -40.0"]
+#[doc = "    },"]
+#[doc = "    \"offset_ticks\": {"]
+#[doc = "      \"description\": \"Where in the sound the clip starts.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrAudioMusic {
+    pub asset: Sha256,
+    #[doc = "How much further it drops under speech."]
+    pub duck_db: f64,
+    #[doc = "Its level where nobody speaks."]
+    pub level_db: f64,
+    #[doc = "Where in the sound the clip starts."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub offset_ticks: ::std::option::Option<u64>,
+}
+impl EditIrAudioMusic {
+    pub fn builder() -> builder::EditIrAudioMusic {
         Default::default()
     }
 }
@@ -5019,8 +5230,16 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct EditIrAudio {
+        cleanup: ::std::result::Result<
+            ::std::option::Option<super::EditIrAudioCleanup>,
+            ::std::string::String,
+        >,
         gain_curve: ::std::result::Result<
             ::std::vec::Vec<super::EditIrAudioGainCurveItem>,
+            ::std::string::String,
+        >,
+        music: ::std::result::Result<
+            ::std::option::Option<super::EditIrAudioMusic>,
             ::std::string::String,
         >,
         target_lufs: ::std::result::Result<f64, ::std::string::String>,
@@ -5029,13 +5248,25 @@ pub mod builder {
     impl ::std::default::Default for EditIrAudio {
         fn default() -> Self {
             Self {
+                cleanup: Ok(Default::default()),
                 gain_curve: Ok(Default::default()),
+                music: Ok(Default::default()),
                 target_lufs: Err("no value supplied for target_lufs".to_string()),
                 true_peak_dbtp: Err("no value supplied for true_peak_dbtp".to_string()),
             }
         }
     }
     impl EditIrAudio {
+        pub fn cleanup<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrAudioCleanup>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cleanup = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cleanup: {e}"));
+            self
+        }
         pub fn gain_curve<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::vec::Vec<super::EditIrAudioGainCurveItem>>,
@@ -5044,6 +5275,16 @@ pub mod builder {
             self.gain_curve = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for gain_curve: {e}"));
+            self
+        }
+        pub fn music<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrAudioMusic>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.music = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for music: {e}"));
             self
         }
         pub fn target_lufs<T>(mut self, value: T) -> Self
@@ -5073,7 +5314,9 @@ pub mod builder {
             value: EditIrAudio,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                cleanup: value.cleanup?,
                 gain_curve: value.gain_curve?,
+                music: value.music?,
                 target_lufs: value.target_lufs?,
                 true_peak_dbtp: value.true_peak_dbtp?,
             })
@@ -5082,7 +5325,9 @@ pub mod builder {
     impl ::std::convert::From<super::EditIrAudio> for EditIrAudio {
         fn from(value: super::EditIrAudio) -> Self {
             Self {
+                cleanup: Ok(value.cleanup),
                 gain_curve: Ok(value.gain_curve),
+                music: Ok(value.music),
                 target_lufs: Ok(value.target_lufs),
                 true_peak_dbtp: Ok(value.true_peak_dbtp),
             }
@@ -5139,6 +5384,88 @@ pub mod builder {
             Self {
                 gain_db: Ok(value.gain_db),
                 t_ticks: Ok(value.t_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrAudioMusic {
+        asset: ::std::result::Result<super::Sha256, ::std::string::String>,
+        duck_db: ::std::result::Result<f64, ::std::string::String>,
+        level_db: ::std::result::Result<f64, ::std::string::String>,
+        offset_ticks: ::std::result::Result<::std::option::Option<u64>, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditIrAudioMusic {
+        fn default() -> Self {
+            Self {
+                asset: Err("no value supplied for asset".to_string()),
+                duck_db: Err("no value supplied for duck_db".to_string()),
+                level_db: Err("no value supplied for level_db".to_string()),
+                offset_ticks: Ok(Default::default()),
+            }
+        }
+    }
+    impl EditIrAudioMusic {
+        pub fn asset<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::Sha256>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.asset = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for asset: {e}"));
+            self
+        }
+        pub fn duck_db<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.duck_db = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for duck_db: {e}"));
+            self
+        }
+        pub fn level_db<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.level_db = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for level_db: {e}"));
+            self
+        }
+        pub fn offset_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<u64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.offset_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for offset_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrAudioMusic> for super::EditIrAudioMusic {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrAudioMusic,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                asset: value.asset?,
+                duck_db: value.duck_db?,
+                level_db: value.level_db?,
+                offset_ticks: value.offset_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrAudioMusic> for EditIrAudioMusic {
+        fn from(value: super::EditIrAudioMusic) -> Self {
+            Self {
+                asset: Ok(value.asset),
+                duck_db: Ok(value.duck_db),
+                level_db: Ok(value.level_db),
+                offset_ticks: Ok(value.offset_ticks),
             }
         }
     }

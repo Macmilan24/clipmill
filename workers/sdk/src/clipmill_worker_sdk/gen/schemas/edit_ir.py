@@ -6,7 +6,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
 
 
 class Timebase(BaseModel):
@@ -56,16 +56,9 @@ class GainCurveItem(BaseModel):
     gain_db: float
 
 
-class Audio(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    target_lufs: float = Field(
-        ...,
-        description='Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.',
-    )
-    true_peak_dbtp: float
-    gain_curve: list[GainCurveItem] | None = None
+class Cleanup(Enum):
+    light = 'light'
+    strong = 'strong'
 
 
 class Edge(Enum):
@@ -358,6 +351,42 @@ class Options(BaseModel):
     words_on_screen: conint(ge=1, le=8) | None = Field(
         None,
         description='The most words the on-screen captions were last grouped into.',
+    )
+
+
+class Music(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    asset: Sha256
+    level_db: confloat(ge=-40.0, le=0.0) = Field(
+        ..., description='Its level where nobody speaks.'
+    )
+    duck_db: confloat(ge=-30.0, le=0.0) = Field(
+        ..., description='How much further it drops under speech.'
+    )
+    offset_ticks: conint(ge=0) | None = Field(
+        None, description='Where in the sound the clip starts.'
+    )
+
+
+class Audio(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    target_lufs: float = Field(
+        ...,
+        description='Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.',
+    )
+    true_peak_dbtp: float
+    gain_curve: list[GainCurveItem] | None = None
+    music: Music | None = Field(
+        None,
+        description="Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.",
+    )
+    cleanup: Cleanup | None = Field(
+        None,
+        description='The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.',
     )
 
 

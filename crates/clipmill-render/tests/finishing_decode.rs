@@ -1777,3 +1777,198 @@ fn a_logo_sits_in_its_corner_at_its_size_and_opacity() {
     assert!(red(pixel(1_050, 226)), "{:?}", pixel(1_050, 226));
     eprintln!("Logo decoded; render in {}", work.display());
 }
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one explicit end-to-end encoder scenario"
+)]
+#[ignore = "requires the pinned .cache/bin/ffmpeg; renders and measures actual audio"]
+fn music_drops_under_the_words_and_the_cleaned_voice_still_plays() {
+    use clipmill_edit_ir::{
+        Asset, CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionWord, MusicBed,
+        VoiceCleanup,
+    };
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-music-{nonce}"));
+    std::fs::create_dir_all(work.join("fonts")).expect("scratch directory");
+    std::fs::copy(
+        root.join(".cache/fonts/Inter-Bold.ttf"),
+        work.join("fonts/Inter-Bold.ttf"),
+    )
+    .expect("pinned font");
+    // The voice: a steady 440 Hz tone under a picture, four seconds.
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:r=30:d=4",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=4",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    // The music: a 220 Hz tone, shorter than the clip, so it loops.
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=220:sample_rate=48000:duration=2.5",
+            "-c:a",
+            "libmp3lame",
+            "music.mp3",
+        ]),
+    );
+    std::fs::rename(
+        work.join("music.mp3"),
+        work.join(clipmill_render::MUSIC_FILE),
+    )
+    .expect("staged music");
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let music_hash = format!("sha256:{}", "3".repeat(64));
+    let mut document = EditDocument::default();
+    document.video.transition_ticks = 0;
+    document.video.segments = vec![VideoSegment {
+        segment_id: "seg_1".to_owned(),
+        source_fingerprint: fingerprint.clone(),
+        in_ticks: 0,
+        out_ticks: 4 * 90_000,
+        layout: Layout {
+            state: LayoutState::SpeakerFill,
+            crop_path: vec![CropKeyframe {
+                t_ticks: 0,
+                rect: CropRect {
+                    x: 656,
+                    y: 0,
+                    width: 608,
+                    height: 1_080,
+                },
+                easing: clipmill_edit_ir::CropEasing::Linear,
+            }],
+            ..Layout::default()
+        },
+    }];
+    // Words from half a second to a second and a half, and none after.
+    document.captions.style_ref = RenderProfile::default().caption_style.style_ref;
+    document.captions.cues = vec![CaptionCue {
+        cue_id: "cue_1".to_owned(),
+        start_ticks: 45_000,
+        end_ticks: 135_000,
+        region: CaptionRegion::LowerSafe,
+        anim: CaptionAnimation::Karaoke,
+        lines: vec![CaptionLine {
+            words: vec![
+                CaptionWord {
+                    text: "Say".to_owned(),
+                    start_ticks: 45_000,
+                    end_ticks: 90_000,
+                    word_id: None,
+                    emphasis: false,
+                },
+                CaptionWord {
+                    text: "something".to_owned(),
+                    start_ticks: 90_000,
+                    end_ticks: 135_000,
+                    word_id: None,
+                    emphasis: false,
+                },
+            ],
+        }],
+        position: None,
+    }];
+    document.assets = vec![Asset {
+        hash: music_hash.clone(),
+        license: "royalty_free".to_owned(),
+    }];
+    document.audio.music = Some(MusicBed {
+        asset: music_hash,
+        level_db: -12.0,
+        duck_db: -18.0,
+        offset_ticks: 0,
+    });
+    document.audio.cleanup = Some(VoiceCleanup::Light);
+    let source = SourceInput {
+        fingerprint,
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 4 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let plan = compile(&document, &[source], &RenderProfile::default()).expect("compile");
+    assert!(plan.graph.graph.contains("afftdn"), "{}", plan.graph.graph);
+    std::fs::write(work.join("clip.ass"), &plan.ass).expect("captions");
+    let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+    let measurement =
+        LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+            .expect("measured loudness");
+    ffmpeg(&binary, &work, &plan.encode_args(measurement));
+    // The music's own tone, alone, over a window: its RMS level in dB.
+    let music_level = |from: &str, length: &str| {
+        let report = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                from,
+                "-t",
+                length,
+                "-i",
+                "clip.mp4",
+                "-vn",
+                "-af",
+                "bandpass=f=220:width_type=q:w=8,bandpass=f=220:width_type=q:w=8,astats=metadata=0",
+                "-f",
+                "null",
+                "-",
+            ]),
+        );
+        let text = String::from_utf8_lossy(&report.stderr).into_owned();
+        text.lines()
+            .rev()
+            .find_map(|line| {
+                line.split("RMS level dB:")
+                    .nth(1)
+                    .and_then(|value| value.trim().parse::<f64>().ok())
+            })
+            .expect("an RMS level")
+    };
+    let under = music_level("0.8", "0.5");
+    let over = music_level("2.6", "0.5");
+    assert!(
+        over - under > 12.0,
+        "the music is {under:.1} dB under the words and {over:.1} dB after them"
+    );
+    eprintln!(
+        "Music measured: {under:.1} dB under speech, {over:.1} dB in the pause; render in {}",
+        work.display()
+    );
+}

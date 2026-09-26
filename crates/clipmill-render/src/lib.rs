@@ -10,6 +10,7 @@ pub mod captions;
 mod graph;
 mod kinetic;
 mod manifest;
+mod music;
 mod overlays;
 mod plan;
 pub mod preview;
@@ -22,17 +23,18 @@ pub use graph::{
     DecodeSpan, FilterGraph, LOGO_FILE, LOUDNORM_SLOT, LogoPlace, crop_rect_at, logo_place,
 };
 pub use manifest::{
-    AiUseSummary, CaptionWindow, EngineIdentity, LoudnessReport, MeasuredLoudness, OutputFile,
-    ProgramReport, ProgramSegment, RenderManifest, RightsAttestation,
+    AiUseSummary, AssetRight, CaptionWindow, EngineIdentity, LoudnessReport, MeasuredLoudness,
+    OutputFile, ProgramReport, ProgramSegment, RenderManifest, RightsAttestation,
     SCHEMA_VERSION as MANIFEST_SCHEMA_VERSION,
 };
+pub use music::{MUSIC_FILE, music_envelope};
 pub use plan::{
     ASS_FILE, CLIP_FILE, LoudnessMeasurement, MANIFEST_FILE, RenderError, RenderPlan, SRT_FILE,
     SegmentReport, SourceInput, VTT_FILE, compile, largest_upscale,
 };
 pub use preview::{
-    PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewLogo, PreviewOverlay, PreviewPlan,
-    PreviewProgress, PreviewWord, caption_ass, preview_plan, text_at,
+    PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewLogo, PreviewMusic, PreviewOverlay,
+    PreviewPlan, PreviewProgress, PreviewWord, caption_ass, preview_plan, text_at,
 };
 pub use profile::{
     CaptionStyle, Colour, DEFAULT_STYLE_REF, DESIGN_HEIGHT, FONT_FAMILY, FONTS_DIR, FrameRateSpec,

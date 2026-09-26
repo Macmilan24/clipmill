@@ -1105,6 +1105,12 @@ export interface PreviewPlan {
   readonly decisions?: readonly string[];
   /** Titles and labels over the program, bottom first. Absent from older hosts. */
   readonly overlays?: readonly PreviewOverlay[];
+  /** The music, and its level in decibels at frames, as the render mixes it. */
+  readonly music?: {
+    readonly asset: string;
+    readonly offsetTicks: number;
+    readonly levels: readonly { readonly frame: number; readonly gainDb: number }[];
+  } | null;
   /** The logo where the render puts it, in output pixels. */
   readonly logo?: {
     readonly asset: string;

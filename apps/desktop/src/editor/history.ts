@@ -107,6 +107,10 @@ export function describeCommand(command: EditCommandJson): string {
       return 'Punch-ins';
     case 'set_brand':
       return 'Brand';
+    case 'set_music':
+      return command.music ? 'Music' : 'Remove the music';
+    case 'set_cleanup':
+      return command.cleanup ? 'Clean up the voice' : 'Stop cleaning the voice';
     case 'set_overlay':
       return 'Change text';
     case 'set_frame_shape':

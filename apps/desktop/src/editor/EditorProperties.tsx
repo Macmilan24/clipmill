@@ -70,6 +70,7 @@ import { CueTiming } from './CueTiming.js';
 import { TextTab } from './TextTab.js';
 import type { AssetAccess } from './brand.js';
 import { BrandTab } from './BrandTab.js';
+import { MusicSection } from './MusicSection.js';
 import {
   PUNCH_ZOOMS,
   autoPunches,
@@ -1235,6 +1236,7 @@ function AudioTab({
   busy,
   onApply,
   onSelect,
+  assets = null,
 }: EditorPropertiesProps) {
   const playhead = ticksOfFrame(plan, frame);
   const point =
@@ -1310,6 +1312,7 @@ function AudioTab({
           Double-click the audio lane to add a point, and drag points to shape the level.
         </p>
       </section>
+      <MusicSection document={document} busy={busy} onApply={onApply} assets={assets} />
       <section className="review-section">
         <h3 className="review-section-title">Loudness</h3>
         <p className="edit-fact">

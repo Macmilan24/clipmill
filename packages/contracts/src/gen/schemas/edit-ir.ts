@@ -102,6 +102,28 @@ export interface EditIr {
       t_ticks: number;
       gain_db: number;
     }[];
+    /**
+     * Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.
+     */
+    music?: {
+      asset: Sha256;
+      /**
+       * Its level where nobody speaks.
+       */
+      level_db: number;
+      /**
+       * How much further it drops under speech.
+       */
+      duck_db: number;
+      /**
+       * Where in the sound the clip starts.
+       */
+      offset_ticks?: number;
+    };
+    /**
+     * The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.
+     */
+    cleanup?: "light" | "strong";
   };
   /**
    * Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.

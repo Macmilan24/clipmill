@@ -42,6 +42,7 @@ import {
 } from '../editor/commands.js';
 import { removeOverlay, suggestedHook } from '../editor/overlays.js';
 import type { AssetAccess } from '../editor/brand.js';
+import { useMusicBed } from '../editor/music.js';
 import { EditorMonitor, type MonitorPlayback } from '../editor/EditorMonitor.js';
 import { EditorProperties } from '../editor/EditorProperties.js';
 import { EditorTimeline, type Tool, deleteRange } from '../editor/EditorTimeline.js';
@@ -309,6 +310,9 @@ export function Editor({
   // the effect below that moves it back, a frame past the end would find no
   // segment — and no segment would take the picture down with it.
   const frame = plan ? Math.max(0, Math.min(playhead, plan.frameCount - 1)) : playhead;
+  // The music under the voice, on the program's clock at the render's levels.
+  const musicElement = useRef<HTMLAudioElement>(null);
+  useMusicBed(musicElement, plan ?? null, frame, playing, muted);
   const draftAudio = useDraftAudio(
     video,
     plan ? gainAt(plan, frame) : 0,
@@ -926,6 +930,18 @@ export function Editor({
       style={{ '--edit-lane-scale': String(panels.lanes ?? 1) } as CSSProperties}
     >
       <CoachMarks place="editor" marks={EDITOR_TIPS} />
+      {plan.music && assets && (
+        // The music the clip plays under the voice; the picture's own sound
+        // plays from the proxy.
+        <audio
+          ref={musicElement}
+          src={assets.url(plan.music.asset)}
+          preload="auto"
+          loop
+          hidden
+          data-testid="music"
+        />
+      )}
       <header className="review-heading">
         <div className="review-identity">
           <TipButton label="Back to results" onClick={onOpenResults}>

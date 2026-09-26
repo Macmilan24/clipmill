@@ -1274,6 +1274,51 @@
   object-fit: contain;
 }
 
+/* Sounds the person has brought in, to put under a clip. */
+.edit-sounds {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.edit-sounds button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  text-align: left;
+}
+
+.edit-sounds button:hover:not(:disabled) {
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+}
+
+.edit-sounds button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-sound-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-sound-length {
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+}
+
 /* A punch-in, along the bottom of the section it moves in on. */
 .edit-punch {
   position: absolute;

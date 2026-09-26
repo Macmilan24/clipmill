@@ -1892,6 +1892,17 @@ pub struct PreviewProgressV1 {
     #[prost(int64, tag = "3")]
     pub thickness: i64,
 }
+/// Music as the render mixes it: which sound, from where in it, and its level
+/// in decibels at frames through the program, to interpolate between.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PreviewMusicV1 {
+    #[prost(string, tag = "1")]
+    pub asset: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub offset_ticks: i64,
+    #[prost(message, repeated, tag = "3")]
+    pub levels: ::prost::alloc::vec::Vec<PreviewGainV1>,
+}
 /// A logo as the render draws it: which asset, which corner, its longer side
 /// and its distance from the corner's two edges, in output pixels.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2183,6 +2194,9 @@ pub struct GetPreviewPlanResponse {
     /// The logo, when the clip has one.
     #[prost(message, optional, tag = "26")]
     pub logo: ::core::option::Option<PreviewLogoV1>,
+    /// The music, when the clip has some.
+    #[prost(message, optional, tag = "27")]
+    pub music: ::core::option::Option<PreviewMusicV1>,
 }
 /// Where the camera would point at a few moments, so a board of clips can show
 /// each as the vertical frame it will have rather than a strip of the source.
