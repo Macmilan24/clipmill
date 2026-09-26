@@ -97,6 +97,14 @@ export function describeCommand(command: EditCommandJson): string {
       return 'Refresh captions';
     case 'set_title':
       return command.title ? `Rename: ${String(command.title)}` : 'Clear the title';
+    case 'add_overlay': {
+      const overlay = command.overlay as { content?: { role?: string } } | undefined;
+      return overlay?.content?.role === 'hook' ? 'Add a hook title' : 'Add text';
+    }
+    case 'remove_overlay':
+      return 'Remove text';
+    case 'set_overlay':
+      return 'Change text';
     case 'set_frame_shape':
       return `Shape: ${FRAME_SHAPES.find((item) => item.shape === command.shape)?.ratio ?? 'changed'}`;
     default:

@@ -345,6 +345,7 @@ export function EditorTimeline(props: EditorTimelineProps) {
           <span />
           <span>Video</span>
           <span>Captions</span>
+          <span>Text</span>
           <span>Framing</span>
           <span>Audio</span>
         </div>
@@ -913,6 +914,34 @@ const Lanes = memo(function Lanes({
                     onPointerDown={(event) => grabCueEdge(event, cue.cueId, 'end')}
                   />
                 )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="edit-lane edit-texts" onPointerDown={scrub}>
+          {(plan.overlays ?? []).map((overlay) => {
+            const selected =
+              selection.kind === 'overlay' && selection.overlayId === overlay.overlayId;
+            const text = overlay.text.replace(/\n/g, ' ');
+            return (
+              <div
+                key={overlay.overlayId}
+                className="edit-text-block"
+                data-selected={selected ? 'true' : undefined}
+                style={{
+                  left: at(overlay.startTicks),
+                  width: wide(overlay.startTicks, overlay.endTicks),
+                }}
+                title={text}
+                onPointerDown={(event) => {
+                  if (event.button > 0) return;
+                  event.stopPropagation();
+                  onSelect({ kind: 'overlay', overlayId: overlay.overlayId });
+                  onSeek(overlay.firstFrame);
+                }}
+              >
+                <span>{overlay.role === 'hook' ? `Hook · ${text}` : text}</span>
               </div>
             );
           })}

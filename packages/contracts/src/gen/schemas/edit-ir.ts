@@ -6,6 +6,7 @@
  */
 
 export type Sha256 = string;
+export type HexColour = string;
 
 /**
  * The edit document (book ch. 17): a versioned, multi-track, non-destructive timeline that the preview, the render compiler, and later the NLE exporter all read. No subsystem may render, preview, or export from any other representation. All time is integer ticks at 1/90000 (D06); a segment's program position is the sum of the durations before it and is never stored, so a trim cannot leave a stale offset behind.
@@ -102,6 +103,10 @@ export interface EditIr {
       gain_db: number;
     }[];
   };
+  /**
+   * Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.
+   */
+  overlays?: Overlay[];
   /**
    * Assets referenced by content hash, each carrying the licence record the render manifest echoes.
    */
@@ -278,4 +283,37 @@ export interface CaptionCue {
 export interface CaptionPosition1 {
   x: number;
   y: number;
+}
+/**
+ * Something laid over the program for a span of it.
+ */
+export interface Overlay {
+  overlay_id: string;
+  start_ticks: number;
+  end_ticks: number;
+  content: {
+    kind: "text";
+    text: string;
+    /**
+     * A hook opens the clip and names what it is about. Absent is a label.
+     */
+    role?: "hook" | "label";
+    /**
+     * Where its centre sits, per mille of the frame's width.
+     */
+    x: number;
+    /**
+     * Where its centre sits, per mille of the frame's height.
+     */
+    y: number;
+    /**
+     * Its size at the 1920-pixel design height.
+     */
+    size: number;
+    colour: HexColour;
+    /**
+     * An opaque plate behind the text. Absent draws an outline.
+     */
+    plate?: string;
+  };
 }

@@ -5,7 +5,7 @@ use crate::{
     document::{
         CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing, CropKeyframe,
         CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint, Inset,
-        LayoutState, Presentation, VideoSegment, crop_along_keyframes,
+        LayoutState, Overlay, Presentation, VideoSegment, crop_along_keyframes,
     },
     reflow,
 };
@@ -33,6 +33,20 @@ pub enum EditCommand {
     /// that fit it are replaced by commands of their own, batched with this.
     SetFrameShape {
         shape: FrameShape,
+    },
+    /// Lay something over the program: on top of the others, or at `at` in
+    /// their stack, which is how removing one is undone in its own place.
+    AddOverlay {
+        overlay: Overlay,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<usize>,
+    },
+    RemoveOverlay {
+        overlay_id: String,
+    },
+    /// Change an overlay in place: its span, text, look or position.
+    SetOverlay {
+        overlay: Overlay,
     },
     /// Name the clip, or clear its name with `None`.
     SetTitle {
@@ -83,6 +97,10 @@ pub enum EditCommand {
         /// what those trims had done to it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         burn_in: Option<Vec<CaptionCue>>,
+        /// The overlays as they were. Absent in a log written before there
+        /// were any, and then left as they stand.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        overlays: Option<Vec<Overlay>>,
     },
     SetLayout {
         segment_id: String,
@@ -300,6 +318,38 @@ impl EditCommand {
                 let previous = std::mem::replace(&mut document.video.shape, *shape);
                 Ok(Self::SetFrameShape { shape: previous })
             }
+            Self::AddOverlay { overlay, at } => {
+                if document
+                    .overlays
+                    .iter()
+                    .any(|existing| existing.overlay_id == overlay.overlay_id)
+                {
+                    return Err(CommandError::OverlayAlreadyExists(
+                        overlay.overlay_id.clone(),
+                    ));
+                }
+                let position = at.unwrap_or(document.overlays.len());
+                if position > document.overlays.len() {
+                    return Err(CommandError::OverlayOutOfStack(position));
+                }
+                document.overlays.insert(position, overlay.clone());
+                Ok(Self::RemoveOverlay {
+                    overlay_id: overlay.overlay_id.clone(),
+                })
+            }
+            Self::RemoveOverlay { overlay_id } => {
+                let position = document.overlay_index(overlay_id)?;
+                let overlay = document.overlays.remove(position);
+                Ok(Self::AddOverlay {
+                    overlay,
+                    at: Some(position),
+                })
+            }
+            Self::SetOverlay { overlay } => {
+                let position = document.overlay_index(&overlay.overlay_id)?;
+                let previous = std::mem::replace(&mut document.overlays[position], overlay.clone());
+                Ok(Self::SetOverlay { overlay: previous })
+            }
             Self::SetTitle { title } => {
                 let previous = std::mem::replace(
                     &mut document.title,
@@ -350,6 +400,7 @@ impl EditCommand {
                 cues,
                 gain_curve,
                 burn_in,
+                overlays,
             } => {
                 let inverse = Self::capture(document);
                 document.video.segments.clone_from(segments);
@@ -358,6 +409,9 @@ impl EditCommand {
                     document.captions.burn_in.clone_from(burn_in);
                 }
                 document.audio.gain_curve.clone_from(gain_curve);
+                if let Some(overlays) = overlays {
+                    document.overlays.clone_from(overlays);
+                }
                 Ok(inverse)
             }
             Self::SetLayout { segment_id, state } => {
@@ -725,6 +779,9 @@ impl EditCommand {
             cues: document.captions.cues.clone(),
             gain_curve: document.audio.gain_curve.clone(),
             burn_in: Some(document.captions.burn_in.clone()),
+            // Only once there is something to restore, so a log of a clip
+            // with none reads as it always has.
+            overlays: (!document.overlays.is_empty()).then(|| document.overlays.clone()),
         }
     }
 
@@ -1407,6 +1464,10 @@ pub enum CommandError {
     SplitOutsideCue(usize),
     #[error("cue {0} already exists")]
     CueAlreadyExists(String),
+    #[error("overlay {0} already exists")]
+    OverlayAlreadyExists(String),
+    #[error("an overlay cannot go at place {0} in the stack")]
+    OverlayOutOfStack(usize),
     #[error("only adjacent cues can be merged")]
     CuesNotAdjacent,
     #[error("caption timing must stay inside the clip")]

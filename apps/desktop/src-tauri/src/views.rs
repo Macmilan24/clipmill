@@ -760,6 +760,26 @@ pub struct PreviewPlanView {
     pub presentation: String,
     /// Why the director built the clip as it did; filled for a dry run.
     pub decisions: Vec<String>,
+    /// Titles and labels over the program, bottom first.
+    pub overlays: Vec<PreviewOverlayView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewOverlayView {
+    pub overlay_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    pub text: String,
+    pub role: String,
+    pub x: u32,
+    pub y: u32,
+    pub size: u32,
+    pub colour: String,
+    /// Absent draws an outline.
+    pub plate: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -971,6 +991,24 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 })
                 .collect(),
             decisions: reply.decisions,
+            overlays: reply
+                .overlays
+                .into_iter()
+                .map(|overlay| PreviewOverlayView {
+                    overlay_id: overlay.overlay_id,
+                    start_ticks: overlay.start_ticks,
+                    end_ticks: overlay.end_ticks,
+                    first_frame: overlay.first_frame,
+                    end_frame: overlay.end_frame,
+                    text: overlay.text,
+                    role: overlay.role,
+                    x: overlay.x,
+                    y: overlay.y,
+                    size: overlay.size,
+                    colour: overlay.colour,
+                    plate: (!overlay.plate.is_empty()).then_some(overlay.plate),
+                })
+                .collect(),
             secondary_crops: reply
                 .secondary_crops
                 .into_iter()

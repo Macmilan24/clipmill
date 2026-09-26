@@ -899,6 +899,13 @@ impl CropRect {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"overlays\": {"]
+#[doc = "      \"description\": \"Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/overlay\""]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"rationale\": {"]
 #[doc = "      \"description\": \"Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels.\","]
 #[doc = "      \"type\": \"object\","]
@@ -980,6 +987,9 @@ pub struct EditIr {
     pub assets: ::std::vec::Vec<EditIrAssetsItem>,
     pub audio: EditIrAudio,
     pub captions: EditIrCaptions,
+    #[doc = "Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub overlays: ::std::vec::Vec<Overlay>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub rationale: ::std::option::Option<EditIrRationale>,
     pub timebase: EditIrTimebase,
@@ -2257,6 +2267,488 @@ impl ::std::convert::TryFrom<::std::string::String> for EditIrVideoShape {
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+#[doc = "`HexColour`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HexColour(::std::string::String);
+impl ::std::ops::Deref for HexColour {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HexColour> for ::std::string::String {
+    fn from(value: HexColour) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HexColour {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9A-Fa-f]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9A-Fa-f]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HexColour {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for HexColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HexColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HexColour {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "Something laid over the program for a span of it."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Something laid over the program for a span of it.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"content\","]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"overlay_id\","]
+#[doc = "    \"start_ticks\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"content\": {"]
+#[doc = "      \"oneOf\": ["]
+#[doc = "        {"]
+#[doc = "          \"description\": \"Words set in the clip's caption font by the caption renderer. Lines break only where the text says.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"colour\","]
+#[doc = "            \"kind\","]
+#[doc = "            \"size\","]
+#[doc = "            \"text\","]
+#[doc = "            \"x\","]
+#[doc = "            \"y\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"colour\": {"]
+#[doc = "              \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"text\""]
+#[doc = "            },"]
+#[doc = "            \"plate\": {"]
+#[doc = "              \"description\": \"An opaque plate behind the text. Absent draws an outline.\","]
+#[doc = "              \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "            },"]
+#[doc = "            \"role\": {"]
+#[doc = "              \"description\": \"A hook opens the clip and names what it is about. Absent is a label.\","]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"hook\","]
+#[doc = "                \"label\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"description\": \"Its size at the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 240.0,"]
+#[doc = "              \"minimum\": 24.0"]
+#[doc = "            },"]
+#[doc = "            \"text\": {"]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"maxLength\": 160,"]
+#[doc = "              \"minLength\": 1,"]
+#[doc = "              \"pattern\": \"^[^{}\\\\\\\\]*$\""]
+#[doc = "            },"]
+#[doc = "            \"x\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"y\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        }"]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"overlay_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Overlay {
+    pub content: OverlayContent,
+    pub end_ticks: ::std::num::NonZeroU64,
+    pub overlay_id: OverlayOverlayId,
+    pub start_ticks: u64,
+}
+impl Overlay {
+    pub fn builder() -> builder::Overlay {
+        Default::default()
+    }
+}
+#[doc = "`OverlayContent`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"description\": \"Words set in the clip's caption font by the caption renderer. Lines break only where the text says.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"colour\","]
+#[doc = "        \"kind\","]
+#[doc = "        \"size\","]
+#[doc = "        \"text\","]
+#[doc = "        \"x\","]
+#[doc = "        \"y\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"colour\": {"]
+#[doc = "          \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"text\""]
+#[doc = "        },"]
+#[doc = "        \"plate\": {"]
+#[doc = "          \"description\": \"An opaque plate behind the text. Absent draws an outline.\","]
+#[doc = "          \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "        },"]
+#[doc = "        \"role\": {"]
+#[doc = "          \"description\": \"A hook opens the clip and names what it is about. Absent is a label.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"hook\","]
+#[doc = "            \"label\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"description\": \"Its size at the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 240.0,"]
+#[doc = "          \"minimum\": 24.0"]
+#[doc = "        },"]
+#[doc = "        \"text\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"maxLength\": 160,"]
+#[doc = "          \"minLength\": 1,"]
+#[doc = "          \"pattern\": \"^[^{}\\\\\\\\]*$\""]
+#[doc = "        },"]
+#[doc = "        \"x\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"y\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum OverlayContent {
+    #[doc = "Words set in the clip's caption font by the caption renderer. Lines break only where the text says."]
+    #[serde(rename = "text")]
+    Text {
+        colour: HexColour,
+        #[doc = "An opaque plate behind the text. Absent draws an outline."]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        plate: ::std::option::Option<HexColour>,
+        #[doc = "A hook opens the clip and names what it is about. Absent is a label."]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        role: ::std::option::Option<OverlayContentRole>,
+        #[doc = "Its size at the 1920-pixel design height."]
+        size: i64,
+        text: OverlayContentText,
+        #[doc = "Where its centre sits, per mille of the frame's width."]
+        x: i64,
+        #[doc = "Where its centre sits, per mille of the frame's height."]
+        y: i64,
+    },
+}
+#[doc = "A hook opens the clip and names what it is about. Absent is a label."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"A hook opens the clip and names what it is about. Absent is a label.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"hook\","]
+#[doc = "    \"label\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum OverlayContentRole {
+    #[serde(rename = "hook")]
+    Hook,
+    #[serde(rename = "label")]
+    Label,
+}
+impl ::std::fmt::Display for OverlayContentRole {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Hook => f.write_str("hook"),
+            Self::Label => f.write_str("label"),
+        }
+    }
+}
+impl ::std::str::FromStr for OverlayContentRole {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "hook" => Ok(Self::Hook),
+            "label" => Ok(Self::Label),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayContentRole {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayContentRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayContentRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`OverlayContentText`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 160,"]
+#[doc = "  \"minLength\": 1,"]
+#[doc = "  \"pattern\": \"^[^{}\\\\\\\\]*$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OverlayContentText(::std::string::String);
+impl ::std::ops::Deref for OverlayContentText {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OverlayContentText> for ::std::string::String {
+    fn from(value: OverlayContentText) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OverlayContentText {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 160usize {
+            return Err("longer than 160 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[^{}\\\\]*$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[^{}\\\\]*$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayContentText {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayContentText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayContentText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OverlayContentText {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`OverlayOverlayId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OverlayOverlayId(::std::string::String);
+impl ::std::ops::Deref for OverlayOverlayId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OverlayOverlayId> for ::std::string::String {
+    fn from(value: OverlayOverlayId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OverlayOverlayId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayOverlayId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayOverlayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayOverlayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OverlayOverlayId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "`Sha256`"]
@@ -3774,6 +4266,7 @@ pub mod builder {
             ::std::result::Result<::std::vec::Vec<super::EditIrAssetsItem>, ::std::string::String>,
         audio: ::std::result::Result<super::EditIrAudio, ::std::string::String>,
         captions: ::std::result::Result<super::EditIrCaptions, ::std::string::String>,
+        overlays: ::std::result::Result<::std::vec::Vec<super::Overlay>, ::std::string::String>,
         rationale: ::std::result::Result<
             ::std::option::Option<super::EditIrRationale>,
             ::std::string::String,
@@ -3790,6 +4283,7 @@ pub mod builder {
                 assets: Ok(Default::default()),
                 audio: Err("no value supplied for audio".to_string()),
                 captions: Err("no value supplied for captions".to_string()),
+                overlays: Ok(Default::default()),
                 rationale: Ok(Default::default()),
                 timebase: Err("no value supplied for timebase".to_string()),
                 title: Ok(Default::default()),
@@ -3827,6 +4321,16 @@ pub mod builder {
             self.captions = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for captions: {e}"));
+            self
+        }
+        pub fn overlays<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::Overlay>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.overlays = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for overlays: {e}"));
             self
         }
         pub fn rationale<T>(mut self, value: T) -> Self
@@ -3887,6 +4391,7 @@ pub mod builder {
                 assets: value.assets?,
                 audio: value.audio?,
                 captions: value.captions?,
+                overlays: value.overlays?,
                 rationale: value.rationale?,
                 timebase: value.timebase?,
                 title: value.title?,
@@ -3901,6 +4406,7 @@ pub mod builder {
                 assets: Ok(value.assets),
                 audio: Ok(value.audio),
                 captions: Ok(value.captions),
+                overlays: Ok(value.overlays),
                 rationale: Ok(value.rationale),
                 timebase: Ok(value.timebase),
                 title: Ok(value.title),
@@ -4608,6 +5114,86 @@ pub mod builder {
                 segments: Ok(value.segments),
                 shape: Ok(value.shape),
                 transition_ticks: Ok(value.transition_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct Overlay {
+        content: ::std::result::Result<super::OverlayContent, ::std::string::String>,
+        end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        overlay_id: ::std::result::Result<super::OverlayOverlayId, ::std::string::String>,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for Overlay {
+        fn default() -> Self {
+            Self {
+                content: Err("no value supplied for content".to_string()),
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                overlay_id: Err("no value supplied for overlay_id".to_string()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+            }
+        }
+    }
+    impl Overlay {
+        pub fn content<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::OverlayContent>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content: {e}"));
+            self
+        }
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn overlay_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::OverlayOverlayId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.overlay_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for overlay_id: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<Overlay> for super::Overlay {
+        type Error = super::error::ConversionError;
+        fn try_from(value: Overlay) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                content: value.content?,
+                end_ticks: value.end_ticks?,
+                overlay_id: value.overlay_id?,
+                start_ticks: value.start_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::Overlay> for Overlay {
+        fn from(value: super::Overlay) -> Self {
+            Self {
+                content: Ok(value.content),
+                end_ticks: Ok(value.end_ticks),
+                overlay_id: Ok(value.overlay_id),
+                start_ticks: Ok(value.start_ticks),
             }
         }
     }

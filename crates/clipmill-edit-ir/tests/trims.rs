@@ -615,6 +615,123 @@ fn a_frame_shape_sets_and_undoes_and_only_a_landscape_frame_splits_across() {
     assert_eq!(inset.place(1_920, 1_080), (1_500, 486, 378));
 }
 
+fn hook_text(id: &str, start_ticks: i64, end_ticks: i64) -> clipmill_edit_ir::Overlay {
+    clipmill_edit_ir::Overlay {
+        overlay_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        content: clipmill_edit_ir::OverlayContent::Text {
+            text: "The hook".to_owned(),
+            role: clipmill_edit_ir::TextRole::Hook,
+            x: 500,
+            y: 150,
+            size: 96,
+            colour: "#FFFFFF".to_owned(),
+            plate: None,
+        },
+    }
+}
+
+fn with_overlays() -> clipmill_edit_ir::EditDocument {
+    let mut original = document(Vec::new());
+    original.overlays = vec![
+        hook_text("before", 0, 90_000),
+        hook_text("across", 150_000, 400_000),
+        hook_text("inside", 210_000, 250_000),
+        hook_text("after", 500_000, 600_000),
+    ];
+    original.validate().expect("valid overlays");
+    original
+}
+
+#[test]
+fn overlays_follow_program_time_through_cuts_and_undo_in_their_place() {
+    let original = with_overlays();
+    // Cut 2 s to 3 s: the one inside goes, the one across closes up, the one
+    // after moves a second earlier, and undo puts every one back.
+    let mut cut = original.clone();
+    let undo = EditCommand::RippleDelete {
+        start_ticks: 180_000,
+        end_ticks: 270_000,
+        reflow_edges: false,
+    }
+    .apply(&mut cut)
+    .expect("a cut");
+    let spans = cut
+        .overlays
+        .iter()
+        .map(|overlay| {
+            (
+                overlay.overlay_id.as_str(),
+                overlay.start_ticks,
+                overlay.end_ticks,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spans,
+        [
+            ("before", 0, 90_000),
+            ("across", 150_000, 310_000),
+            ("after", 410_000, 510_000)
+        ]
+    );
+    undo.apply(&mut cut).expect("undo");
+    assert_eq!(cut, original);
+
+    // Removing one from the middle and undoing it restores its place.
+    let mut edited = original.clone();
+    let undo = EditCommand::RemoveOverlay {
+        overlay_id: "across".to_owned(),
+    }
+    .apply(&mut edited)
+    .expect("removed");
+    assert_eq!(edited.overlays.len(), 3);
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+}
+
+#[test]
+fn an_overlay_that_cannot_be_drawn_is_refused_and_changes_nothing() {
+    use clipmill_edit_ir::{OverlayContent, TextRole};
+    let original = with_overlays();
+    let text = |text: &str, size: u16, colour: &str| OverlayContent::Text {
+        text: text.to_owned(),
+        role: TextRole::Label,
+        x: 500,
+        y: 500,
+        size,
+        colour: colour.to_owned(),
+        plate: None,
+    };
+    for bad in [
+        text("{\\b1}markup", 96, "#FFFFFF"),
+        text("  ", 96, "#FFFFFF"),
+        text("Too big", 400, "#FFFFFF"),
+        text("Off colour", 96, "white"),
+    ] {
+        let mut refused = original.clone();
+        let mut overlay = hook_text("new", 0, 90_000);
+        overlay.content = bad;
+        assert!(
+            EditCommand::AddOverlay { overlay, at: None }
+                .apply(&mut refused)
+                .is_err()
+        );
+        assert_eq!(refused, original);
+    }
+    let mut refused = original.clone();
+    assert!(
+        EditCommand::AddOverlay {
+            overlay: hook_text("before", 0, 90_000),
+            at: None
+        }
+        .apply(&mut refused)
+        .is_err(),
+        "an id already in use"
+    );
+}
+
 #[test]
 fn a_picture_in_picture_needs_its_inset_but_not_a_main_crop() {
     let original = document(Vec::new());

@@ -944,3 +944,97 @@ describe('captions made before a better transcript', () => {
     expect(onApply).toHaveBeenCalledWith({ op: 'refresh_captions' });
   });
 });
+
+describe('text over the clip', () => {
+  const hooked = (): PreviewPlan => ({
+    ...program(900, 600),
+    overlays: [
+      {
+        overlayId: 'ovl_1',
+        startTicks: 0,
+        endTicks: 270_000,
+        firstFrame: 0,
+        endFrame: 90,
+        text: 'Charging less',
+        role: 'hook',
+        x: 500,
+        y: 140,
+        size: 88,
+        colour: '#111111',
+        plate: '#FFFFFF',
+      },
+    ],
+  });
+
+  it('adds a hook title named after the clip, as one saved step', () => {
+    const { onApply } = show(program(900, 600));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    fireEvent.click(screen.getByRole('button', { name: /add a hook title/i }));
+    expect(onApply).toHaveBeenCalledWith({
+      op: 'add_overlay',
+      overlay: {
+        overlay_id: 'ovl_1',
+        start_ticks: 0,
+        end_ticks: 270_000,
+        content: {
+          kind: 'text',
+          text: 'Clip 01',
+          role: 'hook',
+          x: 500,
+          y: 140,
+          size: 88,
+          colour: '#111111',
+          plate: '#FFFFFF',
+        },
+      },
+    });
+  });
+
+  it('shows the hook on the picture, picks it there, restyles and removes it', () => {
+    const { onApply } = show(hooked());
+    const text = screen.getByTestId('overlay-text');
+    expect(text.textContent).toBe('Charging less');
+    fireEvent.pointerDown(text, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { button: 0, clientX: 10, clientY: 10 });
+    expect(screen.getByRole('tab', { name: 'Text' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('textbox', { name: 'Text words' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Red plate' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_overlay',
+      overlay: {
+        overlay_id: 'ovl_1',
+        start_ticks: 0,
+        end_ticks: 270_000,
+        content: {
+          kind: 'text',
+          text: 'Charging less',
+          role: 'hook',
+          x: 500,
+          y: 140,
+          size: 88,
+          colour: '#FFFFFF',
+          plate: '#E0245E',
+        },
+      },
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onApply).toHaveBeenLastCalledWith({ op: 'remove_overlay', overlay_id: 'ovl_1' });
+  });
+
+  it('keeps the words a person types, with their line breaks', () => {
+    const { onApply } = show(hooked());
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    fireEvent.click(screen.getByRole('button', { name: /charging less/i }));
+    const words = screen.getByRole('textbox', { name: 'Text words' });
+    fireEvent.change(words, { target: { value: 'Charge\nless' } });
+    fireEvent.blur(words);
+    expect(onApply).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        op: 'set_overlay',
+        overlay: expect.objectContaining({
+          content: expect.objectContaining({ text: 'Charge\nless' }),
+        }),
+      }),
+    );
+  });
+});

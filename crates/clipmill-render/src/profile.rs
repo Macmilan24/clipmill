@@ -69,7 +69,7 @@ impl Colour {
         format!("&H{:02X}{:02X}{:02X}&", self.blue, self.green, self.red)
     }
 
-    fn from_hex(value: &str) -> Option<Self> {
+    pub(crate) fn from_hex(value: &str) -> Option<Self> {
         let digits = value.strip_prefix('#')?;
         if digits.len() != 6 {
             return None;

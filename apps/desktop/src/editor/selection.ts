@@ -17,12 +17,13 @@ export type EditorSelection =
       readonly secondary: boolean;
     }
   | { readonly kind: 'gain'; readonly tTicks: number }
+  | { readonly kind: 'overlay'; readonly overlayId: string }
   | { readonly kind: 'words'; readonly range: WordRange };
 
 export const NOTHING: EditorSelection = { kind: 'clip' };
 
 /** The properties tab a selection belongs on. */
-export type PropertiesTab = 'captions' | 'framing' | 'audio' | 'details';
+export type PropertiesTab = 'captions' | 'text' | 'framing' | 'audio' | 'details';
 
 export function tabFor(selection: EditorSelection): PropertiesTab | null {
   switch (selection.kind) {
@@ -33,6 +34,8 @@ export function tabFor(selection: EditorSelection): PropertiesTab | null {
       return 'framing';
     case 'gain':
       return 'audio';
+    case 'overlay':
+      return 'text';
     default:
       return null;
   }

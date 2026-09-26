@@ -109,6 +109,25 @@ pub struct PreviewGain {
     pub gain_db: f64,
 }
 
+/// A text over the program, in frames, for the editor to show and move. The
+/// pixels come from the script, which draws it as the render will.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewOverlay {
+    pub overlay_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    pub text: String,
+    /// `hook` or `label`.
+    pub role: &'static str,
+    pub x: u16,
+    pub y: u16,
+    pub size: u16,
+    pub colour: String,
+    pub plate: Option<String>,
+}
+
 /// Everything the player needs, and nothing it has to work out.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewPlan {
@@ -128,6 +147,8 @@ pub struct PreviewPlan {
     /// The SRT/VTT grouping, editable independently of the burned-in grouping.
     pub reading_cues: Vec<PreviewCue>,
     pub gain: Vec<PreviewGain>,
+    /// What is laid over the program, bottom first.
+    pub overlays: Vec<PreviewOverlay>,
     /// The output frame the crops are fitted into.
     pub width: i64,
     pub height: i64,
@@ -161,6 +182,7 @@ pub fn caption_ass(
         .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
     Ok(crate::subtitles::write_ass(
         &document.captions,
+        &document.overlays,
         &RenderProfile {
             caption_style,
             ..profile.clone()
@@ -204,6 +226,7 @@ pub fn preview_plan(
         .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
     let ass = crate::subtitles::write_ass(
         &document.captions,
+        &document.overlays,
         &RenderProfile {
             caption_style: caption_style.clone(),
             ..profile.clone()
@@ -229,6 +252,38 @@ pub fn preview_plan(
             .map(|point| PreviewGain {
                 frame: rate.frame_ceil(point.t_ticks),
                 gain_db: point.gain_db,
+            })
+            .collect(),
+        overlays: document
+            .overlays
+            .iter()
+            .map(|overlay| {
+                let clipmill_edit_ir::OverlayContent::Text {
+                    text,
+                    role,
+                    x,
+                    y,
+                    size,
+                    colour,
+                    plate,
+                } = &overlay.content;
+                PreviewOverlay {
+                    overlay_id: overlay.overlay_id.clone(),
+                    start_ticks: overlay.start_ticks,
+                    end_ticks: overlay.end_ticks,
+                    first_frame: rate.frame_ceil(overlay.start_ticks),
+                    end_frame: rate.frame_ceil(overlay.end_ticks).min(frame_count),
+                    text: text.clone(),
+                    role: match role {
+                        clipmill_edit_ir::TextRole::Hook => "hook",
+                        clipmill_edit_ir::TextRole::Label => "label",
+                    },
+                    x: *x,
+                    y: *y,
+                    size: *size,
+                    colour: colour.clone(),
+                    plate: plate.clone(),
+                }
             })
             .collect(),
         width: profile.width,

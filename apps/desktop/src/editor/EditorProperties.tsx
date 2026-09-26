@@ -23,6 +23,7 @@ import {
   RectangleHorizontal,
   Rows2,
   ScanFace,
+  Type,
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -66,6 +67,7 @@ import {
   viewports,
 } from './layouts.js';
 import { CueTiming } from './CueTiming.js';
+import { TextTab } from './TextTab.js';
 import {
   batch,
   correctWord,
@@ -116,6 +118,8 @@ export interface EditorPropertiesProps {
   readonly onTryLook?: ((look: CaptionDraft | null) => void) | null;
   /** Every caption typeface, with whether this installation has it. */
   readonly fonts?: readonly CaptionFont[];
+  /** What a new hook title says until it is changed. */
+  readonly hook?: string;
 }
 
 export function EditorProperties(props: EditorPropertiesProps) {
@@ -141,6 +145,10 @@ export function EditorProperties(props: EditorPropertiesProps) {
           <TabsTrigger value="captions">
             <CaptionsIcon aria-hidden="true" />
             Captions
+          </TabsTrigger>
+          <TabsTrigger value="text">
+            <Type aria-hidden="true" />
+            Text
           </TabsTrigger>
           <TabsTrigger value="framing">
             <Crop aria-hidden="true" />
@@ -178,6 +186,9 @@ export function EditorProperties(props: EditorPropertiesProps) {
             </button>
           </div>
           <CaptionsTab {...props} plan={captionPlan} />
+        </TabsContent>
+        <TabsContent value="text" className="review-tab-panel">
+          <TextTab {...props} hook={props.hook ?? 'Your hook here'} />
         </TabsContent>
         <TabsContent value="framing" className="review-tab-panel">
           <FramingTab {...props} />

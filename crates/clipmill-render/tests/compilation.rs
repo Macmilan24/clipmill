@@ -405,6 +405,56 @@ fn captions_burn_only_when_the_document_has_them() {
     );
 }
 
+#[test]
+fn text_over_the_program_burns_in_the_caption_pass_even_without_captions() {
+    use clipmill_edit_ir::{Overlay, OverlayContent, TextRole};
+    let mut document = fit_document();
+    document.overlays = vec![Overlay {
+        overlay_id: "ovl_hook".to_owned(),
+        start_ticks: 0,
+        end_ticks: 180_000,
+        content: OverlayContent::Text {
+            text: "Why the second\nquestion wins".to_owned(),
+            role: TextRole::Hook,
+            x: 500,
+            y: 140,
+            size: 96,
+            colour: "#FFFFFF".to_owned(),
+            plate: Some("#E0245E".to_owned()),
+        },
+    }];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("compiles");
+    assert!(plan.graph.graph.contains("subtitles=filename=clip.ass"));
+    assert!(
+        plan.ass.contains("Style: text_plate,Inter,"),
+        "{}",
+        plan.ass
+    );
+    let dialogue = plan
+        .ass
+        .lines()
+        .find(|line| line.contains("text_plate,,"))
+        .expect("the hook is an event");
+    assert_eq!(
+        dialogue,
+        "Dialogue: 10,0:00:00.00,0:00:02.00,text_plate,,0,0,0,,\
+         {\\an5\\pos(540,268)\\fs96\\c&HFFFFFF&\\3c&H5E24E0&\\bord19\\shad0}\
+         Why the second\\Nquestion wins"
+    );
+    // The preview draws the same script.
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert!(preview.ass.contains(dialogue));
+
+    // Left past the end of the program by an edit, it is refused by name.
+    document.overlays[0].start_ticks = 400_000;
+    document.overlays[0].end_ticks = 500_000;
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::OverlayOutsideProgram(id) if id == "ovl_hook"
+    ));
+}
+
 // ---- Crop path parity -------------------------------------------------------
 
 fn crop_document(path: Vec<CropKeyframe>) -> EditDocument {

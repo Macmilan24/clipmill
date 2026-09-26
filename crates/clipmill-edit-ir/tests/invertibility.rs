@@ -10,7 +10,7 @@
 use clipmill_edit_ir::{
     Asset, AudioTrack, CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionTrack,
     CaptionWord, CropKeyframe, CropRect, EditCommand, EditDocument, GainPoint, Layout, LayoutState,
-    Presentation, Rationale, VideoSegment, VideoTrack,
+    Overlay, OverlayContent, Presentation, Rationale, TextRole, VideoSegment, VideoTrack,
 };
 
 const FINGERPRINT: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -145,6 +145,10 @@ fn sample_document() -> EditDocument {
                 },
             ],
         },
+        overlays: vec![
+            text_overlay("ovl_hook", 0, 120_000, TextRole::Hook),
+            text_overlay("ovl_label", 100_000, 200_000, TextRole::Label),
+        ],
         assets: vec![Asset {
             hash: FINGERPRINT.to_owned(),
             license: "own_content".to_owned(),
@@ -154,6 +158,23 @@ fn sample_document() -> EditDocument {
             decisions: vec!["hook at 0".to_owned()],
         }),
         ..EditDocument::default()
+    }
+}
+
+fn text_overlay(id: &str, start_ticks: i64, end_ticks: i64, role: TextRole) -> Overlay {
+    Overlay {
+        overlay_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        content: OverlayContent::Text {
+            text: "Why the second\nquestion wins".to_owned(),
+            role,
+            x: 500,
+            y: 150,
+            size: 96,
+            colour: "#FFFFFF".to_owned(),
+            plate: (role == TextRole::Hook).then(|| "#101820".to_owned()),
+        },
     }
 }
 
@@ -296,6 +317,23 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
     commands.push(EditCommand::RemoveGainPoint { t_ticks: 150_000 });
     commands.push(EditCommand::RegroupOnScreen {
         max_words: u32::try_from(rng.below(4)).unwrap_or(0) + 1,
+    });
+    let overlay_start = i64::try_from(rng.below(u64::try_from(duration).unwrap_or(1))).unwrap_or(0);
+    let overlay_end = (overlay_start + 45_000).min(duration);
+    commands.push(EditCommand::AddOverlay {
+        overlay: text_overlay("ovl_new", overlay_start, overlay_end, TextRole::Label),
+        at: (rng.below(2) == 0).then_some(0),
+    });
+    commands.push(EditCommand::RemoveOverlay {
+        overlay_id: if rng.below(2) == 0 {
+            "ovl_hook"
+        } else {
+            "ovl_label"
+        }
+        .to_owned(),
+    });
+    commands.push(EditCommand::SetOverlay {
+        overlay: text_overlay("ovl_hook", overlay_start, overlay_end, TextRole::Hook),
     });
     commands.push(EditCommand::DropNonSpeechWords {});
     if let Some(cue_id) = pick(rng, &cue_ids) {
@@ -621,6 +659,7 @@ fn published_contract_fixtures_load_into_the_operational_document() {
         "minimal.json",
         "first_slice.json",
         "landscape_two_up.json",
+        "hook_title.json",
     ] {
         let path = repo.join("contracts/fixtures/edit_ir/valid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {
@@ -644,6 +683,7 @@ fn published_contract_fixtures_load_into_the_operational_document() {
         "wrong-timebase.json",
         "float-ticks.json",
         "empty-caption-line.json",
+        "overlay-markup.json",
     ] {
         let path = repo.join("contracts/fixtures/edit_ir/invalid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {

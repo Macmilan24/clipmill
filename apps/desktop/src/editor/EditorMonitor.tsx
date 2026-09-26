@@ -33,7 +33,12 @@ import {
 } from '../components/ui/select.js';
 import type { EditIr } from '@clipmill/contracts';
 
-import type { EditCommandJson, FaceSighting, PreviewPlan } from '../daemon/client.js';
+import type {
+  EditCommandJson,
+  FaceSighting,
+  PreviewOverlay,
+  PreviewPlan,
+} from '../daemon/client.js';
 import { SPEEDS } from '../inspector/playback.js';
 import { clockTenths } from '../inspector/review.js';
 import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
@@ -53,6 +58,7 @@ import { type FaceNow, byTrack, facesAt, fittedFrame } from './faces.js';
 import { pressOrDrag } from './gesture.js';
 import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf, sourceTicksAt } from './player.js';
 import { FRAME_SHAPES, shapeOfFrame } from './layouts.js';
+import { overlaysAt, savedOverlay, setOverlay, withContent } from './overlays.js';
 import type { EditorSelection } from './selection.js';
 
 export type MonitorView = 'edit' | 'original';
@@ -398,6 +404,11 @@ function Stage({
   const [draft, setDraft] = useState<{ secondary: boolean; rect: Rect } | null>(null);
   // Where a caption being dragged would sit, as shares of the frame.
   const [captionDrag, setCaptionDrag] = useState<{ x: number; y: number } | null>(null);
+  const [overlayDrag, setOverlayDrag] = useState<{
+    overlayId: string;
+    x: number;
+    y: number;
+  } | null>(null);
   // Whether libass is drawing the captions; the CSS ones then only take clicks.
   const [exact, setExact] = useState(false);
   const zoomTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -654,8 +665,47 @@ function Stage({
     });
   };
 
-  const relative = (pixels: number) => `${(pixels / plan.width) * 100}cqw`;
-  const verticalMargin = ((style?.marginVertical ?? 260) / plan.height) * 100;
+  // Texts over the picture: shown, picked and moved here; drawn exactly by
+  // libass when it is drawing, when these only take the pointer.
+  const shownOverlays = overlaysAt(plan, frame);
+  const grabOverlay = (event: ReactPointerEvent<HTMLParagraphElement>, overlay: PreviewOverlay) => {
+    const box = stage.current?.getBoundingClientRect();
+    const placed = (dx: number, dy: number) =>
+      box
+        ? {
+            x: snapCentre(clampShare(overlay.x / 1000 + dx / Math.max(1, box.width))),
+            y: clampShare(overlay.y / 1000 + dy / Math.max(1, box.height)),
+          }
+        : null;
+    pressOrDrag(event, {
+      onClick: () => onSelect({ kind: 'overlay', overlayId: overlay.overlayId }),
+      onDrag: (dx, dy) => {
+        if (busy) return;
+        const at = placed(dx, dy);
+        setOverlayDrag(at ? { overlayId: overlay.overlayId, ...at } : null);
+      },
+      onDrop: (dx, dy) => {
+        setOverlayDrag(null);
+        const at = placed(dx, dy);
+        if (!at || busy) return;
+        onSelect({ kind: 'overlay', overlayId: overlay.overlayId });
+        onApply(
+          setOverlay(
+            withContent(savedOverlay(overlay), {
+              x: Math.round(at.x * 1000),
+              y: Math.round(at.y * 1000),
+            }),
+          ),
+        );
+      },
+      onCancel: () => setOverlayDrag(null),
+    });
+  };
+
+  // Sizes are stated at the 1920-pixel design height, whatever the shape.
+  const relative = (pixels: number) =>
+    `${((pixels * plan.height) / 1920 / Math.max(1, plan.width)) * 100}cqw`;
+  const verticalMargin = ((style?.marginVertical ?? 260) / 1920) * 100;
   const centred =
     captionDrag ??
     (cue?.position ? { x: cue.position[0] / 1000, y: cue.position[1] / 1000 } : null);
@@ -801,8 +851,8 @@ function Stage({
             ...(centred
               ? { width: 'max-content', maxWidth: '100%' }
               : {
-                  left: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
-                  right: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
+                  left: `${(((style?.marginHorizontal ?? 90) * plan.height) / 1920 / plan.width) * 100}%`,
+                  right: `${(((style?.marginHorizontal ?? 90) * plan.height) / 1920 / plan.width) * 100}%`,
                 }),
             ...position,
             fontFamily:
@@ -858,6 +908,43 @@ function Stage({
           ))}
         </p>
       )}
+      {proxyUrl &&
+        view === 'edit' &&
+        shownOverlays.map((overlay) => {
+          const moved = overlayDrag?.overlayId === overlay.overlayId ? overlayDrag : null;
+          return (
+            <p
+              key={overlay.overlayId}
+              className="edit-overlay-text"
+              data-testid="overlay-text"
+              data-selected={
+                selection.kind === 'overlay' && selection.overlayId === overlay.overlayId
+                  ? 'true'
+                  : undefined
+              }
+              data-dragging={moved ? 'true' : undefined}
+              data-exact={exact ? 'true' : undefined}
+              onPointerDown={(event) => grabOverlay(event, overlay)}
+              style={{
+                left: `${(moved?.x ?? overlay.x / 1000) * 100}%`,
+                top: `${(moved?.y ?? overlay.y / 1000) * 100}%`,
+                fontFamily:
+                  !style || style.fontFamily === 'Inter'
+                    ? 'ClipMill Caption Inter'
+                    : style.fontFamily,
+                fontSize: relative(overlay.size),
+                color: overlay.colour,
+                background: overlay.plate ?? undefined,
+                padding: overlay.plate ? relative(Math.max(8, overlay.size / 5)) : undefined,
+                WebkitTextStroke: overlay.plate
+                  ? undefined
+                  : `${relative(Math.max(2, overlay.size / 16))} #000000`,
+              }}
+            >
+              {overlay.text}
+            </p>
+          );
+        })}
     </div>
   );
 }

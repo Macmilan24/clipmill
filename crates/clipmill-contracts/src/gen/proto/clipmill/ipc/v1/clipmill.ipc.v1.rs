@@ -1787,6 +1787,39 @@ pub struct PreviewGainV1 {
     #[prost(double, tag = "2")]
     pub gain_db: f64,
 }
+/// A text laid over the program, for the editor to show, select and move. Its
+/// pixels come from the plan's script, which draws it as the render will.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewOverlayV1 {
+    #[prost(string, tag = "1")]
+    pub overlay_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub start_ticks: i64,
+    #[prost(int64, tag = "3")]
+    pub end_ticks: i64,
+    #[prost(int64, tag = "4")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "5")]
+    pub end_frame: i64,
+    #[prost(string, tag = "6")]
+    pub text: ::prost::alloc::string::String,
+    /// hook or label.
+    #[prost(string, tag = "7")]
+    pub role: ::prost::alloc::string::String,
+    /// Its centre, per mille of the frame's width and height.
+    #[prost(uint32, tag = "8")]
+    pub x: u32,
+    #[prost(uint32, tag = "9")]
+    pub y: u32,
+    /// Its size at the 1920-pixel design height.
+    #[prost(uint32, tag = "10")]
+    pub size: u32,
+    #[prost(string, tag = "11")]
+    pub colour: ::prost::alloc::string::String,
+    /// The plate behind it; empty draws an outline.
+    #[prost(string, tag = "12")]
+    pub plate: ::prost::alloc::string::String,
+}
 /// One segment of the program, and where in the source it plays.
 ///
 /// This is the mapping the player used to lack. A clip cut from ten minutes
@@ -2017,6 +2050,9 @@ pub struct GetPreviewPlanResponse {
     /// dry run, whose document is nowhere else to read it from.
     #[prost(string, repeated, tag = "23")]
     pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Titles and labels over the program, bottom first.
+    #[prost(message, repeated, tag = "24")]
+    pub overlays: ::prost::alloc::vec::Vec<PreviewOverlayV1>,
 }
 /// Where the camera would point at a few moments, so a board of clips can show
 /// each as the vertical frame it will have rather than a strip of the source.
