@@ -156,6 +156,11 @@ pub struct TaskView {
     /// there was one would be promising a document nobody can open.
     #[serde(rename = "outputArtifactId")]
     pub output_artifact_id: String,
+    /// When it first ran and when it succeeded; zero until it has.
+    #[serde(rename = "startedUnixMillis")]
+    pub started_unix_millis: u64,
+    #[serde(rename = "finishedUnixMillis")]
+    pub finished_unix_millis: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<ProgressView>,
 }
@@ -180,6 +185,8 @@ impl From<Task> for TaskView {
             max_attempts: task.max_attempts,
             wait_reason: task.wait_reason,
             output_artifact_id: task.output_artifact_id,
+            started_unix_millis: task.started_unix_millis,
+            finished_unix_millis: task.finished_unix_millis,
             progress: task.progress.map(|progress| ProgressView {
                 unit: progress.unit,
                 done: progress.done,
@@ -502,6 +509,9 @@ pub struct DirectClipInput {
     pub style_ref: String,
     #[serde(default)]
     pub highlight_spoken_word: Option<bool>,
+    /// The caption options a saved style starts the clip with, as JSON.
+    #[serde(default)]
+    pub caption_options_json: String,
     /// Read only for `exact`. The daemon moves an edge that falls inside a
     /// word out to keep the whole word; anywhere between words is kept.
     #[serde(default)]
@@ -545,6 +555,7 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             allow_declined: input.allow_declined,
             manual_span: input.manual_span,
             job_id: input.job_id,
+            caption_options_json: input.caption_options_json,
         }
     }
 }

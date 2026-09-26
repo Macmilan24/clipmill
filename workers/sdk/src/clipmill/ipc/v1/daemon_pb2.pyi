@@ -860,7 +860,7 @@ class ExportSummaryV1(_message.Message):
     def __init__(self, doc_id: _Optional[str] = ..., revision: _Optional[int] = ..., ir_artifact_id: _Optional[str] = ..., destination_dir: _Optional[str] = ...) -> None: ...
 
 class Task(_message.Message):
-    __slots__ = ("task_id", "kind", "state", "attempt", "max_attempts", "progress", "wait_reason", "output_artifact_id", "output_kind")
+    __slots__ = ("task_id", "kind", "state", "attempt", "max_attempts", "progress", "wait_reason", "output_artifact_id", "output_kind", "started_unix_millis", "finished_unix_millis")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
@@ -870,6 +870,8 @@ class Task(_message.Message):
     WAIT_REASON_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_KIND_FIELD_NUMBER: _ClassVar[int]
+    STARTED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    FINISHED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     kind: str
     state: TaskState
@@ -879,7 +881,9 @@ class Task(_message.Message):
     wait_reason: str
     output_artifact_id: str
     output_kind: str
-    def __init__(self, task_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[TaskState, str]] = ..., attempt: _Optional[int] = ..., max_attempts: _Optional[int] = ..., progress: _Optional[_Union[_worker_pb2.ProgressUnits, _Mapping]] = ..., wait_reason: _Optional[str] = ..., output_artifact_id: _Optional[str] = ..., output_kind: _Optional[str] = ...) -> None: ...
+    started_unix_millis: int
+    finished_unix_millis: int
+    def __init__(self, task_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[TaskState, str]] = ..., attempt: _Optional[int] = ..., max_attempts: _Optional[int] = ..., progress: _Optional[_Union[_worker_pb2.ProgressUnits, _Mapping]] = ..., wait_reason: _Optional[str] = ..., output_artifact_id: _Optional[str] = ..., output_kind: _Optional[str] = ..., started_unix_millis: _Optional[int] = ..., finished_unix_millis: _Optional[int] = ...) -> None: ...
 
 class GetJobRequest(_message.Message):
     __slots__ = ("job_id",)
@@ -1362,7 +1366,7 @@ class ListClipDecisionsResponse(_message.Message):
     def __init__(self, decisions: _Optional[_Iterable[_Union[ClipDecisionRecordV1, _Mapping]]] = ...) -> None: ...
 
 class DirectClipRequest(_message.Message):
-    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id", "allow_declined", "manual_span", "highlight_spoken_word")
+    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id", "allow_declined", "manual_span", "highlight_spoken_word", "caption_options_json")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -1376,6 +1380,7 @@ class DirectClipRequest(_message.Message):
     ALLOW_DECLINED_FIELD_NUMBER: _ClassVar[int]
     MANUAL_SPAN_FIELD_NUMBER: _ClassVar[int]
     HIGHLIGHT_SPOKEN_WORD_FIELD_NUMBER: _ClassVar[int]
+    CAPTION_OPTIONS_JSON_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     source_id: str
     candidate_id: str
@@ -1389,7 +1394,8 @@ class DirectClipRequest(_message.Message):
     allow_declined: bool
     manual_span: bool
     highlight_spoken_word: bool
-    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ..., allow_declined: _Optional[bool] = ..., manual_span: _Optional[bool] = ..., highlight_spoken_word: _Optional[bool] = ...) -> None: ...
+    caption_options_json: str
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ..., allow_declined: _Optional[bool] = ..., manual_span: _Optional[bool] = ..., highlight_spoken_word: _Optional[bool] = ..., caption_options_json: _Optional[str] = ...) -> None: ...
 
 class DirectClipResponse(_message.Message):
     __slots__ = ("doc", "start_ticks", "end_ticks", "decisions", "reopened")

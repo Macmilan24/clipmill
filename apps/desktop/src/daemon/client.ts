@@ -117,6 +117,9 @@ export interface Task {
   /** Empty until the task publishes. */
   readonly outputArtifactId: string;
   readonly progress?: Progress;
+  /** When it first ran and when it succeeded; zero, or absent, until it has. */
+  readonly startedUnixMillis?: number;
+  readonly finishedUnixMillis?: number;
 }
 
 export interface Job {
@@ -649,6 +652,8 @@ export interface DirectClipInput {
   readonly cut: ClipCut;
   readonly styleRef?: string;
   readonly highlightSpokenWord?: boolean;
+  /** The caption options a saved style starts the clip with, as JSON. */
+  readonly captionOptionsJson?: string;
   /**
    * Read only for `exact`. Any edge between two words is kept as sent; one
    * that falls inside a word is moved out to keep the whole word (R63).
@@ -1001,6 +1006,16 @@ export interface PreviewPlan {
   readonly presentation: 'reading' | 'burn_in';
   /** Why the director built the clip as it did. Only a dry run carries it. */
   readonly decisions?: readonly string[];
+}
+
+/**
+ * Ask for attention after a long run, when the window is behind others: the
+ * Dock icon bounces once. Nothing outside the shell.
+ */
+export async function requestAttention(): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await core();
+  await invoke('request_attention');
 }
 
 /**

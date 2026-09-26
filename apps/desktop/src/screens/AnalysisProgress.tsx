@@ -10,7 +10,7 @@ import {
   Minus,
   ShieldCheck,
 } from 'lucide-react';
-import { type JSX, useEffect, useMemo, useState } from 'react';
+import { type JSX, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type DeviceProfile, JobState } from '@clipmill/contracts';
 
@@ -42,9 +42,21 @@ import {
   stageCounts,
   stageRows,
 } from '../analysis/model.js';
+import {
+  formatEstimate,
+  learnFrom,
+  remainingEstimate,
+  stageEstimate,
+} from '../analysis/estimates.js';
 import { useReadiness, waitingReasons } from '../analysis/readiness.js';
 import { AnalysisLoader, useAnalysis } from '../analysis/useAnalysis.js';
-import type { AnalysisSettings, AnalyzeRequest, Job, TaskEvent } from '../daemon/client.js';
+import {
+  type AnalysisSettings,
+  type AnalyzeRequest,
+  type Job,
+  type TaskEvent,
+  requestAttention,
+} from '../daemon/client.js';
 import {
   acceleratorMemory,
   describeAccelerator,
@@ -96,10 +108,13 @@ const STATE_STYLE: Readonly<
 function StageLine({
   row,
   waitingFor,
+  usual,
 }: {
   readonly row: StageRow;
   /** Why the stage is waiting, when the daemon's readiness report knows. */
   readonly waitingFor: string | null;
+  /** How long it usually takes on this machine, when it has run here before. */
+  readonly usual: number | null;
 }): JSX.Element {
   const style = STATE_STYLE[row.state];
   const active = row.state === 'running';
@@ -122,7 +137,11 @@ function StageLine({
         </div>
         {(active || row.state === 'failed' || row.state === 'skipped') && (
           <div className={cn('mt-0.5 text-meta', SECONDARY)}>
-            {row.state === 'skipped' ? 'Not needed for this recording' : row.stage.detail}
+            {row.state === 'skipped'
+              ? 'Not needed for this recording'
+              : active && usual !== null
+                ? `${row.stage.detail} Usually ${formatEstimate(usual)} here.`
+                : row.stage.detail}
           </div>
         )}
         {waitingFor !== null && (
@@ -140,10 +159,26 @@ function StageLine({
           active ? 'text-[var(--color-primary)]' : MUTED,
         )}
       >
-        {describeStageRow(row)}
+        {row.state === 'waiting' && usual !== null ? formatEstimate(usual) : describeStageRow(row)}
       </span>
     </div>
   );
+}
+
+/**
+ * Tell a person who looked away that the run is over: the window asks for
+ * attention and its title says so until they come back to it.
+ */
+function announceDone(name: string, succeeded: boolean): void {
+  if (typeof document === 'undefined' || (!document.hidden && document.hasFocus())) return;
+  const before = document.title;
+  document.title = succeeded ? `Clips ready · ${name}` : `Analysis stopped · ${name}`;
+  const restore = () => {
+    document.title = before;
+    window.removeEventListener('focus', restore);
+  };
+  window.addEventListener('focus', restore);
+  void requestAttention().catch(() => undefined);
 }
 
 function SourceCard({
@@ -372,6 +407,26 @@ export function AnalysisProgress({
   const cloud = job?.tasks.some((task) => task.kind.endsWith('-cloud')) ?? false;
   const status = readStatus(job);
   const running = status.kind === 'analyzing' || status.kind === 'queued';
+  const mediaSeconds = (sourceMap?.container.duration_ticks ?? 0) / 90_000;
+  const route = cloud ? 'cloud' : job?.analysis?.localEditorial === false ? 'baseline' : 'local';
+
+  // A finished run teaches the next one this machine's pace.
+  useEffect(() => {
+    if (job) learnFrom(job, mediaSeconds, route);
+  }, [job, mediaSeconds, route]);
+
+  // Say so when it ends, for the person who went to do something else.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (running) {
+      wasRunning.current = true;
+      return;
+    }
+    if (wasRunning.current && (status.kind === 'analyzed' || status.kind === 'failed')) {
+      wasRunning.current = false;
+      announceDone(projectName, status.kind === 'analyzed');
+    }
+  }, [running, status.kind, projectName]);
 
   // While the run is live, the readiness report is re-read so a stage that
   // is waiting on a worker or a model says so — and stops saying so the
@@ -421,6 +476,7 @@ export function AnalysisProgress({
   const active = currentStage(rows);
   const badge = describeStatus(status);
   const elapsed = formatElapsed((running ? now : job.updatedUnixMillis) - job.createdUnixMillis);
+  const left = running ? remainingEstimate(rows, mediaSeconds) : null;
 
   return (
     <div className="analysis-page">
@@ -506,6 +562,7 @@ export function AnalysisProgress({
           <span className="text-sm font-medium">{active?.stage.label ?? badge.label}</span>
           <span className={cn('mono text-technical', SECONDARY)}>
             {counts.done} of {counts.planned} stages · {elapsed} elapsed
+            {left !== null && ` · ${formatEstimate(left)} left`}
           </span>
         </div>
         <ProgressBar
@@ -535,6 +592,7 @@ export function AnalysisProgress({
               <StageLine
                 key={row.stage.kind}
                 row={row}
+                usual={stageEstimate(row.stage.kind, mediaSeconds)}
                 waitingFor={
                   [row.stage.kind, ...(row.stage.covers ?? [])]
                     .map((kind) => waiting.get(kind))

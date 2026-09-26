@@ -717,6 +717,11 @@ message Task {
   // wanting the filmstrip should ask for the task that produces one rather than
   // learn that the daemon calls that work "ingest-filmstrip".
   string output_kind = 9;
+  // When it first started running and when it succeeded, from its own event
+  // log; zero until it has. Measured, so a machine's past runs can say how
+  // long the next one will take.
+  uint64 started_unix_millis = 10;
+  uint64 finished_unix_millis = 11;
 }
 
 enum JobState {
@@ -1278,6 +1283,10 @@ message DirectClipRequest {
   bool manual_span = 12;
   // Separately override the caption look's spoken-word highlight.
   optional bool highlight_spoken_word = 13;
+  // The clip-wide caption options the document starts with — a saved style's
+  // font, colours and highlight — as the edit IR's JSON. Empty keeps the
+  // look's own. Checked like any edit: options the IR refuses are refused.
+  string caption_options_json = 14;
 }
 
 message DirectClipResponse {

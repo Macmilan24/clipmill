@@ -2333,6 +2333,9 @@ pub(crate) struct TaskRecord {
     pub progress_total: u64,
     pub wait_reason: String,
     pub output_artifact_id: String,
+    /// When it first ran and when it succeeded; zero until it has.
+    pub started_unix_millis: u64,
+    pub finished_unix_millis: u64,
 }
 
 impl From<TaskRecord> for v1::Task {
@@ -2352,6 +2355,8 @@ impl From<TaskRecord> for v1::Task {
             progress,
             wait_reason: value.wait_reason,
             output_artifact_id: value.output_artifact_id,
+            started_unix_millis: value.started_unix_millis,
+            finished_unix_millis: value.finished_unix_millis,
         }
     }
 }
