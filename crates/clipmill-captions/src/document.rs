@@ -208,6 +208,7 @@ fn tokens_of(
             as_i64(word.start_ticks) >= span.start_ticks && as_i64(word.end_ticks) <= span.end_ticks
         })
         .filter(|word| captionable_word(word.text.as_str()))
+        .filter(|word| !lexicon::is_hesitation(&lexicon::normalize(word.text.as_str())))
         .map(|word| {
             let text = word.text.to_string();
             let normalized = lexicon::normalize(&text);
@@ -488,5 +489,22 @@ mod tests {
                 u64::try_from(cues.tokens.len()).expect("count")
             );
         }
+    }
+
+    #[test]
+    fn hesitations_are_left_out_of_captions_and_other_fillers_kept() {
+        let raw =
+            include_str!("../../../contracts/fixtures/speech.transcript/valid/ten_words.json");
+        let mut transcript: SpeechTranscript = serde_json::from_str(raw).expect("transcript");
+        for (index, text) in [(1, "um,"), (2, "Uh"), (3, "basically")] {
+            transcript.words[index].text = text.parse().expect("text");
+        }
+        let cues = derive(&transcript, None, None, Inputs {
+            transcript_artifact_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            index_artifact_id: None, shots_artifact_id: None,
+        }, &DeriveRequest::new("test")).expect("captions");
+        let kept: Vec<u64> = cues.tokens.iter().map(|token| token.word_index).collect();
+        assert!(!kept.contains(&1) && !kept.contains(&2), "{kept:?}");
+        assert!(kept.contains(&3), "a filler that is a word stays");
     }
 }

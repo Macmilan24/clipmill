@@ -532,12 +532,14 @@ class SpeechStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., detection: _Optional[_Union[SpeechDetectionV1, _Mapping]] = ..., recognition: _Optional[_Union[SpeechRecognitionV1, _Mapping]] = ..., alignment: _Optional[_Union[SpeechAlignmentV1, _Mapping]] = ...) -> None: ...
 
 class SpeechRecognitionV1(_message.Message):
-    __slots__ = ("language", "conditioned_on_previous")
+    __slots__ = ("language", "conditioned_on_previous", "verbatim")
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     CONDITIONED_ON_PREVIOUS_FIELD_NUMBER: _ClassVar[int]
+    VERBATIM_FIELD_NUMBER: _ClassVar[int]
     language: str
     conditioned_on_previous: bool
-    def __init__(self, language: _Optional[str] = ..., conditioned_on_previous: _Optional[bool] = ...) -> None: ...
+    verbatim: bool
+    def __init__(self, language: _Optional[str] = ..., conditioned_on_previous: _Optional[bool] = ..., verbatim: _Optional[bool] = ...) -> None: ...
 
 class SpeechAlignmentV1(_message.Message):
     __slots__ = ("min_score",)

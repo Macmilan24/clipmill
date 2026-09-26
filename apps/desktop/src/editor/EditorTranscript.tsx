@@ -34,9 +34,12 @@ import {
   countMatches,
   cutPauses,
   cutWords,
+  type FillerChoices,
+  fillerRuns,
   hideInCaptions,
-  isFiller,
   longPauses,
+  type ProgramSpan,
+  programSilences,
   programWords,
   replaceCaptionWords,
   shownCues,
@@ -62,6 +65,28 @@ export interface EditorTranscriptProps {
 }
 
 type Review = 'fillers' | 'pauses' | null;
+
+const FILLER_CHOICES_KEY = 'clipmill.editor.fillers';
+
+/** Which optional fillers this machine last asked to find. */
+function rememberedChoices(): FillerChoices {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FILLER_CHOICES_KEY) ?? '{}') as Partial<
+      Record<keyof FillerChoices, unknown>
+    >;
+    return { like: stored.like === true, youKnow: stored.youKnow === true };
+  } catch {
+    return { like: false, youKnow: false };
+  }
+}
+
+function rememberChoices(choices: FillerChoices): void {
+  try {
+    localStorage.setItem(FILLER_CHOICES_KEY, JSON.stringify(choices));
+  } catch {
+    /* This session keeps them. */
+  }
+}
 
 export function EditorTranscript({
   plan,
@@ -89,10 +114,10 @@ export function EditorTranscript({
     if (findSignal > 0) setFinding(true);
   }, [findSignal]);
 
-  const fillers = useMemo(
-    () => words.flatMap((word, at) => (isFiller(word.text) ? [at] : [])),
-    [words],
-  );
+  const silences = useMemo(() => programSilences(plan, transcript), [plan, transcript]);
+  const [choices, setChoices] = useState<FillerChoices>(rememberedChoices);
+  const fillers = useMemo(() => fillerRuns(words, choices), [words, choices]);
+  const flagged = useMemo(() => new Set(fillers.flat()), [fillers]);
   const pauses = useMemo(() => longPauses(words), [words]);
 
   return (
@@ -118,7 +143,9 @@ export function EditorTranscript({
             type="button"
             className="edit-cleanup-chip"
             aria-pressed={review === 'fillers'}
-            disabled={fillers.length === 0}
+            disabled={
+              fillers.length === 0 && !choices.like && !choices.youKnow && review !== 'fillers'
+            }
             onClick={() => setReview(review === 'fillers' ? null : 'fillers')}
           >
             <span className="mono">{fillers.length}</span>{' '}
@@ -143,6 +170,12 @@ export function EditorTranscript({
           words={words}
           refs={refs}
           fillers={fillers}
+          silences={silences}
+          choices={choices}
+          onChoices={(next) => {
+            setChoices(next);
+            rememberChoices(next);
+          }}
           busy={busy}
           onApply={onApply}
           onSeek={onSeek}
@@ -172,6 +205,8 @@ export function EditorTranscript({
           transcript={transcript}
           words={words}
           refs={refs}
+          flagged={flagged}
+          silences={silences}
           frame={frame}
           playing={playing}
           busy={busy}
@@ -187,6 +222,7 @@ export function EditorTranscript({
           plan={plan}
           words={words}
           refs={refs}
+          silences={silences}
           selected={selected}
           busy={busy}
           correctSignal={correctSignal}
@@ -204,6 +240,8 @@ function Words({
   transcript,
   words,
   refs,
+  flagged,
+  silences,
   frame,
   playing,
   busy,
@@ -219,6 +257,9 @@ function Words({
   readonly transcript: Transcript;
   readonly words: ReturnType<typeof programWords>;
   readonly refs: readonly (CaptionWordRef | null)[];
+  /** Positions the filler review found. */
+  readonly flagged: ReadonlySet<number>;
+  readonly silences: readonly ProgramSpan[];
   readonly frame: number;
   readonly playing: boolean;
   readonly busy: boolean;
@@ -291,7 +332,7 @@ function Words({
         ? selected
         : { first: target, last: target };
   const menuPositions = menuRange ? positions(menuRange) : [];
-  const menuCut = menuRange ? cutWords(plan, words, menuPositions) : null;
+  const menuCut = menuRange ? cutWords(plan, words, menuPositions, silences) : null;
   const menuHide = menuRange
     ? hideInCaptions(
         plan,
@@ -418,8 +459,15 @@ function Words({
                           data-live={at === live ? 'true' : undefined}
                           data-selected={inRange(at) ? 'true' : undefined}
                           data-hidden={ref === null ? 'true' : undefined}
-                          data-filler={isFiller(word.text) ? 'true' : undefined}
-                          title={ref === null ? 'Hidden from the captions' : undefined}
+                          data-filler={flagged.has(at) ? 'true' : undefined}
+                          data-guessed={word.guessed ? 'true' : undefined}
+                          title={
+                            ref === null
+                              ? 'Hidden from the captions'
+                              : word.guessed
+                                ? 'Timing estimated: the aligner could not place this word. A cut here lands in the nearest silence.'
+                                : undefined
+                          }
                           onPointerDown={(event) => {
                             if (event.button > 0) return;
                             event.preventDefault();
@@ -526,6 +574,7 @@ function SelectionBar({
   plan,
   words,
   refs,
+  silences,
   selected,
   busy,
   correctSignal,
@@ -535,6 +584,7 @@ function SelectionBar({
   readonly plan: PreviewPlan;
   readonly words: ReturnType<typeof programWords>;
   readonly refs: readonly (CaptionWordRef | null)[];
+  readonly silences: readonly ProgramSpan[];
   readonly selected: WordRange;
   readonly busy: boolean;
   /** Bumped to open the correction for a single selected word. */
@@ -543,7 +593,7 @@ function SelectionBar({
   readonly onClear: () => void;
 }) {
   const chosen = positions(selected);
-  const cut = cutWords(plan, words, chosen);
+  const cut = cutWords(plan, words, chosen, silences);
   const hide = hideInCaptions(
     plan,
     chosen.map((at) => refs[at] ?? null),
@@ -705,6 +755,9 @@ function FillerReview({
   words,
   refs,
   fillers,
+  silences,
+  choices,
+  onChoices,
   busy,
   onApply,
   onSeek,
@@ -713,15 +766,20 @@ function FillerReview({
   readonly plan: PreviewPlan;
   readonly words: ReturnType<typeof programWords>;
   readonly refs: readonly (CaptionWordRef | null)[];
-  readonly fillers: readonly number[];
+  /** Runs of word positions: one word, or "you know". */
+  readonly fillers: readonly (readonly number[])[];
+  readonly silences: readonly ProgramSpan[];
+  readonly choices: FillerChoices;
+  readonly onChoices: (choices: FillerChoices) => void;
   readonly busy: boolean;
   readonly onApply: (command: EditCommandJson) => void;
   readonly onSeek: (frame: number) => void;
   readonly onClose: () => void;
 }) {
+  // Keyed by a run's first word, which no other run shares.
   const [skipped, setSkipped] = useState<readonly number[]>([]);
-  const chosen = fillers.filter((at) => !skipped.includes(at));
-  const cut = cutWords(plan, words, chosen);
+  const chosen = fillers.filter((run) => !skipped.includes(run[0]!)).flat();
+  const cut = cutWords(plan, words, chosen, silences);
   const hide = hideInCaptions(
     plan,
     chosen.map((at) => refs[at] ?? null),
@@ -731,25 +789,51 @@ function FillerReview({
       <p className="review-footnote">
         Cutting removes them from the picture and the sound. Untick any you want to keep.
       </p>
-      <ul>
-        {fillers.map((at) => (
-          <li key={at}>
+      <div className="edit-inline" role="group" aria-label="Also find">
+        {(
+          [
+            ['like', '“like”'],
+            ['youKnow', '“you know”'],
+          ] as const
+        ).map(([key, label]) => (
+          <label key={key} className="edit-filler-choice">
             <Checkbox
-              aria-label={`Cut “${words[at]!.text}” at ${clockTenths(words[at]!.startTicks)}`}
-              checked={!skipped.includes(at)}
-              onCheckedChange={() =>
-                setSkipped((old) =>
-                  old.includes(at) ? old.filter((item) => item !== at) : [...old, at],
-                )
-              }
+              checked={choices[key]}
+              onCheckedChange={(on) => onChoices({ ...choices, [key]: on === true })}
             />
-            <button type="button" onClick={() => onSeek(frameOfTicks(plan, words[at]!.startTicks))}>
-              “{words[at]!.text}”
-            </button>
-            <span className="mono">{clockTenths(words[at]!.startTicks)}</span>
-          </li>
+            Also {label}
+          </label>
         ))}
-      </ul>
+      </div>
+      {fillers.length === 0 ? (
+        <p className="review-footnote">None in this clip.</p>
+      ) : (
+        <ul>
+          {fillers.map((run) => {
+            const first = words[run[0]!]!;
+            const text = run.map((at) => words[at]!.text).join(' ');
+            return (
+              <li key={run[0]}>
+                <Checkbox
+                  aria-label={`Cut “${text}” at ${clockTenths(first.startTicks)}`}
+                  checked={!skipped.includes(run[0]!)}
+                  onCheckedChange={() =>
+                    setSkipped((old) =>
+                      old.includes(run[0]!)
+                        ? old.filter((item) => item !== run[0])
+                        : [...old, run[0]!],
+                    )
+                  }
+                />
+                <button type="button" onClick={() => onSeek(frameOfTicks(plan, first.startTicks))}>
+                  “{text}”
+                </button>
+                <span className="mono">{clockTenths(first.startTicks)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       <div className="edit-inline">
         <Button
           size="sm"
@@ -759,7 +843,7 @@ function FillerReview({
             onClose();
           }}
         >
-          Cut {chosen.length}
+          Cut {fillers.filter((run) => !skipped.includes(run[0]!)).length}
         </Button>
         <Button
           size="sm"

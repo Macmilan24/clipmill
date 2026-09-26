@@ -758,6 +758,9 @@ fn speech_chain(
 
     let detection = chain.detection;
     let language = chain.language.to_owned();
+    // Whisper writes fillers out unless it is asked not to, and only the
+    // whisper.cpp family has a way to be asked.
+    let verbatim = speech_implementation("speech-asr", bindings).worker == "speech-asr";
     let tasks = vec![
         leased(
             vad.clone(),
@@ -779,6 +782,7 @@ fn speech_chain(
                 payload.recognition = Some(SpeechRecognitionV1 {
                     language: language.clone(),
                     conditioned_on_previous: false,
+                    verbatim,
                 });
             }),
         ),
@@ -4336,6 +4340,15 @@ mod analyze_tests {
                 "{stage} inside the DAG declares nothing: the plan produces it"
             );
         }
+        // Whisper is asked for what was said, fillers included; the flag is
+        // in the payload, so a verbatim transcript is keyed as one.
+        let recognition = <super::SpeechStagePayloadV1 as prost::Message>::decode(
+            task(&standalone, "speech-asr").payload.as_slice(),
+        )
+        .expect("a speech stage payload")
+        .recognition
+        .expect("recognition parameters");
+        assert!(recognition.verbatim);
     }
 
     /// A source with no video has no shot cuts, and the difference between that
