@@ -571,6 +571,57 @@ export function mediaUrl(projectId: string, artifactId: string, file: string): s
     : `clipmill-media://localhost/${path}`;
 }
 
+/** One of the person's own pictures or sounds, kept by its content hash. */
+export interface Asset {
+  readonly hash: string;
+  readonly kind: 'image' | 'audio';
+  /** The file name it was brought in from. */
+  readonly name: string;
+  readonly mediaType: string;
+  readonly bytes: number;
+  /** A picture's size; zero for a sound. */
+  readonly width: number;
+  readonly height: number;
+  /** A sound's length; zero for a picture. */
+  readonly durationTicks: number;
+  readonly license: AssetLicense;
+  readonly addedUnixMillis: number;
+}
+
+export type AssetLicense = 'own_content' | 'licensed' | 'royalty_free' | 'public_domain';
+
+/**
+ * Bring a picture or a sound in. The host opens the picker; the page names
+ * no path. `null` when the person closed the picker.
+ */
+export async function importAsset(
+  kind: Asset['kind'],
+  license: AssetLicense,
+): Promise<Asset | null> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<Asset | null>('import_asset', { kind, license });
+}
+
+/** Every asset of a kind, newest first. */
+export async function listAssets(kind: Asset['kind']): Promise<readonly Asset[]> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<readonly Asset[]>('list_assets', { kind });
+}
+
+/** Where the page loads an asset from, by its hash. */
+export function assetUrl(hash: string): string {
+  const path = `assets/${encodeURIComponent(hash.replace(/^sha256:/, ''))}`;
+  return navigator.userAgent.includes('Windows')
+    ? `http://clipmill-media.localhost/${path}`
+    : `clipmill-media://localhost/${path}`;
+}
+
 /** Where the player loads a pinned caption font from. */
 export function captionFontUrl(file: string): string {
   const path = `fonts/${encodeURIComponent(file)}`;
@@ -654,6 +705,10 @@ export interface DirectClipInput {
   readonly highlightSpokenWord?: boolean;
   /** The caption options a saved style starts the clip with, as JSON. */
   readonly captionOptionsJson?: string;
+  /** The brand a saved kit starts the clip with, as JSON. */
+  readonly brandJson?: string;
+  /** The frame the clip is framed for; absent is vertical. */
+  readonly shape?: 'vertical' | 'portrait' | 'square' | 'landscape';
   /**
    * Read only for `exact`. Any edge between two words is kept as sent; one
    * that falls inside a word is moved out to keep the whole word (R63).
@@ -1050,6 +1105,21 @@ export interface PreviewPlan {
   readonly decisions?: readonly string[];
   /** Titles and labels over the program, bottom first. Absent from older hosts. */
   readonly overlays?: readonly PreviewOverlay[];
+  /** The logo where the render puts it, in output pixels. */
+  readonly logo?: {
+    readonly asset: string;
+    readonly corner: 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
+    readonly side: number;
+    readonly insetX: number;
+    readonly insetY: number;
+    readonly opacity: number;
+  } | null;
+  /** The progress bar, when the clip has one: thickness in output pixels. */
+  readonly progress?: {
+    readonly colour: string;
+    readonly edge: 'top' | 'bottom';
+    readonly thickness: number;
+  } | null;
 }
 
 /**

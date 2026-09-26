@@ -1232,6 +1232,48 @@
   cursor: pointer;
 }
 
+/* The brand over the preview: placed as the render places it. */
+.edit-brand-bar {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  pointer-events: none;
+}
+
+.edit-brand-logo {
+  position: absolute;
+  z-index: 2;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.edit-brand-pictures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.edit-brand-pictures button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  background: repeating-conic-gradient(var(--cm-recessed) 0 25%, transparent 0 50%) 50% / 12px 12px;
+}
+
+.edit-brand-pictures button[aria-pressed='true'] {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: 1px;
+}
+
+.edit-brand-pictures img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 /* A punch-in, along the bottom of the section it moves in on. */
 .edit-punch {
   position: absolute;

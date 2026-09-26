@@ -782,6 +782,76 @@ impl CropRect {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"brand\": {"]
+#[doc = "      \"description\": \"What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"minProperties\": 1,"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"logo\": {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"asset\","]
+#[doc = "            \"corner\","]
+#[doc = "            \"opacity\","]
+#[doc = "            \"size\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"asset\": {"]
+#[doc = "              \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            },"]
+#[doc = "            \"corner\": {"]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"top_left\","]
+#[doc = "                \"top_right\","]
+#[doc = "                \"bottom_left\","]
+#[doc = "                \"bottom_right\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"opacity\": {"]
+#[doc = "              \"description\": \"In percent.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 100.0,"]
+#[doc = "              \"minimum\": 20.0"]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"description\": \"Its longer side as a share of the frame's short side, per mille.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 300.0,"]
+#[doc = "              \"minimum\": 60.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        \"progress\": {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"colour\","]
+#[doc = "            \"edge\","]
+#[doc = "            \"thickness\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"colour\": {"]
+#[doc = "              \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "            },"]
+#[doc = "            \"edge\": {"]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"top\","]
+#[doc = "                \"bottom\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"thickness\": {"]
+#[doc = "              \"description\": \"At the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 40.0,"]
+#[doc = "              \"minimum\": 4.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"captions\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
@@ -986,6 +1056,8 @@ pub struct EditIr {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub assets: ::std::vec::Vec<EditIrAssetsItem>,
     pub audio: EditIrAudio,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub brand: ::std::option::Option<EditIrBrand>,
     pub captions: EditIrCaptions,
     #[doc = "Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -1129,6 +1201,361 @@ pub struct EditIrAudioGainCurveItem {
 impl EditIrAudioGainCurveItem {
     pub fn builder() -> builder::EditIrAudioGainCurveItem {
         Default::default()
+    }
+}
+#[doc = "What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"minProperties\": 1,"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"logo\": {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"asset\","]
+#[doc = "        \"corner\","]
+#[doc = "        \"opacity\","]
+#[doc = "        \"size\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"asset\": {"]
+#[doc = "          \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        },"]
+#[doc = "        \"corner\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"top_left\","]
+#[doc = "            \"top_right\","]
+#[doc = "            \"bottom_left\","]
+#[doc = "            \"bottom_right\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"opacity\": {"]
+#[doc = "          \"description\": \"In percent.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 100.0,"]
+#[doc = "          \"minimum\": 20.0"]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"description\": \"Its longer side as a share of the frame's short side, per mille.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 300.0,"]
+#[doc = "          \"minimum\": 60.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    \"progress\": {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"colour\","]
+#[doc = "        \"edge\","]
+#[doc = "        \"thickness\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"colour\": {"]
+#[doc = "          \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "        },"]
+#[doc = "        \"edge\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"top\","]
+#[doc = "            \"bottom\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"thickness\": {"]
+#[doc = "          \"description\": \"At the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 40.0,"]
+#[doc = "          \"minimum\": 4.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrBrand {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub logo: ::std::option::Option<EditIrBrandLogo>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub progress: ::std::option::Option<EditIrBrandProgress>,
+}
+impl ::std::default::Default for EditIrBrand {
+    fn default() -> Self {
+        Self {
+            logo: Default::default(),
+            progress: Default::default(),
+        }
+    }
+}
+impl EditIrBrand {
+    pub fn builder() -> builder::EditIrBrand {
+        Default::default()
+    }
+}
+#[doc = "`EditIrBrandLogo`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"asset\","]
+#[doc = "    \"corner\","]
+#[doc = "    \"opacity\","]
+#[doc = "    \"size\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"asset\": {"]
+#[doc = "      \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
+#[doc = "    },"]
+#[doc = "    \"corner\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"top_left\","]
+#[doc = "        \"top_right\","]
+#[doc = "        \"bottom_left\","]
+#[doc = "        \"bottom_right\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"opacity\": {"]
+#[doc = "      \"description\": \"In percent.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 100.0,"]
+#[doc = "      \"minimum\": 20.0"]
+#[doc = "    },"]
+#[doc = "    \"size\": {"]
+#[doc = "      \"description\": \"Its longer side as a share of the frame's short side, per mille.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 300.0,"]
+#[doc = "      \"minimum\": 60.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrBrandLogo {
+    #[doc = "The picture's content hash; the clip's assets list it."]
+    pub asset: Sha256,
+    pub corner: EditIrBrandLogoCorner,
+    #[doc = "In percent."]
+    pub opacity: i64,
+    #[doc = "Its longer side as a share of the frame's short side, per mille."]
+    pub size: i64,
+}
+impl EditIrBrandLogo {
+    pub fn builder() -> builder::EditIrBrandLogo {
+        Default::default()
+    }
+}
+#[doc = "`EditIrBrandLogoCorner`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"top_left\","]
+#[doc = "    \"top_right\","]
+#[doc = "    \"bottom_left\","]
+#[doc = "    \"bottom_right\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrBrandLogoCorner {
+    #[serde(rename = "top_left")]
+    TopLeft,
+    #[serde(rename = "top_right")]
+    TopRight,
+    #[serde(rename = "bottom_left")]
+    BottomLeft,
+    #[serde(rename = "bottom_right")]
+    BottomRight,
+}
+impl ::std::fmt::Display for EditIrBrandLogoCorner {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::TopLeft => f.write_str("top_left"),
+            Self::TopRight => f.write_str("top_right"),
+            Self::BottomLeft => f.write_str("bottom_left"),
+            Self::BottomRight => f.write_str("bottom_right"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrBrandLogoCorner {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "top_left" => Ok(Self::TopLeft),
+            "top_right" => Ok(Self::TopRight),
+            "bottom_left" => Ok(Self::BottomLeft),
+            "bottom_right" => Ok(Self::BottomRight),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrBrandLogoCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrBrandLogoCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrBrandLogoCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`EditIrBrandProgress`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"colour\","]
+#[doc = "    \"edge\","]
+#[doc = "    \"thickness\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"colour\": {"]
+#[doc = "      \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "    },"]
+#[doc = "    \"edge\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"top\","]
+#[doc = "        \"bottom\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"thickness\": {"]
+#[doc = "      \"description\": \"At the 1920-pixel design height.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 40.0,"]
+#[doc = "      \"minimum\": 4.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrBrandProgress {
+    pub colour: HexColour,
+    pub edge: EditIrBrandProgressEdge,
+    #[doc = "At the 1920-pixel design height."]
+    pub thickness: i64,
+}
+impl EditIrBrandProgress {
+    pub fn builder() -> builder::EditIrBrandProgress {
+        Default::default()
+    }
+}
+#[doc = "`EditIrBrandProgressEdge`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"top\","]
+#[doc = "    \"bottom\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrBrandProgressEdge {
+    #[serde(rename = "top")]
+    Top,
+    #[serde(rename = "bottom")]
+    Bottom,
+}
+impl ::std::fmt::Display for EditIrBrandProgressEdge {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Top => f.write_str("top"),
+            Self::Bottom => f.write_str("bottom"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrBrandProgressEdge {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "top" => Ok(Self::Top),
+            "bottom" => Ok(Self::Bottom),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrBrandProgressEdge {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrBrandProgressEdge {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrBrandProgressEdge {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`EditIrCaptions`"]
@@ -4371,6 +4798,8 @@ pub mod builder {
         assets:
             ::std::result::Result<::std::vec::Vec<super::EditIrAssetsItem>, ::std::string::String>,
         audio: ::std::result::Result<super::EditIrAudio, ::std::string::String>,
+        brand:
+            ::std::result::Result<::std::option::Option<super::EditIrBrand>, ::std::string::String>,
         captions: ::std::result::Result<super::EditIrCaptions, ::std::string::String>,
         overlays: ::std::result::Result<::std::vec::Vec<super::Overlay>, ::std::string::String>,
         rationale: ::std::result::Result<
@@ -4388,6 +4817,7 @@ pub mod builder {
             Self {
                 assets: Ok(Default::default()),
                 audio: Err("no value supplied for audio".to_string()),
+                brand: Ok(Default::default()),
                 captions: Err("no value supplied for captions".to_string()),
                 overlays: Ok(Default::default()),
                 rationale: Ok(Default::default()),
@@ -4417,6 +4847,16 @@ pub mod builder {
             self.audio = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for audio: {e}"));
+            self
+        }
+        pub fn brand<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrBrand>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.brand = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for brand: {e}"));
             self
         }
         pub fn captions<T>(mut self, value: T) -> Self
@@ -4496,6 +4936,7 @@ pub mod builder {
             Ok(Self {
                 assets: value.assets?,
                 audio: value.audio?,
+                brand: value.brand?,
                 captions: value.captions?,
                 overlays: value.overlays?,
                 rationale: value.rationale?,
@@ -4511,6 +4952,7 @@ pub mod builder {
             Self {
                 assets: Ok(value.assets),
                 audio: Ok(value.audio),
+                brand: Ok(value.brand),
                 captions: Ok(value.captions),
                 overlays: Ok(value.overlays),
                 rationale: Ok(value.rationale),
@@ -4697,6 +5139,216 @@ pub mod builder {
             Self {
                 gain_db: Ok(value.gain_db),
                 t_ticks: Ok(value.t_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrBrand {
+        logo: ::std::result::Result<
+            ::std::option::Option<super::EditIrBrandLogo>,
+            ::std::string::String,
+        >,
+        progress: ::std::result::Result<
+            ::std::option::Option<super::EditIrBrandProgress>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for EditIrBrand {
+        fn default() -> Self {
+            Self {
+                logo: Ok(Default::default()),
+                progress: Ok(Default::default()),
+            }
+        }
+    }
+    impl EditIrBrand {
+        pub fn logo<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrBrandLogo>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.logo = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for logo: {e}"));
+            self
+        }
+        pub fn progress<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrBrandProgress>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.progress = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for progress: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrBrand> for super::EditIrBrand {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrBrand,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                logo: value.logo?,
+                progress: value.progress?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrBrand> for EditIrBrand {
+        fn from(value: super::EditIrBrand) -> Self {
+            Self {
+                logo: Ok(value.logo),
+                progress: Ok(value.progress),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrBrandLogo {
+        asset: ::std::result::Result<super::Sha256, ::std::string::String>,
+        corner: ::std::result::Result<super::EditIrBrandLogoCorner, ::std::string::String>,
+        opacity: ::std::result::Result<i64, ::std::string::String>,
+        size: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditIrBrandLogo {
+        fn default() -> Self {
+            Self {
+                asset: Err("no value supplied for asset".to_string()),
+                corner: Err("no value supplied for corner".to_string()),
+                opacity: Err("no value supplied for opacity".to_string()),
+                size: Err("no value supplied for size".to_string()),
+            }
+        }
+    }
+    impl EditIrBrandLogo {
+        pub fn asset<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::Sha256>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.asset = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for asset: {e}"));
+            self
+        }
+        pub fn corner<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditIrBrandLogoCorner>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.corner = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for corner: {e}"));
+            self
+        }
+        pub fn opacity<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.opacity = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for opacity: {e}"));
+            self
+        }
+        pub fn size<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.size = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for size: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrBrandLogo> for super::EditIrBrandLogo {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrBrandLogo,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                asset: value.asset?,
+                corner: value.corner?,
+                opacity: value.opacity?,
+                size: value.size?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrBrandLogo> for EditIrBrandLogo {
+        fn from(value: super::EditIrBrandLogo) -> Self {
+            Self {
+                asset: Ok(value.asset),
+                corner: Ok(value.corner),
+                opacity: Ok(value.opacity),
+                size: Ok(value.size),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrBrandProgress {
+        colour: ::std::result::Result<super::HexColour, ::std::string::String>,
+        edge: ::std::result::Result<super::EditIrBrandProgressEdge, ::std::string::String>,
+        thickness: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditIrBrandProgress {
+        fn default() -> Self {
+            Self {
+                colour: Err("no value supplied for colour".to_string()),
+                edge: Err("no value supplied for edge".to_string()),
+                thickness: Err("no value supplied for thickness".to_string()),
+            }
+        }
+    }
+    impl EditIrBrandProgress {
+        pub fn colour<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::HexColour>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.colour = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for colour: {e}"));
+            self
+        }
+        pub fn edge<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditIrBrandProgressEdge>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.edge = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for edge: {e}"));
+            self
+        }
+        pub fn thickness<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.thickness = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for thickness: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrBrandProgress> for super::EditIrBrandProgress {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrBrandProgress,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                colour: value.colour?,
+                edge: value.edge?,
+                thickness: value.thickness?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrBrandProgress> for EditIrBrandProgress {
+        fn from(value: super::EditIrBrandProgress) -> Self {
+            Self {
+                colour: Ok(value.colour),
+                edge: Ok(value.edge),
+                thickness: Ok(value.thickness),
             }
         }
     }

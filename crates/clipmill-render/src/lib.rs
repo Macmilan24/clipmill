@@ -18,7 +18,9 @@ mod subtitles;
 mod timing;
 mod transitions;
 
-pub use graph::{DecodeSpan, FilterGraph, LOUDNORM_SLOT, crop_rect_at};
+pub use graph::{
+    DecodeSpan, FilterGraph, LOGO_FILE, LOUDNORM_SLOT, LogoPlace, crop_rect_at, logo_place,
+};
 pub use manifest::{
     AiUseSummary, CaptionWindow, EngineIdentity, LoudnessReport, MeasuredLoudness, OutputFile,
     ProgramReport, ProgramSegment, RenderManifest, RightsAttestation,
@@ -29,8 +31,8 @@ pub use plan::{
     SegmentReport, SourceInput, VTT_FILE, compile, largest_upscale,
 };
 pub use preview::{
-    PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewOverlay, PreviewPlan, PreviewWord,
-    caption_ass, preview_plan, text_at,
+    PreviewCrop, PreviewCue, PreviewGain, PreviewLine, PreviewLogo, PreviewOverlay, PreviewPlan,
+    PreviewProgress, PreviewWord, caption_ass, preview_plan, text_at,
 };
 pub use profile::{
     CaptionStyle, Colour, DEFAULT_STYLE_REF, DESIGN_HEIGHT, FONT_FAMILY, FONTS_DIR, FrameRateSpec,

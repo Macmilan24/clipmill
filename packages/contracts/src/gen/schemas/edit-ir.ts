@@ -108,6 +108,34 @@ export interface EditIr {
    */
   overlays?: Overlay[];
   /**
+   * What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.
+   */
+  brand?: {
+    progress?: {
+      colour: HexColour;
+      edge: "top" | "bottom";
+      /**
+       * At the 1920-pixel design height.
+       */
+      thickness: number;
+    };
+    logo?: {
+      /**
+       * The picture's content hash; the clip's assets list it.
+       */
+      asset: string;
+      corner: "top_left" | "top_right" | "bottom_left" | "bottom_right";
+      /**
+       * Its longer side as a share of the frame's short side, per mille.
+       */
+      size: number;
+      /**
+       * In percent.
+       */
+      opacity: number;
+    };
+  };
+  /**
    * Assets referenced by content hash, each carrying the licence record the render manifest echoes.
    */
   assets?: {

@@ -68,6 +68,18 @@ class Audio(BaseModel):
     gain_curve: list[GainCurveItem] | None = None
 
 
+class Edge(Enum):
+    top = 'top'
+    bottom = 'bottom'
+
+
+class Corner(Enum):
+    top_left = 'top_left'
+    top_right = 'top_right'
+    bottom_left = 'bottom_left'
+    bottom_right = 'bottom_right'
+
+
 class Rationale(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -179,13 +191,6 @@ class Background1(BaseModel):
     )
     kind: Literal['colour']
     colour: constr(pattern=r'^#[0-9A-Fa-f]{6}$')
-
-
-class Corner(Enum):
-    top_left = 'top_left'
-    top_right = 'top_right'
-    bottom_left = 'bottom_left'
-    bottom_right = 'bottom_right'
 
 
 class Inset(BaseModel):
@@ -356,6 +361,40 @@ class Options(BaseModel):
     )
 
 
+class Progress(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    colour: HexColour
+    edge: Edge
+    thickness: conint(ge=4, le=40) = Field(
+        ..., description='At the 1920-pixel design height.'
+    )
+
+
+class Logo(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    asset: Sha256 = Field(
+        ..., description="The picture's content hash; the clip's assets list it."
+    )
+    corner: Corner
+    size: conint(ge=60, le=300) = Field(
+        ...,
+        description="Its longer side as a share of the frame's short side, per mille.",
+    )
+    opacity: conint(ge=20, le=100) = Field(..., description='In percent.')
+
+
+class Brand(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    progress: Progress | None = None
+    logo: Logo | None = None
+
+
 class Asset(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -418,6 +457,10 @@ class EditIr(BaseModel):
     overlays: list[Overlay] | None = Field(
         None,
         description="Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.",
+    )
+    brand: Brand | None = Field(
+        None,
+        description="What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.",
     )
     assets: list[Asset] | None = Field(
         None,

@@ -51,6 +51,7 @@ import {
   setLayout,
   ticksAt,
 } from './commands.js';
+import { BrandLayer } from './BrandLayer.js';
 import { CaptionCanvas } from './CaptionCanvas.js';
 import type { ExactCaptions } from './exactCaptions.js';
 import { CompositionCanvas } from './CompositionCanvas.js';
@@ -144,6 +145,8 @@ export interface EditorMonitorProps {
     ((startTicks: number, endTicks: number) => Promise<readonly FaceSighting[]>) | null;
   /** Follow this face through the section at the playhead. */
   readonly onFollow?: ((trackId: number) => void) | null;
+  /** Where the logo loads from; absent shows none. */
+  readonly assetUrl?: ((hash: string) => string) | null;
 }
 
 type CaptionOptions = NonNullable<EditIr['captions']['options']>;
@@ -167,6 +170,7 @@ export function EditorMonitor({
   captionOptions = {},
   loadFaces = null,
   onFollow = null,
+  assetUrl = null,
 }: EditorMonitorProps) {
   const [view, setView] = useState<MonitorView>('edit');
   const [safe, setSafe] = useState<SafePlatform>('off');
@@ -296,6 +300,7 @@ export function EditorMonitor({
           onApply={onApply}
           captions={view === 'edit' ? captions : null}
           captionOptions={captionOptions}
+          assetUrl={assetUrl}
           faces={shown}
           onFollow={
             onFollow
@@ -377,7 +382,9 @@ function Stage({
   captionOptions,
   faces,
   onFollow,
+  assetUrl,
 }: {
+  readonly assetUrl: ((hash: string) => string) | null;
   readonly captions: ExactCaptions | null;
   readonly captionOptions: CaptionOptions;
   readonly faces: readonly FaceNow[];
@@ -778,6 +785,7 @@ function Stage({
             aria-hidden="true"
             onPointerDown={grabFrame}
           />
+          {view === 'edit' && <BrandLayer plan={plan} frame={frame} assetUrl={assetUrl} />}
           {captions && (
             <CaptionCanvas
               ass={captions.ass}

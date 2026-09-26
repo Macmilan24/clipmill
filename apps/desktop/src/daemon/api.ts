@@ -7,6 +7,8 @@ import { modelLibraryApi, type ModelLibraryApi } from './models.js';
 import { publishingApi, type PublishingApi } from './publishing.js';
 import {
   type AnalyzeRequest,
+  type Asset,
+  type AssetLicense,
   type CaptionPreview,
   type EditHistoryEntry,
   type ClipDecision,
@@ -38,6 +40,9 @@ import {
   type Readiness,
   chooseExportFolder,
   chooseSourceFile,
+  importAsset,
+  listAssets,
+  assetUrl,
   cancelJob,
   createProject,
   deleteProject,
@@ -98,6 +103,12 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   deleteProject(projectId: string): Promise<void>;
   cancelJob(jobId: string): Promise<Job>;
   chooseSourceFile(): Promise<string | null>;
+  /** Bring a picture or a sound in. Absent from shells without assets. */
+  importAsset?(kind: Asset['kind'], license: AssetLicense): Promise<Asset | null>;
+  /** Every asset of a kind. Absent from shells without assets. */
+  listAssets?(kind: Asset['kind']): Promise<readonly Asset[]>;
+  /** Not a call: the URL an asset loads from. */
+  assetUrl?(hash: string): string;
   registerSource(projectId: string, absolutePath: string): Promise<RegisteredSource>;
   relinkSource(
     projectId: string,
@@ -194,6 +205,9 @@ export const daemonApi: ShellApi = {
   deleteProject,
   cancelJob,
   chooseSourceFile,
+  importAsset,
+  listAssets,
+  assetUrl,
   registerSource,
   relinkSource,
   previewCaptions,

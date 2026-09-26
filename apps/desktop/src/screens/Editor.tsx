@@ -41,6 +41,7 @@ import {
   splitSegment,
 } from '../editor/commands.js';
 import { removeOverlay, suggestedHook } from '../editor/overlays.js';
+import type { AssetAccess } from '../editor/brand.js';
 import { EditorMonitor, type MonitorPlayback } from '../editor/EditorMonitor.js';
 import { EditorProperties } from '../editor/EditorProperties.js';
 import { EditorTimeline, type Tool, deleteRange } from '../editor/EditorTimeline.js';
@@ -133,6 +134,8 @@ export interface EditorProps {
     ((startTicks: number, endTicks: number) => Promise<readonly FaceSighting[]>) | null;
   /** The clip's whole edit history, newest last. Absent hides History. */
   readonly onLoadHistory?: (() => Promise<readonly HistoryStep[]>) | null;
+  /** The person's pictures and sounds. Absent shows no logo and offers none. */
+  readonly assets?: AssetAccess | null;
   /** Where a pinned caption font is served from. Absent keeps CSS captions. */
   readonly fontUrl?: ((file: string) => string) | null;
   /**
@@ -224,6 +227,7 @@ export function Editor({
   fontUrl = null,
   previewCaptions = null,
   onLoadHistory = null,
+  assets = null,
 }: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [playhead, setFrame] = useState(0);
@@ -1063,6 +1067,7 @@ export function Editor({
           captionOptions={document?.captions.options ?? {}}
           loadFaces={loadFaces}
           onFollow={onFollow ? (trackId) => onFollow(frame, trackId) : null}
+          assetUrl={assets?.url ?? null}
         />
         <div
           className="edit-resizer"
@@ -1090,6 +1095,7 @@ export function Editor({
           fonts={plan.fonts ?? []}
           hook={hook}
           words={clipWords}
+          assets={assets}
         />
       </div>
       <div

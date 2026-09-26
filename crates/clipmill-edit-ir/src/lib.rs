@@ -19,10 +19,11 @@ mod regroup;
 
 pub use command::{CommandError, EditCommand};
 pub use document::{
-    Asset, AudioTrack, CaptionAnimation, CaptionCase, CaptionCue, CaptionLine, CaptionOptions,
-    CaptionPosition, CaptionRegion, CaptionTrack, CaptionWord, CropEasing, CropKeyframe, CropRect,
-    DocumentError, EditDocument, FitBackground, FrameShape, GainPoint, HighlightStyle, IR_VERSION,
-    Inset, InsetCorner, Layout, LayoutState, Overlay, OverlayContent, Presentation, Punch,
-    Rationale, TICKS_PER_SECOND, TextRole, Timebase, VideoSegment, VideoTrack, crop_along,
-    crop_along_keyframes, gain_at, interpolate, splits_across,
+    Asset, AudioTrack, BarEdge, Brand, CaptionAnimation, CaptionCase, CaptionCue, CaptionLine,
+    CaptionOptions, CaptionPosition, CaptionRegion, CaptionTrack, CaptionWord, CropEasing,
+    CropKeyframe, CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint,
+    HighlightStyle, IR_VERSION, Inset, InsetCorner, Layout, LayoutState, Logo, Overlay,
+    OverlayContent, Presentation, ProgressBar, Punch, Rationale, TICKS_PER_SECOND, TextRole,
+    Timebase, VideoSegment, VideoTrack, crop_along, crop_along_keyframes, gain_at, interpolate,
+    splits_across,
 };

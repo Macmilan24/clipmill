@@ -353,6 +353,43 @@ impl DaemonClient {
         }
     }
 
+    /// Bring a picture or a sound into the asset folder.
+    pub async fn import_asset(
+        &self,
+        path: String,
+        license: String,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::AssetV1, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ImportAssetRequest { path, license };
+        match self.call(request::Body::ImportAsset(request)).await? {
+            response::Body::ImportAsset(reply) => reply.asset.ok_or(DaemonLinkError::Unexpected),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Every asset of a kind, newest first; an empty kind lists them all.
+    pub async fn list_assets(
+        &self,
+        kind: String,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::AssetV1>, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ListAssetsRequest { kind };
+        match self.call(request::Body::ListAssets(request)).await? {
+            response::Body::ListAssets(reply) => Ok(reply.assets),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Whether a hash is an asset, and how to serve it.
+    pub async fn resolve_asset(
+        &self,
+        hash: String,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::ResolveAssetResponse, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ResolveAssetRequest { hash };
+        match self.call(request::Body::ResolveAsset(request)).await? {
+            response::Body::ResolveAsset(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     /// The faces seen over a span of one face track.
     pub async fn list_faces(
         &self,

@@ -222,8 +222,11 @@ impl Daemon {
             daemon_epoch.clone(),
             sources.clone(),
             device_profiler.clone(),
-            media_runner,
-            config.fonts_dir.clone(),
+            media_runner.clone(),
+            crate::render::RenderResources {
+                fonts_dir: config.fonts_dir.clone(),
+                assets_dir: config.paths.assets_dir.clone(),
+            },
             Arc::clone(&models),
             scheduler_capacity,
             config.builtin_fixture_executor,
@@ -305,6 +308,18 @@ impl Daemon {
         .with_library(library)
         .with_collector(collector)
         .with_fonts(config.fonts_dir.clone());
+        // The person's own pictures and sounds. A folder that cannot be made
+        // leaves the rest of the daemon working; bringing one in says why.
+        let service = match crate::assets::AssetStore::new(
+            config.paths.assets_dir.clone(),
+            media_runner.clone(),
+        ) {
+            Ok(store) => service.with_assets(store),
+            Err(error) => {
+                tracing::warn!(%error, "no asset folder");
+                service
+            }
+        };
 
         service.recover_youtube_imports().await.map_err(|error| {
             DaemonError::Ipc(format!("cannot recover YouTube imports: {error}"))

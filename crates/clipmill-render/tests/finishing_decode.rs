@@ -1489,3 +1489,291 @@ fn a_punch_in_widens_the_picture_for_its_span_only() {
     assert!(red(pixel("1.75", 587)), "{:?}", pixel("1.75", 587));
     eprintln!("Punch decoded; render in {}", work.display());
 }
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one explicit end-to-end encoder scenario"
+)]
+#[ignore = "requires the pinned .cache/bin/ffmpeg; renders and decodes actual pixels"]
+fn a_progress_bar_fills_along_its_edge_as_the_clip_plays() {
+    use clipmill_edit_ir::{BarEdge, Brand, ProgressBar};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-bar-{nonce}"));
+    std::fs::create_dir(&work).expect("scratch directory");
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:r=30:d=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let mut document = EditDocument::default();
+    document.video.transition_ticks = 0;
+    document.video.segments = vec![VideoSegment {
+        segment_id: "seg_1".to_owned(),
+        source_fingerprint: fingerprint.clone(),
+        in_ticks: 0,
+        out_ticks: 2 * 90_000,
+        layout: Layout {
+            state: LayoutState::SpeakerFill,
+            crop_path: vec![CropKeyframe {
+                t_ticks: 0,
+                rect: CropRect {
+                    x: 656,
+                    y: 0,
+                    width: 608,
+                    height: 1_080,
+                },
+                easing: clipmill_edit_ir::CropEasing::Linear,
+            }],
+            ..Layout::default()
+        },
+    }];
+    document.brand = Some(Brand {
+        progress: Some(ProgressBar {
+            colour: "#00FF00".to_owned(),
+            edge: BarEdge::Bottom,
+            thickness: 24,
+        }),
+        logo: None,
+    });
+    let source = SourceInput {
+        fingerprint,
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 2 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let plan = compile(&document, &[source], &RenderProfile::default()).expect("compile");
+    let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+    let measurement =
+        LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+            .expect("measured loudness");
+    ffmpeg(&binary, &work, &plan.encode_args(measurement));
+    let pixel = |seconds: &str, x: u32, y: u32| {
+        let decoded = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                seconds,
+                "-i",
+                "clip.mp4",
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("crop=2:2:{x}:{y},scale=1:1"),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ]),
+        );
+        assert_eq!(decoded.stdout.len(), 3);
+        [decoded.stdout[0], decoded.stdout[1], decoded.stdout[2]]
+    };
+    let green = |[r, g, b]: [u8; 3]| g > 180 && r < 80 && b < 80;
+    let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;
+    // A quarter of the way in, the bar reaches a quarter of the way across.
+    assert!(
+        green(pixel("0.5", 100, 1_908)),
+        "{:?}",
+        pixel("0.5", 100, 1_908)
+    );
+    assert!(
+        red(pixel("0.5", 900, 1_908)),
+        "{:?}",
+        pixel("0.5", 900, 1_908)
+    );
+    // Near the end it is nearly across, and it never rises above its edge.
+    assert!(
+        green(pixel("1.9", 900, 1_908)),
+        "{:?}",
+        pixel("1.9", 900, 1_908)
+    );
+    assert!(
+        red(pixel("1.9", 900, 1_880)),
+        "{:?}",
+        pixel("1.9", 900, 1_880)
+    );
+    eprintln!("Progress bar decoded; render in {}", work.display());
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one explicit end-to-end encoder scenario"
+)]
+#[ignore = "requires the pinned .cache/bin/ffmpeg; renders and decodes actual pixels"]
+fn a_logo_sits_in_its_corner_at_its_size_and_opacity() {
+    use clipmill_edit_ir::{Asset, Brand, InsetCorner, Logo};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-logo-{nonce}"));
+    std::fs::create_dir(&work).expect("scratch directory");
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:r=30:d=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    // A green picture twice as wide as it is tall, staged as the render
+    // stages the asset: under the one name, without an extension.
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=0x00FF00:s=200x100:d=1",
+            "-frames:v",
+            "1",
+            "logo.png",
+        ]),
+    );
+    std::fs::rename(work.join("logo.png"), work.join(clipmill_render::LOGO_FILE))
+        .expect("staged logo");
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let logo_hash = format!("sha256:{}", "2".repeat(64));
+    let mut document = EditDocument::default();
+    document.video.transition_ticks = 0;
+    document.video.segments = vec![VideoSegment {
+        segment_id: "seg_1".to_owned(),
+        source_fingerprint: fingerprint.clone(),
+        in_ticks: 0,
+        out_ticks: 2 * 90_000,
+        layout: Layout {
+            state: LayoutState::SpeakerFill,
+            crop_path: vec![CropKeyframe {
+                t_ticks: 0,
+                rect: CropRect {
+                    x: 656,
+                    y: 0,
+                    width: 608,
+                    height: 1_080,
+                },
+                easing: clipmill_edit_ir::CropEasing::Linear,
+            }],
+            ..Layout::default()
+        },
+    }];
+    document.assets = vec![Asset {
+        hash: logo_hash.clone(),
+        license: "own_content".to_owned(),
+    }];
+    document.brand = Some(Brand {
+        progress: None,
+        logo: Some(Logo {
+            asset: logo_hash,
+            corner: InsetCorner::TopRight,
+            size: 200,
+            opacity: 100,
+        }),
+    });
+    let source = SourceInput {
+        fingerprint,
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 2 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let plan = compile(&document, &[source], &RenderProfile::default()).expect("compile");
+    let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+    let measurement =
+        LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+            .expect("measured loudness");
+    ffmpeg(&binary, &work, &plan.encode_args(measurement));
+    let pixel = |x: u32, y: u32| {
+        let decoded = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                "1",
+                "-i",
+                "clip.mp4",
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("crop=2:2:{x}:{y},scale=1:1"),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ]),
+        );
+        assert_eq!(decoded.stdout.len(), 3);
+        [decoded.stdout[0], decoded.stdout[1], decoded.stdout[2]]
+    };
+    let green = |[r, g, b]: [u8; 3]| g > 180 && r < 80 && b < 80;
+    let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;
+    // 216 by 108 pixels, 42 in from the right edge and 172 down from the top.
+    assert!(green(pixel(930, 226)), "{:?}", pixel(930, 226));
+    assert!(green(pixel(826, 176)), "{:?}", pixel(826, 176));
+    assert!(red(pixel(930, 300)), "{:?}", pixel(930, 300));
+    assert!(red(pixel(1_050, 226)), "{:?}", pixel(1_050, 226));
+    eprintln!("Logo decoded; render in {}", work.display());
+}

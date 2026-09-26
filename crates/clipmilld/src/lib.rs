@@ -2,6 +2,7 @@
 
 mod analysis;
 mod artifacts;
+mod assets;
 mod captions;
 #[cfg(unix)]
 mod collector;

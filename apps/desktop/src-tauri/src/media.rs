@@ -51,11 +51,17 @@ pub struct MediaProtocol {
     /// The pinned caption fonts, served so the player draws captions with
     /// the faces the render burns in.
     fonts_dir: Option<PathBuf>,
+    /// The person's own pictures and sounds, by content hash.
+    assets_dir: Option<PathBuf>,
+    /// Assets the daemon has said are its own, and how to serve each.
+    assets: Mutex<HashMap<String, FileEntry>>,
     authorized: Mutex<HashMap<(String, String), Inventory>>,
 }
 
 /// The path prefix caption fonts are served under.
 const FONTS_PREFIX: &str = "/fonts/";
+/// The path prefix assets are served under, by the hex of their hash.
+const ASSETS_PREFIX: &str = "/assets/";
 
 impl std::fmt::Debug for MediaProtocol {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -72,6 +78,8 @@ impl MediaProtocol {
             supervisor,
             artifacts_dir,
             fonts_dir: None,
+            assets_dir: None,
+            assets: Mutex::new(HashMap::new()),
             authorized: Mutex::new(HashMap::new()),
         }
     }
@@ -81,6 +89,50 @@ impl MediaProtocol {
     pub fn with_fonts(mut self, fonts_dir: PathBuf) -> Self {
         self.fonts_dir = Some(fonts_dir);
         self
+    }
+
+    /// Serve the person's assets from this folder.
+    #[must_use]
+    pub fn with_assets(mut self, assets_dir: PathBuf) -> Self {
+        self.assets_dir = Some(assets_dir);
+        self
+    }
+
+    /// One asset, by the hex of its hash, once the daemon says it is one.
+    /// The file is derived from the hash; nothing else in the folder — the
+    /// records beside the files, a file being brought in — can be named.
+    async fn serve_asset(&self, hex: &str, range: Option<&str>) -> Response<Vec<u8>> {
+        if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return refuse(StatusCode::BAD_REQUEST, "malformed asset address");
+        }
+        let Some(dir) = &self.assets_dir else {
+            return refuse(StatusCode::NOT_FOUND, "no asset folder");
+        };
+        let known = self.assets.lock().await.get(hex).cloned();
+        let entry = match known {
+            Some(entry) => entry,
+            None => match self
+                .supervisor
+                .client()
+                .resolve_asset(format!("sha256:{hex}"))
+                .await
+            {
+                Ok(resolved) => {
+                    let entry = FileEntry {
+                        bytes: resolved.bytes,
+                        media_type: resolved.media_type,
+                    };
+                    self.assets
+                        .lock()
+                        .await
+                        .insert(hex.to_owned(), entry.clone());
+                    entry
+                }
+                Err(_) => return refuse(StatusCode::NOT_FOUND, "not an asset"),
+            },
+        };
+        let range = range.and_then(|value| Range::parse(value, entry.bytes));
+        read_span(&dir.join(hex), &entry, range)
     }
 
     /// One caption font, by the file name its catalogue entry pins. Nothing
@@ -144,6 +196,14 @@ impl MediaProtocol {
         }
         if let Some(name) = request.uri().path().strip_prefix(FONTS_PREFIX) {
             return self.serve_font(name);
+        }
+        if let Some(hex) = request.uri().path().strip_prefix(ASSETS_PREFIX) {
+            let range = request
+                .headers()
+                .get(header::RANGE)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
+            return self.serve_asset(hex, range.as_deref()).await;
         }
         let Some(target) = Target::parse(request.uri().path()) else {
             return refuse(StatusCode::BAD_REQUEST, "malformed media path");
@@ -235,7 +295,15 @@ impl MediaProtocol {
             .join(&digest[..2])
             .join(digest)
             .join(&target.file);
-        let Ok(mut file) = File::open(&path) else {
+        read_span(&path, entry, range)
+    }
+}
+
+/// The span of a file a request asked for, or its first slice when it asked
+/// for everything.
+fn read_span(path: &std::path::Path, entry: &FileEntry, range: Option<Range>) -> Response<Vec<u8>> {
+    {
+        let Ok(mut file) = File::open(path) else {
             return refuse(StatusCode::NOT_FOUND, "the media file is not in the store");
         };
         let (start, end) = match range {

@@ -913,7 +913,7 @@ it('uses the renderer’s caption style and placement while labelling proxy audi
   const caption = screen.getByTestId('caption');
   expect(caption.style.fontWeight).toBe('400');
   expect(caption.style.top).toBe('12.5%');
-  fireEvent.mouseDown(screen.getByRole('tab', { name: /details/i }));
+  fireEvent.mouseDown(screen.getByRole('tab', { name: /brand/i }));
   expect(screen.getByText(/drawn from the render plan/i)).toBeTruthy();
 });
 

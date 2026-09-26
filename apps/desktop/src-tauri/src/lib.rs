@@ -231,6 +231,61 @@ async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, Str
     Ok(path.map(|value| value.to_string()))
 }
 
+/// Pictures and sounds an asset may be, offered as the dialog's filters.
+const IMAGE_EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
+const AUDIO_EXTENSIONS: [&str; 7] = ["mp3", "wav", "flac", "m4a", "aac", "ogg", "oga"];
+
+/// Bring a picture or a sound in: the host opens the picker, and the daemon
+/// copies the chosen file into the asset folder by its hash. The renderer
+/// never names a path. `None` when the person closed the picker.
+#[tauri::command]
+async fn import_asset(
+    app: tauri::AppHandle,
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    kind: String,
+    license: String,
+) -> Result<Option<views::AssetView>, String> {
+    let (title, filter, extensions): (&str, &str, &[&str]) = match kind.as_str() {
+        "image" => ("Choose a picture", "Picture", &IMAGE_EXTENSIONS),
+        "audio" => ("Choose a sound", "Sound", &AUDIO_EXTENSIONS),
+        _ => return Err("choose a picture or a sound".to_owned()),
+    };
+    let (reply, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title(title)
+        .add_filter(filter, extensions)
+        .pick_file(move |path| {
+            let _sent = reply.send(path);
+        });
+    let Some(path) = chosen
+        .await
+        .map_err(|_| "the file dialog closed".to_owned())?
+    else {
+        return Ok(None);
+    };
+    supervisor
+        .client()
+        .import_asset(path.to_string(), license)
+        .await
+        .map(|asset| Some(asset.into()))
+        .map_err(|error| error.to_string())
+}
+
+/// Every asset of a kind, newest first.
+#[tauri::command]
+async fn list_assets(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    kind: String,
+) -> Result<Vec<views::AssetView>, String> {
+    supervisor
+        .client()
+        .list_assets(kind)
+        .await
+        .map(|assets| assets.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
 /// Open a native export-folder picker. The renderer has no direct dialog
 /// permission; this command returns the directory selected by the user.
 #[tauri::command]
@@ -905,7 +960,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // directory from a content address; it receives no path from the daemon.
     let media = Arc::new(
         media::MediaProtocol::new(Arc::clone(&supervisor), config.paths.artifacts_dir.clone())
-            .with_fonts(config.fonts_dir.clone()),
+            .with_fonts(config.fonts_dir.clone())
+            .with_assets(config.paths.assets_dir.clone()),
     );
 
     tauri::Builder::default()
@@ -956,6 +1012,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             get_job,
             read_document,
             resolve_media,
+            import_asset,
+            list_assets,
             storage_stats,
             choose_source_file,
             register_source,

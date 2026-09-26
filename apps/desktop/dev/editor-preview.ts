@@ -198,6 +198,39 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: next,
       };
     }
+    case 'set_brand': {
+      const brand = command.brand as EditIr['brand'] | undefined;
+      const assets = (command.assets as EditIr['assets'] | undefined) ?? document.assets;
+      const next = { ...document, ...(assets ? { assets } : {}) } as EditIr;
+      if (brand) next.brand = brand;
+      else delete next.brand;
+      const thickness = brand?.progress
+        ? Math.max(2, (Math.floor((brand.progress.thickness * plan.height) / 1920) + 1) & ~1)
+        : 0;
+      return {
+        plan: bumped({
+          progress: brand?.progress
+            ? { colour: brand.progress.colour, edge: brand.progress.edge, thickness }
+            : null,
+          logo: brand?.logo
+            ? {
+                asset: brand.logo.asset,
+                corner: brand.logo.corner,
+                side: Math.floor((Math.min(plan.width, plan.height) * brand.logo.size) / 1000) & ~1,
+                insetX: Math.floor((Math.min(plan.width, plan.height) * 40) / 1000) & ~1,
+                insetY:
+                  plan.height > plan.width
+                    ? Math.floor(
+                        (plan.height * (brand.logo.corner.startsWith('top') ? 90 : 260)) / 1000,
+                      ) & ~1
+                    : Math.floor((Math.min(plan.width, plan.height) * 40) / 1000) & ~1,
+                opacity: brand.logo.opacity,
+              }
+            : null,
+        }),
+        document: next,
+      };
+    }
     case 'set_frame_shape': {
       const shape = command.shape as FrameShape;
       const next = { ...document, video: { ...document.video, shape } };
