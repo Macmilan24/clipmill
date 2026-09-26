@@ -55,7 +55,7 @@ export function CoachMarks({
 
   // Find the tip's control, passing over any not on screen, and place the
   // card below it — or above, where below would leave the window.
-  const place_ = useCallback(() => {
+  const position = useCallback(() => {
     if (index === null) return;
     for (let at = index; at < marks.length; at += 1) {
       const element = document.querySelector<HTMLElement>(`[data-coach="${marks[at]!.target}"]`);
@@ -76,12 +76,12 @@ export function CoachMarks({
   }, [index, marks, finish]);
 
   useLayoutEffect(() => {
-    place_();
-  }, [place_]);
+    position();
+  }, [position]);
 
   useEffect(() => {
     if (index === null) return undefined;
-    const again = () => place_();
+    const again = () => position();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') finish();
     };
@@ -93,7 +93,7 @@ export function CoachMarks({
       window.removeEventListener('scroll', again, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [index, place_, finish]);
+  }, [index, position, finish]);
 
   if (index === null || !placed) return null;
   const mark = marks[placed.index]!;

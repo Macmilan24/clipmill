@@ -15,6 +15,14 @@ import { MEMORY_KEY } from '../src/shell/memory.js';
 
 beforeEach(() => localStorage.clear());
 
+/** Controls laid out as a browser would, which jsdom does not do. */
+function sized() {
+  for (const element of document.querySelectorAll<HTMLElement>('[data-coach]')) {
+    element.getBoundingClientRect = () =>
+      ({ top: 10, left: 10, bottom: 40, right: 110, width: 100, height: 30 }) as DOMRect;
+  }
+}
+
 describe('who is welcomed', () => {
   it('greets a new installation once, and nobody who has used the app before', () => {
     expect(shouldWelcome()).toBe(true);
@@ -65,12 +73,6 @@ describe('tips on real controls', () => {
       <CoachMarks place="inspector" marks={marks} />
     </CoachEnabled.Provider>
   );
-  const sized = () => {
-    for (const element of document.querySelectorAll<HTMLElement>('[data-coach]')) {
-      element.getBoundingClientRect = () =>
-        ({ top: 10, left: 10, bottom: 40, right: 110, width: 100, height: 30 }) as DOMRect;
-    }
-  };
 
   it('points at each control in turn, passes over one not on screen, and is remembered', () => {
     render(workspace(true));
