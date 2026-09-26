@@ -194,7 +194,11 @@ export function EditorMonitor({
       : [];
 
   return (
-    <section className="review-viewer edit-viewer" aria-label="Clip preview">
+    <section
+      className="review-viewer edit-viewer"
+      aria-label="Clip preview"
+      data-coach="edit-preview"
+    >
       <div className="review-viewer-bar">
         <div className="review-segmented" role="group" aria-label="What the preview shows">
           <button type="button" aria-pressed={view === 'edit'} onClick={() => setView('edit')}>

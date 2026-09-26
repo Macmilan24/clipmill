@@ -39,6 +39,7 @@ import { TipButton } from '../inspector/TipButton.js';
 import { TranscriptPanel } from '../inspector/TranscriptPanel.js';
 import { useReviewKeys } from '../inspector/useReviewKeys.js';
 import { WhyPanel } from '../inspector/WhyPanel.js';
+import { type CoachMark, CoachMarks } from '../onboarding/CoachMarks.js';
 import type { Peaks } from '../results/loader.js';
 import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
 import { TONE_INK, stateOf, wash } from '../results/parts/state.js';
@@ -88,6 +89,30 @@ export interface ClipInspectorProps {
 }
 
 type Tab = 'transcript' | 'why' | 'details';
+
+/** The Inspector's tips, the first time it opens. */
+const INSPECTOR_TIPS: readonly CoachMark[] = [
+  {
+    target: 'preview',
+    title: 'The clip as it will be built',
+    body: 'This is what approving makes: the framing and the captions in your look. Source shows the whole recording, with the crop outlined.',
+  },
+  {
+    target: 'cut',
+    title: 'Where it starts and ends',
+    body: 'Drag the handles on the strip, or press I and O at the playhead. Play the start and Play the end let you hear past the edges first.',
+  },
+  {
+    target: 'decide',
+    title: 'Decide',
+    body: 'Approve builds the edit; Keep for later sets it aside; Reject drops it. A, H and X do the same, and a decision can be taken back.',
+  },
+  {
+    target: 'transcript',
+    title: 'What is said',
+    body: 'Every word of the clip and the sentences either side. Click a word to go there.',
+  },
+];
 
 /** A remembered preference, read defensively: storage can be absent or refuse. */
 function remembered<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
@@ -284,6 +309,7 @@ function Review({
 
   return (
     <div className="review-workspace">
+      <CoachMarks place="inspector" marks={INSPECTOR_TIPS} />
       <header className="review-heading">
         <div className="review-identity">
           <TipButton label="Back to results" onClick={onBack}>
@@ -349,7 +375,12 @@ function Review({
               <ChevronRight />
             </TipButton>
           </div>
-          <div className="review-decisions" role="group" aria-label="Decide about this clip">
+          <div
+            className="review-decisions"
+            role="group"
+            aria-label="Decide about this clip"
+            data-coach="decide"
+          >
             <Button
               variant="ghost"
               size="sm"
@@ -458,7 +489,7 @@ function Review({
             className="review-tabs"
           >
             <TabsList className="review-tab-list">
-              <TabsTrigger value="transcript">
+              <TabsTrigger value="transcript" data-coach="transcript">
                 <FileText aria-hidden="true" />
                 Transcript
               </TabsTrigger>
@@ -507,7 +538,7 @@ function Review({
           onSelect={onSelect}
           onSeek={(ticks) => controller.seek(ticks)}
         />
-        <div className="review-strip-bar">
+        <div className="review-strip-bar" data-coach="cut">
           <span className="review-cut-summary">
             <span className="review-lane-label">
               {auditioning ? 'Alternative' : moved ? 'Your cut' : 'Cut'}

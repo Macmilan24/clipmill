@@ -125,7 +125,7 @@ export function EditorProperties(props: EditorPropertiesProps) {
       ? { ...props.plan, cues: props.plan.readingCues, presentation: 'reading' }
       : props.plan;
   return (
-    <aside className="review-side edit-side" aria-label="Properties">
+    <aside className="review-side edit-side" aria-label="Properties" data-coach="edit-properties">
       <Tabs
         value={tab}
         onValueChange={(next) => onTab(next as PropertiesTab)}
