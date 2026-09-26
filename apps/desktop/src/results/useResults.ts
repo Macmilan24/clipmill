@@ -87,6 +87,12 @@ export interface ResultsState {
   readonly tileUrl: (atTicks: number) => string | null;
   readonly solveFor: (candidateId: string) => void;
   /**
+   * Where each clip's camera would point, as a share across the frame, by
+   * candidate. Empty until asked and answered; a clip with no entry sits in
+   * the middle.
+   */
+  readonly framing: ReadonlyMap<string, number>;
+  /**
    * The clip an approval of the cut on screen would build, as a preview plan,
    * for the clip it was asked for. Null until it arrives, or on a shell that
    * cannot build one — the solver's crop stands in then.
@@ -128,6 +134,8 @@ export function useResults(
   } | null>(null);
   const previewSequence = useRef(0);
   const previewKey = useRef<string | null>(null);
+  // Where each clip's camera would point, for thumbnails framed as the clip.
+  const [framing, setFraming] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [transcript, setTranscript] = useState<TranscriptState>({
     status: 'idle',
     transcript: null,
@@ -325,6 +333,42 @@ export function useResults(
     },
     [api, projectId, refresh, mark, snapshot.source],
   );
+
+  // One question for the whole board: where would each clip's camera point
+  // half a second in. A shell or a run without faces keeps the middle.
+  const framingFor = useRef<string | null>(null);
+  useEffect(() => {
+    const faceTrack = snapshot.faceTrackArtifactId;
+    const rows = snapshot.rows;
+    const key =
+      projectId && faceTrack && rows.length > 0 && api.thumbnailFraming
+        ? `${faceTrack}:${rows.map((row) => `${row.candidateId}@${row.startTicks}`).join(',')}`
+        : null;
+    if (key === framingFor.current) return undefined;
+    framingFor.current = key;
+    if (!key || !projectId || !faceTrack) {
+      setFraming(new Map());
+      return undefined;
+    }
+    let live = true;
+    Promise.resolve()
+      .then(() =>
+        api.thumbnailFraming!(
+          projectId,
+          faceTrack,
+          rows.map((row) => row.startTicks + TICKS_PER_SECOND / 2),
+        ),
+      )
+      .then((centres) => {
+        if (!live) return;
+        setFraming(new Map(rows.map((row, at) => [row.candidateId, centres[at] ?? 0.5])));
+      })
+      // No framing is the middle of the frame, not a broken board.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, projectId, snapshot.faceTrackArtifactId, snapshot.rows]);
 
   /**
    * The request that builds this clip with this cut: the one approving sends,
@@ -544,6 +588,7 @@ export function useResults(
     approveMany,
     tileUrl,
     solveFor,
+    framing,
     preview,
     previewFor,
     manual,

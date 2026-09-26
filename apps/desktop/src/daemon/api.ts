@@ -56,6 +56,7 @@ import {
   previewDirect,
   solveCropPath,
   listFaces,
+  thumbnailFraming,
   readDocument,
   registerSource,
   relinkSource,
@@ -130,6 +131,12 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
     endTicks: number,
     options?: SolveOptions,
   ): Promise<CropPath>;
+  /** Where the camera would point at each moment. Absent from shells without it. */
+  thumbnailFraming?(
+    projectId: string,
+    faceTrackArtifactId: string,
+    moments: readonly number[],
+  ): Promise<readonly number[]>;
   /** The faces seen over a span. Absent from shells without it. */
   listFaces?(
     projectId: string,
@@ -202,6 +209,7 @@ export const daemonApi: ShellApi = {
   previewDirect,
   solveCropPath,
   listFaces,
+  thumbnailFraming,
   previewPlan,
   listEditDocs,
   getEditDoc,

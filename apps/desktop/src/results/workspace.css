@@ -79,7 +79,7 @@
 }
 .results-workspace .results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 176px), 1fr));
   grid-auto-rows: max-content;
   align-content: start;
   align-items: start;
@@ -123,6 +123,35 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+/* The clip as it will be seen: a vertical frame of the still. */
+.results-card-picture[data-vertical='true'] {
+  aspect-ratio: 9 / 16;
+}
+.results-card-scrub {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--cm-accent);
+  pointer-events: none;
+}
+.results-card-reason {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--cm-text-secondary);
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.results-card-repeat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  color: var(--cm-warning-ink);
+  font-size: 11px;
 }
 .results-card-select {
   position: absolute;

@@ -484,6 +484,26 @@ fn request_attention(window: tauri::WebviewWindow) {
     let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
 }
 
+/// Where the camera would point at each moment, for vertical thumbnails.
+#[tauri::command]
+async fn thumbnail_framing(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    face_track_artifact_id: String,
+    moments: Vec<u64>,
+) -> Result<Vec<f64>, String> {
+    let request = clipmill_contracts::proto::ipc::v1::ThumbnailFramingRequest {
+        project_id,
+        face_track_artifact_id,
+        moments,
+    };
+    supervisor
+        .client()
+        .thumbnail_framing(request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 /// The faces seen over a span, for picking who the camera follows.
 #[tauri::command]
 async fn list_faces(
@@ -934,6 +954,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_faces,
             preview_direct,
             request_attention,
+            thumbnail_framing,
             get_source,
             start_youtube_import,
             get_youtube_import,
