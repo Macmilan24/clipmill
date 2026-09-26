@@ -766,3 +766,163 @@ fn a_picture_in_picture_needs_its_inset_but_not_a_main_crop() {
     undo.apply(&mut edited).expect("undo");
     assert_eq!(edited, original);
 }
+
+fn punch(start: i64, end: i64, zoom: u16) -> clipmill_edit_ir::Punch {
+    clipmill_edit_ir::Punch {
+        start_ticks: start,
+        end_ticks: end,
+        zoom,
+    }
+}
+
+fn punched_document() -> EditDocument {
+    let mut document = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(656),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    EditCommand::SetPunches {
+        segment_id: "seg_1".to_owned(),
+        punches: vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(6 * SECOND, 8 * SECOND, 150),
+        ],
+    }
+    .apply(&mut document)
+    .expect("punches");
+    document
+}
+
+#[test]
+fn a_punch_moves_the_drawn_crop_in_about_its_centre_and_leaves_the_path() {
+    let original = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(656),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    let mut edited = original.clone();
+    let undo = EditCommand::SetPunches {
+        segment_id: "seg_1".to_owned(),
+        punches: vec![punch(SECOND, 3 * SECOND, 125)],
+    }
+    .apply(&mut edited)
+    .expect("punches");
+    let layout = &edited.video.segments[0].layout;
+    assert_eq!(
+        layout.crop_path,
+        original.video.segments[0].layout.crop_path
+    );
+    let drawn = layout.drawn_crop_path();
+    let tight = CropRect {
+        x: 717,
+        y: 108,
+        width: 486,
+        height: 864,
+    };
+    let keys = drawn
+        .iter()
+        .map(|key| (key.t_ticks, key.rect))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        keys,
+        [
+            (0, rect(656)),
+            (SECOND - 6_000, rect(656)),
+            (SECOND, tight),
+            (3 * SECOND - 6_000, tight),
+            (3 * SECOND, rect(656)),
+        ]
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    // Two-person and fitted sections are drawn as their paths say.
+    let mut two = edited.clone();
+    two.video.segments[0].layout.state = LayoutState::Fit;
+    two.video.segments[0].layout.punches = vec![punch(SECOND, 3 * SECOND, 125)];
+    assert_eq!(two.video.segments[0].layout.drawn_crop_path().len(), 1);
+}
+
+#[test]
+fn punches_that_overlap_crowd_leave_the_section_or_go_too_far_are_refused() {
+    let original = punched_document();
+    for punches in [
+        vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(2 * SECOND, 4 * SECOND, 125),
+        ],
+        vec![punch(SECOND, SECOND + 6_000, 125)],
+        vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(3 * SECOND + 6_000, 5 * SECOND, 125),
+        ],
+        vec![punch(9 * SECOND, 11 * SECOND, 125)],
+        vec![punch(SECOND, 3 * SECOND, 300)],
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::SetPunches {
+                segment_id: "seg_1".to_owned(),
+                punches,
+            }
+            .apply(&mut refused)
+            .is_err()
+        );
+        assert_eq!(refused, original);
+    }
+    // Meeting the one before is a change of how close, not a crowd.
+    let mut meeting = original.clone();
+    EditCommand::SetPunches {
+        segment_id: "seg_1".to_owned(),
+        punches: vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(3 * SECOND, 5 * SECOND, 150),
+        ],
+    }
+    .apply(&mut meeting)
+    .expect("adjacent punches");
+}
+
+#[test]
+fn trims_and_splits_carry_punches_with_the_picture() {
+    let original = punched_document();
+    // Trimming 2 s off the head: the first punch is cut to its last second,
+    // the second moves 2 s earlier.
+    let mut trimmed = original.clone();
+    let undo = trim(&mut trimmed, 12 * SECOND, 20 * SECOND);
+    assert_eq!(
+        trimmed.video.segments[0].layout.punches,
+        [punch(0, SECOND, 125), punch(4 * SECOND, 6 * SECOND, 150)]
+    );
+    undo.apply(&mut trimmed).expect("undo");
+    assert_eq!(trimmed, original);
+
+    // Trimming into the first punch until too little of it is left drops it.
+    let mut short = original.clone();
+    trim(&mut short, 13 * SECOND - 3_000, 20 * SECOND);
+    assert_eq!(
+        short.video.segments[0].layout.punches,
+        [punch(3 * SECOND + 3_000, 5 * SECOND + 3_000, 150)]
+    );
+
+    // Splitting 7 s in: the second punch is shared out between the halves.
+    let mut split = original.clone();
+    EditCommand::SplitSegment {
+        segment_id: "seg_1".to_owned(),
+        at_ticks: 17 * SECOND,
+        new_segment_id: "seg_2".to_owned(),
+    }
+    .apply(&mut split)
+    .expect("split");
+    assert_eq!(
+        split.video.segments[0].layout.punches,
+        [
+            punch(SECOND, 3 * SECOND, 125),
+            punch(6 * SECOND, 7 * SECOND, 150)
+        ]
+    );
+    assert_eq!(
+        split.video.segments[1].layout.punches,
+        [punch(0, SECOND, 150)]
+    );
+}

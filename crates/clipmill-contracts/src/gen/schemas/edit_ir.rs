@@ -2933,6 +2933,35 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "          },"]
 #[doc = "          \"additionalProperties\": false"]
 #[doc = "        },"]
+#[doc = "        \"punches\": {"]
+#[doc = "          \"description\": \"Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"type\": \"object\","]
+#[doc = "            \"required\": ["]
+#[doc = "              \"end_ticks\","]
+#[doc = "              \"start_ticks\","]
+#[doc = "              \"zoom\""]
+#[doc = "            ],"]
+#[doc = "            \"properties\": {"]
+#[doc = "              \"end_ticks\": {"]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"minimum\": 1.0"]
+#[doc = "              },"]
+#[doc = "              \"start_ticks\": {"]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"minimum\": 0.0"]
+#[doc = "              },"]
+#[doc = "              \"zoom\": {"]
+#[doc = "                \"description\": \"How much closer, in percent.\","]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"maximum\": 200.0,"]
+#[doc = "                \"minimum\": 105.0"]
+#[doc = "              }"]
+#[doc = "            },"]
+#[doc = "            \"additionalProperties\": false"]
+#[doc = "          }"]
+#[doc = "        },"]
 #[doc = "        \"secondary_crop_path\": {"]
 #[doc = "          \"description\": \"Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.\","]
 #[doc = "          \"type\": \"array\","]
@@ -3114,6 +3143,35 @@ impl VideoSegment {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"punches\": {"]
+#[doc = "      \"description\": \"Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"end_ticks\","]
+#[doc = "          \"start_ticks\","]
+#[doc = "          \"zoom\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"end_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 1.0"]
+#[doc = "          },"]
+#[doc = "          \"start_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          },"]
+#[doc = "          \"zoom\": {"]
+#[doc = "            \"description\": \"How much closer, in percent.\","]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"maximum\": 200.0,"]
+#[doc = "            \"minimum\": 105.0"]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"secondary_crop_path\": {"]
 #[doc = "      \"description\": \"Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.\","]
 #[doc = "      \"type\": \"array\","]
@@ -3180,6 +3238,9 @@ pub struct VideoSegmentLayout {
     pub crop_path: ::std::vec::Vec<VideoSegmentLayoutCropPathItem>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub inset: ::std::option::Option<VideoSegmentLayoutInset>,
+    #[doc = "Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub punches: ::std::vec::Vec<VideoSegmentLayoutPunchesItem>,
     #[doc = "Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub secondary_crop_path: ::std::vec::Vec<VideoSegmentLayoutSecondaryCropPathItem>,
@@ -3568,6 +3629,51 @@ impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutInsetC
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+#[doc = "`VideoSegmentLayoutPunchesItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"start_ticks\","]
+#[doc = "    \"zoom\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"zoom\": {"]
+#[doc = "      \"description\": \"How much closer, in percent.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 200.0,"]
+#[doc = "      \"minimum\": 105.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VideoSegmentLayoutPunchesItem {
+    pub end_ticks: ::std::num::NonZeroU64,
+    pub start_ticks: u64,
+    #[doc = "How much closer, in percent."]
+    pub zoom: i64,
+}
+impl VideoSegmentLayoutPunchesItem {
+    pub fn builder() -> builder::VideoSegmentLayoutPunchesItem {
+        Default::default()
     }
 }
 #[doc = "`VideoSegmentLayoutSecondaryCropPathItem`"]
@@ -5307,6 +5413,10 @@ pub mod builder {
             ::std::option::Option<super::VideoSegmentLayoutInset>,
             ::std::string::String,
         >,
+        punches: ::std::result::Result<
+            ::std::vec::Vec<super::VideoSegmentLayoutPunchesItem>,
+            ::std::string::String,
+        >,
         secondary_crop_path: ::std::result::Result<
             ::std::vec::Vec<super::VideoSegmentLayoutSecondaryCropPathItem>,
             ::std::string::String,
@@ -5321,6 +5431,7 @@ pub mod builder {
                 background: Ok(Default::default()),
                 crop_path: Ok(Default::default()),
                 inset: Ok(Default::default()),
+                punches: Ok(Default::default()),
                 secondary_crop_path: Ok(Default::default()),
                 split: Ok(Default::default()),
                 state: Err("no value supplied for state".to_string()),
@@ -5357,6 +5468,16 @@ pub mod builder {
             self.inset = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for inset: {e}"));
+            self
+        }
+        pub fn punches<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::VideoSegmentLayoutPunchesItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.punches = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for punches: {e}"));
             self
         }
         pub fn secondary_crop_path<T>(mut self, value: T) -> Self
@@ -5411,6 +5532,7 @@ pub mod builder {
                 background: value.background?,
                 crop_path: value.crop_path?,
                 inset: value.inset?,
+                punches: value.punches?,
                 secondary_crop_path: value.secondary_crop_path?,
                 split: value.split?,
                 state: value.state?,
@@ -5424,6 +5546,7 @@ pub mod builder {
                 background: Ok(value.background),
                 crop_path: Ok(value.crop_path),
                 inset: Ok(value.inset),
+                punches: Ok(value.punches),
                 secondary_crop_path: Ok(value.secondary_crop_path),
                 split: Ok(value.split),
                 state: Ok(value.state),
@@ -5559,6 +5682,76 @@ pub mod builder {
             Self {
                 corner: Ok(value.corner),
                 size: Ok(value.size),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct VideoSegmentLayoutPunchesItem {
+        end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+        zoom: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for VideoSegmentLayoutPunchesItem {
+        fn default() -> Self {
+            Self {
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+                zoom: Err("no value supplied for zoom".to_string()),
+            }
+        }
+    }
+    impl VideoSegmentLayoutPunchesItem {
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+        pub fn zoom<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.zoom = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for zoom: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<VideoSegmentLayoutPunchesItem>
+        for super::VideoSegmentLayoutPunchesItem
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: VideoSegmentLayoutPunchesItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                end_ticks: value.end_ticks?,
+                start_ticks: value.start_ticks?,
+                zoom: value.zoom?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::VideoSegmentLayoutPunchesItem> for VideoSegmentLayoutPunchesItem {
+        fn from(value: super::VideoSegmentLayoutPunchesItem) -> Self {
+            Self {
+                end_ticks: Ok(value.end_ticks),
+                start_ticks: Ok(value.start_ticks),
+                zoom: Ok(value.zoom),
             }
         }
     }

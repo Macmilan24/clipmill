@@ -5,7 +5,8 @@ use crate::{
     document::{
         CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing, CropKeyframe,
         CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint, Inset,
-        LayoutState, Overlay, Presentation, VideoSegment, crop_along_keyframes,
+        LayoutState, Overlay, Presentation, Punch, VideoSegment, crop_along_keyframes,
+        retime_punches, split_punches,
     },
     reflow,
 };
@@ -28,6 +29,11 @@ pub enum EditCommand {
     /// This changes no source interval, audio, caption or program timing.
     SetTransition {
         duration_ticks: i64,
+    },
+    /// Replace a section's punches: the moments its followed crop moves in.
+    SetPunches {
+        segment_id: String,
+        punches: Vec<Punch>,
     },
     /// Deliver the clip in another frame shape. Only the shape: the crops
     /// that fit it are replaced by commands of their own, batched with this.
@@ -312,6 +318,22 @@ impl EditCommand {
                     std::mem::replace(&mut document.video.transition_ticks, *duration_ticks);
                 Ok(Self::SetTransition {
                     duration_ticks: previous,
+                })
+            }
+            Self::SetPunches {
+                segment_id,
+                punches,
+            } => {
+                let index = document.segment_index(segment_id)?;
+                let segment = document
+                    .video
+                    .segments
+                    .get_mut(index)
+                    .ok_or_else(|| DocumentError::UnknownSegment(segment_id.clone()))?;
+                let previous = std::mem::replace(&mut segment.layout.punches, punches.clone());
+                Ok(Self::SetPunches {
+                    segment_id: segment_id.clone(),
+                    punches: previous,
                 })
             }
             Self::SetFrameShape { shape } => {
@@ -814,13 +836,16 @@ impl EditCommand {
             Self::split_crop_path(&original.layout.secondary_crop_path, offset);
         let mut head = original.clone();
         head.out_ticks = at_ticks;
+        let (head_punches, tail_punches) = split_punches(&original.layout.punches, offset);
         head.layout.crop_path = head_crop;
         head.layout.secondary_crop_path = head_secondary;
+        head.layout.punches = head_punches;
         let mut tail = original;
         new_segment_id.clone_into(&mut tail.segment_id);
         tail.in_ticks = at_ticks;
         tail.layout.crop_path = tail_crop;
         tail.layout.secondary_crop_path = tail_secondary;
+        tail.layout.punches = tail_punches;
         document.video.segments.splice(index..=index, [head, tail]);
         Ok(inverse)
     }
@@ -854,6 +879,10 @@ impl EditCommand {
         let inverse = Self::capture(document);
         if head {
             let layout = &mut document.video.segments[index].layout;
+            for punch in &mut layout.punches {
+                punch.start_ticks += delta;
+                punch.end_ticks += delta;
+            }
             for path in [&mut layout.crop_path, &mut layout.secondary_crop_path] {
                 if let Some(first) = path.first().copied() {
                     for key in path.iter_mut() {
@@ -1098,6 +1127,8 @@ impl EditCommand {
             in_ticks,
             new_duration,
         );
+        segment.layout.punches =
+            retime_punches(&segment.layout.punches, old_in, in_ticks, new_duration);
         // How many words each cue had, so a cue the cut fell inside can be
         // told from one it merely moved.
         let word_counts = Self::caption_word_counts(document);
@@ -1171,6 +1202,23 @@ impl EditCommand {
         }
     }
 
+    /// A section's crops and punches after its source window changed from
+    /// `was`'s to its own: each kept where the new window still plays it and
+    /// counted from its new start.
+    fn retime_layout(segment: &mut VideoSegment, was: &VideoSegment) {
+        let (new_in, duration) = (segment.in_ticks, segment.duration_ticks());
+        segment.layout.crop_path =
+            EditDocument::retime_crop_path(&was.layout.crop_path, was.in_ticks, new_in, duration);
+        segment.layout.secondary_crop_path = EditDocument::retime_crop_path(
+            &was.layout.secondary_crop_path,
+            was.in_ticks,
+            new_in,
+            duration,
+        );
+        segment.layout.punches =
+            retime_punches(&was.layout.punches, was.in_ticks, new_in, duration);
+    }
+
     fn apply_ripple_delete(
         document: &mut EditDocument,
         start_ticks: i64,
@@ -1210,33 +1258,11 @@ impl EditCommand {
                     .saturating_add(end_ticks.saturating_sub(program_start));
                 let mut head = segment.clone();
                 head.out_ticks = head_out;
-                head.layout.crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.crop_path,
-                    segment.in_ticks,
-                    segment.in_ticks,
-                    head.duration_ticks(),
-                );
-                head.layout.secondary_crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.secondary_crop_path,
-                    segment.in_ticks,
-                    segment.in_ticks,
-                    head.duration_ticks(),
-                );
+                Self::retime_layout(&mut head, segment);
                 let mut tail = segment.clone();
                 tail.segment_id = EditDocument::derive_id(&existing_ids, &segment.segment_id);
                 tail.in_ticks = tail_in;
-                tail.layout.crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.crop_path,
-                    segment.in_ticks,
-                    tail_in,
-                    tail.duration_ticks(),
-                );
-                tail.layout.secondary_crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.secondary_crop_path,
-                    segment.in_ticks,
-                    tail_in,
-                    tail.duration_ticks(),
-                );
+                Self::retime_layout(&mut tail, segment);
                 kept.push(head);
                 kept.push(tail);
                 continue;
@@ -1251,18 +1277,7 @@ impl EditCommand {
                     .in_ticks
                     .saturating_add(end_ticks.saturating_sub(program_start));
             }
-            trimmed.layout.crop_path = EditDocument::retime_crop_path(
-                &segment.layout.crop_path,
-                segment.in_ticks,
-                trimmed.in_ticks,
-                trimmed.duration_ticks(),
-            );
-            trimmed.layout.secondary_crop_path = EditDocument::retime_crop_path(
-                &segment.layout.secondary_crop_path,
-                segment.in_ticks,
-                trimmed.in_ticks,
-                trimmed.duration_ticks(),
-            );
+            Self::retime_layout(&mut trimmed, segment);
             kept.push(trimmed);
         }
         let program_end = document.program_duration_ticks();

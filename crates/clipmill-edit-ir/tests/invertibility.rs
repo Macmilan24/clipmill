@@ -90,7 +90,16 @@ fn sample_document() -> EditDocument {
             shape: clipmill_edit_ir::FrameShape::default(),
             transition_ticks: 0,
             segments: vec![
-                segment("seg_a", 0, 90_000, vec![0, 45_000, 90_000]),
+                {
+                    // A punch for cuts and trims to carry.
+                    let mut punched = segment("seg_a", 0, 90_000, vec![0, 45_000, 90_000]);
+                    punched.layout.punches = vec![clipmill_edit_ir::Punch {
+                        start_ticks: 20_000,
+                        end_ticks: 60_000,
+                        zoom: 130,
+                    }];
+                    punched
+                },
                 segment("seg_b", 180_000, 270_000, vec![0, 90_000]),
                 segment("seg_c", 900_000, 990_000, Vec::new()),
             ],
@@ -233,6 +242,17 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
                 clipmill_edit_ir::FrameShape::Square,
                 clipmill_edit_ir::FrameShape::Landscape,
             ][usize::try_from(rng.below(4)).unwrap_or(0)],
+        });
+        let span = segment.duration_ticks();
+        let punch_start =
+            i64::try_from(rng.below(u64::try_from(span / 2).unwrap_or(1).max(1))).unwrap_or(0);
+        commands.push(EditCommand::SetPunches {
+            segment_id: segment_id.clone(),
+            punches: vec![clipmill_edit_ir::Punch {
+                start_ticks: punch_start,
+                end_ticks: (punch_start + 30_000).min(span),
+                zoom: 105 + u16::try_from(rng.below(96)).unwrap_or(0),
+            }],
         });
         commands.push(EditCommand::SetLayoutStyle {
             segment_id: segment_id.clone(),

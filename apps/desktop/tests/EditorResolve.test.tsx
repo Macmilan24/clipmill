@@ -371,3 +371,47 @@ describe('choosing a layout in the Framing tab', () => {
     expect(commands.filter((command) => command.segment_id === 'first')).toHaveLength(3);
   });
 });
+
+describe('punch-ins in the Framing tab', () => {
+  beforeEach(() => {
+    const layout = {
+      state: 'speaker_fill',
+      crop_path: [{ t_ticks: 0, rect: { x: 656, y: 0, width: 608, height: 1080 } }],
+    };
+    state = {
+      ...state,
+      document: {
+        video: {
+          segments: state.plan!.segments.map((segment) => ({
+            segment_id: segment.segmentId,
+            source_fingerprint: segment.sourceFingerprint,
+            in_ticks: segment.inTicks,
+            out_ticks: segment.outTicks,
+            layout,
+          })),
+        },
+        captions: { cues: [], options: {} },
+      } as unknown as EditorState['document'],
+    };
+  });
+
+  it('punches in at the playhead in the section it is in, as one step', () => {
+    show(vi.fn());
+    seekTo(state.plan!, 450);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /framing/i }));
+    // Without the clip's words there are no sentences to punch in on.
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Punch in on every other sentence',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Punch in here' }));
+    expect(state.apply).toHaveBeenCalledWith({
+      op: 'set_punches',
+      segment_id: 'second',
+      punches: [{ start_ticks: 450_000, end_ticks: 630_000, zoom: 125 }],
+    });
+  });
+});

@@ -382,7 +382,9 @@ fn layout_chains(
             label,
         )),
         LayoutState::SpeakerFill => {
-            let crop = crop_filter(segment, source, profile, &layout.crop_path, width, height)?;
+            // The followed crop, moved in wherever the section punches in.
+            let path = layout.drawn_crop_path();
+            let crop = crop_filter(segment, source, profile, &path, width, height)?;
             Ok(vec![format!(
                 "[t{index}]{crop},scale={width}:{height},setsar=1,format=yuv420p[{label}]"
             )])

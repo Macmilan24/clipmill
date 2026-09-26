@@ -196,6 +196,17 @@ class Inset(BaseModel):
     size: conint(ge=200, le=600)
 
 
+class Punch(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=1)
+    zoom: conint(ge=105, le=200) = Field(
+        ..., description='How much closer, in percent.'
+    )
+
+
 class Layout(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -227,6 +238,10 @@ class Layout(BaseModel):
     inset: Inset | None = Field(
         None,
         description="Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.",
+    )
+    punches: list[Punch] | None = Field(
+        None,
+        description='Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.',
     )
 
 

@@ -299,6 +299,27 @@ impl Inset {
     }
 }
 
+/// A moment the camera moves in closer: the crop, whatever it is doing,
+/// taken tighter about its own centre for a span of the section, then back.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Punch {
+    /// Segment-local, like a crop keyframe.
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    /// How much closer, in percent.
+    pub zoom: u16,
+}
+
+impl Punch {
+    /// How much closer a punch may go, in percent.
+    pub const ZOOMS: std::ops::RangeInclusive<u16> = 105..=200;
+    /// How long the move in or out takes: longer than one frame at any rate
+    /// a recording is played at, so it is a snap rather than two keyframes
+    /// on one frame.
+    pub const MOVE_TICKS: i64 = 6_000;
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
@@ -325,6 +346,11 @@ pub struct Layout {
     /// Where a picture-in-picture inset sits. Absent is the default corner.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inset: Option<Inset>,
+    /// Moments the followed crop moves in closer, in order and apart. They
+    /// apply to a followed picture; the crop path under them is kept as it
+    /// is, so taking them away leaves the framing that was there.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub punches: Vec<Punch>,
 }
 
 impl Layout {
@@ -342,6 +368,33 @@ impl Layout {
             LayoutState::TwoUp => self.crop_path.is_empty() || self.secondary_crop_path.is_empty(),
             LayoutState::PictureInPicture => self.secondary_crop_path.is_empty(),
         }
+    }
+
+    /// The followed crop as it is drawn: the path, with every punch taken
+    /// in about the crop's centre. Only a followed picture punches in.
+    pub fn drawn_crop_path(&self) -> std::borrow::Cow<'_, [CropKeyframe]> {
+        if self.punches.is_empty() || self.state != LayoutState::SpeakerFill {
+            return std::borrow::Cow::Borrowed(&self.crop_path);
+        }
+        std::borrow::Cow::Owned(punched(&self.crop_path, &self.punches))
+    }
+
+    /// Punches in order, each at least two moves long, meeting the one
+    /// before or at least two moves after it, inside the section.
+    fn punches_are_valid(&self, duration: i64) -> bool {
+        let span = 2 * Punch::MOVE_TICKS;
+        let mut previous: Option<i64> = None;
+        self.punches.iter().all(|punch| {
+            let apart = previous
+                .is_none_or(|end| punch.start_ticks == end || punch.start_ticks - end >= span);
+            let valid = apart
+                && punch.start_ticks >= 0
+                && punch.end_ticks - punch.start_ticks >= span
+                && punch.end_ticks <= duration
+                && Punch::ZOOMS.contains(&punch.zoom);
+            previous = Some(punch.end_ticks);
+            valid
+        })
     }
 
     /// The upper viewport's share of the height, per mille.
@@ -396,6 +449,127 @@ impl Layout {
 }
 
 /// `#RRGGBB`.
+/// A crop path with each punch taken in: keyframes a move's length before
+/// and at each edge, the crop in between tighter about its own centre, and
+/// the path's own keyframes kept — tightened inside a punch — except where
+/// one would fall within a move of those, which the move then stands for.
+fn punched(path: &[CropKeyframe], punches: &[Punch]) -> Vec<CropKeyframe> {
+    let inside = |t: i64| {
+        punches
+            .iter()
+            .find(|punch| punch.start_ticks <= t && t < punch.end_ticks)
+    };
+    let at = |t: i64| crop_along_keyframes(path, t);
+    let key = |t_ticks: i64, rect: CropRect| CropKeyframe {
+        t_ticks,
+        rect,
+        easing: CropEasing::Linear,
+    };
+    let mut moves = Vec::with_capacity(punches.len() * 4);
+    for punch in punches {
+        let (start, end) = (punch.start_ticks, punch.end_ticks);
+        let before = start - Punch::MOVE_TICKS;
+        if before >= 0
+            && inside(before).is_none()
+            && let Some(rect) = at(before)
+        {
+            moves.push(key(before, rect));
+        }
+        if let Some(rect) = at(start) {
+            moves.push(key(start, tighter(rect, punch.zoom)));
+        }
+        if let Some(rect) = at(end - Punch::MOVE_TICKS) {
+            moves.push(key(end - Punch::MOVE_TICKS, tighter(rect, punch.zoom)));
+        }
+        if inside(end).is_none()
+            && let Some(rect) = at(end)
+        {
+            moves.push(key(end, rect));
+        }
+    }
+    let clear = |t: i64| {
+        moves
+            .iter()
+            .all(|moved| (moved.t_ticks - t).abs() >= Punch::MOVE_TICKS)
+    };
+    let mut keys: Vec<CropKeyframe> = path
+        .iter()
+        .filter(|key| clear(key.t_ticks))
+        .map(|key| CropKeyframe {
+            rect: inside(key.t_ticks).map_or(key.rect, |punch| tighter(key.rect, punch.zoom)),
+            ..*key
+        })
+        .collect();
+    keys.extend(moves);
+    keys.sort_by_key(|key| key.t_ticks);
+    keys
+}
+
+/// A crop `zoom` percent closer, about its own centre, keeping its shape.
+fn tighter(rect: CropRect, zoom: u16) -> CropRect {
+    let scale = |length: i64| ((length * 100 / i64::from(zoom.max(100))) & !1).max(2);
+    let (width, height) = (scale(rect.width), scale(rect.height));
+    CropRect {
+        x: rect.x + (rect.width - width) / 2,
+        y: rect.y + (rect.height - height) / 2,
+        width,
+        height,
+    }
+}
+
+/// Whether what is left of a punch is still long enough to be one.
+fn lasts(punch: &Punch) -> bool {
+    punch.end_ticks - punch.start_ticks >= 2 * Punch::MOVE_TICKS
+}
+
+/// Punches after a segment's source window moved: kept where the new window
+/// still plays them, cut to it, and counted from its new start; one left too
+/// short to be a punch is dropped.
+pub(crate) fn retime_punches(
+    punches: &[Punch],
+    old_in: i64,
+    new_in: i64,
+    new_duration: i64,
+) -> Vec<Punch> {
+    punches
+        .iter()
+        .filter_map(|punch| {
+            let start = (old_in + punch.start_ticks - new_in).max(0);
+            let end = (old_in + punch.end_ticks - new_in).min(new_duration);
+            Some(Punch {
+                start_ticks: start,
+                end_ticks: end,
+                ..*punch
+            })
+            .filter(lasts)
+        })
+        .collect()
+}
+
+/// Punches either side of a split at `at`, the tail's counted from it.
+pub(crate) fn split_punches(punches: &[Punch], at: i64) -> (Vec<Punch>, Vec<Punch>) {
+    let head = punches
+        .iter()
+        .filter(|punch| punch.start_ticks < at)
+        .map(|punch| Punch {
+            end_ticks: punch.end_ticks.min(at),
+            ..*punch
+        })
+        .filter(lasts)
+        .collect();
+    let tail = punches
+        .iter()
+        .filter(|punch| punch.end_ticks > at)
+        .map(|punch| Punch {
+            start_ticks: (punch.start_ticks - at).max(0),
+            end_ticks: punch.end_ticks - at,
+            ..*punch
+        })
+        .filter(lasts)
+        .collect();
+    (head, tail)
+}
+
 fn is_hex_colour(hex: &str) -> bool {
     hex.len() == 7 && hex.starts_with('#') && hex[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -1535,6 +1709,9 @@ impl EditDocument {
                     segment.segment_id.clone(),
                 ));
             }
+            if !segment.layout.punches_are_valid(segment.duration_ticks()) {
+                return Err(DocumentError::InvalidPunch(segment.segment_id.clone()));
+            }
             for path in [
                 &segment.layout.crop_path,
                 &segment.layout.secondary_crop_path,
@@ -1706,6 +1883,8 @@ pub enum DocumentError {
     InsetWithoutCropPath(String),
     #[error("segment {0} asks for a split, zoom, inset or background it cannot draw")]
     InvalidLayoutStyle(String),
+    #[error("segment {0} has punches out of order, overlapping, outside it or too close")]
+    InvalidPunch(String),
     #[error("overlay {0} appears more than once")]
     DuplicateOverlay(String),
     #[error("overlay {0} has an empty or negative time span")]
