@@ -888,3 +888,12 @@ it('keeps the current media and playhead when focusing the preview and returning
   expect(video()).toBe(originalVideo);
   expect(screen.getByTestId('timecode').textContent).toContain('frame 450');
 });
+
+describe('captions made before a better transcript', () => {
+  it('refreshes them from the transcript as one saved step', () => {
+    const { onApply } = show(program(900, 600));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /captions/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh captions' }));
+    expect(onApply).toHaveBeenCalledWith({ op: 'refresh_captions' });
+  });
+});

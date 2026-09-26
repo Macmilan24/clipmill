@@ -11,6 +11,7 @@
 
 pub mod lattice;
 mod placement;
+mod refresh;
 mod speakers;
 pub mod words;
 
@@ -31,6 +32,7 @@ use clipmill_render::captions::{Intent, project};
 use thiserror::Error;
 
 pub use lattice::{Boundary, Duration, Lattice, is_legal};
+pub use refresh::captions_for_program;
 pub use words::{Severed, keep_whole_words, severed};
 
 /// The implementation the produced document was assembled by.

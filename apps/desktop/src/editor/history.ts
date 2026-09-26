@@ -90,6 +90,8 @@ export function describeCommand(command: EditCommandJson): string {
       return 'Remove non-speech marks';
     case 'replace_cues':
       return 'Replace captions';
+    case 'refresh_captions':
+      return 'Refresh captions';
     case 'set_title':
       return command.title ? `Rename: ${String(command.title)}` : 'Clear the title';
     default:
