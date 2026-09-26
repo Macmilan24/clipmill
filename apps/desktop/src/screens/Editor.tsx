@@ -74,6 +74,7 @@ import { exactCaptionsOf } from '../editor/exactCaptions.js';
 import type { HistoryStep } from '../editor/history.js';
 import type { EditorFocus } from '../shell/route.js';
 import { openShortcuts } from '../shell/ShortcutSheet.js';
+import { type CoachMark, CoachMarks } from '../onboarding/CoachMarks.js';
 import {
   gainAt,
   proxySecondsAt,
@@ -145,6 +146,30 @@ export interface CaptionDraft {
   readonly styleRef?: string;
   readonly options?: NonNullable<EditIr['captions']['options']>;
 }
+
+/** The Editor's tips, the first time it opens. */
+const EDITOR_TIPS: readonly CoachMark[] = [
+  {
+    target: 'edit-transcript',
+    title: 'Edit by word',
+    body: 'Select words to cut them from the picture and the sound, hide them from the captions, or correct them. Fillers and long pauses are gathered above for review.',
+  },
+  {
+    target: 'edit-preview',
+    title: 'The picture is yours to frame',
+    body: 'Drag it to reframe, pinch or ⌘-scroll to zoom, and drag a caption to move it. Original shows the whole frame, and a face there to follow.',
+  },
+  {
+    target: 'edit-properties',
+    title: 'Captions, framing and sound',
+    body: 'Try a look before choosing it. Every change is one step: undo takes it back, and History lists them all.',
+  },
+  {
+    target: 'edit-export',
+    title: 'When it is ready',
+    body: 'Export makes the 9:16 file and its subtitles, and shows you the clip first.',
+  },
+];
 
 const PANELS_KEY = 'clipmill.editor.panels';
 const DEFAULT_PANELS = { left: 300, right: 320, lanes: 1 };
@@ -871,6 +896,7 @@ export function Editor({
       data-focused={focused ? 'true' : undefined}
       style={{ '--edit-lane-scale': String(panels.lanes ?? 1) } as CSSProperties}
     >
+      <CoachMarks place="editor" marks={EDITOR_TIPS} />
       <header className="review-heading">
         <div className="review-identity">
           <TipButton label="Back to results" onClick={onOpenResults}>
@@ -936,7 +962,13 @@ export function Editor({
             {focused ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </TipButton>
           {onExport && (
-            <Button size="sm" onClick={onExport} disabled={busy} aria-label="Export this clip">
+            <Button
+              size="sm"
+              onClick={onExport}
+              disabled={busy}
+              aria-label="Export this clip"
+              data-coach="edit-export"
+            >
               <Upload className="size-4" aria-hidden="true" />
               Export
             </Button>

@@ -121,7 +121,11 @@ export function EditorTranscript({
   const pauses = useMemo(() => longPauses(words), [words]);
 
   return (
-    <aside className="review-side edit-side edit-transcript-side" aria-label="Transcript">
+    <aside
+      className="review-side edit-side edit-transcript-side"
+      aria-label="Transcript"
+      data-coach="edit-transcript"
+    >
       <div className="edit-panel-head">
         <span className="edit-panel-title">Transcript</span>
         <span className="review-spacer" />

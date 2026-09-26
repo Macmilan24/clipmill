@@ -26,6 +26,8 @@ import { AppSidebar } from './shell/Sidebar.js';
 import { TopBar } from './shell/TopBar.js';
 import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
 import { ShortcutSheet, useShortcutSheet } from './shell/ShortcutSheet.js';
+import { CoachEnabled, OPEN_WELCOME_EVENT, shouldWelcome } from './onboarding/state.js';
+import { Welcome } from './onboarding/Welcome.js';
 import { recall, remember } from './shell/memory.js';
 import {
   type ClipRef,
@@ -178,6 +180,13 @@ export function App(): JSX.Element {
 
   const { section, trail } = placementOf(route);
   const shortcuts = useShortcutSheet();
+  // The welcome, once for a new installation, and again when Settings asks.
+  const [welcoming, setWelcoming] = useState(() => shouldWelcome());
+  useEffect(() => {
+    const again = () => setWelcoming(true);
+    window.addEventListener(OPEN_WELCOME_EVENT, again);
+    return () => window.removeEventListener(OPEN_WELCOME_EVENT, again);
+  }, []);
   // The two workspaces give the picture the room: the rail shows icons only,
   // and the trail and engine line fold away — the workspace's own heading
   // names the clip and leads back — unless the engine is not ready, which is
@@ -186,118 +195,125 @@ export function App(): JSX.Element {
   const folded = workspace && state.status === 'connected';
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <ShortcutSheet open={shortcuts.open} onOpenChange={shortcuts.setOpen} />
-      <SidebarProvider
-        // The sidebar becomes an icon rail in compact desktop windows.
-        style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
-        className="studio-shell relative h-full min-h-0"
-        data-workspace={workspace ? 'true' : undefined}
-      >
-        <AppSidebar
-          activeId={section.id}
-          onSelect={navigate}
-          state={state}
-          analysisBusy={analysisActivity.active}
+    <CoachEnabled.Provider value={true}>
+      <TooltipProvider delayDuration={300}>
+        <ShortcutSheet open={shortcuts.open} onOpenChange={shortcuts.setOpen} />
+        <Welcome
+          open={welcoming}
+          onClose={() => setWelcoming(false)}
+          onStart={() => navigate('new-project')}
         />
-        <SidebarInset className="min-h-0 min-w-0 bg-transparent">
-          {!folded && (
-            <TopBar
-              trail={trail}
-              theme={theme}
-              onToggleTheme={toggleTheme}
-              state={state}
-              profile={profile}
-            />
-          )}
-          <main
-            className={`studio-main ${['results', 'editor'].includes(section.id) ? 'studio-main-workspace' : 'studio-main-page'}`}
-          >
-            {renderScreen({
-              route,
-              library: {
-                state,
-                onNavigate: navigate,
-                onOpenAnalysis: (projectId, jobId) => {
-                  openAnalysis(projectId, jobId, 'library');
+        <SidebarProvider
+          // The sidebar becomes an icon rail in compact desktop windows.
+          style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
+          className="studio-shell relative h-full min-h-0"
+          data-workspace={workspace ? 'true' : undefined}
+        >
+          <AppSidebar
+            activeId={section.id}
+            onSelect={navigate}
+            state={state}
+            analysisBusy={analysisActivity.active}
+          />
+          <SidebarInset className="min-h-0 min-w-0 bg-transparent">
+            {!folded && (
+              <TopBar
+                trail={trail}
+                theme={theme}
+                onToggleTheme={toggleTheme}
+                state={state}
+                profile={profile}
+              />
+            )}
+            <main
+              className={`studio-main ${['results', 'editor'].includes(section.id) ? 'studio-main-workspace' : 'studio-main-page'}`}
+            >
+              {renderScreen({
+                route,
+                library: {
+                  state,
+                  onNavigate: navigate,
+                  onOpenAnalysis: (projectId, jobId) => {
+                    openAnalysis(projectId, jobId, 'library');
+                  },
+                  onReconnect: handleReconnect,
                 },
-                onReconnect: handleReconnect,
-              },
-              newProject: {
-                state,
-                onStarted: (projectId, jobId) => {
-                  analysisActivity.markStarted(jobId);
-                  openAnalysis(projectId, jobId, 'new-project');
+                newProject: {
+                  state,
+                  onStarted: (projectId, jobId) => {
+                    analysisActivity.markStarted(jobId);
+                    openAnalysis(projectId, jobId, 'new-project');
+                  },
+                  onOpenModels: () => {
+                    navigate('models');
+                  },
                 },
-                onOpenModels: () => {
-                  navigate('models');
+                analysis: {
+                  profile,
+                  onRestarted: (projectId, jobId) => {
+                    analysisActivity.markStarted(jobId);
+                    openAnalysis(projectId, jobId, 'library');
+                  },
+                  onBack: () => {
+                    navigate(route.kind === 'analysis' ? route.from : 'library');
+                  },
+                  onNavigate: navigate,
                 },
-              },
-              analysis: {
-                profile,
-                onRestarted: (projectId, jobId) => {
-                  analysisActivity.markStarted(jobId);
-                  openAnalysis(projectId, jobId, 'library');
+                results: {
+                  onInspect: (projectId, sourceId, candidateId, labels, jobId) => {
+                    setRoute(inspectorRoute(projectId, sourceId, candidateId, labels, jobId));
+                  },
+                  onEdit: (next) => {
+                    openClip(next, 'editor');
+                  },
+                  onBack: () => {
+                    setRoute(resultsRouteFor(route));
+                  },
                 },
-                onBack: () => {
-                  navigate(route.kind === 'analysis' ? route.from : 'library');
+                editor: {
+                  onOpenResults: () => {
+                    setRoute(resultsRouteFor(route));
+                  },
+                  onOpen: (next) => {
+                    openClip(next, 'editor');
+                  },
+                  onExport: (next) => {
+                    openClip(next, 'export');
+                  },
                 },
-                onNavigate: navigate,
-              },
-              results: {
-                onInspect: (projectId, sourceId, candidateId, labels, jobId) => {
-                  setRoute(inspectorRoute(projectId, sourceId, candidateId, labels, jobId));
+                export: {
+                  onOpenChannelSettings: () => setRoute({ kind: 'section', sectionId: 'settings' }),
+                  onEdit: (next, focus) => openClip(next, 'editor', focus),
+                  onOpen: (next) => {
+                    openClip(next, 'export');
+                  },
                 },
-                onEdit: (next) => {
-                  openClip(next, 'editor');
+                settings: {
+                  engineVersion: state.status === 'connected' ? state.daemonVersion : null,
+                  theme,
+                  onThemeChange: setTheme,
+                  workspaceTheme,
+                  onWorkspaceThemeChange: setWorkspaceTheme,
+                  onOpenModels: () => {
+                    navigate('models');
+                  },
                 },
-                onBack: () => {
-                  setRoute(resultsRouteFor(route));
+                models: {
+                  state,
+                  profile,
+                  artifactId,
+                  error,
+                  busy,
+                  onRescan: () => {
+                    void loadProfile(true);
+                  },
+                  onReconnect: handleReconnect,
                 },
-              },
-              editor: {
-                onOpenResults: () => {
-                  setRoute(resultsRouteFor(route));
-                },
-                onOpen: (next) => {
-                  openClip(next, 'editor');
-                },
-                onExport: (next) => {
-                  openClip(next, 'export');
-                },
-              },
-              export: {
-                onOpenChannelSettings: () => setRoute({ kind: 'section', sectionId: 'settings' }),
-                onEdit: (next, focus) => openClip(next, 'editor', focus),
-                onOpen: (next) => {
-                  openClip(next, 'export');
-                },
-              },
-              settings: {
-                engineVersion: state.status === 'connected' ? state.daemonVersion : null,
-                theme,
-                onThemeChange: setTheme,
-                workspaceTheme,
-                onWorkspaceThemeChange: setWorkspaceTheme,
-                onOpenModels: () => {
-                  navigate('models');
-                },
-              },
-              models: {
-                state,
-                profile,
-                artifactId,
-                error,
-                busy,
-                onRescan: () => {
-                  void loadProfile(true);
-                },
-                onReconnect: handleReconnect,
-              },
-            })}
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
-    </TooltipProvider>
+              })}
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
+    </CoachEnabled.Provider>
   );
 }

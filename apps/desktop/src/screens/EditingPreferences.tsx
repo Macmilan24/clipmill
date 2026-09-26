@@ -5,7 +5,7 @@
  * Each is a choice the Editor or the Export screen also makes in place; this
  * is where it is made once, for every clip that follows.
  */
-import { Bookmark, Keyboard, Trash2 } from 'lucide-react';
+import { Bookmark, Keyboard, Sparkles, Trash2 } from 'lucide-react';
 import { type JSX, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ import {
   recallFormat,
   rememberFormat,
 } from '../export/format.js';
+import { forgetOnboarding, openWelcome } from '../onboarding/state.js';
 import { openShortcuts } from '../shell/ShortcutSheet.js';
 import { type TimeFormat, setTimeFormat, useTimeFormat } from '../shell/timeFormat.js';
 
@@ -154,6 +155,26 @@ export function EditingPreferences(): JSX.Element {
         <Button variant="outline" size="sm" onClick={openShortcuts}>
           <Keyboard className="size-4" aria-hidden="true" />
           Keyboard shortcuts
+        </Button>
+      </div>
+
+      <div className="preference-row">
+        <div>
+          <h3 className="text-sm font-medium">Getting started</h3>
+          <p className="text-xs text-[var(--cm-text-secondary)]">
+            The welcome, and the tips the Inspector and the Editor show the first time.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            forgetOnboarding();
+            openWelcome();
+          }}
+        >
+          <Sparkles className="size-4" aria-hidden="true" />
+          Show them again
         </Button>
       </div>
     </div>

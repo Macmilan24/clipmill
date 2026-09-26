@@ -90,7 +90,7 @@ export function Monitor({
     room.height > 0 &&
     room.width - 48 >= 0.85 * (room.height - 20) * (9 / 16 + 16 / 9);
   return (
-    <section className="review-viewer" aria-label="Preview">
+    <section className="review-viewer" aria-label="Preview" data-coach="preview">
       <div className="review-viewer-bar">
         {both ? (
           <span className="review-viewer-note">Result and source</span>
