@@ -87,6 +87,7 @@ class State(Enum):
     speaker_fill = 'speaker_fill'
     fit = 'fit'
     two_up = 'two_up'
+    picture_in_picture = 'picture_in_picture'
 
 
 class Easing(Enum):
@@ -114,18 +115,67 @@ class SecondaryCropPathItem(BaseModel):
     easing: Easing | None = None
 
 
+class Background(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['blur']
+
+
+class Background1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['colour']
+    colour: constr(pattern=r'^#[0-9A-Fa-f]{6}$')
+
+
+class Corner(Enum):
+    top_left = 'top_left'
+    top_right = 'top_right'
+    bottom_left = 'bottom_left'
+    bottom_right = 'bottom_right'
+
+
+class Inset(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    corner: Corner
+    size: conint(ge=200, le=600)
+
+
 class Layout(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    state: State
+    state: State = Field(
+        ...,
+        description='picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.',
+    )
     crop_path: list[CropPathItem] | None = Field(
         None,
         description='Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.',
     )
     secondary_crop_path: list[SecondaryCropPathItem] | None = Field(
         None,
-        description='Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.',
+        description='Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.',
+    )
+    split: conint(ge=250, le=750) | None = Field(
+        None,
+        description="two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.",
+    )
+    background: Background | Background1 | None = Field(
+        None,
+        description='What fills around a fitted picture. Absent is the picture itself, blurred.',
+    )
+    zoom: conint(ge=100, le=250) | None = Field(
+        None,
+        description='How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.',
+    )
+    inset: Inset | None = Field(
+        None,
+        description='Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.',
     )
 
 

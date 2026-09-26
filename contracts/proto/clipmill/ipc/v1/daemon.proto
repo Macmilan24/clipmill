@@ -1372,6 +1372,21 @@ message PreviewSegmentV1 {
   // Both saved viewport paths remain available even when displaying Fit.
   bool has_two_up_paths = 8;
   string framing_warning = 9;
+  // How the section is drawn — fit, speaker_fill, two_up or
+  // picture_in_picture — and the render's own geometry for it, in output
+  // pixels, so a player draws what the export will rather than working it out.
+  string layout = 10;
+  // Two viewports: the upper one's height.
+  int64 upper_height = 11;
+  // Picture in picture: the inset's square.
+  bool has_inset = 12;
+  int64 inset_x = 13;
+  int64 inset_y = 14;
+  int64 inset_side = 15;
+  // A fitted picture's fill: empty for the picture blurred, or #RRGGBB.
+  string background_colour = 16;
+  // A fitted picture's zoom past fitting, in percent; 100 fits.
+  uint32 zoom_percent = 17;
 }
 
 // A source the program draws from, as the crops are measured against it.

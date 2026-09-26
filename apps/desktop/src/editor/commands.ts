@@ -17,7 +17,7 @@ import { secondsAt, segmentAt, sourceTicksAt } from './player.js';
 export const SEGMENT = 'seg_1';
 
 /** Which way the camera is framed. Three modes, exactly as the plan names them. */
-export type LayoutMode = 'speaker_fill' | 'fit' | 'two_up';
+export type LayoutMode = 'speaker_fill' | 'fit' | 'two_up' | 'picture_in_picture';
 
 export function setLayout(mode: LayoutMode, segmentId = SEGMENT): EditCommandJson {
   return { op: 'set_layout', segment_id: segmentId, state: mode };

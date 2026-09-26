@@ -1789,6 +1789,29 @@ pub struct PreviewSegmentV1 {
     pub has_two_up_paths: bool,
     #[prost(string, tag = "9")]
     pub framing_warning: ::prost::alloc::string::String,
+    /// How the section is drawn — fit, speaker_fill, two_up or
+    /// picture_in_picture — and the render's own geometry for it, in output
+    /// pixels, so a player draws what the export will rather than working it out.
+    #[prost(string, tag = "10")]
+    pub layout: ::prost::alloc::string::String,
+    /// Two viewports: the upper one's height.
+    #[prost(int64, tag = "11")]
+    pub upper_height: i64,
+    /// Picture in picture: the inset's square.
+    #[prost(bool, tag = "12")]
+    pub has_inset: bool,
+    #[prost(int64, tag = "13")]
+    pub inset_x: i64,
+    #[prost(int64, tag = "14")]
+    pub inset_y: i64,
+    #[prost(int64, tag = "15")]
+    pub inset_side: i64,
+    /// A fitted picture's fill: empty for the picture blurred, or #RRGGBB.
+    #[prost(string, tag = "16")]
+    pub background_colour: ::prost::alloc::string::String,
+    /// A fitted picture's zoom past fitting, in percent; 100 fits.
+    #[prost(uint32, tag = "17")]
+    pub zoom_percent: u32,
 }
 /// A source the program draws from, as the crops are measured against it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

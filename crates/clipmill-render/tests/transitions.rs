@@ -35,6 +35,7 @@ fn document(durations: &[i64]) -> EditDocument {
                         easing: clipmill_edit_ir::CropEasing::Linear,
                     }],
                     secondary_crop_path: Vec::new(),
+                    ..Layout::default()
                 },
             }
         })

@@ -272,7 +272,8 @@
           "additionalProperties": false,
           "properties": {
             "state": {
-              "enum": ["speaker_fill", "fit", "two_up"]
+              "description": "picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.",
+              "enum": ["speaker_fill", "fit", "two_up", "picture_in_picture"]
             },
             "crop_path": {
               "description": "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.",
@@ -296,7 +297,7 @@
               }
             },
             "secondary_crop_path": {
-              "description": "Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.",
+              "description": "Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.",
               "type": "array",
               "items": {
                 "type": "object",
@@ -313,6 +314,63 @@
                   "easing": {
                     "enum": ["linear", "ease_in", "ease_out", "ease_in_out"]
                   }
+                }
+              }
+            },
+            "split": {
+              "description": "two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.",
+              "type": "integer",
+              "minimum": 250,
+              "maximum": 750
+            },
+            "background": {
+              "description": "What fills around a fitted picture. Absent is the picture itself, blurred.",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "blur"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "colour"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "colour"
+                    },
+                    "colour": {
+                      "type": "string",
+                      "pattern": "^#[0-9A-Fa-f]{6}$"
+                    }
+                  }
+                }
+              ]
+            },
+            "zoom": {
+              "description": "How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.",
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 250
+            },
+            "inset": {
+              "description": "Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.",
+              "type": "object",
+              "required": ["corner", "size"],
+              "additionalProperties": false,
+              "properties": {
+                "corner": {
+                  "enum": ["top_left", "top_right", "bottom_left", "bottom_right"]
+                },
+                "size": {
+                  "type": "integer",
+                  "minimum": 200,
+                  "maximum": 600
                 }
               }
             }

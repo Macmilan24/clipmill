@@ -133,6 +133,7 @@ fn document(state: LayoutState) -> EditDocument {
                             easing: clipmill_edit_ir::CropEasing::Linear,
                         },
                     ],
+                    ..Layout::default()
                 },
             }],
         },

@@ -800,6 +800,17 @@ pub struct PreviewSegmentView {
     pub framing_warning: String,
     pub first_frame: i64,
     pub end_frame: i64,
+    /// `fit`, `speaker_fill`, `two_up` or `picture_in_picture`; empty from a
+    /// daemon older than the field.
+    pub layout: String,
+    /// Two viewports: the upper one's height in output pixels.
+    pub upper_height: i64,
+    /// Picture in picture: the inset's `[x, y, side]` in output pixels.
+    pub inset: Option<[i64; 3]>,
+    /// A fitted picture's fill: `None` for the picture blurred.
+    pub background_colour: Option<String>,
+    /// A fitted picture's zoom past fitting, in percent.
+    pub zoom_percent: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -985,6 +996,16 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                     framing_warning: segment.framing_warning,
                     first_frame: segment.first_frame,
                     end_frame: segment.end_frame,
+                    layout: segment.layout,
+                    upper_height: segment.upper_height,
+                    inset: segment.has_inset.then_some([
+                        segment.inset_x,
+                        segment.inset_y,
+                        segment.inset_side,
+                    ]),
+                    background_colour: (!segment.background_colour.is_empty())
+                        .then_some(segment.background_colour),
+                    zoom_percent: segment.zoom_percent.max(100),
                 })
                 .collect(),
             sources: reply

@@ -162,11 +162,81 @@ pub fn interpolate(from: i64, to: i64, offset: i64, span: i64) -> i64 {
 pub enum LayoutState {
     /// Crop to a single speaker and follow them along the crop path.
     SpeakerFill,
-    /// Two deliberate, equal-height viewports; no active-speaker inference.
+    /// Two deliberate viewports stacked, upper and lower; no active-speaker
+    /// inference. The split sets how the height is shared.
     TwoUp,
     /// Letterbox the whole frame; the crop path is inert but preserved.
     #[default]
     Fit,
+    /// A full picture — the followed crop, or the whole frame when there is no
+    /// crop path — with the secondary crop inset in one corner. A screen with
+    /// the speaker over it, or one person with the other's reactions.
+    PictureInPicture,
+}
+
+/// What fills the frame around a fitted picture.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FitBackground {
+    /// The picture itself, scaled to fill and blurred.
+    Blur,
+    /// One colour, `#RRGGBB`.
+    Colour { colour: String },
+}
+
+/// The corner a picture-in-picture inset sits in.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InsetCorner {
+    TopLeft,
+    #[default]
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+/// Where a picture-in-picture inset sits and how large it is. It is square.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Inset {
+    pub corner: InsetCorner,
+    /// Its side as a share of the frame's width, per mille.
+    pub size: u16,
+}
+
+impl Default for Inset {
+    fn default() -> Self {
+        Self {
+            corner: InsetCorner::TopRight,
+            size: 360,
+        }
+    }
+}
+
+impl Inset {
+    /// The sizes offered: from a corner badge to most of the width.
+    pub const SIZES: std::ops::RangeInclusive<u16> = 200..=600;
+    /// The gap between the inset and the frame's edges, per mille of the width.
+    pub const MARGIN: i64 = 40;
+
+    /// The inset's square in pixels of a frame this size: `(x, y, side)`.
+    pub fn place(self, width: i64, height: i64) -> (i64, i64, i64) {
+        let side = (width * i64::from(self.size) / 1_000) & !1;
+        let margin = (width * Self::MARGIN / 1_000) & !1;
+        let x = match self.corner {
+            InsetCorner::TopLeft | InsetCorner::BottomLeft => margin,
+            InsetCorner::TopRight | InsetCorner::BottomRight => width - margin - side,
+        };
+        // Clear of the platforms' top bar, and of the caption and button
+        // block along the bottom.
+        let y = match self.corner {
+            InsetCorner::TopLeft | InsetCorner::TopRight => (height * 90 / 1_000) & !1,
+            InsetCorner::BottomLeft | InsetCorner::BottomRight => {
+                (height - (height * 260 / 1_000) - side) & !1
+            }
+        };
+        (x, y.max(0), side)
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -175,12 +245,33 @@ pub struct Layout {
     pub state: LayoutState,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crop_path: Vec<CropKeyframe>,
-    /// Lower viewport in a two-person composition, inert in other layouts.
+    /// Lower viewport in a two-person composition and the inset of a
+    /// picture-in-picture, inert in other layouts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secondary_crop_path: Vec<CropKeyframe>,
+    /// Two viewports: the upper one's share of the frame height, per mille.
+    /// Absent is an even split; a screen share over a face is the upper
+    /// viewport at the recording's own shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub split: Option<u16>,
+    /// What fills around a fitted picture. Absent is the blurred picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<FitBackground>,
+    /// How far past fitting a fitted picture is zoomed, in percent, centred:
+    /// the sides give way so the picture grows. Absent is 100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<u16>,
+    /// Where a picture-in-picture inset sits. Absent is the default corner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inset: Option<Inset>,
 }
 
 impl Layout {
+    /// The split ratios offered, per mille of the height for the upper viewport.
+    pub const SPLITS: std::ops::RangeInclusive<u16> = 250..=750;
+    /// The zooms a fitted picture may take, in percent.
+    pub const ZOOMS: std::ops::RangeInclusive<u16> = 100..=250;
+
     /// Old documents may request a followed crop without having saved one.
     /// Keep them editable, but make the missing framing explicit to delivery.
     pub fn needs_crop_repair(&self) -> bool {
@@ -188,8 +279,52 @@ impl Layout {
             LayoutState::Fit => false,
             LayoutState::SpeakerFill => self.crop_path.is_empty(),
             LayoutState::TwoUp => self.crop_path.is_empty() || self.secondary_crop_path.is_empty(),
+            LayoutState::PictureInPicture => self.secondary_crop_path.is_empty(),
         }
     }
+
+    /// The upper viewport's share of the height, per mille.
+    pub fn split_permille(&self) -> u16 {
+        self.split.unwrap_or(500)
+    }
+
+    /// The two viewports' heights in a frame this tall, upper first. Both
+    /// even, so each encodes.
+    pub fn viewport_heights(&self, height: i64) -> (i64, i64) {
+        let upper = (height * i64::from(self.split_permille()) / 1_000) & !1;
+        (upper, height - upper)
+    }
+
+    /// The fitted picture's zoom, in percent.
+    pub fn zoom_percent(&self) -> u16 {
+        self.zoom.unwrap_or(100)
+    }
+
+    /// The inset of a picture-in-picture.
+    pub fn inset_or_default(&self) -> Inset {
+        self.inset.unwrap_or_default()
+    }
+
+    /// Whether the style values are ones this layout can draw.
+    fn style_is_valid(&self) -> bool {
+        self.split.is_none_or(|split| Self::SPLITS.contains(&split))
+            && self.zoom.is_none_or(|zoom| Self::ZOOMS.contains(&zoom))
+            && self
+                .inset
+                .is_none_or(|inset| Inset::SIZES.contains(&inset.size))
+            && self
+                .background
+                .as_ref()
+                .is_none_or(|background| match background {
+                    FitBackground::Blur => true,
+                    FitBackground::Colour { colour } => is_hex_colour(colour),
+                })
+    }
+}
+
+/// `#RRGGBB`.
+fn is_hex_colour(hex: &str) -> bool {
+    hex.len() == 7 && hex.starts_with('#') && hex[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// One span of one source, placed on the program timeline by its position in
@@ -1183,6 +1318,18 @@ impl EditDocument {
                     segment.segment_id.clone(),
                 ));
             }
+            if segment.layout.state == LayoutState::PictureInPicture
+                && segment.layout.secondary_crop_path.is_empty()
+            {
+                return Err(DocumentError::InsetWithoutCropPath(
+                    segment.segment_id.clone(),
+                ));
+            }
+            if !segment.layout.style_is_valid() {
+                return Err(DocumentError::InvalidLayoutStyle(
+                    segment.segment_id.clone(),
+                ));
+            }
             for path in [
                 &segment.layout.crop_path,
                 &segment.layout.secondary_crop_path,
@@ -1251,11 +1398,7 @@ impl EditDocument {
             &self.captions.options.outline,
             &self.captions.options.accent,
         ] {
-            if colour.as_ref().is_some_and(|hex| {
-                hex.len() != 7
-                    || !hex.starts_with('#')
-                    || !hex[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
-            }) {
+            if colour.as_ref().is_some_and(|hex| !is_hex_colour(hex)) {
                 return Err(DocumentError::InvalidCaptionOptions);
             }
         }
@@ -1338,6 +1481,10 @@ pub enum DocumentError {
     NonFiniteGain,
     #[error("two-person layout on segment {0} requires both crop paths")]
     TwoUpWithoutCropPaths(String),
+    #[error("picture-in-picture on segment {0} requires an inset crop path")]
+    InsetWithoutCropPath(String),
+    #[error("segment {0} asks for a split, zoom, inset or background it cannot draw")]
+    InvalidLayoutStyle(String),
     #[error("no segment named {0}")]
     UnknownSegment(String),
     #[error("no cue named {0}")]

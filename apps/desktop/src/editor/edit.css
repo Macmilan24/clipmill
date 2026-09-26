@@ -591,6 +591,44 @@
   cursor: grabbing;
 }
 
+/* The Framing tab's layouts: a grid, since five names do not fit one row. */
+.edit-layouts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--cm-recessed-border);
+  border-radius: calc(var(--cm-radius-control) + 2px);
+  background: var(--cm-recessed);
+}
+
+.edit-layouts button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  text-align: left;
+}
+
+.edit-layouts button:hover:not(:disabled) {
+  color: var(--cm-text-primary);
+}
+
+.edit-layouts button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-layouts button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /*
  * The Original view's faces: each detected person is a button over the whole
  * frame, and clicking one follows them through the section.

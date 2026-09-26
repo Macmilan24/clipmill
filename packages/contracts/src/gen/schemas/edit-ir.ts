@@ -123,7 +123,10 @@ export interface VideoSegment {
   in_ticks: number;
   out_ticks: number;
   layout: {
-    state: "speaker_fill" | "fit" | "two_up";
+    /**
+     * picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.
+     */
+    state: "speaker_fill" | "fit" | "two_up" | "picture_in_picture";
     /**
      * Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.
      */
@@ -133,13 +136,39 @@ export interface VideoSegment {
       easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
     }[];
     /**
-     * Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.
+     * Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.
      */
     secondary_crop_path?: {
       t_ticks: number;
       rect: CropRect;
       easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
     }[];
+    /**
+     * two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.
+     */
+    split?: number;
+    /**
+     * What fills around a fitted picture. Absent is the picture itself, blurred.
+     */
+    background?:
+      | {
+          kind: "blur";
+        }
+      | {
+          kind: "colour";
+          colour: string;
+        };
+    /**
+     * How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.
+     */
+    zoom?: number;
+    /**
+     * Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.
+     */
+    inset?: {
+      corner: "top_left" | "top_right" | "bottom_left" | "bottom_right";
+      size: number;
+    };
   };
 }
 /**

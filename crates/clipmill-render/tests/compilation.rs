@@ -53,6 +53,7 @@ fn fit_document() -> EditDocument {
             secondary_crop_path: Vec::new(),
             state: LayoutState::Fit,
             crop_path: Vec::new(),
+            ..Layout::default()
         },
     )];
     document.captions.style_ref = RenderProfile::default().caption_style.style_ref;
@@ -234,6 +235,7 @@ fn adjacent_sections_share_one_seek_and_decoder() {
             state: LayoutState::Fit,
             crop_path: Vec::new(),
             secondary_crop_path: Vec::new(),
+            ..Layout::default()
         },
     ));
     let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
@@ -415,6 +417,7 @@ fn crop_document(path: Vec<CropKeyframe>) -> EditDocument {
             secondary_crop_path: Vec::new(),
             state: LayoutState::SpeakerFill,
             crop_path: path,
+            ..Layout::default()
         },
     )];
     document
@@ -900,5 +903,106 @@ fn two_person_render_and_preview_use_both_independent_viewports() {
     assert!(matches!(
         compile(&document, &[source()], &profile),
         Err(RenderError::CropOutsideFrame(_))
+    ));
+}
+
+fn still(x: i64, y: i64, width: i64, height: i64) -> Vec<CropKeyframe> {
+    vec![CropKeyframe {
+        t_ticks: 0,
+        rect: CropRect {
+            x,
+            y,
+            width,
+            height,
+        },
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]
+}
+
+#[test]
+fn a_screen_over_a_face_shares_the_height_at_its_split() {
+    // The recording's own 16:9 on top, 606 pixels of 1920; the face below.
+    let mut document = crop_document(still(0, 2, 1_918, 1_076));
+    let layout = &mut document.video.segments[0].layout;
+    layout.state = LayoutState::TwoUp;
+    layout.split = Some(316);
+    layout.secondary_crop_path = still(1_000, 0, 888, 1_080);
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("a split two-up compiles");
+    assert!(
+        plan.graph.graph.contains("scale=1080:606"),
+        "{}",
+        plan.graph.graph
+    );
+    assert!(plan.graph.graph.contains("scale=1080:1314"));
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert_eq!(preview.segments[0].layout, "two_up");
+    assert_eq!(preview.segments[0].upper_height, 606);
+
+    // The even split's portraits no longer fit this split's viewports.
+    let layout = &mut document.video.segments[0].layout;
+    layout.crop_path = still(0, 140, 900, 800);
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CropAspectMismatch(_)
+    ));
+}
+
+#[test]
+fn a_fitted_picture_takes_its_colour_and_zoom() {
+    let mut document = fit_document();
+    let layout = &mut document.video.segments[0].layout;
+    layout.background = Some(clipmill_edit_ir::FitBackground::Colour {
+        colour: "#00FF00".to_owned(),
+    });
+    layout.zoom = Some(150);
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    let graph = &plan.graph.graph;
+    assert!(graph.contains("color=0x00FF00@1:t=fill"), "{graph}");
+    // 1920x1080 fits 1080 wide at 608 tall; half as large again is
+    // 1620x912, and the frame keeps its middle 1080.
+    assert!(graph.contains("scale=1620:912,crop=1080:912"), "{graph}");
+    assert!(!graph.contains("gblur"));
+
+    // An unzoomed, blurred fit compiles exactly as it always has.
+    let unstyled = compile(&fit_document(), &[source()], &RenderProfile::default()).expect("fit");
+    assert!(
+        unstyled
+            .graph
+            .graph
+            .contains("force_original_aspect_ratio=decrease")
+    );
+    assert!(unstyled.graph.graph.contains("gblur"));
+}
+
+#[test]
+fn a_picture_in_picture_insets_its_square_in_the_chosen_corner() {
+    let mut document = fit_document();
+    let layout = &mut document.video.segments[0].layout;
+    layout.state = LayoutState::PictureInPicture;
+    layout.secondary_crop_path = still(1_100, 100, 800, 800);
+    layout.inset = Some(clipmill_edit_ir::Inset {
+        corner: clipmill_edit_ir::InsetCorner::BottomLeft,
+        size: 400,
+    });
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("compiles");
+    let graph = &plan.graph.graph;
+    // 40% of 1080 is 432, 4% in from the left and clear of the bottom block.
+    assert!(graph.contains("scale=432:432"), "{graph}");
+    assert!(graph.contains("overlay=x=42:y=988"), "{graph}");
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert_eq!(preview.segments[0].inset, Some((42, 988, 432)));
+    assert!(
+        preview.crops[0].is_none(),
+        "the full picture is the whole frame"
+    );
+    assert_eq!(preview.secondary_crops[0].unwrap().x, 1_100);
+
+    // An inset that is not square is a framing mistake, not rounding.
+    document.video.segments[0].layout.secondary_crop_path = still(1_100, 100, 800, 600);
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CropAspectMismatch(_)
     ));
 }
