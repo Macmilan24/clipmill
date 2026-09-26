@@ -372,6 +372,13 @@ impl ModelLibrary {
         let mut recommended_missing = Vec::new();
         let mut recommended_missing_bytes = 0_u64;
         let mut models = Vec::with_capacity(manifests.len());
+        let better = JOBS
+            .iter()
+            .filter_map(|job| {
+                self.more_accurate_here(job, &manifests, &effective, budget)
+                    .map(|model| (job.capability, model))
+            })
+            .collect::<BTreeMap<_, _>>();
         for manifest in &manifests {
             let (install, installed_bytes) = self.install_state(manifest);
             let supported = supported(manifest);
@@ -384,14 +391,16 @@ impl ModelLibrary {
                 recommended_missing_bytes = recommended_missing_bytes
                     .saturating_add(manifest.download_bytes().saturating_sub(installed_bytes));
             }
-            models.push(self.model_row(
+            let mut row = self.model_row(
                 manifest,
                 (install, installed_bytes),
                 supported,
                 budget,
                 progress.get(&manifest.name),
                 in_use.contains(&manifest.name),
-            ));
+            );
+            row.recommended |= better.values().any(|model| *model == manifest.name);
+            models.push(row);
         }
         let jobs = JOBS
             .iter()
@@ -430,6 +439,7 @@ impl ModelLibrary {
                         .into_iter()
                         .map(|manifest| manifest.name.clone())
                         .collect(),
+                    more_accurate: better.get(job.capability).cloned().unwrap_or_default(),
                 }
             })
             .collect();
@@ -445,6 +455,52 @@ impl ModelLibrary {
             recommended_missing_bytes,
             recommended_missing,
         }
+    }
+
+    /// The most accurate model for a job that this computer can run and hold
+    /// in memory, when it is more accurate than the one analyses plan: shown
+    /// as recommended here with a note, so the choice is never capped at the
+    /// floor every machine can run — and never made for the person either.
+    /// Ties go to one measurement may choose, then to the smaller download.
+    fn more_accurate_here(
+        &self,
+        job: &Job,
+        manifests: &[Arc<ModelManifest>],
+        effective: &Bindings,
+        budget: u64,
+    ) -> Option<String> {
+        let stage = job.stages[0];
+        let accuracy = |model: &str| {
+            implementations::for_stage_and_model(stage, model)
+                .map_or(0, |implementation| implementation.accuracy)
+        };
+        let planned = effective
+            .for_stage(stage)
+            .map_or(0, |binding| accuracy(&binding.model));
+        manifests
+            .iter()
+            .filter(|manifest| {
+                manifest.capability == job.capability
+                    && manifest.origin == ModelOrigin::Bundled
+                    && supported(manifest).is_ok()
+                    && memory_fit(manifest.memory.resident_bytes(), budget, self.total_memory)
+                        == "fits"
+            })
+            .filter_map(|manifest| {
+                let implementation = implementations::for_stage_and_model(stage, &manifest.name)?;
+                (implementation.accuracy > planned).then_some((implementation, manifest))
+            })
+            .max_by(|(left, left_manifest), (right, right_manifest)| {
+                left.accuracy
+                    .cmp(&right.accuracy)
+                    .then(right.opt_in.cmp(&left.opt_in))
+                    .then(
+                        right_manifest
+                            .download_bytes()
+                            .cmp(&left_manifest.download_bytes()),
+                    )
+            })
+            .map(|(_, manifest)| manifest.name.clone())
     }
 
     fn model_row(

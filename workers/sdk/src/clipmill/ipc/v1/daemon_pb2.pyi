@@ -2376,7 +2376,7 @@ class ModelDownloadV1(_message.Message):
     def __init__(self, state: _Optional[str] = ..., received_bytes: _Optional[int] = ..., total_bytes: _Optional[int] = ..., current_file: _Optional[str] = ..., error: _Optional[str] = ..., updated_unix_millis: _Optional[int] = ...) -> None: ...
 
 class ModelJobV1(_message.Message):
-    __slots__ = ("capability", "title", "summary", "model", "selected_by", "choice", "models")
+    __slots__ = ("capability", "title", "summary", "model", "selected_by", "choice", "models", "more_accurate")
     CAPABILITY_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SUMMARY_FIELD_NUMBER: _ClassVar[int]
@@ -2384,6 +2384,7 @@ class ModelJobV1(_message.Message):
     SELECTED_BY_FIELD_NUMBER: _ClassVar[int]
     CHOICE_FIELD_NUMBER: _ClassVar[int]
     MODELS_FIELD_NUMBER: _ClassVar[int]
+    MORE_ACCURATE_FIELD_NUMBER: _ClassVar[int]
     capability: str
     title: str
     summary: str
@@ -2391,7 +2392,8 @@ class ModelJobV1(_message.Message):
     selected_by: str
     choice: str
     models: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, capability: _Optional[str] = ..., title: _Optional[str] = ..., summary: _Optional[str] = ..., model: _Optional[str] = ..., selected_by: _Optional[str] = ..., choice: _Optional[str] = ..., models: _Optional[_Iterable[str]] = ...) -> None: ...
+    more_accurate: str
+    def __init__(self, capability: _Optional[str] = ..., title: _Optional[str] = ..., summary: _Optional[str] = ..., model: _Optional[str] = ..., selected_by: _Optional[str] = ..., choice: _Optional[str] = ..., models: _Optional[_Iterable[str]] = ..., more_accurate: _Optional[str] = ...) -> None: ...
 
 class ListModelsResponse(_message.Message):
     __slots__ = ("models", "jobs", "install_path", "available_bytes", "available_known", "memory_total_bytes", "memory_budget_bytes", "recommended_missing_bytes", "recommended_missing")

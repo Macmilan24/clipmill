@@ -88,6 +88,7 @@ struct ModelJobView {
     selected_by: String,
     choice: String,
     models: Vec<String>,
+    more_accurate: String,
 }
 
 impl From<ipc::ListModelsResponse> for LibraryView {
@@ -106,6 +107,7 @@ impl From<ipc::ListModelsResponse> for LibraryView {
                     selected_by: job.selected_by,
                     choice: job.choice,
                     models: job.models,
+                    more_accurate: job.more_accurate,
                 })
                 .collect(),
             install_path: value.install_path,

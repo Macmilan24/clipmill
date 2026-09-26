@@ -44,6 +44,11 @@ struct BenchmarkMeasurement {
 
 const BENCHMARK_SCHEMA: &str = "clipmill.speech_benchmark.v1";
 
+/// How fast a candidate must run on this machine, as a multiple of real time,
+/// for its accuracy to count: at 2x an hour of recording takes half an hour.
+/// Slower than that, the fastest candidate is the kinder choice.
+const KEEPS_UP: f64 = 2.0;
+
 /// How a capability's implementation was decided.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SelectedBy {
@@ -308,13 +313,23 @@ pub(crate) fn measure(
                 },
             }
         }
-        // Fastest first; a tie on speed goes to the one that fits in less
-        // memory, and a tie on both goes to the earlier name so the answer
-        // does not depend on iteration order.
+        // The most accurate of those that keep up here comes first, then the
+        // faster; the rest follow fastest first, so a machine where nothing
+        // keeps up still gets the quickest. A tie on both goes to the one that
+        // fits in less memory, then to the earlier name, so the answer does
+        // not depend on iteration order.
         runnable.sort_by(|left, right| {
-            right
-                .1
-                .total_cmp(&left.1)
+            let keeps = |factor: f64| factor >= KEEPS_UP;
+            keeps(right.1)
+                .cmp(&keeps(left.1))
+                .then_with(|| {
+                    if keeps(left.1) && keeps(right.1) {
+                        right.0.accuracy.cmp(&left.0.accuracy)
+                    } else {
+                        std::cmp::Ordering::Equal
+                    }
+                })
+                .then(right.1.total_cmp(&left.1))
                 .then(left.2.cmp(&right.2))
                 .then(left.0.name.cmp(right.0.name))
         });
@@ -343,10 +358,17 @@ pub(crate) fn measure(
                 "stage": implementation.stage,
             });
             if let (SelectedBy::Measured, Some((_, factor, _))) = (reason, runnable.first()) {
-                let detail = format!(
-                    "fastest of {} runnable candidates at {factor:.2}x real time",
-                    runnable.len()
-                );
+                let detail = if *factor >= KEEPS_UP {
+                    format!(
+                        "most accurate of {} runnable candidates that keep up at {KEEPS_UP}x real time or faster; this one runs at {factor:.2}x",
+                        runnable.len()
+                    )
+                } else {
+                    format!(
+                        "fastest of {} runnable candidates at {factor:.2}x real time; none keeps up at {KEEPS_UP}x",
+                        runnable.len()
+                    )
+                };
                 entry["detail"] = Value::String(detail);
             }
             bindings.push(entry);
@@ -605,6 +627,62 @@ mod tests {
             binding_for(&selection, "forced-align")["model"],
             "wav2vec2-ctc-en"
         );
+    }
+
+    /// Speed decides only once accuracy has had its say: the more accurate
+    /// recognizer wins while it keeps up, and when nothing keeps up the
+    /// fastest does.
+    #[test]
+    fn the_most_accurate_recognizer_that_keeps_up_wins_and_the_fastest_otherwise() {
+        let models = registry();
+        let measured = |base: f64, qwen: f64| {
+            let temp = TempDir::new().expect("temp");
+            let path = benchmark(
+                &temp,
+                &json!({
+                    "schema_version": "clipmill.speech_benchmark.v1",
+                    "hardware_fingerprint": FINGERPRINT,
+                    "measurements": [
+                        {
+                            "implementation": "clipmill-worker-asr@0.1.0",
+                            "model_digest": digest_of(&models, "whisper-base"),
+                            "runnable": true,
+                            "real_time_factor": base,
+                            "peak_resident_bytes": 700_000_000_u64,
+                        },
+                        {
+                            "implementation": "clipmill-worker-speech-mlx@0.1.0/asr",
+                            "model_digest": digest_of(&models, "qwen3-asr-mlx"),
+                            "runnable": true,
+                            "real_time_factor": qwen,
+                            "peak_resident_bytes": 3_400_000_000_u64,
+                        },
+                    ],
+                }),
+            );
+            let selection = measure_value(&path, FINGERPRINT, &models);
+            binding_for(&selection, "asr").clone()
+        };
+        // Base is faster, but the more accurate one keeps up: it wins.
+        let accurate = measured(24.0, 6.0);
+        assert_eq!(accurate["model"], "qwen3-asr-mlx");
+        assert!(
+            accurate["detail"]
+                .as_str()
+                .expect("detail")
+                .starts_with("most accurate")
+        );
+        // Neither keeps up at twice real time: the faster of the two.
+        let slow = measured(1.6, 0.9);
+        assert_eq!(slow["model"], "whisper-base");
+        assert!(
+            slow["detail"]
+                .as_str()
+                .expect("detail")
+                .contains("none keeps up")
+        );
+        // Only the floor keeps up: the floor.
+        assert_eq!(measured(3.0, 1.2)["model"], "whisper-base");
     }
 
     /// A benchmark from another machine is not evidence about this one.

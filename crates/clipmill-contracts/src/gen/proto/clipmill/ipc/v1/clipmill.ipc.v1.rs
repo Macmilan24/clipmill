@@ -2854,6 +2854,10 @@ pub struct ModelJobV1 {
     /// Every model registered for the job, in display order.
     #[prost(string, repeated, tag = "7")]
     pub models: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// A model more accurate than the planned one that this computer can run
+    /// and hold in memory, when there is one: offered, never switched to.
+    #[prost(string, tag = "8")]
+    pub more_accurate: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListModelsResponse {

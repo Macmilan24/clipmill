@@ -32,6 +32,14 @@
   overflow-wrap: anywhere;
 }
 
+.model-job-upgrade {
+  color: var(--cm-text-secondary);
+}
+
+.model-job-upgrade > svg {
+  color: var(--cm-accent);
+}
+
 .model-job-issue > svg {
   width: 13px;
   height: 13px;

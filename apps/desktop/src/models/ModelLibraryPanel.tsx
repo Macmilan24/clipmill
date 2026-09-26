@@ -7,6 +7,7 @@ import {
   Plus,
   RefreshCw,
   ScanFace,
+  Sparkles,
   TriangleAlert,
   Waves,
   Workflow,
@@ -25,7 +26,13 @@ import type { ShellApi } from '../daemon/api.js';
 import type { LibraryModel, ModelJob, ModelLibrary } from '../daemon/models.js';
 import { formatBytes } from '../deviceProfile.js';
 import { AddModelSheet } from './AddModelSheet.js';
-import { isDownloading, jobReason, jobSentence, recommendedTitles } from './describe.js';
+import {
+  isDownloading,
+  jobReason,
+  jobSentence,
+  recommendedTitles,
+  upgradeNote,
+} from './describe.js';
 import { ModelRow } from './ModelRow.js';
 import { type ModelLibraryState, useModelLibrary } from './useModelLibrary.js';
 
@@ -232,6 +239,7 @@ function JobCard({
     .filter((model): model is LibraryModel => model !== undefined);
   const planned = byName.get(job.model);
   const plannedReady = planned?.installState === 'installed';
+  const upgrade = upgradeNote(job, library);
   return (
     <section aria-labelledby={`job-${job.capability}`}>
       <Card className="preference-section model-job gap-0 overflow-hidden py-0">
@@ -281,6 +289,12 @@ function JobCard({
           <p className="model-job-issue" role="status">
             <TriangleAlert aria-hidden="true" />
             {workerIssue}
+          </p>
+        )}
+        {upgrade !== null && (
+          <p className="model-job-issue model-job-upgrade">
+            <Sparkles aria-hidden="true" />
+            {upgrade}
           </p>
         )}
         <CardContent className="p-0">
