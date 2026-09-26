@@ -261,3 +261,83 @@ describe('following a person picked on the whole frame', () => {
     expect(state.apply).not.toHaveBeenCalled();
   });
 });
+
+const still = (x: number) => [{ t_ticks: 0, rect: { x, y: 140, width: 900, height: 800 } }];
+
+describe('choosing a layout in the Framing tab', () => {
+  beforeEach(() => {
+    const segments = state.plan!.segments.map((segment) =>
+      Object.assign({}, segment, { hasTwoUpPaths: true }),
+    );
+    const layout = { state: 'two_up', crop_path: still(0), secondary_crop_path: still(1000) };
+    state = {
+      ...state,
+      plan: { ...state.plan!, segments },
+      document: {
+        video: {
+          segments: segments.map((segment) => ({
+            segment_id: segment.segmentId,
+            source_fingerprint: segment.sourceFingerprint,
+            in_ticks: segment.inTicks,
+            out_ticks: segment.outTicks,
+            layout,
+          })),
+        },
+        captions: { cues: [], options: {} },
+      } as unknown as EditorState['document'],
+    };
+  });
+  function openFraming() {
+    seekTo(state.plan!, 450);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /framing/i }));
+  }
+  const applied = () =>
+    (
+      vi.mocked(state.apply).mock.calls.at(-1)![0] as unknown as {
+        commands: Record<string, unknown>[];
+      }
+    ).commands;
+
+  it('turns two speakers into a picture in picture, the second person inset', () => {
+    show(vi.fn());
+    openFraming();
+    fireEvent.click(screen.getByRole('button', { name: 'Picture in picture' }));
+    const commands = applied();
+    expect(commands[0]).toEqual({
+      op: 'set_layout',
+      segment_id: 'second',
+      state: 'picture_in_picture',
+    });
+    const inset = commands.find((command) => command.op === 'replace_secondary_crop_path') as {
+      path: { rect: { width: number; height: number } }[];
+    };
+    expect(inset.path[0]!.rect.width).toBe(inset.path[0]!.rect.height);
+  });
+
+  it('puts the whole recording on top for a screen and a face', () => {
+    show(vi.fn());
+    openFraming();
+    fireEvent.click(screen.getByRole('button', { name: 'Screen and face' }));
+    expect(applied()).toContainEqual({
+      op: 'set_layout_style',
+      segment_id: 'second',
+      split: 316,
+    });
+  });
+
+  it('copies a style to every section, reshaping two-person crops for the split', () => {
+    const segments = state.document!.video.segments!.map((segment) =>
+      Object.assign({}, segment, { layout: Object.assign({}, segment.layout, { split: 400 }) }),
+    );
+    state = {
+      ...state,
+      document: { ...state.document!, video: { ...state.document!.video, segments } },
+    };
+    show(vi.fn());
+    openFraming();
+    fireEvent.click(screen.getByRole('button', { name: 'Use this style in every section' }));
+    const commands = applied();
+    expect(commands).toContainEqual({ op: 'set_layout_style', segment_id: 'first', split: 400 });
+    expect(commands.filter((command) => command.segment_id === 'first')).toHaveLength(3);
+  });
+});

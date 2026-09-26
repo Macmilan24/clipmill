@@ -2250,6 +2250,40 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "        \"state\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"background\": {"]
+#[doc = "          \"description\": \"What fills around a fitted picture. Absent is the picture itself, blurred.\","]
+#[doc = "          \"oneOf\": ["]
+#[doc = "            {"]
+#[doc = "              \"type\": \"object\","]
+#[doc = "              \"required\": ["]
+#[doc = "                \"kind\""]
+#[doc = "              ],"]
+#[doc = "              \"properties\": {"]
+#[doc = "                \"kind\": {"]
+#[doc = "                  \"const\": \"blur\""]
+#[doc = "                }"]
+#[doc = "              },"]
+#[doc = "              \"additionalProperties\": false"]
+#[doc = "            },"]
+#[doc = "            {"]
+#[doc = "              \"type\": \"object\","]
+#[doc = "              \"required\": ["]
+#[doc = "                \"colour\","]
+#[doc = "                \"kind\""]
+#[doc = "              ],"]
+#[doc = "              \"properties\": {"]
+#[doc = "                \"colour\": {"]
+#[doc = "                  \"type\": \"string\","]
+#[doc = "                  \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "                },"]
+#[doc = "                \"kind\": {"]
+#[doc = "                  \"const\": \"colour\""]
+#[doc = "                }"]
+#[doc = "              },"]
+#[doc = "              \"additionalProperties\": false"]
+#[doc = "            }"]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"crop_path\": {"]
 #[doc = "          \"description\": \"Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.\","]
 #[doc = "          \"type\": \"array\","]
@@ -2279,8 +2313,32 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "            \"additionalProperties\": false"]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"inset\": {"]
+#[doc = "          \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"corner\","]
+#[doc = "            \"size\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"corner\": {"]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"top_left\","]
+#[doc = "                \"top_right\","]
+#[doc = "                \"bottom_left\","]
+#[doc = "                \"bottom_right\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 600.0,"]
+#[doc = "              \"minimum\": 200.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
 #[doc = "        \"secondary_crop_path\": {"]
-#[doc = "          \"description\": \"Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.\","]
+#[doc = "          \"description\": \"Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.\","]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
 #[doc = "            \"type\": \"object\","]
@@ -2308,12 +2366,26 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "            \"additionalProperties\": false"]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"split\": {"]
+#[doc = "          \"description\": \"two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 750.0,"]
+#[doc = "          \"minimum\": 250.0"]
+#[doc = "        },"]
 #[doc = "        \"state\": {"]
+#[doc = "          \"description\": \"picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.\","]
 #[doc = "          \"enum\": ["]
 #[doc = "            \"speaker_fill\","]
 #[doc = "            \"fit\","]
-#[doc = "            \"two_up\""]
+#[doc = "            \"two_up\","]
+#[doc = "            \"picture_in_picture\""]
 #[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"zoom\": {"]
+#[doc = "          \"description\": \"How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 250.0,"]
+#[doc = "          \"minimum\": 100.0"]
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
@@ -2359,6 +2431,40 @@ impl VideoSegment {
 #[doc = "    \"state\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"background\": {"]
+#[doc = "      \"description\": \"What fills around a fitted picture. Absent is the picture itself, blurred.\","]
+#[doc = "      \"oneOf\": ["]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"kind\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"blur\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"colour\","]
+#[doc = "            \"kind\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"colour\": {"]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"colour\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        }"]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"crop_path\": {"]
 #[doc = "      \"description\": \"Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.\","]
 #[doc = "      \"type\": \"array\","]
@@ -2388,8 +2494,32 @@ impl VideoSegment {
 #[doc = "        \"additionalProperties\": false"]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"inset\": {"]
+#[doc = "      \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"corner\","]
+#[doc = "        \"size\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"corner\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"top_left\","]
+#[doc = "            \"top_right\","]
+#[doc = "            \"bottom_left\","]
+#[doc = "            \"bottom_right\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 600.0,"]
+#[doc = "          \"minimum\": 200.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"secondary_crop_path\": {"]
-#[doc = "      \"description\": \"Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.\","]
+#[doc = "      \"description\": \"Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.\","]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
 #[doc = "        \"type\": \"object\","]
@@ -2417,12 +2547,26 @@ impl VideoSegment {
 #[doc = "        \"additionalProperties\": false"]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"split\": {"]
+#[doc = "      \"description\": \"two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 750.0,"]
+#[doc = "      \"minimum\": 250.0"]
+#[doc = "    },"]
 #[doc = "    \"state\": {"]
+#[doc = "      \"description\": \"picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.\","]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"speaker_fill\","]
 #[doc = "        \"fit\","]
-#[doc = "        \"two_up\""]
+#[doc = "        \"two_up\","]
+#[doc = "        \"picture_in_picture\""]
 #[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"zoom\": {"]
+#[doc = "      \"description\": \"How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 250.0,"]
+#[doc = "      \"minimum\": 100.0"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -2432,17 +2576,153 @@ impl VideoSegment {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct VideoSegmentLayout {
+    #[doc = "What fills around a fitted picture. Absent is the picture itself, blurred."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub background: ::std::option::Option<VideoSegmentLayoutBackground>,
     #[doc = "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub crop_path: ::std::vec::Vec<VideoSegmentLayoutCropPathItem>,
-    #[doc = "Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub inset: ::std::option::Option<VideoSegmentLayoutInset>,
+    #[doc = "Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub secondary_crop_path: ::std::vec::Vec<VideoSegmentLayoutSecondaryCropPathItem>,
+    #[doc = "two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub split: ::std::option::Option<i64>,
+    #[doc = "picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner."]
     pub state: VideoSegmentLayoutState,
+    #[doc = "How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub zoom: ::std::option::Option<i64>,
 }
 impl VideoSegmentLayout {
     pub fn builder() -> builder::VideoSegmentLayout {
         Default::default()
+    }
+}
+#[doc = "What fills around a fitted picture. Absent is the picture itself, blurred."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"What fills around a fitted picture. Absent is the picture itself, blurred.\","]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"kind\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"blur\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"colour\","]
+#[doc = "        \"kind\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"colour\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"colour\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(tag = "kind", content = "colour")]
+pub enum VideoSegmentLayoutBackground {
+    #[serde(rename = "blur")]
+    Blur,
+    #[serde(rename = "colour")]
+    Colour(VideoSegmentLayoutBackgroundColour),
+}
+impl ::std::convert::From<VideoSegmentLayoutBackgroundColour> for VideoSegmentLayoutBackground {
+    fn from(value: VideoSegmentLayoutBackgroundColour) -> Self {
+        Self::Colour(value)
+    }
+}
+#[doc = "`VideoSegmentLayoutBackgroundColour`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VideoSegmentLayoutBackgroundColour(::std::string::String);
+impl ::std::ops::Deref for VideoSegmentLayoutBackgroundColour {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VideoSegmentLayoutBackgroundColour> for ::std::string::String {
+    fn from(value: VideoSegmentLayoutBackgroundColour) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VideoSegmentLayoutBackgroundColour {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9A-Fa-f]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9A-Fa-f]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentLayoutBackgroundColour {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentLayoutBackgroundColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutBackgroundColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VideoSegmentLayoutBackgroundColour {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "`VideoSegmentLayoutCropPathItem`"]
@@ -2564,6 +2844,129 @@ impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentLayoutCropP
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutCropPathItemEasing {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"corner\","]
+#[doc = "    \"size\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"corner\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"top_left\","]
+#[doc = "        \"top_right\","]
+#[doc = "        \"bottom_left\","]
+#[doc = "        \"bottom_right\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"size\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 600.0,"]
+#[doc = "      \"minimum\": 200.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VideoSegmentLayoutInset {
+    pub corner: VideoSegmentLayoutInsetCorner,
+    pub size: i64,
+}
+impl VideoSegmentLayoutInset {
+    pub fn builder() -> builder::VideoSegmentLayoutInset {
+        Default::default()
+    }
+}
+#[doc = "`VideoSegmentLayoutInsetCorner`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"top_left\","]
+#[doc = "    \"top_right\","]
+#[doc = "    \"bottom_left\","]
+#[doc = "    \"bottom_right\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum VideoSegmentLayoutInsetCorner {
+    #[serde(rename = "top_left")]
+    TopLeft,
+    #[serde(rename = "top_right")]
+    TopRight,
+    #[serde(rename = "bottom_left")]
+    BottomLeft,
+    #[serde(rename = "bottom_right")]
+    BottomRight,
+}
+impl ::std::fmt::Display for VideoSegmentLayoutInsetCorner {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::TopLeft => f.write_str("top_left"),
+            Self::TopRight => f.write_str("top_right"),
+            Self::BottomLeft => f.write_str("bottom_left"),
+            Self::BottomRight => f.write_str("bottom_right"),
+        }
+    }
+}
+impl ::std::str::FromStr for VideoSegmentLayoutInsetCorner {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "top_left" => Ok(Self::TopLeft),
+            "top_right" => Ok(Self::TopRight),
+            "bottom_left" => Ok(Self::BottomLeft),
+            "bottom_right" => Ok(Self::BottomRight),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentLayoutInsetCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentLayoutInsetCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutInsetCorner {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2701,16 +3104,18 @@ impl ::std::convert::TryFrom<::std::string::String>
         value.parse()
     }
 }
-#[doc = "`VideoSegmentLayoutState`"]
+#[doc = "picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
 #[doc = r""]
 #[doc = r" ```json"]
 #[doc = "{"]
+#[doc = "  \"description\": \"picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.\","]
 #[doc = "  \"enum\": ["]
 #[doc = "    \"speaker_fill\","]
 #[doc = "    \"fit\","]
-#[doc = "    \"two_up\""]
+#[doc = "    \"two_up\","]
+#[doc = "    \"picture_in_picture\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -2734,6 +3139,8 @@ pub enum VideoSegmentLayoutState {
     Fit,
     #[serde(rename = "two_up")]
     TwoUp,
+    #[serde(rename = "picture_in_picture")]
+    PictureInPicture,
 }
 impl ::std::fmt::Display for VideoSegmentLayoutState {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -2741,6 +3148,7 @@ impl ::std::fmt::Display for VideoSegmentLayoutState {
             Self::SpeakerFill => f.write_str("speaker_fill"),
             Self::Fit => f.write_str("fit"),
             Self::TwoUp => f.write_str("two_up"),
+            Self::PictureInPicture => f.write_str("picture_in_picture"),
         }
     }
 }
@@ -2751,6 +3159,7 @@ impl ::std::str::FromStr for VideoSegmentLayoutState {
             "speaker_fill" => Ok(Self::SpeakerFill),
             "fit" => Ok(Self::Fit),
             "two_up" => Ok(Self::TwoUp),
+            "picture_in_picture" => Ok(Self::PictureInPicture),
             _ => Err("invalid value".into()),
         }
     }
@@ -4179,26 +4588,50 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct VideoSegmentLayout {
+        background: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentLayoutBackground>,
+            ::std::string::String,
+        >,
         crop_path: ::std::result::Result<
             ::std::vec::Vec<super::VideoSegmentLayoutCropPathItem>,
+            ::std::string::String,
+        >,
+        inset: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentLayoutInset>,
             ::std::string::String,
         >,
         secondary_crop_path: ::std::result::Result<
             ::std::vec::Vec<super::VideoSegmentLayoutSecondaryCropPathItem>,
             ::std::string::String,
         >,
+        split: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
         state: ::std::result::Result<super::VideoSegmentLayoutState, ::std::string::String>,
+        zoom: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
     }
     impl ::std::default::Default for VideoSegmentLayout {
         fn default() -> Self {
             Self {
+                background: Ok(Default::default()),
                 crop_path: Ok(Default::default()),
+                inset: Ok(Default::default()),
                 secondary_crop_path: Ok(Default::default()),
+                split: Ok(Default::default()),
                 state: Err("no value supplied for state".to_string()),
+                zoom: Ok(Default::default()),
             }
         }
     }
     impl VideoSegmentLayout {
+        pub fn background<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::VideoSegmentLayoutBackground>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.background = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for background: {e}"));
+            self
+        }
         pub fn crop_path<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::vec::Vec<super::VideoSegmentLayoutCropPathItem>>,
@@ -4207,6 +4640,16 @@ pub mod builder {
             self.crop_path = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for crop_path: {e}"));
+            self
+        }
+        pub fn inset<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::VideoSegmentLayoutInset>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.inset = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for inset: {e}"));
             self
         }
         pub fn secondary_crop_path<T>(mut self, value: T) -> Self
@@ -4221,6 +4664,16 @@ pub mod builder {
             });
             self
         }
+        pub fn split<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.split = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for split: {e}"));
+            self
+        }
         pub fn state<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::VideoSegmentLayoutState>,
@@ -4231,6 +4684,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for state: {e}"));
             self
         }
+        pub fn zoom<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.zoom = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for zoom: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<VideoSegmentLayout> for super::VideoSegmentLayout {
         type Error = super::error::ConversionError;
@@ -4238,18 +4701,26 @@ pub mod builder {
             value: VideoSegmentLayout,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                background: value.background?,
                 crop_path: value.crop_path?,
+                inset: value.inset?,
                 secondary_crop_path: value.secondary_crop_path?,
+                split: value.split?,
                 state: value.state?,
+                zoom: value.zoom?,
             })
         }
     }
     impl ::std::convert::From<super::VideoSegmentLayout> for VideoSegmentLayout {
         fn from(value: super::VideoSegmentLayout) -> Self {
             Self {
+                background: Ok(value.background),
                 crop_path: Ok(value.crop_path),
+                inset: Ok(value.inset),
                 secondary_crop_path: Ok(value.secondary_crop_path),
+                split: Ok(value.split),
                 state: Ok(value.state),
+                zoom: Ok(value.zoom),
             }
         }
     }
@@ -4327,6 +4798,60 @@ pub mod builder {
                 easing: Ok(value.easing),
                 rect: Ok(value.rect),
                 t_ticks: Ok(value.t_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct VideoSegmentLayoutInset {
+        corner: ::std::result::Result<super::VideoSegmentLayoutInsetCorner, ::std::string::String>,
+        size: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for VideoSegmentLayoutInset {
+        fn default() -> Self {
+            Self {
+                corner: Err("no value supplied for corner".to_string()),
+                size: Err("no value supplied for size".to_string()),
+            }
+        }
+    }
+    impl VideoSegmentLayoutInset {
+        pub fn corner<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::VideoSegmentLayoutInsetCorner>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.corner = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for corner: {e}"));
+            self
+        }
+        pub fn size<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.size = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for size: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<VideoSegmentLayoutInset> for super::VideoSegmentLayoutInset {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: VideoSegmentLayoutInset,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                corner: value.corner?,
+                size: value.size?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::VideoSegmentLayoutInset> for VideoSegmentLayoutInset {
+        fn from(value: super::VideoSegmentLayoutInset) -> Self {
+            Self {
+                corner: Ok(value.corner),
+                size: Ok(value.size),
             }
         }
     }

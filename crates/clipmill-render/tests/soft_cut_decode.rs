@@ -91,6 +91,7 @@ fn soft_cuts_match_preview_weights_without_shortening_or_retiming_the_clip() {
                 state: LayoutState::SpeakerFill,
                 crop_path: path(0, 0, 90, 160),
                 secondary_crop_path: Vec::new(),
+                ..Layout::default()
             },
         },
         VideoSegment {
@@ -102,6 +103,7 @@ fn soft_cuts_match_preview_weights_without_shortening_or_retiming_the_clip() {
                 state: LayoutState::TwoUp,
                 crop_path: path(0, 0, 90, 80),
                 secondary_crop_path: path(70, 80, 90, 80),
+                ..Layout::default()
             },
         },
     ];

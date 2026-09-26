@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
-import type { PreviewPlan, PreviewSource } from '../daemon/client.js';
+import type { PreviewPlan, PreviewSegment, PreviewSource } from '../daemon/client.js';
 import { cropAt, proxySecondsAt, segmentAt, sourceOf } from './player.js';
 
 type Crop = ReturnType<typeof cropAt>;
@@ -11,6 +11,14 @@ interface Drawing {
   readonly source: Pick<PreviewSource, 'displayWidth' | 'displayHeight'> | null;
   readonly width: number;
   readonly height: number;
+  /**
+   * The section being drawn, for its layout and the render's geometry for it.
+   * Absent (or from an older host) draws what the crops alone say.
+   */
+  readonly segment?: Pick<
+    PreviewSegment,
+    'layout' | 'upperHeight' | 'inset' | 'backgroundColour' | 'zoomPercent'
+  > | null;
 }
 
 /** Both portraits are sampled from this one decoded frame; they cannot drift. */
@@ -19,12 +27,18 @@ export function drawComposition(
   video: Picture,
   drawing: Drawing,
 ) {
-  const { width, height, crop, secondary, source } = drawing;
+  const { width, height, crop, secondary, source, segment } = drawing;
   const pixelWidth = 'videoWidth' in video ? video.videoWidth : video.width;
   const pixelHeight = 'videoHeight' in video ? video.videoHeight : video.height;
   if (!pixelWidth || !pixelHeight) return false;
   context.clearRect(0, 0, width, height);
-  const portrait = (rect: NonNullable<Crop>, top: number, viewportHeight: number) => {
+  const portrait = (
+    rect: NonNullable<Crop>,
+    top: number,
+    viewportHeight: number,
+    left = 0,
+    viewportWidth = width,
+  ) => {
     const sx = pixelWidth / (source?.displayWidth ?? pixelWidth);
     const sy = pixelHeight / (source?.displayHeight ?? pixelHeight);
     context.drawImage(
@@ -33,39 +47,63 @@ export function drawComposition(
       rect.y * sy,
       rect.width * sx,
       rect.height * sy,
-      0,
+      left,
       top,
-      width,
+      viewportWidth,
       viewportHeight,
     );
   };
-  if (crop) {
-    portrait(crop, 0, secondary ? height / 2 : height);
-    if (secondary) portrait(secondary, height / 2, height / 2);
-    return true;
-  }
-  const fill = Math.max(width / pixelWidth, height / pixelHeight);
-  context.save();
-  context.filter = `blur(${(40 * height) / 1920}px)`;
-  try {
+  // The whole picture over its fill, zoomed about its centre when asked; the
+  // canvas edge crops a zoomed picture exactly as the render's crop does.
+  const fitted = () => {
+    if (segment?.backgroundColour) {
+      context.fillStyle = segment.backgroundColour;
+      context.fillRect(0, 0, width, height);
+    } else {
+      const fill = Math.max(width / pixelWidth, height / pixelHeight);
+      context.save();
+      context.filter = `blur(${(40 * height) / 1920}px)`;
+      try {
+        context.drawImage(
+          video,
+          (width - pixelWidth * fill) / 2,
+          (height - pixelHeight * fill) / 2,
+          pixelWidth * fill,
+          pixelHeight * fill,
+        );
+      } finally {
+        context.restore();
+      }
+    }
+    const fit =
+      Math.min(width / pixelWidth, height / pixelHeight) * ((segment?.zoomPercent ?? 100) / 100);
     context.drawImage(
       video,
-      (width - pixelWidth * fill) / 2,
-      (height - pixelHeight * fill) / 2,
-      pixelWidth * fill,
-      pixelHeight * fill,
+      (width - pixelWidth * fit) / 2,
+      (height - pixelHeight * fit) / 2,
+      pixelWidth * fit,
+      pixelHeight * fit,
     );
-  } finally {
-    context.restore();
+  };
+  const layout = segment?.layout || (crop ? (secondary ? 'two_up' : 'speaker_fill') : 'fit');
+  if (layout === 'picture_in_picture') {
+    if (crop) portrait(crop, 0, height);
+    else fitted();
+    const inset = segment?.inset;
+    if (secondary && inset) portrait(secondary, inset[1], inset[2], inset[0], inset[2]);
+    return true;
   }
-  const fit = Math.min(width / pixelWidth, height / pixelHeight);
-  context.drawImage(
-    video,
-    (width - pixelWidth * fit) / 2,
-    (height - pixelHeight * fit) / 2,
-    pixelWidth * fit,
-    pixelHeight * fit,
-  );
+  if (crop && layout !== 'fit') {
+    if (secondary) {
+      const upper = segment?.upperHeight || height / 2;
+      portrait(crop, 0, upper);
+      portrait(secondary, upper, height - upper);
+    } else {
+      portrait(crop, 0, height);
+    }
+    return true;
+  }
+  fitted();
   return true;
 }
 
@@ -254,6 +292,7 @@ export function CompositionCanvas({
             crop: cropAt(currentPlan, target.frame),
             secondary: cropAt(currentPlan, target.frame, true),
             source: sourceOf(currentPlan, segment),
+            segment,
             width: currentPlan.width,
             height: currentPlan.height,
           })
@@ -321,6 +360,7 @@ export function CompositionCanvas({
           source: segment ? sourceOf(drawingPlan, segment) : null,
           width: drawingPlan.width,
           height: drawingPlan.height,
+          segment,
         });
         if (drawn) {
           if (transition && held) {

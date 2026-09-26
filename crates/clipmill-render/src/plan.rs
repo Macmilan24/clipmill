@@ -393,6 +393,7 @@ fn lay_out(
                 LayoutState::Fit => "fit",
                 LayoutState::SpeakerFill => "speaker_fill",
                 LayoutState::TwoUp => "two_up",
+                LayoutState::PictureInPicture => "picture_in_picture",
             }
             .to_owned(),
             frame_count,
@@ -532,33 +533,49 @@ pub fn largest_upscale(
         else {
             continue;
         };
-        let factor = match segment.layout.state {
-            LayoutState::Fit => {
-                if source.width <= 0 || source.height <= 0 {
-                    continue;
-                }
+        let layout = &segment.layout;
+        let fitted = || {
+            (source.width > 0 && source.height > 0).then(|| {
                 (profile.width as f64 / source.width as f64)
                     .min(profile.height as f64 / source.height as f64)
+                    * f64::from(layout.zoom_percent())
+                    / 100.0
+            })
+        };
+        // How far a path's tightest crop is stretched to fill its viewport.
+        let stretched = |path: &[clipmill_edit_ir::CropKeyframe], viewport: i64| {
+            path.iter()
+                .map(|keyframe| keyframe.rect.height)
+                .filter(|height| *height > 0)
+                .min()
+                .map(|crop| viewport as f64 / crop as f64)
+        };
+        let factors = match layout.state {
+            LayoutState::Fit => vec![fitted()],
+            LayoutState::SpeakerFill => vec![stretched(&layout.crop_path, profile.height)],
+            LayoutState::TwoUp => {
+                let (upper, lower) = layout.viewport_heights(profile.height);
+                vec![
+                    stretched(&layout.crop_path, upper),
+                    stretched(&layout.secondary_crop_path, lower),
+                ]
             }
-            LayoutState::SpeakerFill | LayoutState::TwoUp => {
-                let viewport = if segment.layout.state == LayoutState::TwoUp {
-                    profile.height / 2
-                } else {
-                    profile.height
-                };
-                let Some(crop) = segment
-                    .layout
-                    .crop_path
-                    .iter()
-                    .chain(&segment.layout.secondary_crop_path)
-                    .map(|keyframe| keyframe.rect.height)
-                    .filter(|height| *height > 0)
-                    .min()
-                else {
-                    continue;
-                };
-                viewport as f64 / crop as f64
+            LayoutState::PictureInPicture => {
+                let (_, _, side) = layout
+                    .inset_or_default()
+                    .place(profile.width, profile.height);
+                vec![
+                    if layout.crop_path.is_empty() {
+                        fitted()
+                    } else {
+                        stretched(&layout.crop_path, profile.height)
+                    },
+                    stretched(&layout.secondary_crop_path, side),
+                ]
             }
+        };
+        let Some(factor) = factors.into_iter().flatten().reduce(f64::max) else {
+            continue;
         };
         largest = Some(largest.map_or(factor, |current: f64| current.max(factor)));
     }

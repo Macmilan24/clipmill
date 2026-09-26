@@ -57,6 +57,18 @@ pub struct PreviewSegment {
     /// Empty when the stored framing can render. A legacy missing crop stays
     /// playable as a draft so the user can repair it with Fit or a new solve.
     pub framing_warning: String,
+    /// How the section is drawn: `fit`, `speaker_fill`, `two_up` or
+    /// `picture_in_picture`, and the geometry the render uses for it, in
+    /// output pixels, so the player draws what the export will.
+    pub layout: &'static str,
+    /// Two viewports: the upper one's height.
+    pub upper_height: i64,
+    /// Picture in picture: the inset's square, `(x, y, side)`.
+    pub inset: Option<(i64, i64, i64)>,
+    /// A fitted picture's fill: `None` for the picture blurred, or a colour.
+    pub background_colour: Option<String>,
+    /// A fitted picture's zoom past fitting, in percent.
+    pub zoom_percent: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -107,7 +119,8 @@ pub struct PreviewPlan {
     /// the whole picture is shown — which is a different statement from a crop
     /// that happens to cover everything.
     pub crops: Vec<Option<PreviewCrop>>,
-    /// Lower viewports in two-person compositions, indexed exactly like crops.
+    /// Lower viewports in two-person compositions and picture-in-picture
+    /// insets, indexed exactly like crops.
     pub secondary_crops: Vec<Option<PreviewCrop>>,
     pub caption_style: CaptionStyle,
     pub cues: Vec<PreviewCue>,
@@ -205,7 +218,7 @@ pub fn preview_plan(
         secondary_crops: crops(document, rate, frame_count, true),
         cues: cues(document.captions.burned(), rate, &document.captions.options),
         reading_cues: cues(&document.captions.cues, rate, &document.captions.options),
-        segments: segments(document, rate),
+        segments: segments(document, rate, profile),
         presentation: document.captions.burned_presentation(),
         gain: document
             .audio
@@ -223,7 +236,11 @@ pub fn preview_plan(
 
 /// Where each segment sits, in frames and in ticks, by the same walk the crops
 /// use — so the frame a segment starts on is the frame its first crop is at.
-fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
+fn segments(
+    document: &EditDocument,
+    rate: FrameRate,
+    profile: &RenderProfile,
+) -> Vec<PreviewSegment> {
     let starts = document.segment_program_starts();
     document
         .video
@@ -246,6 +263,28 @@ fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
                 framing_warning: if segment.layout.needs_crop_repair() {
                     "This shot has no saved crop path. Open Reframe and choose Fit or recalculate the crop before exporting.".to_owned()
                 } else { String::new() },
+                layout: match segment.layout.state {
+                    LayoutState::Fit => "fit",
+                    LayoutState::SpeakerFill => "speaker_fill",
+                    LayoutState::TwoUp => "two_up",
+                    LayoutState::PictureInPicture => "picture_in_picture",
+                },
+                upper_height: if segment.layout.state == LayoutState::TwoUp {
+                    segment.layout.viewport_heights(profile.height).0
+                } else {
+                    0
+                },
+                inset: (segment.layout.state == LayoutState::PictureInPicture).then(|| {
+                    segment
+                        .layout
+                        .inset_or_default()
+                        .place(profile.width, profile.height)
+                }),
+                background_colour: match &segment.layout.background {
+                    Some(clipmill_edit_ir::FitBackground::Colour { colour }) => Some(colour.clone()),
+                    None | Some(clipmill_edit_ir::FitBackground::Blur) => None,
+                },
+                zoom_percent: segment.layout.zoom_percent(),
             }
         })
         .collect()
@@ -280,7 +319,10 @@ fn crops(
                 return None;
             }
             let path = if secondary {
-                if segment.layout.state != LayoutState::TwoUp {
+                if !matches!(
+                    segment.layout.state,
+                    LayoutState::TwoUp | LayoutState::PictureInPicture
+                ) {
                     return None;
                 }
                 &segment.layout.secondary_crop_path

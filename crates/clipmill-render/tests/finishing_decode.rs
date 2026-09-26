@@ -98,6 +98,7 @@ fn two_up_decodes_both_people_and_meets_existing_audio_targets() {
             state: LayoutState::TwoUp,
             crop_path: crop(0),
             secondary_crop_path: crop(1000),
+            ..Layout::default()
         },
     }];
     let source = SourceInput {
@@ -253,6 +254,7 @@ fn many_shots_keep_the_tail_caption_and_audio_on_one_program_clock() {
                     easing: clipmill_edit_ir::CropEasing::Linear,
                 }],
                 secondary_crop_path: Vec::new(),
+                ..Layout::default()
             },
         })
         .collect();
@@ -521,6 +523,7 @@ fn supported_source_rates_and_vfr_keep_source_time_through_shot_cuts() {
                         easing: clipmill_edit_ir::CropEasing::Linear,
                     }],
                     secondary_crop_path: Vec::new(),
+                    ..Layout::default()
                 },
             })
             .collect();
@@ -660,6 +663,7 @@ fn rotation_metadata_is_applied_before_display_space_cropping() {
                     easing: clipmill_edit_ir::CropEasing::Linear,
                 }],
                 secondary_crop_path: Vec::new(),
+                ..Layout::default()
             },
         }];
         let plan = encode_fixture(
@@ -771,6 +775,7 @@ fn a_source_without_audio_encodes_silence_instead_of_invalid_loudness() {
                 easing: clipmill_edit_ir::CropEasing::Linear,
             }],
             secondary_crop_path: Vec::new(),
+            ..Layout::default()
         },
     }];
     encode_fixture(
@@ -851,6 +856,7 @@ fn a_short_audible_span_keeps_finite_nonzero_audio() {
                 easing: clipmill_edit_ir::CropEasing::Linear,
             }],
             secondary_crop_path: Vec::new(),
+            ..Layout::default()
         },
     }];
     encode_fixture(
@@ -883,5 +889,174 @@ fn a_short_audible_span_keeps_finite_nonzero_audio() {
     assert!(
         samples.iter().any(|sample| sample.abs() > 0.01),
         "a short sound must not turn into silence"
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one explicit end-to-end encoder scenario"
+)]
+#[ignore = "requires the pinned .cache/bin/ffmpeg; renders and decodes actual pixels"]
+fn a_split_a_coloured_zoomed_fit_and_an_inset_draw_what_they_say() {
+    use clipmill_edit_ir::{FitBackground, Inset, InsetCorner};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-layouts-{nonce}"));
+    std::fs::create_dir(&work).expect("scratch directory");
+    // Red on the left half, blue on the right.
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:r=30:d=3,drawbox=x=960:y=0:w=960:h=1080:color=blue:t=fill",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=3",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let still = |x, y, width, height| {
+        vec![CropKeyframe {
+            t_ticks: 0,
+            rect: CropRect {
+                x,
+                y,
+                width,
+                height,
+            },
+            easing: clipmill_edit_ir::CropEasing::Linear,
+        }]
+    };
+    let section = |id: &str, second: i64, layout: Layout| VideoSegment {
+        segment_id: id.to_owned(),
+        source_fingerprint: fingerprint.clone(),
+        in_ticks: second * 90_000,
+        out_ticks: (second + 1) * 90_000,
+        layout,
+    };
+    let mut document = EditDocument::default();
+    document.video.transition_ticks = 0;
+    document.video.segments = vec![
+        // The whole recording in the top 606 rows, the blue half below.
+        section(
+            "screen",
+            0,
+            Layout {
+                state: LayoutState::TwoUp,
+                crop_path: still(0, 2, 1_918, 1_076),
+                secondary_crop_path: still(1_000, 0, 888, 1_080),
+                split: Some(316),
+                ..Layout::default()
+            },
+        ),
+        // Fitted on green, half as large again.
+        section(
+            "fitted",
+            1,
+            Layout {
+                state: LayoutState::Fit,
+                background: Some(FitBackground::Colour {
+                    colour: "#00FF00".to_owned(),
+                }),
+                zoom: Some(150),
+                ..Layout::default()
+            },
+        ),
+        // The whole frame, with the blue half inset bottom left.
+        section(
+            "inset",
+            2,
+            Layout {
+                state: LayoutState::PictureInPicture,
+                secondary_crop_path: still(1_100, 100, 800, 800),
+                inset: Some(Inset {
+                    corner: InsetCorner::BottomLeft,
+                    size: 400,
+                }),
+                ..Layout::default()
+            },
+        ),
+    ];
+    let source = SourceInput {
+        fingerprint,
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 3 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let plan = compile(&document, &[source], &RenderProfile::default()).expect("compile");
+    let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+    let measurement =
+        LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+            .expect("measured loudness");
+    ffmpeg(&binary, &work, &plan.encode_args(measurement));
+    let pixel = |seconds: &str, x: u32, y: u32| {
+        let decoded = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                seconds,
+                "-i",
+                "clip.mp4",
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("crop=2:2:{x}:{y},scale=1:1"),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ]),
+        );
+        assert_eq!(decoded.stdout.len(), 3);
+        [decoded.stdout[0], decoded.stdout[1], decoded.stdout[2]]
+    };
+    let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;
+    let blue = |[r, g, b]: [u8; 3]| b > 180 && r < 80 && g < 80;
+    let green = |[r, g, b]: [u8; 3]| g > 180 && r < 80 && b < 80;
+    let at = |seconds, x, y| pixel(seconds, x, y);
+
+    // Split: the whole recording on top, both halves; the face below.
+    assert!(red(at("0.5", 100, 300)), "{:?}", at("0.5", 100, 300));
+    assert!(blue(at("0.5", 1_000, 300)), "{:?}", at("0.5", 1_000, 300));
+    assert!(blue(at("0.5", 540, 1_500)), "{:?}", at("0.5", 540, 1_500));
+    // Fit: green above the zoomed picture, which lost its outer sides.
+    assert!(green(at("1.5", 540, 100)), "{:?}", at("1.5", 540, 100));
+    assert!(red(at("1.5", 100, 960)), "{:?}", at("1.5", 100, 960));
+    assert!(blue(at("1.5", 1_000, 960)), "{:?}", at("1.5", 1_000, 960));
+    // Inset: blue in the corner square, over the fitted frame's red half.
+    assert!(blue(at("2.5", 258, 1_204)), "{:?}", at("2.5", 258, 1_204));
+    assert!(red(at("2.5", 258, 900)), "{:?}", at("2.5", 258, 900));
+    eprintln!(
+        "Layouts decoded; artifact {}",
+        work.join("clip.mp4").display()
     );
 }

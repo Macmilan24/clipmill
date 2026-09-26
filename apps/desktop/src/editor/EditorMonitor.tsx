@@ -164,6 +164,7 @@ export function EditorMonitor({
   const segment = segmentAt(plan, playback.frame);
   const twoUp = cropAt(plan, playback.frame, true) !== null;
   const fitted = cropAt(plan, playback.frame) === null;
+  const inset = segment?.layout === 'picture_in_picture';
 
   // The faces of the section at the playhead, fetched when the Original view
   // is showing: that is where a person points at the one to follow.
@@ -216,11 +217,13 @@ export function EditorMonitor({
             ? shown.length > 0
               ? 'Click a face to follow that person'
               : 'The whole frame, before framing and captions'
-            : twoUp
-              ? 'Two speakers'
-              : fitted
-                ? 'Whole frame'
-                : 'Following the speaker'}
+            : inset
+              ? 'Picture in picture'
+              : twoUp
+                ? 'Two speakers'
+                : fitted
+                  ? 'Whole frame'
+                  : 'Following the speaker'}
           {segment && plan.segments.length > 1
             ? ` · Section ${plan.segments.indexOf(segment) + 1} of ${plan.segments.length}`
             : ''}
@@ -388,10 +391,14 @@ function Stage({
 
   const drawn = useMemo(() => {
     if (view === 'original') {
+      // The recording as it was: no crop, no fill, no zoom.
       return {
         ...plan,
         crops: plan.crops.map(() => null),
         secondaryCrops: plan.secondaryCrops?.map(() => null),
+        segments: plan.segments.map((segment) =>
+          Object.assign({}, segment, { layout: 'fit', backgroundColour: null, zoomPercent: 100 }),
+        ),
       } as PreviewPlan;
     }
     if (!draft) return plan;
@@ -407,6 +414,34 @@ function Stage({
     },
     [],
   );
+
+  /**
+   * Where a viewport sits on the output frame, in output pixels: the whole
+   * frame, one of two stacked viewports at the section's split, or the inset.
+   */
+  const viewportOf = (secondary: boolean): Rect => {
+    const whole = { x: 0, y: 0, width: plan.width, height: plan.height };
+    if (part?.layout === 'picture_in_picture') {
+      const inset = part.inset;
+      return secondary && inset
+        ? { x: inset[0], y: inset[1], width: inset[2], height: inset[2] }
+        : whole;
+    }
+    if (cropAt(plan, frame, true) === null) return whole;
+    const upper = part?.upperHeight || plan.height / 2;
+    return secondary
+      ? { x: 0, y: upper, width: plan.width, height: plan.height - upper }
+      : { x: 0, y: 0, width: plan.width, height: upper };
+  };
+
+  /** Which viewport a point on the stage is in: the inset or lower one, or not. */
+  const secondaryAt = (clientX: number, clientY: number, box: DOMRect): boolean => {
+    if (cropAt(plan, frame, true) === null) return false;
+    const inner = viewportOf(true);
+    const x = ((clientX - box.left) / Math.max(1, box.width)) * plan.width;
+    const y = ((clientY - box.top) / Math.max(1, box.height)) * plan.height;
+    return x >= inner.x && x < inner.x + inner.width && y >= inner.y && y < inner.y + inner.height;
+  };
 
   /** The rectangle the camera takes now, or the centred full-height one a fit clip would get. */
   const baseRect = (secondary: boolean): Rect | null => {
@@ -425,11 +460,10 @@ function Stage({
   const commit = (secondary: boolean, rect: Rect) => {
     if (!part) return;
     const keyframe = setCropKeyframe(localTicks, rect, part.segmentId, secondary);
-    onApply(
-      cropAt(plan, frame, secondary)
-        ? keyframe
-        : batch([setLayout('speaker_fill', part.segmentId), keyframe]),
-    );
+    // Reframing a fitted picture follows it from here; a picture-in-picture
+    // stays one, its full picture now a followed crop.
+    const keeps = cropAt(plan, frame, secondary) !== null || part.layout === 'picture_in_picture';
+    onApply(keeps ? keyframe : batch([setLayout('speaker_fill', part.segmentId), keyframe]));
     onSelect({ kind: 'keyframe', segmentId: part.segmentId, tTicks: localTicks, secondary });
   };
 
@@ -446,14 +480,14 @@ function Stage({
   const grabFrame = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (busy || view !== 'edit' || !part || !source) return;
     const box = event.currentTarget.getBoundingClientRect();
-    const twoUp = cropAt(plan, frame, true) !== null;
-    const secondary = twoUp && event.clientY - box.top > box.height / 2;
+    const secondary = secondaryAt(event.clientX, event.clientY, box);
     const start = baseRect(secondary);
     if (!start) return;
-    // One screen pixel moves the camera by the share of the crop it covers;
-    // a two-up viewport is half the stage tall.
-    const perX = start.width / Math.max(1, box.width);
-    const perY = start.height / Math.max(1, twoUp ? box.height / 2 : box.height);
+    // One screen pixel moves the camera by the share of the crop its viewport
+    // covers on screen: the whole stage, a split share of it, or the inset.
+    const viewport = viewportOf(secondary);
+    const perX = start.width / Math.max(1, (viewport.width / plan.width) * box.width);
+    const perY = start.height / Math.max(1, (viewport.height / plan.height) * box.height);
     const moved = (dx: number, dy: number) =>
       clampRect({ ...start, x: start.x - dx * perX, y: start.y - dy * perY });
     pressOrDrag(event, {
@@ -472,8 +506,30 @@ function Stage({
 
   // Registered by hand: React's wheel listener is passive, and a pinch the
   // stage cannot cancel would zoom the whole window instead.
-  const wheelState = useRef({ busy, view, part, source, draft, baseRect, clampRect, commit });
-  wheelState.current = { busy, view, part, source, draft, baseRect, clampRect, commit };
+  const wheelState = useRef({
+    busy,
+    view,
+    part,
+    source,
+    draft,
+    baseRect,
+    clampRect,
+    commit,
+    viewportOf,
+    secondaryAt,
+  });
+  wheelState.current = {
+    busy,
+    view,
+    part,
+    source,
+    draft,
+    baseRect,
+    clampRect,
+    commit,
+    viewportOf,
+    secondaryAt,
+  };
   useEffect(() => {
     const element = stage.current;
     if (!element) return;
@@ -482,9 +538,14 @@ function Stage({
       if (!(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
       if (current.busy || current.view !== 'edit' || !current.part || !current.source) return;
-      const secondary = current.draft?.secondary ?? false;
+      const secondary =
+        current.draft?.secondary ??
+        current.secondaryAt(event.clientX, event.clientY, element.getBoundingClientRect());
       const start = current.draft?.rect ?? current.baseRect(secondary);
       if (!start) return;
+      // Each viewport keeps its own shape: a crop of another shape is one the
+      // render refuses rather than stretches.
+      const viewport = current.viewportOf(secondary);
       const factor = Math.exp(event.deltaY * 0.01);
       const height = Math.max(
         Math.round(current.source.displayHeight * 0.2),
@@ -492,7 +553,7 @@ function Stage({
       );
       const width = Math.min(
         current.source.displayWidth,
-        Math.max(2, Math.round((height * plan.width) / plan.height / 2) * 2),
+        Math.max(2, Math.round((height * viewport.width) / viewport.height / 2) * 2),
       );
       const rect = current.clampRect({
         width,
@@ -510,7 +571,7 @@ function Stage({
     };
     element.addEventListener('wheel', listener, { passive: false });
     return () => element.removeEventListener('wheel', listener);
-  }, [plan.width, plan.height]);
+  }, []);
 
   const cue = cueAt(plan, frame);
   const style = plan.captionStyle;

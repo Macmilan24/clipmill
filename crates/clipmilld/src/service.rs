@@ -3904,6 +3904,14 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 end_frame: segment.end_frame,
                 has_two_up_paths: segment.has_two_up_paths,
                 framing_warning: segment.framing_warning.clone(),
+                layout: segment.layout.to_owned(),
+                upper_height: segment.upper_height,
+                has_inset: segment.inset.is_some(),
+                inset_x: segment.inset.map_or(0, |(x, _, _)| x),
+                inset_y: segment.inset.map_or(0, |(_, y, _)| y),
+                inset_side: segment.inset.map_or(0, |(_, _, side)| side),
+                background_colour: segment.background_colour.clone().unwrap_or_default(),
+                zoom_percent: u32::from(segment.zoom_percent),
             })
             .collect(),
         // Resolved by the handler, which is the one with a database.
@@ -5225,6 +5233,7 @@ mod tests {
                 state: LayoutState::Fit,
                 crop_path: Vec::new(),
                 secondary_crop_path: Vec::new(),
+                ..Layout::default()
             },
         }];
         let here = [record(&present, "sha256:aa", 5)];

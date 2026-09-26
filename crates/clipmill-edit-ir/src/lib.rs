@@ -21,7 +21,7 @@ pub use command::{CommandError, EditCommand};
 pub use document::{
     Asset, AudioTrack, CaptionAnimation, CaptionCase, CaptionCue, CaptionLine, CaptionOptions,
     CaptionPosition, CaptionRegion, CaptionTrack, CaptionWord, CropEasing, CropKeyframe, CropRect,
-    DocumentError, EditDocument, GainPoint, HighlightStyle, IR_VERSION, Layout, LayoutState,
-    Presentation, Rationale, TICKS_PER_SECOND, Timebase, VideoSegment, VideoTrack, crop_along,
-    crop_along_keyframes, gain_at, interpolate,
+    DocumentError, EditDocument, FitBackground, GainPoint, HighlightStyle, IR_VERSION, Inset,
+    InsetCorner, Layout, LayoutState, Presentation, Rationale, TICKS_PER_SECOND, Timebase,
+    VideoSegment, VideoTrack, crop_along, crop_along_keyframes, gain_at, interpolate,
 };

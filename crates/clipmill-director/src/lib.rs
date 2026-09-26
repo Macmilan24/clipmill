@@ -393,6 +393,7 @@ fn follow(
         state: LayoutState::SpeakerFill,
         crop_path,
         secondary_crop_path: Vec::new(),
+        ..Layout::default()
     })
 }
 
@@ -485,6 +486,7 @@ fn layout_for(
                     state: LayoutState::TwoUp,
                     crop_path: upper,
                     secondary_crop_path: lower,
+                    ..Layout::default()
                 }, "Two people remain visible in equal portraits, ordered left-to-right from the source; no speaking-person guess.".to_owned());
             }
         }
@@ -499,6 +501,7 @@ fn layout_for(
                 state: LayoutState::SpeakerFill,
                 crop_path,
                 secondary_crop_path: Vec::new(),
+                ..Layout::default()
             },
             sentence,
         );

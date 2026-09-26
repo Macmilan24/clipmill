@@ -13,6 +13,7 @@ const LAYOUTS: Record<string, string> = {
   fit: 'Whole frame',
   speaker_fill: 'Follow speaker',
   two_up: 'Two speakers',
+  picture_in_picture: 'Picture in picture',
 };
 
 const LOOKS: Record<string, string> = {
@@ -49,6 +50,8 @@ export function describeCommand(command: EditCommandJson): string {
       return `Framing: ${LAYOUTS[String(command.state)] ?? 'changed'}`;
     case 'swap_portraits':
       return 'Swap speakers';
+    case 'set_layout_style':
+      return 'Layout style';
     case 'split_segment':
       return 'Split section';
     case 'set_crop_keyframe':

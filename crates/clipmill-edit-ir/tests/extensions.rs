@@ -48,6 +48,7 @@ fn document() -> EditDocument {
                 easing: clipmill_edit_ir::CropEasing::Linear,
             }],
             secondary_crop_path: Vec::new(),
+            ..Layout::default()
         },
     }];
     document.captions.cues = vec![cue("authored", "source-1", "Corrected", 5_000, 50_000)];

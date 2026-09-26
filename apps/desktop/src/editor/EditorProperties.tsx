@@ -4,7 +4,25 @@
  * controls on top. Sliders and colours send one command when let go.
  */
 import type { EditIr } from '@clipmill/contracts';
-import { AudioLines, Captions as CaptionsIcon, Crop, Info, Minus, Plus, X } from 'lucide-react';
+import {
+  ArrowDownLeft,
+  ArrowDownRight,
+  ArrowUpLeft,
+  ArrowUpRight,
+  AudioLines,
+  Captions as CaptionsIcon,
+  Copy,
+  Crop,
+  Info,
+  Minus,
+  PanelTop,
+  PictureInPicture2,
+  Plus,
+  RectangleHorizontal,
+  Rows2,
+  ScanFace,
+  X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
@@ -23,9 +41,27 @@ import { clockTenths } from '../inspector/review.js';
 import type { EditorFocus } from '../shell/route.js';
 import { repairAll, shortCues } from './captionRepairs.js';
 import { CaptionStyleControls, LOOKS } from './CaptionStyle.js';
-import { CommitSlider, Field } from './controls.js';
+import { CommitSlider, Field, Swatch } from './controls.js';
+import {
+  INSET_SIZES,
+  type InsetCorner,
+  type LayoutChoice,
+  type LayoutStyle,
+  SPLITS,
+  ZOOMS,
+  DEFAULT_INSET,
+  layoutCommands,
+  recordingSplit,
+  refit,
+  setLayoutStyle,
+  splitCommands,
+  styleOf,
+  switchCommands,
+  viewportHeights,
+} from './layouts.js';
 import { CueTiming } from './CueTiming.js';
 import {
+  batch,
   correctWord,
   mergeCues,
   removeCaptionWord,
@@ -507,27 +543,51 @@ function FramingTab({
   const localTicks = Math.max(0, ticksOfFrame(plan, frame) - part.programStartTicks);
   const here = cropAt(plan, frame);
 
+  const layout = saved?.layout;
+  const style = styleOf(layout);
+  const output = { width: plan.width, height: plan.height };
+  const screenSplit = source ? recordingSplit(source, output) : null;
+  const choose = (choice: LayoutChoice) => {
+    if (!source) {
+      onApply(setLayout(choice === 'screen_and_face' ? 'two_up' : choice, part.segmentId));
+      return;
+    }
+    onApply(batch(layoutCommands(part.segmentId, choice, layout, output, source)));
+  };
+  const restyle = (next: LayoutStyle) => onApply(setLayoutStyle(part.segmentId, next));
+  const pressed = (choice: LayoutChoice) =>
+    choice === 'screen_and_face'
+      ? state === 'two_up' && style.split === screenSplit
+      : choice === 'two_up'
+        ? state === 'two_up' && style.split !== screenSplit
+        : state === choice;
+  const wholeMain = state === 'picture_in_picture' && (layout?.crop_path?.length ?? 0) === 0;
+  const others = document?.video.segments?.filter((item) => item.segment_id !== part.segmentId);
+
   return (
     <div className="review-panel-body">
       <section className="review-section">
         <h3 className="review-section-title">
           {plan.segments.length > 1 ? `Section ${index + 1} of ${plan.segments.length}` : 'Framing'}
         </h3>
-        <div className="review-segmented edit-wide" role="group" aria-label="Framing">
+        <div className="edit-layouts" role="group" aria-label="Layout">
           {(
             [
-              ['speaker_fill', 'Follow speaker'],
-              ['fit', 'Whole frame'],
-              ['two_up', 'Two speakers'],
+              ['speaker_fill', 'Follow speaker', ScanFace],
+              ['fit', 'Whole frame', RectangleHorizontal],
+              ['two_up', 'Two speakers', Rows2],
+              ['screen_and_face', 'Screen and face', PanelTop],
+              ['picture_in_picture', 'Picture in picture', PictureInPicture2],
             ] as const
-          ).map(([mode, label]) => (
+          ).map(([choice, label, Icon]) => (
             <button
-              key={mode}
+              key={choice}
               type="button"
-              aria-pressed={state === mode}
-              disabled={busy || (mode === 'two_up' && !part.hasTwoUpPaths)}
-              onClick={() => onApply(setLayout(mode, part.segmentId))}
+              aria-pressed={pressed(choice)}
+              disabled={busy || (choice === 'two_up' && !part.hasTwoUpPaths)}
+              onClick={() => choose(choice)}
             >
+              <Icon className="size-4" aria-hidden="true" />
               {label}
             </button>
           ))}
@@ -541,7 +601,13 @@ function FramingTab({
               size="sm"
               variant="outline"
               disabled={busy}
-              onClick={() => onApply(swapPortraits(part.segmentId))}
+              onClick={() =>
+                onApply(
+                  source
+                    ? batch(switchCommands(part.segmentId, layout, output, source))
+                    : swapPortraits(part.segmentId),
+                )
+              }
             >
               Switch speakers
             </Button>
@@ -561,6 +627,215 @@ function FramingTab({
           keyframe on the timeline.
         </p>
       </section>
+
+      {state === 'two_up' && source && (
+        <section className="review-section">
+          <h3 className="review-section-title">Split</h3>
+          <Field label="Top">
+            <CommitSlider
+              label="Top viewport share"
+              min={SPLITS.min / 10}
+              max={SPLITS.max / 10}
+              value={Math.round((style.split ?? SPLITS.even) / 10)}
+              disabled={busy}
+              format={(value) => `${value}%`}
+              onCommit={(value) =>
+                onApply(
+                  batch(
+                    splitCommands(
+                      part.segmentId,
+                      { ...style, split: value * 10 },
+                      layout,
+                      output,
+                      source,
+                    ),
+                  ),
+                )
+              }
+            />
+          </Field>
+          <p className="review-footnote">
+            {`Top ${viewportHeights(style.split ?? SPLITS.even, plan.height)[0]} px, bottom ${viewportHeights(style.split ?? SPLITS.even, plan.height)[1]} px. `}
+            Both crops keep their centre as the split moves.
+          </p>
+        </section>
+      )}
+
+      {(state === 'fit' || wholeMain) && (
+        <section className="review-section">
+          <h3 className="review-section-title">
+            {wholeMain ? 'Behind the picture' : 'Background'}
+          </h3>
+          <Field label="Fill">
+            <div className="flex items-center gap-2">
+              <div className="review-segmented" role="group" aria-label="Background">
+                <button
+                  type="button"
+                  aria-pressed={style.background?.kind !== 'colour'}
+                  disabled={busy}
+                  onClick={() => restyle({ ...style, background: undefined })}
+                >
+                  Blur
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={style.background?.kind === 'colour'}
+                  disabled={busy}
+                  onClick={() =>
+                    restyle({ ...style, background: { kind: 'colour', colour: '#000000' } })
+                  }
+                >
+                  Colour
+                </button>
+              </div>
+              {style.background?.kind === 'colour' && (
+                <Swatch
+                  label="Background colour"
+                  value={style.background.colour}
+                  disabled={busy}
+                  onCommit={(colour) =>
+                    restyle({ ...style, background: { kind: 'colour', colour } })
+                  }
+                />
+              )}
+            </div>
+          </Field>
+          <Field label="Zoom">
+            <CommitSlider
+              label="Picture zoom"
+              min={ZOOMS.min}
+              max={ZOOMS.max}
+              value={style.zoom ?? ZOOMS.min}
+              disabled={busy}
+              format={(value) => `${value}%`}
+              onCommit={(value) =>
+                restyle({ ...style, zoom: value === ZOOMS.min ? undefined : value })
+              }
+            />
+          </Field>
+          <p className="review-footnote">
+            Zooming grows the picture about its centre; its sides give way at the frame’s edge.
+          </p>
+        </section>
+      )}
+
+      {state === 'picture_in_picture' && (
+        <section className="review-section">
+          <h3 className="review-section-title">Inset</h3>
+          <Field label="Corner">
+            <div className="review-segmented" role="group" aria-label="Inset corner">
+              {(
+                [
+                  ['top_left', 'Top left', ArrowUpLeft],
+                  ['top_right', 'Top right', ArrowUpRight],
+                  ['bottom_left', 'Bottom left', ArrowDownLeft],
+                  ['bottom_right', 'Bottom right', ArrowDownRight],
+                ] as const satisfies readonly (readonly [InsetCorner, string, unknown])[]
+              ).map(([corner, label, Icon]) => (
+                <button
+                  key={corner}
+                  type="button"
+                  aria-label={label}
+                  title={label}
+                  aria-pressed={(style.inset ?? DEFAULT_INSET).corner === corner}
+                  disabled={busy}
+                  onClick={() =>
+                    restyle({ ...style, inset: { ...(style.inset ?? DEFAULT_INSET), corner } })
+                  }
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Size">
+            <CommitSlider
+              label="Inset size"
+              min={INSET_SIZES.min / 10}
+              max={INSET_SIZES.max / 10}
+              value={Math.round((style.inset ?? DEFAULT_INSET).size / 10)}
+              disabled={busy}
+              format={(value) => `${value}%`}
+              onCommit={(value) =>
+                restyle({
+                  ...style,
+                  inset: { ...(style.inset ?? DEFAULT_INSET), size: value * 10 },
+                })
+              }
+            />
+          </Field>
+          <Field label="Main picture">
+            <div className="review-segmented" role="group" aria-label="Main picture">
+              <button
+                type="button"
+                aria-pressed={wholeMain}
+                disabled={busy}
+                onClick={() =>
+                  onApply({ op: 'replace_crop_path', segment_id: part.segmentId, path: [] })
+                }
+              >
+                Whole frame
+              </button>
+              <button
+                type="button"
+                aria-pressed={!wholeMain}
+                disabled={busy || !source}
+                onClick={() => {
+                  if (!source) return;
+                  onApply({
+                    op: 'replace_crop_path',
+                    segment_id: part.segmentId,
+                    path: refit(
+                      [
+                        {
+                          t_ticks: 0,
+                          rect: {
+                            x: 0,
+                            y: 0,
+                            width: source.displayWidth,
+                            height: source.displayHeight,
+                          },
+                        },
+                      ],
+                      output,
+                      source,
+                    ),
+                  });
+                }}
+              >
+                Cropped
+              </button>
+            </div>
+          </Field>
+          <p className="review-footnote">
+            Drag the inset on the preview to choose who it shows; drag elsewhere to move the main
+            picture.
+          </p>
+        </section>
+      )}
+
+      {others && others.length > 0 && state !== 'speaker_fill' && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="self-start"
+          disabled={busy}
+          onClick={() =>
+            onApply(
+              batch(
+                others.flatMap((item) =>
+                  item.layout.state === 'two_up' && source
+                    ? splitCommands(item.segment_id, style, item.layout, output, source)
+                    : [setLayoutStyle(item.segment_id, style)],
+                ),
+              ),
+            )
+          }
+        >
+          <Copy className="size-4" aria-hidden="true" />
+          Use this style in every section
+        </Button>
+      )}
 
       {selection.kind === 'keyframe' && keyframe && source ? (
         <KeyframeControls

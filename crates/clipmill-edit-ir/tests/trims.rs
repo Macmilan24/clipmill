@@ -39,6 +39,7 @@ fn document(path: Vec<CropKeyframe>) -> EditDocument {
             secondary_crop_path: Vec::new(),
             state: LayoutState::SpeakerFill,
             crop_path: path,
+            ..Layout::default()
         },
     }];
     document.validate().expect("a valid document");
@@ -502,4 +503,98 @@ fn a_two_person_solve_replaces_both_portraits_in_one_step() {
         .apply(&mut broken)
         .is_err()
     );
+}
+
+#[test]
+fn a_layout_style_sets_and_undoes_in_one_step_and_refuses_what_it_cannot_draw() {
+    let original = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(100),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    let mut edited = original.clone();
+    let style = EditCommand::SetLayoutStyle {
+        segment_id: "seg_1".to_owned(),
+        split: Some(316),
+        background: Some(clipmill_edit_ir::FitBackground::Colour {
+            colour: "#101820".to_owned(),
+        }),
+        zoom: Some(140),
+        inset: Some(clipmill_edit_ir::Inset {
+            corner: clipmill_edit_ir::InsetCorner::TopLeft,
+            size: 300,
+        }),
+    };
+    let undo = style.apply(&mut edited).expect("a style");
+    let layout = &edited.video.segments[0].layout;
+    assert_eq!((layout.split, layout.zoom), (Some(316), Some(140)));
+    assert_eq!(layout.viewport_heights(1_920), (606, 1_314));
+    let json = serde_json::to_string(&style).expect("json");
+    assert_eq!(
+        serde_json::from_str::<EditCommand>(&json).expect("round trip"),
+        style
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    for (split, zoom, size, colour) in [
+        (Some(900), None, None, None),
+        (None, Some(90), None, None),
+        (None, None, Some(700), None),
+        (None, None, None, Some("green")),
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::SetLayoutStyle {
+                segment_id: "seg_1".to_owned(),
+                split,
+                background: colour.map(|colour| clipmill_edit_ir::FitBackground::Colour {
+                    colour: colour.to_owned(),
+                }),
+                zoom,
+                inset: size.map(|size| clipmill_edit_ir::Inset {
+                    corner: clipmill_edit_ir::InsetCorner::TopRight,
+                    size,
+                }),
+            }
+            .apply(&mut refused)
+            .is_err()
+        );
+        assert_eq!(refused, original, "a refused style changes nothing");
+    }
+}
+
+#[test]
+fn a_picture_in_picture_needs_its_inset_but_not_a_main_crop() {
+    let original = document(Vec::new());
+    let mut edited = original.clone();
+    let to_inset = EditCommand::SetLayout {
+        segment_id: "seg_1".to_owned(),
+        state: LayoutState::PictureInPicture,
+    };
+    assert!(to_inset.apply(&mut edited).is_err(), "no inset to show");
+    let with_inset = EditCommand::Batch {
+        commands: vec![
+            to_inset,
+            EditCommand::ReplaceSecondaryCropPath {
+                segment_id: "seg_1".to_owned(),
+                path: vec![CropKeyframe {
+                    t_ticks: 0,
+                    rect: CropRect {
+                        x: 1_100,
+                        y: 100,
+                        width: 800,
+                        height: 800,
+                    },
+                    easing: clipmill_edit_ir::CropEasing::Linear,
+                }],
+            },
+        ],
+    };
+    let undo = with_inset
+        .apply(&mut edited)
+        .expect("an inset over the whole frame");
+    assert!(!edited.video.segments[0].layout.needs_crop_repair());
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
 }

@@ -159,7 +159,143 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: { ...document, audio: { ...document.audio, gain_curve: curve } },
       };
     }
+    case 'set_layout':
+    case 'set_layout_style':
+    case 'replace_crop_path':
+    case 'replace_secondary_crop_path':
+    case 'set_crop_keyframe':
+    case 'set_secondary_crop_keyframe':
+    case 'swap_portraits': {
+      const segments = (document.video.segments ?? []).map((segment) =>
+        segment.segment_id === command.segment_id
+          ? Object.assign({}, segment, { layout: relaid(segment.layout, command) })
+          : segment,
+      );
+      const next = { ...document, video: { ...document.video, segments } };
+      return { plan: bumped(framing(plan, next)), document: next };
+    }
     default:
       return null;
   }
+}
+
+type Layout = NonNullable<EditIr['video']['segments']>[number]['layout'];
+type Keyframe = NonNullable<Layout['crop_path']>[number];
+type Crop = readonly [number, number, number, number];
+
+/** A section's layout after one framing command, as the daemon applies it. */
+function relaid(layout: Layout, command: EditCommandJson): Layout {
+  switch (command.op) {
+    case 'set_layout':
+      return { ...layout, state: command.state as Layout['state'] };
+    case 'set_layout_style': {
+      const {
+        split: _split,
+        background: _background,
+        zoom: _zoom,
+        inset: _inset,
+        ...rest
+      } = layout;
+      return {
+        ...rest,
+        ...(command.split === undefined ? {} : { split: command.split as number }),
+        ...(command.background === undefined
+          ? {}
+          : { background: command.background as NonNullable<Layout['background']> }),
+        ...(command.zoom === undefined ? {} : { zoom: command.zoom as number }),
+        ...(command.inset === undefined
+          ? {}
+          : { inset: command.inset as NonNullable<Layout['inset']> }),
+      };
+    }
+    case 'replace_crop_path':
+      return { ...layout, crop_path: command.path as Keyframe[] };
+    case 'replace_secondary_crop_path':
+      return { ...layout, secondary_crop_path: command.path as Keyframe[] };
+    case 'set_crop_keyframe':
+    case 'set_secondary_crop_keyframe': {
+      const key = command.op === 'set_crop_keyframe' ? 'crop_path' : 'secondary_crop_path';
+      const at = Number(command.t_ticks);
+      const path = [
+        ...(layout[key] ?? []).filter((keyframe) => keyframe.t_ticks !== at),
+        { t_ticks: at, rect: command.rect as Keyframe['rect'] },
+      ].toSorted((a, b) => a.t_ticks - b.t_ticks);
+      return { ...layout, [key]: path };
+    }
+    case 'swap_portraits':
+      return {
+        ...layout,
+        crop_path: layout.secondary_crop_path ?? [],
+        secondary_crop_path: layout.crop_path ?? [],
+      };
+    default:
+      return layout;
+  }
+}
+
+/**
+ * Each frame's crops and each section's layout geometry, from the document,
+ * the way the render's preview plan works them out (a stand-in, for looks).
+ */
+function framing(plan: PreviewPlan, document: EditIr): Partial<PreviewPlan> {
+  const crops: (Crop | null)[] = [...plan.crops];
+  const secondaryCrops: (Crop | null)[] = [...(plan.secondaryCrops ?? plan.crops.map(() => null))];
+  const segments = plan.segments.map((segment) => {
+    const layout = document.video.segments?.find(
+      (saved) => saved.segment_id === segment.segmentId,
+    )?.layout;
+    if (!layout) return segment;
+    for (let at = segment.firstFrame; at < segment.endFrame; at += 1) {
+      const local = ((at - segment.firstFrame) * SECOND * plan.rateDen) / plan.rateNum;
+      crops[at] = layout.state === 'fit' ? null : along(layout.crop_path, local);
+      secondaryCrops[at] =
+        layout.state === 'two_up' || layout.state === 'picture_in_picture'
+          ? along(layout.secondary_crop_path, local)
+          : null;
+    }
+    const inset = layout.inset ?? { corner: 'top_right', size: 360 };
+    const side = Math.floor((plan.width * inset.size) / 1000) & ~1;
+    const margin = Math.floor((plan.width * 40) / 1000) & ~1;
+    const left = inset.corner.endsWith('left') ? margin : plan.width - margin - side;
+    const top = inset.corner.startsWith('top')
+      ? Math.floor((plan.height * 90) / 1000) & ~1
+      : (plan.height - Math.floor((plan.height * 260) / 1000) - side) & ~1;
+    return {
+      ...segment,
+      layout: layout.state,
+      hasTwoUpPaths:
+        (layout.crop_path?.length ?? 0) > 0 && (layout.secondary_crop_path?.length ?? 0) > 0,
+      upperHeight:
+        layout.state === 'two_up'
+          ? Math.floor((plan.height * (layout.split ?? 500)) / 1000) & ~1
+          : 0,
+      inset: layout.state === 'picture_in_picture' ? ([left, top, side] as const) : null,
+      backgroundColour: layout.background?.kind === 'colour' ? layout.background.colour : null,
+      zoomPercent: layout.zoom ?? 100,
+    };
+  });
+  return { crops, secondaryCrops, segments };
+}
+
+/** A path's crop at a segment-local tick, straight between keyframes. */
+function along(path: readonly Keyframe[] | undefined, ticks: number): Crop | null {
+  if (!path || path.length === 0) return null;
+  let before = path[0]!;
+  let after = path.at(-1)!;
+  for (const keyframe of path) {
+    if (keyframe.t_ticks <= ticks) before = keyframe;
+    if (keyframe.t_ticks >= ticks) {
+      after = keyframe;
+      break;
+    }
+  }
+  const span = after.t_ticks - before.t_ticks;
+  const share = span > 0 ? (ticks - before.t_ticks) / span : 0;
+  const mix = (from: number, to: number) => Math.round(from + (to - from) * share);
+  return [
+    mix(before.rect.x, after.rect.x),
+    mix(before.rect.y, after.rect.y),
+    mix(before.rect.width, after.rect.width),
+    mix(before.rect.height, after.rect.height),
+  ];
 }

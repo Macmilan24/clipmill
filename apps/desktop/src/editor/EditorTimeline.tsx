@@ -64,6 +64,13 @@ export type Tool = 'select' | 'blade';
 
 /** How close, in pixels, an edge must come to something to snap to it. */
 const SNAP_PIXELS = 8;
+/** What the framing lane calls each layout. */
+const LAYOUT_NAMES: Record<string, string> = {
+  fit: 'Whole frame',
+  speaker_fill: 'Follow speaker',
+  two_up: 'Two speakers',
+  picture_in_picture: 'Picture in picture',
+};
 /** The volume line's range, in dB either side of unchanged. */
 const GAIN_RANGE = 12;
 
@@ -915,9 +922,13 @@ const Lanes = memo(function Lanes({
           {plan.segments.map((part) => {
             const from = part.programStartTicks;
             const to = from + part.outTicks - part.inTicks;
-            const two =
-              part.hasTwoUpPaths || (plan.secondaryCrops?.[part.firstFrame] ?? null) !== null;
+            // The section's own layout; hosts older than it are read from
+            // the crops the first frame draws.
+            const two = (plan.secondaryCrops?.[part.firstFrame] ?? null) !== null;
             const fit = !two && plan.crops[part.firstFrame] === null;
+            const named =
+              (part.layout && LAYOUT_NAMES[part.layout]) ??
+              (two ? 'Two speakers' : fit ? 'Whole frame' : 'Follow speaker');
             return (
               <button
                 key={part.segmentId}
@@ -933,7 +944,7 @@ const Lanes = memo(function Lanes({
                   onSelect({ kind: 'section', segmentId: part.segmentId });
                 }}
               >
-                {two ? 'Two speakers' : fit ? 'Whole frame' : 'Follow speaker'}
+                {named}
               </button>
             );
           })}

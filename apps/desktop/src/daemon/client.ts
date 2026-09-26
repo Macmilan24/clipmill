@@ -860,6 +860,16 @@ export interface PreviewSegment {
   /** Program frames the segment occupies, half-open. */
   readonly firstFrame: number;
   readonly endFrame: number;
+  /** How the section is drawn. Older hosts leave it out. */
+  readonly layout?: 'fit' | 'speaker_fill' | 'two_up' | 'picture_in_picture' | '';
+  /** Two viewports: the upper one's height in output pixels. */
+  readonly upperHeight?: number;
+  /** Picture in picture: the inset's `[x, y, side]` in output pixels. */
+  readonly inset?: readonly [number, number, number] | null;
+  /** A fitted picture's fill: absent for the picture blurred. */
+  readonly backgroundColour?: string | null;
+  /** A fitted picture's zoom past fitting, in percent. */
+  readonly zoomPercent?: number;
 }
 
 /** A source the program draws from: the frame the crops are measured in. */

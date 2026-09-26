@@ -45,6 +45,7 @@ fn main() -> std::process::ExitCode {
                     state: LayoutState::Fit,
                     crop_path: Vec::new(),
                     secondary_crop_path: Vec::new(),
+                    ..Layout::default()
                 },
             }],
         },

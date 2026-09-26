@@ -60,6 +60,7 @@ fn adjacent_sections_encode_with_one_decoder() {
                 state: LayoutState::Fit,
                 crop_path: Vec::new(),
                 secondary_crop_path: Vec::new(),
+                ..Layout::default()
             },
         })
         .collect();

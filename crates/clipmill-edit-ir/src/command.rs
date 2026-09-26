@@ -4,8 +4,8 @@ use thiserror::Error;
 use crate::{
     document::{
         CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing, CropKeyframe,
-        CropRect, DocumentError, EditDocument, GainPoint, LayoutState, Presentation, VideoSegment,
-        crop_along_keyframes,
+        CropRect, DocumentError, EditDocument, FitBackground, GainPoint, Inset, LayoutState,
+        Presentation, VideoSegment, crop_along_keyframes,
     },
     reflow,
 };
@@ -86,6 +86,21 @@ pub enum EditCommand {
     /// Exchange the upper and lower camera paths in a two-person section.
     SwapPortraits {
         segment_id: String,
+    },
+    /// How a section's layout is drawn: the split between two viewports,
+    /// what fills around a fitted picture and how far it is zoomed, and where
+    /// a picture-in-picture inset sits. All four at once, so the inverse is
+    /// one command and a style can be copied to every section as a batch.
+    SetLayoutStyle {
+        segment_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        split: Option<u16>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        background: Option<FitBackground>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        zoom: Option<u16>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inset: Option<Inset>,
     },
     /// Make two independently framed sections at a source-time cut.
     SplitSegment {
@@ -348,6 +363,23 @@ impl EditCommand {
                 Ok(Self::SetLayout {
                     segment_id: segment_id.clone(),
                     state: previous,
+                })
+            }
+            Self::SetLayoutStyle {
+                segment_id,
+                split,
+                background,
+                zoom,
+                inset,
+            } => {
+                let index = document.segment_index(segment_id)?;
+                let layout = &mut document.video.segments[index].layout;
+                Ok(Self::SetLayoutStyle {
+                    segment_id: segment_id.clone(),
+                    split: std::mem::replace(&mut layout.split, *split),
+                    background: std::mem::replace(&mut layout.background, background.clone()),
+                    zoom: std::mem::replace(&mut layout.zoom, *zoom),
+                    inset: std::mem::replace(&mut layout.inset, *inset),
                 })
             }
             Self::SwapPortraits { segment_id } => {

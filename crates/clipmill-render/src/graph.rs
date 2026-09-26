@@ -14,8 +14,8 @@
 //! arithmetic is exact.
 
 use clipmill_edit_ir::{
-    CropEasing, CropKeyframe, CropRect, EditDocument, LayoutState, VideoSegment,
-    crop_along_keyframes,
+    CropEasing, CropKeyframe, CropRect, EditDocument, FitBackground, Layout, LayoutState,
+    VideoSegment, crop_along_keyframes,
 };
 use std::ops::Range;
 
@@ -362,7 +362,8 @@ fn source_for<'a>(
 }
 
 /// The chain that turns one decoded, CFR-normalised segment into an output
-/// frame: either a followed crop or a letterbox over its own blurred fill.
+/// frame: a followed crop, two stacked crops, a letterbox over its own fill,
+/// or a full picture with a crop inset in one corner.
 fn layout_chains(
     segment: &VideoSegment,
     source: &SourceInput,
@@ -371,57 +372,137 @@ fn layout_chains(
     label: &str,
 ) -> Result<Vec<String>, RenderError> {
     let (width, height) = (profile.width, profile.height);
-    match segment.layout.state {
-        LayoutState::Fit => Ok(vec![
-            format!("[t{index}]split=2[t{index}bg][t{index}fg]"),
-            format!(
-                "[t{index}bg]scale={width}:{height}:force_original_aspect_ratio=increase,\
-                 crop={width}:{height},gblur=sigma={sigma}[t{index}bgb]",
-                sigma = profile.fit_background_sigma,
-            ),
-            format!(
-                "[t{index}fg]scale={width}:{height}:force_original_aspect_ratio=decrease\
-                 [t{index}fgs]"
-            ),
-            format!(
-                "[t{index}bgb][t{index}fgs]overlay=x=(W-w)/2:y=(H-h)/2,setsar=1,\
-                 format=yuv420p[{label}]"
-            ),
-        ]),
+    let layout = &segment.layout;
+    match layout.state {
+        LayoutState::Fit => Ok(fit_chains(
+            layout,
+            source,
+            profile,
+            &format!("t{index}"),
+            label,
+        )),
         LayoutState::SpeakerFill => {
-            let crop = crop_filter(segment, source, profile, &segment.layout.crop_path, height)?;
+            let crop = crop_filter(segment, source, profile, &layout.crop_path, width, height)?;
             Ok(vec![format!(
                 "[t{index}]{crop},scale={width}:{height},setsar=1,format=yuv420p[{label}]"
             )])
         }
         LayoutState::TwoUp => {
-            let viewport_height = height / 2;
+            let (upper_height, lower_height) = layout.viewport_heights(height);
             let upper = crop_filter(
                 segment,
                 source,
                 profile,
-                &segment.layout.crop_path,
-                viewport_height,
+                &layout.crop_path,
+                width,
+                upper_height,
             )?;
             let lower = crop_filter(
                 segment,
                 source,
                 profile,
-                &segment.layout.secondary_crop_path,
-                viewport_height,
+                &layout.secondary_crop_path,
+                width,
+                lower_height,
             )?;
             Ok(vec![
                 format!("[t{index}]split=2[t{index}upper][t{index}lower]"),
-                format!(
-                    "[t{index}upper]{upper},scale={width}:{viewport_height},setsar=1[t{index}u]"
-                ),
-                format!(
-                    "[t{index}lower]{lower},scale={width}:{viewport_height},setsar=1[t{index}l]"
-                ),
+                format!("[t{index}upper]{upper},scale={width}:{upper_height},setsar=1[t{index}u]"),
+                format!("[t{index}lower]{lower},scale={width}:{lower_height},setsar=1[t{index}l]"),
                 format!("[t{index}u][t{index}l]vstack=inputs=2,format=yuv420p[{label}]"),
             ])
         }
+        LayoutState::PictureInPicture => {
+            let (x, y, side) = layout.inset_or_default().place(width, height);
+            let inset = crop_filter(
+                segment,
+                source,
+                profile,
+                &layout.secondary_crop_path,
+                side,
+                side,
+            )?;
+            let mut chains = vec![format!("[t{index}]split=2[t{index}main][t{index}pip]")];
+            if layout.crop_path.is_empty() {
+                chains.extend(fit_chains(
+                    layout,
+                    source,
+                    profile,
+                    &format!("t{index}main"),
+                    &format!("t{index}under"),
+                ));
+            } else {
+                let main = crop_filter(segment, source, profile, &layout.crop_path, width, height)?;
+                chains.push(format!(
+                    "[t{index}main]{main},scale={width}:{height},setsar=1,format=yuv420p[t{index}under]"
+                ));
+            }
+            chains.push(format!(
+                "[t{index}pip]{inset},scale={side}:{side},setsar=1[t{index}inset]"
+            ));
+            chains.push(format!(
+                "[t{index}under][t{index}inset]overlay=x={x}:y={y},setsar=1,format=yuv420p[{label}]"
+            ));
+            Ok(chains)
+        }
     }
+}
+
+/// A fitted picture over what fills around it: the picture itself blurred,
+/// or one colour. Zoomed past fitting, the picture grows about its centre and
+/// its sides give way at the frame's edges.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    reason = "frame dimensions, far inside a double's exact integers"
+)]
+fn fit_chains(
+    layout: &Layout,
+    source: &SourceInput,
+    profile: &RenderProfile,
+    input: &str,
+    label: &str,
+) -> Vec<String> {
+    let (width, height) = (profile.width, profile.height);
+    let zoom = layout.zoom_percent();
+    let picture = if zoom == 100 || source.width <= 0 || source.height <= 0 {
+        format!("scale={width}:{height}:force_original_aspect_ratio=decrease")
+    } else {
+        let fit = (width as f64 / source.width as f64).min(height as f64 / source.height as f64)
+            * f64::from(zoom)
+            / 100.0;
+        let even = |value: f64| ((value / 2.0).round() as i64 * 2).max(2);
+        let (grown_width, grown_height) = (
+            even(source.width as f64 * fit),
+            even(source.height as f64 * fit),
+        );
+        format!(
+            "scale={grown_width}:{grown_height},crop={}:{}",
+            grown_width.min(width),
+            grown_height.min(height)
+        )
+    };
+    let fill = match &layout.background {
+        None | Some(FitBackground::Blur) => format!(
+            "scale={width}:{height}:force_original_aspect_ratio=increase,\
+             crop={width}:{height},gblur=sigma={sigma}",
+            sigma = profile.fit_background_sigma,
+        ),
+        // The colour is checked as #RRGGBB when the document is validated.
+        Some(FitBackground::Colour { colour }) => format!(
+            "scale={width}:{height},drawbox=x=0:y=0:w=iw:h=ih:color=0x{}@1:t=fill",
+            colour.trim_start_matches('#')
+        ),
+    };
+    vec![
+        format!("[{input}]split=2[{input}bg][{input}fg]"),
+        format!("[{input}bg]{fill}[{input}bgb]"),
+        format!("[{input}fg]{picture}[{input}fgs]"),
+        format!(
+            "[{input}bgb][{input}fgs]overlay=x=(W-w)/2:y=(H-h)/2,setsar=1,\
+             format=yuv420p[{label}]"
+        ),
+    ]
 }
 
 fn crop_filter(
@@ -429,6 +510,7 @@ fn crop_filter(
     source: &SourceInput,
     profile: &RenderProfile,
     path: &[CropKeyframe],
+    viewport_width: i64,
     viewport_height: i64,
 ) -> Result<String, RenderError> {
     let first = path
@@ -444,7 +526,7 @@ fn crop_filter(
     // invisibly. Anything wider than that is a framing mistake, not rounding,
     // and stretching faces to hide it would be the wrong kindness.
     if path.iter().any(|keyframe| {
-        (keyframe.rect.width * viewport_height - keyframe.rect.height * profile.width).abs()
+        (keyframe.rect.width * viewport_height - keyframe.rect.height * viewport_width).abs()
             > viewport_height
     }) {
         return Err(RenderError::CropAspectMismatch(segment.segment_id.clone()));
@@ -477,10 +559,8 @@ fn crop_filter(
         let y = axis_expression(path, &frames, |rect| rect.y, "n");
         return Ok(format!(
             "scale=w='ceil(iw*{viewport_height}/({height})/2)*2':h='ceil(ih*{viewport_height}/({height})/2)*2':eval=frame,\
-             crop=w={width}:h={viewport_height}:x='floor(({x})*{viewport_height}/({height}))':\
+             crop=w={viewport_width}:h={viewport_height}:x='floor(({x})*{viewport_height}/({height}))':\
              y='floor(({y})*{viewport_height}/({height}))':exact=1",
-            viewport_height = viewport_height,
-            width = profile.width,
         ));
     }
     Ok(format!(

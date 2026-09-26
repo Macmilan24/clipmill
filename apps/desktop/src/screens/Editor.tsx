@@ -342,7 +342,11 @@ export function Editor({
         }
         // Set whether or not the media has loaded: before metadata a browser
         // keeps it as the position to start from, which is what is wanted.
-        element.currentTime = seconds;
+        // Not when it is there already: a seek in place fires `seeking`, which
+        // drops the decoded frame the composition redraws a paused edit from,
+        // and a paused seek to the same frame never decodes a new one — so a
+        // layout chosen while paused would not show until the next frame.
+        if (Math.abs(element.currentTime - seconds) > 1 / 90_000) element.currentTime = seconds;
       }
     },
     [plan, proxyUrls, updateFrame],

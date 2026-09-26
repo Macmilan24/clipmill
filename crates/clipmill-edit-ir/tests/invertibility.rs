@@ -73,6 +73,7 @@ fn sample_document() -> EditDocument {
                     easing: clipmill_edit_ir::CropEasing::Linear,
                 })
                 .collect(),
+            ..Layout::default()
         },
     };
     let cue = |id: &str, start: i64, words: Vec<CaptionWord>| CaptionCue {
@@ -202,6 +203,22 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
             } else {
                 LayoutState::SpeakerFill
             },
+        });
+        commands.push(EditCommand::SetLayoutStyle {
+            segment_id: segment_id.clone(),
+            split: (rng.below(2) == 0).then(|| 250 + u16::try_from(rng.below(501)).unwrap_or(0)),
+            background: match rng.below(3) {
+                0 => None,
+                1 => Some(clipmill_edit_ir::FitBackground::Blur),
+                _ => Some(clipmill_edit_ir::FitBackground::Colour {
+                    colour: format!("#{:06X}", rng.below(0x0100_0000)),
+                }),
+            },
+            zoom: (rng.below(2) == 0).then(|| 100 + u16::try_from(rng.below(151)).unwrap_or(0)),
+            inset: (rng.below(2) == 0).then(|| clipmill_edit_ir::Inset {
+                corner: clipmill_edit_ir::InsetCorner::BottomRight,
+                size: 200 + u16::try_from(rng.below(401)).unwrap_or(0),
+            }),
         });
         let local =
             i64::try_from(rng.below(u64::try_from(segment.duration_ticks().max(1)).unwrap_or(1)))

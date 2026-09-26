@@ -1474,7 +1474,7 @@ class PreviewGainV1(_message.Message):
     def __init__(self, frame: _Optional[int] = ..., gain_db: _Optional[float] = ...) -> None: ...
 
 class PreviewSegmentV1(_message.Message):
-    __slots__ = ("segment_id", "source_fingerprint", "in_ticks", "out_ticks", "program_start_ticks", "first_frame", "end_frame", "has_two_up_paths", "framing_warning")
+    __slots__ = ("segment_id", "source_fingerprint", "in_ticks", "out_ticks", "program_start_ticks", "first_frame", "end_frame", "has_two_up_paths", "framing_warning", "layout", "upper_height", "has_inset", "inset_x", "inset_y", "inset_side", "background_colour", "zoom_percent")
     SEGMENT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     IN_TICKS_FIELD_NUMBER: _ClassVar[int]
@@ -1484,6 +1484,14 @@ class PreviewSegmentV1(_message.Message):
     END_FRAME_FIELD_NUMBER: _ClassVar[int]
     HAS_TWO_UP_PATHS_FIELD_NUMBER: _ClassVar[int]
     FRAMING_WARNING_FIELD_NUMBER: _ClassVar[int]
+    LAYOUT_FIELD_NUMBER: _ClassVar[int]
+    UPPER_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    HAS_INSET_FIELD_NUMBER: _ClassVar[int]
+    INSET_X_FIELD_NUMBER: _ClassVar[int]
+    INSET_Y_FIELD_NUMBER: _ClassVar[int]
+    INSET_SIDE_FIELD_NUMBER: _ClassVar[int]
+    BACKGROUND_COLOUR_FIELD_NUMBER: _ClassVar[int]
+    ZOOM_PERCENT_FIELD_NUMBER: _ClassVar[int]
     segment_id: str
     source_fingerprint: str
     in_ticks: int
@@ -1493,7 +1501,15 @@ class PreviewSegmentV1(_message.Message):
     end_frame: int
     has_two_up_paths: bool
     framing_warning: str
-    def __init__(self, segment_id: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., in_ticks: _Optional[int] = ..., out_ticks: _Optional[int] = ..., program_start_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., has_two_up_paths: _Optional[bool] = ..., framing_warning: _Optional[str] = ...) -> None: ...
+    layout: str
+    upper_height: int
+    has_inset: bool
+    inset_x: int
+    inset_y: int
+    inset_side: int
+    background_colour: str
+    zoom_percent: int
+    def __init__(self, segment_id: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., in_ticks: _Optional[int] = ..., out_ticks: _Optional[int] = ..., program_start_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., has_two_up_paths: _Optional[bool] = ..., framing_warning: _Optional[str] = ..., layout: _Optional[str] = ..., upper_height: _Optional[int] = ..., has_inset: _Optional[bool] = ..., inset_x: _Optional[int] = ..., inset_y: _Optional[int] = ..., inset_side: _Optional[int] = ..., background_colour: _Optional[str] = ..., zoom_percent: _Optional[int] = ...) -> None: ...
 
 class PreviewSourceV1(_message.Message):
     __slots__ = ("source_fingerprint", "source_id", "display_width", "display_height")
