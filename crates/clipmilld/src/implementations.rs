@@ -40,6 +40,11 @@ pub(crate) struct Implementation {
     /// so ranking them by speed would choose against the reason they exist.
     /// They stay out of the signed device profile for the same reason.
     pub opt_in: bool,
+    /// How accurate it is among its capability's candidates, from published
+    /// error rates rather than anything measured here: 1 is the floor. Among
+    /// the candidates that keep up on this machine the most accurate is
+    /// chosen; speed decides only between equals, and when none keeps up.
+    pub accuracy: u8,
 }
 
 /// Every implementation the daemon knows how to plan.
@@ -60,6 +65,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "",
         portable: true,
         opt_in: false,
+        accuracy: 1,
     },
     Implementation {
         name: "clipmill-worker-asr@0.1.0",
@@ -71,6 +77,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "",
         portable: true,
         opt_in: false,
+        accuracy: 1,
     },
     // The accurate end of the whisper.cpp family, on the same worker as the
     // base model. Slower on every machine, so a benchmark that ranks speed
@@ -85,6 +92,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "",
         portable: false,
         opt_in: true,
+        accuracy: 3,
     },
     Implementation {
         name: "clipmill-worker-speech-mlx@0.1.0/asr",
@@ -96,6 +104,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
         opt_in: false,
+        accuracy: 3,
     },
     Implementation {
         name: "clipmill-worker-align@0.1.0",
@@ -107,6 +116,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "",
         portable: true,
         opt_in: false,
+        accuracy: 1,
     },
     Implementation {
         name: "clipmill-worker-speech-mlx@0.1.0/align",
@@ -118,6 +128,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
         opt_in: false,
+        accuracy: 1,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/propose",
@@ -129,6 +140,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
         opt_in: false,
+        accuracy: 1,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/review",
@@ -140,6 +152,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
         opt_in: false,
+        accuracy: 1,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/look",
@@ -151,6 +164,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
         opt_in: false,
+        accuracy: 1,
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/metadata",
@@ -162,6 +176,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
         opt_in: false,
+        accuracy: 1,
     },
     // The face detector. One candidate and no accelerated sibling: YuNet is a
     // 230 kB CPU graph whose whole appeal is having no runtime tail, and an
@@ -177,6 +192,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "",
         portable: true,
         opt_in: false,
+        accuracy: 1,
     },
 ];
 
@@ -278,6 +294,7 @@ pub(crate) fn register_custom(model: &str, capability: &str) -> Result<(), &'sta
             },
             portable: false,
             opt_in: true,
+            accuracy: 1,
         })));
     }
     Ok(())

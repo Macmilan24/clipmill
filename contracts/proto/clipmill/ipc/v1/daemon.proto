@@ -2095,6 +2095,9 @@ message ModelJobV1 {
   string choice = 6;
   // Every model registered for the job, in display order.
   repeated string models = 7;
+  // A model more accurate than the planned one that this computer can run
+  // and hold in memory, when there is one: offered, never switched to.
+  string more_accurate = 8;
 }
 
 message ListModelsResponse {

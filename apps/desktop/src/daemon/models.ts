@@ -76,6 +76,11 @@ export interface ModelJob {
   readonly choice: string;
   /** Every model registered for the job, in display order. */
   readonly models: readonly string[];
+  /**
+   * A model more accurate than the planned one that this computer can run
+   * and hold in memory; empty or absent when there is none.
+   */
+  readonly moreAccurate?: string;
 }
 
 export interface ModelLibrary {

@@ -100,7 +100,7 @@ export function jobReason(job: ModelJob): string {
     case 'chosen':
       return 'Your choice';
     case 'measured':
-      return 'Fastest measured';
+      return 'Measured here';
     case 'installed_fallback':
       return 'Stand-in';
     case 'unavailable':
@@ -122,12 +122,27 @@ export function jobSentence(job: ModelJob, planned: LibraryModel | undefined): s
     case 'installed_fallback':
       return `Analyses use ${planned.title}, because the default is not installed.`;
     case 'measured':
-      return `Analyses use ${planned.title}, the fastest measured on this computer.`;
+      return `Analyses use ${planned.title}, chosen by measuring this computer: the most accurate that keeps up.`;
     default:
       return installed
         ? `Analyses use ${planned.title}.`
         : `Analyses need ${planned.title}. Download it to run this job.`;
   }
+}
+
+/**
+ * Where this computer could do better than the model a job plans: a more
+ * accurate one it can run and hold in memory. Said, and offered; the choice
+ * stays with the person, so nothing is switched or downloaded for them.
+ */
+export function upgradeNote(job: ModelJob, library: ModelLibrary): string | null {
+  if (!job.moreAccurate) return null;
+  const better = library.models.find((model) => model.name === job.moreAccurate);
+  if (better === undefined) return null;
+  const work = job.title.toLowerCase();
+  return better.installState === 'installed'
+    ? `${better.title} is more accurate and this computer can run it. Choose it below to use it for ${work}.`
+    : `${better.title} is more accurate and this computer can run it. Download it below, then choose it for ${work}.`;
 }
 
 /** Percent done, or undefined while nothing about the total is known. */
