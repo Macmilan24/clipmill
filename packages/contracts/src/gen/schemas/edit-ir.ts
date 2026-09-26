@@ -178,6 +178,17 @@ export interface VideoSegment {
       corner: "top_left" | "top_right" | "bottom_left" | "bottom_right";
       size: number;
     };
+    /**
+     * Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.
+     */
+    punches?: {
+      start_ticks: number;
+      end_ticks: number;
+      /**
+       * How much closer, in percent.
+       */
+      zoom: number;
+    }[];
   };
 }
 /**

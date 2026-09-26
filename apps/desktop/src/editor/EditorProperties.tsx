@@ -69,6 +69,15 @@ import {
 import { CueTiming } from './CueTiming.js';
 import { TextTab } from './TextTab.js';
 import {
+  PUNCH_ZOOMS,
+  autoPunches,
+  clearPunches,
+  punchHere,
+  punchSummary,
+  rezoomPunches,
+} from './punches.js';
+import type { ProgramWord } from './transcript.js';
+import {
   batch,
   correctWord,
   refreshCaptions,
@@ -120,6 +129,8 @@ export interface EditorPropertiesProps {
   readonly fonts?: readonly CaptionFont[];
   /** What a new hook title says until it is changed. */
   readonly hook?: string;
+  /** The clip's words in program time, for punch-ins on its sentences. */
+  readonly words?: readonly ProgramWord[];
 }
 
 export function EditorProperties(props: EditorPropertiesProps) {
@@ -568,6 +579,91 @@ function WordEditor({
 
 /* Framing ------------------------------------------------------------------- */
 
+/**
+ * Punch-ins across the clip: every other sentence moves in closer, on every
+ * section that follows someone. Clip-wide, because a rhythm of emphasis is.
+ */
+function PunchIns({
+  plan,
+  document,
+  words,
+  part,
+  localTicks,
+  busy,
+  onApply,
+}: {
+  readonly plan: PreviewPlan;
+  readonly document: EditIr | null;
+  readonly words: readonly ProgramWord[];
+  readonly part: PreviewPlan['segments'][number];
+  readonly localTicks: number;
+  readonly busy: boolean;
+  readonly onApply: (command: EditCommandJson) => void;
+}) {
+  if (!document) return null;
+  const { count, zoom } = punchSummary(document);
+  const auto = words.length > 0 ? autoPunches(plan, document, words, zoom) : null;
+  const saved = document.video.segments?.find((item) => item.segment_id === part.segmentId);
+  const here = saved ? punchHere(saved, localTicks, zoom, part.outTicks - part.inTicks) : null;
+  const clear = clearPunches(document);
+  return (
+    <section className="review-section">
+      <h3 className="review-section-title">Punch-ins</h3>
+      <p className="review-footnote">
+        {count > 0
+          ? `${count} ${count === 1 ? 'punch-in moves' : 'punch-ins move'} the camera closer for emphasis. The framing under them is kept.`
+          : 'Move the camera closer on every other sentence, for emphasis. Only sections that follow someone punch in.'}
+      </p>
+      <div className="edit-inline">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || !auto}
+          onClick={() => {
+            if (auto) onApply(auto);
+          }}
+        >
+          {count > 0 ? 'Punch in again' : 'Punch in on every other sentence'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || !here}
+          onClick={() => {
+            if (here) onApply(here);
+          }}
+        >
+          Punch in here
+        </Button>
+        {clear && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onApply(clear)}>
+            Remove them
+          </Button>
+        )}
+      </div>
+      {words.length === 0 && (
+        <p className="review-footnote">Punch-ins on sentences need this clip’s transcript.</p>
+      )}
+      {count > 0 && (
+        <Field label="How close">
+          <CommitSlider
+            label="Punch-in closeness"
+            min={PUNCH_ZOOMS.min}
+            max={PUNCH_ZOOMS.max}
+            value={zoom}
+            disabled={busy}
+            format={(value) => `${value}%`}
+            onCommit={(value) => {
+              const rezoomed = rezoomPunches(document, value);
+              if (rezoomed) onApply(rezoomed);
+            }}
+          />
+        </Field>
+      )}
+    </section>
+  );
+}
+
 function FramingTab({
   plan,
   document,
@@ -579,6 +675,7 @@ function FramingTab({
   onApply,
   onResolve,
   onSelect,
+  words = [],
 }: EditorPropertiesProps) {
   const part =
     selection.kind === 'section' || selection.kind === 'keyframe'
@@ -715,6 +812,16 @@ function FramingTab({
           keyframe on the timeline.
         </p>
       </section>
+
+      <PunchIns
+        plan={plan}
+        document={document}
+        words={words}
+        part={part}
+        localTicks={localTicks}
+        busy={busy}
+        onApply={onApply}
+      />
 
       {state === 'two_up' && source && (
         <section className="review-section">

@@ -1096,3 +1096,34 @@ fn a_picture_in_picture_insets_its_square_in_the_chosen_corner() {
         RenderError::CropAspectMismatch(_)
     ));
 }
+
+#[test]
+fn a_punch_in_draws_a_tighter_crop_in_render_and_preview_alike() {
+    // A still crop, punched 150% closer from 0.5 s to 1.5 s of the section.
+    let mut document = crop_document(still(656, 0, 608, 1_080));
+    document.video.segments[0].layout.punches = vec![clipmill_edit_ir::Punch {
+        start_ticks: 45_000,
+        end_ticks: 135_000,
+        zoom: 150,
+    }];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("a punched crop compiles");
+    assert!(
+        plan.graph.graph.contains("eval=frame"),
+        "a crop that changes size is scaled frame by frame: {}",
+        plan.graph.graph
+    );
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    // Frames 7, 30 and 52 at 29.97: a quarter, one and one and three
+    // quarter seconds into the section.
+    let at = |frame: usize| preview.crops[frame].expect("a crop");
+    assert_eq!((at(7).width, at(7).height), (608, 1_080));
+    let punched = at(30);
+    assert_eq!((punched.width, punched.height), (404, 720));
+    assert_eq!(
+        (punched.x, punched.y),
+        (758, 180),
+        "about the crop's own centre"
+    );
+    assert_eq!((at(52).width, at(52).height), (608, 1_080));
+}

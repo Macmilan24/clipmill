@@ -1232,6 +1232,16 @@
   cursor: pointer;
 }
 
+/* A punch-in, along the bottom of the section it moves in on. */
+.edit-punch {
+  position: absolute;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: #e0a13a;
+  pointer-events: none;
+}
+
 /* A text over the picture, on its own lane under the captions. */
 .edit-text-block {
   position: absolute;

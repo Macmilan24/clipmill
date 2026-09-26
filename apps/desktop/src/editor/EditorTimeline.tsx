@@ -977,6 +977,24 @@ const Lanes = memo(function Lanes({
               </button>
             );
           })}
+          {plan.segments.flatMap((part) =>
+            (
+              document?.video.segments?.find((saved) => saved.segment_id === part.segmentId)?.layout
+                .punches ?? []
+            ).map((punch) => {
+              const from = part.programStartTicks + punch.start_ticks;
+              const to = part.programStartTicks + punch.end_ticks;
+              return (
+                <span
+                  key={`${part.segmentId}:${punch.start_ticks}`}
+                  className="edit-punch"
+                  style={{ left: at(from), width: wide(from, to) }}
+                  title={`Punch-in, ${punch.zoom}% closer`}
+                  aria-hidden="true"
+                />
+              );
+            }),
+          )}
           {keyframes.map(({ point, shown, secondary }) => {
             const id = `${shown.segmentId}:${point.t_ticks}:${secondary}`;
             const ticks =

@@ -266,16 +266,17 @@ export function Editor({
     },
     [previewCaptions, plan],
   );
+  const clipWords = useMemo(() => (plan ? programWords(plan, transcript) : []), [plan, transcript]);
   // A hook title starts as what the clip is called, or the first thing said.
   const hook = useMemo(() => {
     if (!plan) return 'Your hook here';
     const opening: string[] = [];
-    for (const word of programWords(plan, transcript)) {
+    for (const word of clipWords) {
       opening.push(word.text);
       if (/[.?!]$/.test(word.text) || opening.length >= 14) break;
     }
     return suggestedHook(document?.title ?? labels?.clip, opening.join(' '));
-  }, [plan, transcript, document?.title, labels?.clip]);
+  }, [plan, clipWords, document?.title, labels?.clip]);
   const exactCaptions = useMemo(
     () =>
       exactCaptionsOf(
@@ -1088,6 +1089,7 @@ export function Editor({
           onTryLook={previewCaptions ? tryLook : null}
           fonts={plan.fonts ?? []}
           hook={hook}
+          words={clipWords}
         />
       </div>
       <div

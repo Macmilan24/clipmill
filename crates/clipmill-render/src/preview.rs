@@ -363,34 +363,38 @@ fn crops(
     frame_count: i64,
     secondary: bool,
 ) -> Vec<Option<PreviewCrop>> {
+    // Each section's path once, as it is drawn: the followed crop with its
+    // punches taken in, as the render takes them.
     let mut boundaries = Vec::with_capacity(document.video.segments.len());
     let mut at = 0_i64;
     for segment in &document.video.segments {
         let end = at + segment.duration_ticks();
-        boundaries.push((rate.frame_ceil(at), rate.frame_ceil(end), segment));
+        let path = if secondary {
+            std::borrow::Cow::Borrowed(segment.layout.secondary_crop_path.as_slice())
+        } else {
+            segment.layout.drawn_crop_path()
+        };
+        boundaries.push((rate.frame_ceil(at), rate.frame_ceil(end), segment, path));
         at = end;
     }
 
     (0..frame_count)
         .map(|frame| {
-            let (start, _, segment) = *boundaries
+            let (start, _, segment, path) = boundaries
                 .iter()
-                .find(|(start, end, _)| frame >= *start && frame < *end)
+                .find(|(start, end, _, _)| frame >= *start && frame < *end)
                 .or_else(|| boundaries.last())?;
             if matches!(segment.layout.state, LayoutState::Fit) {
                 return None;
             }
-            let path = if secondary {
-                if !matches!(
+            if secondary
+                && !matches!(
                     segment.layout.state,
                     LayoutState::TwoUp | LayoutState::PictureInPicture
-                ) {
-                    return None;
-                }
-                &segment.layout.secondary_crop_path
-            } else {
-                &segment.layout.crop_path
-            };
+                )
+            {
+                return None;
+            }
             crop_rect_at(path, rate, frame - start).map(|rect| PreviewCrop {
                 x: rect.x,
                 y: rect.y,

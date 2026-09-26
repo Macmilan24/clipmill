@@ -1366,3 +1366,126 @@ fn a_text_on_its_plate_is_drawn_where_the_document_puts_it() {
     assert!(red(pixel(200, 959)), "{:?}", pixel(200, 959));
     eprintln!("Text decoded; render in {}", work.display());
 }
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one explicit end-to-end encoder scenario"
+)]
+#[ignore = "requires the pinned .cache/bin/ffmpeg; renders and decodes actual pixels"]
+fn a_punch_in_widens_the_picture_for_its_span_only() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-punch-{nonce}"));
+    std::fs::create_dir(&work).expect("scratch directory");
+    // A white bar 40 pixels wide down the middle of a red frame.
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:r=30:d=2,drawbox=x=940:y=0:w=40:h=1080:color=white:t=fill",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let mut document = EditDocument::default();
+    document.video.transition_ticks = 0;
+    document.video.segments = vec![VideoSegment {
+        segment_id: "seg_1".to_owned(),
+        source_fingerprint: fingerprint.clone(),
+        in_ticks: 0,
+        out_ticks: 2 * 90_000,
+        layout: Layout {
+            state: LayoutState::SpeakerFill,
+            crop_path: vec![CropKeyframe {
+                t_ticks: 0,
+                rect: CropRect {
+                    x: 656,
+                    y: 0,
+                    width: 608,
+                    height: 1_080,
+                },
+                easing: clipmill_edit_ir::CropEasing::Linear,
+            }],
+            punches: vec![clipmill_edit_ir::Punch {
+                start_ticks: 45_000,
+                end_ticks: 135_000,
+                zoom: 150,
+            }],
+            ..Layout::default()
+        },
+    }];
+    let source = SourceInput {
+        fingerprint,
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 2 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let plan = compile(&document, &[source], &RenderProfile::default()).expect("compile");
+    let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+    let measurement =
+        LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+            .expect("measured loudness");
+    ffmpeg(&binary, &work, &plan.encode_args(measurement));
+    let pixel = |seconds: &str, x: u32| {
+        let decoded = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                seconds,
+                "-i",
+                "clip.mp4",
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("crop=2:2:{x}:959,scale=1:1"),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ]),
+        );
+        assert_eq!(decoded.stdout.len(), 3);
+        [decoded.stdout[0], decoded.stdout[1], decoded.stdout[2]]
+    };
+    let white = |[r, g, b]: [u8; 3]| r > 200 && g > 200 && b > 200;
+    let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;
+    // Before the punch the bar spans 504 to 576 of the output's width; during
+    // it, 487 to 593; after it, back to 504 to 576.
+    assert!(white(pixel("0.25", 540)), "{:?}", pixel("0.25", 540));
+    assert!(red(pixel("0.25", 587)), "{:?}", pixel("0.25", 587));
+    assert!(white(pixel("1.0", 587)), "{:?}", pixel("1.0", 587));
+    assert!(white(pixel("1.0", 492)), "{:?}", pixel("1.0", 492));
+    assert!(red(pixel("1.75", 587)), "{:?}", pixel("1.75", 587));
+    eprintln!("Punch decoded; render in {}", work.display());
+}

@@ -586,7 +586,9 @@ pub fn largest_upscale(
         };
         let factors = match layout.state {
             LayoutState::Fit => vec![fitted()],
-            LayoutState::SpeakerFill => vec![stretched(&layout.crop_path, profile.height)],
+            LayoutState::SpeakerFill => {
+                vec![stretched(&layout.drawn_crop_path(), profile.height)]
+            }
             LayoutState::TwoUp => {
                 let ((_, first), (_, second)) = layout.viewports(profile.width, profile.height);
                 vec![

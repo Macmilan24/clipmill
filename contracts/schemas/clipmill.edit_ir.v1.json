@@ -458,6 +458,31 @@
                   "maximum": 600
                 }
               }
+            },
+            "punches": {
+              "description": "Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["start_ticks", "end_ticks", "zoom"],
+                "additionalProperties": false,
+                "properties": {
+                  "start_ticks": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "end_ticks": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "zoom": {
+                    "description": "How much closer, in percent.",
+                    "type": "integer",
+                    "minimum": 105,
+                    "maximum": 200
+                  }
+                }
+              }
             }
           }
         }

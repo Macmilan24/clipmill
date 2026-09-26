@@ -207,6 +207,7 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: next,
       };
     }
+    case 'set_punches':
     case 'set_layout':
     case 'set_layout_style':
     case 'replace_crop_path':
@@ -276,6 +277,11 @@ function relaid(layout: Layout, command: EditCommandJson): Layout {
         crop_path: layout.secondary_crop_path ?? [],
         secondary_crop_path: layout.crop_path ?? [],
       };
+    case 'set_punches': {
+      const { punches: _punches, ...rest } = layout;
+      const punches = command.punches as NonNullable<Layout['punches']>;
+      return punches.length > 0 ? { ...rest, punches } : rest;
+    }
     default:
       return layout;
   }
