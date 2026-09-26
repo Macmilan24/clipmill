@@ -3,9 +3,9 @@ use thiserror::Error;
 
 use crate::{
     document::{
-        CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing, CropKeyframe,
-        CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint, Inset,
-        LayoutState, Overlay, Presentation, Punch, VideoSegment, crop_along_keyframes,
+        Asset, Brand, CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing,
+        CropKeyframe, CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint,
+        Inset, LayoutState, Overlay, Presentation, Punch, VideoSegment, crop_along_keyframes,
         retime_punches, split_punches,
     },
     reflow,
@@ -34,6 +34,16 @@ pub enum EditCommand {
     SetPunches {
         segment_id: String,
         punches: Vec<Punch>,
+    },
+    /// Set or take away the clip's progress bar and logo, and list the assets
+    /// the brand draws from. `None` takes the brand away.
+    SetBrand {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        brand: Option<Brand>,
+        /// The clip's asset list with the brand's own; the inverse carries
+        /// the list as it was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assets: Option<Vec<Asset>>,
     },
     /// Deliver the clip in another frame shape. Only the shape: the crops
     /// that fit it are replaced by commands of their own, batched with this.
@@ -334,6 +344,16 @@ impl EditCommand {
                 Ok(Self::SetPunches {
                     segment_id: segment_id.clone(),
                     punches: previous,
+                })
+            }
+            Self::SetBrand { brand, assets } => {
+                let previous = std::mem::replace(&mut document.brand, brand.clone());
+                let previous_assets = assets
+                    .as_ref()
+                    .map(|assets| std::mem::replace(&mut document.assets, assets.clone()));
+                Ok(Self::SetBrand {
+                    brand: previous,
+                    assets: previous_assets,
                 })
             }
             Self::SetFrameShape { shape } => {

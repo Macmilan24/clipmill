@@ -14,6 +14,7 @@ import type {
   DirectedClip,
   PreviewPlan,
 } from '../daemon/client.js';
+import { kitRequest } from '../editor/brand.js';
 import { highlightFor, lookFor, optionsFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { TICKS_PER_SECOND } from './model.js';
@@ -398,6 +399,8 @@ export function useResults(
         cut,
         ...(look ? { styleRef: look } : {}),
         ...(options ? { captionOptionsJson: options } : {}),
+        // The saved brand kit, and the shape clips are framed for.
+        ...kitRequest(),
         highlightSpokenWord: highlightFor(projectId),
         ...(cut === 'exact' && window
           ? { startTicks: window.startTicks, endTicks: window.endTicks }
@@ -425,6 +428,8 @@ export function useResults(
         cut: 'exact',
         ...(look ? { styleRef: look } : {}),
         ...(options ? { captionOptionsJson: options } : {}),
+        // The saved brand kit, and the shape clips are framed for.
+        ...kitRequest(),
         highlightSpokenWord: highlightFor(projectId),
         startTicks,
         endTicks,

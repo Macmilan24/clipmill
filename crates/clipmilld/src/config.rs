@@ -46,6 +46,8 @@ pub struct Paths {
     pub state_dir: PathBuf,
     pub backups_dir: PathBuf,
     pub artifacts_dir: PathBuf,
+    /// The person's own pictures and sounds, by content hash.
+    pub assets_dir: PathBuf,
     pub run_dir: PathBuf,
     pub database: PathBuf,
     pub socket: PathBuf,
@@ -251,6 +253,7 @@ impl Config {
                 database: state_dir.join("clipmill.db"),
                 backups_dir: state_dir.join("backups"),
                 artifacts_dir: data_dir.join("artifacts"),
+                assets_dir: data_dir.join("assets"),
                 lock: run_dir.join("daemon.lock"),
                 probe_scratch_dir: state_dir.join("probe-scratch"),
                 media_scratch_dir: state_dir.join("media-scratch"),

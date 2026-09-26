@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -159,6 +159,12 @@ pub mod request {
         PreviewDirect(super::PreviewDirectRequest),
         #[prost(message, tag = "75")]
         ThumbnailFraming(super::ThumbnailFramingRequest),
+        #[prost(message, tag = "76")]
+        ImportAsset(super::ImportAssetRequest),
+        #[prost(message, tag = "77")]
+        ListAssets(super::ListAssetsRequest),
+        #[prost(message, tag = "78")]
+        ResolveAsset(super::ResolveAssetRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -169,7 +175,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -284,6 +290,12 @@ pub mod response {
         PreviewDirect(super::GetPreviewPlanResponse),
         #[prost(message, tag = "61")]
         ThumbnailFraming(super::ThumbnailFramingResponse),
+        #[prost(message, tag = "62")]
+        ImportAsset(super::ImportAssetResponse),
+        #[prost(message, tag = "63")]
+        ListAssets(super::ListAssetsResponse),
+        #[prost(message, tag = "64")]
+        ResolveAsset(super::ResolveAssetResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1161,6 +1173,78 @@ pub struct ReadArtifactResponse {
 /// No path leaves the daemon. The shell derives the object directory from the
 /// content address, exactly as the store does, so a response cannot be turned
 /// into a pointer at something outside it.
+/// One of the person's own pictures or sounds — a logo, a music bed — kept by
+/// the SHA-256 of its bytes. A document names it by that hash.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AssetV1 {
+    /// sha256:<hex>
+    #[prost(string, tag = "1")]
+    pub hash: ::prost::alloc::string::String,
+    /// image or audio, decided from the bytes, never from a file name.
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    /// The file name it was imported from.
+    #[prost(string, tag = "3")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub media_type: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "5")]
+    pub bytes: u64,
+    /// A picture's size; zero for a sound.
+    #[prost(int64, tag = "6")]
+    pub width: i64,
+    #[prost(int64, tag = "7")]
+    pub height: i64,
+    /// A sound's length; zero for a picture.
+    #[prost(int64, tag = "8")]
+    pub duration_ticks: i64,
+    /// own_content, licensed, royalty_free or public_domain.
+    #[prost(string, tag = "9")]
+    pub license: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "10")]
+    pub added_unix_millis: u64,
+}
+/// Copy a file the person chose into the asset folder. The same bytes twice
+/// are one asset.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ImportAssetRequest {
+    #[prost(string, tag = "1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub license: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ImportAssetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub asset: ::core::option::Option<AssetV1>,
+}
+/// Every asset, newest first; `kind` narrows it to pictures or sounds.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListAssetsRequest {
+    #[prost(string, tag = "1")]
+    pub kind: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListAssetsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub assets: ::prost::alloc::vec::Vec<AssetV1>,
+}
+/// Whether a hash is one of the assets, and how to serve it. A host derives
+/// the file from the hash; it receives no path.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResolveAssetRequest {
+    #[prost(string, tag = "1")]
+    pub hash: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResolveAssetResponse {
+    #[prost(string, tag = "1")]
+    pub hash: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub media_type: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub bytes: u64,
+}
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ResolveMediaRequest {
     #[prost(string, tag = "1")]
@@ -1677,6 +1761,15 @@ pub struct DirectClipRequest {
     /// look's own. Checked like any edit: options the IR refuses are refused.
     #[prost(string, tag = "14")]
     pub caption_options_json: ::prost::alloc::string::String,
+    /// The brand a saved kit starts the clip with — a progress bar, a logo — as
+    /// the edit IR's JSON. A logo whose picture is not in the asset folder is
+    /// left out rather than refusing the clip.
+    #[prost(string, tag = "15")]
+    pub brand_json: ::prost::alloc::string::String,
+    /// The frame the clip is framed for: vertical, portrait, square or
+    /// landscape. Empty is vertical.
+    #[prost(string, tag = "16")]
+    pub shape: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {
@@ -1786,6 +1879,37 @@ pub struct PreviewGainV1 {
     pub frame: i64,
     #[prost(double, tag = "2")]
     pub gain_db: f64,
+}
+/// A progress bar as the render draws it: its colour, edge and thickness in
+/// output pixels. It fills from the left as the program plays.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewProgressV1 {
+    #[prost(string, tag = "1")]
+    pub colour: ::prost::alloc::string::String,
+    /// top or bottom.
+    #[prost(string, tag = "2")]
+    pub edge: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub thickness: i64,
+}
+/// A logo as the render draws it: which asset, which corner, its longer side
+/// and its distance from the corner's two edges, in output pixels.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewLogoV1 {
+    #[prost(string, tag = "1")]
+    pub asset: ::prost::alloc::string::String,
+    /// top_left, top_right, bottom_left or bottom_right.
+    #[prost(string, tag = "2")]
+    pub corner: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub side: i64,
+    #[prost(int64, tag = "4")]
+    pub inset_x: i64,
+    #[prost(int64, tag = "5")]
+    pub inset_y: i64,
+    /// In percent.
+    #[prost(uint32, tag = "6")]
+    pub opacity: u32,
 }
 /// A text laid over the program, for the editor to show, select and move. Its
 /// pixels come from the plan's script, which draws it as the render will.
@@ -2053,6 +2177,12 @@ pub struct GetPreviewPlanResponse {
     /// Titles and labels over the program, bottom first.
     #[prost(message, repeated, tag = "24")]
     pub overlays: ::prost::alloc::vec::Vec<PreviewOverlayV1>,
+    /// The progress bar, when the clip has one.
+    #[prost(message, optional, tag = "25")]
+    pub progress: ::core::option::Option<PreviewProgressV1>,
+    /// The logo, when the clip has one.
+    #[prost(message, optional, tag = "26")]
+    pub logo: ::core::option::Option<PreviewLogoV1>,
 }
 /// Where the camera would point at a few moments, so a board of clips can show
 /// each as the vertical frame it will have rather than a strip of the source.

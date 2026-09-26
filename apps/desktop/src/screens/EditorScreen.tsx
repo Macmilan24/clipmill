@@ -10,6 +10,7 @@ import type { CropKeyframe, CropPath, SolveOptions } from '../daemon/client.js';
 import { batch, setLayout, solvedKeyframe } from '../editor/commands.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import type { AssetAccess } from '../editor/brand.js';
 import { SPLITS, viewports } from '../editor/layouts.js';
 import { segmentAt, sourceOf } from '../editor/player.js';
 import { useEditor } from '../editor/useEditor.js';
@@ -228,6 +229,18 @@ export function EditorScreen({
         : null,
     [api, faceTrack],
   );
+  // The person's pictures and sounds, where this shell keeps them.
+  const assets = useMemo<AssetAccess | null>(
+    () =>
+      api.listAssets && api.importAsset && api.assetUrl
+        ? {
+            list: (kind) => api.listAssets!(kind),
+            bring: (kind, license) => api.importAsset!(kind, license),
+            url: (hash) => api.assetUrl!(hash),
+          }
+        : null,
+    [api],
+  );
 
   return (
     <Editor
@@ -277,6 +290,7 @@ export function EditorScreen({
           : null
       }
       loadFaces={loadFaces}
+      assets={assets}
       onLoadHistory={
         api.listEditHistory && clip
           ? async () => historySteps(await api.listEditHistory!(clip.docId))

@@ -188,6 +188,59 @@
         "$ref": "#/$defs/overlay"
       }
     },
+    "brand": {
+      "description": "What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "progress": {
+          "type": "object",
+          "required": ["colour", "edge", "thickness"],
+          "additionalProperties": false,
+          "properties": {
+            "colour": {
+              "$ref": "#/$defs/hexColour"
+            },
+            "edge": {
+              "enum": ["top", "bottom"]
+            },
+            "thickness": {
+              "description": "At the 1920-pixel design height.",
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 40
+            }
+          }
+        },
+        "logo": {
+          "type": "object",
+          "required": ["asset", "corner", "size", "opacity"],
+          "additionalProperties": false,
+          "properties": {
+            "asset": {
+              "description": "The picture's content hash; the clip's assets list it.",
+              "$ref": "#/$defs/sha256"
+            },
+            "corner": {
+              "enum": ["top_left", "top_right", "bottom_left", "bottom_right"]
+            },
+            "size": {
+              "description": "Its longer side as a share of the frame's short side, per mille.",
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 300
+            },
+            "opacity": {
+              "description": "In percent.",
+              "type": "integer",
+              "minimum": 20,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
     "assets": {
       "description": "Assets referenced by content hash, each carrying the licence record the render manifest echoes.",
       "type": "array",

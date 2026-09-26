@@ -128,6 +128,30 @@ pub struct PreviewOverlay {
     pub plate: Option<String>,
 }
 
+/// A progress bar as the render draws it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewProgress {
+    pub colour: String,
+    /// `top` or `bottom`.
+    pub edge: &'static str,
+    /// In output pixels.
+    pub thickness: i64,
+}
+
+/// A logo as the render draws it: which picture, which corner, and its
+/// place in output pixels.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewLogo {
+    pub asset: String,
+    /// `top_left`, `top_right`, `bottom_left` or `bottom_right`.
+    pub corner: &'static str,
+    pub side: i64,
+    pub inset_x: i64,
+    pub inset_y: i64,
+    /// In percent.
+    pub opacity: u8,
+}
+
 /// Everything the player needs, and nothing it has to work out.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewPlan {
@@ -149,6 +173,10 @@ pub struct PreviewPlan {
     pub gain: Vec<PreviewGain>,
     /// What is laid over the program, bottom first.
     pub overlays: Vec<PreviewOverlay>,
+    /// The progress bar, in output pixels: its colour, edge and thickness.
+    pub progress: Option<PreviewProgress>,
+    /// The logo, where the render puts it.
+    pub logo: Option<PreviewLogo>,
     /// The output frame the crops are fitted into.
     pub width: i64,
     pub height: i64,
@@ -254,40 +282,79 @@ pub fn preview_plan(
                 gain_db: point.gain_db,
             })
             .collect(),
-        overlays: document
-            .overlays
-            .iter()
-            .map(|overlay| {
-                let clipmill_edit_ir::OverlayContent::Text {
-                    text,
-                    role,
-                    x,
-                    y,
-                    size,
-                    colour,
-                    plate,
-                } = &overlay.content;
-                PreviewOverlay {
-                    overlay_id: overlay.overlay_id.clone(),
-                    start_ticks: overlay.start_ticks,
-                    end_ticks: overlay.end_ticks,
-                    first_frame: rate.frame_ceil(overlay.start_ticks),
-                    end_frame: rate.frame_ceil(overlay.end_ticks).min(frame_count),
-                    text: text.clone(),
-                    role: match role {
-                        clipmill_edit_ir::TextRole::Hook => "hook",
-                        clipmill_edit_ir::TextRole::Label => "label",
-                    },
-                    x: *x,
-                    y: *y,
-                    size: *size,
-                    colour: colour.clone(),
-                    plate: plate.clone(),
-                }
-            })
-            .collect(),
+        overlays: overlays(document, rate, frame_count),
+        progress: progress(document, profile),
+        logo: logo(document, profile),
         width: profile.width,
         height: profile.height,
+    })
+}
+
+/// The texts over the program, in frames, bottom first.
+fn overlays(document: &EditDocument, rate: FrameRate, frame_count: i64) -> Vec<PreviewOverlay> {
+    document
+        .overlays
+        .iter()
+        .map(|overlay| {
+            let clipmill_edit_ir::OverlayContent::Text {
+                text,
+                role,
+                x,
+                y,
+                size,
+                colour,
+                plate,
+            } = &overlay.content;
+            PreviewOverlay {
+                overlay_id: overlay.overlay_id.clone(),
+                start_ticks: overlay.start_ticks,
+                end_ticks: overlay.end_ticks,
+                first_frame: rate.frame_ceil(overlay.start_ticks),
+                end_frame: rate.frame_ceil(overlay.end_ticks).min(frame_count),
+                text: text.clone(),
+                role: match role {
+                    clipmill_edit_ir::TextRole::Hook => "hook",
+                    clipmill_edit_ir::TextRole::Label => "label",
+                },
+                x: *x,
+                y: *y,
+                size: *size,
+                colour: colour.clone(),
+                plate: plate.clone(),
+            }
+        })
+        .collect()
+}
+
+/// The progress bar as the render draws it.
+fn progress(document: &EditDocument, profile: &RenderProfile) -> Option<PreviewProgress> {
+    let bar = document.brand.as_ref()?.progress.as_ref()?;
+    Some(PreviewProgress {
+        colour: bar.colour.clone(),
+        edge: match bar.edge {
+            clipmill_edit_ir::BarEdge::Top => "top",
+            clipmill_edit_ir::BarEdge::Bottom => "bottom",
+        },
+        thickness: crate::graph::progress_thickness(bar, profile.height),
+    })
+}
+
+/// The logo where the render puts it.
+fn logo(document: &EditDocument, profile: &RenderProfile) -> Option<PreviewLogo> {
+    let logo = document.brand.as_ref()?.logo.as_ref()?;
+    let place = crate::graph::logo_place(logo, profile.width, profile.height);
+    Some(PreviewLogo {
+        asset: logo.asset.clone(),
+        corner: match logo.corner {
+            clipmill_edit_ir::InsetCorner::TopLeft => "top_left",
+            clipmill_edit_ir::InsetCorner::TopRight => "top_right",
+            clipmill_edit_ir::InsetCorner::BottomLeft => "bottom_left",
+            clipmill_edit_ir::InsetCorner::BottomRight => "bottom_right",
+        },
+        side: place.side,
+        inset_x: place.inset_x,
+        inset_y: place.inset_y,
+        opacity: logo.opacity,
     })
 }
 

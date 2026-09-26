@@ -219,15 +219,7 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     chains.push(audio_chain.concat());
 
     if !request.audio_only {
-        let burn = match request.subtitle_file {
-            // libass sees exactly one directory holding exactly one pinned
-            // font, so the render cannot pick up whatever the host installed.
-            Some(file) => {
-                format!("[vcat]subtitles=filename={file}:fontsdir={FONTS_DIR}[vout]")
-            }
-            None => "[vcat]null[vout]".to_owned(),
-        };
-        chains.push(burn);
+        finish_picture(request, &mut chains);
     }
 
     Ok(FilterGraph {
@@ -235,6 +227,131 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         video_label: "[vout]".to_owned(),
         audio_label: "[aout]".to_owned(),
     })
+}
+
+/// A bar along one edge that fills as the program plays: a strip of its
+/// colour, the frame's width, slid in from the left a step each frame so it
+/// is full on the last.
+fn progress_chain(
+    bar: &clipmill_edit_ir::ProgressBar,
+    profile: &RenderProfile,
+    frames: i64,
+    input: &str,
+    output: &str,
+) -> String {
+    let rate = profile.rate();
+    let thickness = progress_thickness(bar, profile.height);
+    let y = match bar.edge {
+        clipmill_edit_ir::BarEdge::Top => 0,
+        clipmill_edit_ir::BarEdge::Bottom => profile.height - thickness,
+    };
+    format!(
+        "color=c=0x{colour}:s={width}x{thickness}:r={num}/{den}[bar];\
+         {input}[bar]overlay=x='-w+w*(n+1)/{frames}':y={y}:eval=frame:shortest=1,\
+         format=yuv420p{output}",
+        colour = bar.colour.trim_start_matches('#'),
+        width = profile.width,
+        num = rate.num,
+        den = rate.den,
+        frames = frames.max(1),
+    )
+}
+
+/// The program's picture made final: the brand over it, then the captions.
+fn finish_picture(request: &GraphRequest<'_>, chains: &mut Vec<String>) {
+    let brand = request.document.brand.as_ref();
+    let mut picture = "[vcat]";
+    if let Some(bar) = brand.and_then(|brand| brand.progress.as_ref()) {
+        let frames = request.spans.iter().map(|span| span.frame_count).sum();
+        chains.push(progress_chain(
+            bar,
+            request.profile,
+            frames,
+            picture,
+            "[vbar]",
+        ));
+        picture = "[vbar]";
+    }
+    if let Some(logo) = brand.and_then(|brand| brand.logo.as_ref()) {
+        chains.extend(logo_chains(logo, request.profile, picture, "[vlogo]"));
+        picture = "[vlogo]";
+    }
+    chains.push(match request.subtitle_file {
+        // libass sees exactly one directory holding exactly one pinned
+        // font, so the render cannot pick up whatever the host installed.
+        Some(file) => format!("{picture}subtitles=filename={file}:fontsdir={FONTS_DIR}[vout]"),
+        None => format!("{picture}null[vout]"),
+    });
+}
+
+/// Where the logo's file is staged, beside the captions, for `movie` to read.
+pub const LOGO_FILE: &str = "logo";
+
+/// Where a logo sits on a frame this size: its longer side, and how far it
+/// is from the corner's two edges, in output pixels. A tall frame keeps it
+/// clear of the apps' top bar and of the captions and buttons along the
+/// bottom, as an inset is kept; any other keeps a margin.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LogoPlace {
+    pub side: i64,
+    pub inset_x: i64,
+    pub inset_y: i64,
+}
+
+pub fn logo_place(logo: &clipmill_edit_ir::Logo, width: i64, height: i64) -> LogoPlace {
+    use clipmill_edit_ir::InsetCorner;
+    let short = width.min(height);
+    let side = ((short * i64::from(logo.size) / 1_000) & !1).max(2);
+    let margin = (short * 40 / 1_000) & !1;
+    let tall = height > width;
+    let top = matches!(logo.corner, InsetCorner::TopLeft | InsetCorner::TopRight);
+    let inset_y = match (tall, top) {
+        (true, true) => (height * 90 / 1_000) & !1,
+        (true, false) => (height * 260 / 1_000) & !1,
+        (false, true) => margin,
+        (false, false) => (height * 200 / 1_000) & !1,
+    };
+    LogoPlace {
+        side,
+        inset_x: margin,
+        inset_y,
+    }
+}
+
+/// The logo over the picture: read from its staged file, its longer side
+/// scaled to its place, made as opaque as asked, and held on every frame.
+fn logo_chains(
+    logo: &clipmill_edit_ir::Logo,
+    profile: &RenderProfile,
+    input: &str,
+    output: &str,
+) -> Vec<String> {
+    use clipmill_edit_ir::InsetCorner;
+    let place = logo_place(logo, profile.width, profile.height);
+    let side = place.side;
+    let x = match logo.corner {
+        InsetCorner::TopLeft | InsetCorner::BottomLeft => place.inset_x.to_string(),
+        InsetCorner::TopRight | InsetCorner::BottomRight => format!("W-w-{}", place.inset_x),
+    };
+    let y = match logo.corner {
+        InsetCorner::TopLeft | InsetCorner::TopRight => place.inset_y.to_string(),
+        InsetCorner::BottomLeft | InsetCorner::BottomRight => format!("H-h-{}", place.inset_y),
+    };
+    vec![
+        format!(
+            "movie=filename={LOGO_FILE},format=rgba,\
+             scale=w='if(gte(iw,ih),{side},-2)':h='if(gte(iw,ih),-2,{side})',\
+             colorchannelmixer=aa={alpha:.2}[logo]",
+            alpha = f64::from(logo.opacity) / 100.0,
+        ),
+        format!("{input}[logo]overlay=x={x}:y={y}:eof_action=repeat,format=yuv420p{output}"),
+    ]
+}
+
+/// A bar's thickness in pixels of a frame this tall: stated at the design
+/// height, even, and never less than two.
+pub(crate) fn progress_thickness(bar: &clipmill_edit_ir::ProgressBar, height: i64) -> i64 {
+    ((i64::from(bar.thickness) * height / 1_920 + 1) & !1).max(2)
 }
 
 /// What each span reads its frames and samples from.

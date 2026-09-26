@@ -1169,6 +1169,74 @@ impl Overlay {
     }
 }
 
+/// What marks a clip as its creator's, over every frame of it.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Brand {
+    /// A bar along one edge that fills as the clip plays.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<ProgressBar>,
+    /// A picture in one corner, from an asset the clip lists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
+}
+
+/// The edge a progress bar runs along.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BarEdge {
+    Top,
+    #[default]
+    Bottom,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProgressBar {
+    /// `#RRGGBB`.
+    pub colour: String,
+    pub edge: BarEdge,
+    /// Its thickness at the 1920-pixel design height.
+    pub thickness: u16,
+}
+
+impl ProgressBar {
+    pub const THICKNESSES: std::ops::RangeInclusive<u16> = 4..=40;
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Logo {
+    /// The picture's content hash, one of the clip's assets.
+    pub asset: String,
+    pub corner: InsetCorner,
+    /// Its longer side as a share of the frame's short side, per mille.
+    pub size: u16,
+    /// How opaque it is, in percent.
+    pub opacity: u8,
+}
+
+impl Logo {
+    pub const SIZES: std::ops::RangeInclusive<u16> = 60..=300;
+    pub const OPACITIES: std::ops::RangeInclusive<u8> = 20..=100;
+}
+
+impl Brand {
+    pub fn is_empty(&self) -> bool {
+        self.progress.is_none() && self.logo.is_none()
+    }
+
+    fn is_valid(&self, assets: &[Asset]) -> bool {
+        self.progress.as_ref().is_none_or(|bar| {
+            is_hex_colour(&bar.colour) && ProgressBar::THICKNESSES.contains(&bar.thickness)
+        }) && self.logo.as_ref().is_none_or(|logo| {
+            Logo::SIZES.contains(&logo.size)
+                && Logo::OPACITIES.contains(&logo.opacity)
+                && assets.iter().any(|asset| asset.hash == logo.asset)
+        })
+    }
+}
+
 /// An asset referenced by content hash, carrying the licence record that lets
 /// the render manifest state its rights position without guessing.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1200,6 +1268,9 @@ pub struct EditDocument {
     /// Titles and labels over the program, bottom first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub overlays: Vec<Overlay>,
+    /// A progress bar and a logo over every frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brand: Option<Brand>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assets: Vec<Asset>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1219,6 +1290,7 @@ impl Default for EditDocument {
             captions: CaptionTrack::default(),
             audio: AudioTrack::default(),
             overlays: Vec::new(),
+            brand: None,
             assets: Vec::new(),
             rationale: None,
             title: None,
@@ -1746,6 +1818,13 @@ impl EditDocument {
         {
             return Err(DocumentError::InvalidTitle);
         }
+        if self
+            .brand
+            .as_ref()
+            .is_some_and(|brand| brand.is_empty() || !brand.is_valid(&self.assets))
+        {
+            return Err(DocumentError::InvalidBrand);
+        }
         let mut seen_overlays = Vec::with_capacity(self.overlays.len());
         for overlay in &self.overlays {
             if overlay.overlay_id.is_empty() {
@@ -1885,6 +1964,10 @@ pub enum DocumentError {
     InvalidLayoutStyle(String),
     #[error("segment {0} has punches out of order, overlapping, outside it or too close")]
     InvalidPunch(String),
+    #[error(
+        "the progress bar or logo is outside what can be drawn, or the logo is not an asset of the clip"
+    )]
+    InvalidBrand,
     #[error("overlay {0} appears more than once")]
     DuplicateOverlay(String),
     #[error("overlay {0} has an empty or negative time span")]

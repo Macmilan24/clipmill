@@ -117,6 +117,17 @@ pub(crate) struct RenderContext<'a> {
     pub media: &'a MediaRunner,
     pub sources: &'a SourceInspector,
     pub fonts_dir: &'a Path,
+    /// The person's own pictures and sounds, which a brand or a music bed
+    /// names by hash.
+    pub assets_dir: &'a Path,
+}
+
+/// What a render draws from besides the recording: the pinned caption fonts
+/// and the person's assets.
+#[derive(Clone, Debug)]
+pub(crate) struct RenderResources {
+    pub fonts_dir: std::path::PathBuf,
+    pub assets_dir: std::path::PathBuf,
 }
 
 pub(crate) async fn execute_render_task(
@@ -156,6 +167,13 @@ pub(crate) async fn execute_render_task(
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
     // The face the captions are set in, which the compiled style names.
     let font = stage_font_source(context.fonts_dir, &plan.profile.caption_style.font_family)?;
+    // The brand's logo, read from the asset folder by its hash.
+    let logo = document
+        .brand
+        .as_ref()
+        .and_then(|brand| brand.logo.as_ref())
+        .map(|logo| verified_asset(context.assets_dir, &logo.asset))
+        .transpose()?;
 
     let ir_hash = format!("sha256:{document_digest}");
     let recipe = render_recipe(
@@ -178,6 +196,7 @@ pub(crate) async fn execute_render_task(
         &Rendered {
             plan: &plan,
             font: &font,
+            logo: logo.as_deref(),
             payload: &payload,
             ir_artifact_id,
             ir_hash,
@@ -201,6 +220,38 @@ struct PinnedFont {
     file_name: String,
     family: String,
     sha256: String,
+}
+
+/// An asset's file, checked against the hash the document names it by, so a
+/// render never draws bytes other than the ones the edit was made with.
+fn verified_asset(assets_dir: &Path, hash: &str) -> Result<PathBuf, TaskExecutionError> {
+    let missing = || {
+        TaskExecutionError::deterministic(
+            "a picture or sound this clip uses is not in the asset folder; bring it in again",
+        )
+    };
+    let hex = hash
+        .strip_prefix("sha256:")
+        .filter(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(missing)?;
+    let path = assets_dir.join(hex);
+    let mut file = fs::File::open(&path).map_err(|_| missing())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    loop {
+        let read = std::io::Read::read(&mut file, &mut buffer)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    if format!("{}", Sha256Digest::from_bytes(hasher.finalize().into())) != hex {
+        return Err(TaskExecutionError::deterministic(
+            "a picture or sound this clip uses has changed in the asset folder; bring it in again",
+        ));
+    }
+    Ok(path)
 }
 
 fn stage_font_source(fonts_dir: &Path, family: &str) -> Result<PinnedFont, TaskExecutionError> {
@@ -440,6 +491,8 @@ fn render_recipe(
 struct Rendered<'a> {
     plan: &'a RenderPlan,
     font: &'a PinnedFont,
+    /// The logo's file in the asset folder, when the brand has one.
+    logo: Option<&'a Path>,
     payload: &'a RenderClipPayloadV1,
     ir_artifact_id: ArtifactId,
     ir_hash: String,
@@ -461,6 +514,12 @@ async fn render_into(
         .and_then(|()| fs::copy(&font.path, fonts_dir.join(&font.file_name)).map(|_| ()))
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     write_text(staging, ASS_FILE, &plan.ass)?;
+    // The logo beside them, under the one name the graph reads it by.
+    let logo_file = work.join(clipmill_render::LOGO_FILE);
+    if let Some(logo) = rendered.logo {
+        fs::copy(logo, &logo_file)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
 
     let duration_hint = ticks_to_millis(plan.duration_ticks);
     let total_work = duration_hint.saturating_mul(3);
@@ -511,6 +570,10 @@ async fn render_into(
     // the manifest is written keeps the artifact to what was published.
     fs::remove_dir_all(&fonts_dir)
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    if rendered.logo.is_some() {
+        fs::remove_file(&logo_file)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
 
     let manifest = build_manifest(rendered, measured_input, measured_output, &work)?;
     let manifest_value = serde_json::to_value(&manifest)

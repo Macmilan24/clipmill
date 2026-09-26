@@ -512,6 +512,12 @@ pub struct DirectClipInput {
     /// The caption options a saved style starts the clip with, as JSON.
     #[serde(default)]
     pub caption_options_json: String,
+    /// The brand a saved kit starts the clip with, as JSON.
+    #[serde(default)]
+    pub brand_json: String,
+    /// The frame the clip is framed for; empty is vertical.
+    #[serde(default)]
+    pub shape: String,
     /// Read only for `exact`. The daemon moves an edge that falls inside a
     /// word out to keep the whole word; anywhere between words is kept.
     #[serde(default)]
@@ -556,6 +562,8 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             manual_span: input.manual_span,
             job_id: input.job_id,
             caption_options_json: input.caption_options_json,
+            brand_json: input.brand_json,
+            shape: input.shape,
         }
     }
 }
@@ -762,6 +770,29 @@ pub struct PreviewPlanView {
     pub decisions: Vec<String>,
     /// Titles and labels over the program, bottom first.
     pub overlays: Vec<PreviewOverlayView>,
+    /// The progress bar, when the clip has one.
+    pub progress: Option<PreviewProgressView>,
+    /// The logo, when the clip has one.
+    pub logo: Option<PreviewLogoView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewLogoView {
+    pub asset: String,
+    pub corner: String,
+    pub side: i64,
+    pub inset_x: i64,
+    pub inset_y: i64,
+    pub opacity: u32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewProgressView {
+    pub colour: String,
+    pub edge: String,
+    pub thickness: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -991,6 +1022,19 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 })
                 .collect(),
             decisions: reply.decisions,
+            logo: reply.logo.map(|logo| PreviewLogoView {
+                asset: logo.asset,
+                corner: logo.corner,
+                side: logo.side,
+                inset_x: logo.inset_x,
+                inset_y: logo.inset_y,
+                opacity: logo.opacity,
+            }),
+            progress: reply.progress.map(|bar| PreviewProgressView {
+                colour: bar.colour,
+                edge: bar.edge,
+                thickness: bar.thickness,
+            }),
             overlays: reply
                 .overlays
                 .into_iter()
@@ -1592,4 +1636,37 @@ pub struct EditHistoryEntryView {
 pub struct CaptionPreviewView {
     pub ass: String,
     pub revision: u64,
+}
+
+/// One of the person's own pictures or sounds, for the renderer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetView {
+    pub hash: String,
+    pub kind: String,
+    pub name: String,
+    pub media_type: String,
+    pub bytes: u64,
+    pub width: i64,
+    pub height: i64,
+    pub duration_ticks: i64,
+    pub license: String,
+    pub added_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::AssetV1> for AssetView {
+    fn from(asset: clipmill_contracts::proto::ipc::v1::AssetV1) -> Self {
+        Self {
+            hash: asset.hash,
+            kind: asset.kind,
+            name: asset.name,
+            media_type: asset.media_type,
+            bytes: asset.bytes,
+            width: asset.width,
+            height: asset.height,
+            duration_ticks: asset.duration_ticks,
+            license: asset.license,
+            added_unix_millis: asset.added_unix_millis,
+        }
+    }
 }

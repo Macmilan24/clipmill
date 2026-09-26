@@ -8,6 +8,7 @@ import { type JSX, useEffect, useMemo, useRef, useState } from 'react';
 import type { ShellApi } from '../daemon/api.js';
 import type { PreviewPlan } from '../daemon/client.js';
 import { CaptionCanvas } from '../editor/CaptionCanvas.js';
+import { BrandLayer } from '../editor/BrandLayer.js';
 import { CompositionCanvas } from '../editor/CompositionCanvas.js';
 import { exactCaptionsOf } from '../editor/exactCaptions.js';
 import { frameAtProxySeconds, proxySecondsAt } from '../editor/player.js';
@@ -119,6 +120,7 @@ function Loop({
           return at;
         }}
       />
+      <BrandLayer plan={plan} frame={frame} assetUrl={api.assetUrl ?? null} />
       {captions && (
         <CaptionCanvas
           ass={captions.ass}

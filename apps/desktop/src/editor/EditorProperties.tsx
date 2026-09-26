@@ -14,7 +14,6 @@ import {
   Columns2,
   Copy,
   Crop,
-  Info,
   Minus,
   PanelLeft,
   PanelTop,
@@ -23,6 +22,7 @@ import {
   RectangleHorizontal,
   Rows2,
   ScanFace,
+  Stamp,
   Type,
   X,
 } from 'lucide-react';
@@ -68,6 +68,8 @@ import {
 } from './layouts.js';
 import { CueTiming } from './CueTiming.js';
 import { TextTab } from './TextTab.js';
+import type { AssetAccess } from './brand.js';
+import { BrandTab } from './BrandTab.js';
 import {
   PUNCH_ZOOMS,
   autoPunches,
@@ -131,6 +133,8 @@ export interface EditorPropertiesProps {
   readonly hook?: string;
   /** The clip's words in program time, for punch-ins on its sentences. */
   readonly words?: readonly ProgramWord[];
+  /** The person's pictures and sounds; absent outside the app. */
+  readonly assets?: AssetAccess | null;
 }
 
 export function EditorProperties(props: EditorPropertiesProps) {
@@ -169,9 +173,9 @@ export function EditorProperties(props: EditorPropertiesProps) {
             <AudioLines aria-hidden="true" />
             Audio
           </TabsTrigger>
-          <TabsTrigger value="details">
-            <Info aria-hidden="true" />
-            Details
+          <TabsTrigger value="brand">
+            <Stamp aria-hidden="true" />
+            Brand
           </TabsTrigger>
         </TabsList>
         <TabsContent value="captions" className="review-tab-panel">
@@ -207,7 +211,14 @@ export function EditorProperties(props: EditorPropertiesProps) {
         <TabsContent value="audio" className="review-tab-panel">
           <AudioTab {...props} />
         </TabsContent>
-        <TabsContent value="details" className="review-tab-panel">
+        <TabsContent value="brand" className="review-tab-panel">
+          <BrandTab
+            plan={props.plan}
+            document={props.document}
+            busy={props.busy}
+            onApply={props.onApply}
+            assets={props.assets ?? null}
+          />
           <DetailsTab {...props} />
         </TabsContent>
       </Tabs>

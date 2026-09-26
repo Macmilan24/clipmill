@@ -105,6 +105,8 @@ export function describeCommand(command: EditCommandJson): string {
       return 'Remove text';
     case 'set_punches':
       return 'Punch-ins';
+    case 'set_brand':
+      return 'Brand';
     case 'set_overlay':
       return 'Change text';
     case 'set_frame_shape':

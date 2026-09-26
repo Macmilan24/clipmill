@@ -1,3 +1,4 @@
+mod assets;
 mod batch;
 mod models;
 mod storage;
@@ -26,14 +27,14 @@ use clipmill_contracts::proto::ipc::v1::{
     ListClipDecisionsResponse, ListEditDocsResponse, ListFacesRequest, ListFacesResponse,
     ListJobsResponse, ListProjectsResponse, ListSourcesResponse, LocalLockStatusV1, MediaFileV1,
     PingResponse, PlanExportRequest, PlanExportResponse, PreviewCropV1, PreviewCueV1,
-    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewOverlayV1, PreviewProxyV1,
-    PreviewSegmentV1, PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1,
-    RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest,
-    RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse, Response,
-    SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest,
-    SolveCropPathResponse, StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest,
-    SubscribeTaskEventsResponse, ThumbnailFramingRequest, ThumbnailFramingResponse,
-    TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
+    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewLogoV1, PreviewOverlayV1,
+    PreviewProgressV1, PreviewProxyV1, PreviewSegmentV1, PreviewSourceV1, PreviewWordV1,
+    ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest, ReadArtifactResponse,
+    RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest, ResolveMediaResponse,
+    Response, SetClipDecisionRequest, SetClipDecisionResponse, SnapshotEditDocResponse,
+    SolveCropPathRequest, SolveCropPathResponse, StageReadinessV1, SubmitJobRequest,
+    SubscribeTaskEventsRequest, SubscribeTaskEventsResponse, ThumbnailFramingRequest,
+    ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
 };
 use clipmill_contracts::schemas::vision_face_track::VisionFaceTrack;
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
@@ -107,6 +108,9 @@ pub(crate) struct Service {
     collector: Option<crate::collector::Collector>,
     /// The evidence the last clip was directed from, for the next one.
     evidence: crate::inspector::EvidenceCache,
+    /// The person's own pictures and sounds. Absent in the tests that build
+    /// a service without a workspace.
+    assets: Option<crate::assets::AssetStore>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -172,6 +176,7 @@ impl Service {
             library: None,
             collector: None,
             evidence: crate::inspector::EvidenceCache::default(),
+            assets: None,
         }
     }
 
@@ -223,6 +228,7 @@ impl Service {
             library: None,
             collector: None,
             evidence: crate::inspector::EvidenceCache::default(),
+            assets: None,
         }
     }
 
@@ -492,6 +498,9 @@ impl Service {
             request::Body::ThumbnailFraming(framing) => {
                 self.thumbnail_framing(request_id, &framing).await
             }
+            request::Body::ImportAsset(import) => self.import_asset(request_id, &import).await,
+            request::Body::ListAssets(list) => self.list_assets(request_id, &list),
+            request::Body::ResolveAsset(resolve) => self.resolve_asset(request_id, &resolve),
             request::Body::SnapshotEditDoc(snapshot) => {
                 self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
             }
@@ -1948,6 +1957,9 @@ impl Service {
         if direct.highlight_spoken_word.is_some() {
             document.captions.options.highlight_spoken_word = direct.highlight_spoken_word;
         }
+        if !direct.brand_json.is_empty() {
+            self.start_with_brand(&mut document, &direct.brand_json)?;
+        }
         document.validate().map_err(|error| {
             (
                 ErrorCode::InvalidArgument,
@@ -1968,6 +1980,46 @@ impl Service {
             ));
         }
         Ok(document)
+    }
+
+    /// A saved kit's brand on a new clip. Its logo comes with the licence
+    /// the asset folder holds for it, and is left out when the folder no
+    /// longer has the picture — the clip is still worth making.
+    fn start_with_brand(
+        &self,
+        document: &mut clipmill_edit_ir::EditDocument,
+        brand_json: &str,
+    ) -> Result<(), (ErrorCode, String)> {
+        let mut brand: clipmill_edit_ir::Brand =
+            serde_json::from_str(brand_json).map_err(|_| {
+                (
+                    ErrorCode::InvalidArgument,
+                    "the brand could not be read".to_owned(),
+                )
+            })?;
+        if let Some(logo) = &brand.logo {
+            match self
+                .assets
+                .as_ref()
+                .and_then(|store| store.get(&logo.asset))
+            {
+                Some(record) => {
+                    if !document
+                        .assets
+                        .iter()
+                        .any(|asset| asset.hash == record.hash)
+                    {
+                        document.assets.push(clipmill_edit_ir::Asset {
+                            hash: record.hash,
+                            license: record.license,
+                        });
+                    }
+                }
+                None => brand.logo = None,
+            }
+        }
+        document.brand = (!brand.is_empty()).then_some(brand);
+        Ok(())
     }
 
     async fn set_clip_decision(
@@ -3948,6 +4000,9 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::ListFaces(_)) => "list_faces",
         Some(request::Body::PreviewDirect(_)) => "preview_direct",
         Some(request::Body::ThumbnailFraming(_)) => "thumbnail_framing",
+        Some(request::Body::ImportAsset(_)) => "import_asset",
+        Some(request::Body::ListAssets(_)) => "list_assets",
+        Some(request::Body::ResolveAsset(_)) => "resolve_asset",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         Some(request::Body::ListModels(_)) => "list_models",
         Some(request::Body::DownloadModels(_)) => "download_models",
@@ -4192,6 +4247,19 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 gain_db: point.gain_db,
             })
             .collect(),
+        logo: plan.logo.as_ref().map(|logo| PreviewLogoV1 {
+            asset: logo.asset.clone(),
+            corner: logo.corner.to_owned(),
+            side: logo.side,
+            inset_x: logo.inset_x,
+            inset_y: logo.inset_y,
+            opacity: u32::from(logo.opacity),
+        }),
+        progress: plan.progress.as_ref().map(|bar| PreviewProgressV1 {
+            colour: bar.colour.clone(),
+            edge: bar.edge.to_owned(),
+            thickness: bar.thickness,
+        }),
         overlays: plan
             .overlays
             .iter()
@@ -4331,7 +4399,13 @@ fn assemble(
         cut,
         style_ref,
         frame: evidence.frame,
-        shape: clipmill_director::FrameShape::default(),
+        shape: match direct.shape.as_str() {
+            "" | "vertical" => clipmill_director::FrameShape::Vertical,
+            "portrait" => clipmill_director::FrameShape::Portrait,
+            "square" => clipmill_director::FrameShape::Square,
+            "landscape" => clipmill_director::FrameShape::Landscape,
+            other => return Err(format!("{other} is not a frame shape")),
+        },
     };
     if direct.manual_span {
         let boundary = clipmill_director::Boundary {
