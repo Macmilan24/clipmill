@@ -2531,23 +2531,29 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
-        let command_json = if serde_json::from_str::<serde_json::Value>(&apply.command_json)
+        // Two requests are resolved here into commands the log can replay
+        // without the evidence they were derived from.
+        let op = serde_json::from_str::<serde_json::Value>(&apply.command_json)
             .ok()
             .and_then(|value| {
                 value
                     .get("op")
                     .and_then(|op| op.as_str())
                     .map(str::to_owned)
-            })
-            .as_deref()
-            == Some("extend_with_captions")
-        {
-            match self.prepare_extension(&doc_id.to_string(), apply).await {
-                Ok(command) => command,
-                Err((code, message)) => return error_reply(request_id, code, message),
+            });
+        let resolved = match op.as_deref() {
+            Some("extend_with_captions") => {
+                Some(self.prepare_extension(&doc_id.to_string(), apply).await)
             }
-        } else {
-            apply.command_json.clone()
+            Some("refresh_captions") => {
+                Some(self.prepare_refresh(&doc_id.to_string(), apply).await)
+            }
+            _ => None,
+        };
+        let command_json = match resolved {
+            Some(Ok(command)) => command,
+            Some(Err((code, message))) => return error_reply(request_id, code, message),
+            None => apply.command_json.clone(),
         };
         match self
             .database
@@ -2719,6 +2725,88 @@ impl Service {
         };
         String::from_utf8(
             command
+                .to_canonical_json()
+                .map_err(|error| (ErrorCode::Internal, error.to_string()))?,
+        )
+        .map_err(|error| (ErrorCode::Internal, error.to_string()))
+    }
+
+    /// Resolve "refresh the captions" into one replayable command: both
+    /// presentations derived afresh from the newest transcript over the
+    /// recording, carried whole so the log replays without it, and undone as
+    /// one step. The clip-wide look and options stay; corrections made to the
+    /// old captions do not, which the Editor says before asking.
+    async fn prepare_refresh(
+        &self,
+        doc_id: &str,
+        apply: &ApplyEditCommandRequest,
+    ) -> Result<String, (ErrorCode, String)> {
+        let record = self
+            .database
+            .get_edit_doc(doc_id.to_owned())
+            .await
+            .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
+        if record.revision != apply.expected_revision {
+            return Err((
+                ErrorCode::Conflict,
+                "The edit changed. Reload before refreshing its captions.".to_owned(),
+            ));
+        }
+        let document =
+            clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes())
+                .map_err(|error| (ErrorCode::Internal, error.to_string()))?;
+        let source_id = record.source_id.ok_or((
+            ErrorCode::InvalidArgument,
+            "This edit has no linked source".to_owned(),
+        ))?;
+        let artifacts = self
+            .artifacts
+            .as_ref()
+            .ok_or((ErrorCode::Unavailable, "No artifact store".to_owned()))?;
+        let source = self
+            .database
+            .get_source(source_id.clone())
+            .await
+            .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
+        if source.project_id != record.project_id
+            || document
+                .video
+                .segments
+                .iter()
+                .any(|part| part.source_fingerprint != source.source_fingerprint)
+        {
+            return Err((
+                ErrorCode::Conflict,
+                "The edit source no longer matches its recording".to_owned(),
+            ));
+        }
+        let speech = crate::inspector::load_speech(&self.database, artifacts, &source_id)
+            .await
+            .map_err(|error| (ErrorCode::Conflict, error.message()))?;
+        let (reading, burn_in) = clipmill_director::captions_for_program(
+            &speech.transcript,
+            speech.index.as_ref(),
+            speech.shots.as_ref(),
+            &document,
+        )
+        .map_err(|error| (ErrorCode::InvalidArgument, error.to_string()))?;
+        let mut commands = vec![
+            clipmill_edit_ir::EditCommand::ReplaceCues {
+                cues: reading,
+                presentation: clipmill_edit_ir::Presentation::Reading,
+            },
+            clipmill_edit_ir::EditCommand::ReplaceCues {
+                cues: burn_in,
+                presentation: clipmill_edit_ir::Presentation::BurnIn,
+            },
+        ];
+        // How many words the clip shows at once is the person's choice, and a
+        // refresh keeps it.
+        if let Some(max_words) = document.captions.options.words_on_screen {
+            commands.push(clipmill_edit_ir::EditCommand::RegroupOnScreen { max_words });
+        }
+        String::from_utf8(
+            clipmill_edit_ir::EditCommand::Batch { commands }
                 .to_canonical_json()
                 .map_err(|error| (ErrorCode::Internal, error.to_string()))?,
         )

@@ -37,6 +37,15 @@ export function splitSegment(
 }
 
 /** The daemon derives captions for only the newly exposed source span. */
+/**
+ * Derive the clip's captions again from the newest transcript of its
+ * recording. The daemon turns this into the cues themselves, so the saved
+ * step replays and undoes without the transcript.
+ */
+export function refreshCaptions(): EditCommandJson {
+  return { op: 'refresh_captions' };
+}
+
 export function extendWithCaptions(
   segmentId: string,
   inTicks: number,

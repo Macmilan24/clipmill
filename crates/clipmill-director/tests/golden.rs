@@ -760,3 +760,60 @@ fn nobody_clearly_talking_keeps_both_people_in_the_frame() {
         );
     }
 }
+
+#[test]
+fn a_refresh_derives_each_section_afresh_and_places_it_where_it_plays() {
+    let (candidates, ranking, transcript) = (candidates(), ranking(), transcript());
+    let mut document = direct(
+        evidence(&candidates, &ranking, &transcript),
+        &request(Cut::Chosen),
+    )
+    .expect("a document");
+    // Words sit at 10 s + half a second each, a third of a second long. Keep
+    // words 0–5, cut 6–9, keep 10–14 — the first edge a tenth into word 0,
+    // which leaves it out.
+    let first = document.video.segments[0].clone();
+    let mut second = first.clone();
+    document.video.segments[0].in_ticks = 909_000;
+    document.video.segments[0].out_ticks = 1_161_000;
+    second.segment_id = "seg_2".to_owned();
+    second.in_ticks = 1_341_000;
+    second.out_ticks = 1_566_000;
+    document.video.segments.push(second);
+
+    let (reading, burned) =
+        clipmill_director::captions_for_program(&transcript, None, None, &document)
+            .expect("a refresh");
+    let spoken: Vec<&str> = reading
+        .iter()
+        .flat_map(clipmill_edit_ir::CaptionCue::words)
+        .map(|word| word.text.as_str())
+        .collect();
+    assert_eq!(
+        spoken,
+        [
+            "whole", "point", "of", "pricing", "is", "decision", "you", "make", "on", "purpose."
+        ],
+        "word 0 is cut by the edge and words 6–9 by the edit"
+    );
+    // The first section plays 10.1 s to 12.9 s, so the second starts 2.8 s
+    // into the program; its first word a tenth of a second after that.
+    let first_of_second = reading
+        .iter()
+        .flat_map(clipmill_edit_ir::CaptionCue::words)
+        .find(|word| word.text == "decision")
+        .expect("the second section's first word");
+    assert_eq!(first_of_second.start_ticks, 252_000 + 9_000);
+    let ids: std::collections::HashSet<_> = reading.iter().map(|cue| &cue.cue_id).collect();
+    assert_eq!(
+        ids.len(),
+        reading.len(),
+        "cue ids stay unique across sections"
+    );
+
+    document.captions.cues = reading;
+    document.captions.burn_in = burned;
+    document
+        .validate()
+        .expect("a refreshed document is a valid one");
+}

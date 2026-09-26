@@ -63,6 +63,7 @@ import { CueTiming } from './CueTiming.js';
 import {
   batch,
   correctWord,
+  refreshCaptions,
   mergeCues,
   removeCaptionWord,
   removeCropKeyframe,
@@ -204,7 +205,12 @@ function CaptionsTab({
   const problems = plan.presentation === 'reading' ? shortCues(plan) : [];
 
   if (plan.cues.length === 0) {
-    return <p className="review-empty-note">This clip has no captions. Nothing was said in it.</p>;
+    return (
+      <div className="review-panel-body">
+        <p className="review-empty-note">This clip has no captions. Nothing was said in it.</p>
+        <RefreshCaptions busy={busy} onApply={onApply} />
+      </div>
+    );
   }
 
   return (
@@ -283,7 +289,41 @@ function CaptionsTab({
         onApply={onApply}
         onTryLook={onTryLook}
       />
+      <RefreshCaptions busy={busy} onApply={onApply} />
     </div>
+  );
+}
+
+/**
+ * Captions derived again from the transcript: for a clip made before a
+ * better transcript or a timing fix, which would otherwise keep the captions
+ * of the day it was made.
+ */
+function RefreshCaptions({
+  busy,
+  onApply,
+}: {
+  readonly busy: boolean;
+  readonly onApply: (command: EditCommandJson) => void;
+}) {
+  return (
+    <section className="review-section" aria-label="Refresh captions">
+      <h3 className="review-section-title">From the transcript</h3>
+      <p className="review-footnote">
+        Derive these captions again from the newest transcript of the recording, with the current
+        timing fixes. The look, size and placement stay; words you corrected go back to what was
+        said. Undo brings the old captions back.
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        className="self-start"
+        disabled={busy}
+        onClick={() => onApply(refreshCaptions())}
+      >
+        Refresh captions
+      </Button>
+    </section>
   );
 }
 

@@ -175,6 +175,43 @@ pub(crate) async fn load(
     })
 }
 
+/// What a caption refresh derives from: the newest transcript over a source,
+/// and the index and shots when there are ones to go with it.
+pub(crate) struct Speech {
+    pub transcript: SpeechTranscript,
+    pub index: Option<IndexTranscript>,
+    pub shots: Option<EvidenceShots>,
+}
+
+/// The newest speech evidence over a source.
+///
+/// The newest rather than the run a clip was cut from, on purpose: an
+/// analysis run again with a better transcript is exactly what a refresh is
+/// for. The index counts sentences in one transcript's words, so an index
+/// computed over another transcript is left out rather than misread.
+pub(crate) async fn load_speech(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    source_id: &str,
+) -> Result<Speech, LoadError> {
+    let stages = Stages::Newest {
+        source_id: source_id.to_owned(),
+    };
+    let (transcript_id, transcript): (String, SpeechTranscript) =
+        require(database, artifacts, &stages, REQUIRED[2]).await?;
+    let index: Option<IndexTranscript> = optional(database, artifacts, &stages, OPTIONAL[0])
+        .await
+        .filter(|index: &IndexTranscript| {
+            index.inputs.transcript_artifact_id.as_str() == transcript_id
+        });
+    let shots: Option<EvidenceShots> = optional(database, artifacts, &stages, OPTIONAL[1]).await;
+    Ok(Speech {
+        transcript,
+        index,
+        shots,
+    })
+}
+
 /// The ranking's own account of its inputs, held against what was loaded.
 ///
 /// A deterministic check of citations, not of judgement: it establishes that
