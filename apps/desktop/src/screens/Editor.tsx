@@ -293,7 +293,11 @@ export function Editor({
   // the effect below that moves it back, a frame past the end would find no
   // segment — and no segment would take the picture down with it.
   const frame = plan ? Math.max(0, Math.min(playhead, plan.frameCount - 1)) : playhead;
-  const draftAudio = useDraftAudio(video, plan ? gainAt(plan, frame) : 0);
+  const draftAudio = useDraftAudio(
+    video,
+    plan ? gainAt(plan, frame) : 0,
+    plan?.gain.some((point) => point.gainDb > 0) ?? false,
+  );
   const range =
     marks.in !== null && marks.out !== null && marks.out > marks.in
       ? { first: marks.in, last: marks.out }
@@ -868,6 +872,13 @@ export function Editor({
   const captions = shownCues(plan, document).length || plan.cues.length;
   const playback: MonitorPlayback = {
     frame,
+    heardFrame:
+      playing && draftAudio.lag > 0
+        ? Math.max(
+            0,
+            frame - Math.round((draftAudio.lag * plan.rateNum) / Math.max(1, plan.rateDen)),
+          )
+        : frame,
     playing,
     speed,
     loop,

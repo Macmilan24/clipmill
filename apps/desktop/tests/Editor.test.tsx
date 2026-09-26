@@ -386,6 +386,53 @@ describe('decoded playback across shots and documents', () => {
     expect(screen.getByTestId('timecode').textContent).toContain('frame 17 of 60');
   });
 
+  it('keeps the captions on the sound while a boost plays through Web Audio', () => {
+    class Context {
+      readonly currentTime = 0;
+      readonly baseLatency = 0.02;
+      readonly outputLatency = 0.08;
+      readonly destination = {};
+      readonly createGain = () => ({
+        gain: { setValueAtTime: vi.fn() },
+        connect: (next: unknown) => next,
+      });
+      readonly createMediaElementSource = () => ({ connect: (next: unknown) => next });
+      readonly resume = () => Promise.resolve();
+      readonly close = () => Promise.resolve();
+    }
+    vi.stubGlobal('AudioContext', Context);
+    try {
+      control = playback();
+      const first = plan().cues[0]!;
+      show({
+        ...program(900, 600),
+        gain: [{ frame: 0, gainDb: 3 }],
+        cues: [
+          { ...first, firstFrame: 0, endFrame: 30 },
+          {
+            ...first,
+            cueId: 'cue_2',
+            firstFrame: 30,
+            endFrame: 60,
+            lines: [[{ text: 'Afterwards', holdCentis: 100, wordId: 'w3' }]],
+          },
+        ],
+      });
+      const element = video();
+      control.ready(element);
+      fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+      control.decode(element, 600 + 31 / 30);
+      expect(screen.getByTestId('timecode').textContent).toContain('frame 31 of 900');
+      // A tenth of a second behind at 30 fps: what is heard is frame 28's.
+      expect(document.querySelector('.edit-caption')!.textContent).toContain('Charging');
+
+      fireEvent.click(screen.getByRole('button', { name: /^pause$/i }));
+      expect(document.querySelector('.edit-caption')!.textContent).toContain('Afterwards');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('honors Pause during buffering instead of resuming when the reference arrives', () => {
     control = playback();
     show(softShots());
