@@ -45,7 +45,8 @@ import {
   setLayout,
   ticksAt,
 } from './commands.js';
-import { type CaptionFace, CaptionCanvas } from './CaptionCanvas.js';
+import { CaptionCanvas } from './CaptionCanvas.js';
+import type { ExactCaptions } from './exactCaptions.js';
 import { CompositionCanvas } from './CompositionCanvas.js';
 import { type FaceNow, byTrack, facesAt, fittedFrame } from './faces.js';
 import { pressOrDrag } from './gesture.js';
@@ -133,12 +134,7 @@ export interface EditorMonitorProps {
 
 type CaptionOptions = NonNullable<EditIr['captions']['options']>;
 
-/** A subtitle script and the faces it may be drawn with. */
-export interface ExactCaptions {
-  readonly ass: string;
-  readonly faces: readonly CaptionFace[];
-  readonly family: string;
-}
+export type { ExactCaptions } from './exactCaptions.js';
 
 export function EditorMonitor({
   plan,

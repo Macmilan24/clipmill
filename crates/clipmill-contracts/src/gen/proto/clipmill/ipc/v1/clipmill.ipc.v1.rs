@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -155,6 +155,8 @@ pub mod request {
         ListEditHistory(super::ListEditHistoryRequest),
         #[prost(message, tag = "73")]
         ListFaces(super::ListFacesRequest),
+        #[prost(message, tag = "74")]
+        PreviewDirect(super::PreviewDirectRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -165,7 +167,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -276,6 +278,8 @@ pub mod response {
         ListEditHistory(super::ListEditHistoryResponse),
         #[prost(message, tag = "59")]
         ListFaces(super::ListFacesResponse),
+        #[prost(message, tag = "60")]
+        PreviewDirect(super::GetPreviewPlanResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1984,6 +1988,20 @@ pub struct GetPreviewPlanResponse {
     /// Every caption typeface, with whether this installation has it.
     #[prost(message, repeated, tag = "22")]
     pub fonts: ::prost::alloc::vec::Vec<CaptionFontV1>,
+    /// Why the director framed and captioned the clip as it did. Filled for a
+    /// dry run, whose document is nowhere else to read it from.
+    #[prost(string, repeated, tag = "23")]
+    pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// The clip approving would build, as the Editor's player would draw it: the
+/// director's document for this request, built and not saved. The Inspector
+/// shows it, so the clip judged is the clip an approval makes — the same
+/// sections, framing and captions. Nothing is written and nothing is recorded.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewDirectRequest {
+    /// As approval would send it; `approve` and `variation` are ignored.
+    #[prost(message, optional, tag = "1")]
+    pub direct: ::core::option::Option<DirectClipRequest>,
 }
 /// The edit documents a project holds, oldest first.
 ///

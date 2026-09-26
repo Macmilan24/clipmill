@@ -747,6 +747,8 @@ pub struct PreviewPlanView {
     pub proxies: Vec<PreviewProxyView>,
     /// Which cue list `cues` came from: `burn_in` or `reading`.
     pub presentation: String,
+    /// Why the director built the clip as it did; filled for a dry run.
+    pub decisions: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -957,6 +959,7 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                     installed: font.installed,
                 })
                 .collect(),
+            decisions: reply.decisions,
             secondary_crops: reply
                 .secondary_crops
                 .into_iter()

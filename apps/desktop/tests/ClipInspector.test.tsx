@@ -4,7 +4,7 @@
  * is one click or one key and can be taken back, and nothing the analysis did
  * not measure is drawn as though it had.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '../src/components/ui/tooltip.js';
@@ -386,5 +386,45 @@ describe('what cannot be shown', () => {
     expect(screen.getByText(/not in the current ranking/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /back to results/i }));
     expect(props.onBack).toHaveBeenCalled();
+  });
+});
+
+describe('judging the clip an approval builds', () => {
+  it('asks for it once the cut settles, and reads its framing', () => {
+    vi.useFakeTimers();
+    try {
+      const onPreview = vi.fn();
+      const plan = {
+        rateNum: 30,
+        rateDen: 1,
+        width: 1080,
+        height: 1920,
+        crops: [],
+        segments: [
+          {
+            segmentId: 'seg_1',
+            sourceFingerprint: 'source',
+            inTicks: CLIP_START,
+            outTicks: CLIP_END,
+            programStartTicks: 0,
+            firstFrame: 0,
+            endFrame: 30,
+            layout: 'two_up',
+          },
+        ],
+        sources: [],
+        decisions: ['Two people remain visible in equal portraits.'],
+      } as unknown as import('../src/daemon/client.js').PreviewPlan;
+      show({ onPreview, preview: plan, proxyUrl: 'http://localhost/proxy.mp4' });
+      expect(onPreview).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onPreview).toHaveBeenCalledWith(null);
+      const note = screen.getByText('Two speakers');
+      expect(note.getAttribute('title')).toContain('equal portraits');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

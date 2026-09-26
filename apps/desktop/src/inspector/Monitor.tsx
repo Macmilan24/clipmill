@@ -16,8 +16,12 @@ import {
 } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
-import type { CropPath } from '../daemon/client.js';
+import type { CropPath, PreviewPlan } from '../daemon/client.js';
+import { CaptionCanvas } from '../editor/CaptionCanvas.js';
 import { drawComposition, observeVideoFrames } from '../editor/CompositionCanvas.js';
+import type { ExactCaptions } from '../editor/exactCaptions.js';
+import { cropAt, sourceOf } from '../editor/player.js';
+import { framingNote, programAt, scaledSegment } from './dryRun.js';
 import { TICKS_PER_SECOND } from '../results/model.js';
 import { type PlaybackController, SPEEDS } from './playback.js';
 import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
@@ -31,6 +35,14 @@ export interface MonitorProps {
   readonly src: string | null;
   /** The solver's path. Null while it is being asked, and for a fitted frame. */
   readonly crop: CropPath | null;
+  /**
+   * The clip an approval of the cut on screen would build. When present the
+   * result is drawn from it — its sections, framing and captions — and the
+   * solver's path is only the stand-in while it is asked for.
+   */
+  readonly plan?: PreviewPlan | null;
+  /** Its captions for libass, when they can be drawn exactly. */
+  readonly captions?: ExactCaptions | null;
   readonly controller: PlaybackController;
   /** The cut on screen, for the clip-relative clock. */
   readonly cut: Cut;
@@ -48,6 +60,8 @@ export interface MonitorProps {
 export function Monitor({
   src,
   crop,
+  plan = null,
+  captions = null,
   controller,
   cut,
   view,
@@ -68,13 +82,17 @@ export function Monitor({
             Source
           </button>
         </div>
-        <span className="review-viewer-note">
-          {fitted
-            ? crop?.fitReason
-              ? `Whole frame · ${crop.fitReason}`
-              : 'Whole frame'
-            : 'Following the speaker'}
-        </span>
+        {plan ? (
+          <PlanNote plan={plan} controller={controller} />
+        ) : (
+          <span className="review-viewer-note">
+            {fitted
+              ? crop?.fitReason
+                ? `Whole frame · ${crop.fitReason}`
+                : 'Whole frame'
+              : 'Following the speaker'}
+          </span>
+        )}
         <span className="review-spacer" />
         {alternative && (
           <button
@@ -100,7 +118,15 @@ export function Monitor({
 
       <div className="review-stage-wrap">
         {src ? (
-          <Stage src={src} crop={crop} controller={controller} view={view} safeArea={safeArea} />
+          <Stage
+            src={src}
+            crop={crop}
+            plan={plan}
+            captions={captions}
+            controller={controller}
+            view={view}
+            safeArea={safeArea}
+          />
         ) : (
           <div className="review-unavailable" role="note">
             <p className="review-unavailable-title">Preview unavailable</p>
@@ -114,15 +140,61 @@ export function Monitor({
   );
 }
 
+/** The framing at the playhead, read from the clip an approval would build. */
+function PlanNote({
+  plan,
+  controller,
+}: {
+  readonly plan: PreviewPlan;
+  readonly controller: PlaybackController;
+}) {
+  const ticks = useSyncExternalStore(controller.subscribe, () => controller.getState().ticks);
+  const decisions = plan.decisions ?? [];
+  return (
+    <span className="review-viewer-note" title={decisions.join('\n') || undefined}>
+      {framingNote(plan, programAt(plan, ticks))}
+    </span>
+  );
+}
+
+/** The plan's captions at the playhead, drawn by libass; none outside the cut. */
+function PlanCaptions({
+  plan,
+  captions,
+  controller,
+}: {
+  readonly plan: PreviewPlan;
+  readonly captions: ExactCaptions;
+  readonly controller: PlaybackController;
+}) {
+  const ticks = useSyncExternalStore(controller.subscribe, () => controller.getState().ticks);
+  const moment = programAt(plan, ticks);
+  if (!moment?.inside) return null;
+  return (
+    <CaptionCanvas
+      ass={captions.ass}
+      faces={captions.faces}
+      family={captions.family}
+      seconds={(moment.frame * plan.rateDen) / Math.max(1, plan.rateNum)}
+      frameWidth={plan.width}
+      frameHeight={plan.height}
+    />
+  );
+}
+
 function Stage({
   src,
   crop,
+  plan,
+  captions,
   controller,
   view,
   safeArea,
 }: {
   readonly src: string;
   readonly crop: CropPath | null;
+  readonly plan: PreviewPlan | null;
+  readonly captions: ExactCaptions | null;
   readonly controller: PlaybackController;
   readonly view: MonitorView;
   readonly safeArea: boolean;
@@ -132,8 +204,8 @@ function Stage({
   const stage = useRef<HTMLDivElement>(null);
   const [aspect, setAspect] = useState(16 / 9);
   const problem = useSyncExternalStore(controller.subscribe, () => controller.getState().problem);
-  const latest = useRef({ crop, view });
-  latest.current = { crop, view };
+  const latest = useRef({ crop, view, plan });
+  latest.current = { crop, view, plan };
   const observer = useRef<ReturnType<typeof observeVideoFrames> | null>(null);
 
   useEffect(() => {
@@ -170,8 +242,29 @@ function Stage({
       const context = output.getContext('2d');
       if (!context || media.seeking) return;
       const frame = { width: picture.width, height: picture.height };
-      const rect = cropRect(latest.current.crop, seconds * TICKS_PER_SECOND, frame);
+      const drawing = latest.current.plan;
+      const moment = drawing ? programAt(drawing, seconds * TICKS_PER_SECOND) : null;
+      // The approval's own crop where there is a plan; the solver's otherwise.
+      const planned = drawing && moment ? cropAt(drawing, moment.frame) : null;
+      const rect =
+        drawing && moment
+          ? planned && sourceOf(drawing, moment.segment)
+            ? scaledRect(planned, sourceOf(drawing, moment.segment)!, frame)
+            : null
+          : cropRect(latest.current.crop, seconds * TICKS_PER_SECOND, frame);
       try {
+        if (latest.current.view === 'result' && drawing && moment) {
+          const scale = output.width / Math.max(1, drawing.width);
+          drawComposition(context, picture, {
+            crop: planned,
+            secondary: cropAt(drawing, moment.frame, true),
+            source: sourceOf(drawing, moment.segment),
+            width: output.width,
+            height: output.height,
+            segment: scaledSegment(moment.segment, scale),
+          });
+          return;
+        }
         if (latest.current.view === 'result') {
           drawComposition(context, picture, {
             crop: rect,
@@ -215,10 +308,10 @@ function Stage({
     };
   }, [controller, src]);
 
-  // A new path or a new view has no new frame to trigger a draw.
+  // A new path, plan or view has no new frame to trigger a draw.
   useEffect(() => {
     observer.current?.redraw();
-  }, [crop, view]);
+  }, [crop, plan, view]);
 
   return (
     <div
@@ -256,6 +349,9 @@ function Stage({
             : 'The source frame, with the crop outlined'
         }
       />
+      {plan && captions && view === 'result' && (
+        <PlanCaptions plan={plan} captions={captions} controller={controller} />
+      )}
       {safeArea && view === 'result' && <SafeAreaGuide />}
       {problem && (
         <div role="alert" className="review-unavailable review-stage-problem">
@@ -265,6 +361,17 @@ function Stage({
       )}
     </div>
   );
+}
+
+/** A crop in the source's display pixels, as a rectangle of the decoded picture. */
+function scaledRect(
+  rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  source: { readonly displayWidth: number; readonly displayHeight: number },
+  frame: { readonly width: number; readonly height: number },
+) {
+  const sx = frame.width / Math.max(1, source.displayWidth);
+  const sy = frame.height / Math.max(1, source.displayHeight);
+  return { x: rect.x * sx, y: rect.y * sy, width: rect.width * sx, height: rect.height * sy };
 }
 
 /** Where the apps' own buttons and captions sit over the clip. */

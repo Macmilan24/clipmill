@@ -749,6 +749,21 @@ async fn direct_clip(
         .map_err(|error| error.to_string())
 }
 
+/// The clip approving would build, drawn as the Editor draws it — built and
+/// not saved, so the Inspector shows what an approval makes.
+#[tauri::command]
+async fn preview_direct(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    request: views::DirectClipInput,
+) -> Result<views::PreviewPlanView, String> {
+    supervisor
+        .client()
+        .preview_direct(request.into())
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
 /// Record what somebody decided about a clip, durably.
 #[tauri::command]
 async fn set_clip_decision(
@@ -905,6 +920,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             preview_captions,
             list_edit_history,
             list_faces,
+            preview_direct,
             get_source,
             start_youtube_import,
             get_youtube_import,

@@ -64,6 +64,7 @@ import { cutWords, programWords, rippleRange, shownCues } from '../editor/transc
 import { useDraftAudio } from '../editor/useDraftAudio.js';
 import { useEditorKeys } from '../editor/useEditorKeys.js';
 import { ClipTitle, HistoryButton } from '../editor/EditorHistory.js';
+import { exactCaptionsOf } from '../editor/exactCaptions.js';
 import type { HistoryStep } from '../editor/history.js';
 import type { EditorFocus } from '../shell/route.js';
 import { openShortcuts } from '../shell/ShortcutSheet.js';
@@ -233,17 +234,15 @@ export function Editor({
     },
     [previewCaptions, plan],
   );
-  const exactCaptions = useMemo(() => {
-    if (!plan?.ass || !fontUrl) return null;
-    const faces = (plan.fonts ?? [])
-      .filter((face) => face.installed)
-      .map((face) => ({ family: face.family, url: fontUrl(face.file) }));
-    if (faces.length === 0) return null;
-    const ass = draft && draft.revision === plan.revision ? draft.ass : plan.ass;
-    const family =
-      /Style: lower_safe,([^,]+),/.exec(ass)?.[1] ?? plan.captionStyle?.fontFamily ?? 'Inter';
-    return { ass, faces, family };
-  }, [plan, fontUrl, draft]);
+  const exactCaptions = useMemo(
+    () =>
+      exactCaptionsOf(
+        plan,
+        fontUrl,
+        draft && plan && draft.revision === plan.revision ? draft.ass : plan?.ass,
+      ),
+    [plan, fontUrl, draft],
+  );
   const [tool, setTool] = useState<Tool>('select');
   const [snap, setSnap] = useState(true);
   const [marks, setMarks] = useState<{ in: number | null; out: number | null }>({

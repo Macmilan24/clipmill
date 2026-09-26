@@ -266,3 +266,47 @@ describe('approving the cut on screen', () => {
     expect(hook.result.current.notice).toBe('Decision cleared.');
   });
 });
+
+describe('previewing what an approval builds', () => {
+  it('asks for the clip with the very request an approval sends, look and all', async () => {
+    rememberLook(OLD, 'clipmill.captions.minimal.v1');
+    const api = fakeApi(twoProjects());
+    const plan = {
+      segments: [],
+      crops: [],
+    } as unknown as import('../src/daemon/client.js').PreviewPlan;
+    const previewDirect = vi.fn().mockResolvedValue(plan);
+    Object.assign(api, { previewDirect });
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    const cut = { startTicks: 598 * 90_000, endTicks: 633 * 90_000 };
+    act(() => hook.result.current.previewFor(CANDIDATE, cut));
+    await waitFor(() => expect(hook.result.current.preview?.plan).toBe(plan));
+    expect(hook.result.current.preview?.candidateId).toBe(CANDIDATE);
+    // The same ask twice is asked once.
+    act(() => hook.result.current.previewFor(CANDIDATE, cut));
+    expect(previewDirect).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, cut);
+    });
+    const { approve: _approve, variation: _variation, ...approved } = direct.mock.calls[0]![0];
+    expect(previewDirect.mock.calls[0]![0]).toEqual(approved);
+    expect(approved).toMatchObject({ styleRef: 'clipmill.captions.minimal.v1', cut: 'exact' });
+    localStorage.removeItem(`clipmill.captionLook.${OLD}`);
+  });
+
+  it('builds a batch approval in the project’s look too', async () => {
+    rememberLook(OLD, 'clipmill.captions.boxed.v1');
+    const api = fakeApi(twoProjects());
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => hook.result.current.approveMany([CANDIDATE, OTHER_CANDIDATE]));
+    expect(direct.mock.calls.map(([request]) => request.styleRef)).toEqual([
+      'clipmill.captions.boxed.v1',
+      'clipmill.captions.boxed.v1',
+    ]);
+    localStorage.removeItem(`clipmill.captionLook.${OLD}`);
+  });
+});

@@ -511,6 +511,20 @@ impl DaemonClient {
     }
 
     /// Turn an approved candidate into an edit document.
+    /// The clip approving would build, as a preview plan, built and not saved.
+    pub async fn preview_direct(
+        &self,
+        direct: DirectClipRequest,
+    ) -> Result<GetPreviewPlanResponse, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::PreviewDirectRequest {
+            direct: Some(direct),
+        };
+        match self.call(request::Body::PreviewDirect(request)).await? {
+            response::Body::PreviewDirect(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub async fn direct_clip(
         &self,
         request: DirectClipRequest,

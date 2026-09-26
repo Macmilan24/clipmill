@@ -128,15 +128,14 @@ impl Stages {
     }
 }
 
-/// Load a clip's evidence: from the run named, or the newest of each stage.
-pub(crate) async fn load(
+/// Where a clip's evidence is read from: the run named, or the newest of each
+/// stage over the source.
+async fn stages_for(
     database: &DbHandle,
-    artifacts: &ArtifactHandle,
     source_id: &str,
-    source_map_json: &[u8],
     run: Option<&str>,
-) -> Result<Evidence, LoadError> {
-    let stages = match run {
+) -> Result<Stages, LoadError> {
+    match run {
         Some(job_id) => {
             let run = database
                 .run_task_artifacts(job_id.to_owned())
@@ -145,24 +144,93 @@ pub(crate) async fn load(
             if run.source_id.as_deref() != Some(source_id) {
                 return Err(LoadError::NoSuchRun);
             }
-            Stages::Run(run)
+            Ok(Stages::Run(run))
         }
-        None => Stages::Newest {
+        None => Ok(Stages::Newest {
             source_id: source_id.to_owned(),
-        },
-    };
+        }),
+    }
+}
 
+/// The last evidence loaded, kept so reviewing clip after clip of one run
+/// does not read and parse the same documents — a long recording's face
+/// tracks run to megabytes — for every clip.
+#[derive(Clone, Default)]
+pub(crate) struct EvidenceCache(std::sync::Arc<std::sync::Mutex<Option<Kept>>>);
+
+/// What the cache holds: the evidence, and the addresses it was read from.
+type Kept = (String, std::sync::Arc<Evidence>);
+
+impl std::fmt::Debug for EvidenceCache {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("EvidenceCache")
+    }
+}
+
+/// [`load`], through the cache. The key is the address of every document
+/// read, so a run still publishing — faces arriving after the ranking — or a
+/// newer publication is never answered from what was kept before it.
+pub(crate) async fn load_cached(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    source_id: &str,
+    source_map_json: &[u8],
+    run: Option<&str>,
+    cache: &EvidenceCache,
+) -> Result<std::sync::Arc<Evidence>, LoadError> {
+    let stages = stages_for(database, source_id, run).await?;
+    let mut key = source_id.to_owned();
+    for kind in REQUIRED
+        .iter()
+        .map(|(kind, _, _)| *kind)
+        .chain(OPTIONAL.iter().map(|(kind, _)| *kind))
+    {
+        key.push('|');
+        key.push_str(&stages.address(database, kind).await.unwrap_or_default());
+    }
+    if let Ok(held) = cache.0.lock()
+        && let Some((kept, evidence)) = held.as_ref()
+        && *kept == key
+    {
+        return Ok(std::sync::Arc::clone(evidence));
+    }
+    let evidence =
+        std::sync::Arc::new(load_from(database, artifacts, &stages, source_map_json).await?);
+    if let Ok(mut held) = cache.0.lock() {
+        *held = Some((key, std::sync::Arc::clone(&evidence)));
+    }
+    Ok(evidence)
+}
+
+/// Load a clip's evidence: from the run named, or the newest of each stage.
+pub(crate) async fn load(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    source_id: &str,
+    source_map_json: &[u8],
+    run: Option<&str>,
+) -> Result<Evidence, LoadError> {
+    let stages = stages_for(database, source_id, run).await?;
+    load_from(database, artifacts, &stages, source_map_json).await
+}
+
+async fn load_from(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    stages: &Stages,
+    source_map_json: &[u8],
+) -> Result<Evidence, LoadError> {
     let (candidates_id, candidates): (String, DiscoveryCandidates) =
-        require(database, artifacts, &stages, REQUIRED[0]).await?;
+        require(database, artifacts, stages, REQUIRED[0]).await?;
     let (_, ranking): (String, RankingSet) =
-        require(database, artifacts, &stages, REQUIRED[1]).await?;
+        require(database, artifacts, stages, REQUIRED[1]).await?;
     let (transcript_id, transcript): (String, SpeechTranscript) =
-        require(database, artifacts, &stages, REQUIRED[2]).await?;
+        require(database, artifacts, stages, REQUIRED[2]).await?;
     check_coherence(&ranking, &candidates_id, &transcript_id)?;
 
-    let index: Option<IndexTranscript> = optional(database, artifacts, &stages, OPTIONAL[0]).await;
-    let shots: Option<EvidenceShots> = optional(database, artifacts, &stages, OPTIONAL[1]).await;
-    let faces: Option<VisionFaceTrack> = optional(database, artifacts, &stages, OPTIONAL[2]).await;
+    let index: Option<IndexTranscript> = optional(database, artifacts, stages, OPTIONAL[0]).await;
+    let shots: Option<EvidenceShots> = optional(database, artifacts, stages, OPTIONAL[1]).await;
+    let faces: Option<VisionFaceTrack> = optional(database, artifacts, stages, OPTIONAL[2]).await;
 
     Ok(Evidence {
         candidates,
