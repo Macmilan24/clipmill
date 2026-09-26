@@ -247,6 +247,7 @@ function Preview() {
         <SidebarProvider
           className="studio-shell min-h-0 flex-1"
           style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
+          data-workspace={page === 'inspector' || page === 'editor' ? 'true' : undefined}
         >
           <AppSidebar
             activeId={page === 'inspector' ? 'results' : page}
@@ -254,16 +255,16 @@ function Preview() {
             state={connection}
           />
           <SidebarInset className="min-h-0 min-w-0 bg-transparent">
-            <TopBar
-              trail={[
-                page === 'inspector' ? 'Results' : page.charAt(0).toUpperCase() + page.slice(1),
-                ...(workspace && page !== 'results' ? [labels.clip] : []),
-              ]}
-              theme={theme}
-              onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              state={connection}
-              profile={null}
-            />
+            {/* As the app does: the two workspaces fold the trail away. */}
+            {page !== 'inspector' && page !== 'editor' && (
+              <TopBar
+                trail={[page.charAt(0).toUpperCase() + page.slice(1)]}
+                theme={theme}
+                onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                state={connection}
+                profile={null}
+              />
+            )}
             <main
               className={`studio-main ${workspace ? 'studio-main-workspace' : 'studio-main-page'}`}
             >
