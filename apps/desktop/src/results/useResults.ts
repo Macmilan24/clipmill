@@ -411,14 +411,44 @@ export function useResults(
     [projectId, snapshot.source, snapshot.run, snapshot.rows],
   );
 
+  /** The request that builds a span nobody proposed: the manual clip's. */
+  const manualRequest = useCallback(
+    (startTicks: number, endTicks: number): DirectClipInput | null => {
+      if (!projectId || !snapshot.source || !snapshot.run) return null;
+      const look = lookFor(projectId);
+      const options = optionsFor(projectId);
+      return {
+        projectId,
+        sourceId: snapshot.source.sourceId,
+        jobId: snapshot.run.jobId,
+        candidateId: '',
+        cut: 'exact',
+        ...(look ? { styleRef: look } : {}),
+        ...(options ? { captionOptionsJson: options } : {}),
+        highlightSpokenWord: highlightFor(projectId),
+        startTicks,
+        endTicks,
+        manualSpan: true,
+      };
+    },
+    [projectId, snapshot.source, snapshot.run],
+  );
+
   /**
-   * Ask for the clip an approval of this cut would build, to draw it. Nothing
-   * is written. A newer ask supersedes an older one still in flight, and the
+   * Ask for the clip an approval of this cut would build, to draw it — or,
+   * for the candidate `''`, the manual clip this span would make. Nothing is
+   * written. A newer ask supersedes an older one still in flight, and the
    * same ask twice is asked once.
    */
   const previewFor = useCallback(
     (candidateId: string, window: Window | null) => {
-      const request = api.previewDirect ? clipRequest(candidateId, window) : null;
+      const request = !api.previewDirect
+        ? null
+        : candidateId === ''
+          ? window
+            ? manualRequest(window.startTicks, window.endTicks)
+            : null
+          : clipRequest(candidateId, window);
       const key = request ? JSON.stringify(request) : null;
       if (key !== null && key === previewKey.current) return;
       previewKey.current = key;
@@ -438,7 +468,7 @@ export function useResults(
           if (sequence === previewSequence.current) setPreview(null);
         });
     },
-    [api, clipRequest],
+    [api, clipRequest, manualRequest],
   );
 
   const approve = useCallback(
@@ -488,27 +518,13 @@ export function useResults(
 
   const manual = useCallback(
     async (startTicks: number, endTicks: number): Promise<DirectedClip | null> => {
-      if (!projectId || !snapshot.source || !snapshot.run) return null;
+      const request = manualRequest(startTicks, endTicks);
+      if (!request) return null;
       const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
       try {
-        const look = lookFor(projectId);
-        const options = optionsFor(projectId);
-        const directed = await api.directClip({
-          projectId,
-          sourceId: snapshot.source.sourceId,
-          jobId: snapshot.run.jobId,
-          candidateId: '',
-          cut: 'exact',
-          ...(look ? { styleRef: look } : {}),
-          ...(options ? { captionOptionsJson: options } : {}),
-          highlightSpokenWord: highlightFor(projectId),
-          startTicks,
-          endTicks,
-          manualSpan: true,
-          approve: false,
-        });
+        const directed = await api.directClip({ ...request, approve: false });
         if (context !== contextSequence.current) return null;
         setNotice('Sent to the editor.');
         reload();
@@ -520,7 +536,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run],
+    [api, reload, manualRequest],
   );
 
   const approveMany = useCallback(

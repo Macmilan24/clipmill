@@ -1555,3 +1555,15 @@
     transition: none;
   }
 }
+
+/* The manual clip sheet's player: the Inspector's monitor, given a height. */
+.manual-clip-monitor {
+  display: flex;
+  height: min(52vh, 460px);
+  min-height: 300px;
+}
+
+.manual-clip-monitor > .review-viewer {
+  flex: 1;
+  min-width: 0;
+}
