@@ -18,6 +18,10 @@ export interface EditIr {
   };
   video: {
     /**
+     * The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.
+     */
+    shape?: "vertical" | "portrait" | "square" | "landscape";
+    /**
      * Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.
      */
     transition_ticks?: number;
@@ -144,7 +148,7 @@ export interface VideoSegment {
       easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
     }[];
     /**
-     * two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.
+     * two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.
      */
     split?: number;
     /**
@@ -163,7 +167,7 @@ export interface VideoSegment {
      */
     zoom?: number;
     /**
-     * Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.
+     * Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.
      */
     inset?: {
       corner: "top_left" | "top_right" | "bottom_left" | "bottom_right";

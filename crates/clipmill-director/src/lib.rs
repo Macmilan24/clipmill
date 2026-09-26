@@ -24,6 +24,7 @@ use clipmill_contracts::schemas::{
     speech_transcript::SpeechTranscript,
     vision_face_track::VisionFaceTrack,
 };
+pub use clipmill_edit_ir::FrameShape;
 use clipmill_edit_ir::{
     CropKeyframe, CropRect, EditDocument, Layout, LayoutState, Rationale, VideoSegment,
 };
@@ -64,7 +65,7 @@ pub struct Frame {
     pub height: i64,
 }
 
-/// The vertical output the crop is being fitted to.
+/// The shape a crop is being fitted to: the output's, or one viewport's.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Aspect {
     pub width: u32,
@@ -73,9 +74,32 @@ pub struct Aspect {
 
 impl Default for Aspect {
     fn default() -> Self {
-        Self {
-            width: 9,
-            height: 16,
+        FrameShape::default().into()
+    }
+}
+
+impl From<FrameShape> for Aspect {
+    fn from(shape: FrameShape) -> Self {
+        let (width, height) = shape.ratio();
+        Self { width, height }
+    }
+}
+
+impl Aspect {
+    /// One of two viewports splitting this frame: half as tall when they are
+    /// stacked, half as wide side by side across a landscape frame.
+    #[must_use]
+    pub fn half(self) -> Self {
+        if self.width > self.height {
+            Self {
+                width: self.width,
+                height: self.height.saturating_mul(2),
+            }
+        } else {
+            Self {
+                width: self.width.saturating_mul(2),
+                height: self.height,
+            }
         }
     }
 }
@@ -101,7 +125,15 @@ pub struct Request {
     pub cut: Cut,
     pub style_ref: String,
     pub frame: Frame,
-    pub aspect: Aspect,
+    /// The delivered frame's shape, which the crops are fitted to.
+    pub shape: FrameShape,
+}
+
+impl Request {
+    /// The output's shape as a ratio.
+    pub fn aspect(&self) -> Aspect {
+        self.shape.into()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -260,11 +292,7 @@ fn validate_evidence(evidence: Evidence<'_>, request: &Request) -> Result<(), Di
     {
         return Err(DirectError::Mismatched);
     }
-    if request.frame.width <= 0
-        || request.frame.height <= 0
-        || request.aspect.width == 0
-        || request.aspect.height == 0
-    {
+    if request.frame.width <= 0 || request.frame.height <= 0 {
         return Err(DirectError::EmptyFrame);
     }
 
@@ -296,6 +324,7 @@ fn assemble_span(
     ));
     let mut document = EditDocument {
         video: clipmill_edit_ir::VideoTrack {
+            shape: request.shape,
             segments,
             transition_ticks: 10_800,
         },
@@ -390,7 +419,7 @@ fn follow(
 ) -> Option<Layout> {
     let mut one = faces.clone();
     one.tracks.retain(|track| track.track_id == track_id);
-    let crop_path = solve_layout(&one, span, request)?;
+    let crop_path = solve_layout(&one, span, request, request.aspect())?;
     Some(Layout {
         state: LayoutState::SpeakerFill,
         crop_path,
@@ -470,14 +499,13 @@ fn layout_for(
         as_u64(boundary.start_ticks),
         as_u64(boundary.end_ticks),
     ) {
-        let mut half = request.clone();
-        half.aspect.width = half.aspect.width.saturating_mul(2);
+        let half = request.aspect().half();
         let paths: Option<Vec<_>> = pair
             .iter()
             .map(|id| {
                 let mut one = document.clone();
                 one.tracks.retain(|track| track.track_id == *id);
-                solve_layout(&one, boundary, &half)
+                solve_layout(&one, boundary, request, half)
             })
             .collect();
         if let Some(mut paths) = paths {
@@ -493,7 +521,7 @@ fn layout_for(
             }
         }
     }
-    if let Some(crop_path) = solve_layout(document, boundary, request) {
+    if let Some(crop_path) = solve_layout(document, boundary, request, request.aspect()) {
         let sentence = format!(
             "Following the single clear face with a steady-size crop across {} keyframes.",
             crop_path.len()
@@ -515,6 +543,7 @@ fn solve_layout(
     document: &VisionFaceTrack,
     boundary: Boundary,
     request: &Request,
+    aspect: Aspect,
 ) -> Option<Vec<CropKeyframe>> {
     let path = clipmill_reframe::solve_in_frame(
         document,
@@ -523,8 +552,8 @@ fn solve_layout(
         clipmill_reframe::FrameGeometry {
             source_width: u32::try_from(request.frame.width).ok()?,
             source_height: u32::try_from(request.frame.height).ok()?,
-            output_width: request.aspect.width,
-            output_height: request.aspect.height,
+            output_width: aspect.width,
+            output_height: aspect.height,
         },
         CropWeights::default(),
         FocusGate::default(),
@@ -538,7 +567,7 @@ fn solve_layout(
         .iter()
         .map(|keyframe| CropKeyframe {
             t_ticks: as_i64(keyframe.t_ticks) - boundary.start_ticks,
-            rect: rect_of(*keyframe, request),
+            rect: rect_of(*keyframe, request.frame, aspect),
             easing: clipmill_edit_ir::CropEasing::Linear,
         })
         .collect();
@@ -550,19 +579,15 @@ fn solve_layout(
 /// The height is what the solver decided and the width follows the output
 /// aspect, because a crop whose own aspect differed from the output's would be
 /// re-fitted by the renderer and the camera move would not be the one solved.
-fn rect_of(keyframe: clipmill_reframe::Keyframe, request: &Request) -> CropRect {
-    let frame = request.frame;
+fn rect_of(keyframe: clipmill_reframe::Keyframe, frame: Frame, aspect: Aspect) -> CropRect {
     let target_height = round(keyframe.scale * as_f64(frame.height)).clamp(2, frame.height);
     // Width is nearest, not always floored: one-source-pixel aspect tolerance.
     let mut height = target_height - target_height % 2;
-    let mut width = 2 * round(
-        as_f64(height) * f64::from(request.aspect.width) / f64::from(request.aspect.height) / 2.0,
-    );
+    let mut width =
+        2 * round(as_f64(height) * f64::from(aspect.width) / f64::from(aspect.height) / 2.0);
     if width > frame.width {
         width = frame.width - frame.width % 2;
-        height = round(
-            as_f64(width) * f64::from(request.aspect.height) / f64::from(request.aspect.width),
-        );
+        height = round(as_f64(width) * f64::from(aspect.height) / f64::from(aspect.width));
     }
     let width = width.max(2);
     let height = height.max(2);

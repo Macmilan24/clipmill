@@ -504,9 +504,10 @@
   height: 100%;
 }
 
+/* The clip's own shape: 9:16 unless the editor says otherwise. */
 .review-stage[data-view='result'] {
-  width: min(100cqw, calc(100cqh * 9 / 16));
-  aspect-ratio: 9 / 16;
+  width: min(100cqw, calc(100cqh * var(--output-aspect, 0.5625)));
+  aspect-ratio: var(--output-aspect, 0.5625);
 }
 
 .review-stage[data-view='source'] {

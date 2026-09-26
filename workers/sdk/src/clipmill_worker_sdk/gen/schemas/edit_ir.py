@@ -17,6 +17,13 @@ class Timebase(BaseModel):
     den: Literal[90000]
 
 
+class Shape(Enum):
+    vertical = 'vertical'
+    portrait = 'portrait'
+    square = 'square'
+    landscape = 'landscape'
+
+
 class TextCase(Enum):
     original = 'original'
     upper = 'upper'
@@ -163,7 +170,7 @@ class Layout(BaseModel):
     )
     split: conint(ge=250, le=750) | None = Field(
         None,
-        description="two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.",
+        description="two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.",
     )
     background: Background | Background1 | None = Field(
         None,
@@ -175,7 +182,7 @@ class Layout(BaseModel):
     )
     inset: Inset | None = Field(
         None,
-        description='Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.',
+        description="Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.",
     )
 
 
@@ -236,6 +243,10 @@ class CaptionPosition(BaseModel):
 class Video(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
+    )
+    shape: Shape | None = Field(
+        None,
+        description="The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.",
     )
     transition_ticks: conint(ge=0, le=22500) | None = Field(
         None,

@@ -1060,3 +1060,176 @@ fn a_split_a_coloured_zoomed_fit_and_an_inset_draw_what_they_say() {
         work.join("clip.mp4").display()
     );
 }
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "two end-to-end renders, each decoded at the pixels that tell"
+)]
+#[ignore = "requires the pinned .cache/bin/ffmpeg; renders and decodes actual pixels"]
+fn a_landscape_split_and_a_square_fit_render_in_their_own_frames() {
+    use clipmill_edit_ir::{FitBackground, FrameShape};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-shapes-{nonce}"));
+    std::fs::create_dir(&work).expect("scratch directory");
+    // Red on the left half, blue on the right.
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:r=30:d=2,drawbox=x=960:y=0:w=960:h=1080:color=blue:t=fill",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let still = |x, width| {
+        vec![CropKeyframe {
+            t_ticks: 0,
+            rect: CropRect {
+                x,
+                y: 0,
+                width,
+                height: 1_080,
+            },
+            easing: clipmill_edit_ir::CropEasing::Linear,
+        }]
+    };
+    let source = SourceInput {
+        fingerprint: fingerprint.clone(),
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 2 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let render = |shape: FrameShape, layout: Layout, name: &str| {
+        let mut document = EditDocument::default();
+        document.video.shape = shape;
+        document.video.transition_ticks = 0;
+        document.video.segments = vec![VideoSegment {
+            segment_id: "seg_1".to_owned(),
+            source_fingerprint: fingerprint.clone(),
+            in_ticks: 0,
+            out_ticks: 2 * 90_000,
+            layout,
+        }];
+        let profile = RenderProfile::for_output(shape, 1_920, RenderProfile::default().frame_rate)
+            .expect("offered");
+        let plan = compile(&document, std::slice::from_ref(&source), &profile).expect("compile");
+        let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+        let measurement =
+            LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+                .expect("measured loudness");
+        ffmpeg(&binary, &work, &plan.encode_args(measurement));
+        std::fs::rename(work.join("clip.mp4"), work.join(name)).expect("keep the render");
+    };
+    let size = |name: &str| {
+        let probed = Command::new(&binary)
+            .current_dir(&work)
+            .args(["-hide_banner", "-nostdin", "-i", name])
+            .output()
+            .expect("probe");
+        let text = String::from_utf8_lossy(&probed.stderr).into_owned();
+        text.lines()
+            .find(|line| line.contains("Video:"))
+            .and_then(|line| {
+                line.split([',', ' '])
+                    .find(|word| {
+                        word.split_once('x').is_some_and(|(width, height)| {
+                            width.parse::<u32>().is_ok() && height.parse::<u32>().is_ok()
+                        })
+                    })
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default()
+    };
+    let pixel = |name: &str, x: u32, y: u32| {
+        let decoded = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                "1",
+                "-i",
+                name,
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("crop=2:2:{x}:{y},scale=1:1"),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ]),
+        );
+        assert_eq!(decoded.stdout.len(), 3);
+        [decoded.stdout[0], decoded.stdout[1], decoded.stdout[2]]
+    };
+    let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;
+    let blue = |[r, g, b]: [u8; 3]| b > 180 && r < 80 && g < 80;
+    let green = |[r, g, b]: [u8; 3]| g > 180 && r < 80 && b < 80;
+
+    // Landscape, split side by side: the blue half on the left, red on the right.
+    render(
+        FrameShape::Landscape,
+        Layout {
+            state: LayoutState::TwoUp,
+            crop_path: still(960, 960),
+            secondary_crop_path: still(0, 960),
+            ..Layout::default()
+        },
+        "landscape.mp4",
+    );
+    assert_eq!(size("landscape.mp4"), "1920x1080");
+    let at = |x, y| pixel("landscape.mp4", x, y);
+    assert!(blue(at(200, 540)), "{:?}", at(200, 540));
+    assert!(red(at(1_700, 540)), "{:?}", at(1_700, 540));
+
+    // Square, fitted on green: bands above and below the whole picture.
+    render(
+        FrameShape::Square,
+        Layout {
+            state: LayoutState::Fit,
+            background: Some(FitBackground::Colour {
+                colour: "#00FF00".to_owned(),
+            }),
+            ..Layout::default()
+        },
+        "square.mp4",
+    );
+    assert_eq!(size("square.mp4"), "1080x1080");
+    let at = |x, y| pixel("square.mp4", x, y);
+    assert!(green(at(540, 60)), "{:?}", at(540, 60));
+    assert!(red(at(200, 540)), "{:?}", at(200, 540));
+    assert!(blue(at(900, 540)), "{:?}", at(900, 540));
+    assert!(green(at(540, 1_020)), "{:?}", at(540, 1_020));
+    eprintln!("Shapes decoded; renders in {}", work.display());
+}

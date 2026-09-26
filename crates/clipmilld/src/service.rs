@@ -3127,9 +3127,9 @@ impl Service {
         }
     }
 
-    /// The profile a document is previewed at: the default frame, at the
-    /// frame rate of the recording the clip opens on, which is what an export
-    /// renders at unless another rate is chosen.
+    /// The profile a document is previewed at: the default size in the
+    /// clip's shape, at the frame rate of the recording the clip opens on,
+    /// which is what an export renders at unless another rate is chosen.
     async fn preview_profile(
         &self,
         project_id: &str,
@@ -3140,7 +3140,12 @@ impl Service {
             .list_sources(project_id.to_owned())
             .await
             .unwrap_or_default();
-        let mut profile = clipmill_render::RenderProfile::default();
+        let mut profile = clipmill_render::RenderProfile::for_output(
+            document.video.shape,
+            clipmill_render::RenderProfile::default().height,
+            clipmill_render::RenderProfile::default().frame_rate,
+        )
+        .unwrap_or_default();
         if let Some(first) = document.video.segments.first()
             && let Some(rate) = sources
                 .iter()
@@ -3758,18 +3763,21 @@ fn crop_solve(
     solve: &SolveCropPathRequest,
     (source_width, source_height): (u32, u32),
 ) -> Result<SolveCropPathResponse, clipmill_reframe::SolveError> {
-    let geometry = |output_width: u32| clipmill_reframe::FrameGeometry {
+    let geometry = |aspect: clipmill_director::Aspect| clipmill_reframe::FrameGeometry {
         source_width,
         source_height,
-        output_width,
-        output_height: solve.aspect_height,
+        output_width: aspect.width,
+        output_height: aspect.height,
+    };
+    let aspect = clipmill_director::Aspect {
+        width: solve.aspect_width,
+        height: solve.aspect_height,
     };
     let weights = crop_weights(solve.weights.as_ref());
     if solve.two_up {
-        // Each portrait is half the frame tall, so each crop is twice as wide
-        // for its height as the frame is.
-        let halves = geometry(solve.aspect_width.saturating_mul(2));
-        return two_up_solve(&document, solve, halves, weights);
+        // Each viewport is half the frame: half as tall stacked, half as wide
+        // side by side across a landscape frame.
+        return two_up_solve(&document, solve, geometry(aspect.half()), weights);
     }
     let (document, gate) = if solve.follow_track {
         let mut one = document;
@@ -3786,7 +3794,7 @@ fn crop_solve(
         &document,
         solve.start_ticks,
         solve.end_ticks,
-        geometry(solve.aspect_width),
+        geometry(aspect),
         weights,
         gate,
     )
@@ -4305,7 +4313,7 @@ fn assemble(
         cut,
         style_ref,
         frame: evidence.frame,
-        aspect: clipmill_director::Aspect::default(),
+        shape: clipmill_director::FrameShape::default(),
     };
     if direct.manual_span {
         let boundary = clipmill_director::Boundary {
@@ -5140,7 +5148,8 @@ fn output_profile(
     let rate = chosen_rate
         .or(source_rate)
         .unwrap_or(clipmill_render::RenderProfile::default().frame_rate);
-    clipmill_render::RenderProfile::for_output(height, rate).unwrap_or_default()
+    clipmill_render::RenderProfile::for_output(document.video.shape, height, rate)
+        .unwrap_or_default()
 }
 
 /// The size estimate, scaled from the 1080 × 1920 rate it is stated at by the

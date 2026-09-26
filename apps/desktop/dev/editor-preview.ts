@@ -5,6 +5,7 @@
  */
 import type { EditIr } from '@clipmill/contracts';
 import type { EditCommandJson, PreviewPlan } from '../src/daemon/client.js';
+import { type FrameShape, frameOfShape } from '../src/editor/layouts.js';
 
 const SECOND = 90_000;
 
@@ -159,6 +160,15 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: { ...document, audio: { ...document.audio, gain_curve: curve } },
       };
     }
+    case 'set_frame_shape': {
+      const shape = command.shape as FrameShape;
+      const next = { ...document, video: { ...document.video, shape } };
+      const resized = { ...plan, ...frameOfShape(shape) };
+      return {
+        plan: bumped({ ...frameOfShape(shape), ...framing(resized, next) }),
+        document: next,
+      };
+    }
     case 'set_layout':
     case 'set_layout_style':
     case 'replace_crop_path':
@@ -254,12 +264,17 @@ function framing(plan: PreviewPlan, document: EditIr): Partial<PreviewPlan> {
           : null;
     }
     const inset = layout.inset ?? { corner: 'top_right', size: 360 };
-    const side = Math.floor((plan.width * inset.size) / 1000) & ~1;
-    const margin = Math.floor((plan.width * 40) / 1000) & ~1;
+    const short = Math.min(plan.width, plan.height);
+    const tall = plan.height > plan.width;
+    const side = Math.floor((short * inset.size) / 1000) & ~1;
+    const margin = Math.floor((short * 40) / 1000) & ~1;
     const left = inset.corner.endsWith('left') ? margin : plan.width - margin - side;
     const top = inset.corner.startsWith('top')
-      ? Math.floor((plan.height * 90) / 1000) & ~1
-      : (plan.height - Math.floor((plan.height * 260) / 1000) - side) & ~1;
+      ? tall
+        ? Math.floor((plan.height * 90) / 1000) & ~1
+        : margin
+      : (plan.height - Math.floor((plan.height * (tall ? 260 : 200)) / 1000) - side) & ~1;
+    const across = plan.width > plan.height;
     return {
       ...segment,
       layout: layout.state,
@@ -267,7 +282,7 @@ function framing(plan: PreviewPlan, document: EditIr): Partial<PreviewPlan> {
         (layout.crop_path?.length ?? 0) > 0 && (layout.secondary_crop_path?.length ?? 0) > 0,
       upperHeight:
         layout.state === 'two_up'
-          ? Math.floor((plan.height * (layout.split ?? 500)) / 1000) & ~1
+          ? Math.floor(((across ? plan.width : plan.height) * (layout.split ?? 500)) / 1000) & ~1
           : 0,
       inset: layout.state === 'picture_in_picture' ? ([left, top, side] as const) : null,
       backgroundColour: layout.background?.kind === 'colour' ? layout.background.colour : null,

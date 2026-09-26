@@ -7,6 +7,9 @@ import { EditorScreen } from '../src/screens/EditorScreen.js';
 import { plan } from './support/clips.js';
 import { seekTo } from './support/timeline.js';
 
+/** The clip's frame, which every solve is asked to fit. */
+const FRAME = { width: 1080, height: 1920 };
+
 let state: EditorState;
 vi.mock('../src/editor/useEditor.js', () => ({ useEditor: () => state }));
 const clip = { projectId: 'project', docId: 'edit', sourceId: 'source', candidateId: 'candidate' };
@@ -96,7 +99,7 @@ describe('re-solving the current shot', () => {
     show(solve);
     resolveSecond();
     await waitFor(() => expect(state.apply).toHaveBeenCalled());
-    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, {});
+    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, { aspect: FRAME });
     expect(state.apply).toHaveBeenCalledWith({
       op: 'batch',
       commands: [
@@ -156,7 +159,10 @@ describe('re-solving a two-person section', () => {
     show(solve);
     resolveSecond();
     await waitFor(() => expect(state.apply).toHaveBeenCalled());
-    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, { twoUp: true });
+    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, {
+      twoUp: true,
+      aspect: FRAME,
+    });
     // Half the output's height: a 9:8 portrait, 608 wide for 540 tall.
     expect(state.apply).toHaveBeenCalledWith({
       op: 'batch',
@@ -193,7 +199,9 @@ describe('re-solving a two-person section', () => {
     show(solve);
     resolveSecond();
     await waitFor(() => expect(state.apply).toHaveBeenCalled());
-    expect(solve).toHaveBeenLastCalledWith('project', 'faces', 1_800_000, 2_700_000, {});
+    expect(solve).toHaveBeenLastCalledWith('project', 'faces', 1_800_000, 2_700_000, {
+      aspect: FRAME,
+    });
     expect(state.apply).toHaveBeenCalledWith(
       expect.objectContaining({
         commands: expect.arrayContaining([
@@ -234,7 +242,10 @@ describe('following a person picked on the whole frame', () => {
     expect(people).toHaveLength(2);
     fireEvent.click(people[1]!);
     await waitFor(() => expect(state.apply).toHaveBeenCalled());
-    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, { trackId: 1 });
+    expect(solve).toHaveBeenCalledWith('project', 'faces', 1_800_000, 2_700_000, {
+      trackId: 1,
+      aspect: FRAME,
+    });
     expect(state.apply).toHaveBeenCalledWith(
       expect.objectContaining({
         commands: expect.arrayContaining([
@@ -312,6 +323,25 @@ describe('choosing a layout in the Framing tab', () => {
       path: { rect: { width: number; height: number } }[];
     };
     expect(inset.path[0]!.rect.width).toBe(inset.path[0]!.rect.height);
+  });
+
+  it('changes the whole clip’s shape in one step, the two people side by side', () => {
+    show(vi.fn());
+    openFraming();
+    expect(screen.getByRole('button', { name: 'Vertical 9:16' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Landscape 16:9' }));
+    const commands = applied();
+    expect(commands[0]).toEqual({ op: 'set_frame_shape', shape: 'landscape' });
+    const halves = commands.filter((command) =>
+      String(command.op).startsWith('replace_'),
+    ) as unknown as { path: { rect: { width: number; height: number } }[] }[];
+    expect(halves).toHaveLength(4);
+    for (const half of halves) {
+      const { width, height } = half.path[0]!.rect;
+      expect(Math.abs(width / height - 960 / 1080)).toBeLessThan(0.01);
+    }
   });
 
   it('puts the whole recording on top for a screen and a face', () => {

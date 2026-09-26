@@ -4,8 +4,8 @@ use thiserror::Error;
 use crate::{
     document::{
         CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing, CropKeyframe,
-        CropRect, DocumentError, EditDocument, FitBackground, GainPoint, Inset, LayoutState,
-        Presentation, VideoSegment, crop_along_keyframes,
+        CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint, Inset,
+        LayoutState, Presentation, VideoSegment, crop_along_keyframes,
     },
     reflow,
 };
@@ -28,6 +28,11 @@ pub enum EditCommand {
     /// This changes no source interval, audio, caption or program timing.
     SetTransition {
         duration_ticks: i64,
+    },
+    /// Deliver the clip in another frame shape. Only the shape: the crops
+    /// that fit it are replaced by commands of their own, batched with this.
+    SetFrameShape {
+        shape: FrameShape,
     },
     /// Name the clip, or clear its name with `None`.
     SetTitle {
@@ -290,6 +295,10 @@ impl EditCommand {
                 Ok(Self::SetTransition {
                     duration_ticks: previous,
                 })
+            }
+            Self::SetFrameShape { shape } => {
+                let previous = std::mem::replace(&mut document.video.shape, *shape);
+                Ok(Self::SetFrameShape { shape: previous })
             }
             Self::SetTitle { title } => {
                 let previous = std::mem::replace(

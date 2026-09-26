@@ -949,6 +949,15 @@ impl CropRect {
 #[doc = "            \"$ref\": \"#/$defs/videoSegment\""]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"shape\": {"]
+#[doc = "          \"description\": \"The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"vertical\","]
+#[doc = "            \"portrait\","]
+#[doc = "            \"square\","]
+#[doc = "            \"landscape\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"transition_ticks\": {"]
 #[doc = "          \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
 #[doc = "          \"type\": \"integer\","]
@@ -2122,6 +2131,15 @@ impl<'de> ::serde::Deserialize<'de> for EditIrTitle {
 #[doc = "        \"$ref\": \"#/$defs/videoSegment\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"shape\": {"]
+#[doc = "      \"description\": \"The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"vertical\","]
+#[doc = "        \"portrait\","]
+#[doc = "        \"square\","]
+#[doc = "        \"landscape\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"transition_ticks\": {"]
 #[doc = "      \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
 #[doc = "      \"type\": \"integer\","]
@@ -2138,6 +2156,9 @@ impl<'de> ::serde::Deserialize<'de> for EditIrTitle {
 pub struct EditIrVideo {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub segments: ::std::vec::Vec<VideoSegment>,
+    #[doc = "The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub shape: ::std::option::Option<EditIrVideoShape>,
     #[doc = "Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged."]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub transition_ticks: ::std::option::Option<i64>,
@@ -2146,6 +2167,7 @@ impl ::std::default::Default for EditIrVideo {
     fn default() -> Self {
         Self {
             segments: Default::default(),
+            shape: Default::default(),
             transition_ticks: Default::default(),
         }
     }
@@ -2153,6 +2175,88 @@ impl ::std::default::Default for EditIrVideo {
 impl EditIrVideo {
     pub fn builder() -> builder::EditIrVideo {
         Default::default()
+    }
+}
+#[doc = "The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"vertical\","]
+#[doc = "    \"portrait\","]
+#[doc = "    \"square\","]
+#[doc = "    \"landscape\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrVideoShape {
+    #[serde(rename = "vertical")]
+    Vertical,
+    #[serde(rename = "portrait")]
+    Portrait,
+    #[serde(rename = "square")]
+    Square,
+    #[serde(rename = "landscape")]
+    Landscape,
+}
+impl ::std::fmt::Display for EditIrVideoShape {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Vertical => f.write_str("vertical"),
+            Self::Portrait => f.write_str("portrait"),
+            Self::Square => f.write_str("square"),
+            Self::Landscape => f.write_str("landscape"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrVideoShape {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "vertical" => Ok(Self::Vertical),
+            "portrait" => Ok(Self::Portrait),
+            "square" => Ok(Self::Square),
+            "landscape" => Ok(Self::Landscape),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrVideoShape {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrVideoShape {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrVideoShape {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`Sha256`"]
@@ -2314,7 +2418,7 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "          }"]
 #[doc = "        },"]
 #[doc = "        \"inset\": {"]
-#[doc = "          \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.\","]
+#[doc = "          \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.\","]
 #[doc = "          \"type\": \"object\","]
 #[doc = "          \"required\": ["]
 #[doc = "            \"corner\","]
@@ -2367,7 +2471,7 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "          }"]
 #[doc = "        },"]
 #[doc = "        \"split\": {"]
-#[doc = "          \"description\": \"two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.\","]
+#[doc = "          \"description\": \"two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.\","]
 #[doc = "          \"type\": \"integer\","]
 #[doc = "          \"maximum\": 750.0,"]
 #[doc = "          \"minimum\": 250.0"]
@@ -2495,7 +2599,7 @@ impl VideoSegment {
 #[doc = "      }"]
 #[doc = "    },"]
 #[doc = "    \"inset\": {"]
-#[doc = "      \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.\","]
+#[doc = "      \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.\","]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
 #[doc = "        \"corner\","]
@@ -2548,7 +2652,7 @@ impl VideoSegment {
 #[doc = "      }"]
 #[doc = "    },"]
 #[doc = "    \"split\": {"]
-#[doc = "      \"description\": \"two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape.\","]
+#[doc = "      \"description\": \"two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.\","]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"maximum\": 750.0,"]
 #[doc = "      \"minimum\": 250.0"]
@@ -2587,7 +2691,7 @@ pub struct VideoSegmentLayout {
     #[doc = "Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub secondary_crop_path: ::std::vec::Vec<VideoSegmentLayoutSecondaryCropPathItem>,
-    #[doc = "two_up: the upper viewport's share of the frame height, per mille. Absent is an even split; a screen share over a face is the upper viewport at the recording's own shape."]
+    #[doc = "two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape."]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub split: ::std::option::Option<i64>,
     #[doc = "picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner."]
@@ -2851,13 +2955,13 @@ impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutCropPa
         value.parse()
     }
 }
-#[doc = "Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square."]
+#[doc = "Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
 #[doc = r""]
 #[doc = r" ```json"]
 #[doc = "{"]
-#[doc = "  \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame width, per mille. It is square.\","]
+#[doc = "  \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.\","]
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"required\": ["]
 #[doc = "    \"corner\","]
@@ -4439,12 +4543,17 @@ pub mod builder {
     pub struct EditIrVideo {
         segments:
             ::std::result::Result<::std::vec::Vec<super::VideoSegment>, ::std::string::String>,
+        shape: ::std::result::Result<
+            ::std::option::Option<super::EditIrVideoShape>,
+            ::std::string::String,
+        >,
         transition_ticks: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
     }
     impl ::std::default::Default for EditIrVideo {
         fn default() -> Self {
             Self {
                 segments: Ok(Default::default()),
+                shape: Ok(Default::default()),
                 transition_ticks: Ok(Default::default()),
             }
         }
@@ -4458,6 +4567,16 @@ pub mod builder {
             self.segments = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for segments: {e}"));
+            self
+        }
+        pub fn shape<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrVideoShape>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.shape = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for shape: {e}"));
             self
         }
         pub fn transition_ticks<T>(mut self, value: T) -> Self
@@ -4478,6 +4597,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 segments: value.segments?,
+                shape: value.shape?,
                 transition_ticks: value.transition_ticks?,
             })
         }
@@ -4486,6 +4606,7 @@ pub mod builder {
         fn from(value: super::EditIrVideo) -> Self {
             Self {
                 segments: Ok(value.segments),
+                shape: Ok(value.shape),
                 transition_ticks: Ok(value.transition_ticks),
             }
         }

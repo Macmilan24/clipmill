@@ -45,6 +45,15 @@ describe('the history', () => {
         ],
       }),
     ).toBe('Key word');
+    expect(
+      describeCommand({
+        op: 'batch',
+        commands: [
+          { op: 'set_frame_shape', shape: 'landscape' },
+          { op: 'replace_crop_path', segment_id: 'seg_1', path: [] },
+        ],
+      }),
+    ).toBe('Shape: 16:9');
   });
 
   it('goes back to a point by undoing everything since, newest first', () => {

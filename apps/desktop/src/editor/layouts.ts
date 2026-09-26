@@ -1,17 +1,18 @@
 /**
  * Changing how a section is laid out, as edit commands.
  *
- * Every viewport has a shape — the whole 9:16 frame, the upper or lower share
- * of a split, a square inset — and every crop drawn into one must have that
- * shape: the render refuses a crop of another shape rather than stretch a
- * face. So a change that gives a viewport a new shape carries its crops
- * along, each keeping its centre and its height (how close it is) while its
- * width follows the new shape.
+ * Every viewport has a shape — the whole frame, either share of a split, a
+ * square inset — and every crop drawn into one must have that shape: the
+ * render refuses a crop of another shape rather than stretch a face. So a
+ * change that gives a viewport a new shape carries its crops along, each
+ * keeping its centre and its height (how close it is) while its width follows
+ * the new shape. That includes the clip's own shape: 9:16, 4:5, 1:1 or 16:9.
  */
 import type { EditIr } from '@clipmill/contracts';
 
-import type { EditCommandJson } from '../daemon/client.js';
-import { type LayoutMode, setLayout, swapPortraits } from './commands.js';
+import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
+import { type LayoutMode, batch, setLayout, swapPortraits } from './commands.js';
+import { sourceOf } from './player.js';
 
 export type SavedLayout = NonNullable<EditIr['video']['segments']>[number]['layout'];
 type Keyframe = NonNullable<SavedLayout['crop_path']>[number];
@@ -29,7 +30,46 @@ interface Frame {
   readonly displayHeight: number;
 }
 
-/** The split ratios offered, per mille of the height for the upper viewport. */
+export type FrameShape = NonNullable<EditIr['video']['shape']>;
+
+/** The shapes a clip may be delivered in, and what each is for. */
+export const FRAME_SHAPES: readonly {
+  readonly shape: FrameShape;
+  readonly ratio: string;
+  readonly label: string;
+  readonly use: string;
+}[] = [
+  { shape: 'vertical', ratio: '9:16', label: 'Vertical', use: 'Shorts, Reels and TikTok' },
+  { shape: 'portrait', ratio: '4:5', label: 'Portrait', use: 'Instagram and Facebook feeds' },
+  { shape: 'square', ratio: '1:1', label: 'Square', use: 'Feeds and LinkedIn' },
+  { shape: 'landscape', ratio: '16:9', label: 'Landscape', use: 'YouTube and the web' },
+];
+
+/** The frame a shape renders at the default size, as the render sizes it. */
+export function frameOfShape(shape: FrameShape): Shape {
+  switch (shape) {
+    case 'portrait':
+      return { width: 1080, height: 1350 };
+    case 'square':
+      return { width: 1080, height: 1080 };
+    case 'landscape':
+      return { width: 1920, height: 1080 };
+    default:
+      return { width: 1080, height: 1920 };
+  }
+}
+
+/** The shape of a frame this size, when it is one of the four. */
+export function shapeOfFrame(output: Shape): FrameShape {
+  const ratio = output.width / Math.max(1, output.height);
+  const nearest = FRAME_SHAPES.map(({ shape }) => {
+    const frame = frameOfShape(shape);
+    return { shape, off: Math.abs(frame.width / frame.height - ratio) };
+  }).sort((left, right) => left.off - right.off)[0];
+  return nearest?.shape ?? 'vertical';
+}
+
+/** The split ratios offered, per mille of the frame for the first viewport. */
 export const SPLITS = { min: 250, max: 750, even: 500 } as const;
 /** How far a fitted picture may be zoomed, in percent. */
 export const ZOOMS = { min: 100, max: 250 } as const;
@@ -65,20 +105,51 @@ export function setLayoutStyle(segmentId: string, style: LayoutStyle): EditComma
   };
 }
 
-/** The two stacked viewports' heights at a split, as the render computes them. */
+/** The two viewports' lengths along a split, as the render computes them. */
 export function viewportHeights(split: number, height: number): readonly [number, number] {
   const upper = Math.floor((height * split) / 1000) & ~1;
   return [upper, height - upper];
 }
 
 /**
- * The split that gives the upper viewport the recording's own shape, so a
- * screen share sits on top whole; clamped to the splits offered.
+ * Whether two viewports sit side by side in this frame rather than one above
+ * the other: across a landscape frame, as the render decides.
+ */
+export function splitsAcross(output: Shape): boolean {
+  return output.width > output.height;
+}
+
+/** The two viewports of a split frame, first first, as the render sizes them. */
+export function viewports(split: number, output: Shape): readonly [Shape, Shape] {
+  if (splitsAcross(output)) {
+    const [first, second] = viewportHeights(split, output.width);
+    return [
+      { width: first, height: output.height },
+      { width: second, height: output.height },
+    ];
+  }
+  const [first, second] = viewportHeights(split, output.height);
+  return [
+    { width: output.width, height: first },
+    { width: output.width, height: second },
+  ];
+}
+
+/**
+ * The split that gives the first viewport the recording's own shape, so a
+ * screen share sits whole on top, or on the left of a landscape frame;
+ * clamped to the splits offered.
  */
 export function recordingSplit(frame: Frame, output: Shape): number {
-  const split = Math.round(
-    (1000 * output.width * frame.displayHeight) / Math.max(1, frame.displayWidth * output.height),
-  );
+  const split = splitsAcross(output)
+    ? Math.round(
+        (1000 * output.height * frame.displayWidth) /
+          Math.max(1, frame.displayHeight * output.width),
+      )
+    : Math.round(
+        (1000 * output.width * frame.displayHeight) /
+          Math.max(1, frame.displayWidth * output.height),
+      );
   return Math.min(SPLITS.max, Math.max(SPLITS.min, split));
 }
 
@@ -189,9 +260,7 @@ export function layoutCommands(
     case 'screen_and_face': {
       const split =
         choice === 'screen_and_face' ? recordingSplit(frame, output) : (style.split ?? SPLITS.even);
-      const [upper, lower] = viewportHeights(split, output.height);
-      const top = { width: output.width, height: upper };
-      const bottom = { width: output.width, height: lower };
+      const [top, bottom] = viewports(split, output);
       // A screen share shows the whole recording on top; the face below is
       // whoever the section was following, until it is dragged elsewhere.
       const upperPath =
@@ -238,19 +307,11 @@ export function splitCommands(
   frame: Frame,
 ): EditCommandJson[] {
   const split = style.split ?? SPLITS.even;
-  const [upper, lower] = viewportHeights(split, output.height);
+  const [first, second] = viewports(split, output);
   return [
     setLayoutStyle(segmentId, { ...style, split: split === SPLITS.even ? undefined : split }),
-    replace(
-      segmentId,
-      refit(saved?.crop_path ?? [], { width: output.width, height: upper }, frame),
-      false,
-    ),
-    replace(
-      segmentId,
-      refit(saved?.secondary_crop_path ?? [], { width: output.width, height: lower }, frame),
-      true,
-    ),
+    replace(segmentId, refit(saved?.crop_path ?? [], first, frame), false),
+    replace(segmentId, refit(saved?.secondary_crop_path ?? [], second, frame), true),
   ];
 }
 
@@ -267,19 +328,46 @@ export function switchCommands(
 ): EditCommandJson[] {
   const split = saved?.split ?? SPLITS.even;
   if (split === SPLITS.even) return [swapPortraits(segmentId)];
-  const [upper, lower] = viewportHeights(split, output.height);
+  const [first, second] = viewports(split, output);
   return [
-    replace(
-      segmentId,
-      refit(saved?.secondary_crop_path ?? [], { width: output.width, height: upper }, frame),
-      false,
-    ),
-    replace(
-      segmentId,
-      refit(saved?.crop_path ?? [], { width: output.width, height: lower }, frame),
-      true,
-    ),
+    replace(segmentId, refit(saved?.secondary_crop_path ?? [], first, frame), false),
+    replace(segmentId, refit(saved?.crop_path ?? [], second, frame), true),
   ];
+}
+
+type Saved = Pick<EditIr, 'video'>;
+
+/**
+ * The clip in another shape, as one step: the shape, and every section's
+ * crops reshaped for the viewports it will have — the whole frame, or each
+ * share of a split, which turns side by side in a landscape frame. A fitted
+ * section and a square inset keep what they have.
+ */
+export function shapeCommand(
+  shape: FrameShape,
+  document: Saved,
+  plan: PreviewPlan,
+): EditCommandJson {
+  const output = frameOfShape(shape);
+  const commands: EditCommandJson[] = [{ op: 'set_frame_shape', shape }];
+  for (const saved of document.video.segments ?? []) {
+    const part = plan.segments.find((item) => item.segmentId === saved.segment_id);
+    const frame = part ? sourceOf(plan, part) : null;
+    const layout = saved.layout;
+    if (!frame || layout.state === 'fit') continue;
+    const primary = layout.crop_path ?? [];
+    const secondary = layout.secondary_crop_path ?? [];
+    if (layout.state === 'two_up') {
+      const [first, second] = viewports(layout.split ?? SPLITS.even, output);
+      if (primary.length > 0)
+        commands.push(replace(saved.segment_id, refit(primary, first, frame), false));
+      if (secondary.length > 0)
+        commands.push(replace(saved.segment_id, refit(secondary, second, frame), true));
+    } else if (primary.length > 0) {
+      commands.push(replace(saved.segment_id, refit(primary, output, frame), false));
+    }
+  }
+  return batch(commands);
 }
 
 function clamp(value: number, low: number, high: number): number {

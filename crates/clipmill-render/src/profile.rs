@@ -5,7 +5,7 @@
 //! content address. The default profile is a value rather
 //! than a constant so the recipe can carry it and the manifest can state it.
 
-use clipmill_edit_ir::CaptionTrack;
+use clipmill_edit_ir::{CaptionTrack, FrameShape};
 use serde::{Deserialize, Serialize};
 
 use crate::timing::FrameRate;
@@ -272,7 +272,9 @@ impl Default for RenderProfile {
     }
 }
 
-/// The output heights a creator may choose for the 9:16 frame.
+/// The output sizes a creator may choose, named by the height of the 9:16
+/// frame at that size: 1080p, 1440p and 4K. Another shape at the same size
+/// keeps the short side — 1080 × 1080 square, 1920 × 1080 landscape.
 pub const OUTPUT_HEIGHTS: [i64; 3] = [1_920, 2_560, 3_840];
 
 impl RenderProfile {
@@ -280,23 +282,32 @@ impl RenderProfile {
         self.frame_rate.into()
     }
 
-    /// The default profile at another frame rate and frame height.
+    /// The default profile in another shape, at another frame rate and size.
     ///
-    /// Only the picture's size and clock change. Caption styles are stated at
-    /// the design height and libass scales them, and the letterbox blur is
-    /// scaled here so a larger frame is the same picture, sharper.
-    pub fn for_output(height: i64, frame_rate: FrameRateSpec) -> Option<Self> {
+    /// `height` names the size as the 9:16 frame's height at it (see
+    /// [`OUTPUT_HEIGHTS`]). Only the picture's shape, size and clock change.
+    /// Caption styles are stated at the design height and libass scales them,
+    /// and the letterbox blur is scaled here so a larger frame is the same
+    /// picture, sharper.
+    pub fn for_output(shape: FrameShape, height: i64, frame_rate: FrameRateSpec) -> Option<Self> {
         if !OUTPUT_HEIGHTS.contains(&height) || frame_rate.num <= 0 || frame_rate.den <= 0 {
             return None;
         }
         let base = Self::default();
-        let width = height * base.width / base.height;
-        let sigma = u32::try_from(i64::from(base.fit_background_sigma) * height / base.height)
+        let short = height * base.width / base.height;
+        let (width, height) = shape.frame(short);
+        let sigma = u32::try_from(i64::from(base.fit_background_sigma) * short / base.width)
             .unwrap_or(base.fit_background_sigma);
-        let profile_id = if height == base.height {
+        let profile_id = if (width, height) == (base.width, base.height) {
             base.profile_id.clone()
         } else {
-            format!("clipmill.render.vertical_{width}x{height}.v1")
+            let name = match shape {
+                FrameShape::Vertical => "vertical",
+                FrameShape::Portrait => "portrait",
+                FrameShape::Square => "square",
+                FrameShape::Landscape => "landscape",
+            };
+            format!("clipmill.render.{name}_{width}x{height}.v1")
         };
         Some(Self {
             profile_id,
@@ -313,7 +324,7 @@ impl RenderProfile {
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    use super::{Colour, RenderProfile};
+    use super::{Colour, FrameShape, RenderProfile};
 
     #[test]
     fn ass_colours_are_written_bgr_with_inverted_alpha() {
@@ -338,15 +349,61 @@ mod tests {
             num: 24_000,
             den: 1_001,
         };
-        let four_k = RenderProfile::for_output(3_840, rate).expect("4K");
+        let four_k = RenderProfile::for_output(FrameShape::Vertical, 3_840, rate).expect("4K");
         assert_eq!((four_k.width, four_k.height), (2_160, 3_840));
         assert_eq!(four_k.fit_background_sigma, 80);
         assert_eq!(four_k.frame_rate, rate);
         assert_ne!(four_k.profile_id, RenderProfile::default().profile_id);
-        let same = RenderProfile::for_output(1_920, RenderProfile::default().frame_rate)
-            .expect("default size");
+        let same = RenderProfile::for_output(
+            FrameShape::Vertical,
+            1_920,
+            RenderProfile::default().frame_rate,
+        )
+        .expect("default size");
         assert_eq!(same, RenderProfile::default());
-        assert!(RenderProfile::for_output(1_000, rate).is_none());
+        assert!(RenderProfile::for_output(FrameShape::Vertical, 1_000, rate).is_none());
+    }
+
+    #[test]
+    fn every_shape_keeps_the_short_side_of_its_size() {
+        use super::FrameShape;
+        let rate = RenderProfile::default().frame_rate;
+        let sized = |shape, height| {
+            let profile = RenderProfile::for_output(shape, height, rate).expect("offered");
+            (profile.width, profile.height, profile.profile_id)
+        };
+        assert_eq!(
+            sized(FrameShape::Portrait, 1_920),
+            (
+                1_080,
+                1_350,
+                "clipmill.render.portrait_1080x1350.v1".to_owned()
+            )
+        );
+        assert_eq!(
+            sized(FrameShape::Square, 2_560),
+            (
+                1_440,
+                1_440,
+                "clipmill.render.square_1440x1440.v1".to_owned()
+            )
+        );
+        assert_eq!(
+            sized(FrameShape::Landscape, 1_920),
+            (
+                1_920,
+                1_080,
+                "clipmill.render.landscape_1920x1080.v1".to_owned()
+            )
+        );
+        assert_eq!(
+            sized(FrameShape::Landscape, 3_840),
+            (
+                3_840,
+                2_160,
+                "clipmill.render.landscape_3840x2160.v1".to_owned()
+            )
+        );
     }
 
     #[test]

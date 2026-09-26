@@ -19,7 +19,7 @@ use clipmill_contracts::schemas::{
     discovery_candidates::DiscoveryCandidates, ranking_set::RankingSet,
     speech_transcript::SpeechTranscript,
 };
-use clipmill_director::{Aspect, Boundary, Cut, Evidence, Frame, Request, direct};
+use clipmill_director::{Boundary, Cut, Evidence, Frame, FrameShape, Request, direct};
 use serde_json::json;
 
 const FINGERPRINT: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -163,7 +163,7 @@ fn request(cut: Cut) -> Request {
             width: 1_920,
             height: 1_080,
         },
-        aspect: Aspect::default(),
+        shape: FrameShape::default(),
     }
 }
 

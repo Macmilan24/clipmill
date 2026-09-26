@@ -388,28 +388,39 @@ fn layout_chains(
             )])
         }
         LayoutState::TwoUp => {
-            let (upper_height, lower_height) = layout.viewport_heights(height);
-            let upper = crop_filter(
+            // Stacked, or side by side across a landscape frame.
+            let ((first_width, first_height), (second_width, second_height)) =
+                layout.viewports(width, height);
+            let first = crop_filter(
                 segment,
                 source,
                 profile,
                 &layout.crop_path,
-                width,
-                upper_height,
+                first_width,
+                first_height,
             )?;
-            let lower = crop_filter(
+            let second = crop_filter(
                 segment,
                 source,
                 profile,
                 &layout.secondary_crop_path,
-                width,
-                lower_height,
+                second_width,
+                second_height,
             )?;
+            let stack = if clipmill_edit_ir::splits_across(width, height) {
+                "hstack"
+            } else {
+                "vstack"
+            };
             Ok(vec![
                 format!("[t{index}]split=2[t{index}upper][t{index}lower]"),
-                format!("[t{index}upper]{upper},scale={width}:{upper_height},setsar=1[t{index}u]"),
-                format!("[t{index}lower]{lower},scale={width}:{lower_height},setsar=1[t{index}l]"),
-                format!("[t{index}u][t{index}l]vstack=inputs=2,format=yuv420p[{label}]"),
+                format!(
+                    "[t{index}upper]{first},scale={first_width}:{first_height},setsar=1[t{index}u]"
+                ),
+                format!(
+                    "[t{index}lower]{second},scale={second_width}:{second_height},setsar=1[t{index}l]"
+                ),
+                format!("[t{index}u][t{index}l]{stack}=inputs=2,format=yuv420p[{label}]"),
             ])
         }
         LayoutState::PictureInPicture => {

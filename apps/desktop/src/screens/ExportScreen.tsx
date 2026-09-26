@@ -10,6 +10,7 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { ExportPlan, ExportRequest, PreviewPlan, QueuedExport } from '../daemon/client.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import { shapeOfFrame } from '../editor/layouts.js';
 import { ClipLoop } from '../export/ClipLoop.js';
 import { latestExportOf, rememberExportRate, useDelivery } from '../export/delivery.js';
 import {
@@ -465,6 +466,7 @@ export function ExportScreen({
       mediaSeconds={durationTicks / 90_000}
       format={format}
       sourceFps={sourceFps}
+      shape={previewPlan ? shapeOfFrame(previewPlan) : 'vertical'}
       onFormatChange={onFormatChange}
       archive={archive}
       onDestinationChange={setDestination}

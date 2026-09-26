@@ -87,6 +87,7 @@ fn sample_document() -> EditDocument {
     };
     EditDocument {
         video: VideoTrack {
+            shape: clipmill_edit_ir::FrameShape::default(),
             transition_ticks: 0,
             segments: vec![
                 segment("seg_a", 0, 90_000, vec![0, 45_000, 90_000]),
@@ -203,6 +204,14 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
             } else {
                 LayoutState::SpeakerFill
             },
+        });
+        commands.push(EditCommand::SetFrameShape {
+            shape: [
+                clipmill_edit_ir::FrameShape::Vertical,
+                clipmill_edit_ir::FrameShape::Portrait,
+                clipmill_edit_ir::FrameShape::Square,
+                clipmill_edit_ir::FrameShape::Landscape,
+            ][usize::try_from(rng.below(4)).unwrap_or(0)],
         });
         commands.push(EditCommand::SetLayoutStyle {
             segment_id: segment_id.clone(),
@@ -607,7 +616,12 @@ fn invalid_documents_are_refused() {
 #[test]
 fn published_contract_fixtures_load_into_the_operational_document() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for name in ["clip.json", "minimal.json", "first_slice.json"] {
+    for name in [
+        "clip.json",
+        "minimal.json",
+        "first_slice.json",
+        "landscape_two_up.json",
+    ] {
         let path = repo.join("contracts/fixtures/edit_ir/valid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {
             panic!("cannot read {}: {error}", path.display());

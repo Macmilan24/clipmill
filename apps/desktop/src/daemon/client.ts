@@ -775,6 +775,8 @@ export interface SolveOptions {
   readonly trackId?: number;
   /** Solve both portraits of a two-person layout. */
   readonly twoUp?: boolean;
+  /** The clip's frame, whose shape the camera is fitted to. Absent is 9:16. */
+  readonly aspect?: { readonly width: number; readonly height: number };
 }
 
 /** One face in one sampled frame, as shares of the source's display frame. */
@@ -846,6 +848,8 @@ export async function solveCropPath(
     endTicks,
     trackId: options.trackId ?? null,
     twoUp: options.twoUp ?? false,
+    aspectWidth: options.aspect?.width ?? null,
+    aspectHeight: options.aspect?.height ?? null,
   });
 }
 

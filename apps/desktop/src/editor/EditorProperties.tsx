@@ -11,10 +11,12 @@ import {
   ArrowUpRight,
   AudioLines,
   Captions as CaptionsIcon,
+  Columns2,
   Copy,
   Crop,
   Info,
   Minus,
+  PanelLeft,
   PanelTop,
   PictureInPicture2,
   Plus,
@@ -50,14 +52,18 @@ import {
   SPLITS,
   ZOOMS,
   DEFAULT_INSET,
+  FRAME_SHAPES,
   layoutCommands,
   recordingSplit,
   refit,
   setLayoutStyle,
+  shapeCommand,
+  shapeOfFrame,
   splitCommands,
+  splitsAcross,
   styleOf,
   switchCommands,
-  viewportHeights,
+  viewports,
 } from './layouts.js';
 import { CueTiming } from './CueTiming.js';
 import {
@@ -586,7 +592,10 @@ function FramingTab({
   const layout = saved?.layout;
   const style = styleOf(layout);
   const output = { width: plan.width, height: plan.height };
+  const across = splitsAcross(output);
+  const shape = document?.video.shape ?? shapeOfFrame(output);
   const screenSplit = source ? recordingSplit(source, output) : null;
+  const [firstViewport, secondViewport] = viewports(style.split ?? SPLITS.even, output);
   const choose = (choice: LayoutChoice) => {
     if (!source) {
       onApply(setLayout(choice === 'screen_and_face' ? 'two_up' : choice, part.segmentId));
@@ -607,6 +616,34 @@ function FramingTab({
   return (
     <div className="review-panel-body">
       <section className="review-section">
+        <h3 className="review-section-title">Shape</h3>
+        <div className="edit-shapes" role="group" aria-label="Shape">
+          {FRAME_SHAPES.map((item) => (
+            <button
+              key={item.shape}
+              type="button"
+              aria-pressed={shape === item.shape}
+              aria-label={`${item.label} ${item.ratio}`}
+              title={item.use}
+              disabled={busy || !document}
+              onClick={() => {
+                if (document && item.shape !== shape)
+                  onApply(shapeCommand(item.shape, document, plan));
+              }}
+            >
+              <span className="edit-shape-glyph" data-shape={item.shape} aria-hidden="true" />
+              <span className="mono">{item.ratio}</span>
+              <span className="edit-shape-label">{item.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="review-footnote">
+          {FRAME_SHAPES.find((item) => item.shape === shape)?.use}. The whole clip changes shape;
+          every section keeps what it follows and how close it is.
+        </p>
+      </section>
+
+      <section className="review-section">
         <h3 className="review-section-title">
           {plan.segments.length > 1 ? `Section ${index + 1} of ${plan.segments.length}` : 'Framing'}
         </h3>
@@ -615,8 +652,8 @@ function FramingTab({
             [
               ['speaker_fill', 'Follow speaker', ScanFace],
               ['fit', 'Whole frame', RectangleHorizontal],
-              ['two_up', 'Two speakers', Rows2],
-              ['screen_and_face', 'Screen and face', PanelTop],
+              ['two_up', 'Two speakers', across ? Columns2 : Rows2],
+              ['screen_and_face', 'Screen and face', across ? PanelLeft : PanelTop],
               ['picture_in_picture', 'Picture in picture', PictureInPicture2],
             ] as const
           ).map(([choice, label, Icon]) => (
@@ -671,9 +708,9 @@ function FramingTab({
       {state === 'two_up' && source && (
         <section className="review-section">
           <h3 className="review-section-title">Split</h3>
-          <Field label="Top">
+          <Field label={across ? 'Left' : 'Top'}>
             <CommitSlider
-              label="Top viewport share"
+              label={across ? 'Left viewport share' : 'Top viewport share'}
               min={SPLITS.min / 10}
               max={SPLITS.max / 10}
               value={Math.round((style.split ?? SPLITS.even) / 10)}
@@ -695,7 +732,9 @@ function FramingTab({
             />
           </Field>
           <p className="review-footnote">
-            {`Top ${viewportHeights(style.split ?? SPLITS.even, plan.height)[0]} px, bottom ${viewportHeights(style.split ?? SPLITS.even, plan.height)[1]} px. `}
+            {across
+              ? `Left ${firstViewport.width} px, right ${secondViewport.width} px. `
+              : `Top ${firstViewport.height} px, bottom ${secondViewport.height} px. `}
             Both crops keep their centre as the split moves.
           </p>
         </section>

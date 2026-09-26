@@ -1240,8 +1240,9 @@ export type OutputFormatV1 = Message<"clipmill.ipc.v1.OutputFormatV1"> & {
   frameRateDen: number;
 
   /**
-   * Height of the 9:16 frame in pixels: 1920 (1080p), 2560 (1440p) or 3840
-   * (4K). Zero is 1920.
+   * The size, named by the height the 9:16 frame has at it: 1920 (1080p),
+   * 2560 (1440p) or 3840 (4K). Zero is 1920. A clip in another shape keeps
+   * that size's short side: 1080p square is 1080 x 1080, landscape 1920 x 1080.
    *
    * @generated from field: uint32 height = 3;
    */
@@ -3383,8 +3384,9 @@ export type SolveCropPathRequest = Message<"clipmill.ipc.v1.SolveCropPathRequest
 
   /**
    * Solve the two-person layout instead: the pair the two-up gate finds, each
-   * in its own half-height portrait, the left-hand face on top. Refused, with
-   * a reason, when two people are not both clearly in the span.
+   * in its own half of the frame — stacked, the left-hand face on top, or
+   * side by side for a landscape aspect. Refused, with a reason, when two
+   * people are not both clearly in the span.
    *
    * @generated from field: bool two_up = 10;
    */
@@ -4560,7 +4562,8 @@ export type PreviewSegmentV1 = Message<"clipmill.ipc.v1.PreviewSegmentV1"> & {
   layout: string;
 
   /**
-   * Two viewports: the upper one's height.
+   * Two viewports: the first one's length along the split — its height when
+   * stacked, its width side by side in a landscape frame.
    *
    * @generated from field: int64 upper_height = 11;
    */

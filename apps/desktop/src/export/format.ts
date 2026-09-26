@@ -3,11 +3,13 @@
  *
  * The default keeps the recording's own frame rate: converting 23.976 or 25
  * frames a second to 29.97 repeats a frame every few, and pans judder. Thirty
- * and sixty are there for a platform that asks for them. The size is the
- * 9:16 frame's height; larger sizes only help a recording that has the pixels,
+ * and sixty are there for a platform that asks for them. The size is named
+ * by the 9:16 frame's height at it, and a clip in another shape keeps that
+ * size's short side; larger sizes only help a recording that has the pixels,
  * and the export checks say so when it does not.
  */
 import type { OutputFormat } from '../daemon/client.js';
+import { type FrameShape, frameOfShape } from '../editor/layouts.js';
 
 export type RateChoice = 'source' | '30' | '60';
 export type HeightChoice = 1920 | 2560 | 3840;
@@ -72,23 +74,36 @@ export function rateLabel(rate: RateChoice, sourceFps: number | null): string {
   return `${rate} fps`;
 }
 
-export function heightLabel(height: HeightChoice): string {
-  switch (height) {
-    case 2560:
-      return '1440p · 1440 × 2560';
-    case 3840:
-      return '4K · 2160 × 3840';
-    default:
-      return '1080p · 1080 × 1920';
-  }
+/** The delivered frame at a size, in a clip's shape, as the render sizes it. */
+export function frameAt(
+  height: HeightChoice,
+  shape: FrameShape = 'vertical',
+): { readonly width: number; readonly height: number } {
+  const short = (height * 9) / 16;
+  const frame = frameOfShape(shape);
+  return { width: (frame.width * short) / 1080, height: (frame.height * short) / 1080 };
+}
+
+/** `1080p`, `1440p` or `4K`. */
+export function sizeName(height: HeightChoice): string {
+  return height === 2560 ? '1440p' : height === 3840 ? '4K' : '1080p';
+}
+
+export function heightLabel(height: HeightChoice, shape: FrameShape = 'vertical'): string {
+  const frame = frameAt(height, shape);
+  return `${sizeName(height)} · ${frame.width} × ${frame.height}`;
 }
 
 /** `1080 × 1920 · 23.98 fps · MP4`. */
-export function formatSummary(choice: FormatChoice, sourceFps: number | null): string {
-  const width = (choice.height * 9) / 16;
+export function formatSummary(
+  choice: FormatChoice,
+  sourceFps: number | null,
+  shape: FrameShape = 'vertical',
+): string {
+  const frame = frameAt(choice.height, shape);
   const fps =
     choice.rate === 'source' ? (sourceFps === null ? null : fpsText(sourceFps)) : choice.rate;
-  return [`${width} × ${choice.height}`, fps === null ? null : `${fps} fps`, 'MP4']
+  return [`${frame.width} × ${frame.height}`, fps === null ? null : `${fps} fps`, 'MP4']
     .filter(Boolean)
     .join(' · ');
 }
