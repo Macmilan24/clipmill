@@ -81,6 +81,12 @@ const SAFE_LABELS: Record<SafePlatform, string> = {
 
 export interface MonitorPlayback {
   readonly frame: number;
+  /**
+   * The frame whose sound is being heard, which the captions follow: behind
+   * `frame` by the output latency while a boost plays through Web Audio, the
+   * same frame otherwise.
+   */
+  readonly heardFrame?: number;
   readonly playing: boolean;
   readonly speed: number;
   readonly loop: boolean;
@@ -573,9 +579,10 @@ function Stage({
     return () => element.removeEventListener('wheel', listener);
   }, []);
 
-  const cue = cueAt(plan, frame);
+  const heard = playback.heardFrame ?? frame;
+  const cue = cueAt(plan, heard);
   const style = plan.captionStyle;
-  const highlighted = cue ? highlightedWord(plan, cue, frame) : -1;
+  const highlighted = cue ? highlightedWord(plan, cue, heard) : -1;
   const grabCaption = (event: ReactPointerEvent<HTMLParagraphElement>) => {
     if (!cue) return;
     const box = stage.current?.getBoundingClientRect();
@@ -706,7 +713,7 @@ function Stage({
               ass={captions.ass}
               faces={captions.faces}
               family={captions.family}
-              seconds={(frame * plan.rateDen) / Math.max(1, plan.rateNum)}
+              seconds={(heard * plan.rateDen) / Math.max(1, plan.rateNum)}
               frameWidth={plan.width}
               frameHeight={plan.height}
               onDrawing={setExact}
