@@ -1,0 +1,792 @@
+/*
+ * One clip, exported. The clip stays in view on the left; on the right is one
+ * panel of settings ending in the button that makes the files, and beneath it
+ * what the export became and where it can go next.
+ */
+
+.export-single {
+  container: export-page / inline-size;
+  max-width: 1120px;
+  gap: 24px;
+}
+
+/* Heading ---------------------------------------------------------------- */
+
+.export-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.export-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-heading .workspace-subtitle {
+  overflow: hidden;
+  margin-top: 2px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Layout ----------------------------------------------------------------- */
+
+/*
+ * The picture's width follows its shape, the page's width and the window's
+ * height, so a tall clip is never taller than the window it is shown in.
+ */
+.export-layout {
+  --stage-ratio: 0.5625;
+  --stage-share: 30cqi;
+  --stage-max: 300px;
+  display: grid;
+  grid-template-columns:
+    clamp(
+      200px,
+      min(var(--stage-share), calc((100vh - 290px) * var(--stage-ratio))),
+      var(--stage-max)
+    )
+    minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
+}
+
+.export-layout[data-shape='portrait'] {
+  --stage-ratio: 0.8;
+  --stage-share: 32cqi;
+  --stage-max: 340px;
+}
+
+.export-layout[data-shape='square'] {
+  --stage-ratio: 1;
+  --stage-share: 34cqi;
+  --stage-max: 360px;
+}
+
+.export-layout[data-shape='landscape'] {
+  --stage-ratio: 1.7778;
+  --stage-share: 40cqi;
+  --stage-max: 440px;
+}
+
+/* The clip --------------------------------------------------------------- */
+
+.export-stage {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.export-picture {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--cm-radius-card);
+  background: var(--cm-viewer);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+/* Held open in the clip's shape while the loop has nothing to draw yet. */
+.export-picture:empty {
+  aspect-ratio: var(--stage-ratio);
+}
+
+.export-loop {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--cm-viewer);
+}
+
+.export-loop-decoder {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.export-loop .edit-caption-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.export-loop .edit-caption-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.export-exported {
+  display: block;
+  width: 100%;
+  background: var(--cm-viewer);
+  object-fit: contain;
+}
+
+.export-stage-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-inline: 2px;
+}
+
+.export-stage-format {
+  color: var(--cm-text-primary);
+  font-size: var(--cm-type-body);
+  font-weight: var(--cm-weight-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-stage-meta {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  line-height: 1.5;
+}
+
+.export-stage-note {
+  margin-top: 6px;
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  line-height: 1.5;
+}
+
+/* Choices ---------------------------------------------------------------- */
+
+.export-choice {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--cm-recessed-border);
+  border-radius: calc(var(--cm-radius-control) + 2px);
+  background: var(--cm-recessed);
+}
+
+.export-choice button {
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-label);
+  font-weight: var(--cm-weight-label);
+  white-space: nowrap;
+}
+
+.export-choice button:hover {
+  color: var(--cm-text-primary);
+}
+
+.export-choice button[aria-pressed='true'] {
+  background: var(--cm-glass-elevated);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.export-choice button:focus-visible {
+  outline: 2px solid var(--cm-accent-focus);
+  outline-offset: 1px;
+}
+
+/* Above the picture, the two views share its width. */
+.export-choice.export-stage-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-self: stretch;
+}
+
+/* The settings panel ----------------------------------------------------- */
+
+.export-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.export-panel {
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-card);
+  background: var(--cm-glass);
+}
+
+.export-section {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 22px;
+}
+
+.export-section + .export-section {
+  border-top: 1px solid var(--cm-glass-border);
+}
+
+.export-section-title {
+  color: var(--cm-text-primary);
+  font-size: var(--cm-type-section-title);
+  font-weight: var(--cm-weight-heading);
+  line-height: 1.35;
+}
+
+.export-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.export-field-label {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-label);
+  font-weight: var(--cm-weight-label);
+  line-height: 1.2;
+}
+
+.export-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+}
+
+.export-folder {
+  display: flex;
+  gap: 8px;
+}
+
+.export-folder input {
+  flex: 1;
+}
+
+.export-field-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--cm-danger-ink);
+  font-size: var(--cm-type-meta);
+  line-height: 1.5;
+}
+
+.export-note {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  line-height: 1.5;
+}
+
+.export-disclosure {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  line-height: 1.5;
+}
+
+.export-disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  border-radius: 4px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.export-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.export-disclosure > summary::before {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-left: 1px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+  content: '';
+}
+
+.export-disclosure[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.export-disclosure > summary:hover {
+  color: var(--cm-text-primary);
+}
+
+.export-disclosure > summary:focus-visible {
+  outline: 2px solid var(--cm-accent-focus);
+  outline-offset: 2px;
+}
+
+.export-disclosure > :not(summary) {
+  margin-top: 8px;
+}
+
+.export-specs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-specs div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.export-specs dd {
+  color: var(--cm-text-primary);
+  text-align: right;
+}
+
+.export-technical {
+  font-family: var(--cm-font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* The files an export writes. */
+.export-files {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.export-files-main {
+  overflow: hidden;
+  color: var(--cm-text-primary);
+  font-family: var(--cm-font-mono);
+  font-size: var(--cm-type-technical);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.export-files-count {
+  flex: none;
+}
+
+.export-files-more ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 13px;
+  font-family: var(--cm-font-mono);
+  font-size: var(--cm-type-technical);
+}
+
+.export-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--cm-text-primary);
+  font-size: var(--cm-type-label);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.export-consent input {
+  flex: none;
+  margin-top: 3px;
+  accent-color: var(--cm-accent);
+}
+
+/* Checks ------------------------------------------------------------------ */
+
+.export-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-check {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.export-check > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--cm-text-secondary);
+}
+
+.export-check-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.export-check-body > .export-check-fix {
+  align-self: stretch;
+}
+
+.export-check-body > :nth-child(n + 3) {
+  margin-top: 8px;
+}
+
+.export-check-title {
+  color: var(--cm-text-primary);
+  font-size: var(--cm-type-label);
+  font-weight: var(--cm-weight-label);
+  line-height: 1.5;
+}
+
+.export-check-detail {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-label);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.export-check[data-tone='danger'] {
+  padding: 10px 12px;
+  border-radius: var(--cm-radius-panel);
+  background: color-mix(in srgb, var(--cm-semantic-danger) 9%, transparent);
+}
+
+.export-check[data-tone='danger'] > svg,
+.export-check[data-tone='danger'] .export-check-title {
+  color: var(--cm-danger-ink);
+}
+
+.export-check[data-tone='warning'] > svg {
+  color: var(--cm-warning-ink);
+}
+
+.export-check[data-tone='success'] > svg,
+.export-check[data-tone='success'] .export-check-title {
+  color: var(--cm-success-ink);
+}
+
+.export-check-fix {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.export-check-fix p {
+  flex: 1 1 220px;
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  line-height: 1.5;
+}
+
+.export-caption-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 18px;
+  list-style: decimal;
+}
+
+/* The one action ------------------------------------------------------------ */
+
+/*
+ * Held at the bottom of the window while the panel runs past it, and never
+ * over anything but the panel it ends. Sticking happens inside the page's
+ * padding, so the footer reaches past it to the window's edge.
+ */
+.export-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--page-padding-block, 0px));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--cm-glass-border);
+  border-radius: 0 0 var(--cm-radius-card) var(--cm-radius-card);
+  background: var(--cm-glass);
+}
+
+.export-go {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.export-go-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.export-status {
+  color: var(--cm-text-primary);
+  font-size: var(--cm-type-body);
+  font-weight: var(--cm-weight-label);
+  line-height: 1.4;
+}
+
+.export-status[data-tone='ready'] {
+  color: var(--cm-success-ink);
+}
+
+.export-status[data-tone='blocked'] {
+  color: var(--cm-danger-ink);
+}
+
+.export-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: var(--cm-type-meta);
+}
+
+.export-figures div {
+  display: flex;
+  gap: 6px;
+}
+
+.export-figures dt {
+  color: var(--cm-text-secondary);
+}
+
+.export-figures dd {
+  color: var(--cm-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-go-button {
+  flex: none;
+  min-width: 148px;
+}
+
+/* What the export became ----------------------------------------------------- */
+
+.export-delivery-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--cm-glass-border);
+}
+
+.export-delivery-head > svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--cm-text-secondary);
+}
+
+.export-delivery[data-state='done'] .export-delivery-head > svg {
+  color: var(--cm-success-ink);
+}
+
+.export-delivery[data-state='failed'] .export-delivery-head > svg {
+  color: var(--cm-danger-ink);
+}
+
+.export-delivery-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-delivery-title h2 {
+  color: var(--cm-text-primary);
+  font-size: var(--cm-type-section-title);
+  font-weight: var(--cm-weight-heading);
+}
+
+.export-delivery-title p {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--cm-text-secondary);
+  font-family: var(--cm-font-mono);
+  font-size: var(--cm-type-technical);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.export-delivery-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 22px 18px;
+}
+
+.export-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.export-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--cm-recessed);
+  box-shadow: inset 0 0 0 1px var(--cm-recessed-border);
+}
+
+.export-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cm-accent);
+  transition: width 300ms ease;
+}
+
+.export-progress p {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+}
+
+.export-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--cm-type-label);
+}
+
+.export-stages li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.export-stages li > span:first-child {
+  color: var(--cm-text-secondary);
+}
+
+.export-stages [data-state='done'] {
+  color: var(--cm-success-ink);
+}
+
+.export-stages [data-state='failed'] {
+  color: var(--cm-danger-ink);
+}
+
+.export-delivery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.export-delivered {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-inline: -8px;
+}
+
+.export-delivered li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 30px;
+  padding: 0 4px 0 8px;
+  border-radius: var(--cm-radius-control);
+}
+
+.export-delivered li:hover {
+  background: var(--cm-recessed);
+}
+
+.export-delivered-path {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--cm-font-mono);
+  font-size: var(--cm-type-technical);
+  white-space: nowrap;
+}
+
+/* The folder gives way before the name does. */
+.export-delivered-folder {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cm-text-secondary);
+  text-overflow: ellipsis;
+}
+
+.export-delivered-name {
+  flex: 0 0.001 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cm-text-primary);
+  text-overflow: ellipsis;
+}
+
+.export-delivered-size {
+  flex: none;
+  color: var(--cm-text-secondary);
+  font-family: var(--cm-font-mono);
+  font-size: 10px;
+}
+
+/* The project archive ---------------------------------------------------------- */
+
+.export-archive {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 2px 4px;
+  border-top: 1px solid var(--cm-glass-border);
+}
+
+.export-archive-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.export-archive-text h2 {
+  color: var(--cm-text-primary);
+  font-size: var(--cm-type-label);
+  font-weight: var(--cm-weight-label);
+}
+
+.export-archive-text p {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  line-height: 1.5;
+}
+
+.export-archive-result span {
+  font-family: var(--cm-font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Narrower pages ------------------------------------------------------------ */
+
+@container export-page (max-width: 900px) {
+  .export-section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+
+@container export-page (max-width: 640px) {
+  .export-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .export-stage {
+    position: static;
+    width: min(100%, var(--stage-max));
+    margin-inline: auto;
+  }
+}

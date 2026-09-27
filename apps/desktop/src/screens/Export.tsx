@@ -1,24 +1,29 @@
 /**
- * Display export validation, resolved filenames, delivery settings, and queue state.
+ * One clip, exported.
+ *
+ * The clip itself stays in view on one side. The other side is the one path to
+ * its files — where they go, what they are, the permission they rest on and
+ * what the checks found — ending in the button that makes them. What the
+ * export becomes follows beneath: its progress and files, then publishing.
+ *
  * The daemon resolves naming patterns so the preview uses the same rules as delivery.
  */
 import {
-  AlertTriangle,
   ArrowLeft,
   Captions,
+  CircleAlert,
+  CircleCheck,
   Eye,
   FolderOpen,
-  Info,
+  Layers,
   Link2,
-  PackageCheck,
+  TriangleAlert,
   Upload,
 } from 'lucide-react';
-import type { JSX, ReactNode } from 'react';
+import { type JSX, type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Empty,
   EmptyDescription,
@@ -35,12 +40,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 import type { ExportFinding, ExportPlan } from '../daemon/client.js';
 import { formatBytes } from '../deviceProfile.js';
-import type { FrameShape } from '../editor/layouts.js';
+import { FRAME_SHAPES, type FrameShape, frameOfShape } from '../editor/layouts.js';
+import { TipButton } from '../inspector/TipButton.js';
+import { clock } from '../results/model.js';
 import type { EditorFocus } from '../shell/route.js';
 import {
   type Delivery,
@@ -53,31 +60,30 @@ import {
   DEFAULT_FORMAT,
   type FormatChoice,
   HEIGHT_CHOICES,
-  type HeightChoice,
   RATE_CHOICES,
   type RateChoice,
   formatSummary,
+  fpsText,
+  frameAt,
   heightLabel,
   rateLabel,
+  sizeName,
 } from '../export/format.js';
+import '../export/export.css';
 
-/**
- * Display fixed renderer settings as delivery information.
- */
 /** What a user gets before they have an opinion; the daemon's default too. */
 const DEFAULT_PATTERN = '{index}-{clip}';
 
 /** The fastest of the hot captions, as the daemon put it. */
-function hottestRate(findings: readonly ExportFinding[]): string {
+function hottestRate(findings: readonly ExportFinding[]): number | null {
   const rates = findings
     .map((finding) => /([\d.]+) characters a second/.exec(finding.detail)?.[1])
     .filter((rate): rate is string => rate !== undefined)
     .map(Number);
   const top = Math.max(...rates);
-  return Number.isFinite(top) ? `up to ${top.toFixed(1)} characters a second` : 'too fast';
+  return Number.isFinite(top) ? top : null;
 }
 
-/** Stable machine codes stay in the export record, not in the reading flow. */
 /**
  * Where "Fix captions" should land: the first caption the strip refused, or
  * failing that the first it merely pointed at.
@@ -88,13 +94,16 @@ function hottestRate(findings: readonly ExportFinding[]): string {
  * optional) still opens the right track; the editor then lands on the track's
  * first problem itself.
  */
-function captionFocusOf(
-  findings: readonly ExportFinding[],
-): { readonly focus: EditorFocus; readonly blocking: boolean } | null {
+function captionFocusOf(findings: readonly ExportFinding[]): {
+  readonly finding: ExportFinding;
+  readonly focus: EditorFocus;
+  readonly blocking: boolean;
+} | null {
   const captions = findings.filter((finding) => finding.code.startsWith('captions.'));
   const first = captions.find((finding) => finding.severity === 'blocking') ?? captions[0];
   if (!first) return null;
   return {
+    finding: first,
     blocking: first.severity === 'blocking',
     focus: {
       panel: 'captions',
@@ -104,6 +113,7 @@ function captionFocusOf(
   };
 }
 
+/** Stable machine codes stay in the export record, not in the reading flow. */
 function findingTitle(code: string): string {
   if (code.startsWith('framing.')) return 'Framing needs attention';
   if (code === 'boundary.inside_word') return 'A cut interrupts a word';
@@ -112,6 +122,8 @@ function findingTitle(code: string): string {
   if (code === 'disk.insufficient') return 'More storage is needed';
   if (code === 'disk.unknown') return 'Storage could not be checked';
   if (code.startsWith('disk.')) return 'Storage is running low';
+  if (code === 'source.missing') return 'The recording has moved';
+  if (code.startsWith('destination.')) return 'This folder cannot be used';
   if (code.startsWith('captions.burn_in.')) return 'On-screen caption notice';
   if (code.startsWith('captions.')) return 'Subtitle check';
   return 'Export check';
@@ -130,13 +142,36 @@ function patternProblemOf(error: string | null): string | null {
   return error !== null && error.includes('pattern') ? error : null;
 }
 
-function deliverySpecs(format: FormatChoice): readonly (readonly [string, string])[] {
+function deliverySpecs(
+  format: FormatChoice,
+  shape: FrameShape,
+): readonly (readonly [string, string])[] {
+  const frame = frameAt(format.height, shape);
   return [
-    ['Video', `${(format.height * 9) / 16} × ${format.height}, H.264, CRF 18`],
+    ['Video', `${frame.width} × ${frame.height}, H.264, CRF 18`],
     ['Audio', 'AAC, −14 LUFS integrated, −1.0 dBTP target'],
     ['Captions', 'Burned in, with SRT and WebVTT files'],
     ['Additional files', 'Thumbnail, metadata, render manifest and checksums'],
   ];
+}
+
+/** What changing the frame rate does to this recording, when it does anything. */
+function rateNote(rate: RateChoice, sourceFps: number | null): string | null {
+  if (rate === 'source' || sourceFps === null) return null;
+  const chosen = Number(rate);
+  if (Math.abs(chosen - sourceFps) < 0.01) return null;
+  return chosen > sourceFps
+    ? `Your recording runs at ${fpsText(sourceFps)} fps, so some frames will repeat and pans may judder.`
+    : `Your recording runs at ${fpsText(sourceFps)} fps, so some frames will be left out.`;
+}
+
+/** Whether a person has asked for less motion. */
+function calm(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 export interface ExportProps {
@@ -217,73 +252,124 @@ export function Export(props: ExportProps): JSX.Element {
       </Empty>
     );
   }
+  return <ExportClip {...props} />;
+}
 
-  const blocking = (props.plan?.findings ?? []).filter(
-    (finding) =>
-      finding.severity === 'blocking' &&
-      !(finding.code === 'captions.reading_rate' && props.hotCaptions.length > 0),
+function ExportClip(props: ExportProps): JSX.Element {
+  const format = props.format ?? DEFAULT_FORMAT;
+  const shape = props.shape ?? 'vertical';
+  const findings = props.plan?.findings ?? [];
+  // Fast captions, once there are any, are counted together rather than listed.
+  const grouped = (finding: ExportFinding) =>
+    finding.code === 'captions.reading_rate' && props.hotCaptions.length > 0;
+  const blocking = findings.filter(
+    (finding) => finding.severity === 'blocking' && !grouped(finding),
   );
-  const advisory = (props.plan?.findings ?? []).filter(
-    (finding) =>
-      finding.severity === 'advisory' &&
-      !(finding.code === 'captions.reading_rate' && props.hotCaptions.length > 0),
+  const advisory = findings.filter(
+    (finding) => finding.severity === 'advisory' && !grouped(finding),
   );
-  const captionFocus = captionFocusOf(props.plan?.findings ?? []);
+  const captionFocus = captionFocusOf(findings);
   const ready =
     props.plan?.passes === true && props.attestation !== '' && !props.busy && !props.planning;
   const delivering = props.delivery !== null && !props.delivery.settled;
   const patternProblem = patternProblemOf(props.error);
+  const status = readiness(props, blocking.length, delivering);
+
+  // The export someone just asked for is brought into view as it starts, so
+  // its progress is not left below the fold.
+  const deliveryPanel = useRef<HTMLElement>(null);
+  const following = useRef(false);
+  const { delivery } = props;
+  useEffect(() => {
+    if (!following.current || delivery === null) return;
+    following.current = false;
+    deliveryPanel.current?.scrollIntoView?.({
+      block: 'nearest',
+      behavior: calm() ? 'auto' : 'smooth',
+    });
+  }, [delivery]);
+  // An export that was refused never arrives, so there is nothing to follow.
+  useEffect(() => {
+    if (props.error !== null) following.current = false;
+  }, [props.error]);
+
+  const hottest = hottestRate(props.hotCaptions);
+  const fix = (finding: ExportFinding | null) =>
+    captionFocus !== null && (finding === null || captionFocus.finding === finding) ? (
+      <CaptionFix
+        focus={captionFocus}
+        grouped={finding === null}
+        busy={props.busy}
+        onEdit={props.onEdit}
+      />
+    ) : null;
 
   return (
-    <div className="export-page">
-      <header className="workspace-heading" data-testid="export-clip">
-        <div>
+    <div className="export-page export-single">
+      <header className="export-header" data-testid="export-clip">
+        {props.onEdit && (
+          <TooltipProvider delayDuration={300}>
+            <TipButton label="Back to editor" onClick={() => props.onEdit?.()}>
+              <ArrowLeft />
+            </TipButton>
+          </TooltipProvider>
+        )}
+        <div className="export-heading">
           <h1 className="workspace-title">Export clip</h1>
-          <p className="workspace-subtitle mt-1">
+          <p className="workspace-subtitle">
             {props.labels
               ? [props.labels.project, props.labels.clip].filter(Boolean).join(' · ')
               : 'Your edited clip'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {props.onBatch && (
-            <Button variant="outline" size="sm" onClick={props.onBatch}>
-              Export a collection
-            </Button>
-          )}
-          {props.onEdit && (
-            <Button variant="outline" size="sm" onClick={() => props.onEdit?.()}>
-              <ArrowLeft className="size-4" />
-              Back to editor
-            </Button>
-          )}
-        </div>
+        {props.onBatch && (
+          <Button variant="outline" size="sm" onClick={props.onBatch}>
+            <Layers />
+            Export a collection
+          </Button>
+        )}
       </header>
-      <div className="export-grid">
-        <div className="export-column">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <FolderOpen className="size-4" /> Export location
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <Label htmlFor="export-destination">Folder</Label>
+
+      <div className="export-layout" data-shape={shape}>
+        <Stage
+          preview={props.preview}
+          exported={props.delivery !== null ? (props.audition ?? null) : null}
+          problem={props.auditionProblem ?? null}
+          onError={props.onAuditionError}
+          staleRevision={
+            props.plan && props.delivery && props.plan.revision !== props.delivery.revision
+              ? props.plan.revision
+              : null
+          }
+          summary={formatSummary(format, props.sourceFps ?? null, shape)}
+          shape={shape}
+          seconds={props.mediaSeconds ?? 0}
+        />
+
+        <div className="export-flow">
+          <section className="export-panel" aria-label="Export settings">
+            <Section title="Save to">
+              <div className="export-field">
+                <Label htmlFor="export-destination" className="export-field-label">
+                  Folder
+                </Label>
+                <div className="export-folder">
                   <Input
                     id="export-destination"
                     value={props.destination}
                     placeholder="Choose a local folder"
                     onChange={(event) => props.onDestinationChange(event.target.value)}
                   />
+                  <Button variant="outline" onClick={props.onChooseFolder} disabled={props.busy}>
+                    <FolderOpen />
+                    Browse
+                  </Button>
                 </div>
-                <Button variant="outline" onClick={props.onChooseFolder} disabled={props.busy}>
-                  Browse
-                </Button>
               </div>
-              <div>
-                <Label htmlFor="export-pattern">Name pattern</Label>
+              <div className="export-field">
+                <Label htmlFor="export-pattern" className="export-field-label">
+                  Name pattern
+                </Label>
                 <Input
                   id="export-pattern"
                   value={props.pattern}
@@ -292,16 +378,15 @@ export function Export(props: ExportProps): JSX.Element {
                   onChange={(event) => props.onPatternChange(event.target.value)}
                 />
                 {patternProblem === null ? (
-                  <details className="mt-2 text-xs text-[var(--cm-ink-3)]">
+                  <details className="export-disclosure">
                     <summary>Naming options</summary>
-                    Enter a name or use {'{index}'}, {'{clip}'}, {'{project}'}, {'{duration}'},{' '}
-                    {'{date}'} or {'{address}'}. Plain names get a clip number automatically.
+                    <p>
+                      Enter a name or use {'{index}'}, {'{clip}'}, {'{project}'}, {'{duration}'},{' '}
+                      {'{date}'} or {'{address}'}. Plain names get a clip number automatically.
+                    </p>
                   </details>
                 ) : (
-                  <p
-                    className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--cm-danger-ink)]"
-                    data-testid="pattern-problem"
-                  >
+                  <p className="export-field-problem" data-testid="pattern-problem">
                     <span>{patternProblem}</span>
                     <Button
                       variant="outline"
@@ -313,18 +398,62 @@ export function Export(props: ExportProps): JSX.Element {
                   </p>
                 )}
               </div>
+              <FileNames plan={props.plan} planning={props.planning} />
+            </Section>
 
-              <NamePreview plan={props.plan} planning={props.planning} />
-            </CardContent>
-          </Card>
+            {props.onFormatChange && (
+              <Section title="Format">
+                <div className="export-field-row">
+                  <Choice
+                    id="export-size"
+                    label="Resolution"
+                    value={String(format.height)}
+                    options={HEIGHT_CHOICES.map((height) => ({
+                      value: String(height),
+                      text: sizeName(height),
+                      hint: heightLabel(height, shape),
+                    }))}
+                    onChange={(height) =>
+                      props.onFormatChange?.({
+                        ...format,
+                        height: Number(height) as FormatChoice['height'],
+                      })
+                    }
+                  />
+                  <Choice
+                    id="export-rate"
+                    label="Frame rate"
+                    value={format.rate}
+                    options={RATE_CHOICES.map((rate) => ({
+                      value: rate,
+                      text: rate === 'source' ? 'Match recording' : `${rate} fps`,
+                      hint: rateLabel(rate, props.sourceFps ?? null),
+                    }))}
+                    onChange={(rate) => props.onFormatChange?.({ ...format, rate })}
+                  />
+                </div>
+                {rateNote(format.rate, props.sourceFps ?? null) && (
+                  <p className="export-note">{rateNote(format.rate, props.sourceFps ?? null)}</p>
+                )}
+                <details className="export-disclosure">
+                  <summary>Format specifications</summary>
+                  <dl className="export-specs">
+                    {deliverySpecs(format, shape).map(([label, value]) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              </Section>
+            )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Export checks</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="source-rights">Source rights</Label>
+            <Section title="Permission">
+              <div className="export-field">
+                <Label htmlFor="source-rights" className="export-field-label">
+                  Source rights
+                </Label>
                 <Select
                   value={props.attestation}
                   onValueChange={(value) => props.onAttestationChange?.(value)}
@@ -342,15 +471,12 @@ export function Export(props: ExportProps): JSX.Element {
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Your choice is saved with this export.
-                </p>
+                <p className="export-note">Your choice is saved with this export.</p>
               </div>
               {props.rightsGateNeeded && (
-                <label className="flex items-start gap-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs">
+                <label className="export-consent">
                   <input
                     type="checkbox"
-                    className="mt-0.5"
                     checked={props.rightsGatePassed}
                     disabled={props.busy || props.planning}
                     onChange={(event) => props.onRightsGateChange(event.target.checked)}
@@ -361,269 +487,381 @@ export function Export(props: ExportProps): JSX.Element {
                   </span>
                 </label>
               )}
+            </Section>
 
-              {props.hotCaptions.length > 0 && (
-                <div className="space-y-2 rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-3 text-xs">
-                  <p>
-                    {props.hotCaptions.length} fast subtitle{' '}
-                    {props.hotCaptions.length === 1 ? 'passage' : 'passages'} (
-                    {hottestRate(props.hotCaptions)}). You can review them in Captions; they do not
-                    hold up export.
-                  </p>
-                  <details className="rounded-lg border px-3 py-2 text-xs">
-                    <summary className="cursor-pointer text-muted-foreground">
-                      Review caption details ({props.hotCaptions.length})
-                    </summary>
-                    <ul className="mt-3 space-y-2 leading-5">
-                      {props.hotCaptions.map((finding, index) => (
-                        <li key={`${finding.detail}:${index}`}>
-                          <span className="mr-1.5 text-muted-foreground">{index + 1}.</span>
-                          {finding.detail.replace(/ — confirmed as read\.$/, '')}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                </div>
-              )}
-
-              {props.planning && (
-                <p className="flex items-center gap-2 text-xs text-[var(--cm-ink-2)]">
-                  <Spinner className="size-3" /> Checking…
-                </p>
-              )}
-
-              {captionFocus && (
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <p>
-                    {captionFocus.blocking
-                      ? 'A caption in the subtitle file cannot be exported as it is. '
-                      : 'A caption in the subtitle file is worth a look before exporting. '}
-                    The editor opens on it, with a fix ready to apply.
-                  </p>
-                  {props.onEdit && (
-                    <Button
-                      size="sm"
-                      variant={captionFocus.blocking ? 'default' : 'outline'}
-                      onClick={() => props.onEdit?.(captionFocus.focus)}
-                      disabled={props.busy}
-                    >
-                      <Captions className="size-4" /> Fix captions
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {blocking.map((finding) => (
-                <Alert key={`${finding.code}:${finding.detail}`} variant="destructive">
-                  <AlertTriangle />
-                  <AlertDescription>
-                    <span className="font-medium">{findingTitle(finding.code)}</span>
-                    <span className="mt-1 block">{finding.detail}</span>
+            <Section title="Checks">
+              <ul className="export-checks" aria-label="Export checks">
+                {props.planning && (
+                  <li className="export-check" data-tone="quiet">
+                    <Spinner />
+                    <p className="export-check-title">Checking…</p>
+                  </li>
+                )}
+                {props.plan === null && !props.planning && (
+                  <li className="export-check" data-tone="quiet">
+                    <CircleAlert />
+                    <p className="export-check-detail">The checks run once a folder is chosen.</p>
+                  </li>
+                )}
+                {blocking.map((finding) => (
+                  <Check
+                    key={`${finding.code}:${finding.detail}`}
+                    tone="danger"
+                    title={findingTitle(finding.code)}
+                    detail={finding.detail}
+                  >
                     {finding.code === 'source.missing' && props.onRelink && (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mt-2"
                         disabled={props.busy}
                         onClick={props.onRelink}
                       >
-                        <Link2 className="size-4" /> Locate recording…
+                        <Link2 /> Locate recording…
                       </Button>
                     )}
-                  </AlertDescription>
+                    {fix(finding)}
+                  </Check>
+                ))}
+                {props.hotCaptions.length > 0 && (
+                  <Check
+                    tone="warning"
+                    title={`${props.hotCaptions.length} fast subtitle ${
+                      props.hotCaptions.length === 1 ? 'passage' : 'passages'
+                    }`}
+                    detail={`${
+                      hottest === null ? '' : `Up to ${hottest.toFixed(1)} characters a second. `
+                    }They do not hold up export; you can review them in Captions.`}
+                  >
+                    <details className="export-disclosure">
+                      <summary>Review caption details ({props.hotCaptions.length})</summary>
+                      <ol className="export-caption-list">
+                        {props.hotCaptions.map((finding, index) => (
+                          <li key={`${finding.detail}:${index}`}>
+                            {finding.detail.replace(/ — confirmed as read\.$/, '')}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                    {captionFocus !== null && grouped(captionFocus.finding) && fix(null)}
+                  </Check>
+                )}
+                {advisory.map((finding) => (
+                  <Check
+                    key={`${finding.code}:${finding.detail}`}
+                    tone="warning"
+                    title={findingTitle(finding.code)}
+                    detail={finding.detail}
+                  >
+                    {fix(finding)}
+                  </Check>
+                ))}
+                {props.plan !== null && !props.planning && props.plan.findings.length === 0 && (
+                  <li className="export-check" data-tone="success">
+                    <CircleCheck />
+                    <p className="export-check-title">All checks passed</p>
+                  </li>
+                )}
+              </ul>
+            </Section>
+
+            <div className="export-footer">
+              {props.error !== null && patternProblem === null && (
+                <Alert variant="destructive">
+                  <TriangleAlert />
+                  <AlertDescription>{props.error}</AlertDescription>
                 </Alert>
-              ))}
-              {advisory.map((finding) => (
-                <Alert key={`${finding.code}:${finding.detail}`}>
-                  <Info />
-                  <AlertDescription>
-                    <span className="font-medium">{findingTitle(finding.code)}</span>
-                    <span className="mt-1 block">{finding.detail}</span>
-                  </AlertDescription>
-                </Alert>
-              ))}
-              {props.plan !== null && !props.planning && props.plan.findings.length === 0 && (
-                <p className="flex items-center gap-2 text-xs text-[var(--cm-success-ink)]">
-                  <PackageCheck className="size-4 shrink-0" /> All checks passed. Your clip is ready
-                  to export.
+              )}
+              <div className="export-go">
+                <div className="export-go-text">
+                  <p className="export-status" data-tone={statusTone(status)} role="status">
+                    {status}
+                  </p>
+                  <dl className="export-figures">
+                    <div>
+                      <dt>Estimated size</dt>
+                      <dd>{props.plan === null ? '—' : formatBytes(props.plan.estimatedBytes)}</dd>
+                    </div>
+                    <div>
+                      <dt>Free disk space</dt>
+                      <dd>
+                        {!props.destination.trim()
+                          ? 'Choose a folder'
+                          : props.planning
+                            ? 'Checking…'
+                            : props.plan?.availableBytes === undefined
+                              ? 'Unavailable'
+                              : formatBytes(props.plan.availableBytes)}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                <Button
+                  size="lg"
+                  className="export-go-button"
+                  onClick={() => {
+                    following.current = true;
+                    props.onExport();
+                  }}
+                  disabled={!ready || delivering}
+                >
+                  {props.busy ? 'Working…' : 'Export clip'}
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          {props.delivery !== null && (
+            <DeliveryPanel
+              ref={deliveryPanel}
+              delivery={props.delivery}
+              mediaSeconds={props.mediaSeconds ?? 0}
+              onReveal={props.onReveal}
+              onCancel={props.onCancel}
+              onRetry={props.onRetry}
+            />
+          )}
+
+          {props.publishing}
+
+          <section className="export-archive" aria-labelledby="export-archive-title">
+            <div className="export-archive-text">
+              <h2 id="export-archive-title">Project archive</h2>
+              <p>
+                Saves this project’s edits and export records in the export folder. Source
+                recordings stay in their original location.
+              </p>
+              {props.archive !== null && (
+                <p className="export-archive-result" role="status">
+                  {props.archive.entryCount} documents written to <span>{props.archive.path}</span>
                 </p>
               )}
-            </CardContent>
-          </Card>
-        </div>
-        <div className="export-column">
-          {props.preview}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Delivery format</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm font-medium">
-                {formatSummary(
-                  props.format ?? DEFAULT_FORMAT,
-                  props.sourceFps ?? null,
-                  props.shape,
-                )}
-              </p>
-              <p className="mt-1 mb-4 text-xs text-muted-foreground">
-                Captions and mastered audio included.
-              </p>
-              {props.onFormatChange && (
-                <div className="mb-4 grid gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="export-rate">Frame rate</Label>
-                    <Select
-                      value={(props.format ?? DEFAULT_FORMAT).rate}
-                      onValueChange={(rate) =>
-                        props.onFormatChange?.({
-                          ...(props.format ?? DEFAULT_FORMAT),
-                          rate: rate as RateChoice,
-                        })
-                      }
-                    >
-                      <SelectTrigger id="export-rate" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {RATE_CHOICES.map((rate) => (
-                          <SelectItem key={rate} value={rate}>
-                            {rateLabel(rate, props.sourceFps ?? null)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="export-size">Resolution</Label>
-                    <Select
-                      value={String((props.format ?? DEFAULT_FORMAT).height)}
-                      onValueChange={(height) =>
-                        props.onFormatChange?.({
-                          ...(props.format ?? DEFAULT_FORMAT),
-                          height: Number(height) as HeightChoice,
-                        })
-                      }
-                    >
-                      <SelectTrigger id="export-size" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {HEIGHT_CHOICES.map((height) => (
-                          <SelectItem key={height} value={String(height)}>
-                            {heightLabel(height, props.shape)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-              <details className="export-specifications">
-                <summary>Format specifications</summary>
-                <dl className="space-y-2 text-xs">
-                  {deliverySpecs(props.format ?? DEFAULT_FORMAT).map(([label, value]) => (
-                    <div key={label} className="flex justify-between gap-4">
-                      <dt className="text-[var(--cm-ink-2)]">{label}</dt>
-                      <dd className="text-right text-[var(--cm-ink-1)]">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </details>
-              <Separator className="my-4" />
-              <dl className="space-y-2 text-xs">
-                <div className="flex justify-between gap-4">
-                  <dt className="text-[var(--cm-ink-2)]">Estimated size</dt>
-                  <dd className="font-mono text-[var(--cm-ink-1)]">
-                    {props.plan === null ? '—' : formatBytes(props.plan.estimatedBytes)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-[var(--cm-ink-2)]">Free disk space</dt>
-                  <dd className="font-mono text-[var(--cm-ink-1)]">
-                    {!props.destination.trim()
-                      ? 'Choose a folder'
-                      : props.planning
-                        ? 'Checking…'
-                        : props.plan?.availableBytes === undefined
-                          ? 'Unavailable'
-                          : formatBytes(props.plan.availableBytes)}
-                  </dd>
-                </div>
-              </dl>
-            </CardContent>
-          </Card>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={props.onArchive}
+              disabled={props.busy || !props.destination.trim()}
+            >
+              Save project archive
+            </Button>
+          </section>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {props.error !== null && patternProblem === null && (
-        <Alert variant="destructive">
-          <AlertTriangle />
-          <AlertDescription>{props.error}</AlertDescription>
-        </Alert>
+/**
+ * The clip, as it will be delivered and, once it has been, as it was.
+ *
+ * The loop is the edit drawn the way the Editor draws it; the exported file is
+ * the encoder's own output with its sound. A file that has just been made is
+ * the next thing to look at, so it is shown as it arrives.
+ */
+function Stage({
+  preview,
+  exported,
+  problem,
+  onError,
+  staleRevision,
+  summary,
+  shape,
+  seconds,
+}: {
+  readonly preview: ReactNode;
+  readonly exported: string | null;
+  readonly problem: string | null;
+  readonly onError: (() => void) | undefined;
+  readonly staleRevision: number | null;
+  readonly summary: string;
+  readonly shape: FrameShape;
+  readonly seconds: number;
+}): JSX.Element {
+  const [view, setView] = useState<'preview' | 'exported'>('preview');
+  // The file is shown when it is the edit as it stands; after further edits
+  // the loop is the truer picture, and the file is one press away.
+  useEffect(() => {
+    if (exported) setView(staleRevision === null ? 'exported' : 'preview');
+  }, [exported, staleRevision]);
+  const playable = exported !== null && problem === null;
+  const showing = playable && view === 'exported' ? 'exported' : 'preview';
+  const frame = frameOfShape(shape);
+  const kind = FRAME_SHAPES.find((entry) => entry.shape === shape);
+  return (
+    <aside className="export-stage" aria-label="The clip">
+      {playable && (
+        <div className="export-choice export-stage-switch" role="group" aria-label="Show">
+          <button
+            type="button"
+            aria-pressed={showing === 'preview'}
+            onClick={() => setView('preview')}
+          >
+            Preview
+          </button>
+          <button
+            type="button"
+            aria-pressed={showing === 'exported'}
+            onClick={() => setView('exported')}
+          >
+            Exported file
+          </button>
+        </div>
       )}
-
-      {props.delivery !== null && (
-        <DeliveryCard
-          delivery={props.delivery}
-          mediaSeconds={props.mediaSeconds ?? 0}
-          onReveal={props.onReveal}
-          onCancel={props.onCancel}
-          onRetry={props.onRetry}
-        />
-      )}
-
-      {props.audition && props.delivery && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">The exported clip</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <video
-              aria-label="The exported clip"
-              src={props.audition}
-              onError={props.onAuditionError}
-              controls
-              playsInline
-              preload="metadata"
-              className="mx-auto max-h-[560px] max-w-full rounded-lg bg-black"
-            />
-            <p className="mt-3 text-xs text-muted-foreground">
-              This is the encoded file with its final captions, framing and mastered audio. Review
-              this version before uploading.
-              {props.plan && props.plan.revision !== props.delivery.revision
-                ? ` Your current edit is r${props.plan.revision}; export it again to review those changes.`
-                : ''}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-      {props.auditionProblem && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {props.auditionProblem}
-        </p>
-      )}
-      {props.publishing}
-      <div className="export-actions">
-        <Button onClick={props.onExport} disabled={!ready || delivering}>
-          {props.busy ? 'Working…' : 'Export clip'}
-        </Button>
-        <span className="text-xs text-[var(--cm-ink-2)]" role="status">
-          {readiness(props, blocking.length, delivering)}
-        </span>
-        <Button variant="outline" onClick={props.onArchive} disabled={props.busy}>
-          Save project archive
-        </Button>
-        {props.archive !== null && (
-          <span className="text-xs text-[var(--cm-ink-2)]">
-            {props.archive.entryCount} documents written to{' '}
-            <span className="font-mono">{props.archive.path}</span>
-          </span>
+      <div className="export-picture">
+        {showing === 'exported' && exported ? (
+          <video
+            aria-label="The exported clip"
+            src={exported}
+            onError={onError}
+            controls
+            playsInline
+            preload="metadata"
+            className="export-exported"
+            style={{ aspectRatio: `${frame.width} / ${frame.height}` }}
+          />
+        ) : (
+          preview
         )}
       </div>
-      <p className="text-xs text-[var(--cm-ink-3)]">
-        A project archive saves your edits and export records. Source recordings stay in their
-        original location.
+      <div className="export-stage-caption">
+        <p className="export-stage-format">{summary}</p>
+        <p className="export-stage-meta">
+          {[
+            kind ? `${kind.label} ${kind.ratio}` : null,
+            seconds > 0 ? clock(seconds * 90_000) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+        <p className="export-stage-meta">Captions and mastered audio included.</p>
+        {showing === 'exported' && (
+          <p className="export-stage-note">
+            The encoded file, with its final captions, framing and mastered audio. Review it before
+            uploading.
+            {staleRevision !== null
+              ? ` Your edit has changed since (now r${staleRevision}); export again to review it.`
+              : ''}
+          </p>
+        )}
+        {problem && (
+          <p className="export-stage-note" role="status">
+            {problem}
+          </p>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}): JSX.Element {
+  return (
+    <section className="export-section">
+      <h2 className="export-section-title">{title}</h2>
+      <div className="export-section-body">{children}</div>
+    </section>
+  );
+}
+
+/** A handful of choices, all in view: one press, and the summary says what it made. */
+function Choice<T extends string>({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly value: T;
+  readonly options: readonly { readonly value: T; readonly text: string; readonly hint: string }[];
+  readonly onChange: (value: T) => void;
+}): JSX.Element {
+  return (
+    <div className="export-field">
+      <span className="export-field-label" id={id}>
+        {label}
+      </span>
+      <div className="export-choice" role="group" aria-labelledby={id}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            title={option.hint}
+            aria-pressed={option.value === value}
+            onClick={() => onChange(option.value)}
+          >
+            {option.text}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Check({
+  tone,
+  title,
+  detail,
+  children,
+}: {
+  readonly tone: 'danger' | 'warning';
+  readonly title: string;
+  readonly detail: string;
+  readonly children?: ReactNode;
+}): JSX.Element {
+  return (
+    <li className="export-check" data-tone={tone}>
+      {tone === 'danger' ? <TriangleAlert /> : <CircleAlert />}
+      <div className="export-check-body">
+        <p className="export-check-title">{title}</p>
+        <p className="export-check-detail">{detail}</p>
+        {children}
+      </div>
+    </li>
+  );
+}
+
+/** The way from a caption finding to the caption, with the fix waiting there. */
+function CaptionFix({
+  focus,
+  grouped,
+  busy,
+  onEdit,
+}: {
+  readonly focus: NonNullable<ReturnType<typeof captionFocusOf>>;
+  /** Whether it stands for a group of fast passages rather than one finding. */
+  readonly grouped: boolean;
+  readonly busy: boolean;
+  readonly onEdit: ExportProps['onEdit'];
+}): JSX.Element {
+  return (
+    <div className="export-check-fix">
+      <p>
+        {grouped
+          ? 'The editor opens on the first, with a fix ready to apply.'
+          : `${
+              focus.blocking
+                ? 'This caption cannot be exported as it is.'
+                : 'This caption is worth a look before exporting.'
+            } The editor opens on it, with a fix ready to apply.`}
       </p>
+      {onEdit && (
+        <Button
+          size="sm"
+          variant={focus.blocking ? 'default' : 'outline'}
+          onClick={() => onEdit(focus.focus)}
+          disabled={busy}
+        >
+          <Captions /> Fix captions
+        </Button>
+      )}
     </div>
   );
 }
@@ -640,6 +878,12 @@ function readiness(props: ExportProps, blocking: number, delivering: boolean): s
     return blocking === 1 ? 'One check to fix first.' : `${blocking} checks to fix first.`;
   if (props.plan?.passes === true) return 'Ready to export.';
   return '';
+}
+
+function statusTone(status: string): 'ready' | 'blocked' | 'quiet' {
+  if (status === 'Ready to export.') return 'ready';
+  if (status.endsWith('to fix first.')) return 'blocked';
+  return 'quiet';
 }
 
 /** What a stage is doing, in a word a person reads. */
@@ -665,13 +909,15 @@ function stageWord(stage: DeliveryStage): string {
  * daemon's receipt for what it wrote — at the folder the export was resolved
  * to, so every path here is one that exists.
  */
-function DeliveryCard({
+function DeliveryPanel({
+  ref,
   delivery,
   mediaSeconds,
   onReveal,
   onCancel,
   onRetry,
 }: {
+  readonly ref: Ref<HTMLElement>;
   readonly delivery: Delivery;
   readonly mediaSeconds: number;
   readonly onReveal: (path: string) => void;
@@ -694,20 +940,34 @@ function DeliveryCard({
         : delivery.failure
           ? 'The export could not finish. You can try again.'
           : null;
+  const state = delivery.files ? 'done' : delivery.failure ? 'failed' : 'running';
   return (
-    <Card data-testid="delivery">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <PackageCheck className="size-4" />
-          {delivery.files
-            ? 'Exported'
-            : delivery.failure
-              ? 'This export did not finish'
-              : 'Exporting…'}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <p className="font-mono text-[11px] text-[var(--cm-ink-3)]">{delivery.destinationDir}</p>
+    <section
+      ref={ref}
+      className="export-panel export-delivery"
+      data-state={state}
+      data-testid="delivery"
+      aria-labelledby="export-delivery-title"
+    >
+      <header className="export-delivery-head">
+        {state === 'done' ? <CircleCheck /> : state === 'failed' ? <TriangleAlert /> : <Spinner />}
+        <div className="export-delivery-title">
+          <h2 id="export-delivery-title">
+            {state === 'done'
+              ? 'Exported'
+              : state === 'failed'
+                ? 'This export did not finish'
+                : 'Exporting…'}
+          </h2>
+          {delivery.files === null && <p>{delivery.destinationDir}</p>}
+        </div>
+        {!delivery.settled && onCancel && (
+          <Button size="sm" variant="outline" onClick={onCancel}>
+            Cancel export
+          </Button>
+        )}
+      </header>
+      <div className="export-delivery-body">
         {progress?.unit.startsWith('export.') && !delivery.settled && (
           <div
             role="progressbar"
@@ -715,105 +975,89 @@ function DeliveryCard({
             aria-valuenow={percent}
             aria-valuemin={0}
             aria-valuemax={100}
-            className="space-y-1"
+            className="export-progress"
           >
-            <div className="h-2 overflow-hidden rounded-full bg-[var(--cm-line-1)]">
-              <div
-                className="h-full bg-[var(--cm-accent)] transition-[width]"
-                style={{ width: `${percent}%` }}
-              />
+            <div className="export-progress-track">
+              <div className="export-progress-fill" style={{ width: `${percent}%` }} />
             </div>
-            <p className="text-xs text-[var(--cm-ink-2)]">{deliveryProgressText(progress)}</p>
             {remaining !== null && (
-              <p className="text-xs text-[var(--cm-ink-3)]">
-                About {Math.max(1, Math.ceil(remaining / 60))} min remaining based on recent exports
-                on this machine
+              <p>
+                About {Math.max(1, Math.ceil(remaining / 60))} min remaining, from recent exports on
+                this machine
               </p>
             )}
           </div>
         )}
-        <ul className="space-y-1 text-xs" aria-label="Delivery stages">
+        <ul className="export-stages" aria-label="Delivery stages">
           {delivery.stages.map((stage) => (
-            <li key={stage.kind} className="flex justify-between gap-4">
-              <span className="text-[var(--cm-ink-2)]">{stage.label}</span>
-              <span
-                className={
-                  stage.state === 'failed'
-                    ? 'text-[var(--cm-danger-ink)]'
-                    : stage.state === 'done'
-                      ? 'text-[var(--cm-success-ink)]'
-                      : 'text-[var(--cm-ink-1)]'
-                }
-                data-testid={`stage-${stage.kind}`}
-              >
+            <li key={stage.kind}>
+              <span>{stage.label}</span>
+              <span data-state={stage.state} data-testid={`stage-${stage.kind}`}>
                 {stageWord(stage)}
               </span>
             </li>
           ))}
         </ul>
         {delivery.interruption !== null && (
-          <p className="text-xs text-[var(--cm-ink-3)]" data-testid="delivery-interruption">
+          <p className="export-note" data-testid="delivery-interruption">
             Export is still running in the background. Reconnecting to its progress… (
             {delivery.interruption})
           </p>
         )}
         {delivery.failure !== null && (
-          <Alert variant="destructive">
-            <AlertTriangle />
-            <AlertDescription>{plainFailure}</AlertDescription>
-          </Alert>
-        )}
-        {delivery.failure !== null && (
-          <div className="flex flex-wrap items-center gap-2">
-            {onRetry && (
-              <Button size="sm" onClick={onRetry}>
-                Retry export
+          <>
+            <Alert variant="destructive">
+              <TriangleAlert />
+              <AlertDescription>{plainFailure}</AlertDescription>
+            </Alert>
+            <div className="export-delivery-actions">
+              {onRetry && (
+                <Button size="sm" onClick={onRetry}>
+                  Retry export
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void navigator.clipboard?.writeText(delivery.failure ?? '')}
+              >
+                Copy details
               </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void navigator.clipboard?.writeText(delivery.failure ?? '')}
-            >
-              Copy details
-            </Button>
-            <details className="w-full text-xs text-muted-foreground">
+            </div>
+            <details className="export-disclosure">
               <summary>Technical details</summary>
-              <p className="mt-1 break-words font-mono">{delivery.failure}</p>
+              <p className="export-technical">{delivery.failure}</p>
             </details>
-          </div>
-        )}
-        {!delivery.settled && onCancel && (
-          <Button size="sm" variant="outline" className="self-start" onClick={onCancel}>
-            Cancel export
-          </Button>
+          </>
         )}
         {delivery.files !== null && (
-          <ul className="space-y-1" aria-label="Delivered files">
-            {delivery.files.map((file) => (
-              <li key={file.name} className="flex items-center justify-between gap-3 text-xs">
-                <span className="min-w-0 truncate font-mono text-[11px] text-[var(--cm-ink-1)]">
-                  {file.path}
-                </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono text-[10px] text-[var(--cm-ink-3)]">
-                    {formatBytes(file.bytes)}
+          <ul className="export-delivered" aria-label="Delivered files">
+            {delivery.files.map((file) => {
+              const folder = file.path.endsWith(file.name)
+                ? file.path.slice(0, file.path.length - file.name.length)
+                : '';
+              return (
+                <li key={file.name}>
+                  <span className="export-delivered-path" title={file.path}>
+                    <span className="export-delivered-folder">{folder}</span>
+                    <span className="export-delivered-name">{folder ? file.name : file.path}</span>
                   </span>
+                  <span className="export-delivered-size">{formatBytes(file.bytes)}</span>
                   <Button
-                    size="sm"
+                    size="xs"
                     variant="ghost"
                     onClick={() => onReveal(file.path)}
                     aria-label={`Reveal ${file.name}`}
                   >
-                    <Eye className="size-3" /> Reveal
+                    <Eye /> Reveal
                   </Button>
-                </span>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -822,7 +1066,7 @@ function DeliveryCard({
  *
  * Deliberately not computed here. See the note at the top of the file.
  */
-function NamePreview({
+function FileNames({
   plan,
   planning,
 }: {
@@ -831,21 +1075,31 @@ function NamePreview({
 }): JSX.Element {
   if (plan === null) {
     return (
-      <p className="text-xs text-[var(--cm-ink-3)]">
+      <p className="export-note">
         {planning ? 'Resolving…' : 'Choose a folder to see what the files will be called.'}
       </p>
     );
   }
+  const main = plan.fileNames.find((name) => name.endsWith('.mp4')) ?? plan.fileNames[0];
+  const rest = plan.fileNames.filter((name) => name !== main);
   return (
-    <div className="rounded-lg border border-[var(--cm-line-1)] bg-[var(--cm-surface-1)] p-2">
-      <p className="mb-1 flex items-center gap-2 text-xs text-[var(--cm-ink-2)]">
-        Files <Badge variant="outline">{plan.fileNames.length}</Badge>
-      </p>
-      <ul className="space-y-0.5 font-mono text-[11px] text-[var(--cm-ink-1)]">
-        {plan.fileNames.map((name) => (
-          <li key={name}>{name}</li>
-        ))}
-      </ul>
+    <div className="export-files">
+      <span className="export-field-label">Files</span>
+      {rest.length === 0 ? (
+        <p className="export-files-main">{main}</p>
+      ) : (
+        <details className="export-disclosure export-files-more">
+          <summary>
+            <span className="export-files-main">{main}</span>
+            <span className="export-files-count">and {rest.length} more</span>
+          </summary>
+          <ul>
+            {rest.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

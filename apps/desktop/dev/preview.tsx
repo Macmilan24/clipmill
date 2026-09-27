@@ -20,6 +20,8 @@ import { Editor } from '../src/screens/Editor.js';
 import { Export } from '../src/screens/Export.js';
 import { BatchExportScreen } from '../src/screens/BatchExportScreen.js';
 import { batchApi } from './batch-fixtures.js';
+import { exportScenario } from './export-fixtures.js';
+import { DEFAULT_FORMAT, type FormatChoice } from '../src/export/format.js';
 import { publishingFixture } from './publishing-fixtures.js';
 import { ConnectionCard } from '../src/youtube/ConnectionCard.js';
 import { UploadPanel } from '../src/youtube/UploadPanel.js';
@@ -226,6 +228,11 @@ function Preview() {
   const [notice, setNotice] = useState<string | null>(null);
   const [destination, setDestination] = useState('/Users/demo/Movies/ClipMill');
   const [pattern, setPattern] = useState('{index}-{clip}');
+  const [exportFormat, setExportFormat] = useState<FormatChoice>(DEFAULT_FORMAT);
+  const [attestation, setAttestation] = useState('own_content');
+  const [gatePassed, setGatePassed] = useState(false);
+  // ?export= shows the Export screen blocked, advised, exporting, exported or failed.
+  const scenario = exportScenario(search.get('export'), plan.revision);
   const media = search.get('media');
   const labels = { project: project.name, clip: 'A better question' };
   const inspect = (id: string) => {
@@ -522,41 +529,40 @@ function Preview() {
                       />
                     }
                     onEdit={() => setPage('editor')}
+                    onBatch={() => setPage('batch-export')}
                     docId="preview-edit"
                     labels={labels}
                     picker={null}
-                    destination={destination}
+                    destination={scenario.destination ?? destination}
                     pattern={pattern}
                     title={labels.clip}
-                    attestation="own_content"
-                    rightsGateNeeded={false}
-                    rightsGatePassed={true}
-                    hotCaptions={[]}
-                    plan={{
-                      passes: true,
-                      findings: [],
-                      stem: '01-a-better-question',
-                      fileNames: [
-                        '01-a-better-question.mp4',
-                        '01-a-better-question.srt',
-                        '01-a-better-question.vtt',
-                      ],
-                      revision: plan.revision,
-                      estimatedBytes: 42_000_000,
-                      availableBytes: 75_000_000_000,
-                    }}
+                    attestation={attestation}
+                    onAttestationChange={setAttestation}
+                    rightsGateNeeded={scenario.rightsGateNeeded}
+                    rightsGatePassed={gatePassed}
+                    hotCaptions={scenario.hotCaptions}
+                    plan={scenario.plan}
                     planning={false}
                     busy={false}
                     error={notice}
-                    delivery={null}
+                    delivery={scenario.delivery}
+                    audition={scenario.auditioned ? media : null}
+                    mediaSeconds={42}
+                    format={exportFormat}
+                    onFormatChange={setExportFormat}
+                    sourceFps={24_000 / 1_001}
+                    shape="vertical"
                     archive={null}
                     onDestinationChange={setDestination}
                     onPatternChange={setPattern}
                     onChooseFolder={() =>
                       setNotice('Folder selection is available in the desktop app.')
                     }
-                    onRightsGateChange={noAction}
+                    onRightsGateChange={setGatePassed}
                     onExport={() => setNotice('Development preview: no video was exported.')}
+                    onCancel={noAction}
+                    onRetry={noAction}
+                    onRelink={noAction}
                     onArchive={() => setNotice('Development preview: no archive was written.')}
                     onReveal={noAction}
                   />
