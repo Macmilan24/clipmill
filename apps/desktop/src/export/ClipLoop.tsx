@@ -12,6 +12,7 @@ import { BrandLayer } from '../editor/BrandLayer.js';
 import { CompositionCanvas } from '../editor/CompositionCanvas.js';
 import { exactCaptionsOf } from '../editor/exactCaptions.js';
 import { frameAtProxySeconds, proxySecondsAt } from '../editor/player.js';
+import './export.css';
 
 /** How much of the clip the loop shows. */
 const LOOP_SECONDS = 6;

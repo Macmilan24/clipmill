@@ -199,8 +199,9 @@
   flex: 1;
 }
 .studio-main-page {
+  --page-padding-block: 28px;
   overflow-y: auto;
-  padding: 28px 32px;
+  padding: var(--page-padding-block) 32px;
 }
 .studio-main-workspace {
   display: flex;
@@ -364,60 +365,6 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-.export-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  align-items: start;
-  gap: 20px;
-}
-.export-column {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-}
-/* The clip being exported, looping above its delivery format. */
-.export-loop {
-  position: relative;
-  width: min(100%, 220px);
-  margin-inline: auto;
-  overflow: hidden;
-  border-radius: 10px;
-  background: #000;
-  box-shadow: 0 3px 18px #0004;
-}
-.export-loop-decoder {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-.export-loop .edit-caption-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-}
-.export-loop .edit-caption-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.export-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  border-top: 1px solid var(--cm-glass-border);
-  padding-top: 20px;
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-  background: var(--cm-bg-top);
-  padding-bottom: 16px;
-  box-shadow: 0 -12px 22px -16px rgb(0 0 0 / 0.35);
 }
 .studio-main input,
 .studio-main textarea {
