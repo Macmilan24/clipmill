@@ -1581,6 +1581,32 @@ class PreviewProgressV1(_message.Message):
     thickness: int
     def __init__(self, colour: _Optional[str] = ..., edge: _Optional[str] = ..., thickness: _Optional[int] = ...) -> None: ...
 
+class PreviewCutawayV1(_message.Message):
+    __slots__ = ("cutaway_id", "start_ticks", "end_ticks", "first_frame", "end_frame", "fit", "kind", "asset", "push_in", "source_fingerprint", "in_ticks")
+    CUTAWAY_ID_FIELD_NUMBER: _ClassVar[int]
+    START_TICKS_FIELD_NUMBER: _ClassVar[int]
+    END_TICKS_FIELD_NUMBER: _ClassVar[int]
+    FIRST_FRAME_FIELD_NUMBER: _ClassVar[int]
+    END_FRAME_FIELD_NUMBER: _ClassVar[int]
+    FIT_FIELD_NUMBER: _ClassVar[int]
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    ASSET_FIELD_NUMBER: _ClassVar[int]
+    PUSH_IN_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    IN_TICKS_FIELD_NUMBER: _ClassVar[int]
+    cutaway_id: str
+    start_ticks: int
+    end_ticks: int
+    first_frame: int
+    end_frame: int
+    fit: str
+    kind: str
+    asset: str
+    push_in: bool
+    source_fingerprint: str
+    in_ticks: int
+    def __init__(self, cutaway_id: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., fit: _Optional[str] = ..., kind: _Optional[str] = ..., asset: _Optional[str] = ..., push_in: _Optional[bool] = ..., source_fingerprint: _Optional[str] = ..., in_ticks: _Optional[int] = ...) -> None: ...
+
 class PreviewMusicV1(_message.Message):
     __slots__ = ("asset", "offset_ticks", "levels")
     ASSET_FIELD_NUMBER: _ClassVar[int]
@@ -1770,7 +1796,7 @@ class PreviewTransitionV1(_message.Message):
     def __init__(self, incoming_segment_id: _Optional[str] = ..., outgoing_frame: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ...) -> None: ...
 
 class GetPreviewPlanResponse(_message.Message):
-    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies", "presentation", "secondary_crops", "caption_style", "transition_ticks", "transitions", "reading_cues", "reading_min_duration_ticks", "reading_min_gap_ticks", "ass", "fonts", "decisions", "overlays", "progress", "logo", "music")
+    __slots__ = ("revision", "rate_num", "rate_den", "frame_count", "crops", "cues", "gain", "width", "height", "segments", "sources", "proxies", "presentation", "secondary_crops", "caption_style", "transition_ticks", "transitions", "reading_cues", "reading_min_duration_ticks", "reading_min_gap_ticks", "ass", "fonts", "decisions", "overlays", "progress", "logo", "music", "cutaways")
     REVISION_FIELD_NUMBER: _ClassVar[int]
     RATE_NUM_FIELD_NUMBER: _ClassVar[int]
     RATE_DEN_FIELD_NUMBER: _ClassVar[int]
@@ -1798,6 +1824,7 @@ class GetPreviewPlanResponse(_message.Message):
     PROGRESS_FIELD_NUMBER: _ClassVar[int]
     LOGO_FIELD_NUMBER: _ClassVar[int]
     MUSIC_FIELD_NUMBER: _ClassVar[int]
+    CUTAWAYS_FIELD_NUMBER: _ClassVar[int]
     revision: int
     rate_num: int
     rate_den: int
@@ -1825,7 +1852,8 @@ class GetPreviewPlanResponse(_message.Message):
     progress: PreviewProgressV1
     logo: PreviewLogoV1
     music: PreviewMusicV1
-    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ..., presentation: _Optional[str] = ..., secondary_crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., caption_style: _Optional[_Union[PreviewCaptionStyleV1, _Mapping]] = ..., transition_ticks: _Optional[int] = ..., transitions: _Optional[_Iterable[_Union[PreviewTransitionV1, _Mapping]]] = ..., reading_cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., reading_min_duration_ticks: _Optional[int] = ..., reading_min_gap_ticks: _Optional[int] = ..., ass: _Optional[str] = ..., fonts: _Optional[_Iterable[_Union[CaptionFontV1, _Mapping]]] = ..., decisions: _Optional[_Iterable[str]] = ..., overlays: _Optional[_Iterable[_Union[PreviewOverlayV1, _Mapping]]] = ..., progress: _Optional[_Union[PreviewProgressV1, _Mapping]] = ..., logo: _Optional[_Union[PreviewLogoV1, _Mapping]] = ..., music: _Optional[_Union[PreviewMusicV1, _Mapping]] = ...) -> None: ...
+    cutaways: _containers.RepeatedCompositeFieldContainer[PreviewCutawayV1]
+    def __init__(self, revision: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., frame_count: _Optional[int] = ..., crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., gain: _Optional[_Iterable[_Union[PreviewGainV1, _Mapping]]] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., segments: _Optional[_Iterable[_Union[PreviewSegmentV1, _Mapping]]] = ..., sources: _Optional[_Iterable[_Union[PreviewSourceV1, _Mapping]]] = ..., proxies: _Optional[_Iterable[_Union[PreviewProxyV1, _Mapping]]] = ..., presentation: _Optional[str] = ..., secondary_crops: _Optional[_Iterable[_Union[PreviewCropV1, _Mapping]]] = ..., caption_style: _Optional[_Union[PreviewCaptionStyleV1, _Mapping]] = ..., transition_ticks: _Optional[int] = ..., transitions: _Optional[_Iterable[_Union[PreviewTransitionV1, _Mapping]]] = ..., reading_cues: _Optional[_Iterable[_Union[PreviewCueV1, _Mapping]]] = ..., reading_min_duration_ticks: _Optional[int] = ..., reading_min_gap_ticks: _Optional[int] = ..., ass: _Optional[str] = ..., fonts: _Optional[_Iterable[_Union[CaptionFontV1, _Mapping]]] = ..., decisions: _Optional[_Iterable[str]] = ..., overlays: _Optional[_Iterable[_Union[PreviewOverlayV1, _Mapping]]] = ..., progress: _Optional[_Union[PreviewProgressV1, _Mapping]] = ..., logo: _Optional[_Union[PreviewLogoV1, _Mapping]] = ..., music: _Optional[_Union[PreviewMusicV1, _Mapping]] = ..., cutaways: _Optional[_Iterable[_Union[PreviewCutawayV1, _Mapping]]] = ...) -> None: ...
 
 class ThumbnailFramingRequest(_message.Message):
     __slots__ = ("project_id", "face_track_artifact_id", "moments")

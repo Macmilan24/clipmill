@@ -605,6 +605,9 @@ pub struct VideoTrack {
     pub transition_ticks: i64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segments: Vec<VideoSegment>,
+    /// Moments covered by another picture, in program order, none overlapping.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutaways: Vec<Cutaway>,
 }
 
 #[allow(
@@ -1086,6 +1089,90 @@ impl Default for AudioTrack {
     }
 }
 
+/// A moment of the program covered by another picture while the voice
+/// carries on — B-roll: a still from the clip's assets, or footage from one
+/// of the project's recordings. Program-anchored like a caption, so a cut
+/// takes it in or moves it with the material around it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Cutaway {
+    pub cutaway_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    /// How it meets the frame. Absent fills it.
+    #[serde(default, skip_serializing_if = "CutawayFit::is_fill")]
+    pub fit: CutawayFit,
+    pub content: CutawayContent,
+}
+
+impl Cutaway {
+    /// The shortest a cutaway can be: a fifth of a second.
+    pub const SHORTEST_TICKS: i64 = 18_000;
+    /// How much closer a picture that pushes in is by its last frame, in
+    /// per mille.
+    pub const PUSH_IN: u16 = 80;
+
+    /// Whether it is well formed for a clip with these assets.
+    fn is_valid(&self, assets: &[Asset]) -> bool {
+        self.start_ticks >= 0
+            && self.end_ticks.saturating_sub(self.start_ticks) >= Self::SHORTEST_TICKS
+            && match &self.content {
+                CutawayContent::Picture { asset, .. } => {
+                    assets.iter().any(|listed| &listed.hash == asset)
+                }
+                CutawayContent::Footage {
+                    source_fingerprint,
+                    in_ticks,
+                } => *in_ticks >= 0 && is_fingerprint(source_fingerprint),
+            }
+    }
+}
+
+/// How a cutaway meets the frame.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CutawayFit {
+    /// Covering the frame, what does not fit cropped away.
+    #[default]
+    Fill,
+    /// The whole of it, over a blurred copy that fills the rest.
+    Fit,
+}
+
+impl CutawayFit {
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde skip_serializing_if requires a reference"
+    )]
+    fn is_fill(&self) -> bool {
+        *self == Self::Fill
+    }
+}
+
+/// What a cutaway shows.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CutawayContent {
+    /// A picture from the clip's assets, which can move slowly closer.
+    Picture {
+        asset: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        push_in: bool,
+    },
+    /// A recording of the project from `in_ticks` in it, without its sound.
+    Footage {
+        source_fingerprint: String,
+        in_ticks: i64,
+    },
+}
+
+/// A content address of a recording: `sha256:` and 64 hex digits.
+fn is_fingerprint(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
 /// A sound played under the whole clip, from one of the clip's assets.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -1565,24 +1652,9 @@ impl EditDocument {
         let gain_before = self.audio.gain_curve.len();
         let gain_was = self.audio.gain_curve.clone();
         let overlays_were = self.overlays.clone();
+        let cutaways_were = self.video.cutaways.clone();
         if remove > 0 {
-            // An overlay the cut fell inside closes up around it; one it
-            // reached into from either side keeps what is left; one wholly
-            // inside it is gone with the material it was over.
-            for overlay in &mut self.overlays {
-                if overlay.end_ticks <= at || overlay.start_ticks >= removed_end {
-                    continue;
-                }
-                if at <= overlay.start_ticks {
-                    overlay.start_ticks = removed_end.min(overlay.end_ticks);
-                } else if removed_end >= overlay.end_ticks {
-                    overlay.end_ticks = at;
-                } else {
-                    overlay.end_ticks = overlay.end_ticks.saturating_add(delta);
-                }
-            }
-            self.overlays
-                .retain(|overlay| overlay.end_ticks > overlay.start_ticks);
+            self.take_in_placed(at, removed_end, delta);
             // Both presentations: they are two groupings of one word list and
             // a word that no longer plays is gone from each. Splicing only the
             // reading cues left the burned-in ones showing a caption over
@@ -1635,7 +1707,8 @@ impl EditDocument {
             || self.caption_cue_count() != cues_before
             || self.audio.gain_curve.len() != gain_before
             || self.audio.gain_curve != gain_was
-            || self.overlays != overlays_were;
+            || self.overlays != overlays_were
+            || self.video.cutaways != cutaways_were;
         if delta == 0 {
             return destroyed;
         }
@@ -1660,13 +1733,63 @@ impl EditDocument {
                 point.t_ticks = point.t_ticks.saturating_add(delta).max(0);
             }
         }
-        for overlay in &mut self.overlays {
-            if overlay.start_ticks >= shift_from {
-                overlay.start_ticks = overlay.start_ticks.saturating_add(delta).max(0);
-                overlay.end_ticks = overlay.end_ticks.saturating_add(delta).max(0);
+        let spans = self
+            .overlays
+            .iter_mut()
+            .map(|overlay| (&mut overlay.start_ticks, &mut overlay.end_ticks))
+            .chain(
+                self.video
+                    .cutaways
+                    .iter_mut()
+                    .map(|cutaway| (&mut cutaway.start_ticks, &mut cutaway.end_ticks)),
+            );
+        for (start, end) in spans {
+            if *start >= shift_from {
+                *start = start.saturating_add(delta).max(0);
+                *end = end.saturating_add(delta).max(0);
             }
         }
         destroyed
+    }
+
+    /// What is placed over a span of the program — overlays and cutaways —
+    /// taken in by a cut from `at` to `removed_end`. One the cut fell inside
+    /// closes up around it; one it reached into from either side keeps what
+    /// is left; one wholly inside it is gone with the material it was over.
+    /// Footage whose head was cut starts that much further into its
+    /// recording, so what is left of it shows what it showed.
+    fn take_in_placed(&mut self, at: i64, removed_end: i64, delta: i64) {
+        let take_in = |start: &mut i64, end: &mut i64| -> i64 {
+            if *end <= at || *start >= removed_end {
+                return 0;
+            }
+            if at <= *start {
+                let moved = removed_end.min(*end) - *start;
+                *start += moved;
+                moved
+            } else {
+                *end = if removed_end >= *end {
+                    at
+                } else {
+                    end.saturating_add(delta)
+                };
+                0
+            }
+        };
+        for overlay in &mut self.overlays {
+            take_in(&mut overlay.start_ticks, &mut overlay.end_ticks);
+        }
+        self.overlays
+            .retain(|overlay| overlay.end_ticks > overlay.start_ticks);
+        for cutaway in &mut self.video.cutaways {
+            let moved = take_in(&mut cutaway.start_ticks, &mut cutaway.end_ticks);
+            if let CutawayContent::Footage { in_ticks, .. } = &mut cutaway.content {
+                *in_ticks = in_ticks.saturating_add(moved);
+            }
+        }
+        self.video.cutaways.retain(|cutaway| {
+            cutaway.end_ticks.saturating_sub(cutaway.start_ticks) >= Cutaway::SHORTEST_TICKS
+        });
     }
 
     /// Keep what the gain curve was doing at the edges of a cut.
@@ -1823,13 +1946,7 @@ impl EditDocument {
             if segment.in_ticks < 0 || segment.out_ticks <= segment.in_ticks {
                 return Err(DocumentError::EmptySegment(segment.segment_id.clone()));
             }
-            if !segment
-                .source_fingerprint
-                .strip_prefix("sha256:")
-                .is_some_and(|digest| {
-                    digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-                })
-            {
+            if !is_fingerprint(&segment.source_fingerprint) {
                 return Err(DocumentError::InvalidSourceFingerprint(
                     segment.segment_id.clone(),
                 ));
@@ -1914,6 +2031,22 @@ impl EditDocument {
             if !overlay.is_valid() {
                 return Err(DocumentError::InvalidOverlay(overlay.overlay_id.clone()));
             }
+        }
+        let mut seen_cutaways = Vec::with_capacity(self.video.cutaways.len());
+        let mut covered_until = 0;
+        for cutaway in &self.video.cutaways {
+            if cutaway.cutaway_id.is_empty() {
+                return Err(DocumentError::EmptyIdentifier);
+            }
+            if seen_cutaways.contains(&cutaway.cutaway_id.as_str()) {
+                return Err(DocumentError::DuplicateCutaway(cutaway.cutaway_id.clone()));
+            }
+            seen_cutaways.push(cutaway.cutaway_id.as_str());
+            // One picture at a time, in program order.
+            if !cutaway.is_valid(&self.assets) || cutaway.start_ticks < covered_until {
+                return Err(DocumentError::InvalidCutaway(cutaway.cutaway_id.clone()));
+            }
+            covered_until = cutaway.end_ticks;
         }
         validate_cues(&self.captions.cues)?;
         validate_cues(&self.captions.burn_in)?;
@@ -2062,6 +2195,12 @@ pub enum DocumentError {
     InvalidOverlay(String),
     #[error("no overlay named {0}")]
     UnknownOverlay(String),
+    #[error("cutaway {0} appears more than once")]
+    DuplicateCutaway(String),
+    #[error(
+        "cutaway {0} is shorter than a fifth of a second, overlaps the one before, or shows a picture the clip does not list"
+    )]
+    InvalidCutaway(String),
     #[error("no segment named {0}")]
     UnknownSegment(String),
     #[error("no cue named {0}")]

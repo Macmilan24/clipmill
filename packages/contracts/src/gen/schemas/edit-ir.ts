@@ -27,6 +27,10 @@ export interface EditIr {
      */
     transition_ticks?: number;
     segments?: VideoSegment[];
+    /**
+     * Moments covered by another picture while the voice carries on, in program order, none overlapping.
+     */
+    cutaways?: Cutaway[];
   };
   captions: {
     /**
@@ -249,6 +253,41 @@ export interface CropRect {
   y: number;
   width: number;
   height: number;
+}
+/**
+ * B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption.
+ */
+export interface Cutaway {
+  cutaway_id: string;
+  start_ticks: number;
+  /**
+   * At least a fifth of a second after it starts.
+   */
+  end_ticks: number;
+  /**
+   * fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.
+   */
+  fit?: "fill" | "fit";
+  content:
+    | {
+        kind: "picture";
+        /**
+         * The picture's content hash; the clip's assets list it.
+         */
+        asset: string;
+        /**
+         * Move slowly closer, eight per cent by its last frame.
+         */
+        push_in?: boolean;
+      }
+    | {
+        kind: "footage";
+        source_fingerprint: Sha256;
+        /**
+         * Where in the recording it starts.
+         */
+        in_ticks: number;
+      };
 }
 /**
  * Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.

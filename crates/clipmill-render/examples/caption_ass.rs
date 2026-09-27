@@ -37,6 +37,7 @@ fn main() -> std::process::ExitCode {
         video: VideoTrack {
             shape: clipmill_edit_ir::FrameShape::default(),
             transition_ticks: 0,
+            cutaways: Vec::new(),
             segments: vec![VideoSegment {
                 segment_id: "preview".to_owned(),
                 source_fingerprint: format!("sha256:{}", "0".repeat(64)),

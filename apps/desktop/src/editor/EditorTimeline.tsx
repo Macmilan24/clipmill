@@ -856,6 +856,33 @@ const Lanes = memo(function Lanes({
               </div>
             );
           })}
+          {/* B-roll on the stills it covers. */}
+          {(plan.cutaways ?? []).map((cutaway) => (
+            <button
+              key={cutaway.cutawayId}
+              type="button"
+              className="edit-cutaway-block"
+              data-selected={
+                selection.kind === 'cutaway' && selection.cutawayId === cutaway.cutawayId
+                  ? 'true'
+                  : undefined
+              }
+              style={{
+                left: at(cutaway.startTicks),
+                width: wide(cutaway.startTicks, cutaway.endTicks),
+              }}
+              title={cutaway.kind === 'footage' ? 'B-roll: footage' : 'B-roll: a picture'}
+              aria-label={`B-roll from ${clockTenths(cutaway.startTicks)}`}
+              onPointerDown={(event) => {
+                if (event.button > 0) return;
+                event.stopPropagation();
+                onSelect({ kind: 'cutaway', cutawayId: cutaway.cutawayId });
+                onSeek(cutaway.firstFrame);
+              }}
+            >
+              <span>B-roll</span>
+            </button>
+          ))}
           {ghost?.kind === 'edge' && (
             <span className="edit-edge-ghost" style={{ left: at(ghost.ticks) }} aria-hidden="true">
               <span className="mono">

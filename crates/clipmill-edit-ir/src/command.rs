@@ -4,9 +4,9 @@ use thiserror::Error;
 use crate::{
     document::{
         Asset, Brand, CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing,
-        CropKeyframe, CropRect, DocumentError, EditDocument, FitBackground, FrameShape, GainPoint,
-        Inset, LayoutState, MusicBed, Overlay, Presentation, Punch, VideoSegment, VoiceCleanup,
-        crop_along_keyframes, retime_punches, split_punches,
+        CropKeyframe, CropRect, Cutaway, DocumentError, EditDocument, FitBackground, FrameShape,
+        GainPoint, Inset, LayoutState, MusicBed, Overlay, Presentation, Punch, VideoSegment,
+        VoiceCleanup, crop_along_keyframes, retime_punches, split_punches,
     },
     reflow,
 };
@@ -50,6 +50,15 @@ pub enum EditCommand {
     SetMusic {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         music: Option<MusicBed>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assets: Option<Vec<Asset>>,
+    },
+    /// Replace the clip's cutaways, and list the assets their pictures come
+    /// from. The whole list, so its inverse is exactly the list it replaced.
+    SetCutaways {
+        cutaways: Vec<Cutaway>,
+        /// The clip's asset list with the pictures' own; the inverse carries
+        /// the list as it was.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         assets: Option<Vec<Asset>>,
     },
@@ -130,6 +139,9 @@ pub enum EditCommand {
         /// were any, and then left as they stand.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         overlays: Option<Vec<Overlay>>,
+        /// The cutaways as they were, likewise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cutaways: Option<Vec<Cutaway>>,
     },
     SetLayout {
         segment_id: String,
@@ -373,6 +385,16 @@ impl EditCommand {
                 let previous = std::mem::replace(&mut document.audio.cleanup, *cleanup);
                 Ok(Self::SetCleanup { cleanup: previous })
             }
+            Self::SetCutaways { cutaways, assets } => {
+                let previous = std::mem::replace(&mut document.video.cutaways, cutaways.clone());
+                let previous_assets = assets
+                    .as_ref()
+                    .map(|assets| std::mem::replace(&mut document.assets, assets.clone()));
+                Ok(Self::SetCutaways {
+                    cutaways: previous,
+                    assets: previous_assets,
+                })
+            }
             Self::SetBrand { brand, assets } => {
                 let previous = std::mem::replace(&mut document.brand, brand.clone());
                 let previous_assets = assets
@@ -470,6 +492,7 @@ impl EditCommand {
                 gain_curve,
                 burn_in,
                 overlays,
+                cutaways,
             } => {
                 let inverse = Self::capture(document);
                 document.video.segments.clone_from(segments);
@@ -480,6 +503,9 @@ impl EditCommand {
                 document.audio.gain_curve.clone_from(gain_curve);
                 if let Some(overlays) = overlays {
                     document.overlays.clone_from(overlays);
+                }
+                if let Some(cutaways) = cutaways {
+                    document.video.cutaways.clone_from(cutaways);
                 }
                 Ok(inverse)
             }
@@ -851,6 +877,8 @@ impl EditCommand {
             // Only once there is something to restore, so a log of a clip
             // with none reads as it always has.
             overlays: (!document.overlays.is_empty()).then(|| document.overlays.clone()),
+            cutaways: (!document.video.cutaways.is_empty())
+                .then(|| document.video.cutaways.clone()),
         }
     }
 

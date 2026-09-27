@@ -165,6 +165,30 @@ pub struct PreviewLogo {
     pub opacity: u8,
 }
 
+/// A cutaway as the render lays it: what it shows, how it meets the frame,
+/// and the program frames it covers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewCutaway {
+    pub cutaway_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    /// `fill` or `fit`.
+    pub fit: &'static str,
+    /// `picture` or `footage`.
+    pub kind: &'static str,
+    /// A picture's hash; empty for footage.
+    pub asset: String,
+    /// Whether a picture moves closer, [`clipmill_edit_ir::Cutaway::PUSH_IN`]
+    /// per mille by its last frame.
+    pub push_in: bool,
+    /// Footage's recording; empty for a picture.
+    pub source_fingerprint: String,
+    /// Where in its recording footage starts.
+    pub in_ticks: i64,
+}
+
 /// Everything the player needs, and nothing it has to work out.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewPlan {
@@ -186,6 +210,8 @@ pub struct PreviewPlan {
     pub gain: Vec<PreviewGain>,
     /// What is laid over the program, bottom first.
     pub overlays: Vec<PreviewOverlay>,
+    /// B-roll over the program's own picture, in program order.
+    pub cutaways: Vec<PreviewCutaway>,
     /// The progress bar, in output pixels: its colour, edge and thickness.
     pub progress: Option<PreviewProgress>,
     /// The logo, where the render puts it.
@@ -298,6 +324,7 @@ pub fn preview_plan(
             })
             .collect(),
         overlays: overlays(document, rate, frame_count),
+        cutaways: cutaways(document, rate, frame_count),
         progress: progress(document, profile),
         logo: logo(document, profile),
         music: document.audio.music.as_ref().map(|music| PreviewMusic {
@@ -314,6 +341,49 @@ pub fn preview_plan(
         width: profile.width,
         height: profile.height,
     })
+}
+
+/// The cutaways, on the frames the render lays them over.
+fn cutaways(document: &EditDocument, rate: FrameRate, frame_count: i64) -> Vec<PreviewCutaway> {
+    use clipmill_edit_ir::{CutawayContent, CutawayFit};
+    document
+        .video
+        .cutaways
+        .iter()
+        .map(|cutaway| {
+            let (kind, asset, push_in, source_fingerprint, in_ticks) = match &cutaway.content {
+                CutawayContent::Picture { asset, push_in } => {
+                    ("picture", asset.clone(), *push_in, String::new(), 0)
+                }
+                CutawayContent::Footage {
+                    source_fingerprint,
+                    in_ticks,
+                } => (
+                    "footage",
+                    String::new(),
+                    false,
+                    source_fingerprint.clone(),
+                    *in_ticks,
+                ),
+            };
+            PreviewCutaway {
+                cutaway_id: cutaway.cutaway_id.clone(),
+                start_ticks: cutaway.start_ticks,
+                end_ticks: cutaway.end_ticks,
+                first_frame: rate.frame_ceil(cutaway.start_ticks).min(frame_count),
+                end_frame: rate.frame_ceil(cutaway.end_ticks).min(frame_count),
+                fit: match cutaway.fit {
+                    CutawayFit::Fill => "fill",
+                    CutawayFit::Fit => "fit",
+                },
+                kind,
+                asset,
+                push_in,
+                source_fingerprint,
+                in_ticks,
+            }
+        })
+        .collect()
 }
 
 /// What is over the program, in frames, bottom first.

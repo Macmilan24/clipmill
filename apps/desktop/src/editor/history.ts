@@ -122,6 +122,8 @@ export function describeCommand(command: EditCommandJson, inverse?: EditCommandJ
       return overlayKind(inverse) === 'emoji' ? 'Remove an emoji' : 'Remove text';
     case 'set_punches':
       return 'Punch-ins';
+    case 'set_cutaways':
+      return 'B-roll';
     case 'set_brand':
       return 'Brand';
     case 'set_music':

@@ -327,6 +327,7 @@ fn assemble_span(
             shape: request.shape,
             segments,
             transition_ticks: 10_800,
+            cutaways: Vec::new(),
         },
         captions,
         ..EditDocument::default()

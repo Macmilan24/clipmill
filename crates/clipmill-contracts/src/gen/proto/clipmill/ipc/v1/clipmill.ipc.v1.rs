@@ -1892,6 +1892,40 @@ pub struct PreviewProgressV1 {
     #[prost(int64, tag = "3")]
     pub thickness: i64,
 }
+/// B-roll as the render lays it: what covers the program's picture, how it
+/// meets the frame, and the program frames it covers.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCutawayV1 {
+    #[prost(string, tag = "1")]
+    pub cutaway_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub start_ticks: i64,
+    #[prost(int64, tag = "3")]
+    pub end_ticks: i64,
+    #[prost(int64, tag = "4")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "5")]
+    pub end_frame: i64,
+    /// fill or fit.
+    #[prost(string, tag = "6")]
+    pub fit: ::prost::alloc::string::String,
+    /// picture or footage.
+    #[prost(string, tag = "7")]
+    pub kind: ::prost::alloc::string::String,
+    /// A picture's content hash; empty for footage.
+    #[prost(string, tag = "8")]
+    pub asset: ::prost::alloc::string::String,
+    /// Whether a picture moves closer, eight per cent by its last frame.
+    #[prost(bool, tag = "9")]
+    pub push_in: bool,
+    /// Footage's recording; empty for a picture. Its proxy is listed with the
+    /// sections'.
+    #[prost(string, tag = "10")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    /// Where in its recording footage starts.
+    #[prost(int64, tag = "11")]
+    pub in_ticks: i64,
+}
 /// Music as the render mixes it: which sound, from where in it, and its level
 /// in decibels at frames through the program, to interpolate between.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2206,6 +2240,9 @@ pub struct GetPreviewPlanResponse {
     /// The music, when the clip has some.
     #[prost(message, optional, tag = "27")]
     pub music: ::core::option::Option<PreviewMusicV1>,
+    /// B-roll over the program's own picture, in program order.
+    #[prost(message, repeated, tag = "28")]
+    pub cutaways: ::prost::alloc::vec::Vec<PreviewCutawayV1>,
 }
 /// Where the camera would point at a few moments, so a board of clips can show
 /// each as the vertical frame it will have rather than a strip of the source.

@@ -10,6 +10,7 @@ import type { CropKeyframe, CropPath, SolveOptions } from '../daemon/client.js';
 import { batch, setLayout, solvedKeyframe } from '../editor/commands.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import type { RecordingAccess } from '../editor/CutawaysSection.js';
 import type { AssetAccess } from '../editor/brand.js';
 import { SPLITS, viewports } from '../editor/layouts.js';
 import { segmentAt, sourceOf } from '../editor/player.js';
@@ -242,6 +243,23 @@ export function EditorScreen({
     [api],
   );
 
+  // The project's recordings, for B-roll cut from them.
+  const projectId = clip?.projectId ?? null;
+  const recordings = useMemo<RecordingAccess | null>(
+    () =>
+      projectId
+        ? {
+            list: async () =>
+              (await api.listSources(projectId)).map((source) => ({
+                fingerprint: source.sourceFingerprint,
+                name: source.absolutePath.split(/[\\/]/).at(-1) ?? source.absolutePath,
+                ...(source.missing ? { missing: true } : {}),
+              })),
+          }
+        : null,
+    [api, projectId],
+  );
+
   return (
     <Editor
       plan={editor.plan}
@@ -291,6 +309,7 @@ export function EditorScreen({
       }
       loadFaces={loadFaces}
       assets={assets}
+      recordings={recordings}
       onLoadHistory={
         api.listEditHistory && clip
           ? async () => historySteps(await api.listEditHistory!(clip.docId))

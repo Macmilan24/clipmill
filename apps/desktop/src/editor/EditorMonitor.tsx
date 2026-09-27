@@ -53,6 +53,7 @@ import {
 } from './commands.js';
 import { BrandLayer } from './BrandLayer.js';
 import { CaptionCanvas } from './CaptionCanvas.js';
+import { CutawayLayer } from './CutawayLayer.js';
 import type { ExactCaptions } from './exactCaptions.js';
 import { CompositionCanvas } from './CompositionCanvas.js';
 import { type FaceNow, byTrack, facesAt, fittedFrame } from './faces.js';
@@ -796,6 +797,17 @@ function Stage({
             aria-hidden="true"
             onPointerDown={grabFrame}
           />
+          {view === 'edit' && (
+            <CutawayLayer
+              plan={plan}
+              frame={frame}
+              playing={playback.playing}
+              assetUrl={assetUrl}
+              proxyUrls={proxyUrls}
+              selection={selection}
+              onSelect={onSelect}
+            />
+          )}
           {view === 'edit' && <BrandLayer plan={plan} frame={frame} assetUrl={assetUrl} />}
           {view === 'edit' &&
             shownEmoji.map((overlay) => {

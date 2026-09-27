@@ -45,6 +45,8 @@ import type { AssetAccess } from '../editor/brand.js';
 import { useMusicBed } from '../editor/music.js';
 import { EditorMonitor, type MonitorPlayback } from '../editor/EditorMonitor.js';
 import { EditorProperties } from '../editor/EditorProperties.js';
+import type { RecordingAccess } from '../editor/CutawaysSection.js';
+import { savedCutaways, setCutaways } from '../editor/cutaways.js';
 import { EditorTimeline, type Tool, deleteRange } from '../editor/EditorTimeline.js';
 import { EditorTranscript } from '../editor/EditorTranscript.js';
 import {
@@ -137,6 +139,8 @@ export interface EditorProps {
   readonly onLoadHistory?: (() => Promise<readonly HistoryStep[]>) | null;
   /** The person's pictures and sounds. Absent shows no logo and offers none. */
   readonly assets?: AssetAccess | null;
+  /** The project's recordings, for B-roll footage. Absent offers none. */
+  readonly recordings?: RecordingAccess | null;
   /** Where a pinned caption font is served from. Absent keeps CSS captions. */
   readonly fontUrl?: ((file: string) => string) | null;
   /** Where a pinned emoji's picture is served from. Absent draws the character. */
@@ -232,6 +236,7 @@ export function Editor({
   previewCaptions = null,
   onLoadHistory = null,
   assets = null,
+  recordings = null,
 }: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [playhead, setFrame] = useState(0);
@@ -710,6 +715,10 @@ export function Editor({
       command = removeGainPoint(selection.tTicks);
     } else if (selection.kind === 'overlay') {
       command = removeOverlay(selection.overlayId);
+    } else if (selection.kind === 'cutaway') {
+      command = setCutaways(
+        savedCutaways(plan).filter((cutaway) => cutaway.cutaway_id !== selection.cutawayId),
+      );
     } else if (selection.kind === 'cue') {
       const cue = plan.cues.find((item) => item.cueId === selection.cueId);
       const count = cue?.lines.flat().length ?? 0;
@@ -1116,6 +1125,7 @@ export function Editor({
           hook={hook}
           words={clipWords}
           assets={assets}
+          recordings={recordings}
           emojiUrl={emojiUrl}
         />
       </div>

@@ -104,6 +104,7 @@ fn document(state: LayoutState) -> EditDocument {
         video: VideoTrack {
             shape: clipmill_edit_ir::FrameShape::default(),
             transition_ticks: 0,
+            cutaways: Vec::new(),
             segments: vec![VideoSegment {
                 segment_id: "seg_1".to_owned(),
                 source_fingerprint: SOURCE.to_owned(),

@@ -97,6 +97,7 @@ import {
   splitCue,
   swapPortraits,
 } from './commands.js';
+import { CutawaysSection, type RecordingAccess } from './CutawaysSection.js';
 import { cropAt, gainAt, segmentAt, sourceOf } from './player.js';
 import type { EditorSelection, PropertiesTab } from './selection.js';
 import { freshCueId, programTicks, ticksOfFrame } from './timeline.js';
@@ -138,6 +139,8 @@ export interface EditorPropertiesProps {
   readonly assets?: AssetAccess | null;
   /** Where a pinned emoji's picture loads from; absent draws the character. */
   readonly emojiUrl?: ((code: string) => string) | null;
+  /** The project's recordings, for B-roll footage; absent outside the app. */
+  readonly recordings?: RecordingAccess | null;
 }
 
 export function EditorProperties(props: EditorPropertiesProps) {
@@ -689,7 +692,10 @@ function FramingTab({
   onApply,
   onResolve,
   onSelect,
+  onSeek,
   words = [],
+  assets = null,
+  recordings = null,
 }: EditorPropertiesProps) {
   const part =
     selection.kind === 'section' || selection.kind === 'keyframe'
@@ -835,6 +841,19 @@ function FramingTab({
         localTicks={localTicks}
         busy={busy}
         onApply={onApply}
+      />
+
+      <CutawaysSection
+        plan={plan}
+        document={document}
+        frame={frame}
+        selection={selection}
+        busy={busy}
+        onApply={onApply}
+        onSelect={onSelect}
+        onSeek={onSeek}
+        assets={assets}
+        recordings={recordings}
       />
 
       {state === 'two_up' && source && (

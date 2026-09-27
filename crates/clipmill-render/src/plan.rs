@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::{
+    cutaways::{self, FootageInput},
     graph::{self, DecodeSpan, FilterGraph, GraphRequest, decoder_groups},
     profile::RenderProfile,
     subtitles::{self, CueWindow, unrenderable_character},
@@ -51,7 +52,7 @@ pub struct SourceInput {
 impl SourceInput {
     /// The last keyframe at or before `ticks` — the point a decoder can start
     /// from and still reproduce the requested frame exactly.
-    fn seek_target(&self, ticks: i64) -> i64 {
+    pub(crate) fn seek_target(&self, ticks: i64) -> i64 {
         self.keyframe_ticks
             .iter()
             .copied()
@@ -116,6 +117,8 @@ pub struct RenderPlan {
     pub cue_windows: Vec<CueWindow>,
     pub duration_ticks: i64,
     pub frame_count: i64,
+    /// The decoders footage cutaways read from, after the sections' own.
+    pub footage: Vec<FootageInput>,
     paths: BTreeMap<String, String>,
 }
 
@@ -307,6 +310,23 @@ impl RenderPlan {
             args.push("-i".to_owned());
             args.push(path);
         }
+        // A cutaway's recording is read only as far as it shows, and a
+        // second past it for the resampler's slack.
+        for input in &self.footage {
+            if input.seek_ticks > 0 {
+                args.push("-ss".to_owned());
+                args.push(ticks_to_seconds(input.seek_ticks));
+            }
+            args.push("-t".to_owned());
+            args.push(ticks_to_seconds(input.trim_end_ticks + 90_000));
+            args.push("-i".to_owned());
+            args.push(
+                self.paths
+                    .get(&input.source_fingerprint)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        }
         args
     }
 }
@@ -460,12 +480,22 @@ pub fn compile(
     let rate = profile.rate();
     let duration_ticks = document.program_duration_ticks();
     check_captions(document, duration_ticks)?;
+    cutaways::check_cutaways(document, duration_ticks)?;
 
     let LaidOut {
         spans,
         segments,
-        paths,
+        mut paths,
     } = lay_out(document, sources, rate)?;
+    let footage = cutaways::footage_inputs(document, sources)?;
+    for input in &footage {
+        if let Some(source) = sources
+            .iter()
+            .find(|source| source.fingerprint == input.source_fingerprint)
+        {
+            paths.insert(source.fingerprint.clone(), source.path.clone());
+        }
+    }
 
     // Emoji are laid as pictures; only captions and words need libass.
     let burn = (!document.captions.cues.is_empty()
@@ -479,6 +509,7 @@ pub fn compile(
         profile,
         spans: &spans,
         sources,
+        footage: &footage,
         subtitle_file: burn,
         loudnorm: None,
         audio_only: false,
@@ -488,6 +519,7 @@ pub fn compile(
         profile,
         spans: &spans,
         sources,
+        footage: &footage,
         subtitle_file: None,
         loudnorm: Some(format!(
             "loudnorm=I={}:TP={}:LRA={}:print_format=json",
@@ -510,6 +542,7 @@ pub fn compile(
         segments,
         graph,
         measurement_graph,
+        footage,
         paths,
     })
 }
@@ -534,6 +567,12 @@ pub enum RenderError {
     OverlayOutsideProgram(String),
     #[error("{0} is not one of the emoji the app offers")]
     UnknownEmoji(String),
+    #[error("cutaway {0} starts after the end of the program")]
+    CutawayOutsideProgram(String),
+    #[error("cutaway {0} reaches past the end of its recording")]
+    CutawayPastEndOfSource(String),
+    #[error("{0} is not a picture's address")]
+    UnresolvedAsset(String),
     #[error("cue {cue_id} carries {character:?}, which cannot be rendered as caption text")]
     UnrenderableCaptionText { cue_id: String, character: char },
     #[error("segment {0} asks for speaker fill without a crop path")]

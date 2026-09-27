@@ -9,8 +9,9 @@
 
 use clipmill_edit_ir::{
     Asset, AudioTrack, CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionTrack,
-    CaptionWord, CropKeyframe, CropRect, EditCommand, EditDocument, GainPoint, Layout, LayoutState,
-    Overlay, OverlayContent, Presentation, Rationale, TextRole, VideoSegment, VideoTrack,
+    CaptionWord, CropKeyframe, CropRect, Cutaway, CutawayContent, CutawayFit, EditCommand,
+    EditDocument, GainPoint, Layout, LayoutState, Overlay, OverlayContent, Presentation, Rationale,
+    TextRole, VideoSegment, VideoTrack,
 };
 
 const FINGERPRINT: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -103,6 +104,10 @@ fn sample_document() -> EditDocument {
                 segment("seg_b", 180_000, 270_000, vec![0, 90_000]),
                 segment("seg_c", 900_000, 990_000, Vec::new()),
             ],
+            cutaways: vec![
+                picture_cutaway("cut_still", 30_000, 80_000),
+                footage_cutaway("cut_room", 150_000, 240_000, 450_000),
+            ],
         },
         captions: CaptionTrack {
             style_ref: "clean".to_owned(),
@@ -185,6 +190,32 @@ fn text_overlay(id: &str, start_ticks: i64, end_ticks: i64, role: TextRole) -> O
             size: 96,
             colour: "#FFFFFF".to_owned(),
             plate: (role == TextRole::Hook).then(|| "#101820".to_owned()),
+        },
+    }
+}
+
+fn picture_cutaway(id: &str, start_ticks: i64, end_ticks: i64) -> Cutaway {
+    Cutaway {
+        cutaway_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        fit: CutawayFit::Fill,
+        content: CutawayContent::Picture {
+            asset: FINGERPRINT.to_owned(),
+            push_in: true,
+        },
+    }
+}
+
+fn footage_cutaway(id: &str, start_ticks: i64, end_ticks: i64, in_ticks: i64) -> Cutaway {
+    Cutaway {
+        cutaway_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        fit: CutawayFit::Fit,
+        content: CutawayContent::Footage {
+            source_fingerprint: FINGERPRINT.to_owned(),
+            in_ticks,
         },
     }
 }
@@ -358,6 +389,21 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
         overlay: text_overlay("ovl_hook", overlay_start, overlay_end, TextRole::Hook),
     });
     commands.push(EditCommand::DropNonSpeechWords {});
+    // A cutaway list replaced wholesale: a new one alone, or none.
+    let cutaway_start = i64::try_from(rng.below(u64::try_from(duration).unwrap_or(1))).unwrap_or(0);
+    commands.push(EditCommand::SetCutaways {
+        cutaways: if rng.below(3) == 0 {
+            Vec::new()
+        } else {
+            vec![footage_cutaway(
+                "cut_new",
+                cutaway_start,
+                (cutaway_start + 36_000).min(duration),
+                i64::try_from(rng.below(900_000)).unwrap_or(0),
+            )]
+        },
+        assets: None,
+    });
     if let Some(cue_id) = pick(rng, &cue_ids) {
         commands.push(EditCommand::SetCuePosition {
             cue_id,
@@ -683,6 +729,7 @@ fn published_contract_fixtures_load_into_the_operational_document() {
         "landscape_two_up.json",
         "hook_title.json",
         "emoji_on_words.json",
+        "b_roll.json",
     ] {
         let path = repo.join("contracts/fixtures/edit_ir/valid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {
@@ -708,6 +755,7 @@ fn published_contract_fixtures_load_into_the_operational_document() {
         "empty-caption-line.json",
         "overlay-markup.json",
         "emoji-path.json",
+        "cutaway-path.json",
     ] {
         let path = repo.join("contracts/fixtures/edit_ir/invalid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {

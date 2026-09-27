@@ -42,6 +42,13 @@
           "items": {
             "$ref": "#/$defs/videoSegment"
           }
+        },
+        "cutaways": {
+          "description": "Moments covered by another picture while the voice carries on, in program order, none overlapping.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cutaway"
+          }
         }
       }
     },
@@ -321,6 +328,71 @@
     "hexColour": {
       "type": "string",
       "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "cutaway": {
+      "description": "B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption.",
+      "type": "object",
+      "required": ["cutaway_id", "start_ticks", "end_ticks", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "cutaway_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "description": "At least a fifth of a second after it starts.",
+          "type": "integer",
+          "minimum": 18000
+        },
+        "fit": {
+          "description": "fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.",
+          "enum": ["fill", "fit"]
+        },
+        "content": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind", "asset"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "picture"
+                },
+                "asset": {
+                  "description": "The picture's content hash; the clip's assets list it.",
+                  "$ref": "#/$defs/sha256"
+                },
+                "push_in": {
+                  "description": "Move slowly closer, eight per cent by its last frame.",
+                  "type": "boolean"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "source_fingerprint", "in_ticks"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "footage"
+                },
+                "source_fingerprint": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "in_ticks": {
+                  "description": "Where in the recording it starts.",
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          ]
+        }
+      }
     },
     "overlay": {
       "description": "Something laid over the program for a span of it.",

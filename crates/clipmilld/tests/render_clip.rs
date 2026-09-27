@@ -646,6 +646,125 @@ async fn an_emoji_is_drawn_from_its_pin_and_a_new_pin_is_a_new_render() {
     stop(shutdown, task).await;
 }
 
+/// The first slice with B-roll: a still from the asset folder over its first
+/// second and a half, and footage from ten seconds into the same recording
+/// over the start of its second section.
+fn with_b_roll(fingerprint: &str) -> String {
+    let mut value: Value =
+        serde_json::from_str(&first_slice_document(fingerprint)).expect("document parses");
+    let picture = format!("sha256:{}", picture_digest());
+    value["assets"] = serde_json::json!([{ "hash": picture, "license": "royalty_free" }]);
+    value["video"]["cutaways"] = serde_json::json!([
+        {
+            "cutaway_id": "cut_still",
+            "start_ticks": 0,
+            "end_ticks": 135_000,
+            "content": { "kind": "picture", "asset": picture }
+        },
+        {
+            "cutaway_id": "cut_room",
+            "start_ticks": 360_000,
+            "end_ticks": 450_000,
+            "content": {
+                "kind": "footage",
+                "source_fingerprint": fingerprint,
+                "in_ticks": 900_000
+            }
+        }
+    ]);
+    serde_json::to_string(&value).expect("document serializes")
+}
+
+/// A flat green picture, as bytes, made once per test run.
+fn picture_bytes() -> &'static [u8] {
+    static BYTES: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    BYTES.get_or_init(|| {
+        let output = Command::new(workspace_tool("ffmpeg"))
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=0x00FF00:s=320x240:d=1",
+                "-frames:v",
+                "1",
+                "-f",
+                "image2pipe",
+                "-c:v",
+                "png",
+                "pipe:1",
+            ])
+            .output()
+            .expect("make a picture");
+        assert!(output.status.success(), "picture generation failed");
+        output.stdout
+    })
+}
+
+/// The picture's hash, as hex: its name in the asset folder.
+fn picture_digest() -> String {
+    digest(picture_bytes())
+        .trim_start_matches("sha256:")
+        .to_owned()
+}
+
+/// B-roll reads what it shows as the logo and the music do — a picture from
+/// the asset folder, checked by its hash; footage from a recording the
+/// project registered — draws it, states the picture's licence, and
+/// publishes neither.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the pinned FFmpeg sidecars and caption font"]
+async fn b_roll_is_drawn_from_the_asset_folder_and_the_recording() {
+    let temp = workspace_tempdir();
+    let source_path = temp.path().join("source.mp4");
+    generate_source(&workspace_tool("ffmpeg"), &source_path, 15);
+    let settings = config(&temp);
+    std::fs::create_dir_all(&settings.paths.assets_dir).expect("an asset folder");
+    std::fs::write(
+        settings.paths.assets_dir.join(picture_digest()),
+        picture_bytes(),
+    )
+    .expect("the picture in the asset folder");
+    let (socket, artifacts, shutdown, task) = running(settings).await;
+    wait_until_ready(&socket).await.expect("daemon ready");
+
+    let prepared = prepare_with(&socket, &source_path, true, with_b_roll).await;
+    let rendered = render(&socket, &prepared, "req-b-roll").await;
+    let lease = artifacts
+        .open(rendered.parse::<ArtifactId>().expect("artifact id"))
+        .await
+        .expect("the render artifact verifies");
+    let published = lease
+        .file_paths()
+        .expect("the artifact lists its files")
+        .into_iter()
+        .map(|path| path.to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        published.iter().all(|path| !path.starts_with("cutaways/")),
+        "the staged picture must not be published: {published:?}"
+    );
+    let manifest: Value =
+        serde_json::from_slice(&read_payload(&lease, "render-manifest.json")).expect("manifest");
+    assert_eq!(
+        manifest["rights"]["assets"],
+        serde_json::json!([{
+            "hash": format!("sha256:{}", picture_digest()),
+            "license": "royalty_free"
+        }])
+    );
+    let clip = temp.path().join("b-roll.mp4");
+    std::fs::write(&clip, read_payload(&lease, "clip.mp4")).expect("write the clip out");
+    // The still fills the frame for its span.
+    let [r, g, b] = pixel_at(&clip, "0.5", 540, 960);
+    assert!(g > 180 && r < 80 && b < 80, "{:?}", [r, g, b]);
+    // The footage is the recording, not the picture: testsrc2's own colours.
+    let [r, g, b] = pixel_at(&clip, "4.5", 540, 960);
+    assert!(!(g > 180 && r < 80 && b < 80), "{:?}", [r, g, b]);
+    stop(shutdown, task).await;
+}
+
 /// The source fingerprint the prepared project registered.
 async fn fingerprint_of(socket: &Path, prepared: &Prepared) -> String {
     support::list_sources(socket, "req-list", &prepared.project_id)
