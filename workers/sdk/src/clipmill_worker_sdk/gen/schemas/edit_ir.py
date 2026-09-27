@@ -119,6 +119,26 @@ class Content(BaseModel):
     )
 
 
+class Content1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['emoji']
+    emoji: constr(pattern=r'^[0-9a-f_]{4,40}$') = Field(
+        ...,
+        description='Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.',
+    )
+    x: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's width."
+    )
+    y: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's height."
+    )
+    size: conint(ge=60, le=400) = Field(
+        ..., description="Its side, per mille of the frame's short side."
+    )
+
+
 class Overlay(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -126,7 +146,7 @@ class Overlay(BaseModel):
     overlay_id: constr(min_length=1)
     start_ticks: conint(ge=0)
     end_ticks: conint(ge=1)
-    content: Content
+    content: Content | Content1
 
 
 class CropRect(BaseModel):

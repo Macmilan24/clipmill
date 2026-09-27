@@ -36,7 +36,7 @@ pub(crate) fn style_lines(style: &CaptionStyle) -> [String; 2] {
 pub(crate) fn dialogues(overlays: &[Overlay], rate: FrameRate, play: (i64, i64)) -> Vec<String> {
     overlays
         .iter()
-        .map(|overlay| {
+        .filter_map(|overlay| {
             let OverlayContent::Text {
                 text,
                 x,
@@ -45,7 +45,10 @@ pub(crate) fn dialogues(overlays: &[Overlay], rate: FrameRate, play: (i64, i64))
                 colour,
                 plate,
                 ..
-            } = &overlay.content;
+            } = &overlay.content
+            else {
+                return None;
+            };
             let colour = Colour::from_hex(colour).unwrap_or(Colour::opaque(0xFF, 0xFF, 0xFF));
             let plate = plate.as_deref().and_then(Colour::from_hex);
             let (style, border, edge) = match plate {
@@ -57,7 +60,7 @@ pub(crate) fn dialogues(overlays: &[Overlay], rate: FrameRate, play: (i64, i64))
                     Colour::opaque(0, 0, 0),
                 ),
             };
-            format!(
+            Some(format!(
                 "Dialogue: {LAYER},{start},{end},{style},,0,0,0,,\
                  {{\\an5\\pos({px},{py})\\fs{size}\\c{fill}\\3c{edge}\\bord{border}\\shad0}}{text}",
                 start = centis_to_ass(rate.frame_centis(rate.frame_ceil(overlay.start_ticks))),
@@ -67,7 +70,64 @@ pub(crate) fn dialogues(overlays: &[Overlay], rate: FrameRate, play: (i64, i64))
                 fill = colour.to_ass_override(),
                 edge = edge.to_ass_override(),
                 text = text.replace('\n', "\\N"),
-            )
+            ))
         })
         .collect()
+}
+
+/// Where the emoji a clip uses are staged, beside the captions.
+pub const EMOJI_DIR: &str = "emoji";
+
+/// Each emoji over the picture, from its staged picture, at its size and
+/// place, on the frames its span covers.
+pub(crate) fn emoji_chains(
+    overlays: &[Overlay],
+    rate: FrameRate,
+    (width, height): (i64, i64),
+    input: &str,
+) -> Result<(Vec<String>, String), crate::RenderError> {
+    let mut chains = Vec::new();
+    let mut picture = input.to_owned();
+    for (index, overlay) in overlays.iter().enumerate() {
+        let OverlayContent::Emoji { emoji, x, y, size } = &overlay.content else {
+            continue;
+        };
+        let found = clipmill_captions::emoji(emoji)
+            .ok_or_else(|| crate::RenderError::UnknownEmoji(emoji.clone()))?;
+        let side = ((width.min(height) * i64::from(*size) / 1_000) & !1).max(2);
+        let (first, end) = (
+            rate.frame_ceil(overlay.start_ticks),
+            rate.frame_ceil(overlay.end_ticks),
+        );
+        let label = format!("[vemoji{index}]");
+        chains.push(format!(
+            "movie=filename={EMOJI_DIR}/{file},format=rgba,scale={side}:{side}[emoji{index}]",
+            file = found.file(),
+        ));
+        chains.push(format!(
+            "{picture}[emoji{index}]overlay=x={cx}-w/2:y={cy}-h/2:eof_action=repeat:\
+             enable='between(n\\,{first}\\,{last})',format=yuv420p{label}",
+            cx = width * i64::from(*x) / 1_000,
+            cy = height * i64::from(*y) / 1_000,
+            last = (end - 1).max(first),
+        ));
+        picture = label;
+    }
+    Ok((chains, picture))
+}
+
+/// The emoji a document shows, once each, for the render to stage.
+pub fn emoji_files(overlays: &[Overlay]) -> Vec<String> {
+    let mut files: Vec<String> = overlays
+        .iter()
+        .filter_map(|overlay| match &overlay.content {
+            OverlayContent::Emoji { emoji, .. } => {
+                clipmill_captions::emoji(emoji).map(clipmill_captions::Emoji::file)
+            }
+            OverlayContent::Text { .. } => None,
+        })
+        .collect();
+    files.sort();
+    files.dedup();
+    files
 }

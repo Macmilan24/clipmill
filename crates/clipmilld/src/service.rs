@@ -4289,6 +4289,8 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 size: u32::from(overlay.size),
                 colour: overlay.colour.clone(),
                 plate: overlay.plate.clone().unwrap_or_default(),
+                kind: overlay.kind.to_owned(),
+                emoji: overlay.emoji.clone(),
             })
             .collect(),
         width: plan.width,

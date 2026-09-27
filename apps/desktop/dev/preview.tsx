@@ -166,6 +166,8 @@ function Preview() {
   // With the dev server's caption route (CLIPMILL_CAPTION_ASS) and ?fonts=
   // naming the pinned font directory, the editor draws the render's own ASS.
   const fontsDir = search.get('fonts');
+  // ?emoji= names the pinned emoji pictures' directory, as ?fonts= does fonts.
+  const emojiDir = search.get('emoji');
   const [editorAss, setEditorAss] = useState<string | null>(null);
   const [welcoming, setWelcoming] = useState(() => search.get('welcome') === '1');
   // The Inspector's dry run: what approving the clip on screen would build.
@@ -389,6 +391,7 @@ function Preview() {
                         : plan
                     }
                     fontUrl={fontsDir ? (file) => `${fontsDir}/${file}` : null}
+                    emojiUrl={emojiDir ? (code) => `${emojiDir}/emoji_u${code}.png` : null}
                     previewCaptions={
                       fontsDir
                         ? (draft) =>

@@ -732,6 +732,56 @@ fn an_overlay_that_cannot_be_drawn_is_refused_and_changes_nothing() {
     );
 }
 
+/// An emoji names its pinned picture by code: lower-case hex and the joins
+/// between them, never a path, and never smaller or larger than the render
+/// draws one.
+#[test]
+fn an_emoji_is_a_pinned_code_at_a_size_the_render_draws() {
+    use clipmill_edit_ir::OverlayContent;
+    let original = with_overlays();
+    let emoji = |code: &str, x: u16, size: u16| {
+        let mut overlay = hook_text("emoji", 30_000, 138_000);
+        overlay.content = OverlayContent::Emoji {
+            emoji: code.to_owned(),
+            x,
+            y: 640,
+            size,
+        };
+        overlay
+    };
+    let mut edited = original.clone();
+    let undo = EditCommand::AddOverlay {
+        overlay: emoji("1f44f_1f3fd", 500, 180),
+        at: None,
+    }
+    .apply(&mut edited)
+    .expect("an emoji");
+    assert_eq!(edited.overlays.len(), original.overlays.len() + 1);
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    for (code, x, size) in [
+        ("1F525", 500, 180),
+        ("../fonts/Inter", 500, 180),
+        ("1f5", 500, 180),
+        ("1f525", 1_001, 180),
+        ("1f525", 500, 59),
+        ("1f525", 500, 401),
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::AddOverlay {
+                overlay: emoji(code, x, size),
+                at: None
+            }
+            .apply(&mut refused)
+            .is_err(),
+            "{code} at {x}, size {size}"
+        );
+        assert_eq!(refused, original);
+    }
+}
+
 #[test]
 fn a_picture_in_picture_needs_its_inset_but_not_a_main_crop() {
     let original = document(Vec::new());

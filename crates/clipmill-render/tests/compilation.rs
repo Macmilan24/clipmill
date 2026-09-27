@@ -455,6 +455,71 @@ fn text_over_the_program_burns_in_the_caption_pass_even_without_captions() {
     ));
 }
 
+#[test]
+fn an_emoji_is_laid_from_its_pinned_picture_under_the_captions() {
+    use clipmill_edit_ir::{Overlay, OverlayContent};
+    let mut document = first_slice();
+    let emoji = |code: &str| Overlay {
+        overlay_id: "ovl_money".to_owned(),
+        start_ticks: 45_000,
+        end_ticks: 153_000,
+        content: OverlayContent::Emoji {
+            emoji: code.to_owned(),
+            x: 500,
+            y: 640,
+            size: 180,
+        },
+    };
+    document.overlays = vec![emoji("1f4b0")];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("compiles");
+    let graph = &plan.graph.graph;
+    // An even side of the short edge, centred where the document says, for
+    // the frames of its span.
+    assert!(
+        graph.contains("movie=filename=emoji/emoji_u1f4b0.png,format=rgba,scale=194:194[emoji0]"),
+        "{graph}"
+    );
+    assert!(
+        graph.contains(
+            "[emoji0]overlay=x=540-w/2:y=1228-h/2:eof_action=repeat:\
+             enable='between(n\\,15\\,50)'"
+        ),
+        "{graph}"
+    );
+    // Under the captions, which burn over it; and never a caption event.
+    let laid = graph.find("[emoji0]overlay").expect("laid");
+    let burned = graph.find("subtitles=").expect("captions");
+    assert!(laid < burned, "{graph}");
+    assert!(!plan.ass.contains("ovl_money"));
+    assert_eq!(
+        clipmill_render::emoji_files(&document.overlays),
+        ["emoji_u1f4b0.png"]
+    );
+    // The preview lists it, for the editor to draw and move.
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    let shown = &preview.overlays[0];
+    assert_eq!((shown.kind, shown.emoji.as_str()), ("emoji", "1f4b0"));
+
+    // Alone, an emoji needs no caption pass: it is a picture.
+    let mut alone = fit_document();
+    alone.overlays = vec![emoji("1f4b0")];
+    let plan = compile(&alone, &[source()], &profile).expect("compiles");
+    assert!(plan.graph.graph.contains("[emoji0]overlay"));
+    assert!(
+        !plan.graph.graph.contains("subtitles="),
+        "{}",
+        plan.graph.graph
+    );
+
+    // A code the app does not offer has no picture to stage.
+    document.overlays = vec![emoji("1f9a4")];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::UnknownEmoji(code) if code == "1f9a4"
+    ));
+}
+
 // ---- Crop path parity -------------------------------------------------------
 
 fn crop_document(path: Vec<CropKeyframe>) -> EditDocument {

@@ -3,16 +3,21 @@
  *
  * An overlay is timed in program time, like a caption, and positioned by its
  * centre as a share of the frame, so it stays where it was put at every size
- * and in every shape. It is set in the clip's caption font and drawn by the
- * same renderer as the captions; lines break only where its text says, so a
- * suggested title is broken here to fit the frame it will sit in.
+ * and in every shape. A text is set in the clip's caption font and drawn by
+ * the same renderer as the captions; lines break only where its text says, so
+ * a suggested title is broken here to fit the frame it will sit in. An emoji
+ * is the other kind (`emoji.ts`).
  */
 import type { EditIr } from '@clipmill/contracts';
 
 import type { EditCommandJson, PreviewOverlay, PreviewPlan } from '../daemon/client.js';
 
 export type Overlay = NonNullable<EditIr['overlays']>[number];
-export type TextContent = Overlay['content'];
+export type OverlayContent = Overlay['content'];
+export type TextContent = Extract<OverlayContent, { kind: 'text' }>;
+export type EmojiContent = Extract<OverlayContent, { kind: 'emoji' }>;
+export type TextOverlay = Omit<Overlay, 'content'> & { content: TextContent };
+export type EmojiOverlay = Omit<Overlay, 'content'> & { content: EmojiContent };
 
 const SECOND = 90_000;
 /** How long a new text stays up. */
@@ -148,7 +153,7 @@ export function hookOverlay(
   id: string,
   text: string,
   plan: Pick<PreviewPlan, 'width' | 'height' | 'frameCount' | 'rateNum' | 'rateDen'>,
-): Overlay {
+): TextOverlay {
   const fitted = fitHook(text, plan);
   const look = TEXT_LOOKS[0]!;
   return {
@@ -173,7 +178,7 @@ export function labelOverlay(
   id: string,
   startTicks: number,
   plan: Pick<PreviewPlan, 'width' | 'height' | 'frameCount' | 'rateNum' | 'rateDen'>,
-): Overlay {
+): TextOverlay {
   const end = programTicks(plan);
   const start = Math.max(0, Math.min(startTicks, end - SECOND / 10));
   return {
@@ -193,10 +198,25 @@ export function labelOverlay(
 
 /** The document's form of an overlay the plan shows. */
 export function savedOverlay(overlay: PreviewOverlay): Overlay {
-  return {
+  const timing = {
     overlay_id: overlay.overlayId,
     start_ticks: overlay.startTicks,
     end_ticks: overlay.endTicks,
+  };
+  if (overlay.kind === 'emoji') {
+    return {
+      ...timing,
+      content: {
+        kind: 'emoji',
+        emoji: overlay.emoji ?? '',
+        x: overlay.x,
+        y: overlay.y,
+        size: overlay.size,
+      },
+    };
+  }
+  return {
+    ...timing,
     content: {
       kind: 'text',
       text: overlay.text,
@@ -210,19 +230,21 @@ export function savedOverlay(overlay: PreviewOverlay): Overlay {
   };
 }
 
+type Change<Content> = { readonly [Key in keyof Content]?: Content[Key] | undefined };
+
 /**
- * The same overlay with some of its text's properties changed; `plate:
- * undefined` takes the plate away.
+ * The same overlay with some of its content changed; `plate: undefined` takes
+ * a text's plate away.
  */
-export function withContent(
-  overlay: Overlay,
-  change: { readonly [Key in keyof TextContent]?: TextContent[Key] | undefined },
-): Overlay {
+export function withContent<Kind extends Overlay | TextOverlay | EmojiOverlay>(
+  overlay: Kind,
+  change: Change<TextContent> | Change<EmojiContent>,
+): Kind {
   const merged: Record<string, unknown> = { ...overlay.content, ...change };
   // No plate is the absence of one, not an empty colour.
   if (!merged.plate) delete merged.plate;
   if (merged.role !== 'hook') delete merged.role;
-  return { ...overlay, content: merged as TextContent };
+  return { ...overlay, content: merged as OverlayContent } as Kind;
 }
 
 function programTicks(plan: Pick<PreviewPlan, 'frameCount' | 'rateNum' | 'rateDen'>): number {

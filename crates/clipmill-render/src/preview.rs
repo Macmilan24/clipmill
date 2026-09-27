@@ -114,6 +114,10 @@ pub struct PreviewGain {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PreviewOverlay {
     pub overlay_id: String,
+    /// `text` or `emoji`.
+    pub kind: &'static str,
+    /// An emoji's code point; empty for a text.
+    pub emoji: String,
     pub start_ticks: i64,
     pub end_ticks: i64,
     pub first_frame: i64,
@@ -312,37 +316,58 @@ pub fn preview_plan(
     })
 }
 
-/// The texts over the program, in frames, bottom first.
+/// What is over the program, in frames, bottom first.
 fn overlays(document: &EditDocument, rate: FrameRate, frame_count: i64) -> Vec<PreviewOverlay> {
     document
         .overlays
         .iter()
         .map(|overlay| {
-            let clipmill_edit_ir::OverlayContent::Text {
-                text,
-                role,
-                x,
-                y,
-                size,
-                colour,
-                plate,
-            } = &overlay.content;
-            PreviewOverlay {
-                overlay_id: overlay.overlay_id.clone(),
-                start_ticks: overlay.start_ticks,
-                end_ticks: overlay.end_ticks,
-                first_frame: rate.frame_ceil(overlay.start_ticks),
-                end_frame: rate.frame_ceil(overlay.end_ticks).min(frame_count),
-                text: text.clone(),
-                role: match role {
-                    clipmill_edit_ir::TextRole::Hook => "hook",
-                    clipmill_edit_ir::TextRole::Label => "label",
+            let first_frame = rate.frame_ceil(overlay.start_ticks);
+            let end_frame = rate.frame_ceil(overlay.end_ticks).min(frame_count);
+            match &overlay.content {
+                clipmill_edit_ir::OverlayContent::Text {
+                    text,
+                    role,
+                    x,
+                    y,
+                    size,
+                    colour,
+                    plate,
+                } => PreviewOverlay {
+                    overlay_id: overlay.overlay_id.clone(),
+                    kind: "text",
+                    emoji: String::new(),
+                    start_ticks: overlay.start_ticks,
+                    end_ticks: overlay.end_ticks,
+                    first_frame,
+                    end_frame,
+                    text: text.clone(),
+                    role: match role {
+                        clipmill_edit_ir::TextRole::Hook => "hook",
+                        clipmill_edit_ir::TextRole::Label => "label",
+                    },
+                    x: *x,
+                    y: *y,
+                    size: *size,
+                    colour: colour.clone(),
+                    plate: plate.clone(),
                 },
-                x: *x,
-                y: *y,
-                size: *size,
-                colour: colour.clone(),
-                plate: plate.clone(),
+                clipmill_edit_ir::OverlayContent::Emoji { emoji, x, y, size } => PreviewOverlay {
+                    overlay_id: overlay.overlay_id.clone(),
+                    kind: "emoji",
+                    emoji: emoji.clone(),
+                    start_ticks: overlay.start_ticks,
+                    end_ticks: overlay.end_ticks,
+                    first_frame,
+                    end_frame,
+                    text: String::new(),
+                    role: "label",
+                    x: *x,
+                    y: *y,
+                    size: *size,
+                    colour: String::new(),
+                    plate: None,
+                },
             }
         })
         .collect()

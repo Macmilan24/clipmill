@@ -51,6 +51,9 @@ pub struct MediaProtocol {
     /// The pinned caption fonts, served so the player draws captions with
     /// the faces the render burns in.
     fonts_dir: Option<PathBuf>,
+    /// The pinned emoji pictures, served so the editor shows the ones the
+    /// render lays over.
+    emoji_dir: Option<PathBuf>,
     /// The person's own pictures and sounds, by content hash.
     assets_dir: Option<PathBuf>,
     /// Assets the daemon has said are its own, and how to serve each.
@@ -62,6 +65,8 @@ pub struct MediaProtocol {
 const FONTS_PREFIX: &str = "/fonts/";
 /// The path prefix assets are served under, by the hex of their hash.
 const ASSETS_PREFIX: &str = "/assets/";
+/// The path prefix emoji are served under, by their code: `/emoji/1f525.png`.
+const EMOJI_PREFIX: &str = "/emoji/";
 
 impl std::fmt::Debug for MediaProtocol {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -78,6 +83,7 @@ impl MediaProtocol {
             supervisor,
             artifacts_dir,
             fonts_dir: None,
+            emoji_dir: None,
             assets_dir: None,
             assets: Mutex::new(HashMap::new()),
             authorized: Mutex::new(HashMap::new()),
@@ -88,6 +94,13 @@ impl MediaProtocol {
     #[must_use]
     pub fn with_fonts(mut self, fonts_dir: PathBuf) -> Self {
         self.fonts_dir = Some(fonts_dir);
+        self
+    }
+
+    /// Serve the emoji pictures pinned in this directory.
+    #[must_use]
+    pub fn with_emoji(mut self, emoji_dir: PathBuf) -> Self {
+        self.emoji_dir = Some(emoji_dir);
         self
     }
 
@@ -160,6 +173,28 @@ impl MediaProtocol {
             .unwrap_or_else(|_| refuse(StatusCode::INTERNAL_SERVER_ERROR, "cannot answer"))
     }
 
+    /// One emoji picture, by its code. As with fonts, the name must be a
+    /// catalogued emoji's, so the licence texts beside them cannot be asked
+    /// for, nor anything else.
+    fn serve_emoji(&self, name: &str) -> Response<Vec<u8>> {
+        let Some(emoji) = name.strip_suffix(".png").and_then(clipmill_captions::emoji) else {
+            return refuse(StatusCode::NOT_FOUND, "not an emoji ClipMill offers");
+        };
+        let Some(dir) = &self.emoji_dir else {
+            return refuse(StatusCode::NOT_FOUND, "emoji are not installed");
+        };
+        let Ok(bytes) = std::fs::read(dir.join(emoji.file())) else {
+            return refuse(StatusCode::NOT_FOUND, "this emoji is not installed");
+        };
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "image/png")
+            .header(header::CONTENT_LENGTH, bytes.len().to_string())
+            .header(header::CACHE_CONTROL, "public, max-age=86400")
+            .body(bytes)
+            .unwrap_or_else(|_| refuse(StatusCode::INTERNAL_SERVER_ERROR, "cannot answer"))
+    }
+
     /// Answer one media request.
     pub async fn serve(&self, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         let origin = request.headers().get(header::ORIGIN).cloned();
@@ -196,6 +231,9 @@ impl MediaProtocol {
         }
         if let Some(name) = request.uri().path().strip_prefix(FONTS_PREFIX) {
             return self.serve_font(name);
+        }
+        if let Some(name) = request.uri().path().strip_prefix(EMOJI_PREFIX) {
+            return self.serve_emoji(name);
         }
         if let Some(hex) = request.uri().path().strip_prefix(ASSETS_PREFIX) {
             let range = request
@@ -612,6 +650,55 @@ fn allowed_origin(origin: &str) -> bool {
         "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
     ) || (cfg!(debug_assertions)
         && matches!(origin, "http://localhost:5173" | "http://127.0.0.1:5173"))
+}
+
+#[cfg(test)]
+mod emoji_tests {
+    #![allow(clippy::expect_used)]
+
+    use std::{path::PathBuf, sync::Arc};
+
+    use tauri::http::StatusCode;
+
+    use super::MediaProtocol;
+    use crate::{DaemonClient, DaemonSupervisor};
+
+    fn protocol(emoji_dir: PathBuf) -> MediaProtocol {
+        let supervisor = DaemonSupervisor::new(DaemonClient::new(PathBuf::from("/nonexistent")));
+        MediaProtocol::new(Arc::new(supervisor), PathBuf::from("/nonexistent"))
+            .with_emoji(emoji_dir)
+    }
+
+    /// Only a catalogued emoji's picture can be named: the licence beside
+    /// them, a picture the app does not offer, and a way out of the folder
+    /// are all refused before a file is opened.
+    #[test]
+    fn only_a_catalogued_emoji_is_served() {
+        let dir = std::env::temp_dir().join(format!("clipmill-emoji-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        std::fs::write(dir.join("emoji_u1f525.png"), b"\x89PNG fire").expect("a picture");
+        std::fs::write(dir.join("emoji_u1f9a4.png"), b"\x89PNG dodo").expect("a picture");
+        std::fs::write(dir.join("LICENSE.txt"), b"licence").expect("a licence");
+        let media = protocol(dir.clone());
+
+        let fire = media.serve_emoji("1f525.png");
+        assert_eq!(fire.status(), StatusCode::OK);
+        assert_eq!(fire.body().as_slice(), b"\x89PNG fire");
+        for refused in [
+            "1f9a4.png",
+            "LICENSE.txt",
+            "../LICENSE.txt",
+            "1f525",
+            "1f4a1.png",
+        ] {
+            assert_eq!(
+                media.serve_emoji(refused).status(),
+                StatusCode::NOT_FOUND,
+                "{refused}"
+            );
+        }
+        std::fs::remove_dir_all(dir).expect("tidied");
+    }
 }
 
 #[cfg(test)]

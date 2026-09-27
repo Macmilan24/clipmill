@@ -44,6 +44,8 @@ import {
   setGain,
   trim,
 } from './commands.js';
+import { EmojiPicture } from './EmojiPicture.js';
+import { emojiOf } from './emoji.js';
 import { pressOrDrag } from './gesture.js';
 import { type MenuTarget, TimelineMenu } from './TimelineMenu.js';
 import type { EditorSelection } from './selection.js';
@@ -100,6 +102,8 @@ export interface EditorTimelineProps {
   readonly onApply: (command: EditCommandJson) => void;
   readonly onSplit: (frame: number) => void;
   readonly onDeleteRange: () => void;
+  /** Where a pinned emoji's picture loads from; absent draws the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
 }
 
 type Ghost =
@@ -403,6 +407,7 @@ export function EditorTimeline(props: EditorTimelineProps) {
             scrub={scrub}
             ticksAtX={ticksAtX}
             pixelsToTicks={pixelsToTicks}
+            emojiUrl={props.emojiUrl ?? null}
           />
           {before > 0 && (
             <span
@@ -472,6 +477,7 @@ interface LaneProps extends Pick<
   readonly scrub: (event: ReactPointerEvent) => void;
   readonly ticksAtX: (clientX: number) => number;
   readonly pixelsToTicks: (pixels: number) => number;
+  readonly emojiUrl: ((code: string) => string) | null;
 }
 
 /** The four lanes. Kept apart from the playhead so playback does not redraw them. */
@@ -499,6 +505,7 @@ const Lanes = memo(function Lanes({
   scrub,
   ticksAtX,
   pixelsToTicks,
+  emojiUrl,
 }: LaneProps) {
   const [ghost, setGhost] = useState<Ghost | null>(null);
   // What a right-click landed on, for the timeline's menu.
@@ -923,7 +930,11 @@ const Lanes = memo(function Lanes({
           {(plan.overlays ?? []).map((overlay) => {
             const selected =
               selection.kind === 'overlay' && selection.overlayId === overlay.overlayId;
-            const text = overlay.text.replace(/\n/g, ' ');
+            const emoji = overlay.kind === 'emoji' ? (overlay.emoji ?? '') : null;
+            const text =
+              emoji === null
+                ? overlay.text.replace(/\n/g, ' ')
+                : (emojiOf(emoji)?.label ?? 'Emoji');
             return (
               <div
                 key={overlay.overlayId}
@@ -941,7 +952,11 @@ const Lanes = memo(function Lanes({
                   onSeek(overlay.firstFrame);
                 }}
               >
-                <span>{overlay.role === 'hook' ? `Hook · ${text}` : text}</span>
+                {emoji === null ? (
+                  <span>{overlay.role === 'hook' ? `Hook · ${text}` : text}</span>
+                ) : (
+                  <EmojiPicture code={emoji} url={emojiUrl} className="edit-emoji-inline" />
+                )}
               </div>
             );
           })}

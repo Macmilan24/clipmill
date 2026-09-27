@@ -1783,6 +1783,146 @@ fn a_logo_sits_in_its_corner_at_its_size_and_opacity() {
     clippy::too_many_lines,
     reason = "one explicit end-to-end encoder scenario"
 )]
+#[ignore = "requires the pinned .cache/bin/ffmpeg and .cache/emoji; renders and decodes actual pixels"]
+fn an_emoji_is_drawn_from_its_pinned_picture_for_its_span_only() {
+    use clipmill_edit_ir::{Overlay, OverlayContent};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository");
+    let binary = root.join(".cache/bin/ffmpeg");
+    assert!(binary.is_file(), "fetch pinned FFmpeg before this gate");
+    let pinned = root.join(".cache/emoji/emoji_u1f525.png");
+    assert!(pinned.is_file(), "fetch the pinned emoji before this gate");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let work = std::env::temp_dir().join(format!("clipmill-emoji-{nonce}"));
+    std::fs::create_dir_all(work.join(clipmill_render::EMOJI_DIR)).expect("scratch directory");
+    // Staged as the daemon stages it: the pinned picture, under its own name.
+    std::fs::copy(
+        &pinned,
+        work.join(clipmill_render::EMOJI_DIR)
+            .join("emoji_u1f525.png"),
+    )
+    .expect("staged emoji");
+    ffmpeg(
+        &binary,
+        &work,
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=1920x1080:r=30:d=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "source.mp4",
+        ]),
+    );
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let mut document = EditDocument::default();
+    document.video.transition_ticks = 0;
+    document.video.segments = vec![VideoSegment {
+        segment_id: "seg_1".to_owned(),
+        source_fingerprint: fingerprint.clone(),
+        in_ticks: 0,
+        out_ticks: 2 * 90_000,
+        layout: Layout {
+            state: LayoutState::SpeakerFill,
+            crop_path: vec![CropKeyframe {
+                t_ticks: 0,
+                rect: CropRect {
+                    x: 656,
+                    y: 0,
+                    width: 608,
+                    height: 1_080,
+                },
+                easing: clipmill_edit_ir::CropEasing::Linear,
+            }],
+            ..Layout::default()
+        },
+    }];
+    // From half a second to a second and a half, 324 pixels a side, centred.
+    document.overlays = vec![Overlay {
+        overlay_id: "ovl_fire".to_owned(),
+        start_ticks: 45_000,
+        end_ticks: 135_000,
+        content: OverlayContent::Emoji {
+            emoji: "1f525".to_owned(),
+            x: 500,
+            y: 500,
+            size: 300,
+        },
+    }];
+    let source = SourceInput {
+        fingerprint,
+        path: work.join("source.mp4").to_string_lossy().into_owned(),
+        width: 1920,
+        height: 1080,
+        has_audio: true,
+        duration_ticks: 2 * 90_000,
+        keyframe_ticks: vec![0],
+    };
+    let plan = compile(&document, &[source], &RenderProfile::default()).expect("compile");
+    let measured = ffmpeg(&binary, &work, &plan.measurement_args());
+    let measurement =
+        LoudnessMeasurement::from_loudnorm_json(&String::from_utf8_lossy(&measured.stderr))
+            .expect("measured loudness");
+    ffmpeg(&binary, &work, &plan.encode_args(measurement));
+    let pixel = |at: &str, x: u32, y: u32| {
+        let decoded = ffmpeg(
+            &binary,
+            &work,
+            &args(&[
+                "-ss",
+                at,
+                "-i",
+                "clip.mp4",
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("crop=2:2:{x}:{y},scale=1:1"),
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ]),
+        );
+        assert_eq!(decoded.stdout.len(), 3);
+        [decoded.stdout[0], decoded.stdout[1], decoded.stdout[2]]
+    };
+    let blue = |[r, g, b]: [u8; 3]| b > 180 && r < 80 && g < 80;
+    let yellow = |[r, g, b]: [u8; 3]| r > 200 && g > 190 && b < 160;
+    let flame = |[r, g, b]: [u8; 3]| r > 200 && g < 150 && b < 100;
+    // The picture's yellow heart at the centre, its orange flame above, and
+    // its clear corner letting the picture through.
+    assert!(yellow(pixel("1", 540, 960)), "{:?}", pixel("1", 540, 960));
+    assert!(flame(pixel("1", 540, 899)), "{:?}", pixel("1", 540, 899));
+    assert!(blue(pixel("1", 382, 802)), "{:?}", pixel("1", 382, 802));
+    // Gone once its span ends.
+    assert!(blue(pixel("1.8", 540, 960)), "{:?}", pixel("1.8", 540, 960));
+    eprintln!("Emoji decoded; render in {}", work.display());
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one explicit end-to-end encoder scenario"
+)]
 #[ignore = "requires the pinned .cache/bin/ffmpeg; renders and measures actual audio"]
 fn music_drops_under_the_words_and_the_cleaned_voice_still_plays() {
     use clipmill_edit_ir::{

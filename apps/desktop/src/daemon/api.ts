@@ -68,6 +68,7 @@ import {
   previewCaptions,
   listEditHistory,
   captionFontUrl,
+  emojiUrl,
   getSource,
   startYoutubeImport,
   getYoutubeImport,
@@ -121,6 +122,8 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   listEditHistory?(docId: string): Promise<readonly EditHistoryEntry[]>;
   /** Where a pinned caption font is served from. Absent where none are. */
   captionFontUrl?(file: string): string;
+  /** Where a pinned emoji's picture is served from. Absent where none are. */
+  emojiUrl?(code: string): string;
   getSource(sourceId: string): Promise<SourceDetails>;
   startYoutubeImport(
     projectId: string,
@@ -213,6 +216,7 @@ export const daemonApi: ShellApi = {
   previewCaptions,
   listEditHistory,
   captionFontUrl,
+  emojiUrl,
   getSource,
   startYoutubeImport,
   getYoutubeImport,

@@ -1159,6 +1159,16 @@ pub enum OverlayContent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         plate: Option<String>,
     },
+    /// A colour emoji, drawn from its pinned picture.
+    Emoji {
+        /// Its code point, as the pinned picture names it: `1f525`.
+        emoji: String,
+        /// Where its centre sits, per mille of the frame's width and height.
+        x: u16,
+        y: u16,
+        /// Its side as a share of the frame's short side, per mille.
+        size: u16,
+    },
 }
 
 /// What a text overlay is for.
@@ -1183,8 +1193,17 @@ impl TextRole {
 impl Overlay {
     /// The sizes a text may be set at, at the design height.
     pub const TEXT_SIZES: std::ops::RangeInclusive<u16> = 24..=240;
+
+    /// Whether it is words, set by the caption renderer, rather than a picture.
+    #[must_use]
+    pub const fn is_text(&self) -> bool {
+        matches!(self.content, OverlayContent::Text { .. })
+    }
+
     /// The most characters a text may hold.
     pub const TEXT_LENGTH: usize = 160;
+    /// The sizes an emoji may be, per mille of the frame's short side.
+    pub const EMOJI_SIZES: std::ops::RangeInclusive<u16> = 60..=400;
 
     fn is_valid(&self) -> bool {
         match &self.content {
@@ -1210,6 +1229,15 @@ impl Overlay {
                     && Self::TEXT_SIZES.contains(size)
                     && is_hex_colour(colour)
                     && plate.as_deref().is_none_or(is_hex_colour)
+            }
+            OverlayContent::Emoji { emoji, x, y, size } => {
+                (4..=40).contains(&emoji.len())
+                    && emoji
+                        .bytes()
+                        .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f' | b'_'))
+                    && *x <= 1_000
+                    && *y <= 1_000
+                    && Self::EMOJI_SIZES.contains(size)
             }
         }
     }

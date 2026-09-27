@@ -224,8 +224,9 @@ impl Daemon {
             device_profiler.clone(),
             media_runner.clone(),
             crate::render::RenderResources {
-                fonts_dir: config.fonts_dir.clone(),
-                assets_dir: config.paths.assets_dir.clone(),
+                fonts: config.fonts_dir.clone(),
+                assets: config.paths.assets_dir.clone(),
+                emoji: config.emoji_dir.clone(),
             },
             Arc::clone(&models),
             scheduler_capacity,

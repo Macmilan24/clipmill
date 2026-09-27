@@ -8,6 +8,7 @@
  * the mapping under a playhead that did not move.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '../src/components/ui/tooltip.js';
@@ -42,10 +43,15 @@ function canvasContext() {
   };
 }
 
-function show(initial: PreviewPlan, urls?: ReadonlyMap<string, string>) {
+function show(
+  initial: PreviewPlan,
+  urls?: ReadonlyMap<string, string>,
+  extra: Partial<ComponentProps<typeof Editor>> = {},
+) {
   const onApply = vi.fn();
   // The URL map is what the hook derives from the plan's proxies.
   const props = (current: PreviewPlan, docId = 'edt_A') => ({
+    ...extra,
     plan: current,
     proxyUrls:
       urls ?? new Map(current.proxies.map((proxy) => [proxy.sourceFingerprint, PROXY_URL])),
@@ -1078,6 +1084,108 @@ describe('text over the clip', () => {
     });
     fireEvent.keyDown(window, { key: 'Delete' });
     expect(onApply).toHaveBeenLastCalledWith({ op: 'remove_overlay', overlay_id: 'ovl_1' });
+  });
+
+  it('puts an emoji at the playhead, drawn from its pinned picture', () => {
+    const { onApply } = show(program(900, 600), undefined, {
+      emojiUrl: (code) => `media://emoji/${code}.png`,
+    });
+    seekTo(program(900, 600), 90);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    const fire = screen.getByRole('button', { name: 'Add Fire' });
+    expect(fire.querySelector('img')?.getAttribute('src')).toBe('media://emoji/1f525.png');
+    fireEvent.click(fire);
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'add_overlay',
+      overlay: {
+        overlay_id: 'ovl_1',
+        start_ticks: 270_000,
+        end_ticks: 378_000,
+        content: { kind: 'emoji', emoji: '1f525', x: 500, y: 640, size: 180 },
+      },
+    });
+    // One row until the rest are asked for.
+    expect(screen.queryByRole('button', { name: 'Add Skull' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'All 40' }));
+    expect(screen.getByRole('button', { name: 'Add Skull' })).toBeTruthy();
+  });
+
+  it('puts emoji on the words that call for one, as one step', () => {
+    const inTicks = 600 * 90_000;
+    const said = (text: string, seconds: number) => ({
+      text,
+      startTicks: inTicks + seconds * 90_000,
+      endTicks: inTicks + (seconds + 0.4) * 90_000,
+    });
+    const { onApply } = show(program(900, 600), undefined, {
+      transcript: {
+        words: [said('We', 0.5), said('made', 0.8), said('money', 1), said('then', 6)],
+        sentences: [],
+      },
+    });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    fireEvent.click(screen.getByRole('button', { name: /on key words/i }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'batch',
+      commands: [
+        {
+          op: 'add_overlay',
+          overlay: {
+            overlay_id: 'ovl_1',
+            start_ticks: 90_000,
+            end_ticks: 198_000,
+            content: { kind: 'emoji', emoji: '1f4b0', x: 500, y: 640, size: 180 },
+          },
+        },
+      ],
+    });
+    expect(screen.getByText(/added 1 where words call for one/i)).toBeTruthy();
+  });
+
+  it('shows an emoji on the picture, moves it there and changes it here', () => {
+    const { onApply } = show({
+      ...program(900, 600),
+      overlays: [
+        {
+          overlayId: 'ovl_4',
+          kind: 'emoji',
+          emoji: '1f525',
+          startTicks: 0,
+          endTicks: 108_000,
+          firstFrame: 0,
+          endFrame: 36,
+          text: '',
+          role: 'label',
+          x: 500,
+          y: 640,
+          size: 180,
+          colour: '',
+        },
+      ],
+    });
+    const shown = screen.getByTestId('overlay-emoji');
+    expect(screen.queryByTestId('overlay-text')).toBeNull();
+    // Without a picture to load, the character stands in.
+    expect(shown.textContent).toBe('🔥');
+    fireEvent.pointerDown(shown, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { button: 0, clientX: 10, clientY: 10 });
+    expect(screen.getByRole('tab', { name: 'Text' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('heading', { name: 'This emoji' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Top' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_overlay',
+      overlay: {
+        overlay_id: 'ovl_4',
+        start_ticks: 0,
+        end_ticks: 108_000,
+        content: { kind: 'emoji', emoji: '1f525', x: 500, y: 140, size: 180 },
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /remove all 1/i }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'batch',
+      commands: [{ op: 'remove_overlay', overlay_id: 'ovl_4' }],
+    });
   });
 
   it('keeps the words a person types, with their line breaks', () => {

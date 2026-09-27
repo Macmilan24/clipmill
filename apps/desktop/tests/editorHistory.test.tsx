@@ -67,6 +67,48 @@ describe('the history', () => {
     expect(describeCommand({ op: 'remove_overlay', overlay_id: 'ovl_1' })).toBe('Remove text');
   });
 
+  it('names emoji apart from text, by what undoing a removal brings back', () => {
+    const fire = { overlay_id: 'ovl_2', content: { kind: 'emoji', emoji: '1f525' } };
+    const money = { overlay_id: 'ovl_3', content: { kind: 'emoji', emoji: '1f4b0' } };
+    expect(describeCommand({ op: 'add_overlay', overlay: fire })).toBe('Add an emoji');
+    expect(describeCommand({ op: 'set_overlay', overlay: fire })).toBe('Change an emoji');
+    expect(
+      describeCommand(
+        { op: 'remove_overlay', overlay_id: 'ovl_2' },
+        { op: 'add_overlay', overlay: fire, at: 1 },
+      ),
+    ).toBe('Remove an emoji');
+    // Emoji put on key words are one step.
+    expect(
+      describeCommand({
+        op: 'batch',
+        commands: [
+          { op: 'add_overlay', overlay: fire },
+          { op: 'add_overlay', overlay: money },
+        ],
+      }),
+    ).toBe('Add 2 emoji');
+    // A batch is undone last step first.
+    expect(
+      describeCommand(
+        {
+          op: 'batch',
+          commands: [
+            { op: 'remove_overlay', overlay_id: 'ovl_2' },
+            { op: 'remove_overlay', overlay_id: 'ovl_1' },
+          ],
+        },
+        {
+          op: 'batch',
+          commands: [
+            { op: 'add_overlay', overlay: { content: { kind: 'text' } }, at: 0 },
+            { op: 'add_overlay', overlay: fire, at: 1 },
+          ],
+        },
+      ),
+    ).toBe('Remove an emoji and more');
+  });
+
   it('goes back to a point by undoing everything since, newest first', () => {
     expect(revertTo(steps, 1)).toEqual({
       op: 'batch',

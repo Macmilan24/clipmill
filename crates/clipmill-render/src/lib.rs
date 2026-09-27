@@ -28,6 +28,7 @@ pub use manifest::{
     SCHEMA_VERSION as MANIFEST_SCHEMA_VERSION,
 };
 pub use music::{MUSIC_FILE, music_envelope};
+pub use overlays::{EMOJI_DIR, emoji_files};
 pub use plan::{
     ASS_FILE, CLIP_FILE, LoudnessMeasurement, MANIFEST_FILE, RenderError, RenderPlan, SRT_FILE,
     SegmentReport, SourceInput, VTT_FILE, compile, largest_upscale,

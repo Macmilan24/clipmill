@@ -1922,8 +1922,9 @@ pub struct PreviewLogoV1 {
     #[prost(uint32, tag = "6")]
     pub opacity: u32,
 }
-/// A text laid over the program, for the editor to show, select and move. Its
-/// pixels come from the plan's script, which draws it as the render will.
+/// A text or an emoji laid over the program, for the editor to show, select
+/// and move. A text's pixels come from the plan's script, which draws it as
+/// the render will; an emoji is the pinned picture the render lays over.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PreviewOverlayV1 {
     #[prost(string, tag = "1")]
@@ -1936,6 +1937,7 @@ pub struct PreviewOverlayV1 {
     pub first_frame: i64,
     #[prost(int64, tag = "5")]
     pub end_frame: i64,
+    /// Empty for an emoji.
     #[prost(string, tag = "6")]
     pub text: ::prost::alloc::string::String,
     /// hook or label.
@@ -1946,7 +1948,8 @@ pub struct PreviewOverlayV1 {
     pub x: u32,
     #[prost(uint32, tag = "9")]
     pub y: u32,
-    /// Its size at the 1920-pixel design height.
+    /// A text's size at the 1920-pixel design height; an emoji's side, per
+    /// mille of the frame's short side.
     #[prost(uint32, tag = "10")]
     pub size: u32,
     #[prost(string, tag = "11")]
@@ -1954,6 +1957,12 @@ pub struct PreviewOverlayV1 {
     /// The plate behind it; empty draws an outline.
     #[prost(string, tag = "12")]
     pub plate: ::prost::alloc::string::String,
+    /// text or emoji.
+    #[prost(string, tag = "13")]
+    pub kind: ::prost::alloc::string::String,
+    /// An emoji's code, as its picture is named: 1f525, or 1f44f_1f3fd.
+    #[prost(string, tag = "14")]
+    pub emoji: ::prost::alloc::string::String,
 }
 /// One segment of the program, and where in the source it plays.
 ///

@@ -1608,7 +1608,7 @@ class PreviewLogoV1(_message.Message):
     def __init__(self, asset: _Optional[str] = ..., corner: _Optional[str] = ..., side: _Optional[int] = ..., inset_x: _Optional[int] = ..., inset_y: _Optional[int] = ..., opacity: _Optional[int] = ...) -> None: ...
 
 class PreviewOverlayV1(_message.Message):
-    __slots__ = ("overlay_id", "start_ticks", "end_ticks", "first_frame", "end_frame", "text", "role", "x", "y", "size", "colour", "plate")
+    __slots__ = ("overlay_id", "start_ticks", "end_ticks", "first_frame", "end_frame", "text", "role", "x", "y", "size", "colour", "plate", "kind", "emoji")
     OVERLAY_ID_FIELD_NUMBER: _ClassVar[int]
     START_TICKS_FIELD_NUMBER: _ClassVar[int]
     END_TICKS_FIELD_NUMBER: _ClassVar[int]
@@ -1621,6 +1621,8 @@ class PreviewOverlayV1(_message.Message):
     SIZE_FIELD_NUMBER: _ClassVar[int]
     COLOUR_FIELD_NUMBER: _ClassVar[int]
     PLATE_FIELD_NUMBER: _ClassVar[int]
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    EMOJI_FIELD_NUMBER: _ClassVar[int]
     overlay_id: str
     start_ticks: int
     end_ticks: int
@@ -1633,7 +1635,9 @@ class PreviewOverlayV1(_message.Message):
     size: int
     colour: str
     plate: str
-    def __init__(self, overlay_id: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., text: _Optional[str] = ..., role: _Optional[str] = ..., x: _Optional[int] = ..., y: _Optional[int] = ..., size: _Optional[int] = ..., colour: _Optional[str] = ..., plate: _Optional[str] = ...) -> None: ...
+    kind: str
+    emoji: str
+    def __init__(self, overlay_id: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., text: _Optional[str] = ..., role: _Optional[str] = ..., x: _Optional[int] = ..., y: _Optional[int] = ..., size: _Optional[int] = ..., colour: _Optional[str] = ..., plate: _Optional[str] = ..., kind: _Optional[str] = ..., emoji: _Optional[str] = ...) -> None: ...
 
 class PreviewSegmentV1(_message.Message):
     __slots__ = ("segment_id", "source_fingerprint", "in_ticks", "out_ticks", "program_start_ticks", "first_frame", "end_frame", "has_two_up_paths", "framing_warning", "layout", "upper_height", "has_inset", "inset_x", "inset_y", "inset_side", "background_colour", "zoom_percent")

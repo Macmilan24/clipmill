@@ -622,6 +622,14 @@ export function assetUrl(hash: string): string {
     : `clipmill-media://localhost/${path}`;
 }
 
+/** Where the editor loads a pinned emoji's picture from, by its code. */
+export function emojiUrl(code: string): string {
+  const path = `emoji/${encodeURIComponent(code)}.png`;
+  return navigator.userAgent.includes('Windows')
+    ? `http://clipmill-media.localhost/${path}`
+    : `clipmill-media://localhost/${path}`;
+}
+
 /** Where the player loads a pinned caption font from. */
 export function captionFontUrl(file: string): string {
   const path = `fonts/${encodeURIComponent(file)}`;
@@ -1046,16 +1054,24 @@ export interface PreviewTransition {
  */
 export interface PreviewOverlay {
   readonly overlayId: string;
+  /** Absent from plans made before emoji, which held texts only. */
+  readonly kind?: 'text' | 'emoji';
+  /** An emoji's code, as its picture is named. */
+  readonly emoji?: string | null;
   readonly startTicks: number;
   readonly endTicks: number;
   readonly firstFrame: number;
   readonly endFrame: number;
+  /** Empty for an emoji. */
   readonly text: string;
   readonly role: 'hook' | 'label';
   /** Its centre, per mille of the frame's width and height. */
   readonly x: number;
   readonly y: number;
-  /** Its size at the 1920-pixel design height. */
+  /**
+   * A text's size at the 1920-pixel design height; an emoji's side, per mille
+   * of the frame's short side.
+   */
   readonly size: number;
   readonly colour: string;
   /** The plate behind it; absent draws an outline. */

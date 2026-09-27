@@ -7,6 +7,7 @@
 //! still violate a profile on dense speech.
 
 mod document;
+pub mod emoji;
 pub mod fonts;
 pub mod lexicon;
 pub mod presets;
@@ -15,6 +16,7 @@ pub mod segment;
 pub mod validate;
 
 pub use document::{DeriveError, DeriveRequest, Inputs, captionable_word, derive};
+pub use emoji::{EMOJI, Emoji, emoji, emoji_for_word};
 pub use fonts::{CaptionFont, DEFAULT_FONT, FONTS, font};
 pub use lexicon::{Break, FILLER_LEXICON};
 pub use presets::{Animation, Border, Colour, DEFAULT_STYLE_REF, PRESETS, Preset, preset};

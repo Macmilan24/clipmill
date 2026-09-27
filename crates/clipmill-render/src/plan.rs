@@ -467,8 +467,13 @@ pub fn compile(
         paths,
     } = lay_out(document, sources, rate)?;
 
-    let burn =
-        (!document.captions.cues.is_empty() || !document.overlays.is_empty()).then_some(ASS_FILE);
+    // Emoji are laid as pictures; only captions and words need libass.
+    let burn = (!document.captions.cues.is_empty()
+        || document
+            .overlays
+            .iter()
+            .any(clipmill_edit_ir::Overlay::is_text))
+    .then_some(ASS_FILE);
     let graph = graph::build(&GraphRequest {
         document,
         profile,
@@ -527,6 +532,8 @@ pub enum RenderError {
     CueOutsideProgram(String),
     #[error("overlay {0} starts after the end of the program")]
     OverlayOutsideProgram(String),
+    #[error("{0} is not one of the emoji the app offers")]
+    UnknownEmoji(String),
     #[error("cue {cue_id} carries {character:?}, which cannot be rendered as caption text")]
     UnrenderableCaptionText { cue_id: String, character: char },
     #[error("segment {0} asks for speaker fill without a crop path")]

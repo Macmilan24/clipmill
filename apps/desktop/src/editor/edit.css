@@ -446,6 +446,43 @@
   resize: vertical;
 }
 
+/* The emoji a clip can show, one click each. */
+.edit-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.edit-emoji-grid button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.edit-emoji-grid button:hover:not(:disabled) {
+  background: var(--cm-recessed);
+}
+
+.edit-emoji-grid img {
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+}
+
+/* An emoji set among words: a list row, a menu item, a timeline block. */
+.edit-emoji-inline {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.25em;
+  object-fit: contain;
+  line-height: 1;
+}
+
 .edit-text-looks {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -970,6 +1007,39 @@
   background: transparent !important;
 }
 
+/*
+ * An emoji over the picture: its pinned picture, placed and sized as the
+ * render lays it, under the captions as the export draws it.
+ */
+.edit-overlay-emoji {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.edit-overlay-emoji img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.edit-overlay-emoji:hover,
+.edit-overlay-emoji[data-selected='true'] {
+  outline: 1px dashed rgb(255 255 255 / 0.7);
+  outline-offset: 4px;
+}
+
+.edit-overlay-emoji[data-dragging='true'] {
+  cursor: grabbing;
+}
+
 .edit-stage:has(.edit-overlay-text[data-dragging='true']) .edit-caption-layer {
   opacity: 0.25;
 }
@@ -1233,16 +1303,17 @@
 }
 
 /* The brand over the preview: placed as the render places it. */
+/* Level with the captions' layer and before it, so under it, as exported. */
 .edit-brand-bar {
   position: absolute;
-  z-index: 2;
+  z-index: 1;
   left: 0;
   pointer-events: none;
 }
 
 .edit-brand-logo {
   position: absolute;
-  z-index: 2;
+  z-index: 1;
   object-fit: contain;
   pointer-events: none;
 }

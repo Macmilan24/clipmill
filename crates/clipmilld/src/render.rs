@@ -120,14 +120,17 @@ pub(crate) struct RenderContext<'a> {
     /// The person's own pictures and sounds, which a brand or a music bed
     /// names by hash.
     pub assets_dir: &'a Path,
+    /// The pinned emoji pictures.
+    pub emoji_dir: &'a Path,
 }
 
-/// What a render draws from besides the recording: the pinned caption fonts
-/// and the person's assets.
+/// What a render draws from besides the recording, each a directory: the
+/// pinned caption fonts, the person's assets and the pinned emoji pictures.
 #[derive(Clone, Debug)]
 pub(crate) struct RenderResources {
-    pub fonts_dir: std::path::PathBuf,
-    pub assets_dir: std::path::PathBuf,
+    pub fonts: std::path::PathBuf,
+    pub assets: std::path::PathBuf,
+    pub emoji: std::path::PathBuf,
 }
 
 pub(crate) async fn execute_render_task(
@@ -174,27 +177,9 @@ pub(crate) async fn execute_render_task(
         .and_then(|brand| brand.logo.as_ref())
         .map(|logo| verified_asset(context.assets_dir, &logo.asset))
         .transpose()?;
-    // Whatever the render draws or plays besides the footage, with the
-    // licence the document holds for it, for the manifest to state.
-    let assets = document
-        .brand
-        .as_ref()
-        .and_then(|brand| brand.logo.as_ref())
-        .map(|logo| logo.asset.as_str())
-        .into_iter()
-        .chain(
-            document
-                .audio
-                .music
-                .as_ref()
-                .map(|music| music.asset.as_str()),
-        )
-        .filter_map(|hash| document.assets.iter().find(|asset| asset.hash == hash))
-        .map(|asset| clipmill_render::AssetRight {
-            hash: asset.hash.clone(),
-            license: asset.license.clone(),
-        })
-        .collect::<Vec<_>>();
+    let assets = asset_rights(&document);
+    // The pinned pictures of the emoji the clip shows, with their digests.
+    let emoji = pinned_emoji(context.emoji_dir, &document)?;
     // The music under the voice, likewise.
     let music = document
         .audio
@@ -211,6 +196,7 @@ pub(crate) async fn execute_render_task(
         &font,
         &payload,
         ir_artifact_id,
+        &emoji,
     )?;
     let staging = match prepare_or_hit(context.artifacts, recipe).await? {
         // A warm render is a lookup. Nothing is decoded, nothing is encoded.
@@ -227,6 +213,7 @@ pub(crate) async fn execute_render_task(
             logo: logo.as_deref(),
             music: music.as_deref(),
             assets: &assets,
+            emoji: &emoji,
             payload: &payload,
             ir_artifact_id,
             ir_hash,
@@ -250,6 +237,53 @@ struct PinnedFont {
     file_name: String,
     family: String,
     sha256: String,
+}
+
+/// Whatever the render draws or plays besides the footage, with the licence
+/// the document holds for it, for the manifest to state.
+fn asset_rights(document: &EditDocument) -> Vec<clipmill_render::AssetRight> {
+    let logo = document
+        .brand
+        .as_ref()
+        .and_then(|brand| brand.logo.as_ref())
+        .map(|logo| logo.asset.as_str());
+    let music = document
+        .audio
+        .music
+        .as_ref()
+        .map(|music| music.asset.as_str());
+    logo.into_iter()
+        .chain(music)
+        .filter_map(|hash| document.assets.iter().find(|asset| asset.hash == hash))
+        .map(|asset| clipmill_render::AssetRight {
+            hash: asset.hash.clone(),
+            license: asset.license.clone(),
+        })
+        .collect()
+}
+
+/// The pinned pictures of the emoji a document shows: each file's name, its
+/// place among the pins, and its digest for the recipe.
+fn pinned_emoji(
+    emoji_dir: &Path,
+    document: &EditDocument,
+) -> Result<Vec<(String, PathBuf, String)>, TaskExecutionError> {
+    clipmill_render::emoji_files(&document.overlays)
+        .into_iter()
+        .map(|file| {
+            let path = emoji_dir.join(&file);
+            let bytes = fs::read(&path).map_err(|_| {
+                TaskExecutionError::deterministic(
+                    "an emoji this clip shows is not installed; run ./tools/fetch-ffmpeg.sh",
+                )
+            })?;
+            let digest = format!(
+                "sha256:{}",
+                Sha256Digest::from_bytes(Sha256::digest(&bytes).into())
+            );
+            Ok((file, path, digest))
+        })
+        .collect()
 }
 
 /// An asset's file, checked against the hash the document names it by, so a
@@ -481,8 +515,18 @@ fn render_recipe(
     font: &PinnedFont,
     payload: &RenderClipPayloadV1,
     ir_artifact_id: ArtifactId,
+    emoji: &[(String, PathBuf, String)],
 ) -> Result<ArtifactRecipe, TaskExecutionError> {
     let mut config = plan.recipe_config();
+    // The emoji pictures are inputs as the font is: a new pin is a new render.
+    // Absent without any, so a clip with none keeps its address.
+    if !emoji.is_empty() {
+        let digests = emoji
+            .iter()
+            .map(|(file, _, digest)| (file.clone(), json!(digest)))
+            .collect::<serde_json::Map<_, _>>();
+        config.insert("emoji".to_owned(), Value::Object(digests));
+    }
     config.insert("ffmpeg_bom".to_owned(), json!(FFMPEG_BOM));
     config.insert(
         "font".to_owned(),
@@ -527,6 +571,8 @@ struct Rendered<'a> {
     music: Option<&'a Path>,
     /// The pictures and sounds drawn or played, with their licences.
     assets: &'a [clipmill_render::AssetRight],
+    /// The emoji pictures to stage: file name, pinned path, digest.
+    emoji: &'a [(String, PathBuf, String)],
     payload: &'a RenderClipPayloadV1,
     ir_artifact_id: ArtifactId,
     ir_hash: String,
@@ -553,6 +599,15 @@ async fn render_into(
     if let Some(logo) = rendered.logo {
         fs::copy(logo, &logo_file)
             .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
+    let emoji_dir = work.join(clipmill_render::EMOJI_DIR);
+    if !rendered.emoji.is_empty() {
+        fs::create_dir_all(&emoji_dir)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+        for (file, path, _) in rendered.emoji {
+            fs::copy(path, emoji_dir.join(file))
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+        }
     }
     let music_file = work.join(clipmill_render::MUSIC_FILE);
     if let Some(music) = rendered.music {
@@ -615,6 +670,10 @@ async fn render_into(
     }
     if rendered.music.is_some() {
         fs::remove_file(&music_file)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
+    if !rendered.emoji.is_empty() {
+        fs::remove_dir_all(&emoji_dir)
             .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     }
 
@@ -829,4 +888,60 @@ fn input_fingerprints(plan: &RenderPlan) -> Vec<String> {
         .into_iter()
         .map(|(fingerprint, _)| fingerprint)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use clipmill_edit_ir::{EditDocument, Overlay, OverlayContent};
+
+    use super::pinned_emoji;
+
+    fn showing(codes: &[&str]) -> EditDocument {
+        EditDocument {
+            overlays: codes
+                .iter()
+                .enumerate()
+                .map(|(index, code)| Overlay {
+                    overlay_id: format!("ovl_{index}"),
+                    start_ticks: 0,
+                    end_ticks: 90_000,
+                    content: OverlayContent::Emoji {
+                        emoji: (*code).to_owned(),
+                        x: 500,
+                        y: 640,
+                        size: 180,
+                    },
+                })
+                .collect(),
+            ..EditDocument::default()
+        }
+    }
+
+    /// Each emoji a clip shows is staged once, from its pinned picture, with
+    /// the digest its recipe records; one that is not installed stops the
+    /// render with what to do about it, rather than drawing nothing.
+    #[test]
+    fn the_emoji_a_clip_shows_are_staged_from_their_pins() {
+        let dir = tempfile::tempdir().expect("a folder");
+        std::fs::write(dir.path().join("emoji_u1f525.png"), b"fire").expect("a picture");
+        let staged = pinned_emoji(dir.path(), &showing(&["1f525", "1f525"])).expect("installed");
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].0, "emoji_u1f525.png");
+        assert_eq!(staged[0].1, dir.path().join("emoji_u1f525.png"));
+        assert_eq!(
+            staged[0].2,
+            "sha256:dc9f28b12dd1818ee42ffc92ecb940386214598837348d30d3c6c0b7b57e34c9"
+        );
+        assert!(
+            pinned_emoji(dir.path(), &showing(&[]))
+                .expect("none")
+                .is_empty()
+        );
+        let missing = pinned_emoji(dir.path(), &showing(&["1f4a1"])).expect_err("not installed");
+        let told = format!("{missing:?}");
+        assert!(told.contains("Deterministic"), "{told}");
+        assert!(told.contains("fetch-ffmpeg"), "{told}");
+    }
 }
