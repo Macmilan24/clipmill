@@ -207,7 +207,7 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     chains.extend(audio_chains(request));
 
     if !request.audio_only {
-        finish_picture(request, &mut chains);
+        finish_picture(request, &mut chains)?;
     }
 
     Ok(FilterGraph {
@@ -245,8 +245,9 @@ fn progress_chain(
     )
 }
 
-/// The program's picture made final: the brand over it, then the captions.
-fn finish_picture(request: &GraphRequest<'_>, chains: &mut Vec<String>) {
+/// The program's picture made final: the brand and the emoji over it, then
+/// the captions and the text.
+fn finish_picture(request: &GraphRequest<'_>, chains: &mut Vec<String>) -> Result<(), RenderError> {
     let brand = request.document.brand.as_ref();
     let mut picture = "[vcat]";
     if let Some(bar) = brand.and_then(|brand| brand.progress.as_ref()) {
@@ -264,12 +265,21 @@ fn finish_picture(request: &GraphRequest<'_>, chains: &mut Vec<String>) {
         chains.extend(logo_chains(logo, request.profile, picture, "[vlogo]"));
         picture = "[vlogo]";
     }
+    let (emoji, emoji_picture) = crate::overlays::emoji_chains(
+        &request.document.overlays,
+        request.profile.rate(),
+        (request.profile.width, request.profile.height),
+        picture,
+    )?;
+    chains.extend(emoji);
+    let picture = emoji_picture;
     chains.push(match request.subtitle_file {
         // libass sees exactly one directory holding exactly one pinned
         // font, so the render cannot pick up whatever the host installed.
         Some(file) => format!("{picture}subtitles=filename={file}:fontsdir={FONTS_DIR}[vout]"),
         None => format!("{picture}null[vout]"),
     });
+    Ok(())
 }
 
 /// Where the logo's file is staged, beside the captions, for `movie` to read.

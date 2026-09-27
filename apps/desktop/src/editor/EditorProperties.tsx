@@ -136,6 +136,8 @@ export interface EditorPropertiesProps {
   readonly words?: readonly ProgramWord[];
   /** The person's pictures and sounds; absent outside the app. */
   readonly assets?: AssetAccess | null;
+  /** Where a pinned emoji's picture loads from; absent draws the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
 }
 
 export function EditorProperties(props: EditorPropertiesProps) {

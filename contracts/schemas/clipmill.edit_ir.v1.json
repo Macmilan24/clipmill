@@ -387,6 +387,40 @@
                   "$ref": "#/$defs/hexColour"
                 }
               }
+            },
+            {
+              "description": "A colour emoji, drawn from its pinned picture.",
+              "type": "object",
+              "required": ["kind", "emoji", "x", "y", "size"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "emoji"
+                },
+                "emoji": {
+                  "description": "Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.",
+                  "type": "string",
+                  "pattern": "^[0-9a-f_]{4,40}$"
+                },
+                "x": {
+                  "description": "Where its centre sits, per mille of the frame's width.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "y": {
+                  "description": "Where its centre sits, per mille of the frame's height.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "size": {
+                  "description": "Its side, per mille of the frame's short side.",
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 400
+                }
+              }
             }
           ]
         }

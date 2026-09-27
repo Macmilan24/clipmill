@@ -297,6 +297,7 @@ export function EditorScreen({
           : null
       }
       fontUrl={api.captionFontUrl ?? null}
+      emojiUrl={api.emojiUrl ?? null}
       previewCaptions={
         api.previewCaptions && clip
           ? async (draft) => {

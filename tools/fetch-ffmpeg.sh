@@ -120,6 +120,35 @@ for face in $(bom_get fonts.faces ids | tr ',' ' '); do
   mv ".cache/fonts/$face_license.part" ".cache/fonts/$face_license"
 done
 
+# ---- Emoji -------------------------------------------------------------------
+# Colour emoji, one pinned PNG each, drawn over clips as pictures. An image
+# already installed at its pin is left alone.
+mkdir -p .cache/emoji
+emoji_base="$(bom_get emoji base_url)"
+[ -n "$emoji_base" ] || { echo "fetch-ffmpeg: no emoji pin in bom.toml" >&2; exit 1; }
+emoji_fetched=0
+for code in $(bom_get emoji ids | tr ',' ' '); do
+  emoji_file=".cache/emoji/emoji_u${code}.png"
+  emoji_want="$(bom_get emoji.sha256 "$code")"
+  [ -n "$emoji_want" ] || { echo "fetch-ffmpeg: no digest for emoji $code in bom.toml" >&2; exit 1; }
+  if [ -f "$emoji_file" ] && [ "$(sha256 "$emoji_file")" = "$emoji_want" ]; then
+    continue
+  fi
+  curl -sSfL "$emoji_base/emoji_u${code}.png" -o "$emoji_file.part"
+  verify "emoji $code" "$emoji_file.part" "$emoji_want"
+  mv "$emoji_file.part" "$emoji_file"
+  emoji_fetched=$((emoji_fetched + 1))
+done
+for pair in "license:LICENSE.txt" "notice:NOTICE-README.md"; do
+  key="${pair%%:*}"
+  target=".cache/emoji/${pair#*:}"
+  want="$(bom_get emoji "${key}_sha256")"
+  if [ -f "$target" ] && [ "$(sha256 "$target")" = "$want" ]; then continue; fi
+  curl -sSfL "$(bom_get emoji "${key}_url")" -o "$target.part"
+  verify "emoji $key" "$target.part" "$want"
+  mv "$target.part" "$target"
+done
+echo "emoji: pinned set installed ($emoji_fetched fetched)"
 # ---- Capability probe -------------------------------------------------------
 # Burned-in captions are not optional, so a build without libass is a failed
 # fetch rather than a render that discovers it hours later.

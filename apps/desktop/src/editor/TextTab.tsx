@@ -1,19 +1,31 @@
 /**
- * The Text tab: a hook title that opens the clip, and labels anywhere else.
+ * The Text tab: a hook title that opens the clip, labels anywhere else, and
+ * emoji — picked one at a time, or put on the words that call for them.
  *
- * Each text is one overlay the document keeps in program time. Adding one
- * selects it; everything about it — words, look, size, place and when it is
+ * Each is one overlay the document keeps in program time. Adding one selects
+ * it; everything about it — words or emoji, look, size, place and when it is
  * up — is changed here, and its place can also be dragged on the preview.
  */
-import { Heading1, Plus, Trash2 } from 'lucide-react';
+import { Heading1, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select.js';
 import type { EditCommandJson, PreviewOverlay, PreviewPlan } from '../daemon/client.js';
 import { clockTenths } from '../inspector/review.js';
+import { EmojiPicture } from './EmojiPicture.js';
+import { batch } from './commands.js';
 import { CommitSlider, Field, Swatch } from './controls.js';
+import { EMOJI, EMOJI_SIZES, emojiOf, emojiOverlay, emojiOverlays, keywordEmoji } from './emoji.js';
 import {
+  type Overlay,
   TEXT_LOOKS,
   TEXT_PLACES,
   TEXT_SIZES,
@@ -30,9 +42,12 @@ import {
   withContent,
 } from './overlays.js';
 import type { EditorSelection } from './selection.js';
-import { frameOfTicks, ticksOfFrame } from './timeline.js';
+import { frameOfTicks, programTicks, ticksOfFrame } from './timeline.js';
+import type { ProgramWord } from './transcript.js';
 
 const TICKS = 90_000;
+/** The emoji shown before the rest are asked for: one row. */
+const FIRST_EMOJI = 8;
 
 export interface TextTabProps {
   readonly plan: PreviewPlan;
@@ -44,6 +59,10 @@ export interface TextTabProps {
   readonly onSeek: (frame: number) => void;
   /** What a new hook title says until it is changed. */
   readonly hook: string;
+  /** The clip's words in program time, for emoji on the ones that call for one. */
+  readonly words?: readonly ProgramWord[];
+  /** Where a pinned emoji's picture loads from; absent shows the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
 }
 
 export function TextTab({
@@ -55,18 +74,38 @@ export function TextTab({
   onSelect,
   onSeek,
   hook,
+  words = [],
+  emojiUrl = null,
 }: TextTabProps) {
   const overlays = plan.overlays ?? [];
   const selected =
     selection.kind === 'overlay'
       ? overlays.find((overlay) => overlay.overlayId === selection.overlayId)
       : undefined;
-  const hasHook = overlays.some((overlay) => overlay.role === 'hook');
+  const hasHook = overlays.some((overlay) => overlay.kind !== 'emoji' && overlay.role === 'hook');
   const ids = overlays.map((overlay) => ({ overlay_id: overlay.overlayId }));
-  const add = (overlay: ReturnType<typeof hookOverlay>) => {
+  const add = (overlay: Overlay) => {
     onApply(addOverlay(overlay));
     onSelect({ kind: 'overlay', overlayId: overlay.overlay_id });
     onSeek(frameOfTicks(plan, overlay.start_ticks));
+  };
+  const [everyEmoji, setEveryEmoji] = useState(false);
+  const [emojiNote, setEmojiNote] = useState<string | null>(null);
+  const placed = emojiOverlays(plan);
+  const onWords = () => {
+    const made = keywordEmoji(words, plan);
+    if (made.length === 0) {
+      setEmojiNote(
+        words.length === 0
+          ? 'This clip has no transcript to find words in.'
+          : 'No word in this clip calls for one that does not already have one near it.',
+      );
+      return;
+    }
+    onApply(batch(made.map((overlay) => addOverlay(overlay))));
+    setEmojiNote(
+      `Added ${made.length} where words call for one. Undo takes them all back together.`,
+    );
   };
 
   return (
@@ -98,8 +137,60 @@ export function TextTab({
             ? 'The hook opens the clip. Add more text at the playhead, and drag any of it on the preview.'
             : 'A hook title says in a few words what the clip is about, over its opening seconds.'}
         </p>
-        {overlays.length > 0 && (
-          <ul className="edit-text-list" aria-label="Texts">
+      </section>
+
+      <section className="review-section">
+        <h3 className="review-section-title">Emoji</h3>
+        <div className="edit-emoji-grid" role="group" aria-label="Emoji">
+          {(everyEmoji ? EMOJI : EMOJI.slice(0, FIRST_EMOJI)).map((entry) => (
+            <button
+              key={entry.code}
+              type="button"
+              title={entry.label}
+              aria-label={`Add ${entry.label}`}
+              disabled={busy}
+              onClick={() =>
+                add(emojiOverlay(freshOverlayId(ids), entry.code, ticksOfFrame(plan, frame), plan))
+              }
+            >
+              <EmojiPicture code={entry.code} url={emojiUrl} />
+            </button>
+          ))}
+        </div>
+        <div className="edit-inline">
+          <Button size="sm" variant="ghost" onClick={() => setEveryEmoji(!everyEmoji)}>
+            {everyEmoji ? 'Fewer' : `All ${EMOJI.length}`}
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={onWords}>
+            <Sparkles className="size-4" aria-hidden="true" />
+            On key words
+          </Button>
+          {placed.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                onApply(batch(placed.map((overlay) => removeOverlay(overlay.overlayId))));
+                if (selected?.kind === 'emoji') onSelect({ kind: 'clip' });
+                setEmojiNote(null);
+              }}
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+              Remove all {placed.length}
+            </Button>
+          )}
+        </div>
+        <p className="review-footnote">
+          {emojiNote ??
+            'Pick one to put it at the playhead for a moment. On key words puts one where a word calls for it — money, idea, mistake — at least three seconds apart.'}
+        </p>
+      </section>
+
+      {overlays.length > 0 && (
+        <section className="review-section">
+          <h3 className="review-section-title">On the picture</h3>
+          <ul className="edit-text-list" aria-label="Texts and emoji">
             {overlays.map((overlay) => (
               <li key={overlay.overlayId}>
                 <button
@@ -111,9 +202,20 @@ export function TextTab({
                   }}
                 >
                   <span className="edit-text-role">
-                    {overlay.role === 'hook' ? 'Hook' : 'Text'}
+                    {overlay.kind === 'emoji' ? 'Emoji' : overlay.role === 'hook' ? 'Hook' : 'Text'}
                   </span>
-                  <span className="edit-text-words">{overlay.text.replace(/\n/g, ' ')}</span>
+                  {overlay.kind === 'emoji' ? (
+                    <span className="edit-text-words">
+                      <EmojiPicture
+                        code={overlay.emoji ?? ''}
+                        url={emojiUrl}
+                        className="edit-emoji-inline"
+                      />{' '}
+                      {emojiOf(overlay.emoji)?.label ?? 'Emoji'}
+                    </span>
+                  ) : (
+                    <span className="edit-text-words">{overlay.text.replace(/\n/g, ' ')}</span>
+                  )}
                   <span className="edit-text-time mono">
                     {clockTenths(overlay.startTicks)}–{clockTenths(overlay.endTicks)}
                   </span>
@@ -121,20 +223,136 @@ export function TextTab({
               </li>
             ))}
           </ul>
-        )}
-      </section>
-      {selected && (
-        <TextControls
+        </section>
+      )}
+      {selected?.kind === 'emoji' ? (
+        <EmojiControls
           key={selected.overlayId}
           plan={plan}
           frame={frame}
           overlay={selected}
           busy={busy}
+          emojiUrl={emojiUrl}
           onApply={onApply}
           onRemoved={() => onSelect({ kind: 'clip' })}
         />
+      ) : (
+        selected && (
+          <TextControls
+            key={selected.overlayId}
+            plan={plan}
+            frame={frame}
+            overlay={selected}
+            busy={busy}
+            onApply={onApply}
+            onRemoved={() => onSelect({ kind: 'clip' })}
+          />
+        )
       )}
     </div>
+  );
+}
+
+function EmojiControls({
+  plan,
+  frame,
+  overlay,
+  busy,
+  emojiUrl,
+  onApply,
+  onRemoved,
+}: {
+  readonly plan: PreviewPlan;
+  readonly frame: number;
+  readonly overlay: PreviewOverlay;
+  readonly busy: boolean;
+  readonly emojiUrl: ((code: string) => string) | null;
+  readonly onApply: (command: EditCommandJson) => void;
+  readonly onRemoved: () => void;
+}) {
+  const saved = savedOverlay(overlay);
+  const change = (next: Overlay) => onApply(setOverlay(next));
+  return (
+    <>
+      <section className="review-section">
+        <h3 className="review-section-title">This emoji</h3>
+        <Field label="Emoji">
+          <Select
+            value={overlay.emoji ?? ''}
+            disabled={busy}
+            onValueChange={(emoji) => change(withContent(saved, { emoji }))}
+          >
+            <SelectTrigger aria-label="Which emoji" className="h-8 w-[190px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EMOJI.map((entry) => (
+                <SelectItem key={entry.code} value={entry.code}>
+                  <EmojiPicture code={entry.code} url={emojiUrl} className="edit-emoji-inline" />{' '}
+                  {entry.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Size">
+          <CommitSlider
+            label="Emoji size"
+            min={EMOJI_SIZES.min / 10}
+            max={EMOJI_SIZES.max / 10}
+            value={Math.round(overlay.size / 10)}
+            disabled={busy}
+            format={(value) => `${value}%`}
+            onCommit={(value) => change(withContent(saved, { size: value * 10 }))}
+          />
+        </Field>
+        <Field label="Place">
+          <div className="review-segmented" role="group" aria-label="Emoji place">
+            {TEXT_PLACES.map((place) => (
+              <button
+                key={place.name}
+                type="button"
+                aria-pressed={overlay.x === 500 && overlay.y === place.y}
+                disabled={busy}
+                onClick={() => change(withContent(saved, { x: 500, y: place.y }))}
+              >
+                {place.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <p className="review-footnote">
+          Its size is a share of the frame’s short side. Drag it on the preview to put it anywhere.
+        </p>
+      </section>
+
+      <section className="review-section">
+        <h3 className="review-section-title">When it shows</h3>
+        <TextTiming
+          noun="Emoji"
+          startTicks={overlay.startTicks}
+          endTicks={overlay.endTicks}
+          programEnd={programTicks(plan)}
+          playhead={ticksOfFrame(plan, frame)}
+          busy={busy}
+          onCommit={(start, end) => change({ ...saved, start_ticks: start, end_ticks: end })}
+        />
+      </section>
+
+      <Button
+        size="sm"
+        variant="outline"
+        className="self-start"
+        disabled={busy}
+        onClick={() => {
+          onApply(removeOverlay(overlay.overlayId));
+          onRemoved();
+        }}
+      >
+        <Trash2 className="size-4" aria-hidden="true" />
+        Remove this emoji
+      </Button>
+    </>
   );
 }
 
@@ -154,7 +372,7 @@ function TextControls({
   readonly onRemoved: () => void;
 }) {
   const saved = savedOverlay(overlay);
-  const change = (next: typeof saved) => onApply(setOverlay(next));
+  const change = (next: Overlay) => onApply(setOverlay(next));
   const [words, setWords] = useState(overlay.text);
   useEffect(() => setWords(overlay.text), [overlay.text]);
   const commitWords = () => {
@@ -163,7 +381,7 @@ function TextControls({
     else setWords(overlay.text);
   };
   const wide = overflows(words, overlay.size, plan);
-  const programEnd = plan.segments.reduce((sum, part) => sum + part.outTicks - part.inTicks, 0);
+  const programEnd = programTicks(plan);
   const look = TEXT_LOOKS.find(
     (item) =>
       item.colour.toLowerCase() === overlay.colour.toLowerCase() &&
@@ -338,6 +556,7 @@ function TextControls({
 
 /** Seconds typed exactly, or taken from the playhead. */
 function TextTiming({
+  noun = 'Text',
   startTicks,
   endTicks,
   programEnd,
@@ -345,6 +564,8 @@ function TextTiming({
   busy,
   onCommit,
 }: {
+  /** What is being timed, for the fields' names. */
+  readonly noun?: string;
   readonly startTicks: number;
   readonly endTicks: number;
   readonly programEnd: number;
@@ -370,7 +591,7 @@ function TextTiming({
         <label className="edit-field-stack">
           <span className="edit-field-label">From</span>
           <Input
-            aria-label="Text starts at"
+            aria-label={`${noun} starts at`}
             className="h-8 w-24 font-mono"
             value={start}
             disabled={busy}
@@ -382,7 +603,7 @@ function TextTiming({
         <label className="edit-field-stack">
           <span className="edit-field-label">To</span>
           <Input
-            aria-label="Text ends at"
+            aria-label={`${noun} ends at`}
             className="h-8 w-24 font-mono"
             value={end}
             disabled={busy}

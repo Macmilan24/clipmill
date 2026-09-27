@@ -3049,6 +3049,46 @@ impl<'de> ::serde::Deserialize<'de> for HexColour {
 #[doc = "            }"]
 #[doc = "          },"]
 #[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        {"]
+#[doc = "          \"description\": \"A colour emoji, drawn from its pinned picture.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"emoji\","]
+#[doc = "            \"kind\","]
+#[doc = "            \"size\","]
+#[doc = "            \"x\","]
+#[doc = "            \"y\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"emoji\": {"]
+#[doc = "              \"description\": \"Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.\","]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^[0-9a-f_]{4,40}$\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"emoji\""]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"description\": \"Its side, per mille of the frame's short side.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 400.0,"]
+#[doc = "              \"minimum\": 60.0"]
+#[doc = "            },"]
+#[doc = "            \"x\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"y\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
 #[doc = "        }"]
 #[doc = "      ]"]
 #[doc = "    },"]
@@ -3144,6 +3184,46 @@ impl Overlay {
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"description\": \"A colour emoji, drawn from its pinned picture.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"emoji\","]
+#[doc = "        \"kind\","]
+#[doc = "        \"size\","]
+#[doc = "        \"x\","]
+#[doc = "        \"y\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"emoji\": {"]
+#[doc = "          \"description\": \"Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.\","]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^[0-9a-f_]{4,40}$\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"emoji\""]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"description\": \"Its side, per mille of the frame's short side.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 400.0,"]
+#[doc = "          \"minimum\": 60.0"]
+#[doc = "        },"]
+#[doc = "        \"x\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"y\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
 #[doc = "    }"]
 #[doc = "  ]"]
 #[doc = "}"]
@@ -3170,6 +3250,89 @@ pub enum OverlayContent {
         #[doc = "Where its centre sits, per mille of the frame's height."]
         y: i64,
     },
+    #[doc = "A colour emoji, drawn from its pinned picture."]
+    #[serde(rename = "emoji")]
+    Emoji {
+        #[doc = "Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence."]
+        emoji: OverlayContentEmoji,
+        #[doc = "Its side, per mille of the frame's short side."]
+        size: i64,
+        #[doc = "Where its centre sits, per mille of the frame's width."]
+        x: i64,
+        #[doc = "Where its centre sits, per mille of the frame's height."]
+        y: i64,
+    },
+}
+#[doc = "Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^[0-9a-f_]{4,40}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OverlayContentEmoji(::std::string::String);
+impl ::std::ops::Deref for OverlayContentEmoji {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OverlayContentEmoji> for ::std::string::String {
+    fn from(value: OverlayContentEmoji) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OverlayContentEmoji {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f_]{4,40}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f_]{4,40}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayContentEmoji {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayContentEmoji {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayContentEmoji {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OverlayContentEmoji {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 #[doc = "A hook opens the clip and names what it is about. Absent is a label."]
 #[doc = r""]

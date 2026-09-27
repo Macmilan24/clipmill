@@ -139,6 +139,8 @@ export interface EditorProps {
   readonly assets?: AssetAccess | null;
   /** Where a pinned caption font is served from. Absent keeps CSS captions. */
   readonly fontUrl?: ((file: string) => string) | null;
+  /** Where a pinned emoji's picture is served from. Absent draws the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
   /**
    * The captions under a look not chosen yet, as the export would write them.
    * Absent makes every look a saved choice, as before.
@@ -226,6 +228,7 @@ export function Editor({
   onFollow = null,
   loadFaces = null,
   fontUrl = null,
+  emojiUrl = null,
   previewCaptions = null,
   onLoadHistory = null,
   assets = null,
@@ -1084,6 +1087,7 @@ export function Editor({
           loadFaces={loadFaces}
           onFollow={onFollow ? (trackId) => onFollow(frame, trackId) : null}
           assetUrl={assets?.url ?? null}
+          emojiUrl={emojiUrl}
         />
         <div
           className="edit-resizer"
@@ -1112,6 +1116,7 @@ export function Editor({
           hook={hook}
           words={clipWords}
           assets={assets}
+          emojiUrl={emojiUrl}
         />
       </div>
       <div
@@ -1152,6 +1157,7 @@ export function Editor({
         onApply={onApply}
         onSplit={splitAt}
         onDeleteRange={deleteMarked}
+        emojiUrl={emojiUrl}
       />
     </div>
   );

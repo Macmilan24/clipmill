@@ -232,6 +232,17 @@ struct Prepared {
 }
 
 async fn prepare(socket: &Path, source_path: &Path, ingest: bool) -> Prepared {
+    prepare_with(socket, source_path, ingest, first_slice_document).await
+}
+
+/// A project with the source registered, and a document of it made by
+/// `document_of` from the source's fingerprint, snapshotted to render.
+async fn prepare_with(
+    socket: &Path,
+    source_path: &Path,
+    ingest: bool,
+    document_of: fn(&str) -> String,
+) -> Prepared {
     let project = create(socket, "req-project", "render gate")
         .await
         .expect("project");
@@ -255,7 +266,7 @@ async fn prepare(socket: &Path, source_path: &Path, ingest: bool) -> Prepared {
             settled.failure_detail
         );
     }
-    let document = first_slice_document(&source.source.expect("source").source_fingerprint);
+    let document = document_of(&source.source.expect("source").source_fingerprint);
     let doc_id = create_edit_doc(socket, "req-doc", &project.project_id, &document)
         .await
         .expect("edit document");
@@ -546,6 +557,92 @@ async fn re_explaining_an_edit_cannot_invalidate_the_render() {
     .await;
     assert_eq!(original, explained);
 
+    stop(shutdown, task).await;
+}
+
+/// The first slice with a fire emoji over its middle, large and centred.
+fn with_fire(fingerprint: &str) -> String {
+    let mut value: Value =
+        serde_json::from_str(&first_slice_document(fingerprint)).expect("document parses");
+    value["overlays"] = serde_json::json!([{
+        "overlay_id": "ovl_fire",
+        "start_ticks": 90_000,
+        "end_ticks": 198_000,
+        "content": { "kind": "emoji", "emoji": "1f525", "x": 500, "y": 500, "size": 400 }
+    }]);
+    serde_json::to_string(&value).expect("document serializes")
+}
+
+/// One pixel of a clip at a moment, averaged over the 2x2 around it.
+fn pixel_at(clip: &Path, at: &str, x: u32, y: u32) -> [u8; 3] {
+    let output = Command::new(workspace_tool("ffmpeg"))
+        .args(["-v", "error", "-ss", at, "-i"])
+        .arg(clip)
+        .args(["-frames:v", "1", "-vf"])
+        .arg(format!("crop=2:2:{x}:{y},scale=1:1"))
+        .args(["-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"])
+        .output()
+        .expect("decode a frame");
+    assert!(output.status.success(), "decoding failed");
+    assert_eq!(output.stdout.len(), 3);
+    [output.stdout[0], output.stdout[1], output.stdout[2]]
+}
+
+/// An emoji is an input of the render as the font is: drawn into the clip
+/// from its pinned picture, kept out of what is published, and part of the
+/// clip's address — a new pin is a new render, never a stale cache hit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the pinned FFmpeg sidecars, caption font and emoji"]
+async fn an_emoji_is_drawn_from_its_pin_and_a_new_pin_is_a_new_render() {
+    let temp = workspace_tempdir();
+    let source_path = temp.path().join("source.mp4");
+    generate_source(&workspace_tool("ffmpeg"), &source_path, 15);
+    let pinned = repo_root().join(".cache/emoji");
+    assert!(
+        pinned.join("emoji_u1f525.png").is_file(),
+        "the pinned emoji are missing; run ./tools/fetch-ffmpeg.sh"
+    );
+    let mut settings = config(&temp);
+    settings.emoji_dir = pinned.clone();
+    let (socket, artifacts, shutdown, task) = running(settings.clone()).await;
+    wait_until_ready(&socket).await.expect("daemon ready");
+
+    let prepared = prepare_with(&socket, &source_path, true, with_fire).await;
+    let drawn = render(&socket, &prepared, "req-emoji").await;
+    let lease = artifacts
+        .open(drawn.parse::<ArtifactId>().expect("artifact id"))
+        .await
+        .expect("the render artifact verifies");
+    let published = lease
+        .file_paths()
+        .expect("the artifact lists its files")
+        .into_iter()
+        .map(|path| path.to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        published.iter().all(|path| !path.starts_with("emoji/")),
+        "the staged emoji must not be published with the clip: {published:?}"
+    );
+    let clip = temp.path().join("emoji.mp4");
+    std::fs::write(&clip, read_payload(&lease, "clip.mp4")).expect("write the clip out");
+    // The flame's yellow heart, 432 pixels a side at the frame's centre.
+    let [r, g, b] = pixel_at(&clip, "1.5", 540, 960);
+    assert!(r > 200 && g > 190 && b < 160, "{:?}", [r, g, b]);
+    stop(shutdown, task).await;
+
+    // The same edit with another picture pinned under the name renders anew.
+    let repinned = temp.path().join("repinned");
+    std::fs::create_dir_all(&repinned).expect("a pin directory");
+    std::fs::copy(
+        pinned.join("emoji_u1f4a1.png"),
+        repinned.join("emoji_u1f525.png"),
+    )
+    .expect("another picture");
+    settings.emoji_dir = repinned;
+    let (socket, _artifacts, shutdown, task) = running(settings).await;
+    wait_until_ready(&socket).await.expect("daemon ready");
+    let redrawn = render(&socket, &prepared, "req-repinned").await;
+    assert_ne!(drawn, redrawn, "a new pin must not resolve to the old clip");
     stop(shutdown, task).await;
 }
 

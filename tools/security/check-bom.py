@@ -30,6 +30,7 @@ def main() -> int:
     parser.add_argument("--ffmpeg", type=Path, default=Path(".cache/bin/ffmpeg"))
     parser.add_argument("--ffprobe", type=Path, default=Path(".cache/bin/ffprobe"))
     parser.add_argument("--fonts", type=Path, default=Path(".cache/fonts"))
+    parser.add_argument("--emoji", type=Path, default=Path(".cache/emoji"))
     options = parser.parse_args()
     try:
         bom = tomllib.loads(options.bom.read_text(encoding="utf-8"))
@@ -76,6 +77,7 @@ def main() -> int:
         for name, path in (("ffmpeg", options.ffmpeg), ("ffprobe", options.ffprobe)):
             _verify_binary(name, path, version, allow_nonfree)
         _verify_font(bom, options.fonts)
+        _verify_emoji(bom, options.emoji)
     except (
         KeyError,
         OSError,
@@ -87,9 +89,49 @@ def main() -> int:
         return 1
     print(
         "bom-policy: OK (pinned hashes; runtime license flags match the "
-        "platform distribution policy; SQLite floor; caption font and libass)"
+        "platform distribution policy; SQLite floor; caption font and libass; emoji)"
     )
     return 0
+
+
+EMOJI_CODE_PATTERN = re.compile(r"^[0-9a-f]{4,5}(_[0-9a-f]{4,5})*$")
+
+
+def _verify_emoji(bom: dict, emoji_dir: Path) -> None:
+    """The emoji drawn over clips: a permitted licence, one pinned commit, digests."""
+    emoji = bom["emoji"]
+    if emoji.get("license") not in FONT_LICENSE_ALLOWLIST:
+        raise ValueError(f"emoji license {emoji.get('license')!r} is not permitted")
+    commit = str(emoji.get("commit"))
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise ValueError("emoji must be pinned to a commit")
+    for key in ("base_url", "license_url", "notice_url"):
+        url = urlparse(str(emoji[key]))
+        if (
+            url.scheme != "https"
+            or url.hostname != "raw.githubusercontent.com"
+            or not url.path.startswith(f"/googlefonts/noto-emoji/{commit}/")
+        ):
+            raise ValueError(f"emoji {key} is not a pinned upstream file")
+    for key in ("license_sha256", "notice_sha256"):
+        if SHA256_PATTERN.fullmatch(str(emoji.get(key))) is None:
+            raise ValueError(f"emoji {key} is invalid")
+    codes = [code for code in str(emoji["ids"]).split(",") if code]
+    digests = emoji["sha256"]
+    if sorted(codes) != sorted(digests) or len(codes) != len(set(codes)):
+        raise ValueError("the emoji list and its digests disagree")
+    for code in codes:
+        if EMOJI_CODE_PATTERN.fullmatch(code) is None:
+            raise ValueError(f"emoji {code!r} is not a code point name")
+        if SHA256_PATTERN.fullmatch(str(digests[code])) is None:
+            raise ValueError(f"emoji {code} digest is invalid")
+        installed = emoji_dir / f"emoji_u{code}.png"
+        if installed.is_symlink() or not installed.is_file():
+            raise ValueError(f"pinned emoji is missing or unsafe: {installed}")
+        if hashlib.sha256(installed.read_bytes()).hexdigest() != digests[code]:
+            raise ValueError(f"installed emoji {code} does not match its pinned digest")
+    if not (emoji_dir / "LICENSE.txt").is_file():
+        raise ValueError("the emoji licence text was not installed beside them")
 
 
 def _current_platform() -> str:

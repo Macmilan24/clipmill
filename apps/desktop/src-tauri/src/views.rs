@@ -809,6 +809,10 @@ pub struct PreviewProgressView {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewOverlayView {
     pub overlay_id: String,
+    /// `text` or `emoji`.
+    pub kind: String,
+    /// An emoji's code; absent for a text.
+    pub emoji: Option<String>,
     pub start_ticks: i64,
     pub end_ticks: i64,
     pub first_frame: i64,
@@ -1062,6 +1066,13 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 .into_iter()
                 .map(|overlay| PreviewOverlayView {
                     overlay_id: overlay.overlay_id,
+                    // A daemon from before emoji sends texts only.
+                    kind: if overlay.kind.is_empty() {
+                        "text".to_owned()
+                    } else {
+                        overlay.kind
+                    },
+                    emoji: (!overlay.emoji.is_empty()).then_some(overlay.emoji),
                     start_ticks: overlay.start_ticks,
                     end_ticks: overlay.end_ticks,
                     first_frame: overlay.first_frame,

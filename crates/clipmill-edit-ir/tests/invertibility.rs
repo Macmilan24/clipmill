@@ -682,6 +682,7 @@ fn published_contract_fixtures_load_into_the_operational_document() {
         "first_slice.json",
         "landscape_two_up.json",
         "hook_title.json",
+        "emoji_on_words.json",
     ] {
         let path = repo.join("contracts/fixtures/edit_ir/valid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {
@@ -706,6 +707,7 @@ fn published_contract_fixtures_load_into_the_operational_document() {
         "float-ticks.json",
         "empty-caption-line.json",
         "overlay-markup.json",
+        "emoji-path.json",
     ] {
         let path = repo.join("contracts/fixtures/edit_ir/invalid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {

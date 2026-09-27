@@ -59,6 +59,8 @@ import { type FaceNow, byTrack, facesAt, fittedFrame } from './faces.js';
 import { pressOrDrag } from './gesture.js';
 import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf, sourceTicksAt } from './player.js';
 import { FRAME_SHAPES, shapeOfFrame } from './layouts.js';
+import { EmojiPicture } from './EmojiPicture.js';
+import { emojiBox } from './emoji.js';
 import { overlaysAt, savedOverlay, setOverlay, withContent } from './overlays.js';
 import type { EditorSelection } from './selection.js';
 
@@ -147,6 +149,8 @@ export interface EditorMonitorProps {
   readonly onFollow?: ((trackId: number) => void) | null;
   /** Where the logo loads from; absent shows none. */
   readonly assetUrl?: ((hash: string) => string) | null;
+  /** Where a pinned emoji's picture loads from; absent draws the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
 }
 
 type CaptionOptions = NonNullable<EditIr['captions']['options']>;
@@ -171,6 +175,7 @@ export function EditorMonitor({
   loadFaces = null,
   onFollow = null,
   assetUrl = null,
+  emojiUrl = null,
 }: EditorMonitorProps) {
   const [view, setView] = useState<MonitorView>('edit');
   const [safe, setSafe] = useState<SafePlatform>('off');
@@ -301,6 +306,7 @@ export function EditorMonitor({
           captions={view === 'edit' ? captions : null}
           captionOptions={captionOptions}
           assetUrl={assetUrl}
+          emojiUrl={emojiUrl}
           faces={shown}
           onFollow={
             onFollow
@@ -383,8 +389,10 @@ function Stage({
   faces,
   onFollow,
   assetUrl,
+  emojiUrl,
 }: {
   readonly assetUrl: ((hash: string) => string) | null;
+  readonly emojiUrl: ((code: string) => string) | null;
   readonly captions: ExactCaptions | null;
   readonly captionOptions: CaptionOptions;
   readonly faces: readonly FaceNow[];
@@ -673,9 +681,12 @@ function Stage({
   };
 
   // Texts over the picture: shown, picked and moved here; drawn exactly by
-  // libass when it is drawing, when these only take the pointer.
+  // libass when it is drawing, when these only take the pointer. Emoji are
+  // pictures, drawn here as the render lays them, under the captions.
   const shownOverlays = overlaysAt(plan, frame);
-  const grabOverlay = (event: ReactPointerEvent<HTMLParagraphElement>, overlay: PreviewOverlay) => {
+  const shownTexts = shownOverlays.filter((overlay) => overlay.kind !== 'emoji');
+  const shownEmoji = shownOverlays.filter((overlay) => overlay.kind === 'emoji');
+  const grabOverlay = (event: ReactPointerEvent<HTMLElement>, overlay: PreviewOverlay) => {
     const box = stage.current?.getBoundingClientRect();
     const placed = (dx: number, dy: number) =>
       box
@@ -786,6 +797,34 @@ function Stage({
             onPointerDown={grabFrame}
           />
           {view === 'edit' && <BrandLayer plan={plan} frame={frame} assetUrl={assetUrl} />}
+          {view === 'edit' &&
+            shownEmoji.map((overlay) => {
+              const moved = overlayDrag?.overlayId === overlay.overlayId ? overlayDrag : null;
+              const box = emojiBox(overlay, plan);
+              return (
+                <div
+                  key={overlay.overlayId}
+                  className="edit-overlay-emoji"
+                  data-testid="overlay-emoji"
+                  data-selected={
+                    selection.kind === 'overlay' && selection.overlayId === overlay.overlayId
+                      ? 'true'
+                      : undefined
+                  }
+                  data-dragging={moved ? 'true' : undefined}
+                  onPointerDown={(event) => grabOverlay(event, overlay)}
+                  style={{
+                    left: moved ? share(moved.x) : share(box.cx / plan.width),
+                    top: moved ? share(moved.y) : share(box.cy / plan.height),
+                    width: share(box.side / plan.width),
+                    height: share(box.side / plan.height),
+                    fontSize: `${(box.side / plan.width) * 80}cqw`,
+                  }}
+                >
+                  <EmojiPicture code={overlay.emoji ?? ''} url={emojiUrl} />
+                </div>
+              );
+            })}
           {captions && (
             <CaptionCanvas
               ass={captions.ass}
@@ -918,7 +957,7 @@ function Stage({
       )}
       {proxyUrl &&
         view === 'edit' &&
-        shownOverlays.map((overlay) => {
+        shownTexts.map((overlay) => {
           const moved = overlayDrag?.overlayId === overlay.overlayId ? overlayDrag : null;
           return (
             <p

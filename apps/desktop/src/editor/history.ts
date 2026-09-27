@@ -23,8 +23,16 @@ const LOOKS: Record<string, string> = {
   boxed: 'Boxed',
 };
 
-/** What an edit did, in the words the editor's controls use. */
-export function describeCommand(command: EditCommandJson): string {
+/** What kind of thing an overlay command places: `text` or `emoji`. */
+function overlayKind(command: EditCommandJson | undefined): string | undefined {
+  return (command?.overlay as { content?: { kind?: string } } | undefined)?.content?.kind;
+}
+
+/**
+ * What an edit did, in the words the editor's controls use. The command that
+ * undoes it names what a removal took away, which the removal itself does not.
+ */
+export function describeCommand(command: EditCommandJson, inverse?: EditCommandJson): string {
   switch (command.op) {
     case 'batch': {
       const inner = (command.commands as readonly EditCommandJson[] | undefined) ?? [];
@@ -32,8 +40,16 @@ export function describeCommand(command: EditCommandJson): string {
       if (!first) return 'Edit';
       // A new shape carries its reshaped crops along; the shape is the edit.
       if (first.op === 'set_frame_shape') return describeCommand(first);
-      const labels = new Set(inner.map(describeCommand));
-      return labels.size === 1 ? describeCommand(first) : `${describeCommand(first)} and more`;
+      // A batch is undone by its steps' inverses, last first.
+      const undo = [...((inverse?.commands as readonly EditCommandJson[] | undefined) ?? [])];
+      undo.reverse();
+      const labels = inner.map((step, index) => describeCommand(step, undo[index]));
+      const distinct = new Set(labels);
+      if (distinct.size === 1 && inner.length > 1) {
+        if (labels[0] === 'Add an emoji') return `Add ${inner.length} emoji`;
+        if (labels[0] === 'Remove an emoji') return `Remove ${inner.length} emoji`;
+      }
+      return distinct.size === 1 ? labels[0]! : `${labels[0]!} and more`;
     }
     case 'set_caption_style': {
       const look = /\.(clean|minimal|boxed)\./.exec(String(command.style_ref))?.[1];
@@ -99,10 +115,11 @@ export function describeCommand(command: EditCommandJson): string {
       return command.title ? `Rename: ${String(command.title)}` : 'Clear the title';
     case 'add_overlay': {
       const overlay = command.overlay as { content?: { role?: string } } | undefined;
+      if (overlayKind(command) === 'emoji') return 'Add an emoji';
       return overlay?.content?.role === 'hook' ? 'Add a hook title' : 'Add text';
     }
     case 'remove_overlay':
-      return 'Remove text';
+      return overlayKind(inverse) === 'emoji' ? 'Remove an emoji' : 'Remove text';
     case 'set_punches':
       return 'Punch-ins';
     case 'set_brand':
@@ -112,7 +129,7 @@ export function describeCommand(command: EditCommandJson): string {
     case 'set_cleanup':
       return command.cleanup ? 'Clean up the voice' : 'Stop cleaning the voice';
     case 'set_overlay':
-      return 'Change text';
+      return overlayKind(command) === 'emoji' ? 'Change an emoji' : 'Change text';
     case 'set_frame_shape':
       return `Shape: ${FRAME_SHAPES.find((item) => item.shape === command.shape)?.ratio ?? 'changed'}`;
     default:
@@ -134,7 +151,10 @@ export function historySteps(entries: readonly EditHistoryEntry[]): readonly His
     try {
       steps.push({
         revision: entry.revision,
-        label: describeCommand(JSON.parse(entry.commandJson) as EditCommandJson),
+        label: describeCommand(
+          JSON.parse(entry.commandJson) as EditCommandJson,
+          JSON.parse(entry.inverseJson) as EditCommandJson,
+        ),
         appliedUnixMillis: entry.appliedUnixMillis,
         inverse: JSON.parse(entry.inverseJson) as EditCommandJson,
       });

@@ -119,7 +119,7 @@ pub(crate) fn write_ass(
         }
     }
     // Likewise the text styles, only for a clip with text over it.
-    if !overlays.is_empty() {
+    if overlays.iter().any(clipmill_edit_ir::Overlay::is_text) {
         lines.extend(crate::overlays::style_lines(style));
     }
     lines.push(String::new());

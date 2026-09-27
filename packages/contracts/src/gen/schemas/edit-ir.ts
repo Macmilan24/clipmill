@@ -352,29 +352,49 @@ export interface Overlay {
   overlay_id: string;
   start_ticks: number;
   end_ticks: number;
-  content: {
-    kind: "text";
-    text: string;
-    /**
-     * A hook opens the clip and names what it is about. Absent is a label.
-     */
-    role?: "hook" | "label";
-    /**
-     * Where its centre sits, per mille of the frame's width.
-     */
-    x: number;
-    /**
-     * Where its centre sits, per mille of the frame's height.
-     */
-    y: number;
-    /**
-     * Its size at the 1920-pixel design height.
-     */
-    size: number;
-    colour: HexColour;
-    /**
-     * An opaque plate behind the text. Absent draws an outline.
-     */
-    plate?: string;
-  };
+  content:
+    | {
+        kind: "text";
+        text: string;
+        /**
+         * A hook opens the clip and names what it is about. Absent is a label.
+         */
+        role?: "hook" | "label";
+        /**
+         * Where its centre sits, per mille of the frame's width.
+         */
+        x: number;
+        /**
+         * Where its centre sits, per mille of the frame's height.
+         */
+        y: number;
+        /**
+         * Its size at the 1920-pixel design height.
+         */
+        size: number;
+        colour: HexColour;
+        /**
+         * An opaque plate behind the text. Absent draws an outline.
+         */
+        plate?: string;
+      }
+    | {
+        kind: "emoji";
+        /**
+         * Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.
+         */
+        emoji: string;
+        /**
+         * Where its centre sits, per mille of the frame's width.
+         */
+        x: number;
+        /**
+         * Where its centre sits, per mille of the frame's height.
+         */
+        y: number;
+        /**
+         * Its side, per mille of the frame's short side.
+         */
+        size: number;
+      };
 }

@@ -961,6 +961,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let media = Arc::new(
         media::MediaProtocol::new(Arc::clone(&supervisor), config.paths.artifacts_dir.clone())
             .with_fonts(config.fonts_dir.clone())
+            .with_emoji(config.emoji_dir.clone())
             .with_assets(config.paths.assets_dir.clone()),
     );
 

@@ -180,20 +180,37 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
       const next = { ...document, overlays };
       return {
         plan: bumped({
-          overlays: overlays.map((overlay) => ({
-            overlayId: overlay.overlay_id,
-            startTicks: overlay.start_ticks,
-            endTicks: overlay.end_ticks,
-            firstFrame: frame(overlay.start_ticks),
-            endFrame: Math.min(plan.frameCount, frame(overlay.end_ticks)),
-            text: overlay.content.text,
-            role: overlay.content.role === 'hook' ? 'hook' : 'label',
-            x: overlay.content.x,
-            y: overlay.content.y,
-            size: overlay.content.size,
-            colour: overlay.content.colour,
-            plate: overlay.content.plate ?? null,
-          })),
+          overlays: overlays.map((overlay) => {
+            const content = overlay.content;
+            const timing = {
+              overlayId: overlay.overlay_id,
+              startTicks: overlay.start_ticks,
+              endTicks: overlay.end_ticks,
+              firstFrame: frame(overlay.start_ticks),
+              endFrame: Math.min(plan.frameCount, frame(overlay.end_ticks)),
+              x: content.x,
+              y: content.y,
+              size: content.size,
+            };
+            return content.kind === 'emoji'
+              ? {
+                  ...timing,
+                  kind: 'emoji' as const,
+                  emoji: content.emoji,
+                  text: '',
+                  role: 'label' as const,
+                  colour: '',
+                  plate: null,
+                }
+              : {
+                  ...timing,
+                  kind: 'text' as const,
+                  text: content.text,
+                  role: content.role === 'hook' ? ('hook' as const) : ('label' as const),
+                  colour: content.colour,
+                  plate: content.plate ?? null,
+                };
+          }),
         }),
         document: next,
       };
