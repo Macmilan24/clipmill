@@ -5,6 +5,8 @@
  */
 import type { IndexTranscript, SpeechTranscript } from '@clipmill/contracts';
 
+import type { Voices } from './voices.js';
+
 export interface TranscriptWord {
   readonly text: string;
   readonly startTicks: number;
@@ -37,6 +39,8 @@ export interface Transcript {
   readonly sentences: readonly TranscriptSentence[];
   /** Measured silences, ordered by time. Absent from older readers. */
   readonly silences?: readonly TranscriptSilence[];
+  /** Who speaks when, where the analysis told voices apart. */
+  readonly voices?: Voices;
 }
 
 /**
@@ -56,6 +60,7 @@ export const EDGE_PAD_TICKS = 9_000;
 export function readTranscript(
   speech: SpeechTranscript,
   index: IndexTranscript | null,
+  voices: Voices | null = null,
 ): Transcript {
   const words = speech.words.map((word) => ({
     text: word.text,
@@ -90,7 +95,7 @@ export function readTranscript(
       wordCount: Math.min(group.count, words.length - group.first),
     });
   }
-  return { words, sentences, silences };
+  return { words, sentences, silences, ...(voices ? { voices } : {}) };
 }
 
 /** The position of the last word that starts at or before `ticks`, or −1. */

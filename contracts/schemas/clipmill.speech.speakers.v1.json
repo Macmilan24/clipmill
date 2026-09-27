@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.speech.speakers.v1.json",
+  "title": "SpeechSpeakers",
+  "description": "Who speaks when: the recording's speech told apart by voice (diarization). Voices are named in the order they are first heard — spk_1 is whoever speaks first — so the same recording read twice names them the same. A voice is a cluster of how people sound, not an identity: two voices can be one person heard through two microphones, and naming them is left to the person. Every interval is integer ticks at 1/90000, in source time.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "audio_artifact_id",
+    "vad_artifact_id",
+    "producer",
+    "clustering",
+    "coverage",
+    "speakers",
+    "turns"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.speech.speakers.v1"
+    },
+    "source_fingerprint": { "$ref": "#/$defs/sha256" },
+    "audio_artifact_id": {
+      "description": "The 16 kHz mono rendition this pass read.",
+      "$ref": "#/$defs/sha256"
+    },
+    "vad_artifact_id": {
+      "description": "The voice activity whose speech segments were told apart. Silence has no speaker.",
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "clustering": {
+      "description": "How voices were told apart, recorded because a different setting is a different observation.",
+      "type": "object",
+      "required": ["window_ticks", "hop_ticks", "link", "merge", "smallest"],
+      "additionalProperties": false,
+      "properties": {
+        "window_ticks": {
+          "description": "The span of speech each voice print is taken over.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "hop_ticks": {
+          "description": "How far apart consecutive prints start.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "link": {
+          "description": "Average similarity at or above which two groups of prints are first joined.",
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "merge": {
+          "description": "Similarity of two voices' centres at or above which they are one voice.",
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "smallest": {
+          "description": "The least share of the prints a voice must hold to be kept; a smaller one is folded into the voice nearest it.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "speakers": {
+      "description": "Every voice heard, in the order first heard.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/speaker" }
+    },
+    "turns": {
+      "description": "Speech by voice, ordered and non-overlapping. A turn may span a pause the same voice resumes after; silence between two voices belongs to neither.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/turn" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "speaker_id": {
+      "type": "string",
+      "pattern": "^spk_[1-9][0-9]*$"
+    },
+    "speaker": {
+      "type": "object",
+      "required": ["speaker_id", "speech_ticks", "first_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "speaker_id": { "$ref": "#/$defs/speaker_id" },
+        "speech_ticks": {
+          "description": "How long this voice is heard in all.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "first_ticks": {
+          "description": "Where it is first heard.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "speaker_id"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 1 },
+        "speaker_id": { "$ref": "#/$defs/speaker_id" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "implementation": { "type": "string", "minLength": 1 },
+        "model_digest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "coverage": {
+      "description": "What was examined. A recording nobody listened to has no speakers for a different reason than one where nobody spoke.",
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "analyzed": { "type": "boolean" }
+      }
+    }
+  }
+}

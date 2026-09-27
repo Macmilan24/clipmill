@@ -1,0 +1,25 @@
+{
+  "audio_artifact_id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "clustering": {
+    "hop_ticks": 67500,
+    "link": 0.5,
+    "merge": 0.65,
+    "smallest": 0.02,
+    "window_ticks": 135000
+  },
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 900000,
+    "start_ticks": 0
+  },
+  "producer": {
+    "implementation": "clipmill-worker-speakers@0.1.0+campplus-voxceleb",
+    "model_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "stage": "speech-speakers"
+  },
+  "schema_version": "clipmill.speech.speakers.v1",
+  "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "speakers": [],
+  "turns": [],
+  "vad_artifact_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+}

@@ -11,6 +11,7 @@ setup:
     cd workers/vad && uv sync
     cd workers/asr-whispercpp && uv sync
     cd workers/align && uv sync
+    cd workers/speakers && uv sync
     cd workers/speech-mlx && uv sync
     cd workers/shots && uv sync
     cd workers/faces && uv sync
@@ -48,6 +49,7 @@ test:
     cd workers/vad && uv run pytest
     cd workers/asr-whispercpp && uv run pytest
     cd workers/align && uv run pytest
+    cd workers/speakers && uv run pytest
     cd workers/speech-mlx && uv run pytest
     cd workers/shots && uv run pytest
     cd workers/faces && uv run pytest

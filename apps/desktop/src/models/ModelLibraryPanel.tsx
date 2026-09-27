@@ -9,6 +9,7 @@ import {
   ScanFace,
   Sparkles,
   TriangleAlert,
+  Users,
   Waves,
   Workflow,
   X,
@@ -43,6 +44,7 @@ const JOB_ICONS: Readonly<Record<string, ReactNode>> = {
   asr: <Workflow />,
   'forced-align': <Waves />,
   vad: <Eye />,
+  'speaker-embed': <Users />,
   'detect-faces': <ScanFace />,
 };
 

@@ -1,0 +1,32 @@
+[project]
+name = "clipmill-worker-speakers"
+version = "0.1.0"
+description = "Telling voices apart (CAM++ voice prints on onnxruntime, grouped by similarity): who speaks when"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+  "clipmill-worker-sdk",
+  "numpy>=2",
+  "onnxruntime>=1.20",
+]
+
+[project.scripts]
+clipmill-worker-speakers = "clipmill_worker_speakers:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv.sources]
+clipmill-worker-sdk = { path = "../sdk", editable = true }
+
+# No torch and no torchaudio. The voice-print model takes a Kaldi filterbank,
+# which torchaudio would compute in one call and a thousand megabytes of
+# dependencies; it is written out here instead, and checked value for value
+# against torchaudio's own output in the tests.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clipmill_worker_speakers"]

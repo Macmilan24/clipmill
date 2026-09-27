@@ -102,6 +102,12 @@ pub(crate) const JOBS: &[Job] = &[
         stages: &["speech-vad"],
     },
     Job {
+        capability: "speaker-embed",
+        title: "Telling voices apart",
+        summary: "Hears who speaks when, so transcripts name each voice.",
+        stages: &["speech-speakers"],
+    },
+    Job {
         capability: "detect-faces",
         title: "Face tracking",
         summary: "Finds faces, so vertical crops follow the speaker.",

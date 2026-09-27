@@ -178,6 +178,20 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         opt_in: false,
         accuracy: 1,
     },
+    // The voice-print model that tells speakers apart. One candidate: a 29 MB
+    // CPU graph that keeps well ahead of real time on any machine.
+    Implementation {
+        name: "clipmill-worker-speakers@0.1.0",
+        capability: "speaker-embed",
+        stage: "speech-speakers",
+        model: "campplus-voxceleb",
+        worker: "speech-speakers",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: true,
+        opt_in: false,
+        accuracy: 1,
+    },
     // The face detector. One candidate and no accelerated sibling: YuNet is a
     // 230 kB CPU graph whose whole appeal is having no runtime tail, and an
     // accelerated variant would be a second implementation to keep honest for
@@ -392,6 +406,7 @@ pub(crate) fn worker_title(family: &str) -> &'static str {
         "speech-align" => "word-timing worker",
         "speech-mlx" => "MLX speech worker",
         "editorial" => "editorial worker",
+        "speech-speakers" => "speakers worker",
         "detect-faces" => "face-tracking worker",
         "detect-shots" => "shot-detection worker",
         _ => "worker",
@@ -589,15 +604,22 @@ mod tests {
     fn the_capability_list_is_every_capability_exactly_once_in_a_stable_order() {
         assert_eq!(
             candidates_for_capability_names(),
-            ["asr", "detect-faces", "forced-align", "vad"]
-                .into_iter()
-                .collect(),
+            [
+                "asr",
+                "detect-faces",
+                "forced-align",
+                "speaker-embed",
+                "vad"
+            ]
+            .into_iter()
+            .collect(),
         );
         assert!(
             candidates_for_capability_names().into_iter().eq([
                 "asr",
                 "detect-faces",
                 "forced-align",
+                "speaker-embed",
                 "vad"
             ]),
             "a signed profile's binding order must not follow this file's line order"

@@ -9,7 +9,8 @@
  */
 import { isTauri, type StorageStats } from './client.js';
 
-export type ModelCapability = 'editorial' | 'asr' | 'forced-align' | 'vad' | 'detect-faces';
+export type ModelCapability =
+  'editorial' | 'asr' | 'forced-align' | 'vad' | 'speaker-embed' | 'detect-faces';
 export type InstallState = 'installed' | 'partial' | 'missing';
 export type DownloadState = 'queued' | 'downloading' | 'verifying' | 'failed' | 'cancelled';
 /** How the memory a model needs compares with this device. A warning, never a gate. */

@@ -20,7 +20,7 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { EditCommandJson, Job, PreviewPlan } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
-import { type Filmstrip, type Peaks } from '../results/loader.js';
+import { type Filmstrip, type Peaks, voicesOf } from '../results/loader.js';
 import { type Transcript, readTranscript } from '../results/transcript.js';
 import { historySteps } from './history.js';
 import type { ClipRef } from '../shell/route.js';
@@ -171,11 +171,12 @@ export function useEditor(
             .then((item) => ({ artifact, json: item.json }))
             .catch(() => null);
         };
-        const [speechDoc, indexDoc, filmstripDoc, peaksDoc] = await Promise.all([
+        const [speechDoc, indexDoc, filmstripDoc, peaksDoc, speakersDoc] = await Promise.all([
           read('speech.transcript.v1'),
           read('index.transcript.v1'),
           read('media.filmstrip.v1'),
           read('media.audio_peaks.v1'),
+          read('speech.speakers.v1'),
         ]);
         const sourceFingerprint = fetched.sources.find(
           (source) => source.sourceId === sourceId,
@@ -202,7 +203,7 @@ export function useEditor(
           setTranscript(
             speech?.schema_version === 'clipmill.speech.transcript.v1' &&
               speech.source_fingerprint === sourceFingerprint
-              ? readTranscript(speech, index)
+              ? readTranscript(speech, index, voicesOf(speakersDoc?.json, sourceFingerprint))
               : null,
           );
           setFilmstrip(

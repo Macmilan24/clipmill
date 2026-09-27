@@ -22,7 +22,9 @@ import { Input } from '../components/ui/input.js';
 import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
 import { clockTenths } from '../inspector/review.js';
 import { TipButton } from '../inspector/TipButton.js';
+import { VoiceChip } from '../inspector/VoiceChip.js';
 import { type Transcript, endAfter, startBefore } from '../results/transcript.js';
+import { useVoiceNames, voiceOfWords } from '../results/voices.js';
 import { keyWords } from './captionStyles.js';
 import { batch, extendWithCaptions, setWordEmphasis } from './commands.js';
 import { type WordRange, positions } from './selection.js';
@@ -282,6 +284,8 @@ function Words({
   const [target, setTarget] = useState<number | null>(null);
   const targetRef = useRef<number | null>(null);
   const emphasized = useMemo(() => new Set(keyWords(document)), [document]);
+  const voices = transcript.voices ?? null;
+  const [names, rename] = useVoiceNames(voices?.sourceFingerprint ?? null);
 
   // Where each spoken word landed in the program, by its place in the transcript.
   const placed = useMemo(() => {
@@ -378,11 +382,24 @@ function Words({
               Show earlier
             </button>
           )}
-          {sentences.slice(from, to).map((sentence) => {
+          {sentences.slice(from, to).map((sentence, shown, visible) => {
             const sourceWords = transcript.words.slice(
               sentence.firstWord,
               sentence.firstWord + sentence.wordCount,
             );
+            // Who says it, named where the voice changes.
+            const voice = voices ? voiceOfWords(voices, sourceWords) : null;
+            const previous =
+              voices && shown > 0
+                ? voiceOfWords(
+                    voices,
+                    transcript.words.slice(
+                      visible[shown - 1]!.firstWord,
+                      visible[shown - 1]!.firstWord + visible[shown - 1]!.wordCount,
+                    ),
+                  )
+                : null;
+            const newVoice = voice !== null && (shown === 0 || previous !== voice);
             const inside = sourceWords.filter((_, offset) =>
               placed.has(sentence.firstWord + offset),
             ).length;
@@ -413,6 +430,11 @@ function Words({
                 : null;
             return (
               <div key={sentence.firstWord} className="review-sentence" data-state={state}>
+                {voices && newVoice && (
+                  <div className="review-voice-line">
+                    <VoiceChip id={voice} voices={voices} names={names} onRename={rename} />
+                  </div>
+                )}
                 <div className="review-sentence-head">
                   <span className="mono">{label}</span>
                   {(includeStart !== null || includeEnd !== null) && (

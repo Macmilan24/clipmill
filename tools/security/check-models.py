@@ -49,7 +49,15 @@ LICENSE_SOURCES = {
 # become a model nothing can load, discovered at the first transcription.
 RUNTIMES = {"onnxruntime", "whisper.cpp", "mlx", "ggml"}
 BACKENDS = {"cpu", "onnx-cpu", "mlx", "coreml", "cuda"}
-CAPABILITIES = {"vad", "asr", "forced-align", "detect-faces", "detect-shots", "editorial"}
+CAPABILITIES = {
+    "vad",
+    "asr",
+    "forced-align",
+    "speaker-embed",
+    "detect-faces",
+    "detect-shots",
+    "editorial",
+}
 
 
 def main() -> int:

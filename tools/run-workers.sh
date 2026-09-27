@@ -32,7 +32,7 @@ IDENTITY_DIR="$STATE_DIR/worker-dev-identity"
 WORKER_SOCKET="$RUN_DIR/clipmill-workers.sock"
 
 # Default analysis workers, with explicit directory and entry-point names.
-FAMILIES="vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr align:clipmill-worker-align shots:clipmill-worker-shots faces:clipmill-worker-faces"
+FAMILIES="vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr align:clipmill-worker-align speakers:clipmill-worker-speakers shots:clipmill-worker-shots faces:clipmill-worker-faces"
 
 # On Apple silicon the MLX speech worker runs beside them. The daemon leases a
 # task only to the family that runs its model, so the two never compete.

@@ -34,6 +34,7 @@ LEASED_STAGES = (
     "speech.vad.v1",
     "speech.asr.v1",
     "speech.alignment.v1",
+    "speech.speakers.v1",
     "evidence.shots.v1",
 )
 TRANSCRIPT_KIND = "speech.transcript.v1"
