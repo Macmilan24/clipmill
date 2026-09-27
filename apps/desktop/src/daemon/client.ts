@@ -1052,6 +1052,25 @@ export interface PreviewTransition {
  * A text laid over the program, for the editor to show, select and move. Its
  * pixels come from the plan's script, which draws it as the render will.
  */
+/** B-roll as the render lays it over the program's own picture. */
+export interface PreviewCutaway {
+  readonly cutawayId: string;
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly firstFrame: number;
+  readonly endFrame: number;
+  readonly fit: 'fill' | 'fit';
+  readonly kind: 'picture' | 'footage';
+  /** A picture's hash. */
+  readonly asset?: string | null;
+  /** Whether a picture moves closer, eight per cent by its last frame. */
+  readonly pushIn: boolean;
+  /** Footage's recording; its proxy is listed with the sections'. */
+  readonly sourceFingerprint?: string | null;
+  /** Where in its recording footage starts. */
+  readonly inTicks: number;
+}
+
 export interface PreviewOverlay {
   readonly overlayId: string;
   /** Absent from plans made before emoji, which held texts only. */
@@ -1080,6 +1099,8 @@ export interface PreviewOverlay {
 
 export interface PreviewPlan {
   readonly captionStyle?: PreviewCaptionStyle;
+  /** B-roll over the program's own picture. Absent from older hosts. */
+  readonly cutaways?: readonly PreviewCutaway[];
   /** Requested clip-wide blend duration; absent in older plans means off. */
   readonly transitionTicks?: number;
   /** Actual blends, shortened to fit each neighboring shot by the renderer. */

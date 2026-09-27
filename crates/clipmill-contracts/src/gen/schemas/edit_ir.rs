@@ -707,6 +707,322 @@ impl CropRect {
         Default::default()
     }
 }
+#[doc = "B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"content\","]
+#[doc = "    \"cutaway_id\","]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"start_ticks\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"content\": {"]
+#[doc = "      \"oneOf\": ["]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"asset\","]
+#[doc = "            \"kind\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"asset\": {"]
+#[doc = "              \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"picture\""]
+#[doc = "            },"]
+#[doc = "            \"push_in\": {"]
+#[doc = "              \"description\": \"Move slowly closer, eight per cent by its last frame.\","]
+#[doc = "              \"type\": \"boolean\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"in_ticks\","]
+#[doc = "            \"kind\","]
+#[doc = "            \"source_fingerprint\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"in_ticks\": {"]
+#[doc = "              \"description\": \"Where in the recording it starts.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"footage\""]
+#[doc = "            },"]
+#[doc = "            \"source_fingerprint\": {"]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        }"]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"cutaway_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"description\": \"At least a fifth of a second after it starts.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 18000.0"]
+#[doc = "    },"]
+#[doc = "    \"fit\": {"]
+#[doc = "      \"description\": \"fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"fill\","]
+#[doc = "        \"fit\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Cutaway {
+    pub content: CutawayContent,
+    pub cutaway_id: CutawayCutawayId,
+    #[doc = "At least a fifth of a second after it starts."]
+    pub end_ticks: i64,
+    #[doc = "fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub fit: ::std::option::Option<CutawayFit>,
+    pub start_ticks: u64,
+}
+impl Cutaway {
+    pub fn builder() -> builder::Cutaway {
+        Default::default()
+    }
+}
+#[doc = "`CutawayContent`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"asset\","]
+#[doc = "        \"kind\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"asset\": {"]
+#[doc = "          \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"picture\""]
+#[doc = "        },"]
+#[doc = "        \"push_in\": {"]
+#[doc = "          \"description\": \"Move slowly closer, eight per cent by its last frame.\","]
+#[doc = "          \"type\": \"boolean\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"in_ticks\","]
+#[doc = "        \"kind\","]
+#[doc = "        \"source_fingerprint\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"in_ticks\": {"]
+#[doc = "          \"description\": \"Where in the recording it starts.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"footage\""]
+#[doc = "        },"]
+#[doc = "        \"source_fingerprint\": {"]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum CutawayContent {
+    #[serde(rename = "picture")]
+    Picture {
+        #[doc = "The picture's content hash; the clip's assets list it."]
+        asset: Sha256,
+        #[doc = "Move slowly closer, eight per cent by its last frame."]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        push_in: ::std::option::Option<bool>,
+    },
+    #[serde(rename = "footage")]
+    Footage {
+        #[doc = "Where in the recording it starts."]
+        in_ticks: u64,
+        source_fingerprint: Sha256,
+    },
+}
+#[doc = "`CutawayCutawayId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CutawayCutawayId(::std::string::String);
+impl ::std::ops::Deref for CutawayCutawayId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CutawayCutawayId> for ::std::string::String {
+    fn from(value: CutawayCutawayId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CutawayCutawayId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CutawayCutawayId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CutawayCutawayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CutawayCutawayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CutawayCutawayId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"fill\","]
+#[doc = "    \"fit\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum CutawayFit {
+    #[serde(rename = "fill")]
+    Fill,
+    #[serde(rename = "fit")]
+    Fit,
+}
+impl ::std::fmt::Display for CutawayFit {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Fill => f.write_str("fill"),
+            Self::Fit => f.write_str("fit"),
+        }
+    }
+}
+impl ::std::str::FromStr for CutawayFit {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "fill" => Ok(Self::Fill),
+            "fit" => Ok(Self::Fit),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CutawayFit {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CutawayFit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CutawayFit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 #[doc = "The edit document (book ch. 17): a versioned, multi-track, non-destructive timeline that the preview, the render compiler, and later the NLE exporter all read. No subsystem may render, preview, or export from any other representation. All time is integer ticks at 1/90000 (D06); a segment's program position is the sum of the durations before it and is never stored, so a trim cannot leave a stale offset behind."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1059,6 +1375,13 @@ impl CropRect {
 #[doc = "    \"video\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"cutaways\": {"]
+#[doc = "          \"description\": \"Moments covered by another picture while the voice carries on, in program order, none overlapping.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"$ref\": \"#/$defs/cutaway\""]
+#[doc = "          }"]
+#[doc = "        },"]
 #[doc = "        \"segments\": {"]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
@@ -2773,6 +3096,13 @@ impl<'de> ::serde::Deserialize<'de> for EditIrTitle {
 #[doc = "{"]
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"cutaways\": {"]
+#[doc = "      \"description\": \"Moments covered by another picture while the voice carries on, in program order, none overlapping.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/cutaway\""]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"segments\": {"]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
@@ -2802,6 +3132,9 @@ impl<'de> ::serde::Deserialize<'de> for EditIrTitle {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct EditIrVideo {
+    #[doc = "Moments covered by another picture while the voice carries on, in program order, none overlapping."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub cutaways: ::std::vec::Vec<Cutaway>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub segments: ::std::vec::Vec<VideoSegment>,
     #[doc = "The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame."]
@@ -2814,6 +3147,7 @@ pub struct EditIrVideo {
 impl ::std::default::Default for EditIrVideo {
     fn default() -> Self {
         Self {
+            cutaways: Default::default(),
             segments: Default::default(),
             shape: Default::default(),
             transition_ticks: Default::default(),
@@ -5168,6 +5502,100 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct Cutaway {
+        content: ::std::result::Result<super::CutawayContent, ::std::string::String>,
+        cutaway_id: ::std::result::Result<super::CutawayCutawayId, ::std::string::String>,
+        end_ticks: ::std::result::Result<i64, ::std::string::String>,
+        fit: ::std::result::Result<::std::option::Option<super::CutawayFit>, ::std::string::String>,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for Cutaway {
+        fn default() -> Self {
+            Self {
+                content: Err("no value supplied for content".to_string()),
+                cutaway_id: Err("no value supplied for cutaway_id".to_string()),
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                fit: Ok(Default::default()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+            }
+        }
+    }
+    impl Cutaway {
+        pub fn content<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::CutawayContent>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content: {e}"));
+            self
+        }
+        pub fn cutaway_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::CutawayCutawayId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cutaway_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cutaway_id: {e}"));
+            self
+        }
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn fit<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::CutawayFit>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.fit = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for fit: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<Cutaway> for super::Cutaway {
+        type Error = super::error::ConversionError;
+        fn try_from(value: Cutaway) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                content: value.content?,
+                cutaway_id: value.cutaway_id?,
+                end_ticks: value.end_ticks?,
+                fit: value.fit?,
+                start_ticks: value.start_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::Cutaway> for Cutaway {
+        fn from(value: super::Cutaway) -> Self {
+            Self {
+                content: Ok(value.content),
+                cutaway_id: Ok(value.cutaway_id),
+                end_ticks: Ok(value.end_ticks),
+                fit: Ok(value.fit),
+                start_ticks: Ok(value.start_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct EditIr {
         assets:
             ::std::result::Result<::std::vec::Vec<super::EditIrAssetsItem>, ::std::string::String>,
@@ -6295,6 +6723,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct EditIrVideo {
+        cutaways: ::std::result::Result<::std::vec::Vec<super::Cutaway>, ::std::string::String>,
         segments:
             ::std::result::Result<::std::vec::Vec<super::VideoSegment>, ::std::string::String>,
         shape: ::std::result::Result<
@@ -6306,6 +6735,7 @@ pub mod builder {
     impl ::std::default::Default for EditIrVideo {
         fn default() -> Self {
             Self {
+                cutaways: Ok(Default::default()),
                 segments: Ok(Default::default()),
                 shape: Ok(Default::default()),
                 transition_ticks: Ok(Default::default()),
@@ -6313,6 +6743,16 @@ pub mod builder {
         }
     }
     impl EditIrVideo {
+        pub fn cutaways<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::Cutaway>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cutaways = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cutaways: {e}"));
+            self
+        }
         pub fn segments<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::vec::Vec<super::VideoSegment>>,
@@ -6350,6 +6790,7 @@ pub mod builder {
             value: EditIrVideo,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                cutaways: value.cutaways?,
                 segments: value.segments?,
                 shape: value.shape?,
                 transition_ticks: value.transition_ticks?,
@@ -6359,6 +6800,7 @@ pub mod builder {
     impl ::std::convert::From<super::EditIrVideo> for EditIrVideo {
         fn from(value: super::EditIrVideo) -> Self {
             Self {
+                cutaways: Ok(value.cutaways),
                 segments: Ok(value.segments),
                 shape: Ok(value.shape),
                 transition_ticks: Ok(value.transition_ticks),

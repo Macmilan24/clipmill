@@ -112,6 +112,26 @@ const importLoader = new ImportLoader({
   listYoutubeImports: async () => [],
 });
 const appearanceController = new ThemeController(document.documentElement);
+
+/** The picture the preview offers for a logo or B-roll, drawn from ?still=. */
+const STILL_PICTURE = {
+  hash: `sha256:${'a'.repeat(64)}`,
+  kind: 'image' as const,
+  name: 'whiteboard.png',
+  mediaType: 'image/png',
+  bytes: 1,
+  width: 1280,
+  height: 720,
+  durationTicks: 0,
+  license: 'own_content' as const,
+  addedUnixMillis: 0,
+};
+
+/** The recording the preview's clip is cut from, for B-roll footage. */
+const PREVIEW_RECORDINGS = {
+  list: async () => [{ fingerprint: 'preview', name: 'creative-process-ep12.mp4' }],
+};
+
 function Preview() {
   const search = new URLSearchParams(location.search);
   const [page, setPage] = useState(search.get('screen') ?? 'results');
@@ -213,6 +233,18 @@ function Preview() {
     setPage('inspector');
   };
   const still = search.get('still');
+  // With ?still=, the preview's own still stands in for a picture brought in.
+  const pictures = useMemo(
+    () =>
+      still
+        ? {
+            list: async (kind: 'image' | 'audio') => (kind === 'image' ? [STILL_PICTURE] : []),
+            bring: async () => null,
+            url: () => still,
+          }
+        : null,
+    [still],
+  );
   const [autoAdvance, setAutoAdvance] = useState(true);
   const [history, setHistory] = useState<{ id: string; previous: ClipRow['decision'] }[]>([]);
   /** A decision on the open clip, as the daemon would record it, then on to the next. */
@@ -392,6 +424,8 @@ function Preview() {
                     }
                     fontUrl={fontsDir ? (file) => `${fontsDir}/${file}` : null}
                     emojiUrl={emojiDir ? (code) => `${emojiDir}/emoji_u${code}.png` : null}
+                    assets={pictures}
+                    recordings={PREVIEW_RECORDINGS}
                     previewCaptions={
                       fontsDir
                         ? (draft) =>

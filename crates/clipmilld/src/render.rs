@@ -170,23 +170,10 @@ pub(crate) async fn execute_render_task(
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
     // The face the captions are set in, which the compiled style names.
     let font = stage_font_source(context.fonts_dir, &plan.profile.caption_style.font_family)?;
-    // The brand's logo, read from the asset folder by its hash.
-    let logo = document
-        .brand
-        .as_ref()
-        .and_then(|brand| brand.logo.as_ref())
-        .map(|logo| verified_asset(context.assets_dir, &logo.asset))
-        .transpose()?;
+    let files = AssetFiles::of(context.assets_dir, &document)?;
     let assets = asset_rights(&document);
     // The pinned pictures of the emoji the clip shows, with their digests.
     let emoji = pinned_emoji(context.emoji_dir, &document)?;
-    // The music under the voice, likewise.
-    let music = document
-        .audio
-        .music
-        .as_ref()
-        .map(|music| verified_asset(context.assets_dir, &music.asset))
-        .transpose()?;
 
     let ir_hash = format!("sha256:{document_digest}");
     let recipe = render_recipe(
@@ -210,8 +197,7 @@ pub(crate) async fn execute_render_task(
         &Rendered {
             plan: &plan,
             font: &font,
-            logo: logo.as_deref(),
-            music: music.as_deref(),
+            files: &files,
             assets: &assets,
             emoji: &emoji,
             payload: &payload,
@@ -252,14 +238,23 @@ fn asset_rights(document: &EditDocument) -> Vec<clipmill_render::AssetRight> {
         .music
         .as_ref()
         .map(|music| music.asset.as_str());
-    logo.into_iter()
+    let pictures = clipmill_render::cutaway_pictures(document);
+    let mut rights: Vec<clipmill_render::AssetRight> = Vec::new();
+    for asset in logo
+        .into_iter()
         .chain(music)
+        .chain(pictures.iter().map(String::as_str))
         .filter_map(|hash| document.assets.iter().find(|asset| asset.hash == hash))
-        .map(|asset| clipmill_render::AssetRight {
-            hash: asset.hash.clone(),
-            license: asset.license.clone(),
-        })
-        .collect()
+    {
+        // A picture that is both the logo and a cutaway is stated once.
+        if !rights.iter().any(|right| right.hash == asset.hash) {
+            rights.push(clipmill_render::AssetRight {
+                hash: asset.hash.clone(),
+                license: asset.license.clone(),
+            });
+        }
+    }
+    rights
 }
 
 /// The pinned pictures of the emoji a document shows: each file's name, its
@@ -351,11 +346,24 @@ async fn resolve_sources(
     project_id: &str,
     document: &EditDocument,
 ) -> Result<(Vec<SourceInput>, Option<clipmill_render::FrameRateSpec>), TaskExecutionError> {
+    // The sections' recordings, and those B-roll footage is cut from.
     let mut wanted = document
         .video
         .segments
         .iter()
         .map(|segment| segment.source_fingerprint.clone())
+        .chain(
+            document
+                .video
+                .cutaways
+                .iter()
+                .filter_map(|cutaway| match &cutaway.content {
+                    clipmill_edit_ir::CutawayContent::Footage {
+                        source_fingerprint, ..
+                    } => Some(source_fingerprint.clone()),
+                    clipmill_edit_ir::CutawayContent::Picture { .. } => None,
+                }),
+        )
         .collect::<Vec<_>>();
     wanted.sort();
     wanted.dedup();
@@ -562,13 +570,109 @@ fn render_recipe(
 
 /// Everything the staging half of a render needs, gathered so the signature
 /// stays readable.
+/// The person's pictures and sounds a render reads, each checked against the
+/// hash the document names it by.
+struct AssetFiles {
+    /// The brand's logo.
+    logo: Option<PathBuf>,
+    /// The music under the voice.
+    music: Option<PathBuf>,
+    /// The pictures B-roll shows, each with the name it is staged as.
+    cutaways: Vec<(String, PathBuf)>,
+}
+
+impl AssetFiles {
+    fn of(assets_dir: &Path, document: &EditDocument) -> Result<Self, TaskExecutionError> {
+        let logo = document
+            .brand
+            .as_ref()
+            .and_then(|brand| brand.logo.as_ref())
+            .map(|logo| verified_asset(assets_dir, &logo.asset))
+            .transpose()?;
+        let music = document
+            .audio
+            .music
+            .as_ref()
+            .map(|music| verified_asset(assets_dir, &music.asset))
+            .transpose()?;
+        let cutaways = clipmill_render::cutaway_pictures(document)
+            .iter()
+            .map(|hash| {
+                let file = clipmill_render::cutaway_picture_file(hash).ok_or_else(|| {
+                    TaskExecutionError::deterministic("a cutaway names no picture")
+                })?;
+                Ok((file, verified_asset(assets_dir, hash)?))
+            })
+            .collect::<Result<Vec<_>, TaskExecutionError>>()?;
+        Ok(Self {
+            logo,
+            music,
+            cutaways,
+        })
+    }
+
+    /// Put each where the graph reads it, beside the captions, and say what
+    /// was put there so it can be taken away before anything is published.
+    fn stage(
+        &self,
+        work: &Path,
+        emoji: &[(String, PathBuf, String)],
+    ) -> Result<Vec<PathBuf>, TaskExecutionError> {
+        let failed = |error: std::io::Error| TaskExecutionError::transient(error.to_string());
+        let mut staged = Vec::new();
+        for (file, name) in [
+            (self.logo.as_deref(), clipmill_render::LOGO_FILE),
+            (self.music.as_deref(), clipmill_render::MUSIC_FILE),
+        ] {
+            if let Some(file) = file {
+                let target = work.join(name);
+                fs::copy(file, &target).map_err(failed)?;
+                staged.push(target);
+            }
+        }
+        let pictures = self
+            .cutaways
+            .iter()
+            .map(|(name, path)| (name.as_str(), path.as_path()));
+        let pinned = emoji
+            .iter()
+            .map(|(name, path, _)| (name.as_str(), path.as_path()));
+        for (dir, files) in [
+            (clipmill_render::CUTAWAY_DIR, pictures.collect::<Vec<_>>()),
+            (clipmill_render::EMOJI_DIR, pinned.collect::<Vec<_>>()),
+        ] {
+            if files.is_empty() {
+                continue;
+            }
+            let target = work.join(dir);
+            fs::create_dir_all(&target).map_err(failed)?;
+            for (name, path) in files {
+                fs::copy(path, target.join(name)).map_err(failed)?;
+            }
+            staged.push(target);
+        }
+        Ok(staged)
+    }
+}
+
+/// Take away what [`AssetFiles::stage`] put in the working directory.
+fn unstage(staged: &[PathBuf]) -> Result<(), TaskExecutionError> {
+    for path in staged {
+        if path.is_dir() {
+            fs::remove_dir_all(path)
+        } else {
+            fs::remove_file(path)
+        }
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
+    Ok(())
+}
+
 struct Rendered<'a> {
     plan: &'a RenderPlan,
     font: &'a PinnedFont,
-    /// The logo's file in the asset folder, when the brand has one.
-    logo: Option<&'a Path>,
-    /// The music's file in the asset folder, when the clip has some.
-    music: Option<&'a Path>,
+    /// The person's pictures and sounds it reads.
+    files: &'a AssetFiles,
     /// The pictures and sounds drawn or played, with their licences.
     assets: &'a [clipmill_render::AssetRight],
     /// The emoji pictures to stage: file name, pinned path, digest.
@@ -594,26 +698,7 @@ async fn render_into(
         .and_then(|()| fs::copy(&font.path, fonts_dir.join(&font.file_name)).map(|_| ()))
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     write_text(staging, ASS_FILE, &plan.ass)?;
-    // The logo beside them, under the one name the graph reads it by.
-    let logo_file = work.join(clipmill_render::LOGO_FILE);
-    if let Some(logo) = rendered.logo {
-        fs::copy(logo, &logo_file)
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    }
-    let emoji_dir = work.join(clipmill_render::EMOJI_DIR);
-    if !rendered.emoji.is_empty() {
-        fs::create_dir_all(&emoji_dir)
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-        for (file, path, _) in rendered.emoji {
-            fs::copy(path, emoji_dir.join(file))
-                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-        }
-    }
-    let music_file = work.join(clipmill_render::MUSIC_FILE);
-    if let Some(music) = rendered.music {
-        fs::copy(music, &music_file)
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    }
+    let staged = rendered.files.stage(&work, rendered.emoji)?;
 
     let duration_hint = ticks_to_millis(plan.duration_ticks);
     let total_work = duration_hint.saturating_mul(3);
@@ -664,18 +749,7 @@ async fn render_into(
     // the manifest is written keeps the artifact to what was published.
     fs::remove_dir_all(&fonts_dir)
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    if rendered.logo.is_some() {
-        fs::remove_file(&logo_file)
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    }
-    if rendered.music.is_some() {
-        fs::remove_file(&music_file)
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    }
-    if !rendered.emoji.is_empty() {
-        fs::remove_dir_all(&emoji_dir)
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
-    }
+    unstage(&staged)?;
 
     let manifest = build_manifest(rendered, measured_input, measured_output, &work)?;
     let manifest_value = serde_json::to_value(&manifest)

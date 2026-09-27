@@ -770,12 +770,32 @@ pub struct PreviewPlanView {
     pub decisions: Vec<String>,
     /// Titles and labels over the program, bottom first.
     pub overlays: Vec<PreviewOverlayView>,
+    /// B-roll over the program's own picture.
+    pub cutaways: Vec<PreviewCutawayView>,
     /// The progress bar, when the clip has one.
     pub progress: Option<PreviewProgressView>,
     /// The logo, when the clip has one.
     pub logo: Option<PreviewLogoView>,
     /// The music, when the clip has some.
     pub music: Option<PreviewMusicView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCutawayView {
+    pub cutaway_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    pub fit: String,
+    pub kind: String,
+    /// A picture's hash; absent for footage.
+    pub asset: Option<String>,
+    pub push_in: bool,
+    /// Footage's recording; absent for a picture.
+    pub source_fingerprint: Option<String>,
+    pub in_ticks: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1084,6 +1104,24 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                     size: overlay.size,
                     colour: overlay.colour,
                     plate: (!overlay.plate.is_empty()).then_some(overlay.plate),
+                })
+                .collect(),
+            cutaways: reply
+                .cutaways
+                .into_iter()
+                .map(|cutaway| PreviewCutawayView {
+                    cutaway_id: cutaway.cutaway_id,
+                    start_ticks: cutaway.start_ticks,
+                    end_ticks: cutaway.end_ticks,
+                    first_frame: cutaway.first_frame,
+                    end_frame: cutaway.end_frame,
+                    fit: cutaway.fit,
+                    kind: cutaway.kind,
+                    asset: (!cutaway.asset.is_empty()).then_some(cutaway.asset),
+                    push_in: cutaway.push_in,
+                    source_fingerprint: (!cutaway.source_fingerprint.is_empty())
+                        .then_some(cutaway.source_fingerprint),
+                    in_ticks: cutaway.in_ticks,
                 })
                 .collect(),
             secondary_crops: reply

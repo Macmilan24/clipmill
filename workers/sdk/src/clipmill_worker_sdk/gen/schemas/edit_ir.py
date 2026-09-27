@@ -89,12 +89,55 @@ class HexColour(RootModel[constr(pattern=r'^#[0-9A-Fa-f]{6}$')]):
     root: constr(pattern=r'^#[0-9A-Fa-f]{6}$')
 
 
+class Fit(Enum):
+    fill = 'fill'
+    fit = 'fit'
+
+
+class Content(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['picture']
+    asset: Sha256 = Field(
+        ..., description="The picture's content hash; the clip's assets list it."
+    )
+    push_in: bool | None = Field(
+        None, description='Move slowly closer, eight per cent by its last frame.'
+    )
+
+
+class Content1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['footage']
+    source_fingerprint: Sha256
+    in_ticks: conint(ge=0) = Field(..., description='Where in the recording it starts.')
+
+
+class Cutaway(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    cutaway_id: constr(min_length=1)
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=18000) = Field(
+        ..., description='At least a fifth of a second after it starts.'
+    )
+    fit: Fit | None = Field(
+        None,
+        description='fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.',
+    )
+    content: Content | Content1
+
+
 class Role(Enum):
     hook = 'hook'
     label = 'label'
 
 
-class Content(BaseModel):
+class Content2(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -119,7 +162,7 @@ class Content(BaseModel):
     )
 
 
-class Content1(BaseModel):
+class Content3(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -146,7 +189,7 @@ class Overlay(BaseModel):
     overlay_id: constr(min_length=1)
     start_ticks: conint(ge=0)
     end_ticks: conint(ge=1)
-    content: Content | Content1
+    content: Content2 | Content3
 
 
 class CropRect(BaseModel):
@@ -330,6 +373,10 @@ class Video(BaseModel):
         description='Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.',
     )
     segments: list[VideoSegment] | None = None
+    cutaways: list[Cutaway] | None = Field(
+        None,
+        description='Moments covered by another picture while the voice carries on, in program order, none overlapping.',
+    )
 
 
 class Options(BaseModel):

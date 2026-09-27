@@ -1447,6 +1447,29 @@ message PreviewProgressV1 {
   int64 thickness = 3;
 }
 
+// B-roll as the render lays it: what covers the program's picture, how it
+// meets the frame, and the program frames it covers.
+message PreviewCutawayV1 {
+  string cutaway_id = 1;
+  int64 start_ticks = 2;
+  int64 end_ticks = 3;
+  int64 first_frame = 4;
+  int64 end_frame = 5;
+  // fill or fit.
+  string fit = 6;
+  // picture or footage.
+  string kind = 7;
+  // A picture's content hash; empty for footage.
+  string asset = 8;
+  // Whether a picture moves closer, eight per cent by its last frame.
+  bool push_in = 9;
+  // Footage's recording; empty for a picture. Its proxy is listed with the
+  // sections'.
+  string source_fingerprint = 10;
+  // Where in its recording footage starts.
+  int64 in_ticks = 11;
+}
+
 // Music as the render mixes it: which sound, from where in it, and its level
 // in decibels at frames through the program, to interpolate between.
 message PreviewMusicV1 {
@@ -1657,6 +1680,8 @@ message GetPreviewPlanResponse {
   PreviewLogoV1 logo = 26;
   // The music, when the clip has some.
   PreviewMusicV1 music = 27;
+  // B-roll over the program's own picture, in program order.
+  repeated PreviewCutawayV1 cutaways = 28;
 }
 
 // Where the camera would point at a few moments, so a board of clips can show

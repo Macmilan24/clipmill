@@ -1303,6 +1303,61 @@
 }
 
 /* The brand over the preview: placed as the render places it. */
+/*
+ * B-roll over the picture, as the render lays it: over the program, under
+ * the brand, the emoji and the captions, which come after it at its level.
+ */
+.edit-cutaway {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background: #000000;
+  cursor: pointer;
+}
+
+.edit-cutaway[data-selected='true'] {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: -2px;
+}
+
+.edit-cutaway-frame {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+
+.edit-cutaway-backdrop,
+.edit-cutaway-picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+/* A blur fades at its own edges; the render's does not. */
+.edit-cutaway-backdrop {
+  transform: scale(1.08);
+}
+
+.edit-cutaway[data-fit='fit'] .edit-cutaway-picture {
+  object-fit: contain;
+}
+
+.edit-cutaway-missing {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 16px;
+  color: rgb(255 255 255 / 0.75);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* Level with the captions' layer and before it, so under it, as exported. */
 .edit-brand-bar {
   position: absolute;
@@ -1397,6 +1452,36 @@
   height: 3px;
   border-radius: 2px;
   background: #e0a13a;
+  pointer-events: none;
+}
+
+/* B-roll on the stills it covers, clear of the sections' edges. */
+.edit-cutaway-block {
+  position: absolute;
+  bottom: 4px;
+  height: 46%;
+  display: flex;
+  align-items: center;
+  min-width: 3px;
+  overflow: hidden;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, #5fb3a1 70%, var(--cm-glass-border));
+  border-radius: 3px;
+  background: color-mix(in srgb, #5fb3a1 45%, rgb(0 0 0 / 0.5));
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.edit-cutaway-block[data-selected='true'] {
+  box-shadow: 0 0 0 1.5px #5fb3a1;
+}
+
+.edit-cutaway-block > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 

@@ -110,6 +110,8 @@ pub(crate) struct GraphRequest<'a> {
     pub profile: &'a RenderProfile,
     pub spans: &'a [DecodeSpan],
     pub sources: &'a [SourceInput],
+    /// The decoders footage cutaways read from, after the sections' own.
+    pub footage: &'a [crate::cutaways::FootageInput],
     /// Name of the ASS file in the working directory, when captions burn in.
     pub subtitle_file: Option<&'a str>,
     /// Loudness normalisation filter. The measurement pass knows its own; the
@@ -207,7 +209,16 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     chains.extend(audio_chains(request));
 
     if !request.audio_only {
-        finish_picture(request, &mut chains)?;
+        // B-roll over the program's own picture, under all that is drawn on it.
+        let (cutaways, picture) = crate::cutaways::cutaway_chains(
+            request.document,
+            request.profile,
+            request.footage,
+            decoder_groups(request.spans).len(),
+            "[vcat]",
+        )?;
+        chains.extend(cutaways);
+        finish_picture(request, &mut chains, &picture)?;
     }
 
     Ok(FilterGraph {
@@ -247,9 +258,13 @@ fn progress_chain(
 
 /// The program's picture made final: the brand and the emoji over it, then
 /// the captions and the text.
-fn finish_picture(request: &GraphRequest<'_>, chains: &mut Vec<String>) -> Result<(), RenderError> {
+fn finish_picture(
+    request: &GraphRequest<'_>,
+    chains: &mut Vec<String>,
+    picture: &str,
+) -> Result<(), RenderError> {
     let brand = request.document.brand.as_ref();
-    let mut picture = "[vcat]";
+    let mut picture = picture;
     if let Some(bar) = brand.and_then(|brand| brand.progress.as_ref()) {
         let frames = request.spans.iter().map(|span| span.frame_count).sum();
         chains.push(progress_chain(

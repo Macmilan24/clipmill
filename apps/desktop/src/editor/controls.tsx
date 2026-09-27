@@ -9,6 +9,11 @@
 import { Minus, Plus } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 
+import { Button } from '../components/ui/button.js';
+import { Input } from '../components/ui/input.js';
+
+const TICKS = 90_000;
+
 export function Field({
   label,
   children,
@@ -158,6 +163,88 @@ export function Stepper({
       >
         <Plus className="size-3" aria-hidden="true" />
       </button>
+    </div>
+  );
+}
+
+/** Seconds typed exactly, or taken from the playhead. */
+export function SpanTiming({
+  noun = 'Text',
+  startTicks,
+  endTicks,
+  programEnd,
+  playhead,
+  busy,
+  onCommit,
+}: {
+  /** What is being timed, for the fields' names. */
+  readonly noun?: string;
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly programEnd: number;
+  readonly playhead: number;
+  readonly busy: boolean;
+  readonly onCommit: (start: number, end: number) => void;
+}) {
+  const [start, setStart] = useState(String(startTicks / TICKS));
+  const [end, setEnd] = useState(String(endTicks / TICKS));
+  useEffect(() => {
+    setStart(String(startTicks / TICKS));
+    setEnd(String(endTicks / TICKS));
+  }, [startTicks, endTicks]);
+  const valid = (from: number, to: number) =>
+    Number.isFinite(from) && Number.isFinite(to) && from >= 0 && to > from && to <= programEnd;
+  const commit = (from: number, to: number) => {
+    if (valid(from, to) && (from !== startTicks || to !== endTicks)) onCommit(from, to);
+  };
+  const typed = (value: string) => Math.round(Number(value) * TICKS);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-end gap-2">
+        <label className="edit-field-stack">
+          <span className="edit-field-label">From</span>
+          <Input
+            aria-label={`${noun} starts at`}
+            className="h-8 w-24 font-mono"
+            value={start}
+            disabled={busy}
+            inputMode="decimal"
+            onChange={(event) => setStart(event.target.value)}
+            onBlur={() => commit(typed(start), endTicks)}
+          />
+        </label>
+        <label className="edit-field-stack">
+          <span className="edit-field-label">To</span>
+          <Input
+            aria-label={`${noun} ends at`}
+            className="h-8 w-24 font-mono"
+            value={end}
+            disabled={busy}
+            inputMode="decimal"
+            onChange={(event) => setEnd(event.target.value)}
+            onBlur={() => commit(startTicks, typed(end))}
+          />
+        </label>
+        <span className="pb-2 text-xs text-[var(--cm-text-muted)]">seconds</span>
+      </div>
+      <div className="edit-inline">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || !valid(playhead, endTicks)}
+          onClick={() => commit(playhead, endTicks)}
+        >
+          Start at the playhead
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || !valid(startTicks, playhead)}
+          onClick={() => commit(startTicks, playhead)}
+        >
+          End at the playhead
+        </Button>
+      </div>
     </div>
   );
 }

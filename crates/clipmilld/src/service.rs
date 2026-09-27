@@ -27,13 +27,13 @@ use clipmill_contracts::proto::ipc::v1::{
     ListClipDecisionsResponse, ListEditDocsResponse, ListFacesRequest, ListFacesResponse,
     ListJobsResponse, ListProjectsResponse, ListSourcesResponse, LocalLockStatusV1, MediaFileV1,
     PingResponse, PlanExportRequest, PlanExportResponse, PreviewCropV1, PreviewCueV1,
-    PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewLogoV1, PreviewMusicV1,
-    PreviewOverlayV1, PreviewProgressV1, PreviewProxyV1, PreviewSegmentV1, PreviewSourceV1,
-    PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1, ReadArtifactRequest,
-    ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request, ResolveMediaRequest,
-    ResolveMediaResponse, Response, SetClipDecisionRequest, SetClipDecisionResponse,
-    SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse, StageReadinessV1,
-    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    PreviewCutawayV1, PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewLogoV1,
+    PreviewMusicV1, PreviewOverlayV1, PreviewProgressV1, PreviewProxyV1, PreviewSegmentV1,
+    PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
+    ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
+    ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
+    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
+    StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
     ThumbnailFramingRequest, ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1,
     request, response,
 };
@@ -3088,8 +3088,24 @@ impl Service {
             return (sources, proxies);
         };
         let mut seen: Vec<&str> = Vec::new();
-        for segment in &document.video.segments {
-            let fingerprint = segment.source_fingerprint.as_str();
+        // The sections' recordings, and those B-roll footage is cut from.
+        let footage = document
+            .video
+            .cutaways
+            .iter()
+            .filter_map(|cutaway| match &cutaway.content {
+                clipmill_edit_ir::CutawayContent::Footage {
+                    source_fingerprint, ..
+                } => Some(source_fingerprint.as_str()),
+                clipmill_edit_ir::CutawayContent::Picture { .. } => None,
+            });
+        for fingerprint in document
+            .video
+            .segments
+            .iter()
+            .map(|segment| segment.source_fingerprint.as_str())
+            .chain(footage)
+        {
             if seen.contains(&fingerprint) {
                 continue;
             }
@@ -4273,6 +4289,23 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
             edge: bar.edge.to_owned(),
             thickness: bar.thickness,
         }),
+        cutaways: plan
+            .cutaways
+            .iter()
+            .map(|cutaway| PreviewCutawayV1 {
+                cutaway_id: cutaway.cutaway_id.clone(),
+                start_ticks: cutaway.start_ticks,
+                end_ticks: cutaway.end_ticks,
+                first_frame: cutaway.first_frame,
+                end_frame: cutaway.end_frame,
+                fit: cutaway.fit.to_owned(),
+                kind: cutaway.kind.to_owned(),
+                asset: cutaway.asset.clone(),
+                push_in: cutaway.push_in,
+                source_fingerprint: cutaway.source_fingerprint.clone(),
+                in_ticks: cutaway.in_ticks,
+            })
+            .collect(),
         overlays: plan
             .overlays
             .iter()

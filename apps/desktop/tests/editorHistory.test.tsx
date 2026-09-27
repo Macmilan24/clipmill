@@ -67,6 +67,10 @@ describe('the history', () => {
     expect(describeCommand({ op: 'remove_overlay', overlay_id: 'ovl_1' })).toBe('Remove text');
   });
 
+  it('names b-roll', () => {
+    expect(describeCommand({ op: 'set_cutaways', cutaways: [] })).toBe('B-roll');
+  });
+
   it('names emoji apart from text, by what undoing a removal brings back', () => {
     const fire = { overlay_id: 'ovl_2', content: { kind: 'emoji', emoji: '1f525' } };
     const money = { overlay_id: 'ovl_3', content: { kind: 'emoji', emoji: '1f4b0' } };

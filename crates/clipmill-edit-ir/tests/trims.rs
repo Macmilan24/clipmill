@@ -976,3 +976,177 @@ fn trims_and_splits_carry_punches_with_the_picture() {
         [punch(0, SECOND, 150)]
     );
 }
+
+fn footage(id: &str, start: i64, end: i64, in_ticks: i64) -> clipmill_edit_ir::Cutaway {
+    clipmill_edit_ir::Cutaway {
+        cutaway_id: id.to_owned(),
+        start_ticks: start,
+        end_ticks: end,
+        fit: clipmill_edit_ir::CutawayFit::Fill,
+        content: clipmill_edit_ir::CutawayContent::Footage {
+            source_fingerprint: SOURCE.to_owned(),
+            in_ticks,
+        },
+    }
+}
+
+fn spans(document: &EditDocument) -> Vec<(&str, i64, i64, i64)> {
+    document
+        .video
+        .cutaways
+        .iter()
+        .map(|cutaway| {
+            let in_ticks = match &cutaway.content {
+                clipmill_edit_ir::CutawayContent::Footage { in_ticks, .. } => *in_ticks,
+                clipmill_edit_ir::CutawayContent::Picture { .. } => -1,
+            };
+            (
+                cutaway.cutaway_id.as_str(),
+                cutaway.start_ticks,
+                cutaway.end_ticks,
+                in_ticks,
+            )
+        })
+        .collect()
+}
+
+/// B-roll is program-anchored: a cut through its head starts it later in its
+/// own recording as well as in the clip, one inside it shortens it, one over
+/// it takes it, and the one after moves up — and undo puts each back.
+#[test]
+fn cutaways_follow_the_cuts_around_them_and_undo_in_place() {
+    let mut original = document(Vec::new());
+    original.video.cutaways = vec![
+        footage("head", SECOND, 3 * SECOND, 40 * SECOND),
+        footage("inside", 4 * SECOND, 7 * SECOND, 60 * SECOND),
+        footage("after", 8 * SECOND, 9 * SECOND, 0),
+    ];
+    original.validate().expect("valid cutaways");
+
+    // Cut 0.5 s to 2 s: "head" loses its first second and starts a second
+    // later in its recording; the rest move a second and a half earlier.
+    let mut cut = original.clone();
+    let undo = EditCommand::RippleDelete {
+        start_ticks: SECOND / 2,
+        end_ticks: 2 * SECOND,
+        reflow_edges: false,
+    }
+    .apply(&mut cut)
+    .expect("a cut");
+    assert_eq!(
+        spans(&cut),
+        [
+            ("head", SECOND / 2, 3 * SECOND / 2, 41 * SECOND),
+            ("inside", 5 * SECOND / 2, 11 * SECOND / 2, 60 * SECOND),
+            ("after", 13 * SECOND / 2, 15 * SECOND / 2, 0),
+        ]
+    );
+    undo.apply(&mut cut).expect("undo");
+    assert_eq!(cut, original);
+
+    // A cut inside one shortens it from where it was cut; one over the
+    // whole of another takes it.
+    let mut cut = original.clone();
+    EditCommand::Batch {
+        commands: vec![
+            EditCommand::RippleDelete {
+                start_ticks: 8 * SECOND,
+                end_ticks: 9 * SECOND,
+                reflow_edges: false,
+            },
+            EditCommand::RippleDelete {
+                start_ticks: 5 * SECOND,
+                end_ticks: 6 * SECOND,
+                reflow_edges: false,
+            },
+        ],
+    }
+    .apply(&mut cut)
+    .expect("two cuts");
+    assert_eq!(
+        spans(&cut),
+        [
+            ("head", SECOND, 3 * SECOND, 40 * SECOND),
+            ("inside", 4 * SECOND, 6 * SECOND, 60 * SECOND),
+        ]
+    );
+}
+
+#[test]
+fn a_cutaway_that_cannot_be_shown_is_refused() {
+    let original = document(Vec::new());
+    let picture = |asset: &str| clipmill_edit_ir::Cutaway {
+        cutaway_id: "still".to_owned(),
+        start_ticks: 0,
+        end_ticks: SECOND,
+        fit: clipmill_edit_ir::CutawayFit::Fit,
+        content: clipmill_edit_ir::CutawayContent::Picture {
+            asset: asset.to_owned(),
+            push_in: true,
+        },
+    };
+    let listed = clipmill_edit_ir::Asset {
+        hash: format!("sha256:{}", "2".repeat(64)),
+        license: "own_content".to_owned(),
+    };
+    // A picture comes with its asset, and undo takes both back.
+    let mut edited = original.clone();
+    let undo = EditCommand::SetCutaways {
+        cutaways: vec![picture(&listed.hash)],
+        assets: Some(vec![listed.clone()]),
+    }
+    .apply(&mut edited)
+    .expect("a picture the clip lists");
+    assert_eq!(edited.assets, std::slice::from_ref(&listed));
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    let mut bad_fingerprint = footage("room", 0, SECOND, 0);
+    if let clipmill_edit_ir::CutawayContent::Footage {
+        source_fingerprint, ..
+    } = &mut bad_fingerprint.content
+    {
+        *source_fingerprint = "../recording.mp4".to_owned();
+    }
+    for (cutaways, why) in [
+        (
+            vec![picture(&listed.hash)],
+            "a picture the clip does not list",
+        ),
+        (
+            vec![footage("room", 0, SECOND / 10, 0)],
+            "shorter than a fifth of a second",
+        ),
+        (
+            vec![footage("room", 0, SECOND, -1)],
+            "before its recording starts",
+        ),
+        (vec![bad_fingerprint], "not a recording's address"),
+        (
+            vec![
+                footage("one", 0, 2 * SECOND, 0),
+                footage("two", SECOND, 3 * SECOND, 0),
+            ],
+            "two at once",
+        ),
+        (
+            vec![
+                footage("one", 0, SECOND, 0),
+                footage("one", 2 * SECOND, 3 * SECOND, 0),
+            ],
+            "one name twice",
+        ),
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::SetCutaways {
+                cutaways,
+                assets: None
+            }
+            .apply(&mut refused)
+            .is_err(),
+            "{why}"
+        );
+        assert_eq!(refused, original);
+    }
+}

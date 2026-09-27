@@ -1010,6 +1010,136 @@ describe('captions made before a better transcript', () => {
   });
 });
 
+describe('b-roll over the clip', () => {
+  const PICTURE = `sha256:${'3'.repeat(64)}`;
+  const RECORDING = `sha256:${'2'.repeat(64)}`;
+  const assets = {
+    list: async (kind: 'image' | 'audio') =>
+      kind === 'image'
+        ? [
+            {
+              hash: PICTURE,
+              kind: 'image' as const,
+              name: 'chart.png',
+              mediaType: 'image/png',
+              bytes: 10,
+              width: 800,
+              height: 600,
+              durationTicks: 0,
+              license: 'licensed' as const,
+              addedUnixMillis: 1,
+            },
+          ]
+        : [],
+    bring: async () => null,
+    url: (hash: string) => `media://assets/${hash}`,
+  };
+  const recordings = {
+    list: async () => [{ fingerprint: RECORDING, name: 'interview.mp4' }],
+  };
+
+  it('puts a picture over the moment at the playhead, with its licence', async () => {
+    const document = {
+      version: 'ir/1',
+      timebase: { num: 1, den: 90_000 },
+      video: { segments: [] },
+      captions: { style_ref: 'clean' },
+      audio: { target_lufs: -14, true_peak_dbtp: -1 },
+    } as never;
+    const { onApply } = show(program(900, 600), undefined, { assets, recordings, document });
+    seekTo(program(900, 600), 90);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Framing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add a picture' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show chart.png' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 270_000,
+          end_ticks: 495_000,
+          content: { kind: 'picture', asset: PICTURE, push_in: true },
+        },
+      ],
+      assets: [{ hash: PICTURE, license: 'licensed' }],
+    });
+  });
+
+  it('cuts to footage from one of the project’s recordings', async () => {
+    const { onApply } = show(program(900, 600), undefined, { assets, recordings });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Framing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add footage' }));
+    fireEvent.click(await screen.findByRole('button', { name: /interview\.mp4/ }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 0,
+          end_ticks: 225_000,
+          content: { kind: 'footage', source_fingerprint: RECORDING, in_ticks: 0 },
+        },
+      ],
+    });
+  });
+
+  it('shows a cutaway over the picture, picks it there, changes it and deletes it', () => {
+    const { onApply } = show(
+      {
+        ...program(900, 600),
+        cutaways: [
+          {
+            cutawayId: 'cut_1',
+            startTicks: 0,
+            endTicks: 90_000,
+            firstFrame: 0,
+            endFrame: 30,
+            fit: 'fill',
+            kind: 'picture',
+            asset: PICTURE,
+            pushIn: true,
+            inTicks: 0,
+          },
+        ],
+      },
+      undefined,
+      { assets, recordings },
+    );
+    const cutaway = screen.getByTestId('cutaway');
+    expect(cutaway.querySelector('img')?.getAttribute('src')).toBe(`media://assets/${PICTURE}`);
+    fireEvent.pointerDown(cutaway, { button: 0 });
+    expect(screen.getByRole('tab', { name: 'Framing' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('heading', { name: 'This cutaway' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Whole' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 0,
+          end_ticks: 90_000,
+          fit: 'fit',
+          content: { kind: 'picture', asset: PICTURE, push_in: true },
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Still' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 0,
+          end_ticks: 90_000,
+          content: { kind: 'picture', asset: PICTURE },
+        },
+      ],
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onApply).toHaveBeenLastCalledWith({ op: 'set_cutaways', cutaways: [] });
+  });
+});
+
 describe('text over the clip', () => {
   const hooked = (): PreviewPlan => ({
     ...program(900, 600),

@@ -265,6 +265,36 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: next,
       };
     }
+    case 'set_cutaways': {
+      const cutaways = command.cutaways as NonNullable<EditIr['video']['cutaways']>;
+      const assets = (command.assets as EditIr['assets'] | undefined) ?? document.assets;
+      const next = {
+        ...document,
+        ...(assets ? { assets } : {}),
+        video: { ...document.video, cutaways },
+      } as EditIr;
+      // Frames as the render counts them: the first at or after its start.
+      const ceil = (ticks: number) => Math.ceil((ticks * plan.rateNum) / plan.rateDen / SECOND);
+      return {
+        plan: bumped({
+          cutaways: cutaways.map((cutaway) => ({
+            cutawayId: cutaway.cutaway_id,
+            startTicks: cutaway.start_ticks,
+            endTicks: cutaway.end_ticks,
+            firstFrame: Math.min(plan.frameCount, ceil(cutaway.start_ticks)),
+            endFrame: Math.min(plan.frameCount, ceil(cutaway.end_ticks)),
+            fit: cutaway.fit ?? 'fill',
+            kind: cutaway.content.kind,
+            asset: cutaway.content.kind === 'picture' ? cutaway.content.asset : null,
+            pushIn: cutaway.content.kind === 'picture' && cutaway.content.push_in === true,
+            sourceFingerprint:
+              cutaway.content.kind === 'footage' ? cutaway.content.source_fingerprint : null,
+            inTicks: cutaway.content.kind === 'footage' ? cutaway.content.in_ticks : 0,
+          })),
+        }),
+        document: next,
+      };
+    }
     case 'set_frame_shape': {
       const shape = command.shape as FrameShape;
       const next = { ...document, video: { ...document.video, shape } };

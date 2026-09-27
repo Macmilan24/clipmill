@@ -520,6 +520,181 @@ fn an_emoji_is_laid_from_its_pinned_picture_under_the_captions() {
     ));
 }
 
+fn picture_cutaway(start: i64, end: i64, push_in: bool) -> clipmill_edit_ir::Cutaway {
+    clipmill_edit_ir::Cutaway {
+        cutaway_id: "cut_chart".to_owned(),
+        start_ticks: start,
+        end_ticks: end,
+        fit: clipmill_edit_ir::CutawayFit::Fill,
+        content: clipmill_edit_ir::CutawayContent::Picture {
+            asset: format!("sha256:{}", "3".repeat(64)),
+            push_in,
+        },
+    }
+}
+
+fn with_picture(document: &mut EditDocument) {
+    document.assets = vec![clipmill_edit_ir::Asset {
+        hash: format!("sha256:{}", "3".repeat(64)),
+        license: "royalty_free".to_owned(),
+    }];
+}
+
+/// B-roll lies over the program's own picture and under everything drawn on
+/// it: a still held for its frames, footage from one more decoder seeked to
+/// a keyframe and read only as far as it shows.
+#[test]
+fn b_roll_is_laid_over_the_program_for_its_frames() {
+    let mut document = fit_document();
+    with_picture(&mut document);
+    document.video.cutaways = vec![
+        picture_cutaway(45_000, 135_000, false),
+        clipmill_edit_ir::Cutaway {
+            cutaway_id: "cut_room".to_owned(),
+            start_ticks: 180_000,
+            end_ticks: 270_000,
+            fit: clipmill_edit_ir::CutawayFit::Fit,
+            content: clipmill_edit_ir::CutawayContent::Footage {
+                source_fingerprint: SOURCE.to_owned(),
+                in_ticks: 900_000,
+            },
+        },
+    ];
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    let graph = &plan.graph.graph;
+    for piece in [
+        format!(
+            "movie=filename=cutaways/{},format=yuv420p[cut0raw]",
+            "3".repeat(64)
+        ),
+        "[cut0raw]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,\
+         setsar=1[cut0]"
+            .to_owned(),
+        "[vcat][cut0]overlay=x=0:y=0:eof_action=repeat:enable='between(n\\,15\\,44)'".to_owned(),
+        // The footage is the input after the section's own.
+        "[1:v]trim=start=0.000000:end=1.000000,setpts=PTS-STARTPTS,fps=30000/1001:start_time=0,\
+         tpad=stop_mode=clone:stop_duration=1,trim=end_frame=30,setpts=PTS-STARTPTS,\
+         format=yuv420p[cut1raw]"
+            .to_owned(),
+        "[cut1rawbg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,\
+         gblur=sigma=40"
+            .to_owned(),
+        "[cut1fitted]setpts=PTS-STARTPTS+60*1001/30000/TB[cut1]".to_owned(),
+        "[vcut0][cut1]overlay=x=0:y=0:eof_action=pass:enable='between(n\\,60\\,89)'".to_owned(),
+        "[vcut1]null[vout]".to_owned(),
+    ] {
+        assert!(graph.contains(&piece), "{piece}\n\n{graph}");
+    }
+    // Read from ten seconds in, for its second and a second's slack.
+    let args = plan.encode_args(LoudnessMeasurement {
+        input_lufs: -20.0,
+        input_true_peak_dbtp: -3.0,
+        input_range_lu: 5.0,
+        input_threshold_lufs: -30.0,
+        target_offset_lu: 0.0,
+    });
+    let footage = args
+        .windows(6)
+        .position(|window| {
+            window
+                == [
+                    "-ss",
+                    "10.000000",
+                    "-t",
+                    "2.000000",
+                    "-i",
+                    "/private/fixtures/source.mp4",
+                ]
+        })
+        .expect("the footage's decoder");
+    let filter = args
+        .iter()
+        .position(|arg| arg == "-filter_complex")
+        .expect("graph");
+    assert!(footage < filter);
+    // The measurement never decodes it.
+    assert!(!plan.measurement_graph.graph.contains("cut"));
+    // The preview is told the same frames, to draw it over the picture.
+    let preview =
+        clipmill_render::preview_plan(&document, &RenderProfile::default()).expect("preview");
+    let shown = preview
+        .cutaways
+        .iter()
+        .map(|cutaway| {
+            (
+                cutaway.kind,
+                cutaway.fit,
+                cutaway.first_frame,
+                cutaway.end_frame,
+                cutaway.in_ticks,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        shown,
+        [
+            ("picture", "fill", 15, 45, 0),
+            ("footage", "fit", 60, 90, 900_000)
+        ]
+    );
+    assert_eq!(
+        clipmill_render::cutaway_pictures(&document),
+        [format!("sha256:{}", "3".repeat(64))]
+    );
+}
+
+/// A picture that moves closer is composed at twice the size, so the move
+/// lands on half pixels, and eased in over its frames.
+#[test]
+fn a_picture_that_pushes_in_is_composed_at_twice_the_size() {
+    let mut document = fit_document();
+    with_picture(&mut document);
+    document.video.cutaways = vec![picture_cutaway(180_000, 270_000, true)];
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    assert!(
+        plan.graph.graph.contains(
+            "[cut0big]zoompan=z='1+0.08*on/29':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=30:\
+             s=1080x1920:fps=30000/1001,setpts=PTS-STARTPTS+60*1001/30000/TB,format=yuv420p[cut0]"
+        ),
+        "{}",
+        plan.graph.graph
+    );
+    assert!(plan.graph.graph.contains("crop=2160:3840"));
+}
+
+#[test]
+fn b_roll_that_cannot_be_read_is_refused_by_name() {
+    let footage = |in_ticks: i64, fingerprint: &str| clipmill_edit_ir::Cutaway {
+        cutaway_id: "cut_room".to_owned(),
+        start_ticks: 0,
+        end_ticks: 90_000,
+        fit: clipmill_edit_ir::CutawayFit::Fill,
+        content: clipmill_edit_ir::CutawayContent::Footage {
+            source_fingerprint: fingerprint.to_owned(),
+            in_ticks,
+        },
+    };
+    let mut document = fit_document();
+    document.video.cutaways = vec![footage(1_300_000, SOURCE)];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CutawayPastEndOfSource(id) if id == "cut_room"
+    ));
+    let elsewhere = format!("sha256:{}", "9".repeat(64));
+    document.video.cutaways = vec![footage(0, &elsewhere)];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::UnresolvedSource(fingerprint) if fingerprint == elsewhere
+    ));
+    // Left past the end of the program, it is named.
+    with_picture(&mut document);
+    document.video.cutaways = vec![picture_cutaway(360_000, 450_000, false)];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CutawayOutsideProgram(id) if id == "cut_chart"
+    ));
+}
+
 // ---- Crop path parity -------------------------------------------------------
 
 fn crop_document(path: Vec<CropKeyframe>) -> EditDocument {
