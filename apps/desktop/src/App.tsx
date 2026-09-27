@@ -187,10 +187,10 @@ export function App(): JSX.Element {
     window.addEventListener(OPEN_WELCOME_EVENT, again);
     return () => window.removeEventListener(OPEN_WELCOME_EVENT, again);
   }, []);
-  // The two workspaces give the picture the room: the rail shows icons only,
-  // and the trail and engine line fold away — the workspace's own heading
-  // names the clip and leads back — unless the engine is not ready, which is
-  // then the first thing on screen.
+  // The two workspaces give the picture the height: the trail and engine
+  // line fold away — the workspace's own heading names the clip and leads
+  // back — unless the engine is not ready, which is then the first thing on
+  // screen. The sidebar stays as it is on every other page.
   const workspace = route.kind === 'inspector' || route.kind === 'editor';
   const folded = workspace && state.status === 'connected';
 
@@ -207,7 +207,6 @@ export function App(): JSX.Element {
           // The sidebar becomes an icon rail in compact desktop windows.
           style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
           className="studio-shell relative h-full min-h-0"
-          data-workspace={workspace ? 'true' : undefined}
         >
           <AppSidebar
             activeId={section.id}
