@@ -10,6 +10,7 @@ import type {
   MediaFilmstrip,
   RankingSet,
   SourceMap,
+  SpeechSpeakers,
   SpeechTranscript,
 } from '@clipmill/contracts';
 
@@ -19,6 +20,20 @@ import type { ClipDecisionRecord, Job, Source } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
 import { type ClipRow, type Summary, clipRows, summarize } from './model.js';
 import { type Transcript, readTranscript } from './transcript.js';
+import { type Voices, readVoices } from './voices.js';
+
+/** Voices from a document that may be absent or unreadable: a transcript is not refused for them. */
+export function voicesOf(
+  json: string | null | undefined,
+  sourceFingerprint: string,
+): Voices | null {
+  if (!json) return null;
+  try {
+    return readVoices(JSON.parse(json) as SpeechSpeakers, sourceFingerprint);
+  } catch {
+    return null;
+  }
+}
 
 export const RANKING_KIND = 'ranking.set.v1';
 export const CANDIDATES_KIND = 'discovery.candidates.v1';
@@ -28,6 +43,7 @@ export const FACES_KIND = 'vision.face_track.v1';
 export const FILMSTRIP_KIND = 'media.filmstrip.v1';
 export const PEAKS_KIND = 'media.audio_peaks.v1';
 export const TRANSCRIPT_KIND = 'speech.transcript.v1';
+export const SPEAKERS_KIND = 'speech.speakers.v1';
 
 /** Why a board has nothing to show, in words a person can act on. */
 export type ResultsProblem =
@@ -89,6 +105,8 @@ export interface ResultsSnapshot {
    * to read for a grid of cards.
    */
   readonly transcriptArtifactId?: string | null;
+  /** Who speaks when in the run, read with the transcript. Absent before voices were told apart. */
+  readonly speakersArtifactId?: string | null;
   /** The index the rows were joined from, kept for the transcript's sentences. */
   readonly index?: IndexTranscript | null;
   readonly problem: ResultsProblem | null;
@@ -106,6 +124,7 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
   peaks: null,
   durationTarget: null,
   transcriptArtifactId: null,
+  speakersArtifactId: null,
   index: null,
   problem: { kind: 'no-source' },
 };
@@ -247,6 +266,7 @@ export class ResultsLoader {
         // published no index.
         transcriptArtifactId:
           index?.inputs?.transcript_artifact_id ?? publishedArtifact(job, TRANSCRIPT_KIND),
+        speakersArtifactId: publishedArtifact(job, SPEAKERS_KIND),
         index,
         problem: null,
       };
@@ -311,7 +331,10 @@ export class ResultsLoader {
   }
 
   async loadTranscript(projectId: string, snapshot: ResultsSnapshot): Promise<Transcript | null> {
-    const json = await this.readOptional(projectId, snapshot.transcriptArtifactId ?? null);
+    const [json, speakers] = await Promise.all([
+      this.readOptional(projectId, snapshot.transcriptArtifactId ?? null),
+      this.readOptional(projectId, snapshot.speakersArtifactId ?? null),
+    ]);
     if (!json || !snapshot.source) {
       return null;
     }
@@ -323,7 +346,11 @@ export class ResultsLoader {
       ) {
         return null;
       }
-      return readTranscript(speech, snapshot.index ?? null);
+      return readTranscript(
+        speech,
+        snapshot.index ?? null,
+        voicesOf(speakers, snapshot.source.sourceFingerprint),
+      );
     } catch {
       return null;
     }

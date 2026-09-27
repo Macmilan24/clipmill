@@ -591,6 +591,44 @@ fn faces_task(task_id: String, payload: &FacesStagePayloadV1) -> TaskSpec {
     }
 }
 
+/// Telling voices apart: the voice-print model over the speech voice activity
+/// found, in the rendition the chain reads.
+///
+/// Its payload is the speech chain's, naming its own stage and nothing else:
+/// how voices are told apart is the worker's, recorded in what it publishes,
+/// so the key moves with the implementation rather than with a knob here.
+fn speakers_task(
+    task_id: String,
+    source_fingerprint: &str,
+    (audio_task, vad_task): (&str, &str),
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+) -> TaskSpec {
+    let implementation = speech_implementation("speech-speakers", bindings);
+    TaskSpec {
+        task_id,
+        ordinal: 0,
+        kind: "speech-speakers".to_owned(),
+        input_kinds: vec!["media.audio_16k.v1".to_owned(), "speech.vad.v1".to_owned()],
+        output_kind: "speech.speakers.v1".to_owned(),
+        payload: SpeechStagePayloadV1 {
+            key_version: SPEECH_STAGE_KEY_VERSION.to_owned(),
+            stage: "speech-speakers".to_owned(),
+            source_fingerprint: source_fingerprint.to_owned(),
+            ..SpeechStagePayloadV1::default()
+        }
+        .encode_to_vec(),
+        dependencies: vec![audio_task.to_owned(), vad_task.to_owned()],
+        input_artifact_ids: Vec::new(),
+        // Two session threads, which the worker fixes so a recording prints
+        // the same twice.
+        resources: speech_resources(implementation, models, 2),
+        implementation: implementation.name.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
 /// One model-free builtin stage inside a larger plan.
 ///
 /// The three of them differ in what they read and how much they hold in memory
@@ -1526,6 +1564,7 @@ impl JobPlan {
                     "speech.asr.v1",
                     "speech.alignment.v1",
                     "speech.transcript.v1",
+                    "speech.speakers.v1",
                 ] {
                     skip(kind, "no_audio");
                 }
@@ -1546,7 +1585,24 @@ impl JobPlan {
                 for task in &chain.tasks {
                     stages.push((task.output_kind.clone(), task.task_id.clone()));
                 }
+                // Who speaks when, beside recognition rather than after it.
+                let vad = chain
+                    .tasks
+                    .iter()
+                    .find(|task| task.output_kind == "speech.vad.v1")
+                    .map(|task| task.task_id.clone());
                 tasks.extend(chain.tasks);
+                if let Some(vad) = vad {
+                    let speakers = speakers_task(
+                        TaskId::new().to_string(),
+                        source.source_fingerprint,
+                        (audio.task_id.as_str(), vad.as_str()),
+                        models,
+                        bindings,
+                    );
+                    stages.push(("speech.speakers.v1".to_owned(), speakers.task_id.clone()));
+                    tasks.push(speakers);
+                }
                 Some(chain.transcript_task_id)
             }
         };
@@ -4262,7 +4318,7 @@ mod analyze_tests {
     fn the_fan_in_depends_on_every_stage_that_published_something() {
         let plan = plan(true, true);
         let manifest = task(&plan, analysis::KIND_MANIFEST);
-        assert_eq!(manifest.dependencies.len(), 12);
+        assert_eq!(manifest.dependencies.len(), 13);
         assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
         // Nothing declared: every input is a task in this plan.
         assert!(manifest.input_artifact_ids.is_empty());
@@ -4273,6 +4329,7 @@ mod analyze_tests {
             "speech.asr.v1",
             "speech.alignment.v1",
             "speech.transcript.v1",
+            "speech.speakers.v1",
             "evidence.shots.v1",
             "vision.face_track.v1",
             "index.transcript.v1",
@@ -4383,8 +4440,9 @@ mod analyze_tests {
         }
     }
 
-    /// A source with no audio has no transcript, so the four speech stages and
-    /// the four that read a transcript are all absent — each with the reason.
+    /// A source with no audio has no transcript and no voices, so the five
+    /// speech stages and the four that read a transcript are all absent — each
+    /// with the reason.
     #[test]
     fn a_source_with_no_audio_skips_everything_that_needs_speech() {
         let plan = plan(true, false);
@@ -4399,6 +4457,7 @@ mod analyze_tests {
                 "speech.asr.v1",
                 "speech.alignment.v1",
                 "speech.transcript.v1",
+                "speech.speakers.v1",
                 "index.transcript.v1",
                 "editorial.windows.v1",
                 "discovery.candidates.v1",

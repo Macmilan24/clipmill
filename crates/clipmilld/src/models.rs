@@ -460,7 +460,9 @@ pub(crate) fn valid_name(name: &str) -> bool {
         && !name.contains("..")
 }
 
-/// A relative path that stays inside the model's directory.
+/// A relative path that stays inside the model's directory. A `+` is allowed
+/// because upstream files carry it (`voxceleb_CAM++.onnx`); it means nothing
+/// in a path, nor in a URL's path.
 pub(crate) fn valid_relative_path(path: &str) -> bool {
     !path.is_empty()
         && path.len() <= 512
@@ -471,9 +473,9 @@ pub(crate) fn valid_relative_path(path: &str) -> bool {
             !part.is_empty()
                 && part != "."
                 && part != ".."
-                && part
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+                && part.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+')
+                })
         })
 }
 
@@ -775,7 +777,12 @@ mod tests {
         ] {
             assert!(!valid_name(bad), "{bad}");
         }
-        for good in ["model.safetensors", "onnx/model.onnx", "a_b-c.1/x.json"] {
+        for good in [
+            "model.safetensors",
+            "onnx/model.onnx",
+            "a_b-c.1/x.json",
+            "voxceleb_CAM++.onnx",
+        ] {
             assert!(valid_relative_path(good), "{good}");
         }
         for bad in [
