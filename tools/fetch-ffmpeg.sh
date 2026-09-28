@@ -39,25 +39,53 @@ verify() { # verify <label> <path> <want>
 }
 
 mkdir -p .cache/bin
-for tool in ffmpeg ffprobe; do
-  url="$(bom_get "ffmpeg.$PLATFORM" "${tool}_url")"
-  want="$(bom_get "ffmpeg.$PLATFORM" "${tool}_sha256")"
-  [ -n "$url" ] && [ -n "$want" ] || { echo "fetch-ffmpeg: no pin for $tool/$PLATFORM in bom.toml" >&2; exit 1; }
-
-  marker=".cache/bin/.${tool}.sha256"
-  if [ -x ".cache/bin/$tool" ] && [ -f "$marker" ] && [ "$(cat "$marker")" = "$want" ]; then
-    echo "$tool: pinned build already installed"
-    continue
+archive_url="$(bom_get "ffmpeg.$PLATFORM" archive_url)"
+if [ -n "$archive_url" ]; then
+  # One archive holds both tools; each is taken out by its pinned member name.
+  archive_want="$(bom_get "ffmpeg.$PLATFORM" archive_sha256)"
+  marker=".cache/bin/.ffmpeg-archive.sha256"
+  if [ -x .cache/bin/ffmpeg ] && [ -x .cache/bin/ffprobe ] && [ -f "$marker" ] \
+    && [ "$(cat "$marker")" = "$archive_want" ]; then
+    echo "ffmpeg, ffprobe: pinned build already installed"
+  else
+    echo "ffmpeg, ffprobe: downloading $archive_url"
+    rm -rf .cache/bin/unpacked && mkdir -p .cache/bin/unpacked
+    curl -sSfL "$archive_url" -o .cache/bin/ffmpeg-archive
+    verify "FFmpeg archive" .cache/bin/ffmpeg-archive "$archive_want"
+    members="$(bom_get "ffmpeg.$PLATFORM" ffmpeg_member) $(bom_get "ffmpeg.$PLATFORM" ffprobe_member)"
+    case "$archive_url" in
+      *.zip) unzip -oq .cache/bin/ffmpeg-archive $members -d .cache/bin/unpacked ;;
+      *) tar -xf .cache/bin/ffmpeg-archive -C .cache/bin/unpacked $members ;;
+    esac
+    for tool in ffmpeg ffprobe; do
+      mv -f ".cache/bin/unpacked/$(bom_get "ffmpeg.$PLATFORM" "${tool}_member")" ".cache/bin/$tool"
+      chmod +x ".cache/bin/$tool"
+      rm -f ".cache/bin/.${tool}.sha256"
+    done
+    rm -rf .cache/bin/unpacked .cache/bin/ffmpeg-archive
+    echo "$archive_want" > "$marker"
   fi
+else
+  for tool in ffmpeg ffprobe; do
+    url="$(bom_get "ffmpeg.$PLATFORM" "${tool}_url")"
+    want="$(bom_get "ffmpeg.$PLATFORM" "${tool}_sha256")"
+    [ -n "$url" ] && [ -n "$want" ] || { echo "fetch-ffmpeg: no pin for $tool/$PLATFORM in bom.toml" >&2; exit 1; }
 
-  echo "$tool: downloading $url"
-  curl -sSfL "$url" -o ".cache/bin/$tool.zip"
-  verify "$tool" ".cache/bin/$tool.zip" "$want"
-  unzip -oq ".cache/bin/$tool.zip" -d .cache/bin
-  rm -f ".cache/bin/$tool.zip"
-  chmod +x ".cache/bin/$tool"
-  echo "$want" > "$marker"
-done
+    marker=".cache/bin/.${tool}.sha256"
+    if [ -x ".cache/bin/$tool" ] && [ -f "$marker" ] && [ "$(cat "$marker")" = "$want" ]; then
+      echo "$tool: pinned build already installed"
+      continue
+    fi
+
+    echo "$tool: downloading $url"
+    curl -sSfL "$url" -o ".cache/bin/$tool.zip"
+    verify "$tool" ".cache/bin/$tool.zip" "$want"
+    unzip -oq ".cache/bin/$tool.zip" -d .cache/bin
+    rm -f ".cache/bin/$tool.zip"
+    chmod +x ".cache/bin/$tool"
+    echo "$want" > "$marker"
+  done
+fi
 
 # ---- Caption font -----------------------------------------------------------
 # One face, pinned by the digest of the archive *and* of the member taken out

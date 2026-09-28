@@ -1006,11 +1006,15 @@ fn ffmpeg_sibling(ffprobe: &Path) -> PathBuf {
     ffmpeg
 }
 
+/// The `bom.toml` build of this platform's FFmpeg.
 fn expected_ffmpeg_build() -> &'static str {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         "1783011502_8.1.2"
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        "1783011670_8.1.2"
+    } else if cfg!(all(
+        any(target_os = "linux", target_os = "windows"),
+        target_arch = "x86_64"
+    )) {
+        "202609271304_8.1.3"
     } else {
         "unsupported-phase0-platform"
     }
