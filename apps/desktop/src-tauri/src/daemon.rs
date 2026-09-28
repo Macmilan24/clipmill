@@ -47,6 +47,9 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 /// How long a daemon asked to stop gets before it is ended. It asks its own
 /// workers to leave first, and gives each a grace period.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+/// The longest [`DaemonSupervisor::stop_owned`] can take: the slot, the
+/// request, the daemon's own stop, and a moment to end it after that.
+pub const STOP_DEADLINE: Duration = Duration::from_secs(55);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(150);
 /// Limit concurrent calls below the daemon's 64-connection ceiling, leaving room
 /// for event subscriptions and workers. Queue screen-loading bursts here to avoid
@@ -1128,7 +1131,12 @@ impl DaemonSupervisor {
     pub async fn stop_owned(&self) {
         self.stopping
             .store(true, std::sync::atomic::Ordering::SeqCst);
-        let mut slot = self.child.lock().await;
+        // Every step is bounded: whatever else holds the slot or every call
+        // permit when the person quits must not keep the app from exiting.
+        let Ok(mut slot) = timeout(CALL_TIMEOUT, self.child.lock()).await else {
+            tracing::warn!("the daemon's slot stayed busy; exiting without stopping it");
+            return;
+        };
         let Some(child) = slot.as_mut() else {
             return;
         };
@@ -1136,7 +1144,10 @@ impl DaemonSupervisor {
             *slot = None;
             return;
         }
-        let asked = self.client.shutdown().await.is_ok();
+        let asked = matches!(
+            timeout(CALL_TIMEOUT, self.client.shutdown()).await,
+            Ok(Ok(()))
+        );
         let stopped = asked && timeout(SHUTDOWN_TIMEOUT, child.wait()).await.is_ok();
         if !stopped {
             tracing::warn!("clipmilld did not stop when asked; ending it");

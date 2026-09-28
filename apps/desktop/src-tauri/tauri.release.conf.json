@@ -11,13 +11,13 @@
     "longDescription": "Turn long recordings into short clips on your own computer: find the moments, review them, edit framing and captions, and export video ready to upload. Analysis runs locally; nothing about your projects is sent anywhere unless you choose a cloud step.",
     "copyright": "Copyright 2026 Samuel Dagne. Licensed under AGPL-3.0-only.",
     "license": "AGPL-3.0-only",
-    "licenseFile": "../../../LICENSE",
     "externalBin": ["binaries/clipmilld", "binaries/ffmpeg", "binaries/ffprobe", "binaries/uv"],
     "resources": {
       "resources/": "resources/"
     },
     "macOS": {
-      "minimumSystemVersion": "14.0"
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "-"
     },
     "linux": {
       "appimage": {
