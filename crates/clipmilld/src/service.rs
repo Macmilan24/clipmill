@@ -5090,7 +5090,7 @@ fn engine_remedy(stage: &mut StageReadinessV1, engine: &crate::engine::Engine) {
         };
         stage.remedy = match (part.state.as_str(), part.process.as_str()) {
             ("missing" | "failed", _) => format!(
-                "{} is part of the processing engine, which is not installed yet. Install it from Set up ClipMill, or under Processing engine in Models.",
+                "{} is one of ClipMill's components, and it is not installed yet. Install the components from Set up ClipMill, or under Components in Models.",
                 part.title
             ),
             ("queued" | "installing", _) => {
@@ -5100,7 +5100,7 @@ fn engine_remedy(stage: &mut StageReadinessV1, engine: &crate::engine::Engine) {
                 )
             }
             ("outdated", _) => format!(
-                "{} was installed by an earlier version of ClipMill. Update the processing engine in Models.",
+                "{} was installed by an earlier version of ClipMill. Update the components in Models.",
                 part.title
             ),
             (_, "waiting") => format!(
