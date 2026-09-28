@@ -127,6 +127,15 @@ def _check_ffmpeg_pin(platform: str, ffmpeg: dict, entry: dict) -> None:
             raise ValueError(f"{platform} {label} URL omits its build identity")
         if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None:
             raise ValueError(f"{platform} {label} digest is invalid")
+    # A GPL build is shipped with a pointer to its complete source, which the
+    # app's FFmpeg notice prints: the provider's scripts and library versions.
+    source = entry.get("source")
+    if (
+        not isinstance(source, list)
+        or not source
+        or any(urlparse(str(url)).scheme != "https" for url in source)
+    ):
+        raise ValueError(f"{platform} FFmpeg names no HTTPS source for its build")
 
 
 def _check_uv(bom: dict) -> None:

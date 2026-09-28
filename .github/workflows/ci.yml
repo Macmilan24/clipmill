@@ -141,6 +141,8 @@ jobs:
       # its pyproject; model-free contract/recovery tests also run on Linux.
       - name: Python license policy regressions
         run: python3 -m unittest discover -s tools/security/tests
+      - name: Release notice regressions
+        run: python3 -m unittest discover -s tools/release/tests
       - name: pytest and installed license policy (all projects)
         run: |
           for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speakers workers/speech-mlx workers/shots workers/faces workers/editorial integrations/youtube-import eval/harness; do

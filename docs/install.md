@@ -96,3 +96,12 @@ file), then delete the folder above to remove projects, components and models.
 
 Report problems at
 [github.com/Macmilan24/clipmill/issues](https://github.com/Macmilan24/clipmill/issues).
+
+## Licences
+
+ClipMill is free software under the GNU Affero General Public License,
+version 3. The licences and notices of everything the app carries (FFmpeg,
+uv, the libraries and packages it is built from, and its fonts) are in the
+app's `resources/licenses` folder, starting with `README.txt`. On a Mac,
+Control-click ClipMill in Applications, choose **Show Package Contents**, and
+open `Contents/Resources/resources/licenses`.
