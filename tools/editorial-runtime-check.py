@@ -12,10 +12,8 @@ import argparse
 import hashlib
 import json
 import os
-import resource
 import subprocess
 import sys
-import time
 import tomllib
 from pathlib import Path
 
@@ -26,9 +24,7 @@ sys.path.insert(0, str(ROOT / "eval/harness/src"))
 from clipmill.worker.v1 import worker_pb2
 from clipmill_eval.client import DaemonClient
 from clipmill_eval.profiles import verify_device_profile
-from clipmill_worker_editorial.runtime import LocalModel
-from clipmill_worker_sdk import CancellationToken
-from clipmill_worker_sdk.weights import verify_model
+from clipmill_worker_editorial.runtime_check import RUNTIME, SCHEMA_VERSION, prove
 
 DEFAULT_MODEL = "qwen3-5-editorial-mlx"
 
@@ -99,8 +95,8 @@ def main():
     if not isinstance(previous, dict):
         previous = {}
     if (
-        previous.get("schema_version") == "clipmill.editorial.runtime.v1"
-        and previous.get("runtime") == "mlx-vlm@0.7.1/clipmill-json-v2"
+        previous.get("schema_version") == SCHEMA_VERSION
+        and previous.get("runtime") == RUNTIME
         and isinstance(previous.get("elapsed_millis"), int)
         and previous["elapsed_millis"] > 0
         and isinstance(previous.get("peak_resident_bytes"), int)
@@ -134,41 +130,8 @@ def main():
             "Metal worker admission refreshed"
         )
         return
-    model = verify_model(model_binding)
-    started = time.monotonic()
-    runtime = LocalModel(model.root, CancellationToken())
-    try:
-        raw, tokens = runtime.generate(
-            'Reply with the JSON object {"ready":true}.',
-            {
-                "type": "object",
-                "properties": {"ready": {"const": True}},
-                "required": ["ready"],
-                "additionalProperties": False,
-            },
-            32,
-        )
-        if json.loads(raw) != {"ready": True}:
-            raise RuntimeError("model did not complete the readiness JSON")
-    finally:
-        runtime.close()
-    document = {
-        "schema_version": "clipmill.editorial.runtime.v1",
-        "runtime": "mlx-vlm@0.7.1/clipmill-json-v2",
-        "hardware_fingerprint": profile.hardware_fingerprint,
-        "model_digest": model.digest,
-        "validated": True,
-        "elapsed_millis": max(1, int((time.monotonic() - started) * 1000)),
-        "peak_resident_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
-        "tokens": tokens,
-    }
-    pending = destination.with_suffix(".pending")
-    fd = os.open(pending, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(document, f)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(pending, destination)
+    # The same proof a packaged app's daemon runs in its editorial component.
+    prove(model_binding, destination, profile.hardware_fingerprint)
 
 
 if __name__ == "__main__":
