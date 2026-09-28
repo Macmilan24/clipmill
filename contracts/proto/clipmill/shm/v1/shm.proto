@@ -8,7 +8,8 @@ package clipmill.shm.v1;
 import "clipmill/time/v1/time.proto";
 
 message BufferDescriptor {
-  // Platform shared-memory identifier (POSIX shm name / Windows section).
+  // Platform shared-memory identifier: a POSIX shm name on macOS, and on
+  // Windows the path of a private file holding the bytes.
   string shm_name = 1;
   repeated uint64 shape = 2;
   DataType dtype = 3;
@@ -23,6 +24,8 @@ message BufferDescriptor {
   string lease_id = 8;
   // Linux transfers a sealed memfd through SCM_RIGHTS. macOS opens a private
   // POSIX shm name read-only and the daemon unlinks it after map acknowledgement.
+  // Windows reads a private file into its own memory and closes it before the
+  // acknowledgement, after which the daemon deletes it.
   TransportType transport_type = 9;
   // One-use, unguessable bearer token bound to lease_id.
   string handle_token = 10;
@@ -44,6 +47,7 @@ enum TransportType {
   TRANSPORT_TYPE_UNSPECIFIED = 0;
   TRANSPORT_TYPE_SCM_RIGHTS_MEMFD = 1;
   TRANSPORT_TYPE_POSIX_SHM = 2;
+  TRANSPORT_TYPE_PRIVATE_FILE = 3;
 }
 
 enum DataType {

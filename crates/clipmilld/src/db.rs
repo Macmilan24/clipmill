@@ -2165,6 +2165,7 @@ fn create_private_directory(path: &Path) -> Result<(), DaemonError> {
     Ok(())
 }
 
+#[cfg_attr(not(unix), allow(clippy::unnecessary_wraps))]
 fn set_private_file_permissions(path: &Path) -> Result<(), DaemonError> {
     #[cfg(unix)]
     {
@@ -2178,9 +2179,7 @@ fn set_private_file_permissions(path: &Path) -> Result<(), DaemonError> {
 }
 
 fn sync_directory(path: &Path) -> Result<(), DaemonError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(|source| DaemonError::io(path, source))
+    crate::platform::sync_dir(path).map_err(|source| DaemonError::io(path, source))
 }
 
 fn create_project(

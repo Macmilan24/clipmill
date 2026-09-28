@@ -1159,6 +1159,7 @@ fn create_private_directory(path: &Path) -> Result<(), ArtifactError> {
     set_private_permissions(path, DIRECTORY_MODE)
 }
 
+#[cfg_attr(not(unix), allow(clippy::unnecessary_wraps))]
 fn set_private_permissions(path: &Path, mode: u32) -> Result<(), ArtifactError> {
     #[cfg(unix)]
     {
@@ -1171,11 +1172,22 @@ fn set_private_permissions(path: &Path, mode: u32) -> Result<(), ArtifactError> 
     Ok(())
 }
 
+/// Windows cannot open a directory as a file to flush it, and NTFS journals
+/// the names a directory holds, so there the rename is left to the journal.
+#[cfg_attr(windows, allow(clippy::unnecessary_wraps))]
 fn sync_directory(path: &Path) -> Result<(), ArtifactError> {
-    let directory = File::open(path).map_err(|source| ArtifactError::io(path, source))?;
-    directory
-        .sync_all()
-        .map_err(|source| ArtifactError::io(path, source))
+    #[cfg(unix)]
+    {
+        let directory = File::open(path).map_err(|source| ArtifactError::io(path, source))?;
+        directory
+            .sync_all()
+            .map_err(|source| ArtifactError::io(path, source))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
 }
 
 fn directory_entries(path: &Path) -> Result<Vec<PathBuf>, ArtifactError> {

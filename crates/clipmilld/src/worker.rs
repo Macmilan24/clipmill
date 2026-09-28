@@ -2,7 +2,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
-    os::unix::fs::{FileTypeExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Mutex},
@@ -23,20 +22,20 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
     time::{sleep, timeout},
 };
 
 use crate::{
     artifacts::ArtifactHandle,
     db::{DbHandle, StoreError},
+    endpoint::Stream,
     jobs::{
         EventHub, HEARTBEAT_INTERVAL, LEASE_TTL, LeaseRequest, LeasedTask, ResourceCapacity,
         SchedulerHandle,
     },
     media,
     models::ModelRegistry,
-    recipes,
+    platform, recipes,
     shm::ShmBroker,
 };
 
@@ -157,10 +156,7 @@ impl WorkerService {
         self.shm.clone()
     }
 
-    pub(crate) async fn handle_connection(
-        &self,
-        mut stream: UnixStream,
-    ) -> Result<(), WorkerError> {
+    pub(crate) async fn handle_connection(&self, mut stream: Stream) -> Result<(), WorkerError> {
         let challenge = challenge()?;
         write_response(
             &mut stream,
@@ -207,7 +203,7 @@ impl WorkerService {
 
     async fn run_registered(
         &self,
-        stream: &mut UnixStream,
+        stream: &mut Stream,
         descriptor: &CapabilityDescriptor,
     ) -> Result<(), WorkerError> {
         let mut active: Option<ActiveLease> = None;
@@ -958,7 +954,7 @@ fn load_trust(path: &Path) -> Result<BTreeMap<String, [u8; 32]>, WorkerError> {
         if metadata.file_type().is_symlink()
             || !metadata.file_type().is_file()
             || metadata.len() > 256
-            || metadata.permissions().mode() & 0o077 != 0
+            || platform::is_shared(&metadata)
         {
             return Err(WorkerError::InvalidTrustKey);
         }
@@ -1161,7 +1157,7 @@ fn validate_staged_outputs(
         let metadata = fs::symlink_metadata(&disk_path).map_err(WorkerError::Io)?;
         if metadata.file_type().is_symlink()
             || !metadata.file_type().is_file()
-            || metadata.file_type().is_socket()
+            || platform::is_special(metadata.file_type())
             || metadata.len() != output.byte_size
         {
             return Err(WorkerError::InvalidStaging);
@@ -1183,7 +1179,7 @@ fn validate_staged_outputs(
     Ok(())
 }
 
-async fn read_request(stream: &mut UnixStream) -> Result<WorkerRequest, WorkerError> {
+async fn read_request(stream: &mut Stream) -> Result<WorkerRequest, WorkerError> {
     let length = timeout(READ_TIMEOUT, read_varint(stream))
         .await
         .map_err(|_| WorkerError::Timeout)??;
@@ -1198,10 +1194,7 @@ async fn read_request(stream: &mut UnixStream) -> Result<WorkerRequest, WorkerEr
     WorkerRequest::decode(bytes.as_slice()).map_err(|error| WorkerError::Decode(error.to_string()))
 }
 
-async fn write_response(
-    stream: &mut UnixStream,
-    response: &WorkerResponse,
-) -> Result<(), WorkerError> {
+async fn write_response(stream: &mut Stream, response: &WorkerResponse) -> Result<(), WorkerError> {
     let bytes = response.encode_length_delimited_to_vec();
     if bytes.len() > MAX_FRAME_BYTES {
         return Err(WorkerError::OversizedFrame);
@@ -1212,7 +1205,7 @@ async fn write_response(
     Ok(())
 }
 
-async fn read_varint(stream: &mut UnixStream) -> Result<u64, WorkerError> {
+async fn read_varint(stream: &mut Stream) -> Result<u64, WorkerError> {
     let mut value = 0_u64;
     for index in 0..10 {
         let byte = stream.read_u8().await?;
@@ -1642,7 +1635,7 @@ mod tests {
             ),
         };
         let encoded = request.encode_length_delimited_to_vec();
-        let (mut sender, mut receiver) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (mut sender, mut receiver) = crate::endpoint::pair().await.expect("socket pair");
         let writer = tokio::spawn(async move {
             for byte in encoded {
                 sender.write_all(&[byte]).await.expect("fragment write");
@@ -1655,7 +1648,7 @@ mod tests {
         );
         writer.await.expect("fragment writer");
 
-        let (mut sender, mut receiver) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (mut sender, mut receiver) = crate::endpoint::pair().await.expect("socket pair");
         sender
             .write_all(&encode_varint_for_test(
                 u64::try_from(MAX_FRAME_BYTES + 1).expect("frame limit"),
@@ -1667,7 +1660,7 @@ mod tests {
             Err(WorkerError::OversizedFrame)
         ));
 
-        let (mut sender, mut receiver) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (mut sender, mut receiver) = crate::endpoint::pair().await.expect("socket pair");
         sender
             .write_all(&[0x80; 10])
             .await
@@ -1677,7 +1670,7 @@ mod tests {
             Err(WorkerError::MalformedFrame)
         ));
 
-        let (mut sender, mut receiver) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (mut sender, mut receiver) = crate::endpoint::pair().await.expect("socket pair");
         sender.write_all(&[0]).await.expect("zero prefix");
         assert!(matches!(
             read_request(&mut receiver).await,

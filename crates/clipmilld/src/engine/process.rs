@@ -202,6 +202,7 @@ fn spawn(launch: &Launch, install: &Path) -> std::io::Result<Child> {
     let log = open_log(&launch.log)?;
     let errors = log.try_clone()?;
     let mut command = Command::new(&program);
+    crate::platform::no_console_async(&mut command);
     for (key, _) in std::env::vars_os() {
         if affects_python(&key) {
             command.env_remove(&key);
@@ -240,8 +241,8 @@ fn open_log(path: &Path) -> std::io::Result<fs::File> {
 
 /// Ask the worker to leave, and make it leave if it does not.
 async fn finish(part: &str, child: &mut Child) {
-    ask_to_stop(child);
-    if tokio::time::timeout(GRACE, child.wait()).await.is_err() {
+    let asked = ask_to_stop(child);
+    if !asked || tokio::time::timeout(GRACE, child.wait()).await.is_err() {
         tracing::warn!(
             part,
             "an engine worker did not stop when asked; stopping it"
@@ -250,20 +251,24 @@ async fn finish(part: &str, child: &mut Child) {
     }
 }
 
+/// Whether the worker was asked; where no request exists (Windows, which has
+/// no signal for a process without a window) it is ended at once instead,
+/// and lease recovery covers anything it held.
 #[cfg(unix)]
-fn ask_to_stop(child: &Child) {
+fn ask_to_stop(child: &Child) -> bool {
     use nix::{
         sys::signal::{Signal, kill},
         unistd::Pid,
     };
-    if let Some(pid) = child.id().and_then(|id| i32::try_from(id).ok()) {
-        let _ = kill(Pid::from_raw(pid), Signal::SIGTERM);
-    }
+    child
+        .id()
+        .and_then(|id| i32::try_from(id).ok())
+        .is_some_and(|pid| kill(Pid::from_raw(pid), Signal::SIGTERM).is_ok())
 }
 
 #[cfg(not(unix))]
-fn ask_to_stop(_child: &Child) {
-    // Without signals the grace period passes and the process is ended.
+fn ask_to_stop(_child: &Child) -> bool {
+    false
 }
 
 #[cfg(test)]

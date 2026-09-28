@@ -1293,7 +1293,7 @@ fn install(partial: &Path, target: &Path) -> std::io::Result<()> {
     }
     fs::rename(partial, target)?;
     if let Some(parent) = target.parent() {
-        fs::File::open(parent)?.sync_all()?;
+        crate::platform::sync_dir(parent)?;
     }
     Ok(())
 }
