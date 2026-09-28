@@ -771,6 +771,14 @@ async fn platform_identity() -> PlatformIdentity {
 async fn cpu_identity() -> CpuIdentity {
     let logical = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let logical_cores = u32::try_from(logical).unwrap_or(u32::MAX).max(1);
+    #[cfg(windows)]
+    if let Some(facts) = windows_facts().await {
+        return CpuIdentity {
+            model: facts.cpu_model.clone(),
+            logical_cores,
+            physical_cores: facts.physical_cores.clamp(1, logical_cores),
+        };
+    }
     if cfg!(target_os = "macos") {
         let model = sysctl_text("machdep.cpu.brand_string")
             .await
@@ -1077,14 +1085,99 @@ pub(crate) async fn total_memory() -> u64 {
 }
 
 async fn measured_total_memory() -> u64 {
+    const FALLBACK: u64 = 8 * 1024 * 1024 * 1024;
+    #[cfg(windows)]
+    {
+        windows_facts()
+            .await
+            .map_or(FALLBACK, |facts| facts.total_memory)
+    }
+    #[cfg(not(windows))]
     if cfg!(target_os = "macos") {
         sysctl_text("hw.memsize")
             .await
             .and_then(|value| value.parse::<u64>().ok())
-            .unwrap_or(8 * 1024 * 1024 * 1024)
+            .unwrap_or(FALLBACK)
     } else {
-        linux_memory_value("MemTotal").unwrap_or(8 * 1024 * 1024 * 1024)
+        linux_memory_value("MemTotal").unwrap_or(FALLBACK)
     }
+}
+
+/// What Windows reports about the machine through CIM, read once. PowerShell
+/// is the reader every Windows has, and it needs no unsafe code here, as
+/// `sysctl` and `vm_stat` are on macOS.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+struct WindowsFacts {
+    total_memory: u64,
+    physical_cores: u32,
+    cpu_model: String,
+}
+
+/// The facts from the lines [`windows_facts`] prints: total memory in bytes,
+/// the cores of every processor, and the first processor's name.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn parse_windows_facts(text: &str) -> Option<WindowsFacts> {
+    let mut lines = text.lines().map(str::trim);
+    let total_memory = lines
+        .next()?
+        .parse::<u64>()
+        .ok()
+        .filter(|bytes| *bytes > 0)?;
+    let physical_cores = lines
+        .next()?
+        .parse::<u32>()
+        .ok()
+        .filter(|cores| *cores > 0)?;
+    let cpu_model = lines.next()?.to_owned();
+    (!cpu_model.is_empty()).then_some(WindowsFacts {
+        total_memory,
+        physical_cores,
+        cpu_model,
+    })
+}
+
+#[cfg(windows)]
+async fn windows_facts() -> Option<&'static WindowsFacts> {
+    static FACTS: OnceCell<Option<WindowsFacts>> = OnceCell::const_new();
+    FACTS
+        .get_or_init(|| async {
+            let text = powershell(
+                "$s = Get-CimInstance Win32_ComputerSystem; \
+                 $p = @(Get-CimInstance Win32_Processor); \
+                 $s.TotalPhysicalMemory; \
+                 ($p | Measure-Object -Property NumberOfCores -Sum).Sum; \
+                 $p[0].Name",
+            )
+            .await?;
+            parse_windows_facts(&text)
+        })
+        .await
+        .as_ref()
+}
+
+/// Memory available now, in bytes, from CIM's free physical memory (KiB).
+#[cfg(windows)]
+async fn windows_available_memory() -> Option<u64> {
+    let text = powershell("(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory").await?;
+    text.trim()
+        .parse::<u64>()
+        .ok()
+        .map(|kib| kib.saturating_mul(1024))
+}
+
+#[cfg(windows)]
+async fn powershell(script: &str) -> Option<String> {
+    let root = std::env::var_os("SystemRoot")?;
+    let program = Path::new(&root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+    let arguments = ["-NoProfile", "-NonInteractive", "-Command", script].map(OsString::from);
+    let output = run_command(&program, &arguments, Path::new(&root))
+        .await
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Free space on the volume a task's scratch actually lands on.
@@ -1114,6 +1207,11 @@ fn measured_available_disk(scratch: &std::path::Path) -> u64 {
 }
 
 async fn measured_available_memory(total: u64) -> u64 {
+    #[cfg(windows)]
+    {
+        windows_available_memory().await.unwrap_or(total / 2)
+    }
+    #[cfg(not(windows))]
     if cfg!(target_os = "macos") {
         run_command(Path::new("/usr/bin/vm_stat"), &[], Path::new("/"))
             .await
@@ -1126,6 +1224,7 @@ async fn measured_available_memory(total: u64) -> u64 {
     }
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 fn parse_vm_stat(bytes: &[u8]) -> Option<u64> {
     let text = String::from_utf8_lossy(bytes);
     let page_size = text
@@ -1149,6 +1248,7 @@ fn parse_vm_stat(bytes: &[u8]) -> Option<u64> {
     )
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 fn linux_memory_value(key: &str) -> Option<u64> {
     let text = fs::read_to_string("/proc/meminfo").ok()?;
     let line = text.lines().find(|line| line.starts_with(key))?;
@@ -1387,5 +1487,19 @@ mod tests {
             1,
         );
         assert!(verify_profile(&tampered, Some(&fingerprint)).is_err());
+    }
+
+    #[test]
+    fn windows_facts_are_read_from_the_three_lines_powershell_prints() {
+        let facts = super::parse_windows_facts(
+            "34276446208\r\n8\r\nIntel(R) Core(TM) i7-10700 CPU @ 2.90GHz\r\n",
+        )
+        .expect("facts");
+        assert_eq!(facts.total_memory, 34_276_446_208);
+        assert_eq!(facts.physical_cores, 8);
+        assert_eq!(facts.cpu_model, "Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz");
+        assert!(super::parse_windows_facts("0\n8\nCPU").is_none());
+        assert!(super::parse_windows_facts("1024\nnone\nCPU").is_none());
+        assert!(super::parse_windows_facts("1024\n8\n").is_none());
     }
 }
