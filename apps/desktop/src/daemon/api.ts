@@ -3,6 +3,7 @@
  * The runtime implementation uses the Tauri bridge; tests can provide an
  * in-memory implementation through the same interface.
  */
+import { componentsApi, type ComponentsApi } from './components.js';
 import { modelLibraryApi, type ModelLibraryApi } from './models.js';
 import { publishingApi, type PublishingApi } from './publishing.js';
 import {
@@ -89,7 +90,7 @@ import {
   revealPath,
 } from './client.js';
 
-export interface ShellApi extends PublishingApi, ModelLibraryApi {
+export interface ShellApi extends PublishingApi, ModelLibraryApi, ComponentsApi {
   listProjects(): Promise<readonly Project[]>;
   listJobs(projectId: string): Promise<readonly Job[]>;
   fetchJob(jobId: string): Promise<Job>;
@@ -195,6 +196,7 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
 export const daemonApi: ShellApi = {
   ...publishingApi,
   ...modelLibraryApi,
+  ...componentsApi,
   listProjects,
   listJobs,
   fetchJob,
