@@ -44,6 +44,7 @@ lint:
 test:
     cargo test --workspace
     python3 -m unittest discover -s tools/security/tests
+    python3 -m unittest discover -s tools/release/tests
     cd workers/sdk && uv run pytest
     cd workers/echo && uv run pytest
     cd workers/vad && uv run pytest

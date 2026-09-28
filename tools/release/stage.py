@@ -6,7 +6,9 @@ Writes two folders the release Tauri config reads (both ignored by Git):
     apps/desktop/src-tauri/binaries/   the pinned executables beside the app:
         clipmilld, ffmpeg, ffprobe and uv, each named <name>-<target triple>
     apps/desktop/src-tauri/resources/  read-only files the app reads:
-        fonts/, emoji/, models/registry/, engine/, licenses/
+        fonts/, emoji/, models/registry/, engine/, and licenses/, which
+        holds every licence and notice for what the app carries (notices.py
+        writes the third-party ones)
 
 Every download is checked against its pin in bom.toml before it is used, and
 cached under .cache/release/ by digest. The engine folder holds ClipMill's own
@@ -41,6 +43,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import notices  # beside this script
 from packaging.requirements import Requirement
 from packaging.tags import Tag, compatible_tags, cpython_tags, mac_platforms
 from packaging.utils import canonicalize_name, parse_wheel_filename
@@ -501,6 +504,100 @@ def verify_engine(target: Target, manifest: dict) -> None:
 
 # ---- licences ---------------------------------------------------------------
 
+# Standard licence texts, and the notice for the caption player's libraries.
+LICENSE_TEXTS = Path(__file__).resolve().parent / "licenses"
+
+
+def check_jassub_notice() -> None:
+    """JASSUB-LIBRARIES.txt names the libraries of one JASSUB release, so a
+    JASSUB update must bring the notice for its libraries with it."""
+    manifest = TAURI.parent / "node_modules" / "jassub" / "package.json"
+    installed = json.loads(manifest.read_text(encoding="utf-8"))["version"]
+    notice = (LICENSE_TEXTS / "JASSUB-LIBRARIES.txt").read_text(encoding="utf-8")
+    heading = notice.split("\n", 1)[0]
+    if heading != f"JASSUB {installed} and the libraries compiled into it":
+        raise SystemExit(
+            f'stage: JASSUB-LIBRARIES.txt begins "{heading}", but the app bundles JASSUB '
+            f"{installed}; name that release's libraries in tools/release/licenses"
+        )
+
+
+def ffmpeg_notice(bom: dict, target: Target) -> str:
+    ffmpeg = bom["ffmpeg"][target.bom]
+    version = ffmpeg.get("version", bom["ffmpeg"]["version"])
+    provider = ffmpeg.get("provider", bom["ffmpeg"]["provider"])
+    download = ffmpeg.get("archive_url") or ffmpeg["ffmpeg_url"]
+    reports = ffmpeg.get("reports", "")
+    if "-g" in reports:
+        # A build from a release branch past its tag names the commit it built.
+        commit = reports.rsplit("-g", 1)[1]
+        code = f"https://github.com/FFmpeg/FFmpeg/commit/{commit} (it reports {reports})"
+    else:
+        code = f"https://ffmpeg.org/releases/ffmpeg-{version}.tar.xz"
+    sources = "".join(f"  {url}\n" for url in ffmpeg["source"])
+    return (
+        f"FFmpeg {version}\n\n"
+        "ClipMill carries FFmpeg's ffmpeg and ffprobe programs beside its own and runs\n"
+        "them as separate processes. This build enables GPL components, so it is\n"
+        "licensed under the GNU General Public License, version 3: GPL-3.0.txt.\n\n"
+        f"Build:     {ffmpeg['build']}, from {provider}\n"
+        f"Download:  {download}\n"
+        f"FFmpeg:    {code}\n\n"
+        "The build's complete source is FFmpeg's, above, with the libraries compiled\n"
+        "into it at the versions its provider publishes here:\n"
+        f"{sources}"
+    )
+
+
+def uv_notice(bom: dict) -> str:
+    version = bom["uv"]["version"]
+    return (
+        f"uv {version}\n\n"
+        "ClipMill carries uv (https://github.com/astral-sh/uv) to install its\n"
+        "components' Python and packages. uv is offered under the Apache License 2.0\n"
+        "or the MIT licence; ClipMill passes it on under the Apache License 2.0,\n"
+        f"Apache-2.0.txt. Its source is at https://github.com/astral-sh/uv/tree/{version}.\n"
+    )
+
+
+def licenses_index(linux: bool) -> str:
+    index = """\
+Licences
+
+ClipMill is free software: you can redistribute it and modify it under the
+GNU Affero General Public License, version 3 only (ClipMill-LICENSE.txt). Its
+source is at https://github.com/Macmilan24/clipmill.
+
+The app also carries software and fonts made by others, each under its own
+licence:
+
+  THIRD-PARTY-RUST.txt         crates compiled into the app and clipmilld
+  THIRD-PARTY-JAVASCRIPT.txt   packages bundled into the app's interface
+  JASSUB-LIBRARIES.txt         libraries compiled into the caption player
+  jassub-LICENSE.txt           the caption player itself
+  rvfc-polyfill-LICENSE.txt    the player's frame timing (GPL-3.0)
+  FFmpeg-NOTICE.txt            FFmpeg's ffmpeg and ffprobe, with GPL-3.0.txt
+  uv-NOTICE.txt                uv, which installs the components, with
+                               Apache-2.0.txt
+  dm-sans-OFL-1.1.txt          the interface's fonts
+  ibm-plex-mono-OFL-1.1.txt
+  ../fonts/                    the caption faces, each with its licence
+  ../emoji/LICENSE.txt         the colour emoji
+
+What Set up downloads (Python, the components' packages and the models) is
+not part of the app: each comes with its own licence from where it is
+downloaded.
+"""
+    if linux:
+        index += """
+The AppImage also carries, unchanged, the Ubuntu 22.04 libraries the app
+links to, among them WebKitGTK, GTK and GLib, each under its own licence,
+mostly the GNU Lesser General Public License 2.1 or later (LGPL-2.1.txt).
+Ubuntu publishes each one's licence and source at
+https://packages.ubuntu.com/jammy/.
+"""
+    return index
+
 
 def stage_licenses(bom: dict, target: Target) -> None:
     licenses = RESOURCES / "licenses"
@@ -508,25 +605,15 @@ def stage_licenses(bom: dict, target: Target) -> None:
     shutil.copy2(ROOT / "LICENSE", licenses / "ClipMill-LICENSE.txt")
     for notice in (ROOT / "apps" / "desktop" / "public" / "licenses").glob("*.txt"):
         shutil.copy2(notice, licenses / notice.name)
-    ffmpeg = bom["ffmpeg"][target.bom]
-    version = ffmpeg.get("version", bom["ffmpeg"]["version"])
-    source = ffmpeg.get("archive_url") or ffmpeg.get("ffmpeg_url")
-    (licenses / "FFmpeg-NOTICE.txt").write_text(
-        f"ClipMill ships FFmpeg {version} (build {ffmpeg['build']}) as separate programs,\n"
-        "ffmpeg and ffprobe, which it runs as subprocesses. FFmpeg is licensed under the\n"
-        "GNU General Public License, version 3 (this build enables GPL components).\n\n"
-        f"The build was taken from {source}\n"
-        f"and its provider is {ffmpeg.get('provider', bom['ffmpeg']['provider'])}.\n"
-        f"FFmpeg's source code: https://ffmpeg.org/releases/ffmpeg-{version}.tar.xz\n"
-        "and https://git.ffmpeg.org/ffmpeg.git. The GPL text is ClipMill-LICENSE.txt's\n"
-        "companion at https://www.gnu.org/licenses/gpl-3.0.txt.\n",
-        encoding="utf-8",
-    )
-    (licenses / "uv-NOTICE.txt").write_text(
-        f"ClipMill ships uv {bom['uv']['version']} (https://github.com/astral-sh/uv), dual\n"
-        "licensed under MIT or Apache-2.0, to install its components' Python packages.\n",
-        encoding="utf-8",
-    )
+    check_jassub_notice()
+    linux = target.engine.startswith("linux")
+    texts = ["Apache-2.0.txt", "GPL-3.0.txt", "JASSUB-LIBRARIES.txt"]
+    for name in [*texts, "LGPL-2.1.txt"] if linux else texts:
+        shutil.copy2(LICENSE_TEXTS / name, licenses / name)
+    (licenses / "FFmpeg-NOTICE.txt").write_text(ffmpeg_notice(bom, target), encoding="utf-8")
+    (licenses / "uv-NOTICE.txt").write_text(uv_notice(bom), encoding="utf-8")
+    notices.write(target.triple, licenses)
+    (licenses / "README.txt").write_text(licenses_index(linux), encoding="utf-8")
 
 
 def main() -> int:

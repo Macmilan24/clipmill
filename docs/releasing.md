@@ -96,3 +96,21 @@ open -n target/release/bundle/macos/ClipMill.app --env CLIPMILL_DATA_DIR=/tmp/cm
 - **FFmpeg, uv or Python:** change the pin in `bom.toml`; `stage.py` and
   `tools/fetch-ffmpeg.sh` verify every download against it, and
   `tools/security/check-bom.py` refuses a build that is not redistributable.
+  An FFmpeg pin also names its `source`, where the provider publishes the
+  build's scripts and library versions; the app's FFmpeg notice prints it.
+
+## Licences in the app
+
+`stage.py` writes every licence and notice for what the app carries into
+`resources/licenses`, indexed by its `README.txt`. `tools/release/notices.py`
+lists the crates compiled into the two programs and the npm packages bundled
+into the interface, with each one's own licence files and those of code it
+vendors. A package that ships no licence text is given the standard text of a
+licence it offers, and one that offers none the script knows stops the
+release, so add its text to `tools/release/licenses` or `notices.py`.
+
+`tools/release/licenses/JASSUB-LIBRARIES.txt` names the libraries compiled
+into the caption player's WebAssembly, at the commits the JASSUB release was
+built from, with each library's own licence files. Staging refuses a JASSUB
+version the notice does not name, so updating JASSUB means rebuilding that
+notice for the new release.
