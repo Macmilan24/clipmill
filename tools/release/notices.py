@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import textwrap
 from dataclasses import dataclass
@@ -366,8 +367,10 @@ def javascript_packages() -> list[Package]:
     Type declarations are left out: they describe code to the compiler and
     none of them reaches the bundle.
     """
+    # On Windows pnpm is a pnpm.cmd shim, which a bare name does not start.
+    pnpm = shutil.which("pnpm") or "pnpm"
     result = subprocess.run(
-        ["pnpm", "--filter", INTERFACE, "list", "--prod", "--depth", "Infinity", "--json"],
+        [pnpm, "--filter", INTERFACE, "list", "--prod", "--depth", "Infinity", "--json"],
         cwd=ROOT,
         check=True,
         capture_output=True,

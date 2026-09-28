@@ -55,6 +55,8 @@ def machine_memory() -> int:
             return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
         except (OSError, ValueError):
             return 0
+    if sys.platform == "win32":
+        return _windows_available_memory()
     try:
         for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
             if line.startswith("MemAvailable:"):
@@ -62,6 +64,32 @@ def machine_memory() -> int:
     except (OSError, ValueError, IndexError):
         return 0
     return 0
+
+
+def _windows_available_memory() -> int:
+    """Memory available now on Windows, as ``MemAvailable`` is on Linux."""
+    import ctypes
+    from ctypes import wintypes
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", wintypes.DWORD),
+            ("dwMemoryLoad", wintypes.DWORD),
+            ("ullTotalPhys", ctypes.c_uint64),
+            ("ullAvailPhys", ctypes.c_uint64),
+            ("ullTotalPageFile", ctypes.c_uint64),
+            ("ullAvailPageFile", ctypes.c_uint64),
+            ("ullTotalVirtual", ctypes.c_uint64),
+            ("ullAvailVirtual", ctypes.c_uint64),
+            ("ullAvailExtendedVirtual", ctypes.c_uint64),
+        ]
+
+    status = MemoryStatus()
+    status.dwLength = ctypes.sizeof(MemoryStatus)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    if not kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        return 0
+    return int(status.ullAvailPhys)
 
 
 __all__ = ["OVERRIDE", "SHARE", "machine_memory", "memory_ceiling"]

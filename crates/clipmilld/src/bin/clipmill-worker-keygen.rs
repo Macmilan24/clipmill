@@ -1,9 +1,6 @@
-#![cfg(unix)]
-
 use std::{
     fs::{self, File, OpenOptions},
     io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     process::ExitCode,
 };
@@ -99,15 +96,27 @@ fn run(arguments: Arguments) -> Result<(String, PathBuf), String> {
     Ok((worker_id, identity_path))
 }
 
+/// On Windows the data folder's inherited access list is already private to
+/// its user, so there are no permissions to tighten.
 fn create_private_directory(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-        .map_err(|error| format!("{}: {error}", path.display()))
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+    }
+    Ok(())
 }
 
 fn write_new_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut options = OpenOptions::new();
-    options.create_new(true).write(true).mode(0o600);
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
     let mut file = options
         .open(path)
         .map_err(|error| format!("{}: {error}", path.display()))?;
@@ -117,7 +126,12 @@ fn write_new_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .map_err(|error| format!("{}: {error}", path.display()))
 }
 
+/// Windows cannot open a directory to flush it, and its file system journals
+/// the names in it, so there is nothing to do there.
 fn sync_directory(path: &Path) -> Result<(), String> {
+    if cfg!(windows) {
+        return Ok(());
+    }
     File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|error| format!("{}: {error}", path.display()))

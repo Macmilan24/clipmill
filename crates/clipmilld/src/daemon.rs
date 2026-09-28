@@ -1,4 +1,3 @@
-use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::{
     fs,
     future::Future,
@@ -9,7 +8,6 @@ use std::{
 };
 
 use tokio::{
-    net::{UnixListener, UnixStream},
     sync::{Semaphore, oneshot},
     task::JoinSet,
     time::timeout,
@@ -23,9 +21,11 @@ use crate::{
     collector::{self, CleanUp, Collector},
     db::DbActor,
     device::{DeviceProfiler, verify_profile},
+    endpoint::{self, Listener},
     ipc::{FrameError, handle_connection},
     jobs::{EventHub, ResourceCapacity, Scheduler},
     lock::DaemonLock,
+    platform,
     service::Service,
     shm::{ShmBroker, handle_shm_connection},
     sources::SourceInspector,
@@ -40,9 +40,9 @@ const SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
 pub struct Daemon {
-    listener: UnixListener,
-    worker_listener: UnixListener,
-    shm_listener: UnixListener,
+    listener: Listener,
+    worker_listener: Listener,
+    shm_listener: Listener,
     service: Service,
     worker_service: WorkerService,
     artifacts: ArtifactActor,
@@ -498,8 +498,8 @@ impl Daemon {
                     }
                 }
                 accepted = listener.accept() => {
-                    let (stream, _address) = match accepted {
-                        Ok(accepted) => accepted,
+                    let incoming = match accepted {
+                        Ok(incoming) => incoming,
                         Err(error) => {
                             serve_error = Some(DaemonError::Ipc(error.to_string()));
                             break;
@@ -507,18 +507,18 @@ impl Daemon {
                     };
                     let Ok(permit) = Arc::clone(&semaphore).try_acquire_owned() else {
                         tracing::warn!("rejecting IPC connection because the limit is reached");
-                        drop(stream);
+                        drop(incoming);
                         continue;
                     };
                     let service = service.clone();
                     connections.spawn(async move {
                         let _permit = permit;
-                        handle_connection(stream, service).await
+                        handle_connection(incoming.establish().await?, service).await
                     });
                 }
                 accepted = worker_listener.accept() => {
-                    let (stream, _address) = match accepted {
-                        Ok(accepted) => accepted,
+                    let incoming = match accepted {
+                        Ok(incoming) => incoming,
                         Err(error) => {
                             serve_error = Some(DaemonError::Ipc(error.to_string()));
                             break;
@@ -526,18 +526,18 @@ impl Daemon {
                     };
                     let Ok(permit) = Arc::clone(&worker_semaphore).try_acquire_owned() else {
                         tracing::warn!("rejecting worker connection because the limit is reached");
-                        drop(stream);
+                        drop(incoming);
                         continue;
                     };
                     let worker_service = worker_service.clone();
                     worker_connections.spawn(async move {
                         let _permit = permit;
-                        worker_service.handle_connection(stream).await
+                        worker_service.handle_connection(incoming.establish().await?).await
                     });
                 }
                 accepted = shm_listener.accept() => {
-                    let (stream, _address) = match accepted {
-                        Ok(accepted) => accepted,
+                    let incoming = match accepted {
+                        Ok(incoming) => incoming,
                         Err(error) => {
                             serve_error = Some(DaemonError::Ipc(error.to_string()));
                             break;
@@ -545,12 +545,13 @@ impl Daemon {
                     };
                     let Ok(permit) = Arc::clone(&shm_semaphore).try_acquire_owned() else {
                         tracing::warn!("rejecting shared-memory connection because the limit is reached");
-                        drop(stream);
+                        drop(incoming);
                         continue;
                     };
                     let worker_service = worker_service.clone();
                     shm_connections.spawn(async move {
                         let _permit = permit;
+                        let stream = incoming.establish().await.map_err(|error| error.to_string())?;
                         let stream = stream.into_std().map_err(|error| error.to_string())?;
                         tokio::task::spawn_blocking(move || {
                             handle_shm_connection(stream, &worker_service.shm_broker())
@@ -748,7 +749,7 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
         &config.paths.run_dir,
     ] {
         fs::create_dir_all(path).map_err(|source| DaemonError::io(path, source))?;
-        set_private_permissions(path, 0o700)?;
+        platform::restrict_dir(path).map_err(|source| DaemonError::io(path, source))?;
     }
 
     for socket in [
@@ -762,7 +763,8 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
         if !socket_parent.exists() {
             fs::create_dir_all(socket_parent)
                 .map_err(|source| DaemonError::io(socket_parent, source))?;
-            set_private_permissions(socket_parent, 0o700)?;
+            platform::restrict_dir(socket_parent)
+                .map_err(|source| DaemonError::io(socket_parent, source))?;
         }
         if !socket_parent.is_dir() {
             return Err(DaemonError::InvalidPath(
@@ -773,35 +775,36 @@ fn prepare_directories(config: &Config) -> Result<(), DaemonError> {
     Ok(())
 }
 
-async fn bind_private_socket(path: PathBuf) -> Result<(UnixListener, SocketGuard), DaemonError> {
+async fn bind_private_socket(path: PathBuf) -> Result<(Listener, SocketGuard), DaemonError> {
     recover_stale_socket(&path).await?;
-    let listener = UnixListener::bind(&path).map_err(|source| DaemonError::io(&path, source))?;
+    let listener = Listener::bind(&path)
+        .await
+        .map_err(|source| DaemonError::io(&path, source))?;
     let socket = SocketGuard::new(path);
-    set_private_permissions(&socket.path, 0o600)?;
+    platform::restrict_file(&socket.path)
+        .map_err(|source| DaemonError::io(&socket.path, source))?;
     Ok((listener, socket))
 }
 
+/// Clear what a daemon that stopped without cleaning up left at `path`: a
+/// socket on Unix, an endpoint file on Windows. Anything that still answers
+/// there is a daemon already running.
 async fn recover_stale_socket(path: &Path) -> Result<(), DaemonError> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(source) => return Err(DaemonError::io(path, source)),
     };
-    if !metadata.file_type().is_socket() {
+    if !is_plane_address(&metadata) {
         return Err(DaemonError::SocketPathOccupied(path.to_path_buf()));
     }
 
-    match timeout(SOCKET_PROBE_TIMEOUT, UnixStream::connect(path)).await {
+    match timeout(SOCKET_PROBE_TIMEOUT, endpoint::connect(path)).await {
         Ok(Ok(stream)) => {
             drop(stream);
             Err(DaemonError::AlreadyRunning(path.to_path_buf()))
         }
-        Ok(Err(error))
-            if matches!(
-                error.kind(),
-                io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
-            ) =>
-        {
+        Ok(Err(error)) if nothing_answers(error.kind()) => {
             fs::remove_file(path).map_err(|source| DaemonError::io(path, source))?;
             Ok(())
         }
@@ -817,9 +820,28 @@ fn unix_millis() -> Result<u64, DaemonError> {
     u64::try_from(duration.as_millis()).map_err(|error| DaemonError::Ipc(error.to_string()))
 }
 
-fn set_private_permissions(path: &Path, mode: u32) -> Result<(), DaemonError> {
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
-        .map_err(|source| DaemonError::io(path, source))
+/// Whether a failed connection means no daemon is behind an address. On
+/// Windows a listener that cannot prove it holds the endpoint's secret is a
+/// stranger on a port the stopped daemon used to hold, not a daemon.
+fn nothing_answers(kind: io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+    ) || (cfg!(windows) && kind == io::ErrorKind::PermissionDenied)
+}
+
+/// A plane's address as a daemon leaves it: a socket on Unix, and on
+/// Windows the endpoint file that names its port.
+fn is_plane_address(metadata: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt as _;
+        metadata.file_type().is_socket()
+    }
+    #[cfg(windows)]
+    {
+        metadata.file_type().is_file()
+    }
 }
 
 #[derive(Debug)]

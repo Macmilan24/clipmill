@@ -244,6 +244,40 @@ def test_node_outside_a_launcher_path_is_found_where_installers_put_it(tmp_path,
     assert importer.check_runtime(str(binary), None) == str(new.resolve())
 
 
+def test_node_on_windows_is_found_where_its_installers_put_it(tmp_path, monkeypatch):
+    def install(*parts):
+        node = tmp_path.joinpath(*parts, "node.exe")
+        node.parent.mkdir(parents=True, exist_ok=True)
+        node.touch()
+        return node
+
+    official = install("Program Files", "nodejs")
+    old = install("Roaming", "nvm", "v20.11.0")
+    new = install("Roaming", "nvm", "v22.12.0")
+    fnm = install("Roaming", "fnm", "node-versions", "v22.3.0", "installation")
+    volta = install("Local", "Volta", "bin")
+    scoop = install("Profile", "scoop", "apps", "nodejs-lts", "current")
+    monkeypatch.setattr(importer.sys, "platform", "win32")
+    monkeypatch.setenv("ProgramFiles", str(tmp_path / "Program Files"))
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "Profile"))
+    assert importer.node_candidates() == [new, fnm, old, official, volta, scoop]
+
+
+def test_a_second_hold_on_an_attempt_lock_is_refused(tmp_path):
+    with (tmp_path / ".import.lock").open("xb") as first:
+        importer.hold_lock(first)
+        with (tmp_path / ".import.lock").open("rb+") as second, pytest.raises(OSError):
+            importer.hold_lock(second)
+
+
+def test_the_daemon_that_started_the_helper_is_alive():
+    assert importer.parent_alive(importer.os.getppid())
+    assert not importer.parent_alive(1)
+
+
 def test_an_explicit_node_is_the_only_one_tried(tmp_path, monkeypatch):
     binary = tmp_path / "ffmpeg"
     binary.touch(mode=0o700)

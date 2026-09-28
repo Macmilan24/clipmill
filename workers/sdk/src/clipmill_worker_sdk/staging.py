@@ -10,6 +10,8 @@ from pathlib import Path, PurePosixPath
 
 from clipmill.worker.v1 import worker_pb2
 
+from .privacy import is_shared
+
 
 def validate_artifact_path(value: str) -> PurePosixPath:
     if (
@@ -37,7 +39,7 @@ class StagingArea:
             raise ValueError("staging directory does not match its token")
         if not root.is_absolute() or root.is_symlink() or not root.is_dir():
             raise ValueError("staging directory is not a private directory")
-        if stat.S_IMODE(root.stat().st_mode) & 0o077:
+        if is_shared(root.stat().st_mode):
             raise ValueError("staging directory permissions are not private")
         self.staging_id = staging_id
         self.root = root.resolve(strict=True)
@@ -49,7 +51,9 @@ class StagingArea:
         parent = disk_path.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._assert_private_parent(parent)
-        flags = os.O_CREAT | os.O_TRUNC | os.O_WRONLY
+        # O_BINARY exists on Windows only, where a descriptor is otherwise in
+        # text mode and every newline written gains a carriage return.
+        flags = os.O_CREAT | os.O_TRUNC | os.O_WRONLY | getattr(os, "O_BINARY", 0)
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         descriptor = os.open(disk_path, flags, 0o600)
@@ -60,7 +64,12 @@ class StagingArea:
                 os.fsync(output.fileno())
         finally:
             os.close(descriptor)
-        os.chmod(disk_path, 0o600, follow_symlinks=False)
+        if os.chmod in os.supports_follow_symlinks:
+            os.chmod(disk_path, 0o600, follow_symlinks=False)
+        else:
+            # Windows (before Python 3.13): the file was just created here
+            # without following a link, and its mode is only a read-only flag.
+            os.chmod(disk_path, 0o600)
         self._created.add(path)
 
     def declare(self, relative_path: str) -> worker_pb2.StagedOutput:
@@ -68,7 +77,7 @@ class StagingArea:
         if path not in self._created:
             raise ValueError("worker did not create the declared staging path")
         disk_path = self.root.joinpath(*path.parts)
-        flags = os.O_RDONLY
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         descriptor = os.open(disk_path, flags)
@@ -108,6 +117,6 @@ class StagingArea:
         while current != self.root:
             if current.is_symlink() or not current.is_dir():
                 raise ValueError("staging parent is not a regular directory")
-            if stat.S_IMODE(current.stat().st_mode) & 0o077:
+            if is_shared(current.stat().st_mode):
                 raise ValueError("staging parent permissions are not private")
             current = current.parent

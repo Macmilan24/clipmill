@@ -51,6 +51,8 @@ fn orphan_cleanup_respects_helper_locks_and_never_follows_links() {
     lock.lock_exclusive().unwrap();
     fs::File::create(abandoned.join(".import.lock")).unwrap();
     fs::write(abandoned.join("partial"), b"data").unwrap();
+    // Creating a symbolic link needs a privilege on Windows.
+    #[cfg(unix)]
     std::os::unix::fs::symlink(external.path(), root.path().join("attempt-link")).unwrap();
     cleanup_abandoned(root.path());
     assert!(held.exists());
@@ -80,9 +82,12 @@ fn completed_download_must_be_a_single_owned_regular_file() {
     video.duration_seconds = 10.0;
     fs::hard_link(&path, root.path().join("other")).unwrap();
     assert!(!valid_download(root.path(), &video, "NYFGCESmikA"));
-    fs::remove_file(&path).unwrap();
-    std::os::unix::fs::symlink(root.path().join("other"), &path).unwrap();
-    assert!(!valid_download(root.path(), &video, "NYFGCESmikA"));
+    #[cfg(unix)]
+    {
+        fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(root.path().join("other"), &path).unwrap();
+        assert!(!valid_download(root.path(), &video, "NYFGCESmikA"));
+    }
 }
 
 #[test]

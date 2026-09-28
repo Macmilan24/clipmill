@@ -220,6 +220,7 @@ impl Installer {
         deadline: Duration,
         cancel: &mut watch::Receiver<bool>,
     ) -> Result<(), String> {
+        crate::platform::no_console_async(&mut command);
         for (key, _) in std::env::vars_os() {
             if affects_python(&key) {
                 command.env_remove(&key);

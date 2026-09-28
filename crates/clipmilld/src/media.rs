@@ -17,7 +17,6 @@ use std::{
     ffi::OsString,
     fs::{self, File, OpenOptions},
     io::{BufReader, Read, Seek, SeekFrom, Write},
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
@@ -42,6 +41,7 @@ use crate::{
     artifacts::ArtifactHandle,
     db::DbHandle,
     jobs::{LeasedTask, TaskExecutionError},
+    platform,
     sources::{SourceInspector, SourceProbeError, to_edit_ticks},
 };
 
@@ -251,7 +251,7 @@ pub(crate) struct FfmpegSpec {
 impl MediaRunner {
     pub(crate) fn new(ffprobe: PathBuf, scratch: PathBuf) -> Result<Self, MediaError> {
         fs::create_dir_all(&scratch).map_err(io_error)?;
-        fs::set_permissions(&scratch, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+        platform::restrict_dir(&scratch).map_err(io_error)?;
         for entry in fs::read_dir(&scratch).map_err(io_error)? {
             let path = entry.map_err(io_error)?.path();
             let metadata = fs::symlink_metadata(&path).map_err(io_error)?;
@@ -302,7 +302,7 @@ impl MediaRunner {
     pub(crate) fn private_output_dir(&self) -> Result<PathBuf, MediaError> {
         let dir = self.scratch.join(format!("out_{}", Ulid::new()));
         fs::create_dir(&dir).map_err(io_error)?;
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+        platform::restrict_dir(&dir).map_err(io_error)?;
         Ok(dir)
     }
 
@@ -344,18 +344,17 @@ fn run_ffmpeg_blocking(
 ) -> Result<String, MediaError> {
     let work = scratch.join(format!("media_{}", Ulid::new()));
     fs::create_dir(&work).map_err(io_error)?;
-    fs::set_permissions(&work, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+    platform::restrict_dir(&work).map_err(io_error)?;
     let _cleanup = ScratchGuard(work.clone());
     let stderr_path = work.join("stderr.txt");
     let progress_path = work.join("progress.txt");
-    let stderr = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let stderr = platform::private_file(OpenOptions::new().write(true).create_new(true))
         .open(&stderr_path)
         .map_err(io_error)?;
 
     let mut command = Command::new(ffmpeg);
+    platform::clear_environment(&mut command);
+    platform::no_console(&mut command);
     command
         .arg("-v")
         .arg("error")
@@ -369,7 +368,6 @@ fn run_ffmpeg_blocking(
         .arg(&progress_path)
         .arg("-nostats")
         .current_dir(&spec.output_dir)
-        .env_clear()
         .env("LANG", "C")
         .env("LC_ALL", "C")
         .stdin(Stdio::null())
@@ -461,23 +459,19 @@ fn run_ffprobe_blocking(
 ) -> Result<Value, MediaError> {
     let work = scratch.join(format!("probe_{}", Ulid::new()));
     fs::create_dir(&work).map_err(io_error)?;
-    fs::set_permissions(&work, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+    platform::restrict_dir(&work).map_err(io_error)?;
     let _cleanup = ScratchGuard(work.clone());
     let stdout_path = work.join("stdout.json");
     let stderr_path = work.join("stderr.txt");
-    let stdout = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let stdout = platform::private_file(OpenOptions::new().write(true).create_new(true))
         .open(&stdout_path)
         .map_err(io_error)?;
-    let stderr = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let stderr = platform::private_file(OpenOptions::new().write(true).create_new(true))
         .open(&stderr_path)
         .map_err(io_error)?;
     let mut command = Command::new(ffprobe);
+    platform::clear_environment(&mut command);
+    platform::no_console(&mut command);
     command
         .arg("-v")
         .arg("error")
@@ -489,7 +483,6 @@ fn run_ffprobe_blocking(
     command
         .arg(target)
         .current_dir(&work)
-        .env_clear()
         .env("LANG", "C")
         .env("LC_ALL", "C")
         .stdin(Stdio::null())
@@ -519,13 +512,9 @@ fn run_ffprobe_blocking(
 }
 
 fn terminate_child(child: &mut std::process::Child) {
-    let _status = Command::new("/bin/kill")
-        .arg("-TERM")
-        .arg(child.id().to_string())
-        .env_clear()
-        .status();
+    let asked = platform::ask_to_stop(child.id());
     let deadline = Instant::now() + TERMINATE_GRACE;
-    while Instant::now() < deadline {
+    while asked && Instant::now() < deadline {
         if child.try_wait().ok().flatten().is_some() {
             return;
         }

@@ -414,9 +414,8 @@ pub async fn open_storage_location(supervisor: Host<'_>, key: String) -> Result<
         .find(|category| category.key == key)
         .map(|category| category.path)
         .ok_or_else(|| "The engine reports no such storage location.".to_owned())?;
-    let target = std::path::Path::new(&path)
-        .canonicalize()
-        .map_err(|_| "Nothing is stored there yet.".to_owned())?;
+    let target =
+        dunce::canonicalize(&path).map_err(|_| "Nothing is stored there yet.".to_owned())?;
     if !target.is_dir() {
         return Err("That storage location is not a folder.".to_owned());
     }
@@ -424,7 +423,7 @@ pub async fn open_storage_location(supervisor: Host<'_>, key: String) -> Result<
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| format!("cannot open the file manager: {error}"))?;
-    if status.success() {
+    if crate::file_manager_succeeded(status) {
         Ok(())
     } else {
         Err(format!("the file manager refused: {status}"))
@@ -439,7 +438,13 @@ fn open_command(folder: &std::path::Path) -> std::process::Command {
         command.arg(folder);
         command
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new("explorer.exe");
+        command.arg(folder);
+        command
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         let mut command = std::process::Command::new("xdg-open");
         command.arg(folder);

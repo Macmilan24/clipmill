@@ -330,7 +330,9 @@ export function ResultsScreen({
   // The recording is named on the board rather than in a line above it, so the
   // header says which run these numbers describe instead of leaving it implied.
   const sourceName = snapshot.source
-    ? [project?.name, snapshot.source.absolutePath.split('/').at(-1)].filter(Boolean).join(' · ')
+    ? [project?.name, snapshot.source.absolutePath.split(/[\\/]/).at(-1)]
+        .filter(Boolean)
+        .join(' · ')
     : null;
 
   return (

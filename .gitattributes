@@ -1,0 +1,5 @@
+# Check out every text file with LF, on Windows too: goldens and fixtures are
+# compared byte for byte, and a CRLF checkout would change every one of them.
+* text=auto eol=lf
+# Upstream licence texts, kept exactly as their projects ship them.
+apps/desktop/public/licenses/*.txt -text

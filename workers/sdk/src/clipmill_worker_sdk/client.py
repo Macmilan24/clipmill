@@ -13,6 +13,7 @@ from pathlib import Path
 
 from clipmill.worker.v1 import worker_pb2
 
+from . import endpoint
 from .artifacts import (
     ArtifactVerificationError,
     VerifiedArtifact,
@@ -360,10 +361,8 @@ class WorkerClient:
         raise ConnectionError("completion acknowledgement was not recovered") from last_error
 
     def _connect_registered(self) -> socket.socket:
-        stream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        stream.settimeout(30)
+        stream = endpoint.connect(self.configuration.socket_path, timeout=30)
         try:
-            stream.connect(str(self.configuration.socket_path))
             challenge_response = recv_frame(stream, worker_pb2.WorkerResponse)
             if challenge_response.WhichOneof("body") != "challenge":
                 raise ValueError("daemon omitted registration challenge")

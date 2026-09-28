@@ -4,9 +4,13 @@ name: release
 # and collects them into a draft GitHub release, which a person reviews and
 # publishes. Only the final job may write, and it runs no third-party code:
 # it downloads what the read-only build jobs produced and hands it to `gh`.
+#
+# Run by hand on any branch, it is a trial build: the installers are kept as
+# the run's artifacts and nothing is drafted.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -37,6 +41,11 @@ jobs:
             runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bundles: appimage,deb
+          # Beta. The NSIS installer fetches WebView2 where Windows lacks it.
+          - name: windows-x86_64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,6 +70,7 @@ jobs:
             libgl1 libglib2.0-0 file
       - run: pnpm install --frozen-lockfile
       - name: Check the tag names this version
+        if: github.event_name == 'push'
         shell: bash
         run: |
           version="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
@@ -126,7 +136,7 @@ jobs:
           mkdir -p dist-release
           bundle="target/${{ matrix.target }}/release/bundle"
           find "$bundle" -maxdepth 2 -type f \
-            \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' \) \
+            \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*-setup.exe' \) \
             -exec cp {} dist-release/ \;
           ls -la dist-release
           test -n "$(ls dist-release)"
@@ -140,6 +150,7 @@ jobs:
   publish:
     name: publish (draft release)
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -159,5 +170,5 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
             --title "ClipMill ${GITHUB_REF_NAME#v}" \
-            --notes "Installers for macOS (Apple silicon) and Linux (x86_64). See docs/install.md for installing, and CHANGELOG.md for what changed. SHA256SUMS.txt lists every file's digest." \
+            --notes "Installers for macOS (Apple silicon), Linux (x86_64) and, in beta, Windows (x86_64). See docs/install.md for installing, and CHANGELOG.md for what changed. SHA256SUMS.txt lists every file's digest." \
             ./*
