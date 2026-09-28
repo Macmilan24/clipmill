@@ -376,7 +376,7 @@ async fn analyze_runs_the_whole_pipeline_and_agrees_with_itself_when_warm() {
         "silent footage produces probe, ingest, shot cuts, and measured face evidence"
     );
 
-    // The skip list, which is the whole reason it exists: eight stages absent
+    // The skip list, which is the whole reason it exists: nine stages absent
     // because this recording has no audio, each saying so.
     let skipped = manifest["skipped"]
         .as_array()
@@ -391,8 +391,8 @@ async fn analyze_runs_the_whole_pipeline_and_agrees_with_itself_when_warm() {
         .collect::<Vec<_>>();
     assert_eq!(
         skipped.len(),
-        8,
-        "four speech stages and four that read one"
+        9,
+        "five speech stages (speakers among them) and four that read one"
     );
     assert!(skipped.iter().all(|(_, reason)| reason == "no_audio"));
 

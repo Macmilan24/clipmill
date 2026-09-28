@@ -3014,7 +3014,7 @@ export const ReadArtifactResponseSchema: GenMessage<ReadArtifactResponse> = /*@_
  */
 export type AssetV1 = Message<"clipmill.ipc.v1.AssetV1"> & {
   /**
-   * sha256:<hex>
+   * `sha256:` followed by the lowercase hex digest.
    *
    * @generated from field: string hash = 1;
    */

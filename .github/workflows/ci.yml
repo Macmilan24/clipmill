@@ -757,14 +757,14 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/models
-          key: phase1-models-${{ runner.os }}-${{ hashFiles('models/registry/silero-vad.toml', 'models/registry/whisper-base.toml', 'models/registry/wav2vec2-ctc-en.toml', 'models/registry/yunet-face.toml') }}
+          key: phase1-models-${{ runner.os }}-${{ hashFiles('models/registry/silero-vad.toml', 'models/registry/whisper-base.toml', 'models/registry/wav2vec2-ctc-en.toml', 'models/registry/yunet-face.toml', 'models/registry/campplus-voxceleb.toml') }}
       # The whole point of the gate is that acquisition happens out here and
       # never inside the Lock, so every fetch is a step of this job rather than
       # something the drill is allowed to do for itself.
       - name: Acquire everything, outside the namespace
         run: |
           ./tools/fetch-ffmpeg.sh
-          ./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en yunet-face
+          ./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en yunet-face campplus-voxceleb
           while IFS= read -r lockfile; do
             uv sync --frozen --project "$(dirname "$lockfile")"
           done < <(find . -name uv.lock -not -path './.git/*' -not -path './target/*' | sort)
