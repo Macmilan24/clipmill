@@ -1090,6 +1090,9 @@ pub struct DaemonSupervisor {
     state: RwLock<ConnectionState>,
     child: Mutex<Option<Child>>,
     launch: std::sync::Mutex<Launch>,
+    /// Set once the app is quitting: from then on nothing starts a daemon,
+    /// or the health check would revive the one being stopped.
+    stopping: std::sync::atomic::AtomicBool,
 }
 
 impl DaemonSupervisor {
@@ -1099,6 +1102,7 @@ impl DaemonSupervisor {
             state: RwLock::new(ConnectionState::Connecting),
             child: Mutex::new(None),
             launch: std::sync::Mutex::new(Launch::default()),
+            stopping: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -1122,6 +1126,8 @@ impl DaemonSupervisor {
     /// and end it if it has not gone in time. A daemon started some other way
     /// keeps its own lifetime.
     pub async fn stop_owned(&self) {
+        self.stopping
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         let mut slot = self.child.lock().await;
         let Some(child) = slot.as_mut() else {
             return;
@@ -1160,6 +1166,9 @@ impl DaemonSupervisor {
     /// started daemon keeps ownership of its own lifetime; we never kill it.
     async fn spawn(&self) -> Result<(), DaemonLinkError> {
         let mut slot = self.child.lock().await;
+        if self.stopping.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok(());
+        }
         if let Some(child) = slot.as_mut()
             && matches!(child.try_wait(), Ok(None))
         {
