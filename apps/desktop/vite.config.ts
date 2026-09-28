@@ -46,6 +46,10 @@ export default defineConfig({
   // Vite's dependency cache, where they are not, and never start.
   // Its one CommonJS dependency is still converted, as Vite does for any.
   optimizeDeps: { exclude: ['jassub'], include: ['jassub > throughput'] },
+  // That worker is a module worker, and it splits into chunks. Vite builds
+  // workers as classic scripts by default, which cannot hold chunks, and the
+  // production build refuses; every WebView ClipMill runs in loads modules.
+  worker: { format: 'es' },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

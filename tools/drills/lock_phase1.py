@@ -152,7 +152,10 @@ def direct_the_top_clip(
     # Ids, in order, rather than objects: the cohort holds the detail.
     selected = ranking.get("selected", [])
     if not selected:
-        raise GateFailure("the ranking selected nothing to direct")
+        raise GateFailure(
+            "the ranking selected nothing to direct\n"
+            + why_nothing_was_selected(client, project_id, manifest, ranking)
+        )
     candidate_id = selected[0]
     ranked = next(
         (item for item in ranking.get("cohort", []) if item.get("candidate_id") == candidate_id),
@@ -167,6 +170,44 @@ def direct_the_top_clip(
         directed, document, ranking["source_fingerprint"], ranked["boundary"]["chosen"]
     )
     return directed.doc.doc_id
+
+
+def why_nothing_was_selected(
+    client: DaemonClient, project_id: str, manifest: dict, ranking: dict
+) -> str:
+    """What the stages before the ranking handed it, for a failure to say.
+
+    An empty selection is the end of a chain: the words, the candidates the
+    proposers found in them, the filters and the ranking's own account of its
+    shortfall. A gate that stops at "nothing" makes the next person rerun it
+    with prints; this says it once.
+    """
+
+    lines = []
+    transcript_address = published(manifest).get(TRANSCRIPT_KIND)
+    if transcript_address:
+        transcript = json.loads(client.read_artifact(project_id, transcript_address))
+        words = [word.get("text", "") for word in transcript.get("words", [])]
+        lines.append(f"  transcript: {len(words)} words: {' '.join(words)[:600]!r}")
+    candidates_address = published(manifest).get("discovery.candidates.v1")
+    if candidates_address:
+        candidates = json.loads(client.read_artifact(project_id, candidates_address))
+        found = candidates.get("candidates", [])
+        spans = [
+            round(
+                sum(i["end_ticks"] - i["start_ticks"] for i in c.get("intervals", [])) / 90_000, 1
+            )
+            for c in found
+        ]
+        lines.append(
+            f"  candidates: {len(found)} (seconds {spans[:12]}); "
+            f"duration target {candidates.get('duration_target')}; "
+            f"proposers {candidates.get('proposers')}"
+        )
+    for key in ("requested", "shortfall", "filtered", "declined"):
+        lines.append(f"  ranking {key}: {json.dumps(ranking.get(key))[:800]}")
+    lines.append(f"  ranking cohort: {len(ranking.get('cohort', []))} ranked")
+    return "\n".join(lines)
 
 
 def require_directed_span(
