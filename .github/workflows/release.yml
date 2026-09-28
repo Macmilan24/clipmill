@@ -112,6 +112,14 @@ jobs:
           pnpm --filter @clipmill/desktop tauri build \
             --config src-tauri/tauri.release.conf.json \
             --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      # A Mac app whose bundle is not signed as a whole, even ad hoc, is
+      # reported "damaged" when downloaded, with no way to open it; stop here
+      # rather than publish one.
+      - name: Verify the Mac app's signature
+        if: runner.os == 'macOS'
+        run: >
+          codesign --verify --deep --strict --verbose=2
+          "target/${{ matrix.target }}/release/bundle/macos/ClipMill.app"
       - name: Collect the installers
         shell: bash
         run: |
