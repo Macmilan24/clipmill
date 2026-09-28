@@ -118,6 +118,22 @@ impl YoutubeDownloader {
         if let Some(node) = std::env::var_os("CLIPMILL_NODE") {
             command.env("CLIPMILL_NODE", node);
         }
+        // Python on Windows finds the home and temporary folders only
+        // through these, and the helper looks for Node.js under the others.
+        #[cfg(windows)]
+        for key in [
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "TEMP",
+            "TMP",
+        ] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
         // The helper's FFmpeg and JavaScript descendants inherit this group.
         platform::own_group_async(&mut command);
         command
