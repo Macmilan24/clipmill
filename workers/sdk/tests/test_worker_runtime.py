@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
+import tempfile
 import threading
 import time
 from array import array
@@ -177,21 +179,25 @@ def test_staging_rejects_traversal_symlinks_and_undeclared_files(tmp_path: Path)
         validate_artifact_path("../escape")
     with pytest.raises(ValueError):
         staging.declare("not-created.bin")
-    (root / "link").symlink_to(root / "nested" / "result.json")
-    with pytest.raises(ValueError):
-        staging.declare("link")
+    # Creating a symbolic link needs a privilege on Windows.
+    if sys.platform != "win32":
+        (root / "link").symlink_to(root / "nested" / "result.json")
+        with pytest.raises(ValueError):
+            staging.declare("link")
     staging.abandon()
     assert not (root / "nested" / "result.json").exists()
 
 
 def test_shared_memory_descriptor_rejects_overflow_and_wrong_transport() -> None:
-    transport = (
-        shm_pb2.TRANSPORT_TYPE_SCM_RIGHTS_MEMFD
-        if os.uname().sysname == "Linux"
-        else shm_pb2.TRANSPORT_TYPE_POSIX_SHM
-    )
+    if sys.platform.startswith("linux"):
+        transport, name = shm_pb2.TRANSPORT_TYPE_SCM_RIGHTS_MEMFD, ""
+    elif sys.platform == "darwin":
+        transport, name = shm_pb2.TRANSPORT_TYPE_POSIX_SHM, "/cm_01J00000000000000000000000"
+    else:
+        transport = shm_pb2.TRANSPORT_TYPE_PRIVATE_FILE
+        name = str(Path(tempfile.gettempdir(), "clipmill-shm", "cm_01J00000000000000000000000"))
     descriptor = shm_pb2.BufferDescriptor(
-        shm_name="/cm_01J00000000000000000000000" if os.uname().sysname == "Darwin" else "",
+        shm_name=name,
         shape=[4],
         dtype=shm_pb2.DATA_TYPE_U8,
         timebase={"num": 1, "den": 90_000},
@@ -207,6 +213,7 @@ def test_shared_memory_descriptor_rejects_overflow_and_wrong_transport() -> None
         validate_descriptor(descriptor)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows passes no descriptors")
 def test_memfd_descriptor_reassembles_fragmented_frame() -> None:
     sender, receiver = socket.socketpair()
     read_descriptor, write_descriptor = os.pipe()

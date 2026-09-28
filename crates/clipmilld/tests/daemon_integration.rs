@@ -25,7 +25,6 @@ use clipmilld::{Config, Daemon, DaemonError, verify_device_profile};
 use serde_json::Map;
 use tempfile::TempDir;
 use tokio::{
-    net::UnixStream,
     sync::oneshot,
     task::JoinHandle,
     time::{sleep, timeout},
@@ -910,7 +909,7 @@ async fn durable_demo_job_completes_replays_events_and_survives_restart() {
         vec![completed.clone()]
     );
 
-    let mut stream = UnixStream::connect(&socket)
+    let mut stream = clipmilld::endpoint::connect(&socket)
         .await
         .expect("event connection");
     send_on_stream(
@@ -969,7 +968,7 @@ async fn live_event_subscription_reconnects_without_gaps_or_duplicates() {
     let project = create(&socket, "event-project", "Event replay")
         .await
         .expect("project");
-    let mut stream = UnixStream::connect(&socket)
+    let mut stream = clipmilld::endpoint::connect(&socket)
         .await
         .expect("event connection");
     send_on_stream(
@@ -1021,7 +1020,7 @@ async fn live_event_subscription_reconnects_without_gaps_or_duplicates() {
     }
     drop(stream);
 
-    let mut resumed = UnixStream::connect(&socket)
+    let mut resumed = clipmilld::endpoint::connect(&socket)
         .await
         .expect("resume connection");
     send_on_stream(

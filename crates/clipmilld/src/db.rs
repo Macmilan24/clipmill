@@ -2445,7 +2445,9 @@ fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> 
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-    use std::{collections::BTreeSet, fs, path::Path};
+    #[cfg(unix)]
+    use std::path::Path;
+    use std::{collections::BTreeSet, fs};
 
     use clipmill_contracts::proto::{
         ipc::v1::{JobState, TaskState},

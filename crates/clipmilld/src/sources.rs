@@ -317,7 +317,7 @@ fn sample_source(value: &str) -> Result<SampledSource, SourceProbeError> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn complete_inspection(
     ffprobe: &Path,
     scratch: &Path,
@@ -1244,13 +1244,17 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        SMALL_FILE_LIMIT, SourceProbeError, StreamRuns, complete_inspection,
-        decimal_seconds_to_ticks, normalize_probe, parse_ratio, round_ratio,
-        run_ffprobe_with_timeout, sample_source, sample_spans, to_edit_ticks,
+        SMALL_FILE_LIMIT, SourceProbeError, StreamRuns, decimal_seconds_to_ticks, normalize_probe,
+        parse_ratio, round_ratio, run_ffprobe_with_timeout, sample_spans, to_edit_ticks,
     };
     use serde_json::json;
-    use std::{fs, os::unix::fs::PermissionsExt, time::Duration};
-    use tempfile::TempDir;
+    // What the tests that fake FFprobe with a shell script use.
+    #[cfg(unix)]
+    use {
+        super::{complete_inspection, sample_source},
+        std::{fs, os::unix::fs::PermissionsExt, time::Duration},
+        tempfile::TempDir,
+    };
 
     #[test]
     fn small_sources_hash_every_byte_and_large_sources_use_eighteen_windows() {
@@ -1513,6 +1517,8 @@ mod tests {
         }
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[test]
     fn probe_deadline_terminates_a_stuck_sidecar() {
         let temp = TempDir::new().expect("tempdir");
@@ -1528,6 +1534,8 @@ mod tests {
         assert!(matches!(error, SourceProbeError::Timeout));
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     fn blocked_packet_probe(root: &std::path::Path, partial_line: bool) -> std::path::PathBuf {
         let sidecar = root.join("blocked-packet-ffprobe");
         fs::write(
@@ -1544,6 +1552,7 @@ mod tests {
         sidecar
     }
 
+    #[cfg(unix)]
     fn assert_packet_probe_reaped(root: &std::path::Path) {
         let pid = fs::read_to_string(root.join("packet.pid")).expect("packet process started");
         let status = std::process::Command::new("/bin/kill")
@@ -1554,6 +1563,8 @@ mod tests {
         assert!(!status.success(), "packet process survived inspection");
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[test]
     fn packet_deadline_reaps_silent_and_unterminated_output_without_waiting_for_newline() {
         for partial_line in [false, true] {
@@ -1574,6 +1585,8 @@ mod tests {
         }
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[tokio::test]
     async fn cancellation_and_dropped_inspection_reap_packet_probe_before_releasing_permit() {
         for abandon in [false, true] {
@@ -1640,6 +1653,8 @@ mod tests {
         ));
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[test]
     fn mutation_during_probe_is_retryably_detected() {
         let temp = TempDir::new().expect("tempdir");

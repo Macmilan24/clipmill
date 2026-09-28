@@ -791,10 +791,34 @@ mod tests {
         engine.stop().await;
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_launcher_quotes_the_install_it_runs() {
         assert_eq!(shell_quote("/a b/c"), "'/a b/c'");
         assert_eq!(shell_quote("it's"), r"'it'\''s'");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_batch_launcher_doubles_what_cmd_would_expand() {
+        let script = launcher_script(
+            "YouTube import",
+            "clipmill_youtube_import",
+            Some(std::path::Path::new(r"C:\Users\a%b\python.exe")),
+        );
+        assert_eq!(
+            script,
+            "@echo off\r\n\"C:\\Users\\a%%b\\python.exe\" -I -m clipmill_youtube_import %*\r\n"
+        );
+        let missing = launcher_script("You&Tube | %PATH%", "m", None);
+        assert!(
+            missing.contains("YouTube PATH is not installed yet"),
+            "{missing}"
+        );
+        assert!(
+            !missing.contains('&') && !missing.contains('|'),
+            "{missing}"
+        );
     }
 
     #[test]
