@@ -2748,7 +2748,7 @@ class CancelEngineInstallRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class EnginePartV1(_message.Message):
-    __slots__ = ("name", "title", "family", "state", "detail", "installed_bytes", "download_bytes", "process", "restarts", "log_path")
+    __slots__ = ("name", "title", "family", "state", "detail", "installed_bytes", "download_bytes", "process", "restarts", "log_path", "tool")
     NAME_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     FAMILY_FIELD_NUMBER: _ClassVar[int]
@@ -2759,6 +2759,7 @@ class EnginePartV1(_message.Message):
     PROCESS_FIELD_NUMBER: _ClassVar[int]
     RESTARTS_FIELD_NUMBER: _ClassVar[int]
     LOG_PATH_FIELD_NUMBER: _ClassVar[int]
+    TOOL_FIELD_NUMBER: _ClassVar[int]
     name: str
     title: str
     family: str
@@ -2769,7 +2770,8 @@ class EnginePartV1(_message.Message):
     process: str
     restarts: int
     log_path: str
-    def __init__(self, name: _Optional[str] = ..., title: _Optional[str] = ..., family: _Optional[str] = ..., state: _Optional[str] = ..., detail: _Optional[str] = ..., installed_bytes: _Optional[int] = ..., download_bytes: _Optional[int] = ..., process: _Optional[str] = ..., restarts: _Optional[int] = ..., log_path: _Optional[str] = ...) -> None: ...
+    tool: bool
+    def __init__(self, name: _Optional[str] = ..., title: _Optional[str] = ..., family: _Optional[str] = ..., state: _Optional[str] = ..., detail: _Optional[str] = ..., installed_bytes: _Optional[int] = ..., download_bytes: _Optional[int] = ..., process: _Optional[str] = ..., restarts: _Optional[int] = ..., log_path: _Optional[str] = ..., tool: _Optional[bool] = ...) -> None: ...
 
 class EngineResponse(_message.Message):
     __slots__ = ("managed", "parts", "python_version", "unavailable")

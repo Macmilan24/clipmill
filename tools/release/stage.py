@@ -328,8 +328,15 @@ def wheel_downloads(target: Target, lock: Path, requirements: Path) -> dict[str,
     return downloads
 
 
-def pyproject(part: str) -> dict:
-    return tomllib.loads((ROOT / "workers" / part / "pyproject.toml").read_text(encoding="utf-8"))
+def project_dir(part: dict) -> Path:
+    """Where a component's Python project is: workers/<name> unless named."""
+    return ROOT / part.get("project", f"workers/{part['name']}")
+
+
+def uses_sdk(project: dict) -> bool:
+    dependencies = project["project"].get("dependencies", [])
+    names = {canonicalize_name(Requirement(dependency).name) for dependency in dependencies}
+    return "clipmill-worker-sdk" in names
 
 
 def build_wheel(project: Path, out: Path) -> Path:
@@ -357,15 +364,17 @@ def stage_engine(target: Target, bom: dict) -> dict:
     counted: dict[str, set[str]] = {other.engine: set() for other in TARGETS.values()}
     for part in table["part"]:
         name = part["name"]
-        project = pyproject(name)
+        directory = project_dir(part)
+        project = tomllib.loads((directory / "pyproject.toml").read_text(encoding="utf-8"))
+        sdk_needed = uses_sdk(project)
         scripts = project["project"].get("scripts", {})
         if scripts.get(part["command"], "").split(":", 1)[0] != part["module"]:
             raise SystemExit(
                 f"stage: engine.toml names {part['command']} -> {part['module']}, "
-                f"which workers/{name}/pyproject.toml does not define"
+                f"which {directory.relative_to(ROOT)}/pyproject.toml does not define"
             )
         say(f"building {name}")
-        wheel = build_wheel(ROOT / "workers" / name, wheels)
+        wheel = build_wheel(directory, wheels)
         exported = requirements / f"{name}.txt"
         run(
             [
@@ -374,25 +383,26 @@ def stage_engine(target: Target, bom: dict) -> dict:
                 "--frozen",
                 "--no-dev",
                 "--no-emit-project",
-                "--no-emit-package",
-                "clipmill-worker-sdk",
+                # ClipMill's SDK arrives as a wheel from the app, never an index.
+                *(["--no-emit-package", "clipmill-worker-sdk"] if sdk_needed else []),
                 "--format",
                 "requirements-txt",
                 "--no-header",
                 "--project",
-                str(ROOT / "workers" / name),
+                str(directory),
                 "-o",
                 str(exported),
             ],
             cwd=ROOT,
             stdout=subprocess.DEVNULL,
         )
+        own = [{"file": f"wheels/{sdk.name}", "sha256": sha256(sdk)}] if sdk_needed else []
         estimates = {}
         for other in TARGETS.values():
             if other.engine not in part["platforms"]:
                 continue
             seen = counted[other.engine]
-            downloads = wheel_downloads(other, ROOT / "workers" / name / "uv.lock", exported)
+            downloads = wheel_downloads(other, directory / "uv.lock", exported)
             fresh = {key: size for key, size in downloads.items() if key not in seen}
             # The first component also brings Python itself.
             python = PYTHON_DOWNLOAD_BYTES if not seen else 0
@@ -402,6 +412,7 @@ def stage_engine(target: Target, bom: dict) -> dict:
         parts.append(
             {
                 "name": name,
+                "kind": part.get("kind", "worker"),
                 "title": part["title"],
                 "family": part["family"],
                 "command": part["command"],
@@ -409,10 +420,7 @@ def stage_engine(target: Target, bom: dict) -> dict:
                 "platforms": part["platforms"],
                 "requirements": f"requirements/{name}.txt",
                 "requirements_sha256": sha256(exported),
-                "wheels": [
-                    {"file": f"wheels/{sdk.name}", "sha256": sha256(sdk)},
-                    {"file": f"wheels/{wheel.name}", "sha256": sha256(wheel)},
-                ],
+                "wheels": [*own, {"file": f"wheels/{wheel.name}", "sha256": sha256(wheel)}],
                 "download_bytes": estimates,
             }
         )

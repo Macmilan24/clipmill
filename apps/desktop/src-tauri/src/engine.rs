@@ -39,6 +39,8 @@ struct ComponentView {
     process: String,
     restarts: u32,
     log_path: String,
+    /// Run by the daemon when a task needs it, never kept running.
+    tool: bool,
 }
 
 impl From<ipc::EngineResponse> for ComponentsView {
@@ -59,6 +61,7 @@ impl From<ipc::EngineResponse> for ComponentsView {
                     process: part.process,
                     restarts: part.restarts,
                     log_path: part.log_path,
+                    tool: part.tool,
                 })
                 .collect(),
             python_version: value.python_version,

@@ -182,7 +182,7 @@ function PartRow({
           : componentStatus(part)}
       </span>
       <span className="components-row-process">
-        {installed && <ProcessBadge part={part} />}
+        {installed && !part.tool && <ProcessBadge part={part} />}
         {part.state === 'failed' && (
           <Button size="xs" variant="outline" disabled={disabled} onClick={onRetry}>
             <RotateCcw />

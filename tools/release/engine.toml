@@ -72,3 +72,17 @@ family = "editorial"
 command = "clipmill-worker-editorial"
 module = "clipmill_worker_editorial"
 platforms = ["macos-arm64"]
+
+# A tool rather than a worker: the daemon runs it for each YouTube import,
+# never keeps it running. It lives outside workers/ and needs Node.js 22 or
+# newer on the computer for YouTube's player scripts.
+
+[[part]]
+name = "youtube-import"
+kind = "tool"
+project = "integrations/youtube-import"
+title = "YouTube import"
+family = "youtube-import"
+command = "clipmill-youtube-import"
+module = "clipmill_youtube_import"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]

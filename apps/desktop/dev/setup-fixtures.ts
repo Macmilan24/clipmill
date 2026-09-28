@@ -9,7 +9,7 @@ const MIB = 1024 ** 2;
 
 const PARTS: readonly Omit<
   Component,
-  'state' | 'detail' | 'process' | 'restarts' | 'installedBytes'
+  'state' | 'detail' | 'process' | 'restarts' | 'installedBytes' | 'tool'
 >[] = [
   {
     name: 'vad',
@@ -94,6 +94,7 @@ export function previewComponentsApi(scenario: Scenario): ComponentsApi {
       installedBytes: installed ? part.downloadBytes * 3 : 0,
       process: installed || (scenario === 'failed' && index === 0) ? 'running' : 'stopped',
       restarts: 0,
+      tool: false,
     };
   });
   // Each read moves the install along: one step of the part in progress.

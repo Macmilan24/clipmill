@@ -147,6 +147,24 @@ describe('the components on the Models page', () => {
     await waitFor(() => expect(components.asked('install')).toEqual([['install', ['faces']]]));
   });
 
+  it('shows no process for a tool, which the daemon runs only when needed', async () => {
+    const components = new FakeComponents(
+      packaged([
+        component('youtube-import', {
+          title: 'YouTube import',
+          state: 'installed',
+          installedBytes: 20 * 1024 ** 2,
+          tool: true,
+        }),
+      ]),
+    );
+    render(<ComponentsCard api={components.api()} />);
+    const card = await screen.findByTestId('components');
+    expect(within(card).getByText('YouTube import')).toBeTruthy();
+    expect(within(card).queryByText('Stopped')).toBeNull();
+    expect(within(card).queryByText('Running')).toBeNull();
+  });
+
   it('is not shown in a development checkout', async () => {
     const components = new FakeComponents(UNMANAGED);
     render(<ComponentsCard api={components.api()} />);

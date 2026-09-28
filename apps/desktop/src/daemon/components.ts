@@ -32,6 +32,8 @@ export interface Component {
   /** How often its process stopped on its own since the engine started. */
   readonly restarts: number;
   readonly logPath: string;
+  /** Run by the daemon when a task needs it (YouTube import), never kept running. */
+  readonly tool: boolean;
 }
 
 export interface Components {

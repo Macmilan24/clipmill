@@ -3320,6 +3320,10 @@ pub struct EnginePartV1 {
     /// Where its process writes what it says, for a problem report.
     #[prost(string, tag = "10")]
     pub log_path: ::prost::alloc::string::String,
+    /// Installed for the daemon to run when a task needs it (YouTube import),
+    /// rather than kept running as a worker; `process` then stays stopped.
+    #[prost(bool, tag = "11")]
+    pub tool: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EngineResponse {

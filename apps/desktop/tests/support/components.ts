@@ -19,6 +19,7 @@ export function component(name: string, overrides: Partial<Component> = {}): Com
     process: 'stopped',
     restarts: 0,
     logPath: `/data/logs/workers/${name}.log`,
+    tool: false,
     ...overrides,
   };
 }

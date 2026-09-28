@@ -2411,6 +2411,9 @@ message EnginePartV1 {
   uint32 restarts = 9;
   // Where its process writes what it says, for a problem report.
   string log_path = 10;
+  // Installed for the daemon to run when a task needs it (YouTube import),
+  // rather than kept running as a worker; `process` then stays stopped.
+  bool tool = 11;
 }
 
 message EngineResponse {

@@ -28,6 +28,19 @@ impl Service {
         self
     }
 
+    /// Run `YouTube` imports through `helper` instead of the checkout's script:
+    /// a packaged app's engine launcher for its `YouTube` import component.
+    #[must_use]
+    pub(crate) fn with_youtube_helper(mut self, helper: std::path::PathBuf) -> Self {
+        if let (Some(decoder), Some(storage)) = (&self.decoder, &self.storage) {
+            self.youtube = Some(Arc::new(super::youtube::YoutubeRuntime::new(
+                crate::youtube_transport::YoutubeDownloader::new(helper, decoder.clone()),
+                storage.data.join("imports"),
+            )));
+        }
+        self
+    }
+
     /// What a shutdown request wakes; the daemon's serve loop waits on it.
     pub(crate) fn shutdown_requested(&self) -> Arc<tokio::sync::Notify> {
         Arc::clone(&self.shutdown)
