@@ -3,18 +3,23 @@
 //! daemon and can restart without losing durable state.
 
 mod daemon;
+mod engine;
 mod media;
 mod models;
+mod packaged;
 mod views;
 mod youtube;
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use serde::Serialize;
 use tauri::{Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
-pub use daemon::{ConnectionState, DaemonClient, DaemonLinkError, DaemonSupervisor};
+pub use daemon::{ConnectionState, DaemonClient, DaemonLinkError, DaemonSupervisor, Launch};
 pub use media::{MediaProtocol, SCHEME as MEDIA_SCHEME};
 pub use views::{DocumentView, JobView, ProjectView, SourceView, TaskView};
 
@@ -956,16 +961,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let supervisor = Arc::new(DaemonSupervisor::new(DaemonClient::new(socket)));
     let background = Arc::clone(&supervisor);
+    let stopping = Arc::clone(&supervisor);
     // The media door. It holds the store root so it can derive an object
     // directory from a content address; it receives no path from the daemon.
-    let media = Arc::new(
-        media::MediaProtocol::new(Arc::clone(&supervisor), config.paths.artifacts_dir.clone())
-            .with_fonts(config.fonts_dir.clone())
-            .with_emoji(config.emoji_dir.clone())
-            .with_assets(config.paths.assets_dir.clone()),
-    );
+    // It is made in setup, once the app knows where its own fonts and emoji
+    // are; a request that arrives before then is told to wait.
+    let door: Arc<OnceLock<Arc<media::MediaProtocol>>> = Arc::default();
+    let serving = Arc::clone(&door);
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         // Registered for `choose_source_file` alone. The renderer is granted no
         // permission to reach the plugin, so a page cannot open a dialog — it
         // can only ask this host to open one.
@@ -974,13 +978,20 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .register_asynchronous_uri_scheme_protocol(
             media::SCHEME,
             move |_app, request, responder| {
-                let media = Arc::clone(&media);
+                let door = Arc::clone(&serving);
                 tauri::async_runtime::spawn(async move {
-                    responder.respond(media.serve(request).await);
+                    let response = match door.get() {
+                        Some(media) => media.serve(request).await,
+                        None => media::not_ready(),
+                    };
+                    responder.respond(response);
                 });
             },
         )
         .invoke_handler(tauri::generate_handler![
+            engine::list_components,
+            engine::install_components,
+            engine::cancel_component_install,
             models::list_models,
             models::download_models,
             models::cancel_model_download,
@@ -1054,6 +1065,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             cancel_job
         ])
         .setup(move |app| {
+            // A packaged app starts its daemon with the files it ships and
+            // serves the fonts and emoji from its bundle; a development
+            // checkout keeps what `just app` put in the environment.
+            let layout = packaged::Layout::find(app.handle());
+            let (fonts, emoji) = layout.as_ref().map_or_else(
+                || (config.fonts_dir.clone(), config.emoji_dir.clone()),
+                |layout| (layout.fonts(), layout.emoji()),
+            );
+            if let Some(layout) = &layout {
+                tracing::info!(resources = %layout.resources.display(), "running from a packaged app");
+                background.set_launch(layout.launch());
+            }
+            let _ = door.set(Arc::new(
+                media::MediaProtocol::new(Arc::clone(&background), config.paths.artifacts_dir.clone())
+                    .with_fonts(fonts)
+                    .with_emoji(emoji)
+                    .with_assets(config.paths.assets_dir.clone()),
+            ));
             let handle = app.handle().clone();
             let events = Arc::clone(&background);
             let events_handle = handle.clone();
@@ -1072,6 +1101,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             tauri::async_runtime::spawn(stream_task_events(events, events_handle));
             Ok(())
         })
-        .run(tauri::generate_context!())?;
+        .build(tauri::generate_context!())?;
+    app.run(move |_app, event| {
+        // Quitting stops the daemon this app started, and with it the workers
+        // it runs: accepted work resumes at the next launch. A daemon started
+        // some other way keeps its own lifetime.
+        if let tauri::RunEvent::Exit = event {
+            tauri::async_runtime::block_on(stopping.stop_owned());
+        }
+    });
     Ok(())
 }

@@ -77,6 +77,11 @@ impl std::fmt::Debug for MediaProtocol {
     }
 }
 
+/// The answer while the app is still starting and the door is not made yet.
+pub fn not_ready() -> Response<Vec<u8>> {
+    refuse(StatusCode::SERVICE_UNAVAILABLE, "the app is still starting")
+}
+
 impl MediaProtocol {
     pub fn new(supervisor: Arc<DaemonSupervisor>, artifacts_dir: PathBuf) -> Self {
         Self {

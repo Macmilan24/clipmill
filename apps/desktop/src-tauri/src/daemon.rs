@@ -44,6 +44,9 @@ const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long a freshly spawned daemon gets to open its socket.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long a daemon asked to stop gets before it is ended. It asks its own
+/// workers to leave first, and gives each a grace period.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(150);
 /// Limit concurrent calls below the daemon's 64-connection ceiling, leaving room
 /// for event subscriptions and workers. Queue screen-loading bursts here to avoid
@@ -1000,6 +1003,19 @@ impl DaemonClient {
 
     /// Permission to stream a media artifact, and the inventory of what it
     /// holds. The bytes never come back through here.
+    /// Ask the daemon to stop. It answers first, then stops as a signal
+    /// would, so work it accepted resumes when a daemon next starts.
+    pub async fn shutdown(&self) -> Result<(), DaemonLinkError> {
+        use clipmill_contracts::proto::ipc::v1::ShutdownRequest;
+        match self
+            .call(request::Body::Shutdown(ShutdownRequest {}))
+            .await?
+        {
+            response::Body::Shutdown(_) => Ok(()),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub async fn resolve_media(
         &self,
         project_id: &str,
@@ -1047,12 +1063,23 @@ fn resolve_daemon_binary() -> Option<PathBuf> {
     if let Ok(current) = std::env::current_exe()
         && let Some(directory) = current.parent()
     {
-        let sibling = directory.join("clipmilld");
+        let sibling = directory.join(format!("clipmilld{}", std::env::consts::EXE_SUFFIX));
         if sibling.is_file() {
             return Some(sibling);
         }
     }
     None
+}
+
+/// How this shell starts a daemon of its own.
+#[derive(Debug, Clone, Default)]
+pub struct Launch {
+    /// Arguments after the executable. A packaged app names its resources and
+    /// its pinned sidecars; a development checkout names nothing and relies on
+    /// the environment `just app` sets.
+    pub arguments: Vec<std::ffi::OsString>,
+    /// A packaged app, whose daemon must be the one it shipped with.
+    pub packaged: bool,
 }
 
 /// Owns the daemon lifecycle: probes it, starts it when it is missing, and
@@ -1062,6 +1089,7 @@ pub struct DaemonSupervisor {
     client: DaemonClient,
     state: RwLock<ConnectionState>,
     child: Mutex<Option<Child>>,
+    launch: std::sync::Mutex<Launch>,
 }
 
 impl DaemonSupervisor {
@@ -1070,7 +1098,45 @@ impl DaemonSupervisor {
             client,
             state: RwLock::new(ConnectionState::Connecting),
             child: Mutex::new(None),
+            launch: std::sync::Mutex::new(Launch::default()),
         }
+    }
+
+    /// Say how a daemon this shell starts is started. Called once, before the
+    /// first reconcile.
+    pub fn set_launch(&self, launch: Launch) {
+        *self
+            .launch
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = launch;
+    }
+
+    fn launch(&self) -> Launch {
+        self.launch
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Stop the daemon this shell started, if it started one: ask it to stop,
+    /// and end it if it has not gone in time. A daemon started some other way
+    /// keeps its own lifetime.
+    pub async fn stop_owned(&self) {
+        let mut slot = self.child.lock().await;
+        let Some(child) = slot.as_mut() else {
+            return;
+        };
+        if !matches!(child.try_wait(), Ok(None)) {
+            *slot = None;
+            return;
+        }
+        let asked = self.client.shutdown().await.is_ok();
+        let stopped = asked && timeout(SHUTDOWN_TIMEOUT, child.wait()).await.is_ok();
+        if !stopped {
+            tracing::warn!("clipmilld did not stop when asked; ending it");
+            let _ = child.kill().await;
+        }
+        *slot = None;
     }
 
     pub fn client(&self) -> &DaemonClient {
@@ -1101,15 +1167,46 @@ impl DaemonSupervisor {
         }
         let binary = resolve_daemon_binary().ok_or(DaemonLinkError::MissingBinary)?;
         tracing::info!(binary = %binary.display(), "starting clipmilld");
-        let child = Command::new(binary).kill_on_drop(true).spawn()?;
+        let child = Command::new(binary)
+            .args(self.launch().arguments)
+            .kill_on_drop(true)
+            .spawn()?;
         *slot = Some(child);
         Ok(())
+    }
+
+    /// A packaged app runs the daemon it shipped with. One still answering
+    /// from another version (the app was updated while it ran, or it outlived
+    /// a crash) is asked to stop so this version's can start. True when it
+    /// was asked; a development shell attaches to whatever answers.
+    async fn replace_stranger(&self, running: &str) -> bool {
+        if !self.launch().packaged
+            || running == env!("CARGO_PKG_VERSION")
+            || self.child.lock().await.is_some()
+        {
+            return false;
+        }
+        tracing::info!(
+            running,
+            shipped = env!("CARGO_PKG_VERSION"),
+            "a daemon from another version of ClipMill is running; replacing it"
+        );
+        if self.client.shutdown().await.is_err() {
+            return false;
+        }
+        let deadline = tokio::time::Instant::now() + SHUTDOWN_TIMEOUT;
+        while tokio::time::Instant::now() < deadline && self.client.health().await.is_ok() {
+            sleep(STARTUP_POLL_INTERVAL).await;
+        }
+        true
     }
 
     /// One supervision step: probe, and if the socket is dead try to revive it.
     /// Returns the new state when it changed, so callers only emit on edges.
     pub async fn reconcile(&self) -> Option<ConnectionState> {
-        if let Ok(health) = self.client.health().await {
+        if let Ok(health) = self.client.health().await
+            && !self.replace_stranger(&health.daemon_version).await
+        {
             return self
                 .publish(ConnectionState::Connected {
                     daemon_version: health.daemon_version,
