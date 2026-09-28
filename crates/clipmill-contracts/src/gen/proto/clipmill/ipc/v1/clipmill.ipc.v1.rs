@@ -1177,7 +1177,7 @@ pub struct ReadArtifactResponse {
 /// the SHA-256 of its bytes. A document names it by that hash.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AssetV1 {
-    /// sha256:<hex>
+    /// `sha256:` followed by the lowercase hex digest.
     #[prost(string, tag = "1")]
     pub hash: ::prost::alloc::string::String,
     /// image or audio, decided from the bytes, never from a file name.

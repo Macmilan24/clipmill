@@ -882,7 +882,7 @@ message ReadArtifactResponse {
 // One of the person's own pictures or sounds — a logo, a music bed — kept by
 // the SHA-256 of its bytes. A document names it by that hash.
 message AssetV1 {
-  // sha256:<hex>
+  // `sha256:` followed by the lowercase hex digest.
   string hash = 1;
   // image or audio, decided from the bytes, never from a file name.
   string kind = 2;
