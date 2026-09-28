@@ -1049,6 +1049,8 @@ fn make_writable(path: &std::path::Path) {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600)).expect("chmod writable");
     }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 fn hex_string(bytes: &[u8]) -> String {

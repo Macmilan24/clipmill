@@ -368,7 +368,8 @@ async fn terminate(child: &mut Child, process_group: Option<u32>) {
     let _reaped = child.wait().await;
 }
 
-#[cfg(test)]
+// The helper is faked with shell scripts.
+#[cfg(all(test, unix))]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;

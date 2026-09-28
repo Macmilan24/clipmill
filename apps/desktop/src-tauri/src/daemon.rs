@@ -1279,17 +1279,34 @@ mod tests {
 
     #[tokio::test]
     async fn a_dropped_mutation_reply_retries_the_identical_request_envelope() {
-        use tokio::net::UnixListener;
+        use clipmilld::endpoint::Listener;
 
         // macOS temporary directories can exceed the Unix socket path limit.
-        let socket = PathBuf::from(format!("/tmp/cm-retry-{}.sock", ulid::Ulid::new()));
-        let listener = UnixListener::bind(&socket).expect("bind test socket");
+        let directory = if cfg!(windows) {
+            std::env::temp_dir()
+        } else {
+            PathBuf::from("/tmp")
+        };
+        let socket = directory.join(format!("cm-retry-{}.sock", ulid::Ulid::new()));
+        let listener = Listener::bind(&socket).await.expect("bind test socket");
         let server = tokio::spawn(async move {
-            let (mut first, _) = listener.accept().await.expect("first connection");
+            let mut first = listener
+                .accept()
+                .await
+                .expect("first connection")
+                .establish()
+                .await
+                .expect("first connection established");
             let original = read_frame(&mut first).await.expect("first request");
             // The mutation could already be committed. Lose only its reply.
             drop(first);
-            let (mut retry, _) = listener.accept().await.expect("retry connection");
+            let mut retry = listener
+                .accept()
+                .await
+                .expect("retry connection")
+                .establish()
+                .await
+                .expect("retry connection established");
             let repeated = read_frame(&mut retry).await.expect("retried request");
             assert_eq!(
                 original, repeated,

@@ -310,6 +310,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     async fn until(watch: &Arc<Mutex<Watch>>, wanted: impl Fn(&Watch) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
