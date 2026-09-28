@@ -31,6 +31,7 @@ import type {
   StageReadiness,
 } from '../../src/daemon/client.js';
 import type { ShellApi } from '../../src/daemon/api.js';
+import { UNMANAGED } from '../../src/daemon/components.js';
 import { FakeModelLibrary } from './models.js';
 
 export const NOW = Date.UTC(2026, 6, 31, 12, 0, 0);
@@ -245,6 +246,10 @@ export function filmstrip(artifactId: string, tiles: number): MediaArtifact {
 export function fakeApi(world: FakeWorld): ShellApi {
   return {
     ...(world.models ?? new FakeModelLibrary()).api(),
+    // A development daemon: it installs nothing, so setup never shows.
+    listComponents: () => Promise.resolve(UNMANAGED),
+    installComponents: () => Promise.reject(new Error('no components in development')),
+    cancelComponentInstall: () => Promise.resolve(UNMANAGED),
     fetchYoutubePublishingStatus: () =>
       Promise.resolve({ available: true, configured: false, connections: [] }),
     chooseYoutubeClientConfig: () => Promise.resolve(null),

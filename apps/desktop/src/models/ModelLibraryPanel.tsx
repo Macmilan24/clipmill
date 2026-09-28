@@ -35,6 +35,7 @@ import {
   upgradeNote,
 } from './describe.js';
 import { ModelRow } from './ModelRow.js';
+import { ComponentsCard } from '../setup/ComponentsCard.js';
 import { type ModelLibraryState, useModelLibrary } from './useModelLibrary.js';
 
 import './models.css';
@@ -128,6 +129,8 @@ export function ModelLibraryPanel({ api }: { readonly api: ShellApi }): JSX.Elem
           Reading the model library…
         </div>
       )}
+
+      <ComponentsCard api={api} />
 
       {library !== null && library.recommendedMissing.length > 0 && (
         <SetupCard library={library} state={state} api={api} />
