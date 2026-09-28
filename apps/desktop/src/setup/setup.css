@@ -1,0 +1,89 @@
+.setup-card[data-slot='card'] {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--cm-glass-border));
+  background: var(--cm-surface-1);
+}
+
+.setup-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 12px;
+}
+
+.setup-row-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+}
+
+.setup-row-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--cm-text-muted);
+  opacity: 0.5;
+}
+
+.setup-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-row-status {
+  max-width: 40ch;
+  overflow: hidden;
+  color: var(--cm-text-secondary);
+  font-size: 11px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A failure's reason is a sentence: it gets its own line under the title. */
+.setup-row[data-state='failed'] .setup-row-status {
+  grid-column: 2 / -1;
+  color: var(--cm-danger-ink);
+  max-width: none;
+  padding-bottom: 4px;
+  text-align: left;
+  white-space: normal;
+}
+
+.setup-network-note {
+  display: flex;
+  flex: 1 1 260px;
+  align-items: center;
+  gap: 6px;
+  color: var(--cm-outbound-ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.setup-network-note > svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.components-row {
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+}
+
+.components-row-process {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 72px;
+}

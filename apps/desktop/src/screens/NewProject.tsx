@@ -63,6 +63,8 @@ import {
   describeRange,
 } from '../import/model.js';
 import { formatDuration, formatVideoSpec } from '../library/model.js';
+import { SetupCard } from '../setup/SetupCard.js';
+import { useSetup } from '../setup/useSetup.js';
 
 export interface NewProjectProps {
   readonly state: ConnectionState;
@@ -222,6 +224,16 @@ export function NewProject({
   // not installed blocks the button, and a worker that is not connected is
   // said out loud, since the run would sit on that stage until one is.
   const { readiness, problem: readinessProblem, refresh } = useReadiness(connected, importer.api);
+  // A packaged app's one-time download of its components and models. The
+  // readiness below is asked again as each piece arrives.
+  const setup = useSetup(importer.api);
+  const setupWasMoving = useRef(false);
+  useEffect(() => {
+    // Once the last piece arrives, not on every render: readiness polls anyway
+    // while connected, and a check on mount would hide a first failure.
+    if (setupWasMoving.current && !setup.busy) refresh();
+    setupWasMoving.current = setup.busy;
+  }, [setup.busy, refresh]);
   const route = settings.editorialRoute ?? 'local';
   // This machine's own pace, from the runs it has finished before.
   const estimate = chosen
@@ -342,6 +354,8 @@ export function NewProject({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {connected && <SetupCard setup={setup} />}
 
       <div className="import-layout">
         <Card className="import-source">

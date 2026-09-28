@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "apps/desktop/src-tauri"]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 repository = "https://github.com/Macmilan24/clipmill"
@@ -26,21 +26,21 @@ missing_errors_doc = "allow"
 must_use_candidate = "allow"
 
 [workspace.dependencies]
-clipmill-artifacts = { path = "crates/clipmill-artifacts", version = "0.0.1" }
-clipmill-captions = { path = "crates/clipmill-captions", version = "0.0.1" }
-clipmill-core = { path = "crates/clipmill-core", version = "0.0.1" }
-clipmill-director = { path = "crates/clipmill-director", version = "0.0.1" }
-clipmill-discovery = { path = "crates/clipmill-discovery", version = "0.0.1" }
-clipmill-edit-ir = { path = "crates/clipmill-edit-ir", version = "0.0.1" }
-clipmill-editorial = { path = "crates/clipmill-editorial", version = "0.0.1" }
-clipmill-evidence = { path = "crates/clipmill-evidence", version = "0.0.1" }
-clipmill-export = { path = "crates/clipmill-export", version = "0.0.1" }
-clipmill-hub = { path = "crates/clipmill-hub", version = "0.0.1" }
-clipmill-reframe = { path = "crates/clipmill-reframe", version = "0.0.1" }
-clipmill-render = { path = "crates/clipmill-render", version = "0.0.1" }
-clipmill-youtube = { path = "crates/clipmill-youtube", version = "0.0.1" }
-clipmill-contracts = { path = "crates/clipmill-contracts", version = "0.0.1" }
-clipmilld = { path = "crates/clipmilld", version = "0.0.1" }
+clipmill-artifacts = { path = "crates/clipmill-artifacts", version = "0.1.0" }
+clipmill-captions = { path = "crates/clipmill-captions", version = "0.1.0" }
+clipmill-core = { path = "crates/clipmill-core", version = "0.1.0" }
+clipmill-director = { path = "crates/clipmill-director", version = "0.1.0" }
+clipmill-discovery = { path = "crates/clipmill-discovery", version = "0.1.0" }
+clipmill-edit-ir = { path = "crates/clipmill-edit-ir", version = "0.1.0" }
+clipmill-editorial = { path = "crates/clipmill-editorial", version = "0.1.0" }
+clipmill-evidence = { path = "crates/clipmill-evidence", version = "0.1.0" }
+clipmill-export = { path = "crates/clipmill-export", version = "0.1.0" }
+clipmill-hub = { path = "crates/clipmill-hub", version = "0.1.0" }
+clipmill-reframe = { path = "crates/clipmill-reframe", version = "0.1.0" }
+clipmill-render = { path = "crates/clipmill-render", version = "0.1.0" }
+clipmill-youtube = { path = "crates/clipmill-youtube", version = "0.1.0" }
+clipmill-contracts = { path = "crates/clipmill-contracts", version = "0.1.0" }
+clipmilld = { path = "crates/clipmilld", version = "0.1.0" }
 clap = { version = "4.5", features = ["derive"] }
 directories = "6.0"
 ed25519-dalek = "2.2.0"
@@ -50,7 +50,7 @@ hex = "0.4.3"
 humantime = "2.4.0"
 memfd = "0.6.5"
 mmap-io = { version = "1.0.0", default-features = false }
-nix = { version = "0.31.3", features = ["fs", "mman", "socket", "uio"] }
+nix = { version = "0.31.3", features = ["fs", "mman", "signal", "socket", "uio"] }
 prost = "0.14"
 rusqlite = { version = "0.40.1", features = ["backup", "bundled"] }
 serde = { version = "1", features = ["derive"] }
@@ -70,3 +70,11 @@ tokio = { version = "1.49", features = ["io-util", "macros", "net", "process", "
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 ulid = "1.2"
+
+# A release build strips debug info by default, and macOS's strip has written
+# Mach-O files dyld refuses to load ("mis-aligned LINKEDIT string pool"): rustc
+# then reports a proc-macro crate it cannot find, and a stripped executable
+# would not start. Release builds carry no debug info of their own, so not
+# stripping costs only the standard library's.
+[profile.release]
+strip = "none"
