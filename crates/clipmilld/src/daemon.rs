@@ -456,6 +456,20 @@ impl Daemon {
         // until it runs they wait in the listener's backlog or retry.
         if let Some(engine) = service.engine() {
             engine.start();
+            // A Mac's editorial model proves it runs before its Metal worker
+            // is admitted; the engine does this once the component and the
+            // model are both here, whichever arrives last.
+            let prover = service.clone();
+            let mut stopping = engine.stopping();
+            tokio::spawn(async move {
+                loop {
+                    prover.prove_editorial_runtime().await;
+                    tokio::select! {
+                        () = tokio::time::sleep(Duration::from_secs(15)) => {}
+                        () = crate::engine::until_true(&mut stopping) => return,
+                    }
+                }
+            });
         }
 
         loop {

@@ -5109,11 +5109,27 @@ fn engine_remedy(stage: &mut StageReadinessV1, engine: &crate::engine::Engine) {
             ),
             _ => format!("The {} worker is starting.", part.title),
         };
-    } else if stage.remedy.contains("`just workers`") {
-        stage.remedy = stage.remedy.replace(
-            "Restart `just workers` to run the check",
-            "Quit and reopen ClipMill to run the check",
-        );
+    } else if stage.remedy.contains("local runtime check") {
+        // The engine runs the check itself once the component and the model
+        // are both here, and says on the component what it is doing.
+        let detail = engine
+            .part_for_family(crate::engine::EDITORIAL_FAMILY)
+            .map(|part| part.detail)
+            .unwrap_or_default();
+        stage.remedy = if detail.is_empty() {
+            format!(
+                "{} runs on this Mac only after one real reply from it. ClipMill checks this by itself once the model and the Editorial AI component are both installed.",
+                stage.model
+            )
+        } else {
+            format!("{}: {detail}.", stage.model)
+        };
+    } else if stage
+        .remedy
+        .contains("./tools/run-workers.sh --cloud-editorial")
+    {
+        "The cloud editorial route is not part of this version of the app. Choose the local model or the built-in picker in New Project."
+            .clone_into(&mut stage.remedy);
     }
 }
 

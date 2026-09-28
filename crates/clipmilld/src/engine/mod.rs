@@ -83,6 +83,10 @@ struct State {
     attempts: BTreeMap<String, Attempt>,
     queue: VecDeque<String>,
     active: Option<watch::Sender<bool>>,
+    /// The editorial check: what it is doing or why it failed, and the
+    /// machine, model and install it was tried for, so it is tried once.
+    proof: Option<String>,
+    proof_tried: Option<String>,
 }
 
 /// One part this computer runs, with what keeps its worker going.
@@ -321,6 +325,9 @@ impl Engine {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let detail = match (&watch.state, detail.is_empty()) {
             (process::ProcessState::Waiting { reason }, true) => reason.clone(),
+            _ if detail.is_empty() && running.part.family == EDITORIAL_FAMILY => {
+                self.lock().proof.clone().unwrap_or_default()
+            }
             _ => detail,
         };
         let installed_bytes = if measure {
@@ -341,6 +348,134 @@ impl Engine {
             process: watch.state.name().to_owned(),
             restarts: watch.restarts,
             log_path: running.log.display().to_string(),
+        }
+    }
+
+    /// Turns true when the daemon stops, for loops that serve the engine.
+    pub(crate) fn stopping(&self) -> watch::Receiver<bool> {
+        self.stop.subscribe()
+    }
+
+    /// The editorial component's install, when it is installed at the
+    /// version this app ships: one from an earlier app may lack the check.
+    pub(crate) fn editorial_install(&self) -> Option<(String, PathBuf)> {
+        let running = self
+            .parts
+            .iter()
+            .find(|running| running.part.family == EDITORIAL_FAMILY)?;
+        let (pointer, dir) = self.installer.current(&running.part.name)?;
+        (pointer.digest == running.part.digest(&self.python())).then_some((pointer.digest, dir))
+    }
+
+    /// Whether the editorial check was already tried for `key` (machine,
+    /// model and install): it runs once per combination, and a failure stays
+    /// on screen until one of them changes.
+    pub(crate) fn proof_tried(&self, key: &str) -> bool {
+        self.lock().proof_tried.as_deref() == Some(key)
+    }
+
+    /// Record that `key` was tried without running the check: a receipt that
+    /// already matched was applied.
+    pub(crate) fn mark_proof_tried(&self, key: &str) {
+        self.lock().proof_tried = Some(key.to_owned());
+    }
+
+    /// Generate once with the editorial model `binding` names, in the
+    /// editorial component's own environment, and let it write `receipt`.
+    /// Its output goes to the logs; the part shows what it is doing.
+    pub(crate) async fn prove_editorial(
+        &self,
+        key: &str,
+        binding: &[u8],
+        receipt: &std::path::Path,
+        fingerprint: &str,
+    ) -> Result<(), String> {
+        {
+            let mut state = self.lock();
+            state.proof_tried = Some(key.to_owned());
+            state.proof = Some("Checking that the editorial model runs on this Mac".to_owned());
+        }
+        let outcome = self
+            .run_editorial_check(binding, receipt, fingerprint)
+            .await;
+        self.lock().proof = match &outcome {
+            Ok(()) => None,
+            Err(message) => Some(format!("The editorial model could not run here: {message}")),
+        };
+        outcome
+    }
+
+    async fn run_editorial_check(
+        &self,
+        binding: &[u8],
+        receipt: &std::path::Path,
+        fingerprint: &str,
+    ) -> Result<(), String> {
+        let (_, install) = self
+            .editorial_install()
+            .ok_or("the editorial component is not installed")?;
+        let binding_path = self.paths.engine_dir.join("editorial-binding.pb");
+        crate::library::write_private(&binding_path, binding)
+            .map_err(|error| format!("{}: {error}", binding_path.display()))?;
+        let log_path = self.paths.logs_dir.join("editorial-check.log");
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .map_err(|error| format!("{}: {error}", log_path.display()))?;
+        let errors = log
+            .try_clone()
+            .map_err(|error| format!("{}: {error}", log_path.display()))?;
+        let mut command = tokio::process::Command::new(install::command_path(&install, "python"));
+        for (key, _) in std::env::vars_os() {
+            if install::affects_python(&key) {
+                command.env_remove(&key);
+            }
+        }
+        command
+            .args([
+                "-I",
+                "-m",
+                "clipmill_worker_editorial.runtime_check",
+                "--binding",
+            ])
+            .arg(&binding_path)
+            .arg("--receipt")
+            .arg(receipt)
+            .arg("--fingerprint")
+            .arg(fingerprint)
+            .env("PYTHONUNBUFFERED", "1")
+            .env("HF_HUB_OFFLINE", "1")
+            .env("TRANSFORMERS_OFFLINE", "1")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::from(log))
+            .stderr(std::process::Stdio::from(errors))
+            .kill_on_drop(true);
+        let mut child = command
+            .spawn()
+            .map_err(|error| format!("the check could not start: {error}"))?;
+        let mut stop = self.stop.subscribe();
+        let status = tokio::select! {
+            waited = tokio::time::timeout(EDITORIAL_CHECK_DEADLINE, child.wait()) => {
+                let Ok(status) = waited else {
+                    let _ = child.kill().await;
+                    return Err("it did not answer within 20 minutes".to_owned());
+                };
+                status.map_err(|error| error.to_string())?
+            }
+            () = until_true(&mut stop) => {
+                let _ = child.kill().await;
+                return Err(install::CANCELLED.to_owned());
+            }
+        };
+        let _ = std::fs::remove_file(&binding_path);
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("see {} ({status})", log_path.display()))
         }
     }
 
@@ -440,6 +575,12 @@ impl Engine {
         Ok(())
     }
 }
+
+/// The worker family of the editorial component, whose model must prove it
+/// runs on a Mac before the daemon admits its Metal worker.
+pub(crate) const EDITORIAL_FAMILY: &str = "editorial";
+/// Loading a 6 GB model and answering once; generous for a slow disk.
+const EDITORIAL_CHECK_DEADLINE: Duration = Duration::from_mins(20);
 
 /// Resolve once `flag` is true, or once nothing can set it any more. The
 /// borrow `wait_for` returns is dropped inside, so the caller's future stays
