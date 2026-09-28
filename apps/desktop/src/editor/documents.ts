@@ -122,8 +122,9 @@ function clipLabel(document: EditDocSummary, source: Source | undefined): string
     : `${recording} · ${document.candidateId.replace(/^cand_/, '').slice(0, 6)}`;
 }
 
+/** The last part of a path, whichever separator the system writes. */
 function fileName(path: string): string {
-  return path.split('/').at(-1) ?? path;
+  return path.split(/[\\/]/).at(-1) ?? path;
 }
 
 export function useEditDocuments(api: ShellApi = daemonApi): DocumentList {
