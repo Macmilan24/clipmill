@@ -6,7 +6,7 @@ license = "AGPL-3.0-only"
 requires-python = ">=3.12"
 dependencies = [
   "clipmill-worker-sdk",
-  "mlx-vlm==0.7.1 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+  "mlx-vlm==0.7.3 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
   "torchvision>=0.21,<1 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
 ]
 [project.scripts]
