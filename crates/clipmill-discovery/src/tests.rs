@@ -220,9 +220,9 @@ fn one_proposer_finding_a_clip_twice_publishes_it_once_with_both_reasons() {
     let _ = interview;
 }
 
-/// A candidate whose span overlaps timing the transcript disowned is still a
-/// candidate — the words were said — but ranking must see that before it puts
-/// a cut inside one.
+/// A candidate whose word timing is mostly inferred is no measured clip: the
+/// words were said, but nothing places them, so it is excluded with its
+/// reason for ranking to record.
 #[test]
 fn a_candidate_over_interpolated_timing_says_so() {
     let mut interview = fixture::interview();
@@ -252,6 +252,105 @@ fn a_candidate_over_interpolated_timing_says_so() {
         found
             .candidates
             .iter()
+            .all(|candidate| !candidate.exclusions.is_empty())
+    );
+}
+
+/// An interview with one short stretch of `reason` in its middle.
+fn with_short_region(
+    reason: clipmill_contracts::schemas::index_transcript::InvalidRegionReason,
+) -> (fixture::Interview, (u64, u64)) {
+    let mut interview = fixture::interview();
+    let middle = interview.index.coverage.end_ticks / 2;
+    let region = (middle, middle + 18_000);
+    interview.index.invalid_regions = vec![
+        clipmill_contracts::schemas::index_transcript::InvalidRegion {
+            start_ticks: region.0,
+            end_ticks: region.1,
+            reason,
+            detail: None,
+        },
+    ];
+    (interview, region)
+}
+
+fn discovered(interview: &fixture::Interview) -> contract::DiscoveryCandidates {
+    discover(
+        &interview.index,
+        &interview.transcript,
+        None,
+        Inputs {
+            index: INDEX_ID,
+            transcript: TRANSCRIPT_ID,
+            loudness: None,
+        },
+        Parameters::DEFAULT,
+        IMPLEMENTATION,
+    )
+    .expect("the search runs")
+}
+
+/// A few words whose timing was inferred — collapsed onto one aligner tick,
+/// or spread across a short gap — do not discard the complete moment around
+/// them, as Milestone 2 decided for editorial spans. No cut lands inside them.
+#[test]
+fn a_few_inferred_words_inside_a_candidate_do_not_discard_it() {
+    let (interview, (from, to)) = with_short_region(
+        clipmill_contracts::schemas::index_transcript::InvalidRegionReason::TimingInterpolated,
+    );
+    let found = discovered(&interview);
+    let over: Vec<_> = found
+        .candidates
+        .iter()
+        .filter(|candidate| {
+            candidate
+                .intervals
+                .iter()
+                .any(|interval| interval.start_ticks < to && interval.end_ticks > from)
+        })
+        .collect();
+    assert!(
+        !over.is_empty(),
+        "the fixture puts candidates across the middle"
+    );
+    assert!(over.iter().all(|candidate| candidate.exclusions.is_empty()));
+    for candidate in &found.candidates {
+        for tick in candidate
+            .boundary_lattice
+            .starts
+            .iter()
+            .chain(&candidate.boundary_lattice.ends)
+        {
+            let tick = *tick;
+            assert!(
+                !(from < tick && tick < to),
+                "a cut at {tick} lands on inferred timing"
+            );
+        }
+    }
+}
+
+/// Where recognition failed, words may be missing: a clip over it could say
+/// less than its captions, so it is still excluded however short the gap.
+#[test]
+fn speech_the_recognizer_could_not_read_still_excludes() {
+    let (interview, (from, to)) = with_short_region(
+        clipmill_contracts::schemas::index_transcript::InvalidRegionReason::DecodeFailed,
+    );
+    let found = discovered(&interview);
+    let over: Vec<_> = found
+        .candidates
+        .iter()
+        .filter(|candidate| {
+            candidate
+                .intervals
+                .iter()
+                .any(|interval| interval.start_ticks < to && interval.end_ticks > from)
+        })
+        .collect();
+    assert!(!over.is_empty());
+    assert!(
+        over.iter()
             .all(|candidate| !candidate.exclusions.is_empty())
     );
 }
