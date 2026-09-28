@@ -748,7 +748,7 @@ fn managed_projects(root: &Path) -> Vec<(String, PathBuf)> {
 /// A durable source row must not outlive an unflushed directory entry after a
 /// power loss. The helper's file sync alone does not persist its new parents.
 fn sync_download(path: &Path, root: &Path) -> std::io::Result<()> {
-    fs::File::open(path)?.sync_all()?;
+    platform::sync_file(path)?;
     let mut directory = path.parent();
     while let Some(parent) = directory {
         platform::sync_dir(parent)?;

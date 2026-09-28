@@ -647,10 +647,11 @@ fn launcher_script(title: &str, module: &str, python: Option<&std::path::Path>) 
             python.display().to_string().replace('%', "%%"),
         )
     } else {
-        let title: String = title
+        let kept: String = title
             .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-')
+            .filter(|c| c.is_ascii_alphanumeric() || c.is_whitespace() || *c == '-')
             .collect();
+        let title = kept.split_whitespace().collect::<Vec<_>>().join(" ");
         format!(
             "@echo off\r\necho {}\r\nexit /b 1\r\n",
             setup_required(&title)

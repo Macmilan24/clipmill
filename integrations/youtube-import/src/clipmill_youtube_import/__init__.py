@@ -379,14 +379,23 @@ def download_into(
     if not stat.S_ISREG(final.stat().st_mode):
         raise ImportFailure("storage_error", "The downloaded source is not a regular file.")
     final.chmod(0o600)
-    with final.open("rb") as media:
+    # Windows flushes only through a handle that may write.
+    with final.open("r+b" if sys.platform == "win32" else "rb") as media:
         os.fsync(media.fileno())
+    sync_directory(directory)
+    emit("complete", file_name="source.mkv", byte_size=size, **metadata)
+
+
+def sync_directory(directory: Path) -> None:
+    """Make the finished file's name durable. Windows cannot open a directory
+    to flush it, and NTFS journals the names a directory holds."""
+    if sys.platform == "win32":
+        return
     directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(directory_fd)
     finally:
         os.close(directory_fd)
-    emit("complete", file_name="source.mkv", byte_size=size, **metadata)
 
 
 def storage_failure(directory: Path) -> tuple[str, str] | None:
