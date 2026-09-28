@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     path::{Path, PathBuf},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -2138,8 +2138,7 @@ fn create_schema_backup(
         let check: String = destination.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
         enforce_integrity_check(&check)?;
         drop(destination);
-        File::open(&temporary)
-            .and_then(|file| file.sync_all())
+        crate::platform::sync_file(&temporary)
             .map_err(|source| DaemonError::io(&temporary, source))?;
         fs::rename(&temporary, &final_path)
             .map_err(|source| DaemonError::io(&final_path, source))?;

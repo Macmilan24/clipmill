@@ -1086,7 +1086,13 @@ fn portable_relative_path(root: &Path, path: &Path) -> Result<String, ArtifactEr
 }
 
 fn hash_and_sync_file(path: &Path) -> Result<(Sha256Digest, u64), ArtifactError> {
-    let mut file = File::open(path).map_err(|source| ArtifactError::io(path, source))?;
+    // Windows flushes only through a handle that may write.
+    let mut file = if cfg!(windows) {
+        OpenOptions::new().read(true).write(true).open(path)
+    } else {
+        File::open(path)
+    }
+    .map_err(|source| ArtifactError::io(path, source))?;
     file.sync_all()
         .map_err(|source| ArtifactError::io(path, source))?;
     let metadata = file

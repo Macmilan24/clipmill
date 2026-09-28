@@ -52,6 +52,20 @@ pub(crate) fn sync_dir(path: &Path) -> io::Result<()> {
     }
 }
 
+/// Flush a file the daemon has finished writing and closed. Windows flushes
+/// only through a handle that may write, so it is opened for writing there;
+/// Unix flushes a read-only descriptor as well.
+pub(crate) fn sync_file(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        File::open(path)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        OpenOptions::new().write(true).open(path)?.sync_all()
+    }
+}
+
 /// Tighten a file the daemon wrote to its user alone.
 #[cfg_attr(not(unix), allow(clippy::unnecessary_wraps))]
 pub(crate) fn restrict_file(path: &Path) -> io::Result<()> {

@@ -49,7 +49,9 @@ class StagingArea:
         parent = disk_path.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._assert_private_parent(parent)
-        flags = os.O_CREAT | os.O_TRUNC | os.O_WRONLY
+        # O_BINARY exists on Windows only, where a descriptor is otherwise in
+        # text mode and every newline written gains a carriage return.
+        flags = os.O_CREAT | os.O_TRUNC | os.O_WRONLY | getattr(os, "O_BINARY", 0)
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         descriptor = os.open(disk_path, flags, 0o600)
@@ -60,7 +62,12 @@ class StagingArea:
                 os.fsync(output.fileno())
         finally:
             os.close(descriptor)
-        os.chmod(disk_path, 0o600, follow_symlinks=False)
+        if os.chmod in os.supports_follow_symlinks:
+            os.chmod(disk_path, 0o600, follow_symlinks=False)
+        else:
+            # Windows (before Python 3.13): the file was just created here
+            # without following a link, and its mode is only a read-only flag.
+            os.chmod(disk_path, 0o600)
         self._created.add(path)
 
     def declare(self, relative_path: str) -> worker_pb2.StagedOutput:
@@ -68,7 +75,7 @@ class StagingArea:
         if path not in self._created:
             raise ValueError("worker did not create the declared staging path")
         disk_path = self.root.joinpath(*path.parts)
-        flags = os.O_RDONLY
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         descriptor = os.open(disk_path, flags)
