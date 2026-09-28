@@ -427,7 +427,8 @@ def write(triple: str, out: Path) -> None:
             "licence it declares and where its source is; the licence texts follow, each once, "
             "under the packages that ship it. A package that ships no licence text is given the "
             "standard text of a licence it offers, naming its authors. The libraries compiled "
-            "into the caption player's WebAssembly are in JASSUB-LIBRARIES.txt.",
+            "into the caption player's WebAssembly, and its fallback font, are in "
+            "JASSUB-LIBRARIES.txt.",
             javascript,
         ),
         encoding="utf-8",

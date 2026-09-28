@@ -504,7 +504,7 @@ def verify_engine(target: Target, manifest: dict) -> None:
 
 # ---- licences ---------------------------------------------------------------
 
-# Standard licence texts, and the notice for the caption player's libraries.
+# Standard licence texts, and the notice for the caption player's libraries and font.
 LICENSE_TEXTS = Path(__file__).resolve().parent / "licenses"
 
 
@@ -573,7 +573,7 @@ licence:
 
   THIRD-PARTY-RUST.txt         crates compiled into the app and clipmilld
   THIRD-PARTY-JAVASCRIPT.txt   packages bundled into the app's interface
-  JASSUB-LIBRARIES.txt         libraries compiled into the caption player
+  JASSUB-LIBRARIES.txt         the caption player's libraries and font
   jassub-LICENSE.txt           the caption player itself
   rvfc-polyfill-LICENSE.txt    the player's frame timing (GPL-3.0)
   FFmpeg-NOTICE.txt            FFmpeg's ffmpeg and ffprobe, with GPL-3.0.txt
