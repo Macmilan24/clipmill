@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "mainBinaryName": "clipmill",
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Samuel Dagne",
+    "homepage": "https://github.com/Macmilan24/clipmill",
+    "category": "Video",
+    "shortDescription": "A local-first video clipping studio",
+    "longDescription": "Turn long recordings into short clips on your own computer: find the moments, review them, edit framing and captions, and export video ready to upload. Analysis runs locally; nothing about your projects is sent anywhere unless you choose a cloud step.",
+    "copyright": "Copyright 2026 Samuel Dagne. Licensed under AGPL-3.0-only.",
+    "license": "AGPL-3.0-only",
+    "licenseFile": "../../../LICENSE",
+    "externalBin": ["binaries/clipmilld", "binaries/ffmpeg", "binaries/ffprobe", "binaries/uv"],
+    "resources": {
+      "resources/": "resources/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "14.0"
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}
