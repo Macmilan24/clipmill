@@ -712,9 +712,9 @@ async fn update_export_batch_item(
 /// (`open -R` on macOS, a folder opener elsewhere).
 #[tauri::command]
 async fn reveal_path(path: String) -> Result<(), String> {
-    let target = std::path::Path::new(&path)
-        .canonicalize()
-        .map_err(|error| format!("{path}: {error}"))?;
+    // Without the `\\?\` form Windows gives a canonical path, which Explorer
+    // cannot read.
+    let target = dunce::canonicalize(&path).map_err(|error| format!("{path}: {error}"))?;
     let metadata = std::fs::metadata(&target).map_err(|error| format!("{path}: {error}"))?;
     if !metadata.is_file() {
         return Err(format!("{path} is not a file"));
@@ -723,10 +723,16 @@ async fn reveal_path(path: String) -> Result<(), String> {
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| format!("cannot open the file manager: {error}"))?;
-    if !status.success() {
+    if !file_manager_succeeded(status) {
         return Err(format!("the file manager refused: {status}"));
     }
     Ok(())
+}
+
+/// Whether the file manager did what it was asked. Explorer ends with 1 even
+/// when it opened the window, so on Windows starting it is all there is.
+pub(crate) fn file_manager_succeeded(status: std::process::ExitStatus) -> bool {
+    cfg!(windows) || status.success()
 }
 
 /// The platform's reveal, as a command with the path as its one argument.
@@ -737,7 +743,16 @@ fn reveal_command(target: &std::path::Path) -> std::process::Command {
         command.arg("-R").arg(target);
         command
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        // Explorer wants the quote after the comma; a Windows path cannot
+        // hold a quote itself.
+        let mut command = std::process::Command::new("explorer.exe");
+        command.raw_arg(format!("/select,\"{}\"", target.display()));
+        command
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         // No reveal-in-folder on the free desktops' common opener; the
         // folder is what can be shown.

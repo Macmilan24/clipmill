@@ -16,12 +16,14 @@ from pathlib import Path
 import pyarrow as pa
 from clipmill.shm.v1 import shm_pb2
 
+from . import endpoint
 from .framing import MAX_FRAME_BYTES, _decode_varint, decode_framed_bytes, recv_frame, send_frame
 
 _UINT64_MAX = (1 << 64) - 1
 _LEASE_ID = re.compile(r"^lse_[0-9A-HJKMNP-TV-Z]{26}$")
 _HANDLE_TOKEN = re.compile(r"^shm_[0-9a-f]{64}$")
 _SHM_NAME = re.compile(r"^/cm_[0-9A-HJKMNP-TV-Z]{26}$")
+_PRIVATE_FILE = re.compile(r"cm_[0-9A-HJKMNP-TV-Z]{26}")
 _DTYPE_BYTES = {
     shm_pb2.DATA_TYPE_U8: 1,
     shm_pb2.DATA_TYPE_I16: 2,
@@ -61,14 +63,12 @@ def map_shared_buffer(
     descriptor: shm_pb2.BufferDescriptor,
 ) -> MappedBuffer:
     validate_descriptor(descriptor)
-    stream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    stream.settimeout(10)
+    try:
+        stream = endpoint.connect(socket_path, timeout=10)
+    except (OSError, ValueError) as error:
+        raise SharedMemorySocketError("shared-memory broker unavailable") from error
     mapping: mmap.mmap | None = None
     try:
-        try:
-            stream.connect(str(socket_path))
-        except OSError as error:
-            raise SharedMemorySocketError("shared-memory broker unavailable") from error
         send_frame(
             stream,
             shm_pb2.MapRequest(
@@ -104,8 +104,16 @@ def map_shared_buffer(
                 )
             finally:
                 os.close(file_descriptor)
+        elif sys.platform == "win32":
+            served = recv_frame(stream, shm_pb2.BufferDescriptor)
+            if served != descriptor:
+                raise ValueError("shared-memory descriptor changed during transfer")
+            try:
+                mapping = _copy_private_file(served)
+            except OSError as error:
+                raise SharedMemoryHandleError("the shared-memory file is unavailable") from error
         else:
-            raise RuntimeError("shared memory is supported only on macOS and Linux")
+            raise RuntimeError("shared memory is supported only on macOS, Linux and Windows")
         if served != descriptor:
             raise ValueError("shared-memory descriptor changed during transfer")
         validate_mapping(served, mapping)
@@ -125,6 +133,32 @@ def map_shared_buffer(
         raise
     finally:
         stream.close()
+
+
+def _private_file_path(name: str) -> bool:
+    """Whether ``name`` is where the daemon leaves a payload on Windows: a
+    file named ``cm_<ulid>`` in the ``clipmill-shm`` folder of a temporary
+    directory."""
+    path = Path(name)
+    return (
+        path.is_absolute()
+        and path.parent.name == "clipmill-shm"
+        and _PRIVATE_FILE.fullmatch(path.name) is not None
+    )
+
+
+def _copy_private_file(descriptor: shm_pb2.BufferDescriptor) -> mmap.mmap:
+    """On Windows the daemon leaves the bytes in a read-only file only this
+    user can open. They are copied into this process's own memory, and the
+    file is closed before the acknowledgement lets the daemon delete it."""
+    with open(descriptor.shm_name, "rb") as source:
+        data = source.read(descriptor.byte_len + 1)
+    if len(data) != descriptor.byte_len:
+        raise ValueError("the shared-memory file is not the size its descriptor states")
+    mapping = mmap.mmap(-1, len(data))
+    mapping.write(data)
+    mapping.seek(0)
+    return mapping
 
 
 def validate_descriptor(descriptor: shm_pb2.BufferDescriptor) -> None:
@@ -163,6 +197,11 @@ def validate_descriptor(descriptor: shm_pb2.BufferDescriptor) -> None:
             raise ValueError("macOS requires a POSIX shared-memory transport")
         if _SHM_NAME.fullmatch(descriptor.shm_name) is None:
             raise ValueError("invalid POSIX shared-memory name")
+    elif sys.platform == "win32":
+        if descriptor.transport_type != shm_pb2.TRANSPORT_TYPE_PRIVATE_FILE:
+            raise ValueError("Windows requires a private-file transport")
+        if not _private_file_path(descriptor.shm_name):
+            raise ValueError("invalid shared-memory file path")
 
 
 def _receive_memfd_descriptor(

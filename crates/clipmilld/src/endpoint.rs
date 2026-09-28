@@ -515,6 +515,23 @@ mod tests {
     }
 
     #[test]
+    fn proofs_match_the_worker_kit_byte_for_byte() {
+        // The same inputs and outputs as workers/sdk/tests/test_endpoint.py,
+        // so the daemon and the Python workers cannot drift apart.
+        let shared = Secret(std::array::from_fn(|index| u8::try_from(index).unwrap()));
+        let (worker, daemon) = ([1_u8; 32], [2_u8; 32]);
+        assert_eq!(
+            hex::encode(prove(&shared, SERVER_ROLE, &worker, &daemon)),
+            "0eda7a24e885c375f511c1a32327029a8e23df26efeb1006f026764cae75b8c6"
+        );
+        assert_eq!(
+            hex::encode(prove(&shared, CLIENT_ROLE, &daemon, &worker)),
+            "b2b7c9f91249e72f9a732057c9890eabb86fb08fbfda216fe85c5b186b12866b"
+        );
+        assert_eq!(HELLO, b"CMILL/1\n");
+    }
+
+    #[test]
     fn hmac_matches_the_rfc_4231_vector() {
         // RFC 4231, test case 2: key "Jefe", data "what do ya want for nothing?".
         let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(b"Jefe").unwrap();
