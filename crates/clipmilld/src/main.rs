@@ -25,7 +25,7 @@ mod unix_main {
         #[arg(long)]
         ffprobe: Option<PathBuf>,
         /// A packaged app's resources: fonts, emoji, model manifests and the
-        /// processing engine's packages. Given, the daemon installs and runs
+        /// packages of its components. Given, the daemon installs and runs
         /// its own workers.
         #[arg(long)]
         resources: Option<PathBuf>,

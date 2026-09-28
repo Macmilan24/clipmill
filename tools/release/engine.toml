@@ -1,0 +1,74 @@
+# The components a packaged ClipMill installs on first run: one worker each,
+# built from workers/<name> into a wheel, with its third-party packages
+# exported from that worker's uv.lock and pinned by hash. stage.py writes the
+# engine.json the daemon reads from this table, and refuses one that names a
+# command or module the worker's pyproject does not define.
+#
+# `title` is what the Set up card and the Models page show. `platforms` uses
+# the daemon's names (engine/manifest.rs `platform()`).
+
+[[part]]
+name = "vad"
+title = "Speech detection"
+family = "speech-vad"
+command = "clipmill-worker-vad"
+module = "clipmill_worker_vad"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+[[part]]
+name = "asr-whispercpp"
+title = "Transcription"
+family = "speech-asr"
+command = "clipmill-worker-asr"
+module = "clipmill_worker_asr_whispercpp"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+[[part]]
+name = "align"
+title = "Word timing"
+family = "speech-align"
+command = "clipmill-worker-align"
+module = "clipmill_worker_align"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+[[part]]
+name = "speakers"
+title = "Telling voices apart"
+family = "speech-speakers"
+command = "clipmill-worker-speakers"
+module = "clipmill_worker_speakers"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+[[part]]
+name = "shots"
+title = "Shot detection"
+family = "detect-shots"
+command = "clipmill-worker-shots"
+module = "clipmill_worker_shots"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+[[part]]
+name = "faces"
+title = "Face tracking"
+family = "detect-faces"
+command = "clipmill-worker-faces"
+module = "clipmill_worker_faces"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+# Apple silicon only: MLX runs on Metal.
+
+[[part]]
+name = "speech-mlx"
+title = "Accelerated speech (MLX)"
+family = "speech-mlx"
+command = "clipmill-worker-speech-mlx"
+module = "clipmill_worker_speech_mlx"
+platforms = ["macos-arm64"]
+
+[[part]]
+name = "editorial"
+title = "Editorial AI (MLX)"
+family = "editorial"
+command = "clipmill-worker-editorial"
+module = "clipmill_worker_editorial"
+platforms = ["macos-arm64"]

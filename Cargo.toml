@@ -70,3 +70,11 @@ tokio = { version = "1.49", features = ["io-util", "macros", "net", "process", "
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 ulid = "1.2"
+
+# A release build strips debug info by default, and macOS's strip has written
+# Mach-O files dyld refuses to load ("mis-aligned LINKEDIT string pool"): rustc
+# then reports a proc-macro crate it cannot find, and a stripped executable
+# would not start. Release builds carry no debug info of their own, so not
+# stripping costs only the standard library's.
+[profile.release]
+strip = "none"
