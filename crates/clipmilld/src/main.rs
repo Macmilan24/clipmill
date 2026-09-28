@@ -1,5 +1,4 @@
-#[cfg(unix)]
-mod unix_main {
+mod daemon_main {
     use std::{path::PathBuf, process::ExitCode, time::Duration};
 
     use clap::Parser;
@@ -81,6 +80,32 @@ mod unix_main {
         daemon.serve_until(shutdown_signal()).await
     }
 
+    /// The app stops the daemon it started with the Shutdown request; these
+    /// stop one started by hand.
+    #[cfg(windows)]
+    async fn shutdown_signal() {
+        let control_c = tokio::signal::ctrl_c();
+        match tokio::signal::windows::ctrl_break() {
+            Ok(mut control_break) => {
+                tokio::select! {
+                    result = control_c => {
+                        if let Err(error) = result {
+                            tracing::warn!(%error, "failed to listen for Ctrl-C");
+                        }
+                    }
+                    _ = control_break.recv() => {}
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%error, "failed to listen for Ctrl-Break");
+                if let Err(error) = control_c.await {
+                    tracing::warn!(%error, "failed to listen for Ctrl-C");
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
     async fn shutdown_signal() {
         let control_c = tokio::signal::ctrl_c();
         let terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate());
@@ -109,13 +134,6 @@ mod unix_main {
     }
 }
 
-#[cfg(unix)]
 fn main() -> std::process::ExitCode {
-    unix_main::main()
-}
-
-#[cfg(not(unix))]
-fn main() -> std::process::ExitCode {
-    eprintln!("clipmilld: Windows named-pipe support has not landed yet");
-    std::process::ExitCode::FAILURE
+    daemon_main::main()
 }

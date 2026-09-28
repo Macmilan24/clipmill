@@ -834,17 +834,19 @@ async fn run_command(
     working_directory: &Path,
 ) -> Result<std::process::Output, DeviceProfileError> {
     let mut command = Command::new(executable);
+    crate::platform::clear_environment_async(&mut command);
+    crate::platform::no_console_async(&mut command);
     command
         .args(args)
         .current_dir(working_directory)
-        .env_clear()
         .env("LC_ALL", "C")
         .env("LANG", "C")
-        .env(
-            "PATH",
-            "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        )
         .kill_on_drop(true);
+    #[cfg(unix)]
+    command.env(
+        "PATH",
+        "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    );
     let mut output = timeout(COMMAND_TIMEOUT, command.output())
         .await
         .map_err(|_| DeviceProfileError::CommandTimeout)?
@@ -1236,12 +1238,10 @@ fn write_new_private(path: &Path, bytes: &[u8]) -> Result<(), DeviceProfileError
 }
 
 fn sync_directory(path: &Path) -> Result<(), DeviceProfileError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(|source| DeviceProfileError::Io {
-            path: path.to_path_buf(),
-            source,
-        })
+    crate::platform::sync_dir(path).map_err(|source| DeviceProfileError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@
 use super::{Reply, Service, error_reply, response_reply, store_error_reply, unix_millis};
 use crate::{
     db::YoutubeCommand,
+    platform,
     youtube_transport::{DownloadedVideo, YoutubeDownloader},
 };
 use clipmill_contracts::proto::ipc::v1::{
@@ -12,7 +13,6 @@ use clipmill_core::{ProjectId, SourceId};
 use std::{
     collections::HashMap,
     fs,
-    os::unix::fs::{DirBuilderExt, MetadataExt},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -406,7 +406,7 @@ impl Service {
                         .join(&record.import_id),
                 )
             })
-            .and_then(|()| fs::DirBuilder::new().mode(0o700).create(&directory))
+            .and_then(|()| platform::private_dir(&mut fs::DirBuilder::new()).create(&directory))
             .is_err()
         {
             self.fail_youtube(
@@ -606,7 +606,7 @@ fn import_height(value: u32) -> Option<u32> {
 }
 
 fn private_directory(path: &Path) -> std::io::Result<()> {
-    match fs::DirBuilder::new().mode(0o700).create(path) {
+    match platform::private_dir(&mut fs::DirBuilder::new()).create(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             if fs::symlink_metadata(path)?.is_dir() {
@@ -626,7 +626,7 @@ fn valid_download(directory: &Path, video: &DownloadedVideo, id: &str) -> bool {
         && video.duration_seconds <= 21_600.0
         && fs::symlink_metadata(&video.path).is_ok_and(|meta| {
             meta.is_file()
-                && meta.nlink() == 1
+                && platform::link_count(&video.path, &meta).is_ok_and(|links| links == 1)
                 && meta.len() == video.byte_size
                 && meta.len() > 0
                 && meta.len() <= 8 * 1024 * 1024 * 1024
@@ -679,7 +679,6 @@ fn cleanup_abandoned(import_dir: &Path) {
 
 fn cleanup_abandoned_except(import_dir: &Path, retained: Option<&Path>) {
     use fs2::FileExt;
-    use std::os::unix::fs::OpenOptionsExt;
     if !fs::symlink_metadata(import_dir).is_ok_and(|metadata| metadata.is_dir()) {
         return;
     }
@@ -696,10 +695,7 @@ fn cleanup_abandoned_except(import_dir: &Path, retained: Option<&Path>) {
         if retained == Some(path.as_path()) {
             continue;
         }
-        let Ok(lock) = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(nix::libc::O_NOFOLLOW)
+        let Ok(lock) = platform::no_follow_link(fs::OpenOptions::new().read(true).write(true))
             .open(path.join(".import.lock"))
         else {
             // A crash before helper spawn can leave an empty private attempt.
@@ -755,7 +751,7 @@ fn sync_download(path: &Path, root: &Path) -> std::io::Result<()> {
     fs::File::open(path)?.sync_all()?;
     let mut directory = path.parent();
     while let Some(parent) = directory {
-        fs::File::open(parent)?.sync_all()?;
+        platform::sync_dir(parent)?;
         if Some(parent) == root.parent() {
             return Ok(());
         }

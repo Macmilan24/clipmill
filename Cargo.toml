@@ -47,6 +47,7 @@ ed25519-dalek = "2.2.0"
 fs2 = "0.4"
 getrandom = "0.4"
 hex = "0.4.3"
+hmac = "0.13"
 humantime = "2.4.0"
 memfd = "0.6.5"
 mmap-io = { version = "1.0.0", default-features = false }

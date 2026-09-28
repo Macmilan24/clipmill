@@ -16,14 +16,15 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file clipmill/shm/v1/shm.proto.
  */
 export const file_clipmill_shm_v1_shm: GenFile = /*@__PURE__*/
-  fileDesc("ChljbGlwbWlsbC9zaG0vdjEvc2htLnByb3RvEg9jbGlwbWlsbC5zaG0udjEioQIKEEJ1ZmZlckRlc2NyaXB0b3ISEAoIc2htX25hbWUYASABKAkSDQoFc2hhcGUYAiADKAQSKAoFZHR5cGUYAyABKA4yGS5jbGlwbWlsbC5zaG0udjEuRGF0YVR5cGUSEgoKY29sb3JzcGFjZRgEIAEoCRIsCgh0aW1lYmFzZRgFIAEoCzIaLmNsaXBtaWxsLnRpbWUudjEuVGltZWJhc2USEAoIYnl0ZV9sZW4YBiABKAQSDgoGc2hhMjU2GAcgASgJEhAKCGxlYXNlX2lkGAggASgJEjYKDnRyYW5zcG9ydF90eXBlGAkgASgOMh4uY2xpcG1pbGwuc2htLnYxLlRyYW5zcG9ydFR5cGUSFAoMaGFuZGxlX3Rva2VuGAogASgJIjQKCk1hcFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSFAoMaGFuZGxlX3Rva2VuGAIgASgJIlwKEk1hcEFja25vd2xlZGdlbWVudBIQCghsZWFzZV9pZBgBIAEoCRIUCgxoYW5kbGVfdG9rZW4YAiABKAkSDgoGbWFwcGVkGAMgASgIEg4KBmRldGFpbBgEIAEoCSpyCg1UcmFuc3BvcnRUeXBlEh4KGlRSQU5TUE9SVF9UWVBFX1VOU1BFQ0lGSUVEEAASIwofVFJBTlNQT1JUX1RZUEVfU0NNX1JJR0hUU19NRU1GRBABEhwKGFRSQU5TUE9SVF9UWVBFX1BPU0lYX1NITRACKoMBCghEYXRhVHlwZRIZChVEQVRBX1RZUEVfVU5TUEVDSUZJRUQQABIQCgxEQVRBX1RZUEVfVTgQARIRCg1EQVRBX1RZUEVfSTE2EAISEQoNREFUQV9UWVBFX0kzMhADEhEKDURBVEFfVFlQRV9GMTYQBBIRCg1EQVRBX1RZUEVfRjMyEAViBnByb3RvMw", [file_clipmill_time_v1_time]);
+  fileDesc("ChljbGlwbWlsbC9zaG0vdjEvc2htLnByb3RvEg9jbGlwbWlsbC5zaG0udjEioQIKEEJ1ZmZlckRlc2NyaXB0b3ISEAoIc2htX25hbWUYASABKAkSDQoFc2hhcGUYAiADKAQSKAoFZHR5cGUYAyABKA4yGS5jbGlwbWlsbC5zaG0udjEuRGF0YVR5cGUSEgoKY29sb3JzcGFjZRgEIAEoCRIsCgh0aW1lYmFzZRgFIAEoCzIaLmNsaXBtaWxsLnRpbWUudjEuVGltZWJhc2USEAoIYnl0ZV9sZW4YBiABKAQSDgoGc2hhMjU2GAcgASgJEhAKCGxlYXNlX2lkGAggASgJEjYKDnRyYW5zcG9ydF90eXBlGAkgASgOMh4uY2xpcG1pbGwuc2htLnYxLlRyYW5zcG9ydFR5cGUSFAoMaGFuZGxlX3Rva2VuGAogASgJIjQKCk1hcFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSFAoMaGFuZGxlX3Rva2VuGAIgASgJIlwKEk1hcEFja25vd2xlZGdlbWVudBIQCghsZWFzZV9pZBgBIAEoCRIUCgxoYW5kbGVfdG9rZW4YAiABKAkSDgoGbWFwcGVkGAMgASgIEg4KBmRldGFpbBgEIAEoCSqTAQoNVHJhbnNwb3J0VHlwZRIeChpUUkFOU1BPUlRfVFlQRV9VTlNQRUNJRklFRBAAEiMKH1RSQU5TUE9SVF9UWVBFX1NDTV9SSUdIVFNfTUVNRkQQARIcChhUUkFOU1BPUlRfVFlQRV9QT1NJWF9TSE0QAhIfChtUUkFOU1BPUlRfVFlQRV9QUklWQVRFX0ZJTEUQAyqDAQoIRGF0YVR5cGUSGQoVREFUQV9UWVBFX1VOU1BFQ0lGSUVEEAASEAoMREFUQV9UWVBFX1U4EAESEQoNREFUQV9UWVBFX0kxNhACEhEKDURBVEFfVFlQRV9JMzIQAxIRCg1EQVRBX1RZUEVfRjE2EAQSEQoNREFUQV9UWVBFX0YzMhAFYgZwcm90bzM", [file_clipmill_time_v1_time]);
 
 /**
  * @generated from message clipmill.shm.v1.BufferDescriptor
  */
 export type BufferDescriptor = Message<"clipmill.shm.v1.BufferDescriptor"> & {
   /**
-   * Platform shared-memory identifier (POSIX shm name / Windows section).
+   * Platform shared-memory identifier: a POSIX shm name on macOS, and on
+   * Windows the path of a private file holding the bytes.
    *
    * @generated from field: string shm_name = 1;
    */
@@ -75,6 +76,8 @@ export type BufferDescriptor = Message<"clipmill.shm.v1.BufferDescriptor"> & {
   /**
    * Linux transfers a sealed memfd through SCM_RIGHTS. macOS opens a private
    * POSIX shm name read-only and the daemon unlinks it after map acknowledgement.
+   * Windows reads a private file into its own memory and closes it before the
+   * acknowledgement, after which the daemon deletes it.
    *
    * @generated from field: clipmill.shm.v1.TransportType transport_type = 9;
    */
@@ -167,6 +170,11 @@ export enum TransportType {
    * @generated from enum value: TRANSPORT_TYPE_POSIX_SHM = 2;
    */
   POSIX_SHM = 2,
+
+  /**
+   * @generated from enum value: TRANSPORT_TYPE_PRIVATE_FILE = 3;
+   */
+  PRIVATE_FILE = 3,
 }
 
 /**

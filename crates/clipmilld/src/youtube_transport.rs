@@ -10,6 +10,8 @@ use tokio::{
     sync::{mpsc, watch},
 };
 
+use crate::platform::{self, Stop};
+
 const DOWNLOAD_LIMIT: Duration = Duration::from_hours(2);
 const OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
 const MAX_BYTES: u64 = 8 * 1024 * 1024 * 1024;
@@ -21,11 +23,7 @@ impl Drop for ProcessGroup {
         // Tokio task cancellation drops the future without reaching its normal
         // asynchronous termination path. Kill descendants too in that case.
         if let Some(pid) = self.0.take() {
-            let _ = std::process::Command::new("/bin/kill")
-                .args(["-KILL", "--", &format!("-{pid}")])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
+            platform::end_group(pid, Stop::Kill);
         }
     }
 }
@@ -105,10 +103,10 @@ impl YoutubeDownloader {
 
     fn command(&self) -> Command {
         let mut command = Command::new(&self.helper);
+        platform::clear_environment_async(&mut command);
         command
             .arg("--ffmpeg")
             .arg(&self.ffmpeg)
-            .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("LANG", "en_US.UTF-8")
             .env("YTDLP_NO_PLUGINS", "1")
@@ -121,7 +119,7 @@ impl YoutubeDownloader {
             command.env("CLIPMILL_NODE", node);
         }
         // The helper's FFmpeg and JavaScript descendants inherit this group.
-        command.process_group(0);
+        platform::own_group_async(&mut command);
         command
     }
 
@@ -362,20 +360,9 @@ fn cancelled() -> DownloadError {
 
 async fn terminate(child: &mut Child, process_group: Option<u32>) {
     if let Some(pid) = process_group {
-        let group = format!("-{pid}");
-        let _signal = Command::new("/bin/kill")
-            .args(["-TERM", "--", &group])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
+        platform::end_group_async(pid, Stop::Terminate).await;
         tokio::time::sleep(Duration::from_millis(150)).await;
-        let _signal = Command::new("/bin/kill")
-            .args(["-KILL", "--", &group])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
+        platform::end_group_async(pid, Stop::Kill).await;
     }
     let _kill = child.start_kill();
     let _reaped = child.wait().await;

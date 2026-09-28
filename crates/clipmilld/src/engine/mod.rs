@@ -358,9 +358,15 @@ impl Engine {
     }
 
     /// What the daemon runs for the tool part `name`: a launcher that starts
-    /// its current install, or says it is not installed yet.
+    /// its current install, or says it is not installed yet. A shell script
+    /// on Unix, a batch file on Windows.
     pub(crate) fn launcher(&self, name: &str) -> PathBuf {
-        self.paths.engine_dir.join("launchers").join(name)
+        let launchers = self.paths.engine_dir.join("launchers");
+        if cfg!(windows) {
+            launchers.join(format!("{name}.cmd"))
+        } else {
+            launchers.join(name)
+        }
     }
 
     /// Write the launcher for a tool part, pointing at its current install.
@@ -373,20 +379,7 @@ impl Engine {
             .installer
             .current(&running.part.name)
             .map(|(_, dir)| install::command_path(&dir, "python"));
-        let title = &running.part.title;
-        let script = match python {
-            Some(python) => format!(
-                "#!/bin/sh\n# Written by the ClipMill daemon: runs {title}.\nexec {} -I -m {} \"$@\"\n",
-                shell_quote(&python.display().to_string()),
-                running.part.module,
-            ),
-            None => format!(
-                "#!/bin/sh\n# Written by the ClipMill daemon: {title} is not installed.\nprintf '%s\\n' {}\nexit 1\n",
-                shell_quote(&format!(
-                    "{{\"event\":\"error\",\"code\":\"setup_required\",\"message\":\"{title} is not installed yet. Install it under Components in Models.\"}}"
-                )),
-            ),
-        };
+        let script = launcher_script(&running.part.title, &running.part.module, python.as_deref());
         let written = path
             .parent()
             .map_or(Ok(()), std::fs::create_dir_all)
@@ -476,6 +469,7 @@ impl Engine {
             .try_clone()
             .map_err(|error| format!("{}: {error}", log_path.display()))?;
         let mut command = tokio::process::Command::new(install::command_path(&install, "python"));
+        crate::platform::no_console_async(&mut command);
         for (key, _) in std::env::vars_os() {
             if install::affects_python(&key) {
                 command.env_remove(&key);
@@ -625,7 +619,54 @@ impl Engine {
     }
 }
 
+/// The launcher for a tool whose module is `module`, run by `python` when it
+/// is installed. Without an install it answers with the importer's own setup
+/// error, so the screen says what to do.
+#[cfg(unix)]
+fn launcher_script(title: &str, module: &str, python: Option<&std::path::Path>) -> String {
+    match python {
+        Some(python) => format!(
+            "#!/bin/sh\n# Written by the ClipMill daemon: runs {title}.\nexec {} -I -m {module} \"$@\"\n",
+            shell_quote(&python.display().to_string()),
+        ),
+        None => format!(
+            "#!/bin/sh\n# Written by the ClipMill daemon: {title} is not installed.\nprintf '%s\\n' {}\nexit 1\n",
+            shell_quote(&setup_required(title)),
+        ),
+    }
+}
+
+/// The batch-file launcher. Inside double quotes a batch file still expands
+/// `%`, so it is doubled; a Windows path cannot hold a double quote. The
+/// message leaves out every character the batch parser treats specially.
+#[cfg(windows)]
+fn launcher_script(title: &str, module: &str, python: Option<&std::path::Path>) -> String {
+    if let Some(python) = python {
+        format!(
+            "@echo off\r\n\"{}\" -I -m {module} %*\r\n",
+            python.display().to_string().replace('%', "%%"),
+        )
+    } else {
+        let title: String = title
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-')
+            .collect();
+        format!(
+            "@echo off\r\necho {}\r\nexit /b 1\r\n",
+            setup_required(&title)
+        )
+    }
+}
+
+/// The importer's setup error, as the line a tool prints.
+fn setup_required(title: &str) -> String {
+    format!(
+        "{{\"event\":\"error\",\"code\":\"setup_required\",\"message\":\"{title} is not installed yet. Install it under Components in Models.\"}}"
+    )
+}
+
 /// `value` as one single-quoted shell word.
+#[cfg(unix)]
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -637,6 +678,7 @@ fn make_executable(path: &std::path::Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
 fn make_executable(_path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }

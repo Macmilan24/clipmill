@@ -1,7 +1,6 @@
 use std::{
     collections::BTreeMap,
     io::{self, Read, Write},
-    os::unix::net::UnixStream as StdUnixStream,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -18,6 +17,8 @@ use clipmill_contracts::proto::{
 use prost::Message;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+use crate::endpoint::BlockingStream;
 
 const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
@@ -118,8 +119,8 @@ impl ShmBroker {
 #[derive(Debug)]
 struct SharedEntry {
     descriptor: BufferDescriptor,
-    // On macOS the field is retained only for its Drop cleanup; Linux also
-    // reads it to transfer the memfd through SCM_RIGHTS.
+    // On macOS and Windows the field is retained only for its Drop cleanup;
+    // Linux also reads it to transfer the memfd through SCM_RIGHTS.
     #[allow(dead_code)]
     backing: SharedBacking,
 }
@@ -145,8 +146,31 @@ impl Drop for SharedBacking {
     }
 }
 
+/// On Windows the bytes wait in a read-only file in the user's temporary
+/// directory, which only that user can open; the worker reads them into its
+/// own memory and closes the file before acknowledging.
+#[cfg(windows)]
+#[derive(Debug)]
+struct SharedBacking {
+    path: std::path::PathBuf,
+}
+
+#[cfg(windows)]
+impl Drop for SharedBacking {
+    fn drop(&mut self) {
+        tracing::debug!(operation = "delete", "releasing a shared-memory file");
+        if let Ok(metadata) = std::fs::metadata(&self.path) {
+            let mut permissions = metadata.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            permissions.set_readonly(false);
+            let _result = std::fs::set_permissions(&self.path, permissions);
+        }
+        let _result = std::fs::remove_file(&self.path);
+    }
+}
+
 pub(crate) fn handle_shm_connection(
-    mut stream: StdUnixStream,
+    mut stream: BlockingStream,
     broker: &ShmBroker,
 ) -> Result<(), ShmError> {
     // Tokio sockets retain O_NONBLOCK when converted into std sockets. This
@@ -170,8 +194,9 @@ pub(crate) fn handle_shm_connection(
             "shared-memory acknowledgement did not match the one-use handle",
         ));
     }
-    // Dropping the taken entry closes the Linux memfd and unlinks the macOS
-    // POSIX object. The worker retains only its read-only mapping.
+    // Dropping the taken entry closes the Linux memfd, unlinks the macOS
+    // POSIX object and deletes the Windows file. The worker retains only its
+    // read-only mapping, or on Windows its own copy.
     drop(entry);
     Ok(())
 }
@@ -308,8 +333,37 @@ fn create_backing(bytes: &[u8]) -> Result<(SharedBacking, String, TransportType)
     ))
 }
 
+#[cfg(windows)]
+fn create_backing(bytes: &[u8]) -> Result<(SharedBacking, String, TransportType), ShmError> {
+    let directory = std::env::temp_dir().join("clipmill-shm");
+    std::fs::create_dir_all(&directory).map_err(ShmError::Io)?;
+    let path = directory.join(format!("cm_{}", ulid::Ulid::new()));
+    let populate = || -> Result<(), ShmError> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(ShmError::Io)?;
+        file.write_all(bytes).map_err(ShmError::Io)?;
+        file.sync_all().map_err(ShmError::Io)?;
+        let mut permissions = file.metadata().map_err(ShmError::Io)?.permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&path, permissions).map_err(ShmError::Io)
+    };
+    // Built before anything can fail, so a half-written file is removed.
+    let backing = SharedBacking { path: path.clone() };
+    populate()?;
+    let name = path
+        .to_str()
+        .ok_or(ShmError::Invalid(
+            "the temporary directory is not valid UTF-8",
+        ))?
+        .to_owned();
+    Ok((backing, name, TransportType::PrivateFile))
+}
+
 #[cfg(target_os = "linux")]
-fn send_descriptor(stream: &mut StdUnixStream, entry: &SharedEntry) -> Result<(), ShmError> {
+fn send_descriptor(stream: &mut BlockingStream, entry: &SharedEntry) -> Result<(), ShmError> {
     use std::io::IoSlice;
 
     use nix::sys::socket::{ControlMessage, MsgFlags, sendmsg};
@@ -336,13 +390,13 @@ fn send_descriptor(stream: &mut StdUnixStream, entry: &SharedEntry) -> Result<()
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn send_descriptor(stream: &mut StdUnixStream, entry: &SharedEntry) -> Result<(), ShmError> {
+#[cfg(not(target_os = "linux"))]
+fn send_descriptor(stream: &mut BlockingStream, entry: &SharedEntry) -> Result<(), ShmError> {
     let bytes = entry.descriptor.encode_length_delimited_to_vec();
     stream.write_all(&bytes).map_err(ShmError::Io)
 }
 
-fn read_message<M: Message + Default>(stream: &mut StdUnixStream) -> Result<M, ShmError> {
+fn read_message<M: Message + Default>(stream: &mut BlockingStream) -> Result<M, ShmError> {
     let length = read_varint(stream)?;
     let length = usize::try_from(length).map_err(|_| ShmError::Overflow)?;
     if length == 0 || length > MAX_FRAME_BYTES {
@@ -353,7 +407,7 @@ fn read_message<M: Message + Default>(stream: &mut StdUnixStream) -> Result<M, S
     M::decode(bytes.as_slice()).map_err(|error| ShmError::Decode(error.to_string()))
 }
 
-fn read_varint(stream: &mut StdUnixStream) -> Result<u64, ShmError> {
+fn read_varint(stream: &mut BlockingStream) -> Result<u64, ShmError> {
     let mut value = 0_u64;
     for index in 0..10 {
         let mut byte = [0_u8; 1];
@@ -382,6 +436,7 @@ pub(crate) enum ShmError {
     #[error("shared-memory length overflow")]
     Overflow,
     #[error("shared-memory platform operation failed: {0}")]
+    #[cfg_attr(windows, allow(dead_code))]
     Platform(String),
     #[error("cannot generate a shared-memory handle: {0}")]
     Random(String),
@@ -415,6 +470,13 @@ mod tests {
             .expect("reopen POSIX shared memory read-only");
             drop(reopened);
         }
+        #[cfg(windows)]
+        let path = std::path::PathBuf::from(&descriptor.shm_name);
+        #[cfg(windows)]
+        assert_eq!(
+            std::fs::read(&path).expect("read the private file"),
+            b"arrow"
+        );
         let request = MapRequest {
             lease_id: lease.clone(),
             handle_token: descriptor.handle_token.clone(),
@@ -426,6 +488,8 @@ mod tests {
             Err(ShmError::UnknownHandle)
         ));
         drop(entry);
+        #[cfg(windows)]
+        assert!(!path.exists(), "the private file goes with its entry");
 
         let descriptor = broker.create(&lease, b"again").expect("second descriptor");
         assert_eq!(broker.outstanding(), 1);
