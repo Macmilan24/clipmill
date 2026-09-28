@@ -6,7 +6,7 @@ name: release
 # it downloads what the read-only build jobs produced and hands it to `gh`.
 on:
   push:
-    tags: ["v*"]
+    tags: ['v*']
 
 permissions:
   contents: read
