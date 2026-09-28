@@ -1,11 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — Windows (beta)
 
 - **Windows (beta).** ClipMill runs on 64-bit Windows 10 and 11: the same
-  daemon, components and workers, with an installer built by the release
-  workflow. The app talks to its daemon and workers over loopback, each end
-  proving it holds a secret the daemon made at start (decision R68).
+  daemon, components and workers as on macOS and Linux, installed with
+  `ClipMill_0.2.0_x64-setup.exe`. The app talks to its daemon and workers over
+  loopback, each end proving it holds a secret the daemon made at start
+  (decision R68). Clips are chosen by the built-in picker, as on Linux. See
+  [Installing ClipMill](docs/install.md#windows-beta).
+- **Export names** never begin with a name Windows keeps for a device (`CON`,
+  `NUL`, `COM1` and so on), so a folder of clips made anywhere copies onto
+  Windows intact.
 
 ## 0.1.0 — first release
 
