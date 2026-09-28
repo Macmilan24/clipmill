@@ -8,7 +8,6 @@ signed media URLs. The Python API does not read CLI configuration files.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import importlib.metadata
 import json
 import math
@@ -18,10 +17,16 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 MAX_BYTES = 8 * 1024**3
 RESERVE_BYTES = 1024**3
@@ -110,6 +115,8 @@ def node_candidates() -> list[Path]:
     first. Each is still version-checked before it is used.
     """
 
+    if sys.platform == "win32":
+        return _windows_node_candidates()
     home = Path.home()
     fixed = [
         Path("/opt/homebrew/bin/node"),
@@ -128,6 +135,31 @@ def node_candidates() -> list[Path]:
         key=lambda path: _version_key(path),
         reverse=True,
     )
+    return [path for path in [*managed, *fixed] if path.is_file()]
+
+
+def _windows_node_candidates() -> list[Path]:
+    """Where Node.js installers put it on Windows: the official installer (and
+    nvm-windows' active version, linked there), nvm-windows' and fnm's
+    versions, Volta and Scoop."""
+    environment = os.environ
+    fixed = [
+        Path(root, "nodejs", "node.exe")
+        for root in (environment.get("ProgramFiles"), environment.get("ProgramFiles(x86)"))
+        if root
+    ]
+    if local := environment.get("LOCALAPPDATA"):
+        fixed.append(Path(local, "Volta", "bin", "node.exe"))
+    if profile := environment.get("USERPROFILE"):
+        fixed += [
+            Path(profile, "scoop", "apps", name, "current", "node.exe")
+            for name in ("nodejs", "nodejs-lts")
+        ]
+    managed: list[Path] = []
+    if roaming := environment.get("APPDATA"):
+        managed += Path(roaming, "nvm").glob("v*/node.exe")
+        managed += Path(roaming, "fnm", "node-versions").glob("v*/installation/node.exe")
+    managed.sort(key=_version_key, reverse=True)
     return [path for path in [*managed, *fixed] if path.is_file()]
 
 
@@ -290,7 +322,7 @@ def download(url: str, destination: str, ffmpeg: str, node: str, max_height: int
     # Cleanup/recovery can test this advisory lock without guessing whether an
     # orphan is still using the directory. Keep the handle until process exit.
     lock = (directory / ".import.lock").open("xb")
-    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    hold_lock(lock)
     try:
         download_into(
             ydl_class=YoutubeDL,
@@ -377,9 +409,7 @@ def monitor_storage(directory: Path) -> None:
             failure = checked_storage_failure(directory)
             if failure:
                 emit("error", code=failure[0], message=failure[1])
-                if os.getpgrp() == os.getpid():
-                    os.killpg(os.getpid(), signal.SIGKILL)
-                os._exit(1)
+                end_own_group()
 
     threading.Thread(target=watch, daemon=True).start()
 
@@ -397,17 +427,61 @@ def checked_storage_failure(directory: Path) -> tuple[str, str] | None:
 def watch_parent() -> None:
     """A killed daemon must not leave a downloader/FFmpeg/Node group running."""
     parent = os.getppid()
-    group_leader = os.getpgrp() == os.getpid()
 
     def watch():
         while True:
             time.sleep(0.5)
-            if os.getppid() != parent or parent == 1:
-                if group_leader:
-                    os.killpg(os.getpid(), signal.SIGKILL)
-                os._exit(1)
+            if not parent_alive(parent):
+                end_own_group()
 
     threading.Thread(target=watch, daemon=True).start()
+
+
+def hold_lock(lock) -> None:
+    """Hold the attempt's advisory lock until this process exits, so recovery
+    can tell a running attempt from an orphaned one; fail if another holds it."""
+    if sys.platform == "win32":
+        msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def end_own_group() -> None:
+    """Stop this helper and everything it started (the download, FFmpeg,
+    Node). The daemon starts it as the leader of its own group on Unix, and of
+    its own process tree on Windows."""
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(os.getpid())],
+            capture_output=True,
+            check=False,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    elif os.getpgrp() == os.getpid():
+        os.killpg(os.getpid(), signal.SIGKILL)
+    os._exit(1)
+
+
+def parent_alive(parent: int) -> bool:
+    """Whether the daemon that started this helper is still running. Unix hands
+    an orphan to process 1; Windows keeps the old number, so it is asked."""
+    if sys.platform == "win32":
+        return _windows_process_alive(parent)
+    return os.getppid() == parent and parent != 1
+
+
+def _windows_process_alive(pid: int) -> bool:
+    import ctypes
+
+    synchronize, wait_timeout = 0x0010_0000, 0x0000_0102
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    handle = kernel32.OpenProcess(synchronize, False, pid)
+    if not handle:
+        return False
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == wait_timeout
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def main() -> int:
