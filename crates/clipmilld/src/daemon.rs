@@ -33,6 +33,8 @@ use crate::{
 };
 
 const MAX_CONNECTIONS: usize = 64;
+/// The component a packaged app imports `YouTube` videos with.
+const YOUTUBE_IMPORT: &str = "youtube-import";
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -327,7 +329,10 @@ impl Daemon {
         .with_collector(collector)
         .with_fonts(config.fonts_dir.clone());
         let service = match engine {
-            Some(engine) => service.with_engine(engine),
+            // A packaged app imports from YouTube with its own component.
+            Some(engine) => service
+                .with_youtube_helper(engine.launcher(YOUTUBE_IMPORT))
+                .with_engine(engine),
             None => service,
         };
         // The person's own pictures and sounds. A folder that cannot be made

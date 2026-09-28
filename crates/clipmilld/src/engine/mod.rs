@@ -130,8 +130,9 @@ impl Engine {
         let mut parts = Vec::new();
         if let Ok(manifest) = &manifest {
             for part in manifest.parts_here() {
-                if let Err(problem) =
-                    identity::enrol(&paths.identity_dir, &paths.trust_dir, &part.name)
+                if part.is_worker()
+                    && let Err(problem) =
+                        identity::enrol(&paths.identity_dir, &paths.trust_dir, &part.name)
                 {
                     tracing::warn!(part = part.name, problem, "an engine worker has no key");
                     continue;
@@ -177,6 +178,10 @@ impl Engine {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for running in &self.parts {
+            if !running.part.is_worker() {
+                self.write_launcher(running);
+                continue;
+            }
             let launch = Launch {
                 part: running.part.name.clone(),
                 command: running.part.command.clone(),
@@ -348,6 +353,47 @@ impl Engine {
             process: watch.state.name().to_owned(),
             restarts: watch.restarts,
             log_path: running.log.display().to_string(),
+            tool: !running.part.is_worker(),
+        }
+    }
+
+    /// What the daemon runs for the tool part `name`: a launcher that starts
+    /// its current install, or says it is not installed yet.
+    pub(crate) fn launcher(&self, name: &str) -> PathBuf {
+        self.paths.engine_dir.join("launchers").join(name)
+    }
+
+    /// Write the launcher for a tool part, pointing at its current install.
+    /// It is a fixed script that quotes the one path the engine chose;
+    /// without an install it answers with the importer's own setup error, so
+    /// the screen says what to do.
+    fn write_launcher(&self, running: &Running) {
+        let path = self.launcher(&running.part.name);
+        let python = self
+            .installer
+            .current(&running.part.name)
+            .map(|(_, dir)| install::command_path(&dir, "python"));
+        let title = &running.part.title;
+        let script = match python {
+            Some(python) => format!(
+                "#!/bin/sh\n# Written by the ClipMill daemon: runs {title}.\nexec {} -I -m {} \"$@\"\n",
+                shell_quote(&python.display().to_string()),
+                running.part.module,
+            ),
+            None => format!(
+                "#!/bin/sh\n# Written by the ClipMill daemon: {title} is not installed.\nprintf '%s\\n' {}\nexit 1\n",
+                shell_quote(&format!(
+                    "{{\"event\":\"error\",\"code\":\"setup_required\",\"message\":\"{title} is not installed yet. Install it under Components in Models.\"}}"
+                )),
+            ),
+        };
+        let written = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| crate::library::write_private(&path, script.as_bytes()))
+            .and_then(|()| make_executable(&path));
+        if let Err(error) = written {
+            tracing::warn!(part = running.part.name, %error, "a tool's launcher could not be written");
         }
     }
 
@@ -572,8 +618,27 @@ impl Engine {
         // The worker moves to the new install; its old one is removed the
         // next time the daemon starts, when nothing runs from it.
         running.install.send_replace(Some(dir));
+        if !running.part.is_worker() {
+            self.write_launcher(running);
+        }
         Ok(())
     }
+}
+
+/// `value` as one single-quoted shell word.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(unix)]
+fn make_executable(path: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &std::path::Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// The worker family of the editorial component, whose model must prove it
@@ -655,6 +720,39 @@ mod tests {
             .unwrap()
             .count();
         assert_eq!(trusted, 1, "a key for the one part here");
+    }
+
+    #[tokio::test]
+    async fn a_tool_gets_no_key_and_a_launcher_instead_of_a_process() {
+        let root = tempfile::tempdir().unwrap();
+        ship(root.path(), &[("one", manifest::platform())]);
+        // Make "one" a tool.
+        let path = root.path().join("resources/engine/engine.json");
+        let text = fs::read_to_string(&path)
+            .unwrap()
+            .replace(r#""name":"one","#, r#""name":"one","kind":"tool","#);
+        fs::write(&path, text).unwrap();
+        let engine = Engine::prepare(paths(root.path()), Arc::new(LocalLockPolicy::new()));
+        let trusted =
+            fs::read_dir(root.path().join("data/state/worker-trust")).map_or(0, Iterator::count);
+        assert_eq!(trusted, 0, "a tool never connects as a worker");
+        engine.start();
+        let launcher = fs::read_to_string(engine.launcher("one")).unwrap();
+        assert!(launcher.contains("setup_required"), "{launcher}");
+        assert!(
+            launcher.contains("Part one is not installed yet"),
+            "{launcher}"
+        );
+        let part = engine.list().parts.remove(0);
+        assert!(part.tool);
+        assert_eq!(part.process, "stopped");
+        engine.stop().await;
+    }
+
+    #[test]
+    fn a_launcher_quotes_the_install_it_runs() {
+        assert_eq!(shell_quote("/a b/c"), "'/a b/c'");
+        assert_eq!(shell_quote("it's"), r"'it'\''s'");
     }
 
     #[test]

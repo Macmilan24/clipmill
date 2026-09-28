@@ -32,8 +32,12 @@ pub(crate) struct Manifest {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Part {
-    /// Its directory name in the repository's `workers/`, e.g. `vad`.
+    /// Its name, e.g. `vad`.
     pub name: String,
+    /// `worker`, kept running and leased tasks, or `tool`, run by the
+    /// daemon when a task needs it (`YouTube` import).
+    #[serde(default = "worker_kind")]
+    pub kind: String,
     /// What it does, for a person.
     pub title: String,
     /// The worker family its tasks are leased to.
@@ -62,6 +66,15 @@ pub(crate) struct Wheel {
     pub file: String,
     pub sha256: String,
 }
+
+fn worker_kind() -> String {
+    WORKER.to_owned()
+}
+
+/// A part kept running as a worker.
+pub(crate) const WORKER: &str = "worker";
+/// A part the daemon runs itself when a task needs it.
+pub(crate) const TOOL: &str = "tool";
 
 impl Manifest {
     /// Read and check the manifest in `engine_dir`.
@@ -95,6 +108,12 @@ impl Manifest {
             if !is_word(&part.name) || !names.insert(part.name.as_str()) {
                 return Err(format!(
                     "the engine part {:?} is not a usable name",
+                    part.name
+                ));
+            }
+            if part.kind != WORKER && part.kind != TOOL {
+                return Err(format!(
+                    "the engine part {} is neither a worker nor a tool",
                     part.name
                 ));
             }
@@ -140,6 +159,11 @@ impl Manifest {
 }
 
 impl Part {
+    /// Whether the daemon keeps it running as a worker.
+    pub(crate) fn is_worker(&self) -> bool {
+        self.kind == WORKER
+    }
+
     /// What an install of this part is: the Python it runs on and the bytes
     /// of everything it installs. Two installs with one digest are the same
     /// install, so an app update that changed nothing here reinstalls nothing.
