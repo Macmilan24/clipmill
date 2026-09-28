@@ -1107,8 +1107,33 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         // it runs: accepted work resumes at the next launch. A daemon started
         // some other way keeps its own lifetime.
         if let tauri::RunEvent::Exit = event {
-            tauri::async_runtime::block_on(stopping.stop_owned());
+            stop_before_exit(&stopping);
         }
     });
     Ok(())
+}
+
+/// Stop the daemon this app started before the process ends. The main thread
+/// waits, but the stop runs on a thread with a runtime of its own: `WebKit`
+/// delivers a reply to the renderer on the main thread, so a worker of the
+/// app's runtime that was sending one when the person quit waits for the main
+/// thread, and a stop that needed that runtime would then never finish.
+fn stop_before_exit(supervisor: &Arc<daemon::DaemonSupervisor>) {
+    let supervisor = Arc::clone(supervisor);
+    let (stopped, done) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("clipmill-exit".to_owned())
+        .spawn(move || {
+            match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime.block_on(supervisor.stop_owned()),
+                Err(error) => tracing::warn!(%error, "cannot stop clipmilld before exiting"),
+            }
+            let _ = stopped.send(());
+        });
+    if spawned.is_ok() {
+        let _ = done.recv_timeout(daemon::STOP_DEADLINE);
+    }
 }
