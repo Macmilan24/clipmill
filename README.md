@@ -4,12 +4,18 @@
 find moments, review the suggestions, edit the framing and captions, and export
 video ready to upload.
 
-ClipMill is **pre-release software, available from source**. The import-to-export
-workflow is implemented, but clip selection still needs editorial judgment. The
-primary development platform is Apple silicon macOS; the local editorial model
-currently requires it. Linux x86_64 supports the portable processing components
-and CI checks, but does not yet have the same local editorial runtime. Windows is
-not supported.
+ClipMill runs on **macOS 14 or later on Apple silicon** and on **64-bit Linux**.
+The import-to-export workflow is complete; clip selection still benefits from
+your editorial judgment. On Apple silicon a local Qwen model proposes and reviews
+moments; on Linux a built-in picker does. Windows is planned for a later release.
+
+## Install
+
+Download ClipMill for macOS or Linux from the
+[latest release](https://github.com/Macmilan24/clipmill/releases/latest), then
+follow [Installing ClipMill](docs/install.md). On first run, **Set up ClipMill**
+installs the app's components and the recommended models in one step; after
+that, analysis works without a connection.
 
 ## What you can do
 
@@ -43,7 +49,7 @@ the current daemon session. It is **not an operating-system firewall**. See
 
 ## Run from source
 
-You need Rust (the version in `rust-toolchain.toml`), Node.js 22+, pnpm (the version
+To work on ClipMill itself, run it from a checkout. You need Rust (the version in `rust-toolchain.toml`), Node.js 22+, pnpm (the version
 in `package.json`), Python 3.12, `uv`, `just`, and `ripgrep`. On macOS, install the
 Xcode Command Line Tools. Linux desktop development also needs WebKitGTK 4.1,
 GTK 3, libsoup 3, librsvg, and patchelf development packages.
@@ -84,7 +90,10 @@ See [YouTube import](docs/youtube-import.md) for supported URLs and limits.
 
 ## Documentation and contributing
 
+- [Installing ClipMill](docs/install.md) — the released app, first run, and where it keeps things
+- [Changelog](CHANGELOG.md) — what each release changed
 - [Documentation index](docs/README.md) — feature guides and architecture
+- [Releasing](docs/releasing.md) — how a release is built, signed and published
 - [Contributing](CONTRIBUTING.md) — development workflow and checks
 - [Worker setup](workers/README.md) — model processes and authentication
 - [Security policy](SECURITY.md) — reporting vulnerabilities
