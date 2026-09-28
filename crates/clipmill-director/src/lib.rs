@@ -11,6 +11,8 @@
 
 pub mod lattice;
 mod placement;
+mod refresh;
+mod speakers;
 pub mod words;
 
 use clipmill_captions::{DeriveRequest, Inputs};
@@ -22,6 +24,7 @@ use clipmill_contracts::schemas::{
     speech_transcript::SpeechTranscript,
     vision_face_track::VisionFaceTrack,
 };
+pub use clipmill_edit_ir::FrameShape;
 use clipmill_edit_ir::{
     CropKeyframe, CropRect, EditDocument, Layout, LayoutState, Rationale, VideoSegment,
 };
@@ -30,10 +33,11 @@ use clipmill_render::captions::{Intent, project};
 use thiserror::Error;
 
 pub use lattice::{Boundary, Duration, Lattice, is_legal};
+pub use refresh::captions_for_program;
 pub use words::{Severed, keep_whole_words, severed};
 
 /// The implementation the produced document was assembled by.
-pub const IMPLEMENTATION: &str = "clipmill-director@1.2.0";
+pub const IMPLEMENTATION: &str = "clipmill-director@1.3.0";
 /// The one segment a directed clip has. Named rather than generated: an id that
 /// changed run to run would make two identical edits different documents.
 const SEGMENT_ID: &str = "seg_1";
@@ -61,7 +65,7 @@ pub struct Frame {
     pub height: i64,
 }
 
-/// The vertical output the crop is being fitted to.
+/// The shape a crop is being fitted to: the output's, or one viewport's.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Aspect {
     pub width: u32,
@@ -70,9 +74,32 @@ pub struct Aspect {
 
 impl Default for Aspect {
     fn default() -> Self {
-        Self {
-            width: 9,
-            height: 16,
+        FrameShape::default().into()
+    }
+}
+
+impl From<FrameShape> for Aspect {
+    fn from(shape: FrameShape) -> Self {
+        let (width, height) = shape.ratio();
+        Self { width, height }
+    }
+}
+
+impl Aspect {
+    /// One of two viewports splitting this frame: half as tall when they are
+    /// stacked, half as wide side by side across a landscape frame.
+    #[must_use]
+    pub fn half(self) -> Self {
+        if self.width > self.height {
+            Self {
+                width: self.width,
+                height: self.height.saturating_mul(2),
+            }
+        } else {
+            Self {
+                width: self.width.saturating_mul(2),
+                height: self.height,
+            }
         }
     }
 }
@@ -98,7 +125,15 @@ pub struct Request {
     pub cut: Cut,
     pub style_ref: String,
     pub frame: Frame,
-    pub aspect: Aspect,
+    /// The delivered frame's shape, which the crops are fitted to.
+    pub shape: FrameShape,
+}
+
+impl Request {
+    /// The output's shape as a ratio.
+    pub fn aspect(&self) -> Aspect {
+        self.shape.into()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -257,11 +292,7 @@ fn validate_evidence(evidence: Evidence<'_>, request: &Request) -> Result<(), Di
     {
         return Err(DirectError::Mismatched);
     }
-    if request.frame.width <= 0
-        || request.frame.height <= 0
-        || request.aspect.width == 0
-        || request.aspect.height == 0
-    {
+    if request.frame.width <= 0 || request.frame.height <= 0 {
         return Err(DirectError::EmptyFrame);
     }
 
@@ -293,8 +324,10 @@ fn assemble_span(
     ));
     let mut document = EditDocument {
         video: clipmill_edit_ir::VideoTrack {
+            shape: request.shape,
             segments,
             transition_ticks: 10_800,
+            cutaways: Vec::new(),
         },
         captions,
         ..EditDocument::default()
@@ -328,28 +361,72 @@ fn direct_shots(
     }
     cuts.sort_unstable();
     cuts.dedup();
-    cuts.windows(2)
-        .enumerate()
-        .map(|(index, span)| {
-            let shot = Boundary {
-                start_ticks: span[0],
-                end_ticks: span[1],
-            };
+    let mut segments: Vec<VideoSegment> = Vec::new();
+    let mut place = |span: Boundary, layout: Layout| {
+        let index = segments.len();
+        segments.push(VideoSegment {
+            segment_id: if index == 0 {
+                SEGMENT_ID.to_owned()
+            } else {
+                format!("seg_{}", index + 1)
+            },
+            source_fingerprint: fingerprint.to_owned(),
+            in_ticks: span.start_ticks,
+            out_ticks: span.end_ticks,
+            layout,
+        });
+    };
+    for pair in cuts.windows(2) {
+        let shot = Boundary {
+            start_ticks: pair[0],
+            end_ticks: pair[1],
+        };
+        let turns = evidence
+            .faces
+            .and_then(|faces| Some((faces, speakers::turns(faces, evidence.index, shot)?)));
+        let Some((faces, turns)) = turns else {
             let (layout, camera) = layout_for(evidence.faces, shot, request);
             decisions.push(camera);
-            VideoSegment {
-                segment_id: if index == 0 {
-                    SEGMENT_ID.to_owned()
-                } else {
-                    format!("seg_{}", index + 1)
-                },
-                source_fingerprint: fingerprint.to_owned(),
-                in_ticks: shot.start_ticks,
-                out_ticks: shot.end_ticks,
-                layout,
-            }
-        })
-        .collect()
+            place(shot, layout);
+            continue;
+        };
+        let switches = turns.len().saturating_sub(1);
+        for turn in turns {
+            let layout = turn
+                .track
+                .and_then(|id| follow(faces, id, turn.span, request))
+                .unwrap_or_else(|| layout_for(evidence.faces, turn.span, request).0);
+            place(turn.span, layout);
+        }
+        decisions.push(if switches == 0 {
+            "Following the one person talking through this shot, read from mouth movement."
+                .to_owned()
+        } else {
+            format!(
+                "Following whoever is talking, read from mouth movement: {switches} {} between people, each at a sentence break.",
+                if switches == 1 { "switch" } else { "switches" }
+            )
+        });
+    }
+    segments
+}
+
+/// The camera following one face through a span, when the solver can hold it.
+fn follow(
+    faces: &VisionFaceTrack,
+    track_id: u64,
+    span: Boundary,
+    request: &Request,
+) -> Option<Layout> {
+    let mut one = faces.clone();
+    one.tracks.retain(|track| track.track_id == track_id);
+    let crop_path = solve_layout(&one, span, request, request.aspect())?;
+    Some(Layout {
+        state: LayoutState::SpeakerFill,
+        crop_path,
+        secondary_crop_path: Vec::new(),
+        ..Layout::default()
+    })
 }
 
 /// The boundary the request names, as ticks.
@@ -423,14 +500,13 @@ fn layout_for(
         as_u64(boundary.start_ticks),
         as_u64(boundary.end_ticks),
     ) {
-        let mut half = request.clone();
-        half.aspect.width = half.aspect.width.saturating_mul(2);
+        let half = request.aspect().half();
         let paths: Option<Vec<_>> = pair
             .iter()
             .map(|id| {
                 let mut one = document.clone();
                 one.tracks.retain(|track| track.track_id == *id);
-                solve_layout(&one, boundary, &half)
+                solve_layout(&one, boundary, request, half)
             })
             .collect();
         if let Some(mut paths) = paths {
@@ -441,11 +517,12 @@ fn layout_for(
                     state: LayoutState::TwoUp,
                     crop_path: upper,
                     secondary_crop_path: lower,
+                    ..Layout::default()
                 }, "Two people remain visible in equal portraits, ordered left-to-right from the source; no speaking-person guess.".to_owned());
             }
         }
     }
-    if let Some(crop_path) = solve_layout(document, boundary, request) {
+    if let Some(crop_path) = solve_layout(document, boundary, request, request.aspect()) {
         let sentence = format!(
             "Following the single clear face with a steady-size crop across {} keyframes.",
             crop_path.len()
@@ -455,6 +532,7 @@ fn layout_for(
                 state: LayoutState::SpeakerFill,
                 crop_path,
                 secondary_crop_path: Vec::new(),
+                ..Layout::default()
             },
             sentence,
         );
@@ -466,6 +544,7 @@ fn solve_layout(
     document: &VisionFaceTrack,
     boundary: Boundary,
     request: &Request,
+    aspect: Aspect,
 ) -> Option<Vec<CropKeyframe>> {
     let path = clipmill_reframe::solve_in_frame(
         document,
@@ -474,8 +553,8 @@ fn solve_layout(
         clipmill_reframe::FrameGeometry {
             source_width: u32::try_from(request.frame.width).ok()?,
             source_height: u32::try_from(request.frame.height).ok()?,
-            output_width: request.aspect.width,
-            output_height: request.aspect.height,
+            output_width: aspect.width,
+            output_height: aspect.height,
         },
         CropWeights::default(),
         FocusGate::default(),
@@ -489,7 +568,7 @@ fn solve_layout(
         .iter()
         .map(|keyframe| CropKeyframe {
             t_ticks: as_i64(keyframe.t_ticks) - boundary.start_ticks,
-            rect: rect_of(*keyframe, request),
+            rect: rect_of(*keyframe, request.frame, aspect),
             easing: clipmill_edit_ir::CropEasing::Linear,
         })
         .collect();
@@ -501,19 +580,15 @@ fn solve_layout(
 /// The height is what the solver decided and the width follows the output
 /// aspect, because a crop whose own aspect differed from the output's would be
 /// re-fitted by the renderer and the camera move would not be the one solved.
-fn rect_of(keyframe: clipmill_reframe::Keyframe, request: &Request) -> CropRect {
-    let frame = request.frame;
+fn rect_of(keyframe: clipmill_reframe::Keyframe, frame: Frame, aspect: Aspect) -> CropRect {
     let target_height = round(keyframe.scale * as_f64(frame.height)).clamp(2, frame.height);
     // Width is nearest, not always floored: one-source-pixel aspect tolerance.
     let mut height = target_height - target_height % 2;
-    let mut width = 2 * round(
-        as_f64(height) * f64::from(request.aspect.width) / f64::from(request.aspect.height) / 2.0,
-    );
+    let mut width =
+        2 * round(as_f64(height) * f64::from(aspect.width) / f64::from(aspect.height) / 2.0);
     if width > frame.width {
         width = frame.width - frame.width % 2;
-        height = round(
-            as_f64(width) * f64::from(request.aspect.height) / f64::from(request.aspect.width),
-        );
+        height = round(as_f64(width) * f64::from(aspect.height) / f64::from(aspect.width));
     }
     let width = width.max(2);
     let height = height.max(2);

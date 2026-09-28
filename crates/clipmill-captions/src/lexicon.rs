@@ -1,12 +1,19 @@
 //! Caption word classification and normalization.
 //!
-//! Fillers are preserved but cannot carry emphasis. Articles, prepositions, and
-//! conjunctions are discouraged at line ends. Punctuation determines break costs:
-//! full stops are free, commas are cheap, and breaks inside phrases cost more.
+//! Hesitations — "um", "uh", "er" — are left out of captions, as subtitling
+//! guidelines leave them out: a transcript asked for what was said keeps them
+//! so they can be cut, and a caption that spelled them would be reading noise
+//! aloud. Other fillers are preserved but cannot carry emphasis. Articles,
+//! prepositions, and conjunctions are discouraged at line ends. Punctuation
+//! determines break costs: full stops are free, commas are cheap, and breaks
+//! inside phrases cost more.
 
 /// The lexicon's identity, recorded in the artifact key. A different list is a
 /// different reading of the same words.
-pub const FILLER_LEXICON: &str = "clipmill.filler.en.v1";
+pub const FILLER_LEXICON: &str = "clipmill.filler.en.v2";
+
+/// Sounds of hesitation rather than words. Never captioned.
+const HESITATIONS: &[&str] = &["er", "erm", "hm", "hmm", "mhm", "uh", "uhm", "um", "umm"];
 
 /// English fillers and discourse markers. Kept short and uncontroversial: every
 /// entry here is a word whose emphasis would be an obvious mistake, and a word
@@ -52,6 +59,11 @@ pub fn normalize(text: &str) -> String {
         .filter(|character| character.is_alphanumeric() || *character == '\'')
         .flat_map(char::to_lowercase)
         .collect()
+}
+
+/// Whether a normalized word is a hesitation sound, which captions leave out.
+pub fn is_hesitation(normalized: &str) -> bool {
+    HESITATIONS.contains(&normalized)
 }
 
 /// Whether a normalized word is a filler.

@@ -310,6 +310,97 @@ impl DaemonClient {
         }
     }
 
+    /// The burned-in captions a document would have under another look.
+    pub async fn preview_captions(
+        &self,
+        doc_id: &str,
+        style_ref: &str,
+        options_json: &str,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::PreviewCaptionsResponse, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::PreviewCaptionsRequest {
+            doc_id: doc_id.to_owned(),
+            style_ref: style_ref.to_owned(),
+            options_json: options_json.to_owned(),
+        };
+        match self.call(request::Body::PreviewCaptions(request)).await? {
+            response::Body::PreviewCaptions(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Every command a document has had, oldest first, with its inverse.
+    pub async fn list_edit_history(
+        &self,
+        doc_id: &str,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::EditHistoryEntryV1>, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ListEditHistoryRequest {
+            doc_id: doc_id.to_owned(),
+        };
+        match self.call(request::Body::ListEditHistory(request)).await? {
+            response::Body::ListEditHistory(reply) => Ok(reply.entries),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Where the camera would point at each of a board's thumbnails.
+    pub async fn thumbnail_framing(
+        &self,
+        request: clipmill_contracts::proto::ipc::v1::ThumbnailFramingRequest,
+    ) -> Result<Vec<f64>, DaemonLinkError> {
+        match self.call(request::Body::ThumbnailFraming(request)).await? {
+            response::Body::ThumbnailFraming(reply) => Ok(reply.centres),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Bring a picture or a sound into the asset folder.
+    pub async fn import_asset(
+        &self,
+        path: String,
+        license: String,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::AssetV1, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ImportAssetRequest { path, license };
+        match self.call(request::Body::ImportAsset(request)).await? {
+            response::Body::ImportAsset(reply) => reply.asset.ok_or(DaemonLinkError::Unexpected),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Every asset of a kind, newest first; an empty kind lists them all.
+    pub async fn list_assets(
+        &self,
+        kind: String,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::AssetV1>, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ListAssetsRequest { kind };
+        match self.call(request::Body::ListAssets(request)).await? {
+            response::Body::ListAssets(reply) => Ok(reply.assets),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Whether a hash is an asset, and how to serve it.
+    pub async fn resolve_asset(
+        &self,
+        hash: String,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::ResolveAssetResponse, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::ResolveAssetRequest { hash };
+        match self.call(request::Body::ResolveAsset(request)).await? {
+            response::Body::ResolveAsset(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// The faces seen over a span of one face track.
+    pub async fn list_faces(
+        &self,
+        request: clipmill_contracts::proto::ipc::v1::ListFacesRequest,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::FaceSightingV1>, DaemonLinkError> {
+        match self.call(request::Body::ListFaces(request)).await? {
+            response::Body::ListFaces(reply) => Ok(reply.sightings),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     /// Read the live edit document and its revision for contextual controls.
     pub async fn get_edit_doc(&self, doc_id: &str) -> Result<GetEditDocResponse, DaemonLinkError> {
         match self
@@ -468,6 +559,20 @@ impl DaemonClient {
     }
 
     /// Turn an approved candidate into an edit document.
+    /// The clip approving would build, as a preview plan, built and not saved.
+    pub async fn preview_direct(
+        &self,
+        direct: DirectClipRequest,
+    ) -> Result<GetPreviewPlanResponse, DaemonLinkError> {
+        let request = clipmill_contracts::proto::ipc::v1::PreviewDirectRequest {
+            direct: Some(direct),
+        };
+        match self.call(request::Body::PreviewDirect(request)).await? {
+            response::Body::PreviewDirect(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub async fn direct_clip(
         &self,
         request: DirectClipRequest,
@@ -645,9 +750,22 @@ impl DaemonClient {
         project_id: &str,
         absolute_path: &str,
     ) -> Result<RegisterSourceResponse, DaemonLinkError> {
+        self.register_source_with_id(project_id, absolute_path, "")
+            .await
+    }
+
+    /// Relink an existing source when `source_id` is present. The daemon fully
+    /// probes the chosen file before it mutates the saved observation.
+    pub async fn register_source_with_id(
+        &self,
+        project_id: &str,
+        absolute_path: &str,
+        source_id: &str,
+    ) -> Result<RegisterSourceResponse, DaemonLinkError> {
         let body = request::Body::RegisterSource(RegisterSourceRequest {
             project_id: project_id.to_owned(),
             absolute_path: absolute_path.to_owned(),
+            source_id: source_id.to_owned(),
         });
         match self.call(body).await? {
             response::Body::RegisterSource(registered) => Ok(registered),

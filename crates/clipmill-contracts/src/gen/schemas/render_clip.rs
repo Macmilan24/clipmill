@@ -1234,6 +1234,32 @@ impl<'de> ::serde::Deserialize<'de> for ProfileVideoCodec {
 #[doc = "        \"source_attestation\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"assets\": {"]
+#[doc = "          \"description\": \"Every picture and sound drawn or played besides the footage, with the licence the person stated when they brought it in.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"type\": \"object\","]
+#[doc = "            \"required\": ["]
+#[doc = "              \"hash\","]
+#[doc = "              \"license\""]
+#[doc = "            ],"]
+#[doc = "            \"properties\": {"]
+#[doc = "              \"hash\": {"]
+#[doc = "                \"type\": \"string\","]
+#[doc = "                \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "              },"]
+#[doc = "              \"license\": {"]
+#[doc = "                \"enum\": ["]
+#[doc = "                  \"own_content\","]
+#[doc = "                  \"licensed\","]
+#[doc = "                  \"royalty_free\","]
+#[doc = "                  \"public_domain\""]
+#[doc = "                ]"]
+#[doc = "              }"]
+#[doc = "            },"]
+#[doc = "            \"additionalProperties\": false"]
+#[doc = "          }"]
+#[doc = "        },"]
 #[doc = "        \"gates_passed\": {"]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
@@ -2382,6 +2408,32 @@ impl<'de> ::serde::Deserialize<'de> for RenderClipManifestProgramSegmentsItemSeg
 #[doc = "    \"source_attestation\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"assets\": {"]
+#[doc = "      \"description\": \"Every picture and sound drawn or played besides the footage, with the licence the person stated when they brought it in.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"hash\","]
+#[doc = "          \"license\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"hash\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "          },"]
+#[doc = "          \"license\": {"]
+#[doc = "            \"enum\": ["]
+#[doc = "              \"own_content\","]
+#[doc = "              \"licensed\","]
+#[doc = "              \"royalty_free\","]
+#[doc = "              \"public_domain\""]
+#[doc = "            ]"]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"gates_passed\": {"]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
@@ -2402,6 +2454,9 @@ impl<'de> ::serde::Deserialize<'de> for RenderClipManifestProgramSegmentsItemSeg
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct RenderClipManifestRights {
+    #[doc = "Every picture and sound drawn or played besides the footage, with the licence the person stated when they brought it in."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub assets: ::std::vec::Vec<RenderClipManifestRightsAssetsItem>,
     pub gates_passed: ::std::vec::Vec<RenderClipManifestRightsGatesPassedItem>,
     #[doc = "What the user attested about the footage, echoed verbatim."]
     pub source_attestation: RenderClipManifestRightsSourceAttestation,
@@ -2409,6 +2464,197 @@ pub struct RenderClipManifestRights {
 impl RenderClipManifestRights {
     pub fn builder() -> builder::RenderClipManifestRights {
         Default::default()
+    }
+}
+#[doc = "`RenderClipManifestRightsAssetsItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"hash\","]
+#[doc = "    \"license\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"hash\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "    },"]
+#[doc = "    \"license\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"own_content\","]
+#[doc = "        \"licensed\","]
+#[doc = "        \"royalty_free\","]
+#[doc = "        \"public_domain\""]
+#[doc = "      ]"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RenderClipManifestRightsAssetsItem {
+    pub hash: RenderClipManifestRightsAssetsItemHash,
+    pub license: RenderClipManifestRightsAssetsItemLicense,
+}
+impl RenderClipManifestRightsAssetsItem {
+    pub fn builder() -> builder::RenderClipManifestRightsAssetsItem {
+        Default::default()
+    }
+}
+#[doc = "`RenderClipManifestRightsAssetsItemHash`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^sha256:[0-9a-f]{64}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RenderClipManifestRightsAssetsItemHash(::std::string::String);
+impl ::std::ops::Deref for RenderClipManifestRightsAssetsItemHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RenderClipManifestRightsAssetsItemHash> for ::std::string::String {
+    fn from(value: RenderClipManifestRightsAssetsItemHash) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RenderClipManifestRightsAssetsItemHash {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^sha256:[0-9a-f]{64}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^sha256:[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RenderClipManifestRightsAssetsItemHash {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RenderClipManifestRightsAssetsItemHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RenderClipManifestRightsAssetsItemHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RenderClipManifestRightsAssetsItemHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`RenderClipManifestRightsAssetsItemLicense`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"own_content\","]
+#[doc = "    \"licensed\","]
+#[doc = "    \"royalty_free\","]
+#[doc = "    \"public_domain\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum RenderClipManifestRightsAssetsItemLicense {
+    #[serde(rename = "own_content")]
+    OwnContent,
+    #[serde(rename = "licensed")]
+    Licensed,
+    #[serde(rename = "royalty_free")]
+    RoyaltyFree,
+    #[serde(rename = "public_domain")]
+    PublicDomain,
+}
+impl ::std::fmt::Display for RenderClipManifestRightsAssetsItemLicense {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::OwnContent => f.write_str("own_content"),
+            Self::Licensed => f.write_str("licensed"),
+            Self::RoyaltyFree => f.write_str("royalty_free"),
+            Self::PublicDomain => f.write_str("public_domain"),
+        }
+    }
+}
+impl ::std::str::FromStr for RenderClipManifestRightsAssetsItemLicense {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "own_content" => Ok(Self::OwnContent),
+            "licensed" => Ok(Self::Licensed),
+            "royalty_free" => Ok(Self::RoyaltyFree),
+            "public_domain" => Ok(Self::PublicDomain),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for RenderClipManifestRightsAssetsItemLicense {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RenderClipManifestRightsAssetsItemLicense {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RenderClipManifestRightsAssetsItemLicense {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`RenderClipManifestRightsGatesPassedItem`"]
@@ -4132,6 +4378,10 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct RenderClipManifestRights {
+        assets: ::std::result::Result<
+            ::std::vec::Vec<super::RenderClipManifestRightsAssetsItem>,
+            ::std::string::String,
+        >,
         gates_passed: ::std::result::Result<
             ::std::vec::Vec<super::RenderClipManifestRightsGatesPassedItem>,
             ::std::string::String,
@@ -4144,12 +4394,23 @@ pub mod builder {
     impl ::std::default::Default for RenderClipManifestRights {
         fn default() -> Self {
             Self {
+                assets: Ok(Default::default()),
                 gates_passed: Err("no value supplied for gates_passed".to_string()),
                 source_attestation: Err("no value supplied for source_attestation".to_string()),
             }
         }
     }
     impl RenderClipManifestRights {
+        pub fn assets<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::RenderClipManifestRightsAssetsItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.assets = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for assets: {e}"));
+            self
+        }
         pub fn gates_passed<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<
@@ -4179,6 +4440,7 @@ pub mod builder {
             value: RenderClipManifestRights,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                assets: value.assets?,
                 gates_passed: value.gates_passed?,
                 source_attestation: value.source_attestation?,
             })
@@ -4187,8 +4449,73 @@ pub mod builder {
     impl ::std::convert::From<super::RenderClipManifestRights> for RenderClipManifestRights {
         fn from(value: super::RenderClipManifestRights) -> Self {
             Self {
+                assets: Ok(value.assets),
                 gates_passed: Ok(value.gates_passed),
                 source_attestation: Ok(value.source_attestation),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct RenderClipManifestRightsAssetsItem {
+        hash: ::std::result::Result<
+            super::RenderClipManifestRightsAssetsItemHash,
+            ::std::string::String,
+        >,
+        license: ::std::result::Result<
+            super::RenderClipManifestRightsAssetsItemLicense,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for RenderClipManifestRightsAssetsItem {
+        fn default() -> Self {
+            Self {
+                hash: Err("no value supplied for hash".to_string()),
+                license: Err("no value supplied for license".to_string()),
+            }
+        }
+    }
+    impl RenderClipManifestRightsAssetsItem {
+        pub fn hash<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RenderClipManifestRightsAssetsItemHash>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.hash = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for hash: {e}"));
+            self
+        }
+        pub fn license<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RenderClipManifestRightsAssetsItemLicense>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.license = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for license: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<RenderClipManifestRightsAssetsItem>
+        for super::RenderClipManifestRightsAssetsItem
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: RenderClipManifestRightsAssetsItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                hash: value.hash?,
+                license: value.license?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::RenderClipManifestRightsAssetsItem>
+        for RenderClipManifestRightsAssetsItem
+    {
+        fn from(value: super::RenderClipManifestRightsAssetsItem) -> Self {
+            Self {
+                hash: Ok(value.hash),
+                license: Ok(value.license),
             }
         }
     }

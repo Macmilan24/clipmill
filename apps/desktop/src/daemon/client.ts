@@ -41,6 +41,12 @@ export interface Source {
   readonly sourceFingerprint: string;
   readonly sourceMapArtifactId: string;
   readonly createdUnixMillis: number;
+  /**
+   * The file is not where it was registered: moved, renamed, replaced or
+   * deleted. Editing still works from the preview copies; exporting needs the
+   * original, which "Locate recording…" relinks. Absent from older daemons.
+   */
+  readonly missing?: boolean;
 }
 
 export interface SourceDetails {
@@ -111,6 +117,9 @@ export interface Task {
   /** Empty until the task publishes. */
   readonly outputArtifactId: string;
   readonly progress?: Progress;
+  /** When it first ran and when it succeeded; zero, or absent, until it has. */
+  readonly startedUnixMillis?: number;
+  readonly finishedUnixMillis?: number;
 }
 
 export interface Job {
@@ -449,6 +458,17 @@ export async function registerSource(
   return invoke<RegisteredSource>('register_source', { projectId, absolutePath });
 }
 
+/** Reconnect a moved recording only when the daemon verifies its fingerprint. */
+export async function relinkSource(
+  projectId: string,
+  sourceId: string,
+  absolutePath: string,
+): Promise<RegisteredSource> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<RegisteredSource>('relink_source', { projectId, sourceId, absolutePath });
+}
+
 export async function getSource(sourceId: string): Promise<SourceDetails> {
   if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
   const { invoke } = await core();
@@ -551,6 +571,108 @@ export function mediaUrl(projectId: string, artifactId: string, file: string): s
     : `clipmill-media://localhost/${path}`;
 }
 
+/** One of the person's own pictures or sounds, kept by its content hash. */
+export interface Asset {
+  readonly hash: string;
+  readonly kind: 'image' | 'audio';
+  /** The file name it was brought in from. */
+  readonly name: string;
+  readonly mediaType: string;
+  readonly bytes: number;
+  /** A picture's size; zero for a sound. */
+  readonly width: number;
+  readonly height: number;
+  /** A sound's length; zero for a picture. */
+  readonly durationTicks: number;
+  readonly license: AssetLicense;
+  readonly addedUnixMillis: number;
+}
+
+export type AssetLicense = 'own_content' | 'licensed' | 'royalty_free' | 'public_domain';
+
+/**
+ * Bring a picture or a sound in. The host opens the picker; the page names
+ * no path. `null` when the person closed the picker.
+ */
+export async function importAsset(
+  kind: Asset['kind'],
+  license: AssetLicense,
+): Promise<Asset | null> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<Asset | null>('import_asset', { kind, license });
+}
+
+/** Every asset of a kind, newest first. */
+export async function listAssets(kind: Asset['kind']): Promise<readonly Asset[]> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<readonly Asset[]>('list_assets', { kind });
+}
+
+/** Where the page loads an asset from, by its hash. */
+export function assetUrl(hash: string): string {
+  const path = `assets/${encodeURIComponent(hash.replace(/^sha256:/, ''))}`;
+  return navigator.userAgent.includes('Windows')
+    ? `http://clipmill-media.localhost/${path}`
+    : `clipmill-media://localhost/${path}`;
+}
+
+/** Where the editor loads a pinned emoji's picture from, by its code. */
+export function emojiUrl(code: string): string {
+  const path = `emoji/${encodeURIComponent(code)}.png`;
+  return navigator.userAgent.includes('Windows')
+    ? `http://clipmill-media.localhost/${path}`
+    : `clipmill-media://localhost/${path}`;
+}
+
+/** Where the player loads a pinned caption font from. */
+export function captionFontUrl(file: string): string {
+  const path = `fonts/${encodeURIComponent(file)}`;
+  return navigator.userAgent.includes('Windows')
+    ? `http://clipmill-media.localhost/${path}`
+    : `clipmill-media://localhost/${path}`;
+}
+
+/** Captions drawn under a look that has not been chosen yet. */
+export interface CaptionPreview {
+  readonly ass: string;
+  readonly revision: number;
+}
+
+/**
+ * The burned-in captions a document would have under another look, computed
+ * by the render code and not saved: trying a look is not an edit.
+ */
+export async function previewCaptions(
+  docId: string,
+  styleRef: string,
+  optionsJson: string,
+): Promise<CaptionPreview> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<CaptionPreview>('preview_captions', { docId, styleRef, optionsJson });
+}
+
+/** One logged edit, with the command that undoes it. */
+export interface EditHistoryEntry {
+  readonly revision: number;
+  readonly commandJson: string;
+  readonly inverseJson: string;
+  readonly appliedUnixMillis: number;
+}
+
+/** Every command a document has had, oldest first. */
+export async function listEditHistory(docId: string): Promise<readonly EditHistoryEntry[]> {
+  if (!isTauri()) throw new Error(NOT_IN_SHELL.reason);
+  const { invoke } = await core();
+  return invoke<readonly EditHistoryEntry[]>('list_edit_history', { docId });
+}
+
 /**
  * Follow task transitions.
  *
@@ -588,6 +710,13 @@ export interface DirectClipInput {
   readonly candidateId: string;
   readonly cut: ClipCut;
   readonly styleRef?: string;
+  readonly highlightSpokenWord?: boolean;
+  /** The caption options a saved style starts the clip with, as JSON. */
+  readonly captionOptionsJson?: string;
+  /** The brand a saved kit starts the clip with, as JSON. */
+  readonly brandJson?: string;
+  /** The frame the clip is framed for; absent is vertical. */
+  readonly shape?: 'vertical' | 'portrait' | 'square' | 'landscape';
   /**
    * Read only for `exact`. Any edge between two words is kept as sent; one
    * that falls inside a word is moved out to keep the whole word (R63).
@@ -697,6 +826,65 @@ export interface CropPath {
   readonly fit: boolean;
   readonly fitReason: string;
   readonly containment: number;
+  /** The face followed, when one was. Older hosts leave it out. */
+  readonly trackId?: number | null;
+  /** The lower portrait's path, for a two-person solve; empty otherwise. */
+  readonly secondaryKeyframes?: readonly CropKeyframe[];
+}
+
+/** What else a solve may be asked for. */
+export interface SolveOptions {
+  /** Follow this face rather than the one the solver would choose. */
+  readonly trackId?: number;
+  /** Solve both portraits of a two-person layout. */
+  readonly twoUp?: boolean;
+  /** The clip's frame, whose shape the camera is fitted to. Absent is 9:16. */
+  readonly aspect?: { readonly width: number; readonly height: number };
+}
+
+/** One face in one sampled frame, as shares of the source's display frame. */
+export interface FaceSighting {
+  readonly trackId: number;
+  readonly tTicks: number;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Where the camera would point at each moment, as the crop's centre across the
+ * source frame (0..1): the middle where it would fit the whole frame.
+ */
+export async function thumbnailFraming(
+  projectId: string,
+  faceTrackArtifactId: string,
+  moments: readonly number[],
+): Promise<readonly number[]> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<number[]>('thumbnail_framing', { projectId, faceTrackArtifactId, moments });
+}
+
+/** The faces seen over a span, for picking who the camera follows. */
+export async function listFaces(
+  projectId: string,
+  faceTrackArtifactId: string,
+  startTicks: number,
+  endTicks: number,
+): Promise<readonly FaceSighting[]> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<FaceSighting[]>('list_faces', {
+    projectId,
+    faceTrackArtifactId,
+    startTicks,
+    endTicks,
+  });
 }
 
 /**
@@ -710,6 +898,7 @@ export async function solveCropPath(
   faceTrackArtifactId: string,
   startTicks: number,
   endTicks: number,
+  options: SolveOptions = {},
 ): Promise<CropPath> {
   if (!isTauri()) {
     throw new Error(NOT_IN_SHELL.reason);
@@ -720,6 +909,10 @@ export async function solveCropPath(
     faceTrackArtifactId,
     startTicks,
     endTicks,
+    trackId: options.trackId ?? null,
+    twoUp: options.twoUp ?? false,
+    aspectWidth: options.aspect?.width ?? null,
+    aspectHeight: options.aspect?.height ?? null,
   });
 }
 
@@ -755,6 +948,16 @@ export interface PreviewSegment {
   /** Program frames the segment occupies, half-open. */
   readonly firstFrame: number;
   readonly endFrame: number;
+  /** How the section is drawn. Older hosts leave it out. */
+  readonly layout?: 'fit' | 'speaker_fill' | 'two_up' | 'picture_in_picture' | '';
+  /** Two viewports: the upper one's height in output pixels. */
+  readonly upperHeight?: number;
+  /** Picture in picture: the inset's `[x, y, side]` in output pixels. */
+  readonly inset?: readonly [number, number, number] | null;
+  /** A fitted picture's fill: absent for the picture blurred. */
+  readonly backgroundColour?: string | null;
+  /** A fitted picture's zoom past fitting, in percent. */
+  readonly zoomPercent?: number;
 }
 
 /** A source the program draws from: the frame the crops are measured in. */
@@ -780,6 +983,11 @@ export interface PreviewProxy {
 
 export interface PreviewCue {
   readonly cueId: string;
+  /** `[x, y]` in thousandths of the frame, when the cue was placed by hand. */
+  readonly position?: readonly [number, number] | null;
+  /** Exact display bounds. Older hosts do not expose timing edits. */
+  readonly startTicks?: number;
+  readonly endTicks?: number;
   readonly firstFrame: number;
   readonly endFrame: number;
   readonly region: string;
@@ -816,6 +1024,18 @@ export interface PreviewCaptionStyle {
   readonly boxed: boolean;
   readonly marginHorizontal: number;
   readonly marginVertical: number;
+  /** The colour key words are set in. Absent from older daemons. */
+  readonly accent?: string;
+  /** How the spoken word is marked: fill, word, box, pop or underline. */
+  readonly highlight?: string;
+}
+
+/** One caption typeface, and whether this installation has its pinned file. */
+export interface CaptionFont {
+  readonly family: string;
+  readonly label: string;
+  readonly file: string;
+  readonly installed: boolean;
 }
 
 /** A saved soft cut, allocated on the render's program frame grid. */
@@ -828,8 +1048,59 @@ export interface PreviewTransition {
   readonly endFrame: number;
 }
 
+/**
+ * A text laid over the program, for the editor to show, select and move. Its
+ * pixels come from the plan's script, which draws it as the render will.
+ */
+/** B-roll as the render lays it over the program's own picture. */
+export interface PreviewCutaway {
+  readonly cutawayId: string;
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly firstFrame: number;
+  readonly endFrame: number;
+  readonly fit: 'fill' | 'fit';
+  readonly kind: 'picture' | 'footage';
+  /** A picture's hash. */
+  readonly asset?: string | null;
+  /** Whether a picture moves closer, eight per cent by its last frame. */
+  readonly pushIn: boolean;
+  /** Footage's recording; its proxy is listed with the sections'. */
+  readonly sourceFingerprint?: string | null;
+  /** Where in its recording footage starts. */
+  readonly inTicks: number;
+}
+
+export interface PreviewOverlay {
+  readonly overlayId: string;
+  /** Absent from plans made before emoji, which held texts only. */
+  readonly kind?: 'text' | 'emoji';
+  /** An emoji's code, as its picture is named. */
+  readonly emoji?: string | null;
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly firstFrame: number;
+  readonly endFrame: number;
+  /** Empty for an emoji. */
+  readonly text: string;
+  readonly role: 'hook' | 'label';
+  /** Its centre, per mille of the frame's width and height. */
+  readonly x: number;
+  readonly y: number;
+  /**
+   * A text's size at the 1920-pixel design height; an emoji's side, per mille
+   * of the frame's short side.
+   */
+  readonly size: number;
+  readonly colour: string;
+  /** The plate behind it; absent draws an outline. */
+  readonly plate?: string | null;
+}
+
 export interface PreviewPlan {
   readonly captionStyle?: PreviewCaptionStyle;
+  /** B-roll over the program's own picture. Absent from older hosts. */
+  readonly cutaways?: readonly PreviewCutaway[];
   /** Requested clip-wide blend duration; absent in older plans means off. */
   readonly transitionTicks?: number;
   /** Actual blends, shortened to fit each neighboring shot by the renderer. */
@@ -843,6 +1114,16 @@ export interface PreviewPlan {
   /** Lower viewport of a two-person composition, indexed like crops. */
   readonly secondaryCrops?: readonly (readonly [number, number, number, number] | null)[];
   readonly cues: readonly PreviewCue[];
+  readonly readingCues?: readonly PreviewCue[];
+  readonly readingMinDurationTicks?: number;
+  readonly readingMinGapTicks?: number;
+  /**
+   * The burned-in captions exactly as the export writes them. A player that
+   * runs libass draws the export's pixels from this. Absent from older daemons.
+   */
+  readonly ass?: string;
+  /** Every caption typeface, with whether this installation has it. */
+  readonly fonts?: readonly CaptionFont[];
   readonly gain: readonly PreviewGain[];
   readonly width: number;
   readonly height: number;
@@ -857,6 +1138,53 @@ export interface PreviewPlan {
    * names the list it means, because each list numbers its own cues.
    */
   readonly presentation: 'reading' | 'burn_in';
+  /** Why the director built the clip as it did. Only a dry run carries it. */
+  readonly decisions?: readonly string[];
+  /** Titles and labels over the program, bottom first. Absent from older hosts. */
+  readonly overlays?: readonly PreviewOverlay[];
+  /** The music, and its level in decibels at frames, as the render mixes it. */
+  readonly music?: {
+    readonly asset: string;
+    readonly offsetTicks: number;
+    readonly levels: readonly { readonly frame: number; readonly gainDb: number }[];
+  } | null;
+  /** The logo where the render puts it, in output pixels. */
+  readonly logo?: {
+    readonly asset: string;
+    readonly corner: 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
+    readonly side: number;
+    readonly insetX: number;
+    readonly insetY: number;
+    readonly opacity: number;
+  } | null;
+  /** The progress bar, when the clip has one: thickness in output pixels. */
+  readonly progress?: {
+    readonly colour: string;
+    readonly edge: 'top' | 'bottom';
+    readonly thickness: number;
+  } | null;
+}
+
+/**
+ * Ask for attention after a long run, when the window is behind others: the
+ * Dock icon bounces once. Nothing outside the shell.
+ */
+export async function requestAttention(): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await core();
+  await invoke('request_attention');
+}
+
+/**
+ * The clip approving would build, drawn as the Editor draws it — built by the
+ * director and not saved. Nothing is written and nothing is decided.
+ */
+export async function previewDirect(request: DirectClipInput): Promise<PreviewPlan> {
+  if (!isTauri()) {
+    throw new Error(NOT_IN_SHELL.reason);
+  }
+  const { invoke } = await core();
+  return invoke<PreviewPlan>('preview_direct', { request });
 }
 
 export async function previewPlan(projectId: string, docId: string): Promise<PreviewPlan> {
@@ -882,6 +1210,8 @@ export interface EditDocSummary {
   readonly revision: number;
   readonly createdUnixMillis: number;
   readonly updatedUnixMillis: number;
+  /** What somebody named the clip, when they did. */
+  readonly title?: string | null;
 }
 
 export async function listEditDocs(projectId: string): Promise<readonly EditDocSummary[]> {
@@ -962,12 +1292,27 @@ export interface ExportRequest {
    * nobody looked at.
    */
   readonly expectedRevision?: number;
+  /** Frame rate and size of the delivered picture. Absent is the recording's rate at 1080p. */
+  readonly format?: OutputFormat;
+}
+
+/**
+ * The delivered picture. A zero numerator keeps the recording's own frame
+ * rate, which is the default: converting 23.976 or 25 to 29.97 repeats frames.
+ */
+export interface OutputFormat {
+  readonly frameRateNum: number;
+  readonly frameRateDen: number;
+  /** 1920 (1080p), 2560 (1440p) or 3840 (4K); zero is 1920. */
+  readonly height: number;
 }
 
 export interface ExportFinding {
   readonly code: string;
   readonly severity: 'blocking' | 'advisory';
   readonly detail: string;
+  /** The caption cue a `captions.*` finding is about. Absent for other checks. */
+  readonly cueId?: string;
 }
 
 /** What an export would do, answered without doing it. */

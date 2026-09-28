@@ -109,18 +109,18 @@
   font-size: var(--cm-type-meta);
 }
 
-.import-looks button > span {
+.import-looks button > span:not(.caption-look-sample) {
   color: var(--cm-text-primary);
   font-size: 17px;
   font-weight: 700;
   line-height: 1.2;
 }
 
-.import-looks button[data-look='minimal'] > span {
+.import-looks button[data-look='minimal'] > span:not(.caption-look-sample) {
   font-weight: 500;
 }
 
-.import-looks button[data-look='boxed'] > span {
+.import-looks button[data-look='boxed'] > span:not(.caption-look-sample) {
   padding: 0 4px;
   border-radius: 2px;
   background: var(--cm-text-primary);
@@ -285,4 +285,29 @@
   .import-disclosure > summary > svg {
     transition: none;
   }
+}
+
+/* Saved styles, offered beside the three looks as a project's start. */
+.import-styles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.import-styles button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: 999px;
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+}
+
+.import-styles button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  background: var(--cm-accent-selected);
+  color: var(--cm-text-primary);
 }

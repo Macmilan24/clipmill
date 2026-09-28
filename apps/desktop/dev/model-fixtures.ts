@@ -67,7 +67,7 @@ const CATALOG: readonly LibraryModel[] = [
   model('whisper-base', {
     title: 'Whisper Base',
     summary:
-      'Fast and compact. Runs on any computer, and is used until something else is chosen or measured faster.',
+      'Fast and compact, and runs on any computer: used until you choose another, or measuring this computer finds a more accurate one that keeps up.',
     downloadBytes: 147_951_465,
     memoryBytes: 147_951_465 + 256 * MIB,
     recommended: true,
@@ -82,7 +82,7 @@ const CATALOG: readonly LibraryModel[] = [
   }),
   model('qwen3-asr-mlx', {
     title: 'Qwen3-ASR 1.7B',
-    summary: 'Faster transcription on the Apple silicon GPU.',
+    summary: 'More accurate than Whisper Base, and quick on the Apple silicon GPU.',
     runtime: 'mlx',
     backend: 'mlx',
     quantization: 'int4',
@@ -167,6 +167,7 @@ const JOBS: readonly ModelJob[] = [
     selectedBy: 'portable',
     choice: '',
     models: ['whisper-base', 'whisper-large-v3-turbo', 'qwen3-asr-mlx'],
+    moreAccurate: 'qwen3-asr-mlx',
   },
   {
     capability: 'forced-align',

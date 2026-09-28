@@ -14,9 +14,10 @@
 //! arithmetic is exact.
 
 use clipmill_edit_ir::{
-    CropEasing, CropKeyframe, CropRect, EditDocument, LayoutState, VideoSegment,
-    crop_along_keyframes,
+    CropEasing, CropKeyframe, CropRect, EditDocument, FitBackground, Layout, LayoutState,
+    VideoSegment, crop_along_keyframes,
 };
+use std::ops::Range;
 
 use crate::{
     plan::{RenderError, SourceInput},
@@ -45,6 +46,26 @@ pub struct DecodeSpan {
     pub frame_count: i64,
     /// Phase of this segment’s first frame on the global program grid.
     pub video_offset_ticks: i64,
+}
+
+/// Consecutive sections over the same source window share one input decoder.
+/// Their trims still select exact, separate ranges inside that input.
+pub(crate) fn decoder_groups(spans: &[DecodeSpan]) -> Vec<Range<usize>> {
+    let mut groups = Vec::new();
+    let mut start = 0;
+    for index in 1..=spans.len() {
+        let same_decoder = index < spans.len()
+            && spans[index].source_fingerprint == spans[index - 1].source_fingerprint
+            && spans[index].seek_ticks == spans[index - 1].seek_ticks
+            && spans[index].trim_start_ticks == spans[index - 1].trim_end_ticks;
+        if !same_decoder {
+            if start < index {
+                groups.push(start..index);
+            }
+            start = index;
+        }
+    }
+    groups
 }
 
 /// The crop rectangle a segment shows on one of its own frames.
@@ -89,6 +110,8 @@ pub(crate) struct GraphRequest<'a> {
     pub profile: &'a RenderProfile,
     pub spans: &'a [DecodeSpan],
     pub sources: &'a [SourceInput],
+    /// The decoders footage cutaways read from, after the sections' own.
+    pub footage: &'a [crate::cutaways::FootageInput],
     /// Name of the ASS file in the working directory, when captions burn in.
     pub subtitle_file: Option<&'a str>,
     /// Loudness normalisation filter. The measurement pass knows its own; the
@@ -107,6 +130,10 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
     let mut video_spans = Vec::new();
     let mut audio_labels = Vec::new();
 
+    let inputs = decoder_inputs(request);
+    chains.extend(inputs.chains);
+    let (video_inputs, audio_inputs) = (inputs.video, inputs.audio);
+
     for (index, span) in request.spans.iter().enumerate() {
         let segment = request
             .document
@@ -120,8 +147,9 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         if !request.audio_only && span.frame_count > 0 {
             let label = format!("v{index}");
             chains.push(format!(
-                "[{index}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS-{offset}/TB,\
+                "{}trim=start={start}:end={end},setpts=PTS-STARTPTS-{offset}/TB,\
                  fps={num}/{den}:start_time=0,{TAIL_PAD},trim=end_frame={frames},setpts=PTS-STARTPTS,format=yuv420p[t{index}]",
+                video_inputs[index],
                 num = rate.num,
                 den = rate.den,
                 frames = span.frame_count,
@@ -141,8 +169,9 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         let label = format!("a{index}");
         if span.has_audio {
             chains.push(format!(
-                "[{index}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS,\
+                "{}atrim=start={start}:end={end},asetpts=PTS-STARTPTS,\
                  aformat=sample_fmts=fltp:sample_rates={rate_hz}:channel_layouts=stereo[{label}]",
+                audio_inputs[index],
                 rate_hz = request.profile.audio_sample_rate,
             ));
         } else {
@@ -177,30 +206,19 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         chains.push(concat_chain(&video_labels, true));
     }
 
-    let mut audio_chain = vec!["[acat]".to_owned()];
-    if let Some(gain) = gain_filter(request.document) {
-        audio_chain.push(gain);
-        audio_chain.push(",".to_owned());
-    }
-    audio_chain.push(
-        request
-            .loudnorm
-            .clone()
-            .unwrap_or_else(|| LOUDNORM_SLOT.to_owned()),
-    );
-    audio_chain.push("[aout]".to_owned());
-    chains.push(audio_chain.concat());
+    chains.extend(audio_chains(request));
 
     if !request.audio_only {
-        let burn = match request.subtitle_file {
-            // libass sees exactly one directory holding exactly one pinned
-            // font, so the render cannot pick up whatever the host installed.
-            Some(file) => {
-                format!("[vcat]subtitles=filename={file}:fontsdir={FONTS_DIR}[vout]")
-            }
-            None => "[vcat]null[vout]".to_owned(),
-        };
-        chains.push(burn);
+        // B-roll over the program's own picture, under all that is drawn on it.
+        let (cutaways, picture) = crate::cutaways::cutaway_chains(
+            request.document,
+            request.profile,
+            request.footage,
+            decoder_groups(request.spans).len(),
+            "[vcat]",
+        )?;
+        chains.extend(cutaways);
+        finish_picture(request, &mut chains, &picture)?;
     }
 
     Ok(FilterGraph {
@@ -208,6 +226,206 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         video_label: "[vout]".to_owned(),
         audio_label: "[aout]".to_owned(),
     })
+}
+
+/// A bar along one edge that fills as the program plays: a strip of its
+/// colour, the frame's width, slid in from the left a step each frame so it
+/// is full on the last.
+fn progress_chain(
+    bar: &clipmill_edit_ir::ProgressBar,
+    profile: &RenderProfile,
+    frames: i64,
+    input: &str,
+    output: &str,
+) -> String {
+    let rate = profile.rate();
+    let thickness = progress_thickness(bar, profile.height);
+    let y = match bar.edge {
+        clipmill_edit_ir::BarEdge::Top => 0,
+        clipmill_edit_ir::BarEdge::Bottom => profile.height - thickness,
+    };
+    format!(
+        "color=c=0x{colour}:s={width}x{thickness}:r={num}/{den}[bar];\
+         {input}[bar]overlay=x='-w+w*(n+1)/{frames}':y={y}:eval=frame:shortest=1,\
+         format=yuv420p{output}",
+        colour = bar.colour.trim_start_matches('#'),
+        width = profile.width,
+        num = rate.num,
+        den = rate.den,
+        frames = frames.max(1),
+    )
+}
+
+/// The program's picture made final: the brand and the emoji over it, then
+/// the captions and the text.
+fn finish_picture(
+    request: &GraphRequest<'_>,
+    chains: &mut Vec<String>,
+    picture: &str,
+) -> Result<(), RenderError> {
+    let brand = request.document.brand.as_ref();
+    let mut picture = picture;
+    if let Some(bar) = brand.and_then(|brand| brand.progress.as_ref()) {
+        let frames = request.spans.iter().map(|span| span.frame_count).sum();
+        chains.push(progress_chain(
+            bar,
+            request.profile,
+            frames,
+            picture,
+            "[vbar]",
+        ));
+        picture = "[vbar]";
+    }
+    if let Some(logo) = brand.and_then(|brand| brand.logo.as_ref()) {
+        chains.extend(logo_chains(logo, request.profile, picture, "[vlogo]"));
+        picture = "[vlogo]";
+    }
+    let (emoji, emoji_picture) = crate::overlays::emoji_chains(
+        &request.document.overlays,
+        request.profile.rate(),
+        (request.profile.width, request.profile.height),
+        picture,
+    )?;
+    chains.extend(emoji);
+    let picture = emoji_picture;
+    chains.push(match request.subtitle_file {
+        // libass sees exactly one directory holding exactly one pinned
+        // font, so the render cannot pick up whatever the host installed.
+        Some(file) => format!("{picture}subtitles=filename={file}:fontsdir={FONTS_DIR}[vout]"),
+        None => format!("{picture}null[vout]"),
+    });
+    Ok(())
+}
+
+/// Where the logo's file is staged, beside the captions, for `movie` to read.
+pub const LOGO_FILE: &str = "logo";
+
+/// Where a logo sits on a frame this size: its longer side, and how far it
+/// is from the corner's two edges, in output pixels. A tall frame keeps it
+/// clear of the apps' top bar and of the captions and buttons along the
+/// bottom, as an inset is kept; any other keeps a margin.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LogoPlace {
+    pub side: i64,
+    pub inset_x: i64,
+    pub inset_y: i64,
+}
+
+pub fn logo_place(logo: &clipmill_edit_ir::Logo, width: i64, height: i64) -> LogoPlace {
+    use clipmill_edit_ir::InsetCorner;
+    let short = width.min(height);
+    let side = ((short * i64::from(logo.size) / 1_000) & !1).max(2);
+    let margin = (short * 40 / 1_000) & !1;
+    let tall = height > width;
+    let top = matches!(logo.corner, InsetCorner::TopLeft | InsetCorner::TopRight);
+    let inset_y = match (tall, top) {
+        (true, true) => (height * 90 / 1_000) & !1,
+        (true, false) => (height * 260 / 1_000) & !1,
+        (false, true) => margin,
+        (false, false) => (height * 200 / 1_000) & !1,
+    };
+    LogoPlace {
+        side,
+        inset_x: margin,
+        inset_y,
+    }
+}
+
+/// The logo over the picture: read from its staged file, its longer side
+/// scaled to its place, made as opaque as asked, and held on every frame.
+fn logo_chains(
+    logo: &clipmill_edit_ir::Logo,
+    profile: &RenderProfile,
+    input: &str,
+    output: &str,
+) -> Vec<String> {
+    use clipmill_edit_ir::InsetCorner;
+    let place = logo_place(logo, profile.width, profile.height);
+    let side = place.side;
+    let x = match logo.corner {
+        InsetCorner::TopLeft | InsetCorner::BottomLeft => place.inset_x.to_string(),
+        InsetCorner::TopRight | InsetCorner::BottomRight => format!("W-w-{}", place.inset_x),
+    };
+    let y = match logo.corner {
+        InsetCorner::TopLeft | InsetCorner::TopRight => place.inset_y.to_string(),
+        InsetCorner::BottomLeft | InsetCorner::BottomRight => format!("H-h-{}", place.inset_y),
+    };
+    vec![
+        format!(
+            "movie=filename={LOGO_FILE},format=rgba,\
+             scale=w='if(gte(iw,ih),{side},-2)':h='if(gte(iw,ih),-2,{side})',\
+             colorchannelmixer=aa={alpha:.2}[logo]",
+            alpha = f64::from(logo.opacity) / 100.0,
+        ),
+        format!("{input}[logo]overlay=x={x}:y={y}:eof_action=repeat,format=yuv420p{output}"),
+    ]
+}
+
+/// A bar's thickness in pixels of a frame this tall: stated at the design
+/// height, even, and never less than two.
+pub(crate) fn progress_thickness(bar: &clipmill_edit_ir::ProgressBar, height: i64) -> i64 {
+    ((i64::from(bar.thickness) * height / 1_920 + 1) & !1).max(2)
+}
+
+/// What each span reads its frames and samples from.
+///
+/// A span whose decoder is shared with its neighbours reads one output of a
+/// `split`/`asplit` over that decoder; a span alone on its input reads the
+/// input directly. The chains are the splits themselves.
+struct DecoderInputs {
+    video: Vec<String>,
+    audio: Vec<String>,
+    chains: Vec<String>,
+}
+
+fn decoder_inputs(request: &GraphRequest<'_>) -> DecoderInputs {
+    let mut inputs = DecoderInputs {
+        video: vec![String::new(); request.spans.len()],
+        audio: vec![String::new(); request.spans.len()],
+        chains: Vec::new(),
+    };
+    for (input_index, group) in decoder_groups(request.spans).iter().enumerate() {
+        let video_members: Vec<usize> = group
+            .clone()
+            .filter(|&i| request.spans[i].frame_count > 0)
+            .collect();
+        if !request.audio_only && !video_members.is_empty() {
+            if let [only] = video_members[..] {
+                inputs.video[only] = format!("[{input_index}:v]");
+            } else {
+                let labels = video_members
+                    .iter()
+                    .map(|i| format!("[decode_v{i}]"))
+                    .collect::<Vec<_>>()
+                    .concat();
+                inputs.chains.push(format!(
+                    "[{input_index}:v]split={}{labels}",
+                    video_members.len(),
+                ));
+                for i in video_members {
+                    inputs.video[i] = format!("[decode_v{i}]");
+                }
+            }
+        }
+        if request.spans[group.start].has_audio {
+            if group.len() == 1 {
+                inputs.audio[group.start] = format!("[{input_index}:a]");
+            } else {
+                let labels = group
+                    .clone()
+                    .map(|i| format!("[decode_a{i}]"))
+                    .collect::<Vec<_>>()
+                    .concat();
+                inputs
+                    .chains
+                    .push(format!("[{input_index}:a]asplit={}{labels}", group.len()));
+                for i in group.clone() {
+                    inputs.audio[i] = format!("[decode_a{i}]");
+                }
+            }
+        }
+    }
+    inputs
 }
 
 fn concat_chain(labels: &[String], video: bool) -> String {
@@ -274,7 +492,8 @@ fn source_for<'a>(
 }
 
 /// The chain that turns one decoded, CFR-normalised segment into an output
-/// frame: either a followed crop or a letterbox over its own blurred fill.
+/// frame: a followed crop, two stacked crops, a letterbox over its own fill,
+/// or a full picture with a crop inset in one corner.
 fn layout_chains(
     segment: &VideoSegment,
     source: &SourceInput,
@@ -283,57 +502,150 @@ fn layout_chains(
     label: &str,
 ) -> Result<Vec<String>, RenderError> {
     let (width, height) = (profile.width, profile.height);
-    match segment.layout.state {
-        LayoutState::Fit => Ok(vec![
-            format!("[t{index}]split=2[t{index}bg][t{index}fg]"),
-            format!(
-                "[t{index}bg]scale={width}:{height}:force_original_aspect_ratio=increase,\
-                 crop={width}:{height},gblur=sigma={sigma}[t{index}bgb]",
-                sigma = profile.fit_background_sigma,
-            ),
-            format!(
-                "[t{index}fg]scale={width}:{height}:force_original_aspect_ratio=decrease\
-                 [t{index}fgs]"
-            ),
-            format!(
-                "[t{index}bgb][t{index}fgs]overlay=x=(W-w)/2:y=(H-h)/2,setsar=1,\
-                 format=yuv420p[{label}]"
-            ),
-        ]),
+    let layout = &segment.layout;
+    match layout.state {
+        LayoutState::Fit => Ok(fit_chains(
+            layout,
+            source,
+            profile,
+            &format!("t{index}"),
+            label,
+        )),
         LayoutState::SpeakerFill => {
-            let crop = crop_filter(segment, source, profile, &segment.layout.crop_path, height)?;
+            // The followed crop, moved in wherever the section punches in.
+            let path = layout.drawn_crop_path();
+            let crop = crop_filter(segment, source, profile, &path, width, height)?;
             Ok(vec![format!(
                 "[t{index}]{crop},scale={width}:{height},setsar=1,format=yuv420p[{label}]"
             )])
         }
         LayoutState::TwoUp => {
-            let viewport_height = height / 2;
-            let upper = crop_filter(
+            // Stacked, or side by side across a landscape frame.
+            let ((first_width, first_height), (second_width, second_height)) =
+                layout.viewports(width, height);
+            let first = crop_filter(
                 segment,
                 source,
                 profile,
-                &segment.layout.crop_path,
-                viewport_height,
+                &layout.crop_path,
+                first_width,
+                first_height,
             )?;
-            let lower = crop_filter(
+            let second = crop_filter(
                 segment,
                 source,
                 profile,
-                &segment.layout.secondary_crop_path,
-                viewport_height,
+                &layout.secondary_crop_path,
+                second_width,
+                second_height,
             )?;
+            let stack = if clipmill_edit_ir::splits_across(width, height) {
+                "hstack"
+            } else {
+                "vstack"
+            };
             Ok(vec![
                 format!("[t{index}]split=2[t{index}upper][t{index}lower]"),
                 format!(
-                    "[t{index}upper]{upper},scale={width}:{viewport_height},setsar=1[t{index}u]"
+                    "[t{index}upper]{first},scale={first_width}:{first_height},setsar=1[t{index}u]"
                 ),
                 format!(
-                    "[t{index}lower]{lower},scale={width}:{viewport_height},setsar=1[t{index}l]"
+                    "[t{index}lower]{second},scale={second_width}:{second_height},setsar=1[t{index}l]"
                 ),
-                format!("[t{index}u][t{index}l]vstack=inputs=2,format=yuv420p[{label}]"),
+                format!("[t{index}u][t{index}l]{stack}=inputs=2,format=yuv420p[{label}]"),
             ])
         }
+        LayoutState::PictureInPicture => {
+            let (x, y, side) = layout.inset_or_default().place(width, height);
+            let inset = crop_filter(
+                segment,
+                source,
+                profile,
+                &layout.secondary_crop_path,
+                side,
+                side,
+            )?;
+            let mut chains = vec![format!("[t{index}]split=2[t{index}main][t{index}pip]")];
+            if layout.crop_path.is_empty() {
+                chains.extend(fit_chains(
+                    layout,
+                    source,
+                    profile,
+                    &format!("t{index}main"),
+                    &format!("t{index}under"),
+                ));
+            } else {
+                let main = crop_filter(segment, source, profile, &layout.crop_path, width, height)?;
+                chains.push(format!(
+                    "[t{index}main]{main},scale={width}:{height},setsar=1,format=yuv420p[t{index}under]"
+                ));
+            }
+            chains.push(format!(
+                "[t{index}pip]{inset},scale={side}:{side},setsar=1[t{index}inset]"
+            ));
+            chains.push(format!(
+                "[t{index}under][t{index}inset]overlay=x={x}:y={y},setsar=1,format=yuv420p[{label}]"
+            ));
+            Ok(chains)
+        }
     }
+}
+
+/// A fitted picture over what fills around it: the picture itself blurred,
+/// or one colour. Zoomed past fitting, the picture grows about its centre and
+/// its sides give way at the frame's edges.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    reason = "frame dimensions, far inside a double's exact integers"
+)]
+fn fit_chains(
+    layout: &Layout,
+    source: &SourceInput,
+    profile: &RenderProfile,
+    input: &str,
+    label: &str,
+) -> Vec<String> {
+    let (width, height) = (profile.width, profile.height);
+    let zoom = layout.zoom_percent();
+    let picture = if zoom == 100 || source.width <= 0 || source.height <= 0 {
+        format!("scale={width}:{height}:force_original_aspect_ratio=decrease")
+    } else {
+        let fit = (width as f64 / source.width as f64).min(height as f64 / source.height as f64)
+            * f64::from(zoom)
+            / 100.0;
+        let even = |value: f64| ((value / 2.0).round() as i64 * 2).max(2);
+        let (grown_width, grown_height) = (
+            even(source.width as f64 * fit),
+            even(source.height as f64 * fit),
+        );
+        format!(
+            "scale={grown_width}:{grown_height},crop={}:{}",
+            grown_width.min(width),
+            grown_height.min(height)
+        )
+    };
+    let fill = match &layout.background {
+        None | Some(FitBackground::Blur) => format!(
+            "scale={width}:{height}:force_original_aspect_ratio=increase,\
+             crop={width}:{height},gblur=sigma={sigma}",
+            sigma = profile.fit_background_sigma,
+        ),
+        // The colour is checked as #RRGGBB when the document is validated.
+        Some(FitBackground::Colour { colour }) => format!(
+            "scale={width}:{height},drawbox=x=0:y=0:w=iw:h=ih:color=0x{}@1:t=fill",
+            colour.trim_start_matches('#')
+        ),
+    };
+    vec![
+        format!("[{input}]split=2[{input}bg][{input}fg]"),
+        format!("[{input}bg]{fill}[{input}bgb]"),
+        format!("[{input}fg]{picture}[{input}fgs]"),
+        format!(
+            "[{input}bgb][{input}fgs]overlay=x=(W-w)/2:y=(H-h)/2,setsar=1,\
+             format=yuv420p[{label}]"
+        ),
+    ]
 }
 
 fn crop_filter(
@@ -341,6 +653,7 @@ fn crop_filter(
     source: &SourceInput,
     profile: &RenderProfile,
     path: &[CropKeyframe],
+    viewport_width: i64,
     viewport_height: i64,
 ) -> Result<String, RenderError> {
     let first = path
@@ -356,7 +669,7 @@ fn crop_filter(
     // invisibly. Anything wider than that is a framing mistake, not rounding,
     // and stretching faces to hide it would be the wrong kindness.
     if path.iter().any(|keyframe| {
-        (keyframe.rect.width * viewport_height - keyframe.rect.height * profile.width).abs()
+        (keyframe.rect.width * viewport_height - keyframe.rect.height * viewport_width).abs()
             > viewport_height
     }) {
         return Err(RenderError::CropAspectMismatch(segment.segment_id.clone()));
@@ -389,10 +702,8 @@ fn crop_filter(
         let y = axis_expression(path, &frames, |rect| rect.y, "n");
         return Ok(format!(
             "scale=w='ceil(iw*{viewport_height}/({height})/2)*2':h='ceil(ih*{viewport_height}/({height})/2)*2':eval=frame,\
-             crop=w={width}:h={viewport_height}:x='floor(({x})*{viewport_height}/({height}))':\
+             crop=w={viewport_width}:h={viewport_height}:x='floor(({x})*{viewport_height}/({height}))':\
              y='floor(({y})*{viewport_height}/({height}))':exact=1",
-            viewport_height = viewport_height,
-            width = profile.width,
         ));
     }
     Ok(format!(
@@ -443,8 +754,64 @@ fn axis_expression(
 
 /// The program-time gain curve as a `volume` expression, or nothing when the
 /// document carries no automation.
+/// The program's sound made final: the voice with its gain and cleanup, the
+/// music under it when there is some, and the loudness pass over the mix.
+fn audio_chains(request: &GraphRequest<'_>) -> Vec<String> {
+    let audio = &request.document.audio;
+    let mut voice: Vec<String> = Vec::new();
+    if let Some(gain) = gain_filter(request.document) {
+        voice.push(gain);
+    }
+    if let Some(cleanup) = audio.cleanup {
+        voice.push(crate::music::cleanup_filters(cleanup).to_owned());
+    }
+    let loudnorm = request
+        .loudnorm
+        .clone()
+        .unwrap_or_else(|| LOUDNORM_SLOT.to_owned());
+    let joined = |filters: &[String]| {
+        if filters.is_empty() {
+            "anull".to_owned()
+        } else {
+            filters.join(",")
+        }
+    };
+    let Some(music) = &audio.music else {
+        voice.push(loudnorm);
+        return vec![format!("[acat]{}[aout]", voice.join(","))];
+    };
+    let duration: i64 = request
+        .spans
+        .iter()
+        .map(|span| span.trim_end_ticks - span.trim_start_ticks)
+        .sum();
+    let envelope = crate::music::music_envelope(request.document, duration);
+    let level = volume_filter(&envelope).unwrap_or_else(|| "anull".to_owned());
+    vec![
+        format!("[acat]{}[voice]", joined(&voice)),
+        // The music, looped if it is shorter than the clip, from its start
+        // point for exactly the program's length, at the envelope's level.
+        format!(
+            "amovie=filename={file}:loop=0,asetpts=N/SR/TB,\
+             atrim=start={offset}:duration={length},asetpts=PTS-STARTPTS,\
+             aformat=sample_fmts=fltp:sample_rates={rate_hz}:channel_layouts=stereo,{level}[bed]",
+            file = crate::music::MUSIC_FILE,
+            offset = ticks_to_seconds(music.offset_ticks),
+            length = ticks_to_seconds(duration),
+            rate_hz = request.profile.audio_sample_rate,
+        ),
+        format!(
+            "[voice][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,{loudnorm}[aout]"
+        ),
+    ]
+}
+
 fn gain_filter(document: &EditDocument) -> Option<String> {
-    let curve = &document.audio.gain_curve;
+    volume_filter(&document.audio.gain_curve)
+}
+
+/// A volume filter following a curve of decibel points through program time.
+fn volume_filter(curve: &[clipmill_edit_ir::GainPoint]) -> Option<String> {
     let last = curve.last()?;
     let mut expression = format_db(last.gain_db);
     for index in (0..curve.len().saturating_sub(1)).rev() {

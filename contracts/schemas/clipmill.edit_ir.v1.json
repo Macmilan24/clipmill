@@ -27,6 +27,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "shape": {
+          "description": "The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.",
+          "enum": ["vertical", "portrait", "square", "landscape"]
+        },
         "transition_ticks": {
           "description": "Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.",
           "type": "integer",
@@ -37,6 +41,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/videoSegment"
+          }
+        },
+        "cutaways": {
+          "description": "Moments covered by another picture while the voice carries on, in program order, none overlapping.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cutaway"
           }
         }
       }
@@ -55,11 +66,79 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "font_size": { "type": "integer", "minimum": 24, "maximum": 160 },
-            "spoken": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "unspoken": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "outline": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "text_case": { "enum": ["original", "upper", "lower"] }
+            "highlight_spoken_word": {
+              "type": "boolean",
+              "description": "Override the preset's spoken-word highlight independently of its typography."
+            },
+            "font_size": {
+              "type": "integer",
+              "minimum": 24,
+              "maximum": 160
+            },
+            "spoken": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "unspoken": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "outline": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "text_case": {
+              "enum": ["original", "upper", "lower"]
+            },
+            "highlight_style": {
+              "description": "How the spoken word is marked. Absent is the sweep.",
+              "enum": ["fill", "word", "box", "pop", "underline"]
+            },
+            "font_family": {
+              "description": "One of the caption fonts, by family name. Absent is the look's own.",
+              "enum": [
+                "Inter",
+                "Montserrat Black",
+                "Poppins ExtraBold",
+                "Anton",
+                "Bebas Neue",
+                "Luckiest Guy",
+                "DM Serif Display"
+              ]
+            },
+            "outline_width": {
+              "description": "Outline thickness at the 1920-pixel design height.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 16
+            },
+            "shadow_depth": {
+              "description": "Drop-shadow offset at the 1920-pixel design height.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 12
+            },
+            "plate_opacity": {
+              "description": "How opaque a boxed look's plate is, in percent.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "accent": {
+              "description": "The colour key words are set in.",
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "position": {
+              "description": "Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.",
+              "$ref": "#/$defs/captionPosition"
+            },
+            "words_on_screen": {
+              "description": "The most words the on-screen captions were last grouped into.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            }
           }
         },
         "cues": {
@@ -106,6 +185,98 @@
               }
             }
           }
+        },
+        "music": {
+          "description": "Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.",
+          "type": "object",
+          "required": ["asset", "level_db", "duck_db"],
+          "additionalProperties": false,
+          "properties": {
+            "asset": {
+              "$ref": "#/$defs/sha256"
+            },
+            "level_db": {
+              "description": "Its level where nobody speaks.",
+              "type": "number",
+              "minimum": -40,
+              "maximum": 0
+            },
+            "duck_db": {
+              "description": "How much further it drops under speech.",
+              "type": "number",
+              "minimum": -30,
+              "maximum": 0
+            },
+            "offset_ticks": {
+              "description": "Where in the sound the clip starts.",
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "cleanup": {
+          "description": "The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.",
+          "enum": ["light", "strong"]
+        }
+      }
+    },
+    "overlays": {
+      "description": "Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/overlay"
+      }
+    },
+    "brand": {
+      "description": "What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "progress": {
+          "type": "object",
+          "required": ["colour", "edge", "thickness"],
+          "additionalProperties": false,
+          "properties": {
+            "colour": {
+              "$ref": "#/$defs/hexColour"
+            },
+            "edge": {
+              "enum": ["top", "bottom"]
+            },
+            "thickness": {
+              "description": "At the 1920-pixel design height.",
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 40
+            }
+          }
+        },
+        "logo": {
+          "type": "object",
+          "required": ["asset", "corner", "size", "opacity"],
+          "additionalProperties": false,
+          "properties": {
+            "asset": {
+              "description": "The picture's content hash; the clip's assets list it.",
+              "$ref": "#/$defs/sha256"
+            },
+            "corner": {
+              "enum": ["top_left", "top_right", "bottom_left", "bottom_right"]
+            },
+            "size": {
+              "description": "Its longer side as a share of the frame's short side, per mille.",
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 300
+            },
+            "opacity": {
+              "description": "In percent.",
+              "type": "integer",
+              "minimum": 20,
+              "maximum": 100
+            }
+          }
         }
       }
     },
@@ -141,12 +312,191 @@
           }
         }
       }
+    },
+    "title": {
+      "description": "What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
     }
   },
   "$defs": {
     "sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "hexColour": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "cutaway": {
+      "description": "B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption.",
+      "type": "object",
+      "required": ["cutaway_id", "start_ticks", "end_ticks", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "cutaway_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "description": "At least a fifth of a second after it starts.",
+          "type": "integer",
+          "minimum": 18000
+        },
+        "fit": {
+          "description": "fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.",
+          "enum": ["fill", "fit"]
+        },
+        "content": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind", "asset"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "picture"
+                },
+                "asset": {
+                  "description": "The picture's content hash; the clip's assets list it.",
+                  "$ref": "#/$defs/sha256"
+                },
+                "push_in": {
+                  "description": "Move slowly closer, eight per cent by its last frame.",
+                  "type": "boolean"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "source_fingerprint", "in_ticks"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "footage"
+                },
+                "source_fingerprint": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "in_ticks": {
+                  "description": "Where in the recording it starts.",
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "overlay": {
+      "description": "Something laid over the program for a span of it.",
+      "type": "object",
+      "required": ["overlay_id", "start_ticks", "end_ticks", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "overlay_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content": {
+          "oneOf": [
+            {
+              "description": "Words set in the clip's caption font by the caption renderer. Lines break only where the text says.",
+              "type": "object",
+              "required": ["kind", "text", "x", "y", "size", "colour"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "text"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[^{}\\\\]*$"
+                },
+                "role": {
+                  "description": "A hook opens the clip and names what it is about. Absent is a label.",
+                  "enum": ["hook", "label"]
+                },
+                "x": {
+                  "description": "Where its centre sits, per mille of the frame's width.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "y": {
+                  "description": "Where its centre sits, per mille of the frame's height.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "size": {
+                  "description": "Its size at the 1920-pixel design height.",
+                  "type": "integer",
+                  "minimum": 24,
+                  "maximum": 240
+                },
+                "colour": {
+                  "$ref": "#/$defs/hexColour"
+                },
+                "plate": {
+                  "description": "An opaque plate behind the text. Absent draws an outline.",
+                  "$ref": "#/$defs/hexColour"
+                }
+              }
+            },
+            {
+              "description": "A colour emoji, drawn from its pinned picture.",
+              "type": "object",
+              "required": ["kind", "emoji", "x", "y", "size"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "emoji"
+                },
+                "emoji": {
+                  "description": "Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.",
+                  "type": "string",
+                  "pattern": "^[0-9a-f_]{4,40}$"
+                },
+                "x": {
+                  "description": "Where its centre sits, per mille of the frame's width.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "y": {
+                  "description": "Where its centre sits, per mille of the frame's height.",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                "size": {
+                  "description": "Its side, per mille of the frame's short side.",
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 400
+                }
+              }
+            }
+          ]
+        }
+      }
     },
     "cropRect": {
       "description": "Integer pixel rectangle in the source frame's coordinate space.",
@@ -198,7 +548,8 @@
           "additionalProperties": false,
           "properties": {
             "state": {
-              "enum": ["speaker_fill", "fit", "two_up"]
+              "description": "picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.",
+              "enum": ["speaker_fill", "fit", "two_up", "picture_in_picture"]
             },
             "crop_path": {
               "description": "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.",
@@ -222,7 +573,7 @@
               }
             },
             "secondary_crop_path": {
-              "description": "Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.",
+              "description": "Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.",
               "type": "array",
               "items": {
                 "type": "object",
@@ -238,6 +589,88 @@
                   },
                   "easing": {
                     "enum": ["linear", "ease_in", "ease_out", "ease_in_out"]
+                  }
+                }
+              }
+            },
+            "split": {
+              "description": "two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.",
+              "type": "integer",
+              "minimum": 250,
+              "maximum": 750
+            },
+            "background": {
+              "description": "What fills around a fitted picture. Absent is the picture itself, blurred.",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "blur"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "colour"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "colour"
+                    },
+                    "colour": {
+                      "type": "string",
+                      "pattern": "^#[0-9A-Fa-f]{6}$"
+                    }
+                  }
+                }
+              ]
+            },
+            "zoom": {
+              "description": "How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.",
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 250
+            },
+            "inset": {
+              "description": "Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.",
+              "type": "object",
+              "required": ["corner", "size"],
+              "additionalProperties": false,
+              "properties": {
+                "corner": {
+                  "enum": ["top_left", "top_right", "bottom_left", "bottom_right"]
+                },
+                "size": {
+                  "type": "integer",
+                  "minimum": 200,
+                  "maximum": 600
+                }
+              }
+            },
+            "punches": {
+              "description": "Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["start_ticks", "end_ticks", "zoom"],
+                "additionalProperties": false,
+                "properties": {
+                  "start_ticks": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "end_ticks": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "zoom": {
+                    "description": "How much closer, in percent.",
+                    "type": "integer",
+                    "minimum": 105,
+                    "maximum": 200
                   }
                 }
               }
@@ -302,12 +735,38 @@
                       "description": "Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.",
                       "type": "string",
                       "minLength": 1
+                    },
+                    "emphasis": {
+                      "description": "A key word, set in the accent colour so it stands out of its line.",
+                      "type": "boolean"
                     }
                   }
                 }
               }
             }
           }
+        },
+        "position": {
+          "description": "Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position.",
+          "$ref": "#/$defs/captionPosition"
+        }
+      }
+    },
+    "captionPosition": {
+      "description": "A caption's centre on the frame, in thousandths of its width and height.",
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
         }
       }
     }

@@ -274,6 +274,58 @@ pub fn discover(
     })
 }
 
+/// The share of a candidate whose word timing may be inferred before the
+/// candidate stops being a measured clip: a quarter.
+const INFERRED_SHARE_DENOMINATOR: u64 = 4;
+
+/// Why a span the transcript does not vouch for excludes this candidate, if
+/// it does.
+///
+/// Words may be missing where recognition failed or nothing was analysed, and
+/// a clip over such a span may not say what its captions say: excluded. Where
+/// only the timing was inferred — every word is there, spread across a span
+/// the aligner could not place or collapsed onto one tick — the candidate
+/// stays, as the Milestone 2 rule for editorial spans already has it: the
+/// lattice keeps its cuts off those spans, and the scorecard says its timing
+/// is uncertain. Unless inferred timing is more than a quarter of it, which is
+/// a clip nobody measured.
+fn disowned(index: &IndexTranscript, start: u64, end: u64) -> Option<&'static str> {
+    use clipmill_contracts::schemas::index_transcript::InvalidRegionReason;
+
+    let mut inferred: Vec<(u64, u64)> = Vec::new();
+    for region in &index.invalid_regions {
+        let (from, to) = (region.start_ticks.max(start), region.end_ticks.min(end));
+        if from >= to {
+            continue;
+        }
+        match region.reason {
+            InvalidRegionReason::TimingInterpolated | InvalidRegionReason::AlignmentUnavailable => {
+                inferred.push((from, to));
+            }
+            InvalidRegionReason::DecodeFailed
+            | InvalidRegionReason::NotAnalyzed
+            | InvalidRegionReason::NoAudio => {
+                return Some("part of this span has speech the transcript could not read");
+            }
+        }
+    }
+    // Per-word spans sit inside the span of the alignment gap they came from,
+    // so the union is measured rather than the sum.
+    inferred.sort_unstable();
+    let mut covered = 0_u64;
+    let mut reach = start;
+    for (from, to) in inferred {
+        let from = from.max(reach);
+        if to > from {
+            covered += to - from;
+            reach = to;
+        }
+    }
+    let span = end.saturating_sub(start).max(1);
+    (covered.saturating_mul(INFERRED_SHARE_DENOMINATOR) > span)
+        .then_some("most of this span's word timing was inferred rather than measured")
+}
+
 /// One nomination, expanded and keyed.
 fn build(
     proposer: &contract::Proposer,
@@ -287,22 +339,12 @@ fn build(
     evidence.sort_by_key(|reference| (kind_ordinal(reference.kind), reference.index));
     evidence.dedup_by_key(|reference| (kind_ordinal(reference.kind), reference.index));
 
-    // A candidate overlapping a span the transcript disowned is still a
-    // candidate — the words were said — but ranking must be able to see that
-    // its timing is not measured before it puts a cut inside one.
-    let overlaps_interpolated = index
-        .invalid_regions
-        .iter()
-        .any(|region| region.start_ticks < end && region.end_ticks > start);
-    let exclusions = if overlaps_interpolated {
-        vec![contract::Exclusion {
+    let exclusions = match disowned(index, start, end) {
+        Some(detail) => vec![contract::Exclusion {
             reason: contract::ExclusionReason::InvalidRegion,
-            detail: "part of this span has word timing the transcript does not vouch for"
-                .parse()
-                .ok(),
-        }]
-    } else {
-        Vec::new()
+            detail: detail.parse().ok(),
+        }],
+        None => Vec::new(),
     };
 
     let id = identity(

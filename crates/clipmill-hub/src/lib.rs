@@ -583,9 +583,9 @@ pub fn check_path(path: &str) -> Result<(), Error> {
             !part.is_empty()
                 && part != "."
                 && part != ".."
-                && part
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+                && part.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+')
+                })
         });
     if valid {
         Ok(())

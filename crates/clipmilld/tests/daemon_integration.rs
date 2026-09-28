@@ -625,14 +625,14 @@ async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
     let Some(response::Body::ModelLibrary(library)) = listed.body else {
         panic!("expected the library, got {:?}", listed.body);
     };
-    assert_eq!(library.models.len(), 8, "every bundled model is listed");
+    assert_eq!(library.models.len(), 9, "every bundled model is listed");
     assert!(
         library
             .models
             .iter()
             .all(|model| model.install_state == "missing")
     );
-    assert_eq!(library.jobs.len(), 5);
+    assert_eq!(library.jobs.len(), 6);
     assert!(library.recommended_missing_bytes > 0);
     assert!(
         library.models.iter().all(|model| !model.worker.is_empty()),

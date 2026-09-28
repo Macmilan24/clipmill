@@ -20,6 +20,116 @@ fn fixture() -> EditDocument {
     document
 }
 
+#[test]
+fn removing_a_word_clears_both_tracks_and_undo_restores_everything() {
+    let mut document = fixture();
+    let original = document.clone();
+    let id = word_id_of(&document, Presentation::BurnIn, "timestamp");
+    let command = EditCommand::RemoveCaptionWord {
+        cue_id: "hot_10".to_owned(),
+        word_index: 0,
+        presentation: Presentation::BurnIn,
+    };
+    let inverse = command.apply(&mut document).expect("remove the word");
+    assert!(document.word_text(&id).is_none());
+    assert!(
+        !document
+            .captions
+            .burn_in
+            .iter()
+            .any(|cue| cue.cue_id == "hot_10")
+    );
+    assert_eq!(document.video, original.video);
+    assert_eq!(document.audio, original.audio);
+    assert!(document.captions.words().all(|word| word.text != "·"));
+    document.validate().expect("no empty cues or lines remain");
+    let redo = inverse.apply(&mut document).expect("undo deletion");
+    assert_eq!(document, original);
+    redo.apply(&mut document).expect("redo deletion");
+    assert!(document.word_text(&id).is_none());
+}
+
+#[test]
+fn removing_from_a_legacy_document_does_not_guess_another_words_identity() {
+    let raw = include_str!("../../../contracts/fixtures/edit_ir/valid/two_caption_intents.json");
+    let mut document = EditDocument::from_canonical_json(raw.as_bytes()).expect("fixture");
+    let original = document.clone();
+    let inverse = EditCommand::RemoveCaptionWord {
+        cue_id: "hot_10".to_owned(),
+        word_index: 0,
+        presentation: Presentation::BurnIn,
+    }
+    .apply(&mut document)
+    .expect("remove a legacy word");
+    assert_eq!(document.captions.cues, original.captions.cues);
+    inverse.apply(&mut document).expect("undo");
+    assert_eq!(document, original);
+    assert!(
+        EditCommand::RemoveCaptionWord {
+            cue_id: "hot_10".to_owned(),
+            word_index: 3,
+            presentation: Presentation::BurnIn,
+        }
+        .apply(&mut document)
+        .is_err()
+    );
+    assert_eq!(document, original);
+}
+
+#[test]
+fn caption_display_timing_preserves_words_and_the_other_track() {
+    let mut document = fixture();
+    let original = document.clone();
+    let cue = &document.captions.cues[0];
+    let command = EditCommand::SetCueTiming {
+        cue_id: cue.cue_id.clone(),
+        start_ticks: 0,
+        end_ticks: cue.end_ticks,
+        presentation: Presentation::Reading,
+    };
+    let inverse = command
+        .apply(&mut document)
+        .expect("extend into the opening gap");
+    assert_eq!(document.captions.cues[0].start_ticks, 0);
+    assert_eq!(
+        document.captions.cues[0].lines,
+        original.captions.cues[0].lines
+    );
+    assert_eq!(document.captions.burn_in, original.captions.burn_in);
+    assert_eq!(document.video, original.video);
+    assert_eq!(document.audio, original.audio);
+    inverse.apply(&mut document).expect("undo timing");
+    assert_eq!(document, original);
+}
+
+#[test]
+fn invalid_caption_timing_is_rejected_atomically() {
+    let original = fixture();
+    let cue = &original.captions.cues[0];
+    let next = &original.captions.cues[1];
+    let last_word = cue.words().last().expect("word");
+    for (start, end) in [
+        (-1, cue.end_ticks),
+        (0, 0),
+        (0, i64::MAX),
+        (cue.start_ticks, next.start_ticks + 1),
+        (cue.start_ticks, last_word.end_ticks - 1),
+    ] {
+        let mut document = original.clone();
+        assert!(
+            EditCommand::SetCueTiming {
+                cue_id: cue.cue_id.clone(),
+                start_ticks: start,
+                end_ticks: end,
+                presentation: Presentation::Reading,
+            }
+            .apply(&mut document)
+            .is_err()
+        );
+        assert_eq!(document, original);
+    }
+}
+
 fn words(document: &EditDocument, presentation: Presentation) -> Vec<(String, i64)> {
     document
         .captions
@@ -429,6 +539,7 @@ fn edge_ripple_fixture() -> EditDocument {
                             start_ticks,
                             end_ticks,
                             word_id: Some(format!("w@{start_ticks}")),
+                            emphasis: false,
                         },
                     )
                     .collect(),
@@ -693,4 +804,138 @@ fn a_restore_written_before_burned_cues_were_captured_leaves_them_as_they_stand(
     restore.apply(&mut document).expect("applies");
     assert!(document.captions.cues.is_empty());
     assert_eq!(document.captions.burn_in, burned_before);
+}
+
+#[test]
+fn a_hand_placed_cue_returns_to_its_region_on_undo() {
+    use clipmill_edit_ir::CaptionPosition;
+    let mut document = fixture();
+    let original = document.clone();
+    let cue_id = document.captions.burn_in[0].cue_id.clone();
+    let inverse = EditCommand::SetCuePosition {
+        cue_id: cue_id.clone(),
+        position: Some(CaptionPosition { x: 500, y: 620 }),
+        presentation: Presentation::BurnIn,
+    }
+    .apply(&mut document)
+    .expect("place the cue");
+    assert_eq!(
+        document.captions.burn_in[0].position,
+        Some(CaptionPosition { x: 500, y: 620 })
+    );
+    assert_eq!(document.captions.cues, original.captions.cues);
+    inverse.apply(&mut document).expect("undo");
+    assert_eq!(document, original);
+
+    // Off the frame is refused and leaves the document as it was.
+    assert!(
+        EditCommand::SetCuePosition {
+            cue_id,
+            position: Some(CaptionPosition { x: 500, y: 1_200 }),
+            presentation: Presentation::BurnIn,
+        }
+        .apply(&mut document)
+        .is_err()
+    );
+    assert_eq!(document, original);
+}
+
+#[test]
+fn a_key_word_is_marked_in_both_presentations() {
+    let mut document = fixture();
+    let original = document.clone();
+    let id = word_id_of(&document, Presentation::BurnIn, "timestamp");
+    let inverse = EditCommand::SetWordEmphasis {
+        word_id: id.clone(),
+        emphasis: true,
+    }
+    .apply(&mut document)
+    .expect("mark the word");
+    for presentation in [Presentation::Reading, Presentation::BurnIn] {
+        let word = document
+            .captions
+            .list(presentation)
+            .iter()
+            .flat_map(clipmill_edit_ir::CaptionCue::words)
+            .find(|word| word.word_id.as_deref() == Some(id.as_str()))
+            .expect("the word");
+        assert!(word.emphasis, "{presentation:?}");
+    }
+    inverse.apply(&mut document).expect("undo");
+    assert_eq!(document, original);
+    assert!(
+        EditCommand::SetWordEmphasis {
+            word_id: "w@nowhere".to_owned(),
+            emphasis: true,
+        }
+        .apply(&mut document)
+        .is_err()
+    );
+}
+
+#[test]
+fn a_regrouped_list_replaces_the_old_one_and_undo_puts_it_back() {
+    let mut document = fixture();
+    let original = document.clone();
+    // One cue per word: the grouping a "one word on screen" choice makes.
+    let singles = document
+        .captions
+        .burn_in
+        .iter()
+        .flat_map(|cue| {
+            cue.words()
+                .enumerate()
+                .map(move |(index, word)| clipmill_edit_ir::CaptionCue {
+                    cue_id: format!("{}_{index}", cue.cue_id),
+                    start_ticks: word.start_ticks,
+                    end_ticks: word.end_ticks,
+                    region: cue.region,
+                    anim: cue.anim,
+                    lines: vec![clipmill_edit_ir::CaptionLine {
+                        words: vec![word.clone()],
+                    }],
+                    position: None,
+                })
+        })
+        .collect::<Vec<_>>();
+    let words_before = document
+        .captions
+        .burn_in
+        .iter()
+        .map(clipmill_edit_ir::CaptionCue::word_count)
+        .sum::<usize>();
+    let inverse = EditCommand::ReplaceCues {
+        cues: singles.clone(),
+        presentation: Presentation::BurnIn,
+    }
+    .apply(&mut document)
+    .expect("regroup");
+    assert_eq!(document.captions.burn_in, singles);
+    assert_eq!(document.captions.burn_in.len(), words_before);
+    assert_eq!(document.captions.cues, original.captions.cues);
+    inverse.apply(&mut document).expect("undo");
+    assert_eq!(document, original);
+}
+
+/// The JSON the editor sends for each caption command, as the daemon reads it.
+#[test]
+fn the_editor_s_caption_commands_parse_as_sent() {
+    for json in [
+        r#"{"op":"set_cue_position","cue_id":"hot_10","position":{"x":500,"y":320},"presentation":"burn_in"}"#,
+        r#"{"op":"set_cue_position","cue_id":"hot_10","presentation":"burn_in"}"#,
+        r#"{"op":"set_word_emphasis","word_id":"w1","emphasis":true}"#,
+        r#"{"op":"regroup_on_screen","max_words":2}"#,
+        r#"{"op":"drop_non_speech_words"}"#,
+        r#"{"op":"set_title","title":"The one that scares you"}"#,
+        r#"{"op":"set_title"}"#,
+    ] {
+        let command: EditCommand = serde_json::from_str(json)
+            .unwrap_or_else(|error| panic!("{json} does not parse: {error}"));
+        let written = serde_json::to_string(&command).expect("serializes");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&written).expect("json"),
+            serde_json::from_str::<serde_json::Value>(json).expect("json"),
+            "{json} does not round-trip"
+        );
+    }
 }

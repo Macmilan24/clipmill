@@ -20,7 +20,7 @@ use std::{
 use clipmill_artifacts::{
     ArtifactPath, ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, StagingArea, Timebase,
 };
-use clipmill_contracts::proto::ipc::v1::RenderClipPayloadV1;
+use clipmill_contracts::proto::ipc::v1::{OutputFormatV1, RenderClipPayloadV1};
 use clipmill_core::{ArtifactId, Sha256Digest};
 use clipmill_edit_ir::EditDocument;
 use clipmill_render::{
@@ -59,6 +59,54 @@ pub(crate) fn is_render_kind(kind: &str) -> bool {
     kind == KIND_RENDER_CLIP
 }
 
+/// Frame rates an export may ask for by name, besides the recording's own.
+const OUTPUT_RATES: [(u32, u32); 8] = [
+    (24_000, 1_001),
+    (24, 1),
+    (25, 1),
+    (30_000, 1_001),
+    (30, 1),
+    (50, 1),
+    (60_000, 1_001),
+    (60, 1),
+];
+
+/// The frame height and rate an export asked for, checked: the height of the
+/// 9:16 frame, and a rate when one was named rather than the recording's own.
+pub(crate) fn output_request(
+    format: Option<&OutputFormatV1>,
+) -> Result<(i64, Option<clipmill_render::FrameRateSpec>), String> {
+    let Some(format) = format else {
+        return Ok((RenderProfile::default().height, None));
+    };
+    let height = if format.height == 0 {
+        RenderProfile::default().height
+    } else {
+        i64::from(format.height)
+    };
+    if !clipmill_render::OUTPUT_HEIGHTS.contains(&height) {
+        return Err(format!(
+            "an output {height} pixels tall is not offered; choose 1920, 2560 or 3840"
+        ));
+    }
+    if format.frame_rate_num == 0 {
+        return Ok((height, None));
+    }
+    if !OUTPUT_RATES.contains(&(format.frame_rate_num, format.frame_rate_den)) {
+        return Err(format!(
+            "{}/{} frames a second is not an offered output rate",
+            format.frame_rate_num, format.frame_rate_den
+        ));
+    }
+    Ok((
+        height,
+        Some(clipmill_render::FrameRateSpec {
+            num: i64::from(format.frame_rate_num),
+            den: i64::from(format.frame_rate_den),
+        }),
+    ))
+}
+
 pub(crate) fn ai_assistance_is_known(token: &str) -> bool {
     AI_ASSISTANCE_VOCABULARY.contains(&token)
 }
@@ -69,6 +117,20 @@ pub(crate) struct RenderContext<'a> {
     pub media: &'a MediaRunner,
     pub sources: &'a SourceInspector,
     pub fonts_dir: &'a Path,
+    /// The person's own pictures and sounds, which a brand or a music bed
+    /// names by hash.
+    pub assets_dir: &'a Path,
+    /// The pinned emoji pictures.
+    pub emoji_dir: &'a Path,
+}
+
+/// What a render draws from besides the recording, each a directory: the
+/// pinned caption fonts, the person's assets and the pinned emoji pictures.
+#[derive(Clone, Debug)]
+pub(crate) struct RenderResources {
+    pub fonts: std::path::PathBuf,
+    pub assets: std::path::PathBuf,
+    pub emoji: std::path::PathBuf,
 }
 
 pub(crate) async fn execute_render_task(
@@ -94,11 +156,24 @@ pub(crate) async fn execute_render_task(
     let document_digest = Sha256Digest::from_bytes(Sha256::digest(&document_bytes).into());
     drop(lease);
 
-    let font = stage_font_source(context.fonts_dir)?;
-    let inputs = resolve_sources(context, &task.project_id, &document).await?;
-    let profile = RenderProfile::default();
+    let (inputs, source_rate) = resolve_sources(context, &task.project_id, &document).await?;
+    let (height, chosen_rate) =
+        output_request(payload.format.as_ref()).map_err(TaskExecutionError::deterministic)?;
+    let rate = chosen_rate
+        .or(source_rate)
+        .unwrap_or(RenderProfile::default().frame_rate);
+    let profile =
+        RenderProfile::for_output(document.video.shape, height, rate).ok_or_else(|| {
+            TaskExecutionError::deterministic("the requested output format is not supported")
+        })?;
     let plan = clipmill_render::compile(&document, &inputs, &profile)
         .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    // The face the captions are set in, which the compiled style names.
+    let font = stage_font_source(context.fonts_dir, &plan.profile.caption_style.font_family)?;
+    let files = AssetFiles::of(context.assets_dir, &document)?;
+    let assets = asset_rights(&document);
+    // The pinned pictures of the emoji the clip shows, with their digests.
+    let emoji = pinned_emoji(context.emoji_dir, &document)?;
 
     let ir_hash = format!("sha256:{document_digest}");
     let recipe = render_recipe(
@@ -108,6 +183,7 @@ pub(crate) async fn execute_render_task(
         &font,
         &payload,
         ir_artifact_id,
+        &emoji,
     )?;
     let staging = match prepare_or_hit(context.artifacts, recipe).await? {
         // A warm render is a lookup. Nothing is decoded, nothing is encoded.
@@ -121,6 +197,9 @@ pub(crate) async fn execute_render_task(
         &Rendered {
             plan: &plan,
             font: &font,
+            files: &files,
+            assets: &assets,
+            emoji: &emoji,
             payload: &payload,
             ir_artifact_id,
             ir_hash,
@@ -146,19 +225,110 @@ struct PinnedFont {
     sha256: String,
 }
 
-fn stage_font_source(fonts_dir: &Path) -> Result<PinnedFont, TaskExecutionError> {
-    let family = clipmill_render::FONT_FAMILY;
-    let file_name = format!("{family}-Bold.ttf");
+/// Whatever the render draws or plays besides the footage, with the licence
+/// the document holds for it, for the manifest to state.
+fn asset_rights(document: &EditDocument) -> Vec<clipmill_render::AssetRight> {
+    let logo = document
+        .brand
+        .as_ref()
+        .and_then(|brand| brand.logo.as_ref())
+        .map(|logo| logo.asset.as_str());
+    let music = document
+        .audio
+        .music
+        .as_ref()
+        .map(|music| music.asset.as_str());
+    let pictures = clipmill_render::cutaway_pictures(document);
+    let mut rights: Vec<clipmill_render::AssetRight> = Vec::new();
+    for asset in logo
+        .into_iter()
+        .chain(music)
+        .chain(pictures.iter().map(String::as_str))
+        .filter_map(|hash| document.assets.iter().find(|asset| asset.hash == hash))
+    {
+        // A picture that is both the logo and a cutaway is stated once.
+        if !rights.iter().any(|right| right.hash == asset.hash) {
+            rights.push(clipmill_render::AssetRight {
+                hash: asset.hash.clone(),
+                license: asset.license.clone(),
+            });
+        }
+    }
+    rights
+}
+
+/// The pinned pictures of the emoji a document shows: each file's name, its
+/// place among the pins, and its digest for the recipe.
+fn pinned_emoji(
+    emoji_dir: &Path,
+    document: &EditDocument,
+) -> Result<Vec<(String, PathBuf, String)>, TaskExecutionError> {
+    clipmill_render::emoji_files(&document.overlays)
+        .into_iter()
+        .map(|file| {
+            let path = emoji_dir.join(&file);
+            let bytes = fs::read(&path).map_err(|_| {
+                TaskExecutionError::deterministic(
+                    "an emoji this clip shows is not installed; run ./tools/fetch-ffmpeg.sh",
+                )
+            })?;
+            let digest = format!(
+                "sha256:{}",
+                Sha256Digest::from_bytes(Sha256::digest(&bytes).into())
+            );
+            Ok((file, path, digest))
+        })
+        .collect()
+}
+
+/// An asset's file, checked against the hash the document names it by, so a
+/// render never draws bytes other than the ones the edit was made with.
+fn verified_asset(assets_dir: &Path, hash: &str) -> Result<PathBuf, TaskExecutionError> {
+    let missing = || {
+        TaskExecutionError::deterministic(
+            "a picture or sound this clip uses is not in the asset folder; bring it in again",
+        )
+    };
+    let hex = hash
+        .strip_prefix("sha256:")
+        .filter(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(missing)?;
+    let path = assets_dir.join(hex);
+    let mut file = fs::File::open(&path).map_err(|_| missing())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    loop {
+        let read = std::io::Read::read(&mut file, &mut buffer)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    if format!("{}", Sha256Digest::from_bytes(hasher.finalize().into())) != hex {
+        return Err(TaskExecutionError::deterministic(
+            "a picture or sound this clip uses has changed in the asset folder; bring it in again",
+        ));
+    }
+    Ok(path)
+}
+
+fn stage_font_source(fonts_dir: &Path, family: &str) -> Result<PinnedFont, TaskExecutionError> {
+    let face = clipmill_captions::font(family).ok_or_else(|| {
+        TaskExecutionError::deterministic(format!("{family} is not one of the caption fonts"))
+    })?;
+    let file_name = face.file.to_owned();
     let path = fonts_dir.join(&file_name);
     let bytes = fs::read(&path).map_err(|_| {
-        TaskExecutionError::deterministic(
-            "the pinned caption font is not installed; run ./tools/fetch-ffmpeg.sh",
-        )
+        TaskExecutionError::deterministic(format!(
+            "the caption font {} is not installed; run ./tools/fetch-ffmpeg.sh",
+            face.label
+        ))
     })?;
     Ok(PinnedFont {
         path,
         file_name,
-        family: family.to_owned(),
+        family: face.family.to_owned(),
         sha256: format!(
             "sha256:{}",
             Sha256Digest::from_bytes(Sha256::digest(&bytes).into())
@@ -175,12 +345,25 @@ async fn resolve_sources(
     context: &RenderContext<'_>,
     project_id: &str,
     document: &EditDocument,
-) -> Result<Vec<SourceInput>, TaskExecutionError> {
+) -> Result<(Vec<SourceInput>, Option<clipmill_render::FrameRateSpec>), TaskExecutionError> {
+    // The sections' recordings, and those B-roll footage is cut from.
     let mut wanted = document
         .video
         .segments
         .iter()
         .map(|segment| segment.source_fingerprint.clone())
+        .chain(
+            document
+                .video
+                .cutaways
+                .iter()
+                .filter_map(|cutaway| match &cutaway.content {
+                    clipmill_edit_ir::CutawayContent::Footage {
+                        source_fingerprint, ..
+                    } => Some(source_fingerprint.clone()),
+                    clipmill_edit_ir::CutawayContent::Picture { .. } => None,
+                }),
+        )
         .collect::<Vec<_>>();
     wanted.sort();
     wanted.dedup();
@@ -191,6 +374,12 @@ async fn resolve_sources(
         .await
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     let mut inputs = Vec::with_capacity(wanted.len());
+    let first_source = document
+        .video
+        .segments
+        .first()
+        .map(|segment| segment.source_fingerprint.as_str());
+    let mut source_rate = None;
     for fingerprint in wanted {
         let record = registered
             .iter()
@@ -215,6 +404,9 @@ async fn resolve_sources(
             })?;
         let map: Value = serde_json::from_slice(&record.source_map_json)
             .map_err(|_| TaskExecutionError::deterministic("source map is not valid JSON"))?;
+        if Some(fingerprint.as_str()) == first_source {
+            source_rate = crate::inspector::frame_rate_of(&record.source_map_json);
+        }
         let (width, height, has_audio) = frame_shape(&map)?;
         let duration_ticks = map["container"]["duration_ticks"].as_i64().unwrap_or(0);
         inputs.push(SourceInput {
@@ -227,7 +419,7 @@ async fn resolve_sources(
             keyframe_ticks: keyframe_ticks(context, &record.source_id).await,
         });
     }
-    Ok(inputs)
+    Ok((inputs, source_rate))
 }
 
 /// Display dimensions of the first video stream, and whether audio exists.
@@ -259,10 +451,19 @@ fn frame_shape(map: &Value) -> Result<(i64, i64, bool), TaskExecutionError> {
 /// Video keyframe positions from the source's reference index, when it has
 /// one. A source that was never ingested simply decodes from its start: a
 /// missing index costs seek time, not correctness.
+///
+/// Looked up by the *stage* that published the manifest, not by a job kind.
+/// Ingest runs inside the composite `analyze-source` DAG, where the manifest
+/// is one task among twenty and not the final one, so asking for an
+/// `ingest-source` job's final artifact found nothing for any recording a
+/// user actually analyzed — and the fallback above hid it as a render that
+/// decoded from the file's first frame to reach a clip forty minutes in,
+/// which for a long source is the difference between a two-minute export and
+/// one that runs out its deadline.
 async fn keyframe_ticks(context: &RenderContext<'_>, source_id: &str) -> Vec<i64> {
     let Ok(Some(manifest_id)) = context
         .database
-        .latest_source_job_artifact(source_id.to_owned(), "ingest-source".to_owned())
+        .latest_source_task_artifact(source_id.to_owned(), crate::media::KIND_MANIFEST.to_owned())
         .await
     else {
         return Vec::new();
@@ -322,8 +523,18 @@ fn render_recipe(
     font: &PinnedFont,
     payload: &RenderClipPayloadV1,
     ir_artifact_id: ArtifactId,
+    emoji: &[(String, PathBuf, String)],
 ) -> Result<ArtifactRecipe, TaskExecutionError> {
     let mut config = plan.recipe_config();
+    // The emoji pictures are inputs as the font is: a new pin is a new render.
+    // Absent without any, so a clip with none keeps its address.
+    if !emoji.is_empty() {
+        let digests = emoji
+            .iter()
+            .map(|(file, _, digest)| (file.clone(), json!(digest)))
+            .collect::<serde_json::Map<_, _>>();
+        config.insert("emoji".to_owned(), Value::Object(digests));
+    }
     config.insert("ffmpeg_bom".to_owned(), json!(FFMPEG_BOM));
     config.insert(
         "font".to_owned(),
@@ -359,9 +570,113 @@ fn render_recipe(
 
 /// Everything the staging half of a render needs, gathered so the signature
 /// stays readable.
+/// The person's pictures and sounds a render reads, each checked against the
+/// hash the document names it by.
+struct AssetFiles {
+    /// The brand's logo.
+    logo: Option<PathBuf>,
+    /// The music under the voice.
+    music: Option<PathBuf>,
+    /// The pictures B-roll shows, each with the name it is staged as.
+    cutaways: Vec<(String, PathBuf)>,
+}
+
+impl AssetFiles {
+    fn of(assets_dir: &Path, document: &EditDocument) -> Result<Self, TaskExecutionError> {
+        let logo = document
+            .brand
+            .as_ref()
+            .and_then(|brand| brand.logo.as_ref())
+            .map(|logo| verified_asset(assets_dir, &logo.asset))
+            .transpose()?;
+        let music = document
+            .audio
+            .music
+            .as_ref()
+            .map(|music| verified_asset(assets_dir, &music.asset))
+            .transpose()?;
+        let cutaways = clipmill_render::cutaway_pictures(document)
+            .iter()
+            .map(|hash| {
+                let file = clipmill_render::cutaway_picture_file(hash).ok_or_else(|| {
+                    TaskExecutionError::deterministic("a cutaway names no picture")
+                })?;
+                Ok((file, verified_asset(assets_dir, hash)?))
+            })
+            .collect::<Result<Vec<_>, TaskExecutionError>>()?;
+        Ok(Self {
+            logo,
+            music,
+            cutaways,
+        })
+    }
+
+    /// Put each where the graph reads it, beside the captions, and say what
+    /// was put there so it can be taken away before anything is published.
+    fn stage(
+        &self,
+        work: &Path,
+        emoji: &[(String, PathBuf, String)],
+    ) -> Result<Vec<PathBuf>, TaskExecutionError> {
+        let failed = |error: std::io::Error| TaskExecutionError::transient(error.to_string());
+        let mut staged = Vec::new();
+        for (file, name) in [
+            (self.logo.as_deref(), clipmill_render::LOGO_FILE),
+            (self.music.as_deref(), clipmill_render::MUSIC_FILE),
+        ] {
+            if let Some(file) = file {
+                let target = work.join(name);
+                fs::copy(file, &target).map_err(failed)?;
+                staged.push(target);
+            }
+        }
+        let pictures = self
+            .cutaways
+            .iter()
+            .map(|(name, path)| (name.as_str(), path.as_path()));
+        let pinned = emoji
+            .iter()
+            .map(|(name, path, _)| (name.as_str(), path.as_path()));
+        for (dir, files) in [
+            (clipmill_render::CUTAWAY_DIR, pictures.collect::<Vec<_>>()),
+            (clipmill_render::EMOJI_DIR, pinned.collect::<Vec<_>>()),
+        ] {
+            if files.is_empty() {
+                continue;
+            }
+            let target = work.join(dir);
+            fs::create_dir_all(&target).map_err(failed)?;
+            for (name, path) in files {
+                fs::copy(path, target.join(name)).map_err(failed)?;
+            }
+            staged.push(target);
+        }
+        Ok(staged)
+    }
+}
+
+/// Take away what [`AssetFiles::stage`] put in the working directory.
+fn unstage(staged: &[PathBuf]) -> Result<(), TaskExecutionError> {
+    for path in staged {
+        if path.is_dir() {
+            fs::remove_dir_all(path)
+        } else {
+            fs::remove_file(path)
+        }
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    }
+    Ok(())
+}
+
 struct Rendered<'a> {
     plan: &'a RenderPlan,
     font: &'a PinnedFont,
+    /// The person's pictures and sounds it reads.
+    files: &'a AssetFiles,
+    /// The pictures and sounds drawn or played, with their licences.
+    assets: &'a [clipmill_render::AssetRight],
+    /// The emoji pictures to stage: file name, pinned path, digest.
+    emoji: &'a [(String, PathBuf, String)],
     payload: &'a RenderClipPayloadV1,
     ir_artifact_id: ArtifactId,
     ir_hash: String,
@@ -383,13 +698,16 @@ async fn render_into(
         .and_then(|()| fs::copy(&font.path, fonts_dir.join(&font.file_name)).map(|_| ()))
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
     write_text(staging, ASS_FILE, &plan.ass)?;
+    let staged = rendered.files.stage(&work, rendered.emoji)?;
 
     let duration_hint = ticks_to_millis(plan.duration_ticks);
+    let total_work = duration_hint.saturating_mul(3);
+    let measuring = progress.export_step("export.measuring", 0, duration_hint, total_work);
     let measurement_report = context
         .media
         .run_ffmpeg(
             ffmpeg_spec(plan.measurement_args(), &work, duration_hint),
-            progress.clone(),
+            measuring,
         )
         .await
         .map_err(MediaError::into_task_error)?;
@@ -398,18 +716,31 @@ async fn render_into(
             TaskExecutionError::deterministic("the loudness measurement pass reported nothing")
         })?;
 
+    let rendering =
+        progress.export_step("export.rendering", duration_hint, duration_hint, total_work);
     let _encode = context
         .media
         .run_ffmpeg(
             ffmpeg_spec(plan.encode_args(measured_input), &work, duration_hint),
-            progress.clone(),
+            rendering,
         )
         .await
         .map_err(MediaError::into_task_error)?;
 
+    progress.set(
+        "export.checking",
+        duration_hint.saturating_mul(2),
+        total_work,
+    );
     let probed = probe_output(context, &work).await?;
     verify_output(plan, &probed)?;
-    let measured_output = measure_output(context, &work, duration_hint, progress).await?;
+    let checking = progress.export_step(
+        "export.checking",
+        duration_hint.saturating_mul(2),
+        duration_hint,
+        total_work,
+    );
+    let measured_output = measure_output(context, &work, duration_hint, &checking).await?;
 
     write_text(staging, SRT_FILE, &plan.srt)?;
     write_text(staging, VTT_FILE, &plan.vtt)?;
@@ -418,6 +749,7 @@ async fn render_into(
     // the manifest is written keeps the artifact to what was published.
     fs::remove_dir_all(&fonts_dir)
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    unstage(&staged)?;
 
     let manifest = build_manifest(rendered, measured_input, measured_output, &work)?;
     let manifest_value = serde_json::to_value(&manifest)
@@ -591,6 +923,7 @@ fn build_manifest(
         rights: RightsAttestation {
             source_attestation: payload.source_attestation.clone(),
             gates_passed: payload.gates_passed.clone(),
+            assets: rendered.assets.to_vec(),
         },
         input_source_fingerprints: input_fingerprints(plan),
         program: ProgramReport {
@@ -629,4 +962,60 @@ fn input_fingerprints(plan: &RenderPlan) -> Vec<String> {
         .into_iter()
         .map(|(fingerprint, _)| fingerprint)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use clipmill_edit_ir::{EditDocument, Overlay, OverlayContent};
+
+    use super::pinned_emoji;
+
+    fn showing(codes: &[&str]) -> EditDocument {
+        EditDocument {
+            overlays: codes
+                .iter()
+                .enumerate()
+                .map(|(index, code)| Overlay {
+                    overlay_id: format!("ovl_{index}"),
+                    start_ticks: 0,
+                    end_ticks: 90_000,
+                    content: OverlayContent::Emoji {
+                        emoji: (*code).to_owned(),
+                        x: 500,
+                        y: 640,
+                        size: 180,
+                    },
+                })
+                .collect(),
+            ..EditDocument::default()
+        }
+    }
+
+    /// Each emoji a clip shows is staged once, from its pinned picture, with
+    /// the digest its recipe records; one that is not installed stops the
+    /// render with what to do about it, rather than drawing nothing.
+    #[test]
+    fn the_emoji_a_clip_shows_are_staged_from_their_pins() {
+        let dir = tempfile::tempdir().expect("a folder");
+        std::fs::write(dir.path().join("emoji_u1f525.png"), b"fire").expect("a picture");
+        let staged = pinned_emoji(dir.path(), &showing(&["1f525", "1f525"])).expect("installed");
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].0, "emoji_u1f525.png");
+        assert_eq!(staged[0].1, dir.path().join("emoji_u1f525.png"));
+        assert_eq!(
+            staged[0].2,
+            "sha256:dc9f28b12dd1818ee42ffc92ecb940386214598837348d30d3c6c0b7b57e34c9"
+        );
+        assert!(
+            pinned_emoji(dir.path(), &showing(&[]))
+                .expect("none")
+                .is_empty()
+        );
+        let missing = pinned_emoji(dir.path(), &showing(&["1f4a1"])).expect_err("not installed");
+        let told = format!("{missing:?}");
+        assert!(told.contains("Deterministic"), "{told}");
+        assert!(told.contains("fetch-ffmpeg"), "{told}");
+    }
 }

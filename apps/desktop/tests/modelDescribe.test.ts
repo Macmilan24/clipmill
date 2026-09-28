@@ -10,6 +10,7 @@ import {
   progressText,
   recommendedTitles,
   runsOn,
+  upgradeNote,
   workerWarning,
 } from '../src/models/describe.js';
 import { freshLibrary, libraryModel, modelJob } from './support/models.js';
@@ -84,7 +85,7 @@ describe('model library wording', () => {
 
   it('names why a job runs its model', () => {
     expect(jobReason(modelJob('asr', { selectedBy: 'chosen' }))).toBe('Your choice');
-    expect(jobReason(modelJob('asr', { selectedBy: 'measured' }))).toBe('Fastest measured');
+    expect(jobReason(modelJob('asr', { selectedBy: 'measured' }))).toBe('Measured here');
     expect(jobReason(modelJob('asr', { selectedBy: 'installed_fallback' }))).toBe('Stand-in');
     expect(jobReason(modelJob('asr', { selectedBy: 'portable' }))).toBe('Automatic');
     expect(jobReason(modelJob('asr', { selectedBy: 'unavailable' }))).toBe('No model');
@@ -105,6 +106,23 @@ describe('model library wording', () => {
       'Analyses use Whisper Base, because the default is not installed.',
     );
     expect(jobSentence(modelJob('asr'), undefined)).toBe('No model is registered for this job.');
+  });
+
+  it('offers a more accurate model this computer can run, and says how to use it', () => {
+    const qwen = libraryModel('qwen3-asr-mlx', { title: 'Qwen3-ASR 1.7B' });
+    const library = freshLibrary({ models: [libraryModel('whisper-base'), qwen] });
+    const job = modelJob('asr', { title: 'Transcription', moreAccurate: 'qwen3-asr-mlx' });
+    expect(upgradeNote(job, library)).toBe(
+      'Qwen3-ASR 1.7B is more accurate and this computer can run it. Download it below, then choose it for transcription.',
+    );
+    expect(
+      upgradeNote(job, freshLibrary({ models: [{ ...qwen, installState: 'installed' }] })),
+    ).toBe(
+      'Qwen3-ASR 1.7B is more accurate and this computer can run it. Choose it below to use it for transcription.',
+    );
+    expect(upgradeNote(modelJob('asr'), library)).toBeNull();
+    expect(upgradeNote(modelJob('asr', { moreAccurate: '' }), library)).toBeNull();
+    expect(upgradeNote(modelJob('asr', { moreAccurate: 'unknown' }), library)).toBeNull();
   });
 
   it('reports progress without inventing a total it was not given', () => {

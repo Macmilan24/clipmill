@@ -173,6 +173,7 @@ pub async fn register_source(
             body: Some(request::Body::RegisterSource(RegisterSourceRequest {
                 project_id: project_id.to_owned(),
                 absolute_path: path.to_owned(),
+                source_id: String::new(),
             })),
         },
     )
@@ -551,6 +552,7 @@ pub async fn submit_render(
         source_attestation: render.source_attestation.to_owned(),
         gates_passed: vec!["duration_60s".to_owned()],
         ai_assistance: render.ai_assistance.clone(),
+        format: None,
     }
     .encode_to_vec();
     let response = send(

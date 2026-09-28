@@ -78,6 +78,10 @@ pub mod error {
 #[doc = "                \"text\""]
 #[doc = "              ],"]
 #[doc = "              \"properties\": {"]
+#[doc = "                \"emphasis\": {"]
+#[doc = "                  \"description\": \"A key word, set in the accent colour so it stands out of its line.\","]
+#[doc = "                  \"type\": \"boolean\""]
+#[doc = "                },"]
 #[doc = "                \"end_ticks\": {"]
 #[doc = "                  \"type\": \"integer\","]
 #[doc = "                  \"minimum\": 1.0"]
@@ -105,6 +109,10 @@ pub mod error {
 #[doc = "      },"]
 #[doc = "      \"minItems\": 1"]
 #[doc = "    },"]
+#[doc = "    \"position\": {"]
+#[doc = "      \"description\": \"Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position.\","]
+#[doc = "      \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "    },"]
 #[doc = "    \"region\": {"]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"lower_safe\","]
@@ -129,6 +137,9 @@ pub struct CaptionCue {
     pub end_ticks: ::std::num::NonZeroU64,
     #[doc = "Line breaks are decided once and stored here — the parity keystone. Preview and render must never re-wrap text independently."]
     pub lines: ::std::vec::Vec<CaptionCueLinesItem>,
+    #[doc = "Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub position: ::std::option::Option<CaptionPosition>,
     pub region: CaptionCueRegion,
     pub start_ticks: u64,
 }
@@ -297,6 +308,10 @@ impl<'de> ::serde::Deserialize<'de> for CaptionCueCueId {
 #[doc = "          \"text\""]
 #[doc = "        ],"]
 #[doc = "        \"properties\": {"]
+#[doc = "          \"emphasis\": {"]
+#[doc = "            \"description\": \"A key word, set in the accent colour so it stands out of its line.\","]
+#[doc = "            \"type\": \"boolean\""]
+#[doc = "          },"]
 #[doc = "          \"end_ticks\": {"]
 #[doc = "            \"type\": \"integer\","]
 #[doc = "            \"minimum\": 1.0"]
@@ -347,6 +362,10 @@ impl CaptionCueLinesItem {
 #[doc = "    \"text\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"emphasis\": {"]
+#[doc = "      \"description\": \"A key word, set in the accent colour so it stands out of its line.\","]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
 #[doc = "    \"end_ticks\": {"]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 1.0"]
@@ -372,6 +391,9 @@ impl CaptionCueLinesItem {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct CaptionCueLinesItemWordsItem {
+    #[doc = "A key word, set in the accent colour so it stands out of its line."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub emphasis: ::std::option::Option<bool>,
     pub end_ticks: ::std::num::NonZeroU64,
     pub start_ticks: u64,
     pub text: CaptionCueLinesItemWordsItemText,
@@ -597,6 +619,45 @@ impl ::std::convert::TryFrom<::std::string::String> for CaptionCueRegion {
         value.parse()
     }
 }
+#[doc = "A caption's centre on the frame, in thousandths of its width and height."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"A caption's centre on the frame, in thousandths of its width and height.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"x\","]
+#[doc = "    \"y\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"x\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 1000.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"y\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 1000.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptionPosition {
+    pub x: i64,
+    pub y: i64,
+}
+impl CaptionPosition {
+    pub fn builder() -> builder::CaptionPosition {
+        Default::default()
+    }
+}
 #[doc = "Integer pixel rectangle in the source frame's coordinate space."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -646,6 +707,322 @@ impl CropRect {
         Default::default()
     }
 }
+#[doc = "B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"content\","]
+#[doc = "    \"cutaway_id\","]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"start_ticks\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"content\": {"]
+#[doc = "      \"oneOf\": ["]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"asset\","]
+#[doc = "            \"kind\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"asset\": {"]
+#[doc = "              \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"picture\""]
+#[doc = "            },"]
+#[doc = "            \"push_in\": {"]
+#[doc = "              \"description\": \"Move slowly closer, eight per cent by its last frame.\","]
+#[doc = "              \"type\": \"boolean\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"in_ticks\","]
+#[doc = "            \"kind\","]
+#[doc = "            \"source_fingerprint\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"in_ticks\": {"]
+#[doc = "              \"description\": \"Where in the recording it starts.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"footage\""]
+#[doc = "            },"]
+#[doc = "            \"source_fingerprint\": {"]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        }"]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"cutaway_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"description\": \"At least a fifth of a second after it starts.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 18000.0"]
+#[doc = "    },"]
+#[doc = "    \"fit\": {"]
+#[doc = "      \"description\": \"fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"fill\","]
+#[doc = "        \"fit\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Cutaway {
+    pub content: CutawayContent,
+    pub cutaway_id: CutawayCutawayId,
+    #[doc = "At least a fifth of a second after it starts."]
+    pub end_ticks: i64,
+    #[doc = "fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub fit: ::std::option::Option<CutawayFit>,
+    pub start_ticks: u64,
+}
+impl Cutaway {
+    pub fn builder() -> builder::Cutaway {
+        Default::default()
+    }
+}
+#[doc = "`CutawayContent`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"asset\","]
+#[doc = "        \"kind\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"asset\": {"]
+#[doc = "          \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"picture\""]
+#[doc = "        },"]
+#[doc = "        \"push_in\": {"]
+#[doc = "          \"description\": \"Move slowly closer, eight per cent by its last frame.\","]
+#[doc = "          \"type\": \"boolean\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"in_ticks\","]
+#[doc = "        \"kind\","]
+#[doc = "        \"source_fingerprint\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"in_ticks\": {"]
+#[doc = "          \"description\": \"Where in the recording it starts.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"footage\""]
+#[doc = "        },"]
+#[doc = "        \"source_fingerprint\": {"]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum CutawayContent {
+    #[serde(rename = "picture")]
+    Picture {
+        #[doc = "The picture's content hash; the clip's assets list it."]
+        asset: Sha256,
+        #[doc = "Move slowly closer, eight per cent by its last frame."]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        push_in: ::std::option::Option<bool>,
+    },
+    #[serde(rename = "footage")]
+    Footage {
+        #[doc = "Where in the recording it starts."]
+        in_ticks: u64,
+        source_fingerprint: Sha256,
+    },
+}
+#[doc = "`CutawayCutawayId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CutawayCutawayId(::std::string::String);
+impl ::std::ops::Deref for CutawayCutawayId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CutawayCutawayId> for ::std::string::String {
+    fn from(value: CutawayCutawayId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CutawayCutawayId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CutawayCutawayId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CutawayCutawayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CutawayCutawayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CutawayCutawayId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"fill\","]
+#[doc = "    \"fit\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum CutawayFit {
+    #[serde(rename = "fill")]
+    Fill,
+    #[serde(rename = "fit")]
+    Fit,
+}
+impl ::std::fmt::Display for CutawayFit {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Fill => f.write_str("fill"),
+            Self::Fit => f.write_str("fit"),
+        }
+    }
+}
+impl ::std::str::FromStr for CutawayFit {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "fill" => Ok(Self::Fill),
+            "fit" => Ok(Self::Fit),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CutawayFit {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CutawayFit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CutawayFit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 #[doc = "The edit document (book ch. 17): a versioned, multi-track, non-destructive timeline that the preview, the render compiler, and later the NLE exporter all read. No subsystem may render, preview, or export from any other representation. All time is integer ticks at 1/90000 (D06); a segment's program position is the sum of the durations before it and is never stored, so a trim cannot leave a stale offset behind."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -691,6 +1068,13 @@ impl CropRect {
 #[doc = "        \"true_peak_dbtp\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"cleanup\": {"]
+#[doc = "          \"description\": \"The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"light\","]
+#[doc = "            \"strong\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"gain_curve\": {"]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
@@ -711,12 +1095,114 @@ impl CropRect {
 #[doc = "            \"additionalProperties\": false"]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"music\": {"]
+#[doc = "          \"description\": \"Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"asset\","]
+#[doc = "            \"duck_db\","]
+#[doc = "            \"level_db\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"asset\": {"]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            },"]
+#[doc = "            \"duck_db\": {"]
+#[doc = "              \"description\": \"How much further it drops under speech.\","]
+#[doc = "              \"type\": \"number\","]
+#[doc = "              \"maximum\": 0.0,"]
+#[doc = "              \"minimum\": -30.0"]
+#[doc = "            },"]
+#[doc = "            \"level_db\": {"]
+#[doc = "              \"description\": \"Its level where nobody speaks.\","]
+#[doc = "              \"type\": \"number\","]
+#[doc = "              \"maximum\": 0.0,"]
+#[doc = "              \"minimum\": -40.0"]
+#[doc = "            },"]
+#[doc = "            \"offset_ticks\": {"]
+#[doc = "              \"description\": \"Where in the sound the clip starts.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
 #[doc = "        \"target_lufs\": {"]
 #[doc = "          \"description\": \"Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.\","]
 #[doc = "          \"type\": \"number\""]
 #[doc = "        },"]
 #[doc = "        \"true_peak_dbtp\": {"]
 #[doc = "          \"type\": \"number\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    \"brand\": {"]
+#[doc = "      \"description\": \"What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"minProperties\": 1,"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"logo\": {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"asset\","]
+#[doc = "            \"corner\","]
+#[doc = "            \"opacity\","]
+#[doc = "            \"size\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"asset\": {"]
+#[doc = "              \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "              \"$ref\": \"#/$defs/sha256\""]
+#[doc = "            },"]
+#[doc = "            \"corner\": {"]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"top_left\","]
+#[doc = "                \"top_right\","]
+#[doc = "                \"bottom_left\","]
+#[doc = "                \"bottom_right\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"opacity\": {"]
+#[doc = "              \"description\": \"In percent.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 100.0,"]
+#[doc = "              \"minimum\": 20.0"]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"description\": \"Its longer side as a share of the frame's short side, per mille.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 300.0,"]
+#[doc = "              \"minimum\": 60.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        \"progress\": {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"colour\","]
+#[doc = "            \"edge\","]
+#[doc = "            \"thickness\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"colour\": {"]
+#[doc = "              \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "            },"]
+#[doc = "            \"edge\": {"]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"top\","]
+#[doc = "                \"bottom\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"thickness\": {"]
+#[doc = "              \"description\": \"At the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 40.0,"]
+#[doc = "              \"minimum\": 4.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
@@ -745,14 +1231,67 @@ impl CropRect {
 #[doc = "          \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
 #[doc = "          \"type\": \"object\","]
 #[doc = "          \"properties\": {"]
+#[doc = "            \"accent\": {"]
+#[doc = "              \"description\": \"The colour key words are set in.\","]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"font_family\": {"]
+#[doc = "              \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"Inter\","]
+#[doc = "                \"Montserrat Black\","]
+#[doc = "                \"Poppins ExtraBold\","]
+#[doc = "                \"Anton\","]
+#[doc = "                \"Bebas Neue\","]
+#[doc = "                \"Luckiest Guy\","]
+#[doc = "                \"DM Serif Display\""]
+#[doc = "              ]"]
+#[doc = "            },"]
 #[doc = "            \"font_size\": {"]
 #[doc = "              \"type\": \"integer\","]
 #[doc = "              \"maximum\": 160.0,"]
 #[doc = "              \"minimum\": 24.0"]
 #[doc = "            },"]
+#[doc = "            \"highlight_spoken_word\": {"]
+#[doc = "              \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
+#[doc = "              \"type\": \"boolean\""]
+#[doc = "            },"]
+#[doc = "            \"highlight_style\": {"]
+#[doc = "              \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"fill\","]
+#[doc = "                \"word\","]
+#[doc = "                \"box\","]
+#[doc = "                \"pop\","]
+#[doc = "                \"underline\""]
+#[doc = "              ]"]
+#[doc = "            },"]
 #[doc = "            \"outline\": {"]
 #[doc = "              \"type\": \"string\","]
 #[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"outline_width\": {"]
+#[doc = "              \"description\": \"Outline thickness at the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 16.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"plate_opacity\": {"]
+#[doc = "              \"description\": \"How opaque a boxed look's plate is, in percent.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 100.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"position\": {"]
+#[doc = "              \"description\": \"Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.\","]
+#[doc = "              \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "            },"]
+#[doc = "            \"shadow_depth\": {"]
+#[doc = "              \"description\": \"Drop-shadow offset at the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 12.0,"]
+#[doc = "              \"minimum\": 0.0"]
 #[doc = "            },"]
 #[doc = "            \"spoken\": {"]
 #[doc = "              \"type\": \"string\","]
@@ -768,6 +1307,12 @@ impl CropRect {
 #[doc = "            \"unspoken\": {"]
 #[doc = "              \"type\": \"string\","]
 #[doc = "              \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"words_on_screen\": {"]
+#[doc = "              \"description\": \"The most words the on-screen captions were last grouped into.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 8.0,"]
+#[doc = "              \"minimum\": 1.0"]
 #[doc = "            }"]
 #[doc = "          },"]
 #[doc = "          \"additionalProperties\": false"]
@@ -778,6 +1323,13 @@ impl CropRect {
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    \"overlays\": {"]
+#[doc = "      \"description\": \"Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/overlay\""]
+#[doc = "      }"]
 #[doc = "    },"]
 #[doc = "    \"rationale\": {"]
 #[doc = "      \"description\": \"Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels.\","]
@@ -811,17 +1363,39 @@ impl CropRect {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"title\": {"]
+#[doc = "      \"description\": \"What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"maxLength\": 120,"]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
 #[doc = "    \"version\": {"]
 #[doc = "      \"const\": \"ir/1\""]
 #[doc = "    },"]
 #[doc = "    \"video\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"cutaways\": {"]
+#[doc = "          \"description\": \"Moments covered by another picture while the voice carries on, in program order, none overlapping.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"$ref\": \"#/$defs/cutaway\""]
+#[doc = "          }"]
+#[doc = "        },"]
 #[doc = "        \"segments\": {"]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
 #[doc = "            \"$ref\": \"#/$defs/videoSegment\""]
 #[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"shape\": {"]
+#[doc = "          \"description\": \"The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"vertical\","]
+#[doc = "            \"portrait\","]
+#[doc = "            \"square\","]
+#[doc = "            \"landscape\""]
+#[doc = "          ]"]
 #[doc = "        },"]
 #[doc = "        \"transition_ticks\": {"]
 #[doc = "          \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
@@ -844,10 +1418,18 @@ pub struct EditIr {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub assets: ::std::vec::Vec<EditIrAssetsItem>,
     pub audio: EditIrAudio,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub brand: ::std::option::Option<EditIrBrand>,
     pub captions: EditIrCaptions,
+    #[doc = "Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub overlays: ::std::vec::Vec<Overlay>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub rationale: ::std::option::Option<EditIrRationale>,
     pub timebase: EditIrTimebase,
+    #[doc = "What the clip is called, when somebody named it. Never consumed by any render path, like the rationale."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub title: ::std::option::Option<EditIrTitle>,
     pub version: ::serde_json::Value,
     pub video: EditIrVideo,
 }
@@ -902,6 +1484,13 @@ impl EditIrAssetsItem {
 #[doc = "    \"true_peak_dbtp\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"cleanup\": {"]
+#[doc = "      \"description\": \"The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"light\","]
+#[doc = "        \"strong\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"gain_curve\": {"]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
@@ -922,6 +1511,38 @@ impl EditIrAssetsItem {
 #[doc = "        \"additionalProperties\": false"]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"music\": {"]
+#[doc = "      \"description\": \"Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"asset\","]
+#[doc = "        \"duck_db\","]
+#[doc = "        \"level_db\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"asset\": {"]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        },"]
+#[doc = "        \"duck_db\": {"]
+#[doc = "          \"description\": \"How much further it drops under speech.\","]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"maximum\": 0.0,"]
+#[doc = "          \"minimum\": -30.0"]
+#[doc = "        },"]
+#[doc = "        \"level_db\": {"]
+#[doc = "          \"description\": \"Its level where nobody speaks.\","]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"maximum\": 0.0,"]
+#[doc = "          \"minimum\": -40.0"]
+#[doc = "        },"]
+#[doc = "        \"offset_ticks\": {"]
+#[doc = "          \"description\": \"Where in the sound the clip starts.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"target_lufs\": {"]
 #[doc = "      \"description\": \"Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.\","]
 #[doc = "      \"type\": \"number\""]
@@ -937,8 +1558,13 @@ impl EditIrAssetsItem {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct EditIrAudio {
+    #[doc = "The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub cleanup: ::std::option::Option<EditIrAudioCleanup>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub gain_curve: ::std::vec::Vec<EditIrAudioGainCurveItem>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub music: ::std::option::Option<EditIrAudioMusic>,
     #[doc = "Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued."]
     pub target_lufs: f64,
     pub true_peak_dbtp: f64,
@@ -946,6 +1572,78 @@ pub struct EditIrAudio {
 impl EditIrAudio {
     pub fn builder() -> builder::EditIrAudio {
         Default::default()
+    }
+}
+#[doc = "The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"light\","]
+#[doc = "    \"strong\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrAudioCleanup {
+    #[serde(rename = "light")]
+    Light,
+    #[serde(rename = "strong")]
+    Strong,
+}
+impl ::std::fmt::Display for EditIrAudioCleanup {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Light => f.write_str("light"),
+            Self::Strong => f.write_str("strong"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrAudioCleanup {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "light" => Ok(Self::Light),
+            "strong" => Ok(Self::Strong),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrAudioCleanup {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrAudioCleanup {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrAudioCleanup {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`EditIrAudioGainCurveItem`"]
@@ -983,6 +1681,417 @@ impl EditIrAudioGainCurveItem {
         Default::default()
     }
 }
+#[doc = "Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"asset\","]
+#[doc = "    \"duck_db\","]
+#[doc = "    \"level_db\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"asset\": {"]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
+#[doc = "    },"]
+#[doc = "    \"duck_db\": {"]
+#[doc = "      \"description\": \"How much further it drops under speech.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 0.0,"]
+#[doc = "      \"minimum\": -30.0"]
+#[doc = "    },"]
+#[doc = "    \"level_db\": {"]
+#[doc = "      \"description\": \"Its level where nobody speaks.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 0.0,"]
+#[doc = "      \"minimum\": -40.0"]
+#[doc = "    },"]
+#[doc = "    \"offset_ticks\": {"]
+#[doc = "      \"description\": \"Where in the sound the clip starts.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrAudioMusic {
+    pub asset: Sha256,
+    #[doc = "How much further it drops under speech."]
+    pub duck_db: f64,
+    #[doc = "Its level where nobody speaks."]
+    pub level_db: f64,
+    #[doc = "Where in the sound the clip starts."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub offset_ticks: ::std::option::Option<u64>,
+}
+impl EditIrAudioMusic {
+    pub fn builder() -> builder::EditIrAudioMusic {
+        Default::default()
+    }
+}
+#[doc = "What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"minProperties\": 1,"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"logo\": {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"asset\","]
+#[doc = "        \"corner\","]
+#[doc = "        \"opacity\","]
+#[doc = "        \"size\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"asset\": {"]
+#[doc = "          \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "          \"$ref\": \"#/$defs/sha256\""]
+#[doc = "        },"]
+#[doc = "        \"corner\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"top_left\","]
+#[doc = "            \"top_right\","]
+#[doc = "            \"bottom_left\","]
+#[doc = "            \"bottom_right\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"opacity\": {"]
+#[doc = "          \"description\": \"In percent.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 100.0,"]
+#[doc = "          \"minimum\": 20.0"]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"description\": \"Its longer side as a share of the frame's short side, per mille.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 300.0,"]
+#[doc = "          \"minimum\": 60.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    \"progress\": {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"colour\","]
+#[doc = "        \"edge\","]
+#[doc = "        \"thickness\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"colour\": {"]
+#[doc = "          \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "        },"]
+#[doc = "        \"edge\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"top\","]
+#[doc = "            \"bottom\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"thickness\": {"]
+#[doc = "          \"description\": \"At the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 40.0,"]
+#[doc = "          \"minimum\": 4.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrBrand {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub logo: ::std::option::Option<EditIrBrandLogo>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub progress: ::std::option::Option<EditIrBrandProgress>,
+}
+impl ::std::default::Default for EditIrBrand {
+    fn default() -> Self {
+        Self {
+            logo: Default::default(),
+            progress: Default::default(),
+        }
+    }
+}
+impl EditIrBrand {
+    pub fn builder() -> builder::EditIrBrand {
+        Default::default()
+    }
+}
+#[doc = "`EditIrBrandLogo`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"asset\","]
+#[doc = "    \"corner\","]
+#[doc = "    \"opacity\","]
+#[doc = "    \"size\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"asset\": {"]
+#[doc = "      \"description\": \"The picture's content hash; the clip's assets list it.\","]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
+#[doc = "    },"]
+#[doc = "    \"corner\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"top_left\","]
+#[doc = "        \"top_right\","]
+#[doc = "        \"bottom_left\","]
+#[doc = "        \"bottom_right\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"opacity\": {"]
+#[doc = "      \"description\": \"In percent.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 100.0,"]
+#[doc = "      \"minimum\": 20.0"]
+#[doc = "    },"]
+#[doc = "    \"size\": {"]
+#[doc = "      \"description\": \"Its longer side as a share of the frame's short side, per mille.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 300.0,"]
+#[doc = "      \"minimum\": 60.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrBrandLogo {
+    #[doc = "The picture's content hash; the clip's assets list it."]
+    pub asset: Sha256,
+    pub corner: EditIrBrandLogoCorner,
+    #[doc = "In percent."]
+    pub opacity: i64,
+    #[doc = "Its longer side as a share of the frame's short side, per mille."]
+    pub size: i64,
+}
+impl EditIrBrandLogo {
+    pub fn builder() -> builder::EditIrBrandLogo {
+        Default::default()
+    }
+}
+#[doc = "`EditIrBrandLogoCorner`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"top_left\","]
+#[doc = "    \"top_right\","]
+#[doc = "    \"bottom_left\","]
+#[doc = "    \"bottom_right\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrBrandLogoCorner {
+    #[serde(rename = "top_left")]
+    TopLeft,
+    #[serde(rename = "top_right")]
+    TopRight,
+    #[serde(rename = "bottom_left")]
+    BottomLeft,
+    #[serde(rename = "bottom_right")]
+    BottomRight,
+}
+impl ::std::fmt::Display for EditIrBrandLogoCorner {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::TopLeft => f.write_str("top_left"),
+            Self::TopRight => f.write_str("top_right"),
+            Self::BottomLeft => f.write_str("bottom_left"),
+            Self::BottomRight => f.write_str("bottom_right"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrBrandLogoCorner {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "top_left" => Ok(Self::TopLeft),
+            "top_right" => Ok(Self::TopRight),
+            "bottom_left" => Ok(Self::BottomLeft),
+            "bottom_right" => Ok(Self::BottomRight),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrBrandLogoCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrBrandLogoCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrBrandLogoCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`EditIrBrandProgress`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"colour\","]
+#[doc = "    \"edge\","]
+#[doc = "    \"thickness\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"colour\": {"]
+#[doc = "      \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "    },"]
+#[doc = "    \"edge\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"top\","]
+#[doc = "        \"bottom\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"thickness\": {"]
+#[doc = "      \"description\": \"At the 1920-pixel design height.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 40.0,"]
+#[doc = "      \"minimum\": 4.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrBrandProgress {
+    pub colour: HexColour,
+    pub edge: EditIrBrandProgressEdge,
+    #[doc = "At the 1920-pixel design height."]
+    pub thickness: i64,
+}
+impl EditIrBrandProgress {
+    pub fn builder() -> builder::EditIrBrandProgress {
+        Default::default()
+    }
+}
+#[doc = "`EditIrBrandProgressEdge`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"top\","]
+#[doc = "    \"bottom\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrBrandProgressEdge {
+    #[serde(rename = "top")]
+    Top,
+    #[serde(rename = "bottom")]
+    Bottom,
+}
+impl ::std::fmt::Display for EditIrBrandProgressEdge {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Top => f.write_str("top"),
+            Self::Bottom => f.write_str("bottom"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrBrandProgressEdge {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "top" => Ok(Self::Top),
+            "bottom" => Ok(Self::Bottom),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrBrandProgressEdge {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrBrandProgressEdge {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrBrandProgressEdge {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 #[doc = "`EditIrCaptions`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1012,14 +2121,67 @@ impl EditIrAudioGainCurveItem {
 #[doc = "      \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"accent\": {"]
+#[doc = "          \"description\": \"The colour key words are set in.\","]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"font_family\": {"]
+#[doc = "          \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"Inter\","]
+#[doc = "            \"Montserrat Black\","]
+#[doc = "            \"Poppins ExtraBold\","]
+#[doc = "            \"Anton\","]
+#[doc = "            \"Bebas Neue\","]
+#[doc = "            \"Luckiest Guy\","]
+#[doc = "            \"DM Serif Display\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"font_size\": {"]
 #[doc = "          \"type\": \"integer\","]
 #[doc = "          \"maximum\": 160.0,"]
 #[doc = "          \"minimum\": 24.0"]
 #[doc = "        },"]
+#[doc = "        \"highlight_spoken_word\": {"]
+#[doc = "          \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
+#[doc = "          \"type\": \"boolean\""]
+#[doc = "        },"]
+#[doc = "        \"highlight_style\": {"]
+#[doc = "          \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"fill\","]
+#[doc = "            \"word\","]
+#[doc = "            \"box\","]
+#[doc = "            \"pop\","]
+#[doc = "            \"underline\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"outline\": {"]
 #[doc = "          \"type\": \"string\","]
 #[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"outline_width\": {"]
+#[doc = "          \"description\": \"Outline thickness at the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 16.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"plate_opacity\": {"]
+#[doc = "          \"description\": \"How opaque a boxed look's plate is, in percent.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 100.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"position\": {"]
+#[doc = "          \"description\": \"Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.\","]
+#[doc = "          \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "        },"]
+#[doc = "        \"shadow_depth\": {"]
+#[doc = "          \"description\": \"Drop-shadow offset at the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 12.0,"]
+#[doc = "          \"minimum\": 0.0"]
 #[doc = "        },"]
 #[doc = "        \"spoken\": {"]
 #[doc = "          \"type\": \"string\","]
@@ -1035,6 +2197,12 @@ impl EditIrAudioGainCurveItem {
 #[doc = "        \"unspoken\": {"]
 #[doc = "          \"type\": \"string\","]
 #[doc = "          \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"words_on_screen\": {"]
+#[doc = "          \"description\": \"The most words the on-screen captions were last grouped into.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 8.0,"]
+#[doc = "          \"minimum\": 1.0"]
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
@@ -1076,14 +2244,67 @@ impl EditIrCaptions {
 #[doc = "  \"description\": \"Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.\","]
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"accent\": {"]
+#[doc = "      \"description\": \"The colour key words are set in.\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"font_family\": {"]
+#[doc = "      \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"Inter\","]
+#[doc = "        \"Montserrat Black\","]
+#[doc = "        \"Poppins ExtraBold\","]
+#[doc = "        \"Anton\","]
+#[doc = "        \"Bebas Neue\","]
+#[doc = "        \"Luckiest Guy\","]
+#[doc = "        \"DM Serif Display\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"font_size\": {"]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"maximum\": 160.0,"]
 #[doc = "      \"minimum\": 24.0"]
 #[doc = "    },"]
+#[doc = "    \"highlight_spoken_word\": {"]
+#[doc = "      \"description\": \"Override the preset's spoken-word highlight independently of its typography.\","]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
+#[doc = "    \"highlight_style\": {"]
+#[doc = "      \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"fill\","]
+#[doc = "        \"word\","]
+#[doc = "        \"box\","]
+#[doc = "        \"pop\","]
+#[doc = "        \"underline\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"outline\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"outline_width\": {"]
+#[doc = "      \"description\": \"Outline thickness at the 1920-pixel design height.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 16.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"plate_opacity\": {"]
+#[doc = "      \"description\": \"How opaque a boxed look's plate is, in percent.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 100.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"position\": {"]
+#[doc = "      \"description\": \"Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.\","]
+#[doc = "      \"$ref\": \"#/$defs/captionPosition\""]
+#[doc = "    },"]
+#[doc = "    \"shadow_depth\": {"]
+#[doc = "      \"description\": \"Drop-shadow offset at the 1920-pixel design height.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 12.0,"]
+#[doc = "      \"minimum\": 0.0"]
 #[doc = "    },"]
 #[doc = "    \"spoken\": {"]
 #[doc = "      \"type\": \"string\","]
@@ -1099,6 +2320,12 @@ impl EditIrCaptions {
 #[doc = "    \"unspoken\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "    },"]
+#[doc = "    \"words_on_screen\": {"]
+#[doc = "      \"description\": \"The most words the on-screen captions were last grouped into.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 8.0,"]
+#[doc = "      \"minimum\": 1.0"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -1108,31 +2335,320 @@ impl EditIrCaptions {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct EditIrCaptionsOptions {
+    #[doc = "The colour key words are set in."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub accent: ::std::option::Option<EditIrCaptionsOptionsAccent>,
+    #[doc = "One of the caption fonts, by family name. Absent is the look's own."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub font_family: ::std::option::Option<EditIrCaptionsOptionsFontFamily>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub font_size: ::std::option::Option<i64>,
+    #[doc = "Override the preset's spoken-word highlight independently of its typography."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub highlight_spoken_word: ::std::option::Option<bool>,
+    #[doc = "How the spoken word is marked. Absent is the sweep."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub highlight_style: ::std::option::Option<EditIrCaptionsOptionsHighlightStyle>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub outline: ::std::option::Option<EditIrCaptionsOptionsOutline>,
+    #[doc = "Outline thickness at the 1920-pixel design height."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub outline_width: ::std::option::Option<i64>,
+    #[doc = "How opaque a boxed look's plate is, in percent."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub plate_opacity: ::std::option::Option<i64>,
+    #[doc = "Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub position: ::std::option::Option<CaptionPosition>,
+    #[doc = "Drop-shadow offset at the 1920-pixel design height."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub shadow_depth: ::std::option::Option<i64>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub spoken: ::std::option::Option<EditIrCaptionsOptionsSpoken>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub text_case: ::std::option::Option<EditIrCaptionsOptionsTextCase>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub unspoken: ::std::option::Option<EditIrCaptionsOptionsUnspoken>,
+    #[doc = "The most words the on-screen captions were last grouped into."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub words_on_screen: ::std::option::Option<::std::num::NonZeroU64>,
 }
 impl ::std::default::Default for EditIrCaptionsOptions {
     fn default() -> Self {
         Self {
+            accent: Default::default(),
+            font_family: Default::default(),
             font_size: Default::default(),
+            highlight_spoken_word: Default::default(),
+            highlight_style: Default::default(),
             outline: Default::default(),
+            outline_width: Default::default(),
+            plate_opacity: Default::default(),
+            position: Default::default(),
+            shadow_depth: Default::default(),
             spoken: Default::default(),
             text_case: Default::default(),
             unspoken: Default::default(),
+            words_on_screen: Default::default(),
         }
     }
 }
 impl EditIrCaptionsOptions {
     pub fn builder() -> builder::EditIrCaptionsOptions {
         Default::default()
+    }
+}
+#[doc = "The colour key words are set in."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The colour key words are set in.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9a-fA-F]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrCaptionsOptionsAccent(::std::string::String);
+impl ::std::ops::Deref for EditIrCaptionsOptionsAccent {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrCaptionsOptionsAccent> for ::std::string::String {
+    fn from(value: EditIrCaptionsOptionsAccent) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsAccent {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9a-fA-F]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9a-fA-F]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsAccent {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsAccent {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsAccent {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrCaptionsOptionsAccent {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "One of the caption fonts, by family name. Absent is the look's own."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"One of the caption fonts, by family name. Absent is the look's own.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"Inter\","]
+#[doc = "    \"Montserrat Black\","]
+#[doc = "    \"Poppins ExtraBold\","]
+#[doc = "    \"Anton\","]
+#[doc = "    \"Bebas Neue\","]
+#[doc = "    \"Luckiest Guy\","]
+#[doc = "    \"DM Serif Display\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrCaptionsOptionsFontFamily {
+    Inter,
+    #[serde(rename = "Montserrat Black")]
+    MontserratBlack,
+    #[serde(rename = "Poppins ExtraBold")]
+    PoppinsExtraBold,
+    Anton,
+    #[serde(rename = "Bebas Neue")]
+    BebasNeue,
+    #[serde(rename = "Luckiest Guy")]
+    LuckiestGuy,
+    #[serde(rename = "DM Serif Display")]
+    DmSerifDisplay,
+}
+impl ::std::fmt::Display for EditIrCaptionsOptionsFontFamily {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Inter => f.write_str("Inter"),
+            Self::MontserratBlack => f.write_str("Montserrat Black"),
+            Self::PoppinsExtraBold => f.write_str("Poppins ExtraBold"),
+            Self::Anton => f.write_str("Anton"),
+            Self::BebasNeue => f.write_str("Bebas Neue"),
+            Self::LuckiestGuy => f.write_str("Luckiest Guy"),
+            Self::DmSerifDisplay => f.write_str("DM Serif Display"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsFontFamily {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "Inter" => Ok(Self::Inter),
+            "Montserrat Black" => Ok(Self::MontserratBlack),
+            "Poppins ExtraBold" => Ok(Self::PoppinsExtraBold),
+            "Anton" => Ok(Self::Anton),
+            "Bebas Neue" => Ok(Self::BebasNeue),
+            "Luckiest Guy" => Ok(Self::LuckiestGuy),
+            "DM Serif Display" => Ok(Self::DmSerifDisplay),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsFontFamily {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsFontFamily {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsFontFamily {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "How the spoken word is marked. Absent is the sweep."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"How the spoken word is marked. Absent is the sweep.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"fill\","]
+#[doc = "    \"word\","]
+#[doc = "    \"box\","]
+#[doc = "    \"pop\","]
+#[doc = "    \"underline\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrCaptionsOptionsHighlightStyle {
+    #[serde(rename = "fill")]
+    Fill,
+    #[serde(rename = "word")]
+    Word,
+    #[serde(rename = "box")]
+    Box,
+    #[serde(rename = "pop")]
+    Pop,
+    #[serde(rename = "underline")]
+    Underline,
+}
+impl ::std::fmt::Display for EditIrCaptionsOptionsHighlightStyle {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Fill => f.write_str("fill"),
+            Self::Word => f.write_str("word"),
+            Self::Box => f.write_str("box"),
+            Self::Pop => f.write_str("pop"),
+            Self::Underline => f.write_str("underline"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrCaptionsOptionsHighlightStyle {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "fill" => Ok(Self::Fill),
+            "word" => Ok(Self::Word),
+            "box" => Ok(Self::Box),
+            "pop" => Ok(Self::Pop),
+            "underline" => Ok(Self::Underline),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrCaptionsOptionsHighlightStyle {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrCaptionsOptionsHighlightStyle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrCaptionsOptionsHighlightStyle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`EditIrCaptionsOptionsOutline`"]
@@ -1499,6 +3015,79 @@ impl EditIrTimebase {
         Default::default()
     }
 }
+#[doc = "What the clip is called, when somebody named it. Never consumed by any render path, like the rationale."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 120,"]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrTitle(::std::string::String);
+impl ::std::ops::Deref for EditIrTitle {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrTitle> for ::std::string::String {
+    fn from(value: EditIrTitle) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrTitle {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 120usize {
+            return Err("longer than 120 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrTitle {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "`EditIrVideo`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1507,11 +3096,27 @@ impl EditIrTimebase {
 #[doc = "{"]
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"cutaways\": {"]
+#[doc = "      \"description\": \"Moments covered by another picture while the voice carries on, in program order, none overlapping.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/cutaway\""]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"segments\": {"]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
 #[doc = "        \"$ref\": \"#/$defs/videoSegment\""]
 #[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"shape\": {"]
+#[doc = "      \"description\": \"The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"vertical\","]
+#[doc = "        \"portrait\","]
+#[doc = "        \"square\","]
+#[doc = "        \"landscape\""]
+#[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"transition_ticks\": {"]
 #[doc = "      \"description\": \"Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.\","]
@@ -1527,8 +3132,14 @@ impl EditIrTimebase {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct EditIrVideo {
+    #[doc = "Moments covered by another picture while the voice carries on, in program order, none overlapping."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub cutaways: ::std::vec::Vec<Cutaway>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub segments: ::std::vec::Vec<VideoSegment>,
+    #[doc = "The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub shape: ::std::option::Option<EditIrVideoShape>,
     #[doc = "Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged."]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub transition_ticks: ::std::option::Option<i64>,
@@ -1536,7 +3147,9 @@ pub struct EditIrVideo {
 impl ::std::default::Default for EditIrVideo {
     fn default() -> Self {
         Self {
+            cutaways: Default::default(),
             segments: Default::default(),
+            shape: Default::default(),
             transition_ticks: Default::default(),
         }
     }
@@ -1544,6 +3157,733 @@ impl ::std::default::Default for EditIrVideo {
 impl EditIrVideo {
     pub fn builder() -> builder::EditIrVideo {
         Default::default()
+    }
+}
+#[doc = "The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"vertical\","]
+#[doc = "    \"portrait\","]
+#[doc = "    \"square\","]
+#[doc = "    \"landscape\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrVideoShape {
+    #[serde(rename = "vertical")]
+    Vertical,
+    #[serde(rename = "portrait")]
+    Portrait,
+    #[serde(rename = "square")]
+    Square,
+    #[serde(rename = "landscape")]
+    Landscape,
+}
+impl ::std::fmt::Display for EditIrVideoShape {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Vertical => f.write_str("vertical"),
+            Self::Portrait => f.write_str("portrait"),
+            Self::Square => f.write_str("square"),
+            Self::Landscape => f.write_str("landscape"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrVideoShape {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "vertical" => Ok(Self::Vertical),
+            "portrait" => Ok(Self::Portrait),
+            "square" => Ok(Self::Square),
+            "landscape" => Ok(Self::Landscape),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrVideoShape {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrVideoShape {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrVideoShape {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`HexColour`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HexColour(::std::string::String);
+impl ::std::ops::Deref for HexColour {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HexColour> for ::std::string::String {
+    fn from(value: HexColour) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for HexColour {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9A-Fa-f]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9A-Fa-f]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HexColour {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for HexColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HexColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HexColour {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "Something laid over the program for a span of it."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Something laid over the program for a span of it.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"content\","]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"overlay_id\","]
+#[doc = "    \"start_ticks\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"content\": {"]
+#[doc = "      \"oneOf\": ["]
+#[doc = "        {"]
+#[doc = "          \"description\": \"Words set in the clip's caption font by the caption renderer. Lines break only where the text says.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"colour\","]
+#[doc = "            \"kind\","]
+#[doc = "            \"size\","]
+#[doc = "            \"text\","]
+#[doc = "            \"x\","]
+#[doc = "            \"y\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"colour\": {"]
+#[doc = "              \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"text\""]
+#[doc = "            },"]
+#[doc = "            \"plate\": {"]
+#[doc = "              \"description\": \"An opaque plate behind the text. Absent draws an outline.\","]
+#[doc = "              \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "            },"]
+#[doc = "            \"role\": {"]
+#[doc = "              \"description\": \"A hook opens the clip and names what it is about. Absent is a label.\","]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"hook\","]
+#[doc = "                \"label\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"description\": \"Its size at the 1920-pixel design height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 240.0,"]
+#[doc = "              \"minimum\": 24.0"]
+#[doc = "            },"]
+#[doc = "            \"text\": {"]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"maxLength\": 160,"]
+#[doc = "              \"minLength\": 1,"]
+#[doc = "              \"pattern\": \"^[^{}\\\\\\\\]*$\""]
+#[doc = "            },"]
+#[doc = "            \"x\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"y\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        {"]
+#[doc = "          \"description\": \"A colour emoji, drawn from its pinned picture.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"emoji\","]
+#[doc = "            \"kind\","]
+#[doc = "            \"size\","]
+#[doc = "            \"x\","]
+#[doc = "            \"y\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"emoji\": {"]
+#[doc = "              \"description\": \"Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.\","]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^[0-9a-f_]{4,40}$\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"emoji\""]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"description\": \"Its side, per mille of the frame's short side.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 400.0,"]
+#[doc = "              \"minimum\": 60.0"]
+#[doc = "            },"]
+#[doc = "            \"x\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            },"]
+#[doc = "            \"y\": {"]
+#[doc = "              \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 1000.0,"]
+#[doc = "              \"minimum\": 0.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        }"]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"overlay_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Overlay {
+    pub content: OverlayContent,
+    pub end_ticks: ::std::num::NonZeroU64,
+    pub overlay_id: OverlayOverlayId,
+    pub start_ticks: u64,
+}
+impl Overlay {
+    pub fn builder() -> builder::Overlay {
+        Default::default()
+    }
+}
+#[doc = "`OverlayContent`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"description\": \"Words set in the clip's caption font by the caption renderer. Lines break only where the text says.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"colour\","]
+#[doc = "        \"kind\","]
+#[doc = "        \"size\","]
+#[doc = "        \"text\","]
+#[doc = "        \"x\","]
+#[doc = "        \"y\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"colour\": {"]
+#[doc = "          \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"text\""]
+#[doc = "        },"]
+#[doc = "        \"plate\": {"]
+#[doc = "          \"description\": \"An opaque plate behind the text. Absent draws an outline.\","]
+#[doc = "          \"$ref\": \"#/$defs/hexColour\""]
+#[doc = "        },"]
+#[doc = "        \"role\": {"]
+#[doc = "          \"description\": \"A hook opens the clip and names what it is about. Absent is a label.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"hook\","]
+#[doc = "            \"label\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"description\": \"Its size at the 1920-pixel design height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 240.0,"]
+#[doc = "          \"minimum\": 24.0"]
+#[doc = "        },"]
+#[doc = "        \"text\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"maxLength\": 160,"]
+#[doc = "          \"minLength\": 1,"]
+#[doc = "          \"pattern\": \"^[^{}\\\\\\\\]*$\""]
+#[doc = "        },"]
+#[doc = "        \"x\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"y\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"description\": \"A colour emoji, drawn from its pinned picture.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"emoji\","]
+#[doc = "        \"kind\","]
+#[doc = "        \"size\","]
+#[doc = "        \"x\","]
+#[doc = "        \"y\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"emoji\": {"]
+#[doc = "          \"description\": \"Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.\","]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^[0-9a-f_]{4,40}$\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"emoji\""]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"description\": \"Its side, per mille of the frame's short side.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 400.0,"]
+#[doc = "          \"minimum\": 60.0"]
+#[doc = "        },"]
+#[doc = "        \"x\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's width.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"y\": {"]
+#[doc = "          \"description\": \"Where its centre sits, per mille of the frame's height.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 1000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum OverlayContent {
+    #[doc = "Words set in the clip's caption font by the caption renderer. Lines break only where the text says."]
+    #[serde(rename = "text")]
+    Text {
+        colour: HexColour,
+        #[doc = "An opaque plate behind the text. Absent draws an outline."]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        plate: ::std::option::Option<HexColour>,
+        #[doc = "A hook opens the clip and names what it is about. Absent is a label."]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        role: ::std::option::Option<OverlayContentRole>,
+        #[doc = "Its size at the 1920-pixel design height."]
+        size: i64,
+        text: OverlayContentText,
+        #[doc = "Where its centre sits, per mille of the frame's width."]
+        x: i64,
+        #[doc = "Where its centre sits, per mille of the frame's height."]
+        y: i64,
+    },
+    #[doc = "A colour emoji, drawn from its pinned picture."]
+    #[serde(rename = "emoji")]
+    Emoji {
+        #[doc = "Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence."]
+        emoji: OverlayContentEmoji,
+        #[doc = "Its side, per mille of the frame's short side."]
+        size: i64,
+        #[doc = "Where its centre sits, per mille of the frame's width."]
+        x: i64,
+        #[doc = "Where its centre sits, per mille of the frame's height."]
+        y: i64,
+    },
+}
+#[doc = "Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^[0-9a-f_]{4,40}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OverlayContentEmoji(::std::string::String);
+impl ::std::ops::Deref for OverlayContentEmoji {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OverlayContentEmoji> for ::std::string::String {
+    fn from(value: OverlayContentEmoji) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OverlayContentEmoji {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f_]{4,40}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f_]{4,40}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayContentEmoji {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayContentEmoji {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayContentEmoji {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OverlayContentEmoji {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "A hook opens the clip and names what it is about. Absent is a label."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"A hook opens the clip and names what it is about. Absent is a label.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"hook\","]
+#[doc = "    \"label\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum OverlayContentRole {
+    #[serde(rename = "hook")]
+    Hook,
+    #[serde(rename = "label")]
+    Label,
+}
+impl ::std::fmt::Display for OverlayContentRole {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Hook => f.write_str("hook"),
+            Self::Label => f.write_str("label"),
+        }
+    }
+}
+impl ::std::str::FromStr for OverlayContentRole {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "hook" => Ok(Self::Hook),
+            "label" => Ok(Self::Label),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayContentRole {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayContentRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayContentRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`OverlayContentText`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"maxLength\": 160,"]
+#[doc = "  \"minLength\": 1,"]
+#[doc = "  \"pattern\": \"^[^{}\\\\\\\\]*$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OverlayContentText(::std::string::String);
+impl ::std::ops::Deref for OverlayContentText {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OverlayContentText> for ::std::string::String {
+    fn from(value: OverlayContentText) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OverlayContentText {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 160usize {
+            return Err("longer than 160 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[^{}\\\\]*$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[^{}\\\\]*$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayContentText {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayContentText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayContentText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OverlayContentText {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`OverlayOverlayId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct OverlayOverlayId(::std::string::String);
+impl ::std::ops::Deref for OverlayOverlayId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<OverlayOverlayId> for ::std::string::String {
+    fn from(value: OverlayOverlayId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for OverlayOverlayId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for OverlayOverlayId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for OverlayOverlayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for OverlayOverlayId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for OverlayOverlayId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "`Sha256`"]
@@ -1641,6 +3981,40 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "        \"state\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"background\": {"]
+#[doc = "          \"description\": \"What fills around a fitted picture. Absent is the picture itself, blurred.\","]
+#[doc = "          \"oneOf\": ["]
+#[doc = "            {"]
+#[doc = "              \"type\": \"object\","]
+#[doc = "              \"required\": ["]
+#[doc = "                \"kind\""]
+#[doc = "              ],"]
+#[doc = "              \"properties\": {"]
+#[doc = "                \"kind\": {"]
+#[doc = "                  \"const\": \"blur\""]
+#[doc = "                }"]
+#[doc = "              },"]
+#[doc = "              \"additionalProperties\": false"]
+#[doc = "            },"]
+#[doc = "            {"]
+#[doc = "              \"type\": \"object\","]
+#[doc = "              \"required\": ["]
+#[doc = "                \"colour\","]
+#[doc = "                \"kind\""]
+#[doc = "              ],"]
+#[doc = "              \"properties\": {"]
+#[doc = "                \"colour\": {"]
+#[doc = "                  \"type\": \"string\","]
+#[doc = "                  \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "                },"]
+#[doc = "                \"kind\": {"]
+#[doc = "                  \"const\": \"colour\""]
+#[doc = "                }"]
+#[doc = "              },"]
+#[doc = "              \"additionalProperties\": false"]
+#[doc = "            }"]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"crop_path\": {"]
 #[doc = "          \"description\": \"Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.\","]
 #[doc = "          \"type\": \"array\","]
@@ -1670,8 +4044,61 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "            \"additionalProperties\": false"]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"inset\": {"]
+#[doc = "          \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.\","]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"corner\","]
+#[doc = "            \"size\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"corner\": {"]
+#[doc = "              \"enum\": ["]
+#[doc = "                \"top_left\","]
+#[doc = "                \"top_right\","]
+#[doc = "                \"bottom_left\","]
+#[doc = "                \"bottom_right\""]
+#[doc = "              ]"]
+#[doc = "            },"]
+#[doc = "            \"size\": {"]
+#[doc = "              \"type\": \"integer\","]
+#[doc = "              \"maximum\": 600.0,"]
+#[doc = "              \"minimum\": 200.0"]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        \"punches\": {"]
+#[doc = "          \"description\": \"Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"type\": \"object\","]
+#[doc = "            \"required\": ["]
+#[doc = "              \"end_ticks\","]
+#[doc = "              \"start_ticks\","]
+#[doc = "              \"zoom\""]
+#[doc = "            ],"]
+#[doc = "            \"properties\": {"]
+#[doc = "              \"end_ticks\": {"]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"minimum\": 1.0"]
+#[doc = "              },"]
+#[doc = "              \"start_ticks\": {"]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"minimum\": 0.0"]
+#[doc = "              },"]
+#[doc = "              \"zoom\": {"]
+#[doc = "                \"description\": \"How much closer, in percent.\","]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"maximum\": 200.0,"]
+#[doc = "                \"minimum\": 105.0"]
+#[doc = "              }"]
+#[doc = "            },"]
+#[doc = "            \"additionalProperties\": false"]
+#[doc = "          }"]
+#[doc = "        },"]
 #[doc = "        \"secondary_crop_path\": {"]
-#[doc = "          \"description\": \"Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.\","]
+#[doc = "          \"description\": \"Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.\","]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
 #[doc = "            \"type\": \"object\","]
@@ -1699,12 +4126,26 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "            \"additionalProperties\": false"]
 #[doc = "          }"]
 #[doc = "        },"]
+#[doc = "        \"split\": {"]
+#[doc = "          \"description\": \"two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 750.0,"]
+#[doc = "          \"minimum\": 250.0"]
+#[doc = "        },"]
 #[doc = "        \"state\": {"]
+#[doc = "          \"description\": \"picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.\","]
 #[doc = "          \"enum\": ["]
 #[doc = "            \"speaker_fill\","]
 #[doc = "            \"fit\","]
-#[doc = "            \"two_up\""]
+#[doc = "            \"two_up\","]
+#[doc = "            \"picture_in_picture\""]
 #[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"zoom\": {"]
+#[doc = "          \"description\": \"How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 250.0,"]
+#[doc = "          \"minimum\": 100.0"]
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
@@ -1750,6 +4191,40 @@ impl VideoSegment {
 #[doc = "    \"state\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"background\": {"]
+#[doc = "      \"description\": \"What fills around a fitted picture. Absent is the picture itself, blurred.\","]
+#[doc = "      \"oneOf\": ["]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"kind\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"blur\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        },"]
+#[doc = "        {"]
+#[doc = "          \"type\": \"object\","]
+#[doc = "          \"required\": ["]
+#[doc = "            \"colour\","]
+#[doc = "            \"kind\""]
+#[doc = "          ],"]
+#[doc = "          \"properties\": {"]
+#[doc = "            \"colour\": {"]
+#[doc = "              \"type\": \"string\","]
+#[doc = "              \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "            },"]
+#[doc = "            \"kind\": {"]
+#[doc = "              \"const\": \"colour\""]
+#[doc = "            }"]
+#[doc = "          },"]
+#[doc = "          \"additionalProperties\": false"]
+#[doc = "        }"]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"crop_path\": {"]
 #[doc = "      \"description\": \"Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.\","]
 #[doc = "      \"type\": \"array\","]
@@ -1779,8 +4254,61 @@ impl VideoSegment {
 #[doc = "        \"additionalProperties\": false"]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"inset\": {"]
+#[doc = "      \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"corner\","]
+#[doc = "        \"size\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"corner\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"top_left\","]
+#[doc = "            \"top_right\","]
+#[doc = "            \"bottom_left\","]
+#[doc = "            \"bottom_right\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"size\": {"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 600.0,"]
+#[doc = "          \"minimum\": 200.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    \"punches\": {"]
+#[doc = "      \"description\": \"Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"end_ticks\","]
+#[doc = "          \"start_ticks\","]
+#[doc = "          \"zoom\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"end_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 1.0"]
+#[doc = "          },"]
+#[doc = "          \"start_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          },"]
+#[doc = "          \"zoom\": {"]
+#[doc = "            \"description\": \"How much closer, in percent.\","]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"maximum\": 200.0,"]
+#[doc = "            \"minimum\": 105.0"]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"secondary_crop_path\": {"]
-#[doc = "      \"description\": \"Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.\","]
+#[doc = "      \"description\": \"Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.\","]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
 #[doc = "        \"type\": \"object\","]
@@ -1808,12 +4336,26 @@ impl VideoSegment {
 #[doc = "        \"additionalProperties\": false"]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"split\": {"]
+#[doc = "      \"description\": \"two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 750.0,"]
+#[doc = "      \"minimum\": 250.0"]
+#[doc = "    },"]
 #[doc = "    \"state\": {"]
+#[doc = "      \"description\": \"picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.\","]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"speaker_fill\","]
 #[doc = "        \"fit\","]
-#[doc = "        \"two_up\""]
+#[doc = "        \"two_up\","]
+#[doc = "        \"picture_in_picture\""]
 #[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"zoom\": {"]
+#[doc = "      \"description\": \"How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 250.0,"]
+#[doc = "      \"minimum\": 100.0"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -1823,17 +4365,156 @@ impl VideoSegment {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct VideoSegmentLayout {
+    #[doc = "What fills around a fitted picture. Absent is the picture itself, blurred."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub background: ::std::option::Option<VideoSegmentLayoutBackground>,
     #[doc = "Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub crop_path: ::std::vec::Vec<VideoSegmentLayoutCropPathItem>,
-    #[doc = "Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub inset: ::std::option::Option<VideoSegmentLayoutInset>,
+    #[doc = "Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub punches: ::std::vec::Vec<VideoSegmentLayoutPunchesItem>,
+    #[doc = "Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub secondary_crop_path: ::std::vec::Vec<VideoSegmentLayoutSecondaryCropPathItem>,
+    #[doc = "two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub split: ::std::option::Option<i64>,
+    #[doc = "picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner."]
     pub state: VideoSegmentLayoutState,
+    #[doc = "How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub zoom: ::std::option::Option<i64>,
 }
 impl VideoSegmentLayout {
     pub fn builder() -> builder::VideoSegmentLayout {
         Default::default()
+    }
+}
+#[doc = "What fills around a fitted picture. Absent is the picture itself, blurred."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"What fills around a fitted picture. Absent is the picture itself, blurred.\","]
+#[doc = "  \"oneOf\": ["]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"kind\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"blur\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    {"]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"colour\","]
+#[doc = "        \"kind\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"colour\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"const\": \"colour\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    }"]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(tag = "kind", content = "colour")]
+pub enum VideoSegmentLayoutBackground {
+    #[serde(rename = "blur")]
+    Blur,
+    #[serde(rename = "colour")]
+    Colour(VideoSegmentLayoutBackgroundColour),
+}
+impl ::std::convert::From<VideoSegmentLayoutBackgroundColour> for VideoSegmentLayoutBackground {
+    fn from(value: VideoSegmentLayoutBackgroundColour) -> Self {
+        Self::Colour(value)
+    }
+}
+#[doc = "`VideoSegmentLayoutBackgroundColour`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^#[0-9A-Fa-f]{6}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VideoSegmentLayoutBackgroundColour(::std::string::String);
+impl ::std::ops::Deref for VideoSegmentLayoutBackgroundColour {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VideoSegmentLayoutBackgroundColour> for ::std::string::String {
+    fn from(value: VideoSegmentLayoutBackgroundColour) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VideoSegmentLayoutBackgroundColour {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9A-Fa-f]{6}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^#[0-9A-Fa-f]{6}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentLayoutBackgroundColour {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentLayoutBackgroundColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutBackgroundColour {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VideoSegmentLayoutBackgroundColour {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "`VideoSegmentLayoutCropPathItem`"]
@@ -1960,6 +4641,174 @@ impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutCropPa
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+#[doc = "Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"corner\","]
+#[doc = "    \"size\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"corner\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"top_left\","]
+#[doc = "        \"top_right\","]
+#[doc = "        \"bottom_left\","]
+#[doc = "        \"bottom_right\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"size\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 600.0,"]
+#[doc = "      \"minimum\": 200.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VideoSegmentLayoutInset {
+    pub corner: VideoSegmentLayoutInsetCorner,
+    pub size: i64,
+}
+impl VideoSegmentLayoutInset {
+    pub fn builder() -> builder::VideoSegmentLayoutInset {
+        Default::default()
+    }
+}
+#[doc = "`VideoSegmentLayoutInsetCorner`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"top_left\","]
+#[doc = "    \"top_right\","]
+#[doc = "    \"bottom_left\","]
+#[doc = "    \"bottom_right\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum VideoSegmentLayoutInsetCorner {
+    #[serde(rename = "top_left")]
+    TopLeft,
+    #[serde(rename = "top_right")]
+    TopRight,
+    #[serde(rename = "bottom_left")]
+    BottomLeft,
+    #[serde(rename = "bottom_right")]
+    BottomRight,
+}
+impl ::std::fmt::Display for VideoSegmentLayoutInsetCorner {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::TopLeft => f.write_str("top_left"),
+            Self::TopRight => f.write_str("top_right"),
+            Self::BottomLeft => f.write_str("bottom_left"),
+            Self::BottomRight => f.write_str("bottom_right"),
+        }
+    }
+}
+impl ::std::str::FromStr for VideoSegmentLayoutInsetCorner {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "top_left" => Ok(Self::TopLeft),
+            "top_right" => Ok(Self::TopRight),
+            "bottom_left" => Ok(Self::BottomLeft),
+            "bottom_right" => Ok(Self::BottomRight),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentLayoutInsetCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentLayoutInsetCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutInsetCorner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`VideoSegmentLayoutPunchesItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"start_ticks\","]
+#[doc = "    \"zoom\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"zoom\": {"]
+#[doc = "      \"description\": \"How much closer, in percent.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 200.0,"]
+#[doc = "      \"minimum\": 105.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VideoSegmentLayoutPunchesItem {
+    pub end_ticks: ::std::num::NonZeroU64,
+    pub start_ticks: u64,
+    #[doc = "How much closer, in percent."]
+    pub zoom: i64,
+}
+impl VideoSegmentLayoutPunchesItem {
+    pub fn builder() -> builder::VideoSegmentLayoutPunchesItem {
+        Default::default()
     }
 }
 #[doc = "`VideoSegmentLayoutSecondaryCropPathItem`"]
@@ -2092,16 +4941,18 @@ impl ::std::convert::TryFrom<::std::string::String>
         value.parse()
     }
 }
-#[doc = "`VideoSegmentLayoutState`"]
+#[doc = "picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
 #[doc = r""]
 #[doc = r" ```json"]
 #[doc = "{"]
+#[doc = "  \"description\": \"picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.\","]
 #[doc = "  \"enum\": ["]
 #[doc = "    \"speaker_fill\","]
 #[doc = "    \"fit\","]
-#[doc = "    \"two_up\""]
+#[doc = "    \"two_up\","]
+#[doc = "    \"picture_in_picture\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -2125,6 +4976,8 @@ pub enum VideoSegmentLayoutState {
     Fit,
     #[serde(rename = "two_up")]
     TwoUp,
+    #[serde(rename = "picture_in_picture")]
+    PictureInPicture,
 }
 impl ::std::fmt::Display for VideoSegmentLayoutState {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -2132,6 +4985,7 @@ impl ::std::fmt::Display for VideoSegmentLayoutState {
             Self::SpeakerFill => f.write_str("speaker_fill"),
             Self::Fit => f.write_str("fit"),
             Self::TwoUp => f.write_str("two_up"),
+            Self::PictureInPicture => f.write_str("picture_in_picture"),
         }
     }
 }
@@ -2142,6 +4996,7 @@ impl ::std::str::FromStr for VideoSegmentLayoutState {
             "speaker_fill" => Ok(Self::SpeakerFill),
             "fit" => Ok(Self::Fit),
             "two_up" => Ok(Self::TwoUp),
+            "picture_in_picture" => Ok(Self::PictureInPicture),
             _ => Err("invalid value".into()),
         }
     }
@@ -2247,6 +5102,10 @@ pub mod builder {
             ::std::vec::Vec<super::CaptionCueLinesItem>,
             ::std::string::String,
         >,
+        position: ::std::result::Result<
+            ::std::option::Option<super::CaptionPosition>,
+            ::std::string::String,
+        >,
         region: ::std::result::Result<super::CaptionCueRegion, ::std::string::String>,
         start_ticks: ::std::result::Result<u64, ::std::string::String>,
     }
@@ -2257,6 +5116,7 @@ pub mod builder {
                 cue_id: Err("no value supplied for cue_id".to_string()),
                 end_ticks: Err("no value supplied for end_ticks".to_string()),
                 lines: Err("no value supplied for lines".to_string()),
+                position: Ok(Default::default()),
                 region: Err("no value supplied for region".to_string()),
                 start_ticks: Err("no value supplied for start_ticks".to_string()),
             }
@@ -2303,6 +5163,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for lines: {e}"));
             self
         }
+        pub fn position<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::CaptionPosition>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.position = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for position: {e}"));
+            self
+        }
         pub fn region<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::CaptionCueRegion>,
@@ -2334,6 +5204,7 @@ pub mod builder {
                 cue_id: value.cue_id?,
                 end_ticks: value.end_ticks?,
                 lines: value.lines?,
+                position: value.position?,
                 region: value.region?,
                 start_ticks: value.start_ticks?,
             })
@@ -2346,6 +5217,7 @@ pub mod builder {
                 cue_id: Ok(value.cue_id),
                 end_ticks: Ok(value.end_ticks),
                 lines: Ok(value.lines),
+                position: Ok(value.position),
                 region: Ok(value.region),
                 start_ticks: Ok(value.start_ticks),
             }
@@ -2396,6 +5268,7 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct CaptionCueLinesItemWordsItem {
+        emphasis: ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
         end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
         start_ticks: ::std::result::Result<u64, ::std::string::String>,
         text: ::std::result::Result<super::CaptionCueLinesItemWordsItemText, ::std::string::String>,
@@ -2407,6 +5280,7 @@ pub mod builder {
     impl ::std::default::Default for CaptionCueLinesItemWordsItem {
         fn default() -> Self {
             Self {
+                emphasis: Ok(Default::default()),
                 end_ticks: Err("no value supplied for end_ticks".to_string()),
                 start_ticks: Err("no value supplied for start_ticks".to_string()),
                 text: Err("no value supplied for text".to_string()),
@@ -2415,6 +5289,16 @@ pub mod builder {
         }
     }
     impl CaptionCueLinesItemWordsItem {
+        pub fn emphasis<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<bool>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.emphasis = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for emphasis: {e}"));
+            self
+        }
         pub fn end_ticks<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::num::NonZeroU64>,
@@ -2464,6 +5348,7 @@ pub mod builder {
             value: CaptionCueLinesItemWordsItem,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                emphasis: value.emphasis?,
                 end_ticks: value.end_ticks?,
                 start_ticks: value.start_ticks?,
                 text: value.text?,
@@ -2474,10 +5359,65 @@ pub mod builder {
     impl ::std::convert::From<super::CaptionCueLinesItemWordsItem> for CaptionCueLinesItemWordsItem {
         fn from(value: super::CaptionCueLinesItemWordsItem) -> Self {
             Self {
+                emphasis: Ok(value.emphasis),
                 end_ticks: Ok(value.end_ticks),
                 start_ticks: Ok(value.start_ticks),
                 text: Ok(value.text),
                 word_id: Ok(value.word_id),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct CaptionPosition {
+        x: ::std::result::Result<i64, ::std::string::String>,
+        y: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for CaptionPosition {
+        fn default() -> Self {
+            Self {
+                x: Err("no value supplied for x".to_string()),
+                y: Err("no value supplied for y".to_string()),
+            }
+        }
+    }
+    impl CaptionPosition {
+        pub fn x<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.x = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for x: {e}"));
+            self
+        }
+        pub fn y<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.y = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for y: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<CaptionPosition> for super::CaptionPosition {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: CaptionPosition,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                x: value.x?,
+                y: value.y?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::CaptionPosition> for CaptionPosition {
+        fn from(value: super::CaptionPosition) -> Self {
+            Self {
+                x: Ok(value.x),
+                y: Ok(value.y),
             }
         }
     }
@@ -2562,16 +5502,115 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct Cutaway {
+        content: ::std::result::Result<super::CutawayContent, ::std::string::String>,
+        cutaway_id: ::std::result::Result<super::CutawayCutawayId, ::std::string::String>,
+        end_ticks: ::std::result::Result<i64, ::std::string::String>,
+        fit: ::std::result::Result<::std::option::Option<super::CutawayFit>, ::std::string::String>,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for Cutaway {
+        fn default() -> Self {
+            Self {
+                content: Err("no value supplied for content".to_string()),
+                cutaway_id: Err("no value supplied for cutaway_id".to_string()),
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                fit: Ok(Default::default()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+            }
+        }
+    }
+    impl Cutaway {
+        pub fn content<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::CutawayContent>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content: {e}"));
+            self
+        }
+        pub fn cutaway_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::CutawayCutawayId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cutaway_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cutaway_id: {e}"));
+            self
+        }
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn fit<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::CutawayFit>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.fit = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for fit: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<Cutaway> for super::Cutaway {
+        type Error = super::error::ConversionError;
+        fn try_from(value: Cutaway) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                content: value.content?,
+                cutaway_id: value.cutaway_id?,
+                end_ticks: value.end_ticks?,
+                fit: value.fit?,
+                start_ticks: value.start_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::Cutaway> for Cutaway {
+        fn from(value: super::Cutaway) -> Self {
+            Self {
+                content: Ok(value.content),
+                cutaway_id: Ok(value.cutaway_id),
+                end_ticks: Ok(value.end_ticks),
+                fit: Ok(value.fit),
+                start_ticks: Ok(value.start_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct EditIr {
         assets:
             ::std::result::Result<::std::vec::Vec<super::EditIrAssetsItem>, ::std::string::String>,
         audio: ::std::result::Result<super::EditIrAudio, ::std::string::String>,
+        brand:
+            ::std::result::Result<::std::option::Option<super::EditIrBrand>, ::std::string::String>,
         captions: ::std::result::Result<super::EditIrCaptions, ::std::string::String>,
+        overlays: ::std::result::Result<::std::vec::Vec<super::Overlay>, ::std::string::String>,
         rationale: ::std::result::Result<
             ::std::option::Option<super::EditIrRationale>,
             ::std::string::String,
         >,
         timebase: ::std::result::Result<super::EditIrTimebase, ::std::string::String>,
+        title:
+            ::std::result::Result<::std::option::Option<super::EditIrTitle>, ::std::string::String>,
         version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         video: ::std::result::Result<super::EditIrVideo, ::std::string::String>,
     }
@@ -2580,9 +5619,12 @@ pub mod builder {
             Self {
                 assets: Ok(Default::default()),
                 audio: Err("no value supplied for audio".to_string()),
+                brand: Ok(Default::default()),
                 captions: Err("no value supplied for captions".to_string()),
+                overlays: Ok(Default::default()),
                 rationale: Ok(Default::default()),
                 timebase: Err("no value supplied for timebase".to_string()),
+                title: Ok(Default::default()),
                 version: Err("no value supplied for version".to_string()),
                 video: Err("no value supplied for video".to_string()),
             }
@@ -2609,6 +5651,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for audio: {e}"));
             self
         }
+        pub fn brand<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrBrand>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.brand = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for brand: {e}"));
+            self
+        }
         pub fn captions<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::EditIrCaptions>,
@@ -2617,6 +5669,16 @@ pub mod builder {
             self.captions = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for captions: {e}"));
+            self
+        }
+        pub fn overlays<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::Overlay>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.overlays = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for overlays: {e}"));
             self
         }
         pub fn rationale<T>(mut self, value: T) -> Self
@@ -2637,6 +5699,16 @@ pub mod builder {
             self.timebase = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for timebase: {e}"));
+            self
+        }
+        pub fn title<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrTitle>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.title = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for title: {e}"));
             self
         }
         pub fn version<T>(mut self, value: T) -> Self
@@ -2666,9 +5738,12 @@ pub mod builder {
             Ok(Self {
                 assets: value.assets?,
                 audio: value.audio?,
+                brand: value.brand?,
                 captions: value.captions?,
+                overlays: value.overlays?,
                 rationale: value.rationale?,
                 timebase: value.timebase?,
+                title: value.title?,
                 version: value.version?,
                 video: value.video?,
             })
@@ -2679,9 +5754,12 @@ pub mod builder {
             Self {
                 assets: Ok(value.assets),
                 audio: Ok(value.audio),
+                brand: Ok(value.brand),
                 captions: Ok(value.captions),
+                overlays: Ok(value.overlays),
                 rationale: Ok(value.rationale),
                 timebase: Ok(value.timebase),
+                title: Ok(value.title),
                 version: Ok(value.version),
                 video: Ok(value.video),
             }
@@ -2743,8 +5821,16 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct EditIrAudio {
+        cleanup: ::std::result::Result<
+            ::std::option::Option<super::EditIrAudioCleanup>,
+            ::std::string::String,
+        >,
         gain_curve: ::std::result::Result<
             ::std::vec::Vec<super::EditIrAudioGainCurveItem>,
+            ::std::string::String,
+        >,
+        music: ::std::result::Result<
+            ::std::option::Option<super::EditIrAudioMusic>,
             ::std::string::String,
         >,
         target_lufs: ::std::result::Result<f64, ::std::string::String>,
@@ -2753,13 +5839,25 @@ pub mod builder {
     impl ::std::default::Default for EditIrAudio {
         fn default() -> Self {
             Self {
+                cleanup: Ok(Default::default()),
                 gain_curve: Ok(Default::default()),
+                music: Ok(Default::default()),
                 target_lufs: Err("no value supplied for target_lufs".to_string()),
                 true_peak_dbtp: Err("no value supplied for true_peak_dbtp".to_string()),
             }
         }
     }
     impl EditIrAudio {
+        pub fn cleanup<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrAudioCleanup>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cleanup = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cleanup: {e}"));
+            self
+        }
         pub fn gain_curve<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::vec::Vec<super::EditIrAudioGainCurveItem>>,
@@ -2768,6 +5866,16 @@ pub mod builder {
             self.gain_curve = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for gain_curve: {e}"));
+            self
+        }
+        pub fn music<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrAudioMusic>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.music = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for music: {e}"));
             self
         }
         pub fn target_lufs<T>(mut self, value: T) -> Self
@@ -2797,7 +5905,9 @@ pub mod builder {
             value: EditIrAudio,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                cleanup: value.cleanup?,
                 gain_curve: value.gain_curve?,
+                music: value.music?,
                 target_lufs: value.target_lufs?,
                 true_peak_dbtp: value.true_peak_dbtp?,
             })
@@ -2806,7 +5916,9 @@ pub mod builder {
     impl ::std::convert::From<super::EditIrAudio> for EditIrAudio {
         fn from(value: super::EditIrAudio) -> Self {
             Self {
+                cleanup: Ok(value.cleanup),
                 gain_curve: Ok(value.gain_curve),
+                music: Ok(value.music),
                 target_lufs: Ok(value.target_lufs),
                 true_peak_dbtp: Ok(value.true_peak_dbtp),
             }
@@ -2863,6 +5975,298 @@ pub mod builder {
             Self {
                 gain_db: Ok(value.gain_db),
                 t_ticks: Ok(value.t_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrAudioMusic {
+        asset: ::std::result::Result<super::Sha256, ::std::string::String>,
+        duck_db: ::std::result::Result<f64, ::std::string::String>,
+        level_db: ::std::result::Result<f64, ::std::string::String>,
+        offset_ticks: ::std::result::Result<::std::option::Option<u64>, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditIrAudioMusic {
+        fn default() -> Self {
+            Self {
+                asset: Err("no value supplied for asset".to_string()),
+                duck_db: Err("no value supplied for duck_db".to_string()),
+                level_db: Err("no value supplied for level_db".to_string()),
+                offset_ticks: Ok(Default::default()),
+            }
+        }
+    }
+    impl EditIrAudioMusic {
+        pub fn asset<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::Sha256>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.asset = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for asset: {e}"));
+            self
+        }
+        pub fn duck_db<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.duck_db = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for duck_db: {e}"));
+            self
+        }
+        pub fn level_db<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.level_db = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for level_db: {e}"));
+            self
+        }
+        pub fn offset_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<u64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.offset_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for offset_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrAudioMusic> for super::EditIrAudioMusic {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrAudioMusic,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                asset: value.asset?,
+                duck_db: value.duck_db?,
+                level_db: value.level_db?,
+                offset_ticks: value.offset_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrAudioMusic> for EditIrAudioMusic {
+        fn from(value: super::EditIrAudioMusic) -> Self {
+            Self {
+                asset: Ok(value.asset),
+                duck_db: Ok(value.duck_db),
+                level_db: Ok(value.level_db),
+                offset_ticks: Ok(value.offset_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrBrand {
+        logo: ::std::result::Result<
+            ::std::option::Option<super::EditIrBrandLogo>,
+            ::std::string::String,
+        >,
+        progress: ::std::result::Result<
+            ::std::option::Option<super::EditIrBrandProgress>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for EditIrBrand {
+        fn default() -> Self {
+            Self {
+                logo: Ok(Default::default()),
+                progress: Ok(Default::default()),
+            }
+        }
+    }
+    impl EditIrBrand {
+        pub fn logo<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrBrandLogo>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.logo = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for logo: {e}"));
+            self
+        }
+        pub fn progress<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrBrandProgress>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.progress = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for progress: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrBrand> for super::EditIrBrand {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrBrand,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                logo: value.logo?,
+                progress: value.progress?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrBrand> for EditIrBrand {
+        fn from(value: super::EditIrBrand) -> Self {
+            Self {
+                logo: Ok(value.logo),
+                progress: Ok(value.progress),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrBrandLogo {
+        asset: ::std::result::Result<super::Sha256, ::std::string::String>,
+        corner: ::std::result::Result<super::EditIrBrandLogoCorner, ::std::string::String>,
+        opacity: ::std::result::Result<i64, ::std::string::String>,
+        size: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditIrBrandLogo {
+        fn default() -> Self {
+            Self {
+                asset: Err("no value supplied for asset".to_string()),
+                corner: Err("no value supplied for corner".to_string()),
+                opacity: Err("no value supplied for opacity".to_string()),
+                size: Err("no value supplied for size".to_string()),
+            }
+        }
+    }
+    impl EditIrBrandLogo {
+        pub fn asset<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::Sha256>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.asset = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for asset: {e}"));
+            self
+        }
+        pub fn corner<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditIrBrandLogoCorner>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.corner = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for corner: {e}"));
+            self
+        }
+        pub fn opacity<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.opacity = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for opacity: {e}"));
+            self
+        }
+        pub fn size<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.size = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for size: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrBrandLogo> for super::EditIrBrandLogo {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrBrandLogo,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                asset: value.asset?,
+                corner: value.corner?,
+                opacity: value.opacity?,
+                size: value.size?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrBrandLogo> for EditIrBrandLogo {
+        fn from(value: super::EditIrBrandLogo) -> Self {
+            Self {
+                asset: Ok(value.asset),
+                corner: Ok(value.corner),
+                opacity: Ok(value.opacity),
+                size: Ok(value.size),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrBrandProgress {
+        colour: ::std::result::Result<super::HexColour, ::std::string::String>,
+        edge: ::std::result::Result<super::EditIrBrandProgressEdge, ::std::string::String>,
+        thickness: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditIrBrandProgress {
+        fn default() -> Self {
+            Self {
+                colour: Err("no value supplied for colour".to_string()),
+                edge: Err("no value supplied for edge".to_string()),
+                thickness: Err("no value supplied for thickness".to_string()),
+            }
+        }
+    }
+    impl EditIrBrandProgress {
+        pub fn colour<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::HexColour>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.colour = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for colour: {e}"));
+            self
+        }
+        pub fn edge<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditIrBrandProgressEdge>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.edge = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for edge: {e}"));
+            self
+        }
+        pub fn thickness<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.thickness = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for thickness: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrBrandProgress> for super::EditIrBrandProgress {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrBrandProgress,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                colour: value.colour?,
+                edge: value.edge?,
+                thickness: value.thickness?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrBrandProgress> for EditIrBrandProgress {
+        fn from(value: super::EditIrBrandProgress) -> Self {
+            Self {
+                colour: Ok(value.colour),
+                edge: Ok(value.edge),
+                thickness: Ok(value.thickness),
             }
         }
     }
@@ -2953,11 +6357,32 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct EditIrCaptionsOptions {
+        accent: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsAccent>,
+            ::std::string::String,
+        >,
+        font_family: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsFontFamily>,
+            ::std::string::String,
+        >,
         font_size: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        highlight_spoken_word:
+            ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
+        highlight_style: ::std::result::Result<
+            ::std::option::Option<super::EditIrCaptionsOptionsHighlightStyle>,
+            ::std::string::String,
+        >,
         outline: ::std::result::Result<
             ::std::option::Option<super::EditIrCaptionsOptionsOutline>,
             ::std::string::String,
         >,
+        outline_width: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        plate_opacity: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        position: ::std::result::Result<
+            ::std::option::Option<super::CaptionPosition>,
+            ::std::string::String,
+        >,
+        shadow_depth: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
         spoken: ::std::result::Result<
             ::std::option::Option<super::EditIrCaptionsOptionsSpoken>,
             ::std::string::String,
@@ -2970,19 +6395,54 @@ pub mod builder {
             ::std::option::Option<super::EditIrCaptionsOptionsUnspoken>,
             ::std::string::String,
         >,
+        words_on_screen: ::std::result::Result<
+            ::std::option::Option<::std::num::NonZeroU64>,
+            ::std::string::String,
+        >,
     }
     impl ::std::default::Default for EditIrCaptionsOptions {
         fn default() -> Self {
             Self {
+                accent: Ok(Default::default()),
+                font_family: Ok(Default::default()),
                 font_size: Ok(Default::default()),
+                highlight_spoken_word: Ok(Default::default()),
+                highlight_style: Ok(Default::default()),
                 outline: Ok(Default::default()),
+                outline_width: Ok(Default::default()),
+                plate_opacity: Ok(Default::default()),
+                position: Ok(Default::default()),
+                shadow_depth: Ok(Default::default()),
                 spoken: Ok(Default::default()),
                 text_case: Ok(Default::default()),
                 unspoken: Ok(Default::default()),
+                words_on_screen: Ok(Default::default()),
             }
         }
     }
     impl EditIrCaptionsOptions {
+        pub fn accent<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsAccent>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.accent = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for accent: {e}"));
+            self
+        }
+        pub fn font_family<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::option::Option<super::EditIrCaptionsOptionsFontFamily>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.font_family = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for font_family: {e}"));
+            self
+        }
         pub fn font_size<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::option::Option<i64>>,
@@ -2993,6 +6453,28 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for font_size: {e}"));
             self
         }
+        pub fn highlight_spoken_word<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<bool>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.highlight_spoken_word = value.try_into().map_err(|e| {
+                format!("error converting supplied value for highlight_spoken_word: {e}")
+            });
+            self
+        }
+        pub fn highlight_style<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::option::Option<super::EditIrCaptionsOptionsHighlightStyle>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.highlight_style = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for highlight_style: {e}"));
+            self
+        }
         pub fn outline<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::option::Option<super::EditIrCaptionsOptionsOutline>>,
@@ -3001,6 +6483,46 @@ pub mod builder {
             self.outline = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for outline: {e}"));
+            self
+        }
+        pub fn outline_width<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.outline_width = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for outline_width: {e}"));
+            self
+        }
+        pub fn plate_opacity<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.plate_opacity = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for plate_opacity: {e}"));
+            self
+        }
+        pub fn position<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::CaptionPosition>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.position = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for position: {e}"));
+            self
+        }
+        pub fn shadow_depth<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.shadow_depth = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for shadow_depth: {e}"));
             self
         }
         pub fn spoken<T>(mut self, value: T) -> Self
@@ -3033,6 +6555,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for unspoken: {e}"));
             self
         }
+        pub fn words_on_screen<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<::std::num::NonZeroU64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.words_on_screen = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for words_on_screen: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<EditIrCaptionsOptions> for super::EditIrCaptionsOptions {
         type Error = super::error::ConversionError;
@@ -3040,22 +6572,40 @@ pub mod builder {
             value: EditIrCaptionsOptions,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                accent: value.accent?,
+                font_family: value.font_family?,
                 font_size: value.font_size?,
+                highlight_spoken_word: value.highlight_spoken_word?,
+                highlight_style: value.highlight_style?,
                 outline: value.outline?,
+                outline_width: value.outline_width?,
+                plate_opacity: value.plate_opacity?,
+                position: value.position?,
+                shadow_depth: value.shadow_depth?,
                 spoken: value.spoken?,
                 text_case: value.text_case?,
                 unspoken: value.unspoken?,
+                words_on_screen: value.words_on_screen?,
             })
         }
     }
     impl ::std::convert::From<super::EditIrCaptionsOptions> for EditIrCaptionsOptions {
         fn from(value: super::EditIrCaptionsOptions) -> Self {
             Self {
+                accent: Ok(value.accent),
+                font_family: Ok(value.font_family),
                 font_size: Ok(value.font_size),
+                highlight_spoken_word: Ok(value.highlight_spoken_word),
+                highlight_style: Ok(value.highlight_style),
                 outline: Ok(value.outline),
+                outline_width: Ok(value.outline_width),
+                plate_opacity: Ok(value.plate_opacity),
+                position: Ok(value.position),
+                shadow_depth: Ok(value.shadow_depth),
                 spoken: Ok(value.spoken),
                 text_case: Ok(value.text_case),
                 unspoken: Ok(value.unspoken),
+                words_on_screen: Ok(value.words_on_screen),
             }
         }
     }
@@ -3173,19 +6723,36 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct EditIrVideo {
+        cutaways: ::std::result::Result<::std::vec::Vec<super::Cutaway>, ::std::string::String>,
         segments:
             ::std::result::Result<::std::vec::Vec<super::VideoSegment>, ::std::string::String>,
+        shape: ::std::result::Result<
+            ::std::option::Option<super::EditIrVideoShape>,
+            ::std::string::String,
+        >,
         transition_ticks: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
     }
     impl ::std::default::Default for EditIrVideo {
         fn default() -> Self {
             Self {
+                cutaways: Ok(Default::default()),
                 segments: Ok(Default::default()),
+                shape: Ok(Default::default()),
                 transition_ticks: Ok(Default::default()),
             }
         }
     }
     impl EditIrVideo {
+        pub fn cutaways<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::Cutaway>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cutaways = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cutaways: {e}"));
+            self
+        }
         pub fn segments<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::vec::Vec<super::VideoSegment>>,
@@ -3194,6 +6761,16 @@ pub mod builder {
             self.segments = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for segments: {e}"));
+            self
+        }
+        pub fn shape<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrVideoShape>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.shape = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for shape: {e}"));
             self
         }
         pub fn transition_ticks<T>(mut self, value: T) -> Self
@@ -3213,7 +6790,9 @@ pub mod builder {
             value: EditIrVideo,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                cutaways: value.cutaways?,
                 segments: value.segments?,
+                shape: value.shape?,
                 transition_ticks: value.transition_ticks?,
             })
         }
@@ -3221,8 +6800,90 @@ pub mod builder {
     impl ::std::convert::From<super::EditIrVideo> for EditIrVideo {
         fn from(value: super::EditIrVideo) -> Self {
             Self {
+                cutaways: Ok(value.cutaways),
                 segments: Ok(value.segments),
+                shape: Ok(value.shape),
                 transition_ticks: Ok(value.transition_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct Overlay {
+        content: ::std::result::Result<super::OverlayContent, ::std::string::String>,
+        end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        overlay_id: ::std::result::Result<super::OverlayOverlayId, ::std::string::String>,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for Overlay {
+        fn default() -> Self {
+            Self {
+                content: Err("no value supplied for content".to_string()),
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                overlay_id: Err("no value supplied for overlay_id".to_string()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+            }
+        }
+    }
+    impl Overlay {
+        pub fn content<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::OverlayContent>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.content = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for content: {e}"));
+            self
+        }
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn overlay_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::OverlayOverlayId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.overlay_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for overlay_id: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<Overlay> for super::Overlay {
+        type Error = super::error::ConversionError;
+        fn try_from(value: Overlay) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                content: value.content?,
+                end_ticks: value.end_ticks?,
+                overlay_id: value.overlay_id?,
+                start_ticks: value.start_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::Overlay> for Overlay {
+        fn from(value: super::Overlay) -> Self {
+            Self {
+                content: Ok(value.content),
+                end_ticks: Ok(value.end_ticks),
+                overlay_id: Ok(value.overlay_id),
+                start_ticks: Ok(value.start_ticks),
             }
         }
     }
@@ -3324,26 +6985,55 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct VideoSegmentLayout {
+        background: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentLayoutBackground>,
+            ::std::string::String,
+        >,
         crop_path: ::std::result::Result<
             ::std::vec::Vec<super::VideoSegmentLayoutCropPathItem>,
+            ::std::string::String,
+        >,
+        inset: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentLayoutInset>,
+            ::std::string::String,
+        >,
+        punches: ::std::result::Result<
+            ::std::vec::Vec<super::VideoSegmentLayoutPunchesItem>,
             ::std::string::String,
         >,
         secondary_crop_path: ::std::result::Result<
             ::std::vec::Vec<super::VideoSegmentLayoutSecondaryCropPathItem>,
             ::std::string::String,
         >,
+        split: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
         state: ::std::result::Result<super::VideoSegmentLayoutState, ::std::string::String>,
+        zoom: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
     }
     impl ::std::default::Default for VideoSegmentLayout {
         fn default() -> Self {
             Self {
+                background: Ok(Default::default()),
                 crop_path: Ok(Default::default()),
+                inset: Ok(Default::default()),
+                punches: Ok(Default::default()),
                 secondary_crop_path: Ok(Default::default()),
+                split: Ok(Default::default()),
                 state: Err("no value supplied for state".to_string()),
+                zoom: Ok(Default::default()),
             }
         }
     }
     impl VideoSegmentLayout {
+        pub fn background<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::VideoSegmentLayoutBackground>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.background = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for background: {e}"));
+            self
+        }
         pub fn crop_path<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::vec::Vec<super::VideoSegmentLayoutCropPathItem>>,
@@ -3352,6 +7042,26 @@ pub mod builder {
             self.crop_path = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for crop_path: {e}"));
+            self
+        }
+        pub fn inset<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::VideoSegmentLayoutInset>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.inset = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for inset: {e}"));
+            self
+        }
+        pub fn punches<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::VideoSegmentLayoutPunchesItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.punches = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for punches: {e}"));
             self
         }
         pub fn secondary_crop_path<T>(mut self, value: T) -> Self
@@ -3366,6 +7076,16 @@ pub mod builder {
             });
             self
         }
+        pub fn split<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.split = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for split: {e}"));
+            self
+        }
         pub fn state<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::VideoSegmentLayoutState>,
@@ -3376,6 +7096,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for state: {e}"));
             self
         }
+        pub fn zoom<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.zoom = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for zoom: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<VideoSegmentLayout> for super::VideoSegmentLayout {
         type Error = super::error::ConversionError;
@@ -3383,18 +7113,28 @@ pub mod builder {
             value: VideoSegmentLayout,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                background: value.background?,
                 crop_path: value.crop_path?,
+                inset: value.inset?,
+                punches: value.punches?,
                 secondary_crop_path: value.secondary_crop_path?,
+                split: value.split?,
                 state: value.state?,
+                zoom: value.zoom?,
             })
         }
     }
     impl ::std::convert::From<super::VideoSegmentLayout> for VideoSegmentLayout {
         fn from(value: super::VideoSegmentLayout) -> Self {
             Self {
+                background: Ok(value.background),
                 crop_path: Ok(value.crop_path),
+                inset: Ok(value.inset),
+                punches: Ok(value.punches),
                 secondary_crop_path: Ok(value.secondary_crop_path),
+                split: Ok(value.split),
                 state: Ok(value.state),
+                zoom: Ok(value.zoom),
             }
         }
     }
@@ -3472,6 +7212,130 @@ pub mod builder {
                 easing: Ok(value.easing),
                 rect: Ok(value.rect),
                 t_ticks: Ok(value.t_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct VideoSegmentLayoutInset {
+        corner: ::std::result::Result<super::VideoSegmentLayoutInsetCorner, ::std::string::String>,
+        size: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for VideoSegmentLayoutInset {
+        fn default() -> Self {
+            Self {
+                corner: Err("no value supplied for corner".to_string()),
+                size: Err("no value supplied for size".to_string()),
+            }
+        }
+    }
+    impl VideoSegmentLayoutInset {
+        pub fn corner<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::VideoSegmentLayoutInsetCorner>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.corner = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for corner: {e}"));
+            self
+        }
+        pub fn size<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.size = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for size: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<VideoSegmentLayoutInset> for super::VideoSegmentLayoutInset {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: VideoSegmentLayoutInset,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                corner: value.corner?,
+                size: value.size?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::VideoSegmentLayoutInset> for VideoSegmentLayoutInset {
+        fn from(value: super::VideoSegmentLayoutInset) -> Self {
+            Self {
+                corner: Ok(value.corner),
+                size: Ok(value.size),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct VideoSegmentLayoutPunchesItem {
+        end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+        zoom: ::std::result::Result<i64, ::std::string::String>,
+    }
+    impl ::std::default::Default for VideoSegmentLayoutPunchesItem {
+        fn default() -> Self {
+            Self {
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+                zoom: Err("no value supplied for zoom".to_string()),
+            }
+        }
+    }
+    impl VideoSegmentLayoutPunchesItem {
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+        pub fn zoom<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<i64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.zoom = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for zoom: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<VideoSegmentLayoutPunchesItem>
+        for super::VideoSegmentLayoutPunchesItem
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: VideoSegmentLayoutPunchesItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                end_ticks: value.end_ticks?,
+                start_ticks: value.start_ticks?,
+                zoom: value.zoom?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::VideoSegmentLayoutPunchesItem> for VideoSegmentLayoutPunchesItem {
+        fn from(value: super::VideoSegmentLayoutPunchesItem) -> Self {
+            Self {
+                end_ticks: Ok(value.end_ticks),
+                start_ticks: Ok(value.start_ticks),
+                zoom: Ok(value.zoom),
             }
         }
     }

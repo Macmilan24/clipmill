@@ -58,6 +58,11 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'The three speech passes fused into one document',
   },
   {
+    kind: 'speech.speakers.v1',
+    label: 'Tell voices apart',
+    detail: 'Who speaks when, so the transcript can say',
+  },
+  {
     kind: 'evidence.shots.v1',
     label: 'Detect shots',
     detail: 'Camera cuts, so framing stays stable within each shot',

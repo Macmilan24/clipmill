@@ -77,6 +77,17 @@ impl Boundaries {
         // the beginning and end at the end, whatever else was detected.
         starts.insert(document.coverage.start_ticks);
         ends.insert(document.coverage.end_ticks);
+        // A cut never lands on timing the transcript does not vouch for. A
+        // point strictly inside such a span is not offered; its edges are,
+        // since they are where measured speech resumes.
+        let disowned = |tick: &u64| {
+            document
+                .invalid_regions
+                .iter()
+                .any(|region| region.start_ticks < *tick && *tick < region.end_ticks)
+        };
+        starts.retain(|tick| !disowned(tick));
+        ends.retain(|tick| !disowned(tick));
 
         Self {
             starts: starts.into_iter().collect(),

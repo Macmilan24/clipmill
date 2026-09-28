@@ -3,20 +3,27 @@
  * `useEditor` owns document state and resolves face tracks from the clip's run
  * for re-solving.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
+import type { CropKeyframe, CropPath, SolveOptions } from '../daemon/client.js';
 import { batch, setLayout, solvedKeyframe } from '../editor/commands.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
+import type { RecordingAccess } from '../editor/CutawaysSection.js';
+import type { AssetAccess } from '../editor/brand.js';
+import { SPLITS, viewports } from '../editor/layouts.js';
 import { segmentAt, sourceOf } from '../editor/player.js';
 import { useEditor } from '../editor/useEditor.js';
-import type { ClipRef } from '../shell/route.js';
+import { historySteps } from '../editor/history.js';
+import type { ClipRef, EditorFocus } from '../shell/route.js';
 import { Editor } from './Editor.js';
 
 export interface EditorScreenProps {
   /** The clip to open, or null when the row was reached with none named. */
   readonly clip: ClipRef | null;
+  /** What to land on inside the clip, when the opener said. */
+  readonly focus?: EditorFocus | null;
   readonly onOpenResults: () => void;
   /** Open a different clip here — from the list this screen offers. */
   readonly onOpen: (clip: ClipRef) => void;
@@ -27,12 +34,16 @@ export interface EditorScreenProps {
 
 export function EditorScreen({
   clip,
+  focus = null,
   onOpenResults,
   onOpen,
   onExport,
   api = daemonApi,
 }: EditorScreenProps) {
-  const editor = useEditor(clip, api);
+  const [sourceRefresh, setSourceRefresh] = useState(0);
+  const [relinking, setRelinking] = useState(false);
+  const [relinkProblem, setRelinkProblem] = useState<string | null>(null);
+  const editor = useEditor(clip, api, sourceRefresh);
   const [resolving, setResolving] = useState(false);
   const [resolveProblem, setResolveProblem] = useState<string | null>(null);
   const resolveVersion = useRef(0);
@@ -41,6 +52,45 @@ export function EditorScreen({
     setResolveProblem(null);
     setResolving(false);
   }, [clip?.docId, editor.plan?.revision]);
+
+  // Whether the recording is still where it was registered. The editor runs
+  // from preview copies either way; only an export needs the original, so a
+  // moved file is said once, with the way to fix it, rather than discovered
+  // when an export fails.
+  const [sourceMissing, setSourceMissing] = useState(false);
+  const sourceId = clip?.sourceId ?? null;
+  useEffect(() => {
+    setSourceMissing(false);
+    if (!sourceId) return undefined;
+    let live = true;
+    // A shell without source details answers nothing, rather than stopping
+    // the screen: this is information, not a precondition.
+    Promise.resolve()
+      .then(() => api.getSource(sourceId))
+      .then((details) => {
+        if (live) setSourceMissing(details.source.missing === true);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, sourceId, sourceRefresh]);
+
+  const onRelink = useCallback(async () => {
+    if (!clip || relinking) return;
+    setRelinking(true);
+    setRelinkProblem(null);
+    try {
+      const chosen = await api.chooseSourceFile();
+      if (chosen === null) return;
+      await api.relinkSource(clip.projectId, clip.sourceId, chosen);
+      setSourceRefresh((current) => current + 1);
+    } catch (error) {
+      setRelinkProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRelinking(false);
+    }
+  }, [api, clip, relinking]);
 
   /**
    * Why the solver cannot be asked, or `null` when it can.
@@ -55,13 +105,16 @@ export function EditorScreen({
     : 'This analysis has no face evidence. Reanalyze the recording to add automatic framing.';
 
   /**
-   * Ask the solver again and write what it says as one undoable step.
+   * Ask the solver about the section at `frame` and write what it says as one
+   * undoable step.
    *
    * The solve itself writes nothing — it is a proposal — so turning it into
-   * keyframes is the editor's decision and is recorded as such.
+   * keyframes is the editor's decision and is recorded as such. A section
+   * showing two people is re-solved as two people: recalculating a two-person
+   * layout into one portrait would undo a choice nobody asked to undo.
    */
-  const onResolve = useCallback(
-    async (frame: number) => {
+  const solveSection = useCallback(
+    async (frame: number, follow: number | null) => {
       const plan = editor.plan;
       const faceTrack = editor.faceTrack;
       // The span the solver is asked about is the segment's own window into the
@@ -77,29 +130,79 @@ export function EditorScreen({
       const version = ++resolveVersion.current;
       setResolving(true);
       setResolveProblem(null);
-      try {
-        const solved = await api.solveCropPath(
+      const output = { width: plan.width, height: plan.height };
+      const ask = (options: SolveOptions = {}) =>
+        api.solveCropPath(
           faceTrack.projectId,
           faceTrack.artifactId,
           segment.inTicks,
           segment.outTicks,
+          { ...options, aspect: output },
         );
-        if (version !== resolveVersion.current) return;
-        if (solved.fit || solved.keyframes.length === 0) {
-          await editor.apply(setLayout('fit', segment.segmentId));
-          return;
+      const path = (
+        keyframes: readonly CropKeyframe[],
+        aspect: { width: number; height: number },
+      ) =>
+        keyframes.map((keyframe) => {
+          const converted = solvedKeyframe(keyframe, segment, source, aspect);
+          return { t_ticks: converted.tTicks, rect: converted.rect };
+        });
+      try {
+        let solved: CropPath;
+        if (follow !== null) {
+          solved = await ask({ trackId: follow });
+          if (version !== resolveVersion.current) return;
+          if (solved.fit || solved.keyframes.length === 0) {
+            setResolveProblem(
+              `That person cannot be followed through this section: ${solved.fitReason || 'they are barely in it'}.`,
+            );
+            return;
+          }
+        } else {
+          solved = segment.hasTwoUpPaths ? await ask({ twoUp: true }) : await ask();
+          if (version !== resolveVersion.current) return;
+          const pair = solved.secondaryKeyframes ?? [];
+          if (segment.hasTwoUpPaths && !solved.fit && pair.length > 0) {
+            // Each portrait keeps its centre and closeness, in the viewport
+            // the section's split gives it — stacked, or side by side.
+            const saved = editor.document?.video.segments?.find(
+              (item) => item.segment_id === segment.segmentId,
+            );
+            const [first, second] = viewports(saved?.layout.split ?? SPLITS.even, output);
+            await editor.apply(
+              batch([
+                setLayout('two_up', segment.segmentId),
+                {
+                  op: 'replace_crop_path',
+                  segment_id: segment.segmentId,
+                  path: path(solved.keyframes, first),
+                },
+                {
+                  op: 'replace_secondary_crop_path',
+                  segment_id: segment.segmentId,
+                  path: path(pair, second),
+                },
+              ]),
+            );
+            return;
+          }
+          if (segment.hasTwoUpPaths) {
+            // The pair is no longer clear here; the camera decides afresh.
+            solved = await ask();
+            if (version !== resolveVersion.current) return;
+          }
+          if (solved.fit || solved.keyframes.length === 0) {
+            await editor.apply(setLayout('fit', segment.segmentId));
+            return;
+          }
         }
-        const aspect = { width: plan.width, height: plan.height };
         await editor.apply(
           batch([
             setLayout('speaker_fill', segment.segmentId),
             {
               op: 'replace_crop_path',
               segment_id: segment.segmentId,
-              path: solved.keyframes.map((keyframe) => {
-                const converted = solvedKeyframe(keyframe, segment, source, aspect);
-                return { t_ticks: converted.tTicks, rect: converted.rect };
-              }),
+              path: path(solved.keyframes, output),
             },
           ]),
         );
@@ -113,6 +216,48 @@ export function EditorScreen({
       }
     },
     [api, editor],
+  );
+  const onResolve = useCallback((frame: number) => solveSection(frame, null), [solveSection]);
+
+  // The faces of a section, for the Original view to offer. A shell without
+  // face listing, or an analysis without faces, offers none.
+  const faceTrack = editor.faceTrack;
+  const loadFaces = useMemo(
+    () =>
+      api.listFaces && faceTrack
+        ? (startTicks: number, endTicks: number) =>
+            api.listFaces!(faceTrack.projectId, faceTrack.artifactId, startTicks, endTicks)
+        : null,
+    [api, faceTrack],
+  );
+  // The person's pictures and sounds, where this shell keeps them.
+  const assets = useMemo<AssetAccess | null>(
+    () =>
+      api.listAssets && api.importAsset && api.assetUrl
+        ? {
+            list: (kind) => api.listAssets!(kind),
+            bring: (kind, license) => api.importAsset!(kind, license),
+            url: (hash) => api.assetUrl!(hash),
+          }
+        : null,
+    [api],
+  );
+
+  // The project's recordings, for B-roll cut from them.
+  const projectId = clip?.projectId ?? null;
+  const recordings = useMemo<RecordingAccess | null>(
+    () =>
+      projectId
+        ? {
+            list: async () =>
+              (await api.listSources(projectId)).map((source) => ({
+                fingerprint: source.sourceFingerprint,
+                name: source.absolutePath.split(/[\\/]/).at(-1) ?? source.absolutePath,
+                ...(source.missing ? { missing: true } : {}),
+              })),
+          }
+        : null,
+    [api, projectId],
   );
 
   return (
@@ -130,8 +275,9 @@ export function EditorScreen({
       proxyUrls={editor.proxyUrls}
       docId={editor.docId}
       labels={clip?.labels ?? null}
+      focus={focus}
       loading={editor.loading}
-      problem={editor.problem ?? resolveProblem}
+      problem={relinkProblem ?? editor.problem ?? resolveProblem}
       busy={editor.busy}
       canUndo={editor.canUndo}
       canRedo={editor.canRedo}
@@ -140,6 +286,8 @@ export function EditorScreen({
       picker={clip === null ? <ClipList onOpen={onOpen} api={api} /> : null}
       onOpenResults={onOpenResults}
       onExport={clip === null ? null : () => onExport(clip)}
+      onRelink={clip === null || !sourceMissing ? null : () => void onRelink()}
+      relinking={relinking}
       onApply={(command) => {
         void editor.apply(command);
       }}
@@ -152,6 +300,42 @@ export function EditorScreen({
       onResolve={(frame) => {
         void onResolve(frame);
       }}
+      onFollow={
+        loadFaces
+          ? (frame, trackId) => {
+              void solveSection(frame, trackId);
+            }
+          : null
+      }
+      loadFaces={loadFaces}
+      assets={assets}
+      recordings={recordings}
+      onLoadHistory={
+        api.listEditHistory && clip
+          ? async () => historySteps(await api.listEditHistory!(clip.docId))
+          : null
+      }
+      fontUrl={api.captionFontUrl ?? null}
+      emojiUrl={api.emojiUrl ?? null}
+      previewCaptions={
+        api.previewCaptions && clip
+          ? async (draft) => {
+              const current = editor.document?.captions;
+              try {
+                const preview = await api.previewCaptions!(
+                  clip.docId,
+                  draft.styleRef ?? '',
+                  JSON.stringify(draft.options ?? current?.options ?? {}),
+                );
+                return preview.ass;
+              } catch {
+                // A look that cannot be drawn yet is simply not drawn; the
+                // saved captions stay on the preview.
+                return null;
+              }
+            }
+          : null
+      }
     />
   );
 }

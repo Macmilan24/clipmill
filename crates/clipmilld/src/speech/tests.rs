@@ -214,6 +214,105 @@ fn an_unplaced_utterance_is_carried_with_spread_timing_and_declared_invalid() {
     assert!(assembled.document.coverage.aligned_ticks < assembled.document.coverage.speech_ticks);
 }
 
+#[test]
+fn a_collapsed_aligner_word_is_marked_unmeasured() {
+    let mut collapsed = alignment();
+    let target = &mut collapsed.words[0];
+    target.end_ticks = target.start_ticks;
+    let text = target.text.to_string();
+    let assembled = assemble(&activity(), &recognized(), &collapsed, inputs(), ASSEMBLER)
+        .expect("collapsed timing remains readable");
+    let repaired = assembled
+        .document
+        .words
+        .iter()
+        .find(|word| word.text.as_str() == text)
+        .expect("word kept");
+    assert!(matches!(
+        repaired.timing,
+        transcript::WordTiming::Interpolated
+    ));
+    assert!(repaired.end_ticks > repaired.start_ticks);
+    assert!(
+        assembled
+            .document
+            .invalid_regions
+            .iter()
+            .any(|region| region.start_ticks <= repaired.start_ticks
+                && repaired.end_ticks <= region.end_ticks)
+    );
+}
+
+#[test]
+fn a_collapsed_run_is_spread_in_order_toward_the_next_measured_word() {
+    let mut collapsed = alignment();
+    let at = collapsed.words[1].start_ticks;
+    for word in &mut collapsed.words[1..4] {
+        word.start_ticks = at;
+        word.end_ticks = at;
+    }
+    let next = collapsed.words[4].start_ticks;
+    let assembled = assemble(&activity(), &recognized(), &collapsed, inputs(), ASSEMBLER)
+        .expect("collapsed run assembles");
+    let words = &assembled.document.words;
+    let run = &words[1..4];
+    for pair in run.windows(2) {
+        assert!(pair[0].end_ticks <= pair[1].start_ticks, "{run:?}");
+    }
+    for word in run {
+        assert!(word.end_ticks > word.start_ticks, "{word:?}");
+        assert!(matches!(word.timing, transcript::WordTiming::Interpolated));
+    }
+    assert!(run[0].start_ticks >= words[0].end_ticks.min(at));
+    assert!(run[2].end_ticks <= next.max(at + 1), "{run:?} next {next}");
+    // Each word got a share rather than one tick on top of the others.
+    assert!(run.iter().all(|word| word.end_ticks - word.start_ticks > 1));
+}
+
+#[test]
+fn a_recognizer_loop_keeps_two_words_and_declares_the_rest() {
+    use super::drop_repeated_loops;
+    let mut ordered = Vec::new();
+    for index in 0..12_u64 {
+        ordered.push((
+            index * 9_000,
+            index * 9_000 + 4_500,
+            if index == 0 {
+                "So".to_owned()
+            } else {
+                "it,".to_owned()
+            },
+            transcript::WordTiming::Aligned,
+            0.9,
+            0.8,
+        ));
+    }
+    let (kept, invalid) = drop_repeated_loops(&ordered);
+    assert_eq!(
+        kept.iter().map(|word| word.2.as_str()).collect::<Vec<_>>(),
+        ["So", "it,", "it,"]
+    );
+    assert_eq!(invalid.len(), 1);
+    assert_eq!(invalid[0].start_ticks, 27_000);
+
+    // A short stutter is speech and stays whole.
+    let stutter = (0..4_u64)
+        .map(|index| {
+            (
+                index * 9_000,
+                index * 9_000 + 4_500,
+                "no".to_owned(),
+                transcript::WordTiming::Aligned,
+                0.9,
+                0.8,
+            )
+        })
+        .collect::<Vec<_>>();
+    let (kept, invalid) = drop_repeated_loops(&stutter);
+    assert_eq!(kept.len(), 4);
+    assert!(invalid.is_empty());
+}
+
 /// A single out-of-vocabulary word goes back between its neighbours rather
 /// than at the end, or the transcript's word order stops matching what was
 /// said.

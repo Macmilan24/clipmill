@@ -10,7 +10,7 @@ mod tracks;
 
 pub use banded::BandedError;
 pub use solver::{CropPath, FrameGeometry, Keyframe, SolveError, Weights, solve, solve_in_frame};
-pub use tracks::{FitReason, Focus, FocusGate, resolve, resolve_pair};
+pub use tracks::{FitReason, Focus, FocusGate, SpeakerGate, resolve, resolve_pair, speaker};
 
 #[cfg(test)]
 mod testing;

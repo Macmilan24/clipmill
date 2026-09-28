@@ -256,7 +256,7 @@
 .review-queue-item {
   position: relative;
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   gap: 9px;
   width: 100%;
   padding: 6px;
@@ -290,7 +290,7 @@
   position: relative;
   display: grid;
   place-items: center;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 9 / 16;
   overflow: hidden;
   border-radius: 2px;
   background: var(--cm-viewer);
@@ -319,6 +319,10 @@
   color: #fff;
   font-size: 9.5px;
   line-height: 1.3;
+}
+
+.review-queue-repeat {
+  color: var(--cm-warning-ink);
 }
 
 .review-queue-text {
@@ -486,9 +490,24 @@
   box-shadow: 0 3px 18px #0004;
 }
 
+/* The clip's captions, drawn by libass over the result, as in the Editor. */
+.review-stage .edit-caption-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.review-stage .edit-caption-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The clip's own shape: 9:16 unless the editor says otherwise. */
 .review-stage[data-view='result'] {
-  width: min(100cqw, calc(100cqh * 9 / 16));
-  aspect-ratio: 9 / 16;
+  width: min(100cqw, calc(100cqh * var(--output-aspect, 0.5625)));
+  aspect-ratio: var(--output-aspect, 0.5625);
 }
 
 .review-stage[data-view='source'] {
@@ -738,6 +757,38 @@
   min-height: 20px;
   color: var(--cm-text-muted);
   font-size: 10.5px;
+}
+
+/* Who says what follows, above the sentence where the voice changes. */
+.review-voice-line {
+  display: flex;
+  margin: 4px 0 2px;
+}
+
+/* Who says a sentence, in the voice's colour; a person can name it. */
+.review-voice {
+  max-width: 14em;
+  overflow: hidden;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--voice) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--voice) 16%, transparent);
+  color: var(--cm-text-primary);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-voice:hover {
+  border-color: var(--voice);
+}
+
+.review-voice-input {
+  width: 11em;
+  outline: none;
+  font-weight: 500;
 }
 
 .review-sentence-actions {
@@ -1536,4 +1587,31 @@
   .review-sentence-actions {
     transition: none;
   }
+}
+
+/* The manual clip sheet's player: the Inspector's monitor, given a height. */
+.manual-clip-monitor {
+  display: flex;
+  height: min(52vh, 460px);
+  min-height: 300px;
+}
+
+.manual-clip-monitor > .review-viewer {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Result and source side by side, when the viewer has the width for both. */
+.review-stage-pair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100cqw;
+  height: 100cqh;
+}
+
+.review-stage-pair > .review-stage {
+  width: auto;
+  height: min(100cqh, calc((100cqw - 12px) / (0.5625 + var(--review-source-aspect, 1.7778))));
 }

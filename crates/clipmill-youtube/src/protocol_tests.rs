@@ -548,6 +548,10 @@ async fn oauth_ignores_wrong_state_but_denial_closes_the_callback_promptly() {
     let address = format!("127.0.0.1:{}", redirect.port().unwrap());
     let finishing =
         tokio::spawn(async move { crate::complete_authorization(&config, pending).await });
+    // The crate installs its TLS provider when it builds its own client; this
+    // test builds one of its own, so it must not depend on another test
+    // having run first.
+    let _already_installed = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
     let wrong = client
         .get(format!("{redirect}?state=wrong&code=discard-me"))

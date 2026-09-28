@@ -324,6 +324,7 @@ async fn commands_apply_invert_and_snapshot_over_the_control_socket() {
             date: "2026-09-17".to_owned(),
             title: String::new(),
             expected_revision: expected,
+            format: None,
         };
         let request_id = request_id.to_owned();
         let socket = socket.clone();

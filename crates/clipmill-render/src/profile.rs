@@ -5,7 +5,7 @@
 //! content address. The default profile is a value rather
 //! than a constant so the recipe can carry it and the manifest can state it.
 
-use clipmill_edit_ir::CaptionTrack;
+use clipmill_edit_ir::{CaptionTrack, FrameShape};
 use serde::{Deserialize, Serialize};
 
 use crate::timing::FrameRate;
@@ -22,6 +22,20 @@ pub const FONT_FAMILY: &str = "Inter";
 /// Where the executor stages the pinned font, relative to the working
 /// directory FFmpeg runs in. Nothing else may be visible to libass.
 pub const FONTS_DIR: &str = "fonts";
+/// The frame height caption styles are designed at. Sizes, margins, outline
+/// and shadow are all stated at this height and libass scales them to the
+/// output, so a larger or smaller render keeps the same proportions.
+pub const DESIGN_HEIGHT: i64 = 1_920;
+
+/// The ASS script resolution for an output frame: the design height, and the
+/// width that keeps the output's shape.
+pub fn design_resolution(width: i64, height: i64) -> (i64, i64) {
+    if height <= 0 {
+        return (width, height);
+    }
+    let scaled = (width * DESIGN_HEIGHT + height / 2) / height;
+    (scaled, DESIGN_HEIGHT)
+}
 
 /// An ASS colour, written `&HAABBGGRR`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -50,7 +64,12 @@ impl Colour {
         )
     }
 
-    fn from_hex(value: &str) -> Option<Self> {
+    /// The colour as an inline override tag takes it: `&HBBGGRR&`, no alpha.
+    pub fn to_ass_override(self) -> String {
+        format!("&H{:02X}{:02X}{:02X}&", self.blue, self.green, self.red)
+    }
+
+    pub(crate) fn from_hex(value: &str) -> Option<Self> {
         let digits = value.strip_prefix('#')?;
         if digits.len() != 6 {
             return None;
@@ -88,6 +107,10 @@ pub struct CaptionStyle {
     pub margin_horizontal: u32,
     /// Distance from the frame edge the anchored region keeps clear.
     pub margin_vertical: u32,
+    /// How the spoken word is marked, when the cue marks it.
+    pub highlight: clipmill_edit_ir::HighlightStyle,
+    /// The colour key words are set in.
+    pub accent: Colour,
 }
 
 impl CaptionStyle {
@@ -107,6 +130,34 @@ impl CaptionStyle {
         if let Some(value) = &options.outline {
             style.outline = Colour::from_hex(value)?;
         }
+        if let Some(value) = &options.accent {
+            style.accent = Colour::from_hex(value)?;
+        }
+        if options.highlight_spoken_word == Some(true) && style.spoken == style.unspoken {
+            style.spoken = Colour::opaque(0xFF, 0xD6, 0x5C);
+        }
+        if options.highlight_spoken_word == Some(false) {
+            style.spoken = style.unspoken;
+        }
+        if let Some(family) = &options.font_family {
+            let face = clipmill_captions::font(family)?;
+            face.family.clone_into(&mut style.font_family);
+            style.bold = face.bold;
+        }
+        if let Some(width) = options.outline_width {
+            style.outline_width = width;
+        }
+        if let Some(depth) = options.shadow_depth {
+            style.shadow_depth = depth;
+        }
+        if let Some(opacity) = options.plate_opacity
+            && style.boxed
+        {
+            let opacity = u8::try_from(opacity.min(100) * 255 / 100).unwrap_or(u8::MAX);
+            style.outline.transparency = u8::MAX - opacity;
+            style.shadow.transparency = u8::MAX - opacity;
+        }
+        style.highlight = options.highlight_style.unwrap_or_default();
         Some(style)
     }
     /// The default look: heavy outline, no plate, high contrast, and a spoken
@@ -132,6 +183,8 @@ impl CaptionStyle {
                 boxed: false,
                 margin_horizontal: 90,
                 margin_vertical: 260,
+                highlight: clipmill_edit_ir::HighlightStyle::Fill,
+                accent: Colour::opaque(0x4A, 0xDE, 0x80),
             },
             Self::from_preset,
         )
@@ -219,9 +272,51 @@ impl Default for RenderProfile {
     }
 }
 
+/// The output sizes a creator may choose, named by the height of the 9:16
+/// frame at that size: 1080p, 1440p and 4K. Another shape at the same size
+/// keeps the short side — 1080 × 1080 square, 1920 × 1080 landscape.
+pub const OUTPUT_HEIGHTS: [i64; 3] = [1_920, 2_560, 3_840];
+
 impl RenderProfile {
     pub fn rate(&self) -> FrameRate {
         self.frame_rate.into()
+    }
+
+    /// The default profile in another shape, at another frame rate and size.
+    ///
+    /// `height` names the size as the 9:16 frame's height at it (see
+    /// [`OUTPUT_HEIGHTS`]). Only the picture's shape, size and clock change.
+    /// Caption styles are stated at the design height and libass scales them,
+    /// and the letterbox blur is scaled here so a larger frame is the same
+    /// picture, sharper.
+    pub fn for_output(shape: FrameShape, height: i64, frame_rate: FrameRateSpec) -> Option<Self> {
+        if !OUTPUT_HEIGHTS.contains(&height) || frame_rate.num <= 0 || frame_rate.den <= 0 {
+            return None;
+        }
+        let base = Self::default();
+        let short = height * base.width / base.height;
+        let (width, height) = shape.frame(short);
+        let sigma = u32::try_from(i64::from(base.fit_background_sigma) * short / base.width)
+            .unwrap_or(base.fit_background_sigma);
+        let profile_id = if (width, height) == (base.width, base.height) {
+            base.profile_id.clone()
+        } else {
+            let name = match shape {
+                FrameShape::Vertical => "vertical",
+                FrameShape::Portrait => "portrait",
+                FrameShape::Square => "square",
+                FrameShape::Landscape => "landscape",
+            };
+            format!("clipmill.render.{name}_{width}x{height}.v1")
+        };
+        Some(Self {
+            profile_id,
+            width,
+            height,
+            frame_rate,
+            fit_background_sigma: sigma,
+            ..base
+        })
     }
 }
 
@@ -229,7 +324,7 @@ impl RenderProfile {
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    use super::{Colour, RenderProfile};
+    use super::{Colour, FrameShape, RenderProfile};
 
     #[test]
     fn ass_colours_are_written_bgr_with_inverted_alpha() {
@@ -244,6 +339,70 @@ mod tests {
             }
             .to_ass(),
             "&H80332211"
+        );
+    }
+
+    #[test]
+    fn larger_outputs_keep_the_shape_and_scale_the_fill() {
+        use super::FrameRateSpec;
+        let rate = FrameRateSpec {
+            num: 24_000,
+            den: 1_001,
+        };
+        let four_k = RenderProfile::for_output(FrameShape::Vertical, 3_840, rate).expect("4K");
+        assert_eq!((four_k.width, four_k.height), (2_160, 3_840));
+        assert_eq!(four_k.fit_background_sigma, 80);
+        assert_eq!(four_k.frame_rate, rate);
+        assert_ne!(four_k.profile_id, RenderProfile::default().profile_id);
+        let same = RenderProfile::for_output(
+            FrameShape::Vertical,
+            1_920,
+            RenderProfile::default().frame_rate,
+        )
+        .expect("default size");
+        assert_eq!(same, RenderProfile::default());
+        assert!(RenderProfile::for_output(FrameShape::Vertical, 1_000, rate).is_none());
+    }
+
+    #[test]
+    fn every_shape_keeps_the_short_side_of_its_size() {
+        use super::FrameShape;
+        let rate = RenderProfile::default().frame_rate;
+        let sized = |shape, height| {
+            let profile = RenderProfile::for_output(shape, height, rate).expect("offered");
+            (profile.width, profile.height, profile.profile_id)
+        };
+        assert_eq!(
+            sized(FrameShape::Portrait, 1_920),
+            (
+                1_080,
+                1_350,
+                "clipmill.render.portrait_1080x1350.v1".to_owned()
+            )
+        );
+        assert_eq!(
+            sized(FrameShape::Square, 2_560),
+            (
+                1_440,
+                1_440,
+                "clipmill.render.square_1440x1440.v1".to_owned()
+            )
+        );
+        assert_eq!(
+            sized(FrameShape::Landscape, 1_920),
+            (
+                1_920,
+                1_080,
+                "clipmill.render.landscape_1920x1080.v1".to_owned()
+            )
+        );
+        assert_eq!(
+            sized(FrameShape::Landscape, 3_840),
+            (
+                3_840,
+                2_160,
+                "clipmill.render.landscape_3840x2160.v1".to_owned()
+            )
         );
     }
 

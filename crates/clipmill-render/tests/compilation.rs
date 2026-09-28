@@ -11,7 +11,7 @@
 
 use clipmill_edit_ir::{
     CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionWord, CropKeyframe, CropRect,
-    EditCommand, EditDocument, GainPoint, Layout, LayoutState, VideoSegment,
+    EditCommand, EditDocument, FrameShape, GainPoint, Layout, LayoutState, VideoSegment,
 };
 use clipmill_render::{
     CLIP_FILE, LOUDNORM_SLOT, LoudnessMeasurement, RenderError, RenderProfile, SourceInput,
@@ -53,6 +53,7 @@ fn fit_document() -> EditDocument {
             secondary_crop_path: Vec::new(),
             state: LayoutState::Fit,
             crop_path: Vec::new(),
+            ..Layout::default()
         },
     )];
     document.captions.style_ref = RenderProfile::default().caption_style.style_ref;
@@ -74,9 +75,11 @@ fn cue(id: &str, start_frame: i64, end_frame: i64, words: &[(&str, i64, i64)]) -
                     start_ticks: start * FRAME_TICKS,
                     end_ticks: end * FRAME_TICKS,
                     word_id: None,
+                    emphasis: false,
                 })
                 .collect(),
         }],
+        position: None,
     }
 }
 
@@ -197,7 +200,7 @@ fn the_encode_pass_is_pinned_to_a_deterministic_profile() {
     });
     let joined = args.join(" ");
     for expected in [
-        "-threads 1",
+        "-threads:v 4",
         "-fflags +bitexact",
         "-flags:v +bitexact",
         "-flags:a +bitexact",
@@ -215,9 +218,71 @@ fn the_encode_pass_is_pinned_to_a_deterministic_profile() {
     );
     assert!(joined.contains("measured_I=-19.500000"));
     assert!(joined.contains("loudnorm=I=-14:TP=-1:LRA=11"));
-    // One input per span, each pre-seeked to its own keyframe.
+    // Disjoint source windows still need separate seek targets.
     assert_eq!(args.iter().filter(|arg| *arg == "-i").count(), 2);
     assert_eq!(args.iter().filter(|arg| *arg == "-ss").count(), 2);
+}
+
+#[test]
+fn adjacent_sections_share_one_seek_and_decoder() {
+    let mut document = fit_document();
+    document.video.segments[0].out_ticks = 360_000;
+    document.video.segments.push(segment(
+        "seg_2",
+        360_000,
+        540_000,
+        Layout {
+            state: LayoutState::Fit,
+            crop_path: Vec::new(),
+            secondary_crop_path: Vec::new(),
+            ..Layout::default()
+        },
+    ));
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    let args = plan.encode_args(LoudnessMeasurement {
+        input_lufs: -19.5,
+        input_true_peak_dbtp: -2.0,
+        input_range_lu: 7.5,
+        input_threshold_lufs: -29.5,
+        target_offset_lu: 0.25,
+    });
+    assert_eq!(args.iter().filter(|arg| *arg == "-i").count(), 1);
+    assert_eq!(args.iter().filter(|arg| *arg == "-ss").count(), 1);
+    let graph = args
+        .windows(2)
+        .find(|pair| pair[0] == "-filter_complex")
+        .expect("filter graph")[1]
+        .as_str();
+    assert!(graph.contains("[0:v]split=2[decode_v0][decode_v1]"));
+    assert!(graph.contains("[0:a]asplit=2[decode_a0][decode_a1]"));
+}
+
+#[test]
+fn spoken_word_highlight_is_independent_of_the_typography_preset() {
+    let mut document = fit_document();
+    document.captions.style_ref = "clipmill.captions.minimal.v1".to_owned();
+    document.captions.cues = vec![cue("cue_1", 0, 60, &[("the", 0, 25), ("speaker", 25, 60)])];
+    document.captions.cues[0].anim = CaptionAnimation::None;
+    let profile = RenderProfile::default();
+    document.captions.options.highlight_spoken_word = Some(true);
+    let enabled = compile(&document, &[source()], &profile).expect("highlighted minimal compiles");
+    let enabled_preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert!(enabled.ass.contains("{\\k"));
+    assert!(enabled_preview.cues[0].karaoke);
+    assert_ne!(
+        enabled_preview.caption_style.spoken,
+        enabled_preview.caption_style.unspoken
+    );
+
+    document.captions.options.highlight_spoken_word = Some(false);
+    let disabled = compile(&document, &[source()], &profile).expect("plain minimal compiles");
+    let disabled_preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert!(!disabled.ass.contains("{\\k"));
+    assert!(!disabled_preview.cues[0].karaoke);
+    assert_eq!(
+        disabled_preview.caption_style.spoken,
+        disabled_preview.caption_style.unspoken
+    );
 }
 
 #[test]
@@ -340,6 +405,296 @@ fn captions_burn_only_when_the_document_has_them() {
     );
 }
 
+#[test]
+fn text_over_the_program_burns_in_the_caption_pass_even_without_captions() {
+    use clipmill_edit_ir::{Overlay, OverlayContent, TextRole};
+    let mut document = fit_document();
+    document.overlays = vec![Overlay {
+        overlay_id: "ovl_hook".to_owned(),
+        start_ticks: 0,
+        end_ticks: 180_000,
+        content: OverlayContent::Text {
+            text: "Why the second\nquestion wins".to_owned(),
+            role: TextRole::Hook,
+            x: 500,
+            y: 140,
+            size: 96,
+            colour: "#FFFFFF".to_owned(),
+            plate: Some("#E0245E".to_owned()),
+        },
+    }];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("compiles");
+    assert!(plan.graph.graph.contains("subtitles=filename=clip.ass"));
+    assert!(
+        plan.ass.contains("Style: text_plate,Inter,"),
+        "{}",
+        plan.ass
+    );
+    let dialogue = plan
+        .ass
+        .lines()
+        .find(|line| line.contains("text_plate,,"))
+        .expect("the hook is an event");
+    assert_eq!(
+        dialogue,
+        "Dialogue: 10,0:00:00.00,0:00:02.00,text_plate,,0,0,0,,\
+         {\\an5\\pos(540,268)\\fs96\\c&HFFFFFF&\\3c&H5E24E0&\\bord19\\shad0}\
+         Why the second\\Nquestion wins"
+    );
+    // The preview draws the same script.
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert!(preview.ass.contains(dialogue));
+
+    // Left past the end of the program by an edit, it is refused by name.
+    document.overlays[0].start_ticks = 400_000;
+    document.overlays[0].end_ticks = 500_000;
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::OverlayOutsideProgram(id) if id == "ovl_hook"
+    ));
+}
+
+#[test]
+fn an_emoji_is_laid_from_its_pinned_picture_under_the_captions() {
+    use clipmill_edit_ir::{Overlay, OverlayContent};
+    let mut document = first_slice();
+    let emoji = |code: &str| Overlay {
+        overlay_id: "ovl_money".to_owned(),
+        start_ticks: 45_000,
+        end_ticks: 153_000,
+        content: OverlayContent::Emoji {
+            emoji: code.to_owned(),
+            x: 500,
+            y: 640,
+            size: 180,
+        },
+    };
+    document.overlays = vec![emoji("1f4b0")];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("compiles");
+    let graph = &plan.graph.graph;
+    // An even side of the short edge, centred where the document says, for
+    // the frames of its span.
+    assert!(
+        graph.contains("movie=filename=emoji/emoji_u1f4b0.png,format=rgba,scale=194:194[emoji0]"),
+        "{graph}"
+    );
+    assert!(
+        graph.contains(
+            "[emoji0]overlay=x=540-w/2:y=1228-h/2:eof_action=repeat:\
+             enable='between(n\\,15\\,50)'"
+        ),
+        "{graph}"
+    );
+    // Under the captions, which burn over it; and never a caption event.
+    let laid = graph.find("[emoji0]overlay").expect("laid");
+    let burned = graph.find("subtitles=").expect("captions");
+    assert!(laid < burned, "{graph}");
+    assert!(!plan.ass.contains("ovl_money"));
+    assert_eq!(
+        clipmill_render::emoji_files(&document.overlays),
+        ["emoji_u1f4b0.png"]
+    );
+    // The preview lists it, for the editor to draw and move.
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    let shown = &preview.overlays[0];
+    assert_eq!((shown.kind, shown.emoji.as_str()), ("emoji", "1f4b0"));
+
+    // Alone, an emoji needs no caption pass: it is a picture.
+    let mut alone = fit_document();
+    alone.overlays = vec![emoji("1f4b0")];
+    let plan = compile(&alone, &[source()], &profile).expect("compiles");
+    assert!(plan.graph.graph.contains("[emoji0]overlay"));
+    assert!(
+        !plan.graph.graph.contains("subtitles="),
+        "{}",
+        plan.graph.graph
+    );
+
+    // A code the app does not offer has no picture to stage.
+    document.overlays = vec![emoji("1f9a4")];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::UnknownEmoji(code) if code == "1f9a4"
+    ));
+}
+
+fn picture_cutaway(start: i64, end: i64, push_in: bool) -> clipmill_edit_ir::Cutaway {
+    clipmill_edit_ir::Cutaway {
+        cutaway_id: "cut_chart".to_owned(),
+        start_ticks: start,
+        end_ticks: end,
+        fit: clipmill_edit_ir::CutawayFit::Fill,
+        content: clipmill_edit_ir::CutawayContent::Picture {
+            asset: format!("sha256:{}", "3".repeat(64)),
+            push_in,
+        },
+    }
+}
+
+fn with_picture(document: &mut EditDocument) {
+    document.assets = vec![clipmill_edit_ir::Asset {
+        hash: format!("sha256:{}", "3".repeat(64)),
+        license: "royalty_free".to_owned(),
+    }];
+}
+
+/// B-roll lies over the program's own picture and under everything drawn on
+/// it: a still held for its frames, footage from one more decoder seeked to
+/// a keyframe and read only as far as it shows.
+#[test]
+fn b_roll_is_laid_over_the_program_for_its_frames() {
+    let mut document = fit_document();
+    with_picture(&mut document);
+    document.video.cutaways = vec![
+        picture_cutaway(45_000, 135_000, false),
+        clipmill_edit_ir::Cutaway {
+            cutaway_id: "cut_room".to_owned(),
+            start_ticks: 180_000,
+            end_ticks: 270_000,
+            fit: clipmill_edit_ir::CutawayFit::Fit,
+            content: clipmill_edit_ir::CutawayContent::Footage {
+                source_fingerprint: SOURCE.to_owned(),
+                in_ticks: 900_000,
+            },
+        },
+    ];
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    let graph = &plan.graph.graph;
+    for piece in [
+        format!(
+            "movie=filename=cutaways/{},format=yuv420p[cut0raw]",
+            "3".repeat(64)
+        ),
+        "[cut0raw]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,\
+         setsar=1[cut0]"
+            .to_owned(),
+        "[vcat][cut0]overlay=x=0:y=0:eof_action=repeat:enable='between(n\\,15\\,44)'".to_owned(),
+        // The footage is the input after the section's own.
+        "[1:v]trim=start=0.000000:end=1.000000,setpts=PTS-STARTPTS,fps=30000/1001:start_time=0,\
+         tpad=stop_mode=clone:stop_duration=1,trim=end_frame=30,setpts=PTS-STARTPTS,\
+         format=yuv420p[cut1raw]"
+            .to_owned(),
+        "[cut1rawbg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,\
+         gblur=sigma=40"
+            .to_owned(),
+        "[cut1fitted]setpts=PTS-STARTPTS+60*1001/30000/TB[cut1]".to_owned(),
+        "[vcut0][cut1]overlay=x=0:y=0:eof_action=pass:enable='between(n\\,60\\,89)'".to_owned(),
+        "[vcut1]null[vout]".to_owned(),
+    ] {
+        assert!(graph.contains(&piece), "{piece}\n\n{graph}");
+    }
+    // Read from ten seconds in, for its second and a second's slack.
+    let args = plan.encode_args(LoudnessMeasurement {
+        input_lufs: -20.0,
+        input_true_peak_dbtp: -3.0,
+        input_range_lu: 5.0,
+        input_threshold_lufs: -30.0,
+        target_offset_lu: 0.0,
+    });
+    let footage = args
+        .windows(6)
+        .position(|window| {
+            window
+                == [
+                    "-ss",
+                    "10.000000",
+                    "-t",
+                    "2.000000",
+                    "-i",
+                    "/private/fixtures/source.mp4",
+                ]
+        })
+        .expect("the footage's decoder");
+    let filter = args
+        .iter()
+        .position(|arg| arg == "-filter_complex")
+        .expect("graph");
+    assert!(footage < filter);
+    // The measurement never decodes it.
+    assert!(!plan.measurement_graph.graph.contains("cut"));
+    // The preview is told the same frames, to draw it over the picture.
+    let preview =
+        clipmill_render::preview_plan(&document, &RenderProfile::default()).expect("preview");
+    let shown = preview
+        .cutaways
+        .iter()
+        .map(|cutaway| {
+            (
+                cutaway.kind,
+                cutaway.fit,
+                cutaway.first_frame,
+                cutaway.end_frame,
+                cutaway.in_ticks,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        shown,
+        [
+            ("picture", "fill", 15, 45, 0),
+            ("footage", "fit", 60, 90, 900_000)
+        ]
+    );
+    assert_eq!(
+        clipmill_render::cutaway_pictures(&document),
+        [format!("sha256:{}", "3".repeat(64))]
+    );
+}
+
+/// A picture that moves closer is composed at twice the size, so the move
+/// lands on half pixels, and eased in over its frames.
+#[test]
+fn a_picture_that_pushes_in_is_composed_at_twice_the_size() {
+    let mut document = fit_document();
+    with_picture(&mut document);
+    document.video.cutaways = vec![picture_cutaway(180_000, 270_000, true)];
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    assert!(
+        plan.graph.graph.contains(
+            "[cut0big]zoompan=z='1+0.08*on/29':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=30:\
+             s=1080x1920:fps=30000/1001,setpts=PTS-STARTPTS+60*1001/30000/TB,format=yuv420p[cut0]"
+        ),
+        "{}",
+        plan.graph.graph
+    );
+    assert!(plan.graph.graph.contains("crop=2160:3840"));
+}
+
+#[test]
+fn b_roll_that_cannot_be_read_is_refused_by_name() {
+    let footage = |in_ticks: i64, fingerprint: &str| clipmill_edit_ir::Cutaway {
+        cutaway_id: "cut_room".to_owned(),
+        start_ticks: 0,
+        end_ticks: 90_000,
+        fit: clipmill_edit_ir::CutawayFit::Fill,
+        content: clipmill_edit_ir::CutawayContent::Footage {
+            source_fingerprint: fingerprint.to_owned(),
+            in_ticks,
+        },
+    };
+    let mut document = fit_document();
+    document.video.cutaways = vec![footage(1_300_000, SOURCE)];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CutawayPastEndOfSource(id) if id == "cut_room"
+    ));
+    let elsewhere = format!("sha256:{}", "9".repeat(64));
+    document.video.cutaways = vec![footage(0, &elsewhere)];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::UnresolvedSource(fingerprint) if fingerprint == elsewhere
+    ));
+    // Left past the end of the program, it is named.
+    with_picture(&mut document);
+    document.video.cutaways = vec![picture_cutaway(360_000, 450_000, false)];
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CutawayOutsideProgram(id) if id == "cut_chart"
+    ));
+}
+
 // ---- Crop path parity -------------------------------------------------------
 
 fn crop_document(path: Vec<CropKeyframe>) -> EditDocument {
@@ -352,6 +707,7 @@ fn crop_document(path: Vec<CropKeyframe>) -> EditDocument {
             secondary_crop_path: Vec::new(),
             state: LayoutState::SpeakerFill,
             crop_path: path,
+            ..Layout::default()
         },
     )];
     document
@@ -838,4 +1194,176 @@ fn two_person_render_and_preview_use_both_independent_viewports() {
         compile(&document, &[source()], &profile),
         Err(RenderError::CropOutsideFrame(_))
     ));
+}
+
+fn still(x: i64, y: i64, width: i64, height: i64) -> Vec<CropKeyframe> {
+    vec![CropKeyframe {
+        t_ticks: 0,
+        rect: CropRect {
+            x,
+            y,
+            width,
+            height,
+        },
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]
+}
+
+#[test]
+fn a_screen_over_a_face_shares_the_height_at_its_split() {
+    // The recording's own 16:9 on top, 606 pixels of 1920; the face below.
+    let mut document = crop_document(still(0, 2, 1_918, 1_076));
+    let layout = &mut document.video.segments[0].layout;
+    layout.state = LayoutState::TwoUp;
+    layout.split = Some(316);
+    layout.secondary_crop_path = still(1_000, 0, 888, 1_080);
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("a split two-up compiles");
+    assert!(
+        plan.graph.graph.contains("scale=1080:606"),
+        "{}",
+        plan.graph.graph
+    );
+    assert!(plan.graph.graph.contains("scale=1080:1314"));
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert_eq!(preview.segments[0].layout, "two_up");
+    assert_eq!(preview.segments[0].upper_height, 606);
+
+    // The even split's portraits no longer fit this split's viewports.
+    let layout = &mut document.video.segments[0].layout;
+    layout.crop_path = still(0, 140, 900, 800);
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CropAspectMismatch(_)
+    ));
+}
+
+#[test]
+fn a_landscape_frame_splits_side_by_side_and_the_shape_sizes_the_render() {
+    // Each half of the recording in its own half of a 16:9 frame.
+    let mut document = crop_document(still(0, 0, 960, 1_080));
+    document.video.shape = FrameShape::Landscape;
+    let layout = &mut document.video.segments[0].layout;
+    layout.state = LayoutState::TwoUp;
+    layout.secondary_crop_path = still(960, 0, 960, 1_080);
+    let profile = RenderProfile::for_output(
+        FrameShape::Landscape,
+        1_920,
+        RenderProfile::default().frame_rate,
+    )
+    .expect("offered");
+    let plan = compile(&document, &[source()], &profile).expect("side by side compiles");
+    assert!(
+        plan.graph.graph.contains("hstack=inputs=2"),
+        "{}",
+        plan.graph.graph
+    );
+    assert!(plan.graph.graph.contains("scale=960:1080"));
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert_eq!((preview.width, preview.height), (1_920, 1_080));
+    assert_eq!(preview.segments[0].upper_height, 960);
+
+    // A portrait crop does not fill a landscape half.
+    let mut portrait = document.clone();
+    portrait.video.segments[0].layout.crop_path = still(0, 0, 608, 1_080);
+    assert!(matches!(
+        compile(&portrait, &[source()], &profile),
+        Err(RenderError::CropAspectMismatch(_))
+    ));
+    // Nor does a 9:16 profile render a landscape clip.
+    assert!(matches!(
+        compile(&document, &[source()], &RenderProfile::default()),
+        Err(RenderError::ShapeMismatch { .. })
+    ));
+    assert!(clipmill_render::preview_plan(&document, &RenderProfile::default()).is_err());
+}
+
+#[test]
+fn a_fitted_picture_takes_its_colour_and_zoom() {
+    let mut document = fit_document();
+    let layout = &mut document.video.segments[0].layout;
+    layout.background = Some(clipmill_edit_ir::FitBackground::Colour {
+        colour: "#00FF00".to_owned(),
+    });
+    layout.zoom = Some(150);
+    let plan = compile(&document, &[source()], &RenderProfile::default()).expect("compiles");
+    let graph = &plan.graph.graph;
+    assert!(graph.contains("color=0x00FF00@1:t=fill"), "{graph}");
+    // 1920x1080 fits 1080 wide at 608 tall; half as large again is
+    // 1620x912, and the frame keeps its middle 1080.
+    assert!(graph.contains("scale=1620:912,crop=1080:912"), "{graph}");
+    assert!(!graph.contains("gblur"));
+
+    // An unzoomed, blurred fit compiles exactly as it always has.
+    let unstyled = compile(&fit_document(), &[source()], &RenderProfile::default()).expect("fit");
+    assert!(
+        unstyled
+            .graph
+            .graph
+            .contains("force_original_aspect_ratio=decrease")
+    );
+    assert!(unstyled.graph.graph.contains("gblur"));
+}
+
+#[test]
+fn a_picture_in_picture_insets_its_square_in_the_chosen_corner() {
+    let mut document = fit_document();
+    let layout = &mut document.video.segments[0].layout;
+    layout.state = LayoutState::PictureInPicture;
+    layout.secondary_crop_path = still(1_100, 100, 800, 800);
+    layout.inset = Some(clipmill_edit_ir::Inset {
+        corner: clipmill_edit_ir::InsetCorner::BottomLeft,
+        size: 400,
+    });
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("compiles");
+    let graph = &plan.graph.graph;
+    // 40% of 1080 is 432, 4% in from the left and clear of the bottom block.
+    assert!(graph.contains("scale=432:432"), "{graph}");
+    assert!(graph.contains("overlay=x=42:y=988"), "{graph}");
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    assert_eq!(preview.segments[0].inset, Some((42, 988, 432)));
+    assert!(
+        preview.crops[0].is_none(),
+        "the full picture is the whole frame"
+    );
+    assert_eq!(preview.secondary_crops[0].unwrap().x, 1_100);
+
+    // An inset that is not square is a framing mistake, not rounding.
+    document.video.segments[0].layout.secondary_crop_path = still(1_100, 100, 800, 600);
+    assert!(matches!(
+        refuses(&document, &[source()]),
+        RenderError::CropAspectMismatch(_)
+    ));
+}
+
+#[test]
+fn a_punch_in_draws_a_tighter_crop_in_render_and_preview_alike() {
+    // A still crop, punched 150% closer from 0.5 s to 1.5 s of the section.
+    let mut document = crop_document(still(656, 0, 608, 1_080));
+    document.video.segments[0].layout.punches = vec![clipmill_edit_ir::Punch {
+        start_ticks: 45_000,
+        end_ticks: 135_000,
+        zoom: 150,
+    }];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &[source()], &profile).expect("a punched crop compiles");
+    assert!(
+        plan.graph.graph.contains("eval=frame"),
+        "a crop that changes size is scaled frame by frame: {}",
+        plan.graph.graph
+    );
+    let preview = clipmill_render::preview_plan(&document, &profile).expect("preview");
+    // Frames 7, 30 and 52 at 29.97: a quarter, one and one and three
+    // quarter seconds into the section.
+    let at = |frame: usize| preview.crops[frame].expect("a crop");
+    assert_eq!((at(7).width, at(7).height), (608, 1_080));
+    let punched = at(30);
+    assert_eq!((punched.width, punched.height), (404, 720));
+    assert_eq!(
+        (punched.x, punched.y),
+        (758, 180),
+        "about the crop's own centre"
+    );
+    assert_eq!((at(52).width, at(52).height), (608, 1_080));
 }

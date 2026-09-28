@@ -39,6 +39,7 @@ fn document(path: Vec<CropKeyframe>) -> EditDocument {
             secondary_crop_path: Vec::new(),
             state: LayoutState::SpeakerFill,
             crop_path: path,
+            ..Layout::default()
         },
     }];
     document.validate().expect("a valid document");
@@ -436,4 +437,716 @@ fn a_new_solve_replaces_old_manual_keyframes_and_undo_restores_them() {
     assert_eq!(edited, original);
     redo.apply(&mut edited).expect("redo new solve");
     assert_eq!(edited.video.segments[0].layout.crop_path, replacement);
+}
+
+#[test]
+fn a_two_person_solve_replaces_both_portraits_in_one_step() {
+    let original = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(100),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    let upper = vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(200),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }];
+    let lower = vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(800),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }];
+    original.validate().expect("valid before");
+    let mut edited = original.clone();
+    let undo = EditCommand::Batch {
+        commands: vec![
+            EditCommand::SetLayout {
+                segment_id: "seg_1".to_owned(),
+                state: LayoutState::TwoUp,
+            },
+            EditCommand::ReplaceCropPath {
+                segment_id: "seg_1".to_owned(),
+                path: upper.clone(),
+            },
+            EditCommand::ReplaceSecondaryCropPath {
+                segment_id: "seg_1".to_owned(),
+                path: lower.clone(),
+            },
+        ],
+    }
+    .apply(&mut edited)
+    .expect("a two-person solve");
+    let layout = &edited.video.segments[0].layout;
+    assert_eq!(layout.state, LayoutState::TwoUp);
+    assert_eq!(
+        (&layout.crop_path, &layout.secondary_crop_path),
+        (&upper, &lower)
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+    // A lower path alone never makes a two-up layout valid without an upper one.
+    let mut broken = original.clone();
+    broken.video.segments[0].layout.crop_path.clear();
+    assert!(
+        EditCommand::Batch {
+            commands: vec![
+                EditCommand::SetLayout {
+                    segment_id: "seg_1".to_owned(),
+                    state: LayoutState::TwoUp,
+                },
+                EditCommand::ReplaceSecondaryCropPath {
+                    segment_id: "seg_1".to_owned(),
+                    path: lower,
+                },
+            ],
+        }
+        .apply(&mut broken)
+        .is_err()
+    );
+}
+
+#[test]
+fn a_layout_style_sets_and_undoes_in_one_step_and_refuses_what_it_cannot_draw() {
+    let original = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(100),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    let mut edited = original.clone();
+    let style = EditCommand::SetLayoutStyle {
+        segment_id: "seg_1".to_owned(),
+        split: Some(316),
+        background: Some(clipmill_edit_ir::FitBackground::Colour {
+            colour: "#101820".to_owned(),
+        }),
+        zoom: Some(140),
+        inset: Some(clipmill_edit_ir::Inset {
+            corner: clipmill_edit_ir::InsetCorner::TopLeft,
+            size: 300,
+        }),
+    };
+    let undo = style.apply(&mut edited).expect("a style");
+    let layout = &edited.video.segments[0].layout;
+    assert_eq!((layout.split, layout.zoom), (Some(316), Some(140)));
+    assert_eq!(layout.viewport_heights(1_920), (606, 1_314));
+    let json = serde_json::to_string(&style).expect("json");
+    assert_eq!(
+        serde_json::from_str::<EditCommand>(&json).expect("round trip"),
+        style
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    for (split, zoom, size, colour) in [
+        (Some(900), None, None, None),
+        (None, Some(90), None, None),
+        (None, None, Some(700), None),
+        (None, None, None, Some("green")),
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::SetLayoutStyle {
+                segment_id: "seg_1".to_owned(),
+                split,
+                background: colour.map(|colour| clipmill_edit_ir::FitBackground::Colour {
+                    colour: colour.to_owned(),
+                }),
+                zoom,
+                inset: size.map(|size| clipmill_edit_ir::Inset {
+                    corner: clipmill_edit_ir::InsetCorner::TopRight,
+                    size,
+                }),
+            }
+            .apply(&mut refused)
+            .is_err()
+        );
+        assert_eq!(refused, original, "a refused style changes nothing");
+    }
+}
+
+#[test]
+fn a_frame_shape_sets_and_undoes_and_only_a_landscape_frame_splits_across() {
+    use clipmill_edit_ir::{FrameShape, Inset, InsetCorner, Layout, splits_across};
+    let original = document(Vec::new());
+    let mut edited = original.clone();
+    let undo = EditCommand::SetFrameShape {
+        shape: FrameShape::Square,
+    }
+    .apply(&mut edited)
+    .expect("a shape");
+    assert_eq!(edited.video.shape, FrameShape::Square);
+    let bytes = edited.to_canonical_json().expect("canonical");
+    assert!(
+        String::from_utf8(bytes)
+            .expect("utf-8")
+            .contains(r#""shape":"square""#)
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+    // A 9:16 document never writes its shape, so its address is unchanged.
+    let bytes = original.to_canonical_json().expect("canonical");
+    assert!(!String::from_utf8(bytes).expect("utf-8").contains("shape"));
+
+    assert_eq!(FrameShape::Vertical.frame(1_080), (1_080, 1_920));
+    assert_eq!(FrameShape::Portrait.frame(1_080), (1_080, 1_350));
+    assert_eq!(FrameShape::Square.frame(1_440), (1_440, 1_440));
+    assert_eq!(FrameShape::Landscape.frame(2_160), (3_840, 2_160));
+
+    let layout = Layout {
+        split: Some(400),
+        ..Layout::default()
+    };
+    assert!(!splits_across(1_080, 1_080) && splits_across(1_920, 1_080));
+    assert_eq!(
+        layout.viewports(1_080, 1_920),
+        ((1_080, 768), (1_080, 1_152))
+    );
+    assert_eq!(
+        layout.viewports(1_920, 1_080),
+        ((768, 1_080), (1_152, 1_080))
+    );
+
+    // An inset is a share of the short side, clear of the captions below.
+    let inset = Inset {
+        corner: InsetCorner::BottomRight,
+        size: 350,
+    };
+    assert_eq!(inset.place(1_080, 1_920), (660, 1_042, 378));
+    assert_eq!(inset.place(1_920, 1_080), (1_500, 486, 378));
+}
+
+fn hook_text(id: &str, start_ticks: i64, end_ticks: i64) -> clipmill_edit_ir::Overlay {
+    clipmill_edit_ir::Overlay {
+        overlay_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        content: clipmill_edit_ir::OverlayContent::Text {
+            text: "The hook".to_owned(),
+            role: clipmill_edit_ir::TextRole::Hook,
+            x: 500,
+            y: 150,
+            size: 96,
+            colour: "#FFFFFF".to_owned(),
+            plate: None,
+        },
+    }
+}
+
+fn with_overlays() -> clipmill_edit_ir::EditDocument {
+    let mut original = document(Vec::new());
+    original.overlays = vec![
+        hook_text("before", 0, 90_000),
+        hook_text("across", 150_000, 400_000),
+        hook_text("inside", 210_000, 250_000),
+        hook_text("after", 500_000, 600_000),
+    ];
+    original.validate().expect("valid overlays");
+    original
+}
+
+#[test]
+fn overlays_follow_program_time_through_cuts_and_undo_in_their_place() {
+    let original = with_overlays();
+    // Cut 2 s to 3 s: the one inside goes, the one across closes up, the one
+    // after moves a second earlier, and undo puts every one back.
+    let mut cut = original.clone();
+    let undo = EditCommand::RippleDelete {
+        start_ticks: 180_000,
+        end_ticks: 270_000,
+        reflow_edges: false,
+    }
+    .apply(&mut cut)
+    .expect("a cut");
+    let spans = cut
+        .overlays
+        .iter()
+        .map(|overlay| {
+            (
+                overlay.overlay_id.as_str(),
+                overlay.start_ticks,
+                overlay.end_ticks,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spans,
+        [
+            ("before", 0, 90_000),
+            ("across", 150_000, 310_000),
+            ("after", 410_000, 510_000)
+        ]
+    );
+    undo.apply(&mut cut).expect("undo");
+    assert_eq!(cut, original);
+
+    // Removing one from the middle and undoing it restores its place.
+    let mut edited = original.clone();
+    let undo = EditCommand::RemoveOverlay {
+        overlay_id: "across".to_owned(),
+    }
+    .apply(&mut edited)
+    .expect("removed");
+    assert_eq!(edited.overlays.len(), 3);
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+}
+
+#[test]
+fn an_overlay_that_cannot_be_drawn_is_refused_and_changes_nothing() {
+    use clipmill_edit_ir::{OverlayContent, TextRole};
+    let original = with_overlays();
+    let text = |text: &str, size: u16, colour: &str| OverlayContent::Text {
+        text: text.to_owned(),
+        role: TextRole::Label,
+        x: 500,
+        y: 500,
+        size,
+        colour: colour.to_owned(),
+        plate: None,
+    };
+    for bad in [
+        text("{\\b1}markup", 96, "#FFFFFF"),
+        text("  ", 96, "#FFFFFF"),
+        text("Too big", 400, "#FFFFFF"),
+        text("Off colour", 96, "white"),
+    ] {
+        let mut refused = original.clone();
+        let mut overlay = hook_text("new", 0, 90_000);
+        overlay.content = bad;
+        assert!(
+            EditCommand::AddOverlay { overlay, at: None }
+                .apply(&mut refused)
+                .is_err()
+        );
+        assert_eq!(refused, original);
+    }
+    let mut refused = original.clone();
+    assert!(
+        EditCommand::AddOverlay {
+            overlay: hook_text("before", 0, 90_000),
+            at: None
+        }
+        .apply(&mut refused)
+        .is_err(),
+        "an id already in use"
+    );
+}
+
+/// An emoji names its pinned picture by code: lower-case hex and the joins
+/// between them, never a path, and never smaller or larger than the render
+/// draws one.
+#[test]
+fn an_emoji_is_a_pinned_code_at_a_size_the_render_draws() {
+    use clipmill_edit_ir::OverlayContent;
+    let original = with_overlays();
+    let emoji = |code: &str, x: u16, size: u16| {
+        let mut overlay = hook_text("emoji", 30_000, 138_000);
+        overlay.content = OverlayContent::Emoji {
+            emoji: code.to_owned(),
+            x,
+            y: 640,
+            size,
+        };
+        overlay
+    };
+    let mut edited = original.clone();
+    let undo = EditCommand::AddOverlay {
+        overlay: emoji("1f44f_1f3fd", 500, 180),
+        at: None,
+    }
+    .apply(&mut edited)
+    .expect("an emoji");
+    assert_eq!(edited.overlays.len(), original.overlays.len() + 1);
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    for (code, x, size) in [
+        ("1F525", 500, 180),
+        ("../fonts/Inter", 500, 180),
+        ("1f5", 500, 180),
+        ("1f525", 1_001, 180),
+        ("1f525", 500, 59),
+        ("1f525", 500, 401),
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::AddOverlay {
+                overlay: emoji(code, x, size),
+                at: None
+            }
+            .apply(&mut refused)
+            .is_err(),
+            "{code} at {x}, size {size}"
+        );
+        assert_eq!(refused, original);
+    }
+}
+
+#[test]
+fn a_picture_in_picture_needs_its_inset_but_not_a_main_crop() {
+    let original = document(Vec::new());
+    let mut edited = original.clone();
+    let to_inset = EditCommand::SetLayout {
+        segment_id: "seg_1".to_owned(),
+        state: LayoutState::PictureInPicture,
+    };
+    assert!(to_inset.apply(&mut edited).is_err(), "no inset to show");
+    let with_inset = EditCommand::Batch {
+        commands: vec![
+            to_inset,
+            EditCommand::ReplaceSecondaryCropPath {
+                segment_id: "seg_1".to_owned(),
+                path: vec![CropKeyframe {
+                    t_ticks: 0,
+                    rect: CropRect {
+                        x: 1_100,
+                        y: 100,
+                        width: 800,
+                        height: 800,
+                    },
+                    easing: clipmill_edit_ir::CropEasing::Linear,
+                }],
+            },
+        ],
+    };
+    let undo = with_inset
+        .apply(&mut edited)
+        .expect("an inset over the whole frame");
+    assert!(!edited.video.segments[0].layout.needs_crop_repair());
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+}
+
+fn punch(start: i64, end: i64, zoom: u16) -> clipmill_edit_ir::Punch {
+    clipmill_edit_ir::Punch {
+        start_ticks: start,
+        end_ticks: end,
+        zoom,
+    }
+}
+
+fn punched_document() -> EditDocument {
+    let mut document = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(656),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    EditCommand::SetPunches {
+        segment_id: "seg_1".to_owned(),
+        punches: vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(6 * SECOND, 8 * SECOND, 150),
+        ],
+    }
+    .apply(&mut document)
+    .expect("punches");
+    document
+}
+
+#[test]
+fn a_punch_moves_the_drawn_crop_in_about_its_centre_and_leaves_the_path() {
+    let original = document(vec![CropKeyframe {
+        t_ticks: 0,
+        rect: rect(656),
+        easing: clipmill_edit_ir::CropEasing::Linear,
+    }]);
+    let mut edited = original.clone();
+    let undo = EditCommand::SetPunches {
+        segment_id: "seg_1".to_owned(),
+        punches: vec![punch(SECOND, 3 * SECOND, 125)],
+    }
+    .apply(&mut edited)
+    .expect("punches");
+    let layout = &edited.video.segments[0].layout;
+    assert_eq!(
+        layout.crop_path,
+        original.video.segments[0].layout.crop_path
+    );
+    let drawn = layout.drawn_crop_path();
+    let tight = CropRect {
+        x: 717,
+        y: 108,
+        width: 486,
+        height: 864,
+    };
+    let keys = drawn
+        .iter()
+        .map(|key| (key.t_ticks, key.rect))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        keys,
+        [
+            (0, rect(656)),
+            (SECOND - 6_000, rect(656)),
+            (SECOND, tight),
+            (3 * SECOND - 6_000, tight),
+            (3 * SECOND, rect(656)),
+        ]
+    );
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    // Two-person and fitted sections are drawn as their paths say.
+    let mut two = edited.clone();
+    two.video.segments[0].layout.state = LayoutState::Fit;
+    two.video.segments[0].layout.punches = vec![punch(SECOND, 3 * SECOND, 125)];
+    assert_eq!(two.video.segments[0].layout.drawn_crop_path().len(), 1);
+}
+
+#[test]
+fn punches_that_overlap_crowd_leave_the_section_or_go_too_far_are_refused() {
+    let original = punched_document();
+    for punches in [
+        vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(2 * SECOND, 4 * SECOND, 125),
+        ],
+        vec![punch(SECOND, SECOND + 6_000, 125)],
+        vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(3 * SECOND + 6_000, 5 * SECOND, 125),
+        ],
+        vec![punch(9 * SECOND, 11 * SECOND, 125)],
+        vec![punch(SECOND, 3 * SECOND, 300)],
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::SetPunches {
+                segment_id: "seg_1".to_owned(),
+                punches,
+            }
+            .apply(&mut refused)
+            .is_err()
+        );
+        assert_eq!(refused, original);
+    }
+    // Meeting the one before is a change of how close, not a crowd.
+    let mut meeting = original.clone();
+    EditCommand::SetPunches {
+        segment_id: "seg_1".to_owned(),
+        punches: vec![
+            punch(SECOND, 3 * SECOND, 125),
+            punch(3 * SECOND, 5 * SECOND, 150),
+        ],
+    }
+    .apply(&mut meeting)
+    .expect("adjacent punches");
+}
+
+#[test]
+fn trims_and_splits_carry_punches_with_the_picture() {
+    let original = punched_document();
+    // Trimming 2 s off the head: the first punch is cut to its last second,
+    // the second moves 2 s earlier.
+    let mut trimmed = original.clone();
+    let undo = trim(&mut trimmed, 12 * SECOND, 20 * SECOND);
+    assert_eq!(
+        trimmed.video.segments[0].layout.punches,
+        [punch(0, SECOND, 125), punch(4 * SECOND, 6 * SECOND, 150)]
+    );
+    undo.apply(&mut trimmed).expect("undo");
+    assert_eq!(trimmed, original);
+
+    // Trimming into the first punch until too little of it is left drops it.
+    let mut short = original.clone();
+    trim(&mut short, 13 * SECOND - 3_000, 20 * SECOND);
+    assert_eq!(
+        short.video.segments[0].layout.punches,
+        [punch(3 * SECOND + 3_000, 5 * SECOND + 3_000, 150)]
+    );
+
+    // Splitting 7 s in: the second punch is shared out between the halves.
+    let mut split = original.clone();
+    EditCommand::SplitSegment {
+        segment_id: "seg_1".to_owned(),
+        at_ticks: 17 * SECOND,
+        new_segment_id: "seg_2".to_owned(),
+    }
+    .apply(&mut split)
+    .expect("split");
+    assert_eq!(
+        split.video.segments[0].layout.punches,
+        [
+            punch(SECOND, 3 * SECOND, 125),
+            punch(6 * SECOND, 7 * SECOND, 150)
+        ]
+    );
+    assert_eq!(
+        split.video.segments[1].layout.punches,
+        [punch(0, SECOND, 150)]
+    );
+}
+
+fn footage(id: &str, start: i64, end: i64, in_ticks: i64) -> clipmill_edit_ir::Cutaway {
+    clipmill_edit_ir::Cutaway {
+        cutaway_id: id.to_owned(),
+        start_ticks: start,
+        end_ticks: end,
+        fit: clipmill_edit_ir::CutawayFit::Fill,
+        content: clipmill_edit_ir::CutawayContent::Footage {
+            source_fingerprint: SOURCE.to_owned(),
+            in_ticks,
+        },
+    }
+}
+
+fn spans(document: &EditDocument) -> Vec<(&str, i64, i64, i64)> {
+    document
+        .video
+        .cutaways
+        .iter()
+        .map(|cutaway| {
+            let in_ticks = match &cutaway.content {
+                clipmill_edit_ir::CutawayContent::Footage { in_ticks, .. } => *in_ticks,
+                clipmill_edit_ir::CutawayContent::Picture { .. } => -1,
+            };
+            (
+                cutaway.cutaway_id.as_str(),
+                cutaway.start_ticks,
+                cutaway.end_ticks,
+                in_ticks,
+            )
+        })
+        .collect()
+}
+
+/// B-roll is program-anchored: a cut through its head starts it later in its
+/// own recording as well as in the clip, one inside it shortens it, one over
+/// it takes it, and the one after moves up — and undo puts each back.
+#[test]
+fn cutaways_follow_the_cuts_around_them_and_undo_in_place() {
+    let mut original = document(Vec::new());
+    original.video.cutaways = vec![
+        footage("head", SECOND, 3 * SECOND, 40 * SECOND),
+        footage("inside", 4 * SECOND, 7 * SECOND, 60 * SECOND),
+        footage("after", 8 * SECOND, 9 * SECOND, 0),
+    ];
+    original.validate().expect("valid cutaways");
+
+    // Cut 0.5 s to 2 s: "head" loses its first second and starts a second
+    // later in its recording; the rest move a second and a half earlier.
+    let mut cut = original.clone();
+    let undo = EditCommand::RippleDelete {
+        start_ticks: SECOND / 2,
+        end_ticks: 2 * SECOND,
+        reflow_edges: false,
+    }
+    .apply(&mut cut)
+    .expect("a cut");
+    assert_eq!(
+        spans(&cut),
+        [
+            ("head", SECOND / 2, 3 * SECOND / 2, 41 * SECOND),
+            ("inside", 5 * SECOND / 2, 11 * SECOND / 2, 60 * SECOND),
+            ("after", 13 * SECOND / 2, 15 * SECOND / 2, 0),
+        ]
+    );
+    undo.apply(&mut cut).expect("undo");
+    assert_eq!(cut, original);
+
+    // A cut inside one shortens it from where it was cut; one over the
+    // whole of another takes it.
+    let mut cut = original.clone();
+    EditCommand::Batch {
+        commands: vec![
+            EditCommand::RippleDelete {
+                start_ticks: 8 * SECOND,
+                end_ticks: 9 * SECOND,
+                reflow_edges: false,
+            },
+            EditCommand::RippleDelete {
+                start_ticks: 5 * SECOND,
+                end_ticks: 6 * SECOND,
+                reflow_edges: false,
+            },
+        ],
+    }
+    .apply(&mut cut)
+    .expect("two cuts");
+    assert_eq!(
+        spans(&cut),
+        [
+            ("head", SECOND, 3 * SECOND, 40 * SECOND),
+            ("inside", 4 * SECOND, 6 * SECOND, 60 * SECOND),
+        ]
+    );
+}
+
+#[test]
+fn a_cutaway_that_cannot_be_shown_is_refused() {
+    let original = document(Vec::new());
+    let picture = |asset: &str| clipmill_edit_ir::Cutaway {
+        cutaway_id: "still".to_owned(),
+        start_ticks: 0,
+        end_ticks: SECOND,
+        fit: clipmill_edit_ir::CutawayFit::Fit,
+        content: clipmill_edit_ir::CutawayContent::Picture {
+            asset: asset.to_owned(),
+            push_in: true,
+        },
+    };
+    let listed = clipmill_edit_ir::Asset {
+        hash: format!("sha256:{}", "2".repeat(64)),
+        license: "own_content".to_owned(),
+    };
+    // A picture comes with its asset, and undo takes both back.
+    let mut edited = original.clone();
+    let undo = EditCommand::SetCutaways {
+        cutaways: vec![picture(&listed.hash)],
+        assets: Some(vec![listed.clone()]),
+    }
+    .apply(&mut edited)
+    .expect("a picture the clip lists");
+    assert_eq!(edited.assets, std::slice::from_ref(&listed));
+    undo.apply(&mut edited).expect("undo");
+    assert_eq!(edited, original);
+
+    let mut bad_fingerprint = footage("room", 0, SECOND, 0);
+    if let clipmill_edit_ir::CutawayContent::Footage {
+        source_fingerprint, ..
+    } = &mut bad_fingerprint.content
+    {
+        *source_fingerprint = "../recording.mp4".to_owned();
+    }
+    for (cutaways, why) in [
+        (
+            vec![picture(&listed.hash)],
+            "a picture the clip does not list",
+        ),
+        (
+            vec![footage("room", 0, SECOND / 10, 0)],
+            "shorter than a fifth of a second",
+        ),
+        (
+            vec![footage("room", 0, SECOND, -1)],
+            "before its recording starts",
+        ),
+        (vec![bad_fingerprint], "not a recording's address"),
+        (
+            vec![
+                footage("one", 0, 2 * SECOND, 0),
+                footage("two", SECOND, 3 * SECOND, 0),
+            ],
+            "two at once",
+        ),
+        (
+            vec![
+                footage("one", 0, SECOND, 0),
+                footage("one", 2 * SECOND, 3 * SECOND, 0),
+            ],
+            "one name twice",
+        ),
+    ] {
+        let mut refused = original.clone();
+        assert!(
+            EditCommand::SetCutaways {
+                cutaways,
+                assets: None
+            }
+            .apply(&mut refused)
+            .is_err(),
+            "{why}"
+        );
+        assert_eq!(refused, original);
+    }
 }

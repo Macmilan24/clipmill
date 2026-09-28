@@ -74,6 +74,14 @@ message Request {
     ForgetModelRequest forget_model = 68;
     CleanStorageRequest clean_storage = 69;
     RenameProjectRequest rename_project = 70;
+    PreviewCaptionsRequest preview_captions = 71;
+    ListEditHistoryRequest list_edit_history = 72;
+    ListFacesRequest list_faces = 73;
+    PreviewDirectRequest preview_direct = 74;
+    ThumbnailFramingRequest thumbnail_framing = 75;
+    ImportAssetRequest import_asset = 76;
+    ListAssetsRequest list_assets = 77;
+    ResolveAssetRequest resolve_asset = 78;
   }
 }
 
@@ -131,6 +139,14 @@ message Response {
     InspectHubModelResponse inspect_hub_model = 54;
     CleanStorageResponse clean_storage = 55;
     RenameProjectResponse rename_project = 56;
+    PreviewCaptionsResponse preview_captions = 57;
+    ListEditHistoryResponse list_edit_history = 58;
+    ListFacesResponse list_faces = 59;
+    GetPreviewPlanResponse preview_direct = 60;
+    ThumbnailFramingResponse thumbnail_framing = 61;
+    ImportAssetResponse import_asset = 62;
+    ListAssetsResponse list_assets = 63;
+    ResolveAssetResponse resolve_asset = 64;
   }
 }
 
@@ -253,6 +269,25 @@ message RenderClipPayloadV1 {
   // Model work that shaped the footage, e.g. "asr_captions", "reframe".
   // Empty for a hand-authored document, which is the Phase 1 truth.
   repeated string ai_assistance = 6;
+  // How the file is encoded. Unset keeps the recording's frame rate at
+  // 1080 x 1920, which is what every render did before the choice existed.
+  OutputFormatV1 format = 7;
+}
+
+// The delivered picture's frame rate and size.
+//
+// The frame rate defaults to the recording's own: converting 23.976 or 25
+// frames a second to 29.97 repeats a frame every few, and pans judder. A
+// creator who wants 30 or 60 for a platform says so here.
+message OutputFormatV1 {
+  // Frames per second as a fraction. A zero numerator keeps the recording's
+  // own rate.
+  uint32 frame_rate_num = 1;
+  uint32 frame_rate_den = 2;
+  // The size, named by the height the 9:16 frame has at it: 1920 (1080p),
+  // 2560 (1440p) or 3840 (4K). Zero is 1920. A clip in another shape keeps
+  // that size's short side: 1080p square is 1080 x 1080, landscape 1920 x 1080.
+  uint32 height = 3;
 }
 
 // Versioned payload for the speech chain (book ch. 13): voice activity, then
@@ -313,6 +348,11 @@ message SpeechRecognitionV1 {
   // Whether each window may see the previous window's text. False by default:
   // one bad window should not be able to poison the rest of the recording.
   bool conditioned_on_previous = 2;
+  // Write what was said, fillers included. Whisper otherwise writes clean
+  // text — no "um", no "uh" — which leaves nothing for a filler cut to find.
+  // A recognizer that has a way to be asked primes each window with it; one
+  // that has none for the language decodes as it always has, and says so.
+  bool verbatim = 3;
 }
 
 message SpeechAlignmentV1 {
@@ -686,6 +726,11 @@ message Task {
   // wanting the filmstrip should ask for the task that produces one rather than
   // learn that the daemon calls that work "ingest-filmstrip".
   string output_kind = 9;
+  // When it first started running and when it succeeded, from its own event
+  // log; zero until it has. Measured, so a machine's past runs can say how
+  // long the next one will take.
+  uint64 started_unix_millis = 10;
+  uint64 finished_unix_millis = 11;
 }
 
 enum JobState {
@@ -735,11 +780,18 @@ message Source {
   string source_fingerprint = 6;
   string source_map_artifact_id = 7;
   uint64 created_unix_millis = 8;
+  // The file is no longer at `absolute_path`, or is a different size than
+  // when it was registered: moved, renamed, replaced or deleted. Everything
+  // made from it still works from the preview copies; an export needs the
+  // original back, which relinking restores.
+  bool missing = 9;
 }
 
 message RegisterSourceRequest {
   string project_id = 1;
   string absolute_path = 2;
+  // When set, update this source's path only if the new file has its fingerprint.
+  string source_id = 3;
 }
 
 message RegisterSourceResponse {
@@ -827,6 +879,59 @@ message ReadArtifactResponse {
 // No path leaves the daemon. The shell derives the object directory from the
 // content address, exactly as the store does, so a response cannot be turned
 // into a pointer at something outside it.
+// One of the person's own pictures or sounds — a logo, a music bed — kept by
+// the SHA-256 of its bytes. A document names it by that hash.
+message AssetV1 {
+  // `sha256:` followed by the lowercase hex digest.
+  string hash = 1;
+  // image or audio, decided from the bytes, never from a file name.
+  string kind = 2;
+  // The file name it was imported from.
+  string name = 3;
+  string media_type = 4;
+  uint64 bytes = 5;
+  // A picture's size; zero for a sound.
+  int64 width = 6;
+  int64 height = 7;
+  // A sound's length; zero for a picture.
+  int64 duration_ticks = 8;
+  // own_content, licensed, royalty_free or public_domain.
+  string license = 9;
+  uint64 added_unix_millis = 10;
+}
+
+// Copy a file the person chose into the asset folder. The same bytes twice
+// are one asset.
+message ImportAssetRequest {
+  string path = 1;
+  string license = 2;
+}
+
+message ImportAssetResponse {
+  AssetV1 asset = 1;
+}
+
+// Every asset, newest first; `kind` narrows it to pictures or sounds.
+message ListAssetsRequest {
+  string kind = 1;
+}
+
+message ListAssetsResponse {
+  repeated AssetV1 assets = 1;
+}
+
+// Whether a hash is one of the assets, and how to serve it. A host derives
+// the file from the hash; it receives no path.
+message ResolveAssetRequest {
+  string hash = 1;
+}
+
+message ResolveAssetResponse {
+  string hash = 1;
+  string media_type = 2;
+  uint64 bytes = 3;
+}
+
 message ResolveMediaRequest {
   string project_id = 1;
   string artifact_id = 2;
@@ -961,6 +1066,16 @@ message SolveCropPathRequest {
   // Zero leaves each weight at the daemon's default, which is what a caller
   // with no opinion should send.
   CropWeightsV1 weights = 7;
+  // Follow this face instead of the one the focus gate would choose. A person
+  // picked it, so it only has to be seen in the span: the presence bar that
+  // keeps the automatic camera off an empty chair is theirs to overrule.
+  uint32 track_id = 8;
+  bool follow_track = 9;
+  // Solve the two-person layout instead: the pair the two-up gate finds, each
+  // in its own half of the frame — stacked, the left-hand face on top, or
+  // side by side for a landscape aspect. Refused, with a reason, when two
+  // people are not both clearly in the span.
+  bool two_up = 10;
 }
 
 // The objective's terms, per ch. 18. Every one of them exists to prevent
@@ -997,6 +1112,38 @@ message SolveCropPathResponse {
   // stayed inside the crop. Reported rather than asserted — a path can be
   // optimal and still fail to contain a subject that left.
   double containment = 6;
+  // With `two_up`: the lower portrait's path and the face it follows. The
+  // upper portrait's are `keyframes` and `track_id`.
+  repeated CropKeyframeV1 secondary_keyframes = 7;
+  uint32 secondary_track_id = 8;
+}
+
+// The faces the detector saw over a span, for a shell to draw over the whole
+// frame so a person can pick who the camera follows.
+//
+// Read from a published face track and checked the way every artifact read
+// is. Like SolveCropPath it is a proposal surface: nothing is written.
+message ListFacesRequest {
+  string project_id = 1;
+  string face_track_artifact_id = 2;
+  // Source ticks, half-open. A clip's section, normally.
+  uint64 start_ticks = 3;
+  uint64 end_ticks = 4;
+}
+
+message ListFacesResponse {
+  // Every box in the span, bridged ones included, in track then time order.
+  repeated FaceSightingV1 sightings = 1;
+}
+
+// One face in one sampled frame, as shares of the source's display frame.
+message FaceSightingV1 {
+  uint32 track_id = 1;
+  uint64 t_ticks = 2;
+  double x = 3;
+  double y = 4;
+  double width = 5;
+  double height = 6;
 }
 
 // One point on the virtual camera path. Centre and scale, both normalized
@@ -1197,6 +1344,19 @@ message DirectClipRequest {
   // Explicit user-selected source interval, without an editorial recommendation.
   // Requires a named run and start/end ticks; candidate_id is ignored.
   bool manual_span = 12;
+  // Separately override the caption look's spoken-word highlight.
+  optional bool highlight_spoken_word = 13;
+  // The clip-wide caption options the document starts with — a saved style's
+  // font, colours and highlight — as the edit IR's JSON. Empty keeps the
+  // look's own. Checked like any edit: options the IR refuses are refused.
+  string caption_options_json = 14;
+  // The brand a saved kit starts the clip with — a progress bar, a logo — as
+  // the edit IR's JSON. A logo whose picture is not in the asset folder is
+  // left out rather than refusing the clip.
+  string brand_json = 15;
+  // The frame the clip is framed for: vertical, portrait, square or
+  // landscape. Empty is vertical.
+  string shape = 16;
 }
 
 message DirectClipResponse {
@@ -1263,11 +1423,100 @@ message PreviewCueV1 {
   // Already broken. The player must not re-wrap, for the same reason libass is
   // told not to.
   repeated PreviewLineV1 lines = 7;
+  // Exact display bounds for edits; frame rounding must not retime a cue.
+  int64 start_ticks = 8;
+  int64 end_ticks = 9;
+  // The cue's centre in thousandths of the frame, when it was placed by hand
+  // (its own position, or the clip-wide one). Unplaced cues sit in `region`.
+  bool positioned = 10;
+  uint32 position_x = 11;
+  uint32 position_y = 12;
 }
 
 message PreviewGainV1 {
   int64 frame = 1;
   double gain_db = 2;
+}
+
+// A progress bar as the render draws it: its colour, edge and thickness in
+// output pixels. It fills from the left as the program plays.
+message PreviewProgressV1 {
+  string colour = 1;
+  // top or bottom.
+  string edge = 2;
+  int64 thickness = 3;
+}
+
+// B-roll as the render lays it: what covers the program's picture, how it
+// meets the frame, and the program frames it covers.
+message PreviewCutawayV1 {
+  string cutaway_id = 1;
+  int64 start_ticks = 2;
+  int64 end_ticks = 3;
+  int64 first_frame = 4;
+  int64 end_frame = 5;
+  // fill or fit.
+  string fit = 6;
+  // picture or footage.
+  string kind = 7;
+  // A picture's content hash; empty for footage.
+  string asset = 8;
+  // Whether a picture moves closer, eight per cent by its last frame.
+  bool push_in = 9;
+  // Footage's recording; empty for a picture. Its proxy is listed with the
+  // sections'.
+  string source_fingerprint = 10;
+  // Where in its recording footage starts.
+  int64 in_ticks = 11;
+}
+
+// Music as the render mixes it: which sound, from where in it, and its level
+// in decibels at frames through the program, to interpolate between.
+message PreviewMusicV1 {
+  string asset = 1;
+  int64 offset_ticks = 2;
+  repeated PreviewGainV1 levels = 3;
+}
+
+// A logo as the render draws it: which asset, which corner, its longer side
+// and its distance from the corner's two edges, in output pixels.
+message PreviewLogoV1 {
+  string asset = 1;
+  // top_left, top_right, bottom_left or bottom_right.
+  string corner = 2;
+  int64 side = 3;
+  int64 inset_x = 4;
+  int64 inset_y = 5;
+  // In percent.
+  uint32 opacity = 6;
+}
+
+// A text or an emoji laid over the program, for the editor to show, select
+// and move. A text's pixels come from the plan's script, which draws it as
+// the render will; an emoji is the pinned picture the render lays over.
+message PreviewOverlayV1 {
+  string overlay_id = 1;
+  int64 start_ticks = 2;
+  int64 end_ticks = 3;
+  int64 first_frame = 4;
+  int64 end_frame = 5;
+  // Empty for an emoji.
+  string text = 6;
+  // hook or label.
+  string role = 7;
+  // Its centre, per mille of the frame's width and height.
+  uint32 x = 8;
+  uint32 y = 9;
+  // A text's size at the 1920-pixel design height; an emoji's side, per
+  // mille of the frame's short side.
+  uint32 size = 10;
+  string colour = 11;
+  // The plate behind it; empty draws an outline.
+  string plate = 12;
+  // text or emoji.
+  string kind = 13;
+  // An emoji's code, as its picture is named: 1f525, or 1f44f_1f3fd.
+  string emoji = 14;
 }
 
 // One segment of the program, and where in the source it plays.
@@ -1290,6 +1539,22 @@ message PreviewSegmentV1 {
   // Both saved viewport paths remain available even when displaying Fit.
   bool has_two_up_paths = 8;
   string framing_warning = 9;
+  // How the section is drawn — fit, speaker_fill, two_up or
+  // picture_in_picture — and the render's own geometry for it, in output
+  // pixels, so a player draws what the export will rather than working it out.
+  string layout = 10;
+  // Two viewports: the first one's length along the split — its height when
+  // stacked, its width side by side in a landscape frame.
+  int64 upper_height = 11;
+  // Picture in picture: the inset's square.
+  bool has_inset = 12;
+  int64 inset_x = 13;
+  int64 inset_y = 14;
+  int64 inset_side = 15;
+  // A fitted picture's fill: empty for the picture blurred, or #RRGGBB.
+  string background_colour = 16;
+  // A fitted picture's zoom past fitting, in percent; 100 fits.
+  uint32 zoom_percent = 17;
 }
 
 // A source the program draws from, as the crops are measured against it.
@@ -1333,6 +1598,21 @@ message PreviewCaptionStyleV1 {
   bool boxed = 11;
   uint32 margin_horizontal = 12;
   uint32 margin_vertical = 13;
+  // The colour key words are set in.
+  string accent = 14;
+  // How the spoken word is marked: fill, word, box, pop or underline.
+  string highlight = 15;
+}
+
+// One caption typeface, and whether this installation has its pinned file.
+message CaptionFontV1 {
+  // The font's own family name, which a caption style names.
+  string family = 1;
+  // What a person picks it by.
+  string label = 2;
+  // The pinned file, served to the player so it draws with the same face.
+  string file = 3;
+  bool installed = 4;
 }
 
 // A duration-preserving blend of an outgoing still and live incoming video.
@@ -1377,6 +1657,58 @@ message GetPreviewPlanResponse {
   PreviewCaptionStyleV1 caption_style = 15;
   int64 transition_ticks = 16;
   repeated PreviewTransitionV1 transitions = 17;
+  // The sidecar grouping and the two numbers the export strip holds it to,
+  // so the editor can offer a repair that clears the finding rather than one
+  // that trades it for the next: a cue held to the floor is refused if it
+  // then crowds its neighbour.
+  repeated PreviewCueV1 reading_cues = 18;
+  int64 reading_min_duration_ticks = 19;
+  int64 reading_min_gap_ticks = 20;
+  // The burned-in captions exactly as the export writes them. A player that
+  // runs libass draws the pixels the render will burn in from this alone.
+  string ass = 21;
+  // Every caption typeface, with whether this installation has it.
+  repeated CaptionFontV1 fonts = 22;
+  // Why the director framed and captioned the clip as it did. Filled for a
+  // dry run, whose document is nowhere else to read it from.
+  repeated string decisions = 23;
+  // Titles and labels over the program, bottom first.
+  repeated PreviewOverlayV1 overlays = 24;
+  // The progress bar, when the clip has one.
+  PreviewProgressV1 progress = 25;
+  // The logo, when the clip has one.
+  PreviewLogoV1 logo = 26;
+  // The music, when the clip has some.
+  PreviewMusicV1 music = 27;
+  // B-roll over the program's own picture, in program order.
+  repeated PreviewCutawayV1 cutaways = 28;
+}
+
+// Where the camera would point at a few moments, so a board of clips can show
+// each as the vertical frame it will have rather than a strip of the source.
+// One face track read for all of them; a proposal surface, writing nothing.
+message ThumbnailFramingRequest {
+  string project_id = 1;
+  string face_track_artifact_id = 2;
+  // Source ticks, one per thumbnail, each judged over the two seconds after
+  // it. At most 500.
+  repeated uint64 moments = 3;
+}
+
+message ThumbnailFramingResponse {
+  // The crop's centre across the source frame, 0..1, one per moment in
+  // order: the face the camera would follow, or the middle where it would
+  // fit the whole frame.
+  repeated double centres = 1;
+}
+
+// The clip approving would build, as the Editor's player would draw it: the
+// director's document for this request, built and not saved. The Inspector
+// shows it, so the clip judged is the clip an approval makes — the same
+// sections, framing and captions. Nothing is written and nothing is recorded.
+message PreviewDirectRequest {
+  // As approval would send it; `approve` and `variation` are ignored.
+  DirectClipRequest direct = 1;
 }
 
 // The edit documents a project holds, oldest first.
@@ -1390,6 +1722,42 @@ message ListEditDocsRequest {
 
 message ListEditDocsResponse {
   repeated EditDoc docs = 1;
+}
+
+// The burned-in captions a document would have under another caption look,
+// computed and not saved: what the editor draws while a person is still
+// choosing, so trying a look is not an edit.
+message PreviewCaptionsRequest {
+  string doc_id = 1;
+  // A caption preset; empty keeps the document's own.
+  string style_ref = 2;
+  // The clip-wide caption options as the edit document stores them, as JSON.
+  // Empty keeps the document's own.
+  string options_json = 3;
+}
+
+message PreviewCaptionsResponse {
+  // The ASS the export would burn in with that look.
+  string ass = 1;
+  uint64 revision = 2;
+}
+
+// Every command applied to a document, oldest first, with its inverse: the
+// history an editor can show, and undo that outlives the window it was made in.
+message ListEditHistoryRequest {
+  string doc_id = 1;
+}
+
+message EditHistoryEntryV1 {
+  // The revision this command produced.
+  uint64 revision = 1;
+  string command_json = 2;
+  string inverse_json = 3;
+  uint64 applied_unix_millis = 4;
+}
+
+message ListEditHistoryResponse {
+  repeated EditHistoryEntryV1 entries = 1;
 }
 
 // ---- Export and archive (book ch. 10, ch. 24 Phase 1) ----
@@ -1415,6 +1783,9 @@ message ExportFindingV1 {
   ExportSeverity severity = 2;
   // One sentence naming the thing and the number, ready to show.
   string detail = 3;
+  // The caption cue a `captions.*` finding is about, so a surface can open
+  // that cue rather than parse `detail` for it. Empty for every other check.
+  string cue_id = 4;
 }
 
 message ExportValidationV1 {
@@ -1456,6 +1827,9 @@ message ExportRequestV1 {
   // current revision is taken, which is what a caller with no review step
   // means.
   optional uint64 expected_revision = 10;
+  // Frame rate and size of the delivered picture. Unset is the recording's
+  // own frame rate at 1080 x 1920.
+  OutputFormatV1 format = 11;
 }
 
 // Check an export without performing one. No side effects, no files.
@@ -1881,6 +2255,9 @@ message ModelJobV1 {
   string choice = 6;
   // Every model registered for the job, in display order.
   repeated string models = 7;
+  // A model more accurate than the planned one that this computer can run
+  // and hold in memory, when there is one: offered, never switched to.
+  string more_accurate = 8;
 }
 
 message ListModelsResponse {

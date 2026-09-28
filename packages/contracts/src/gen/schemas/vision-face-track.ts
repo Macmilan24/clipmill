@@ -120,4 +120,8 @@ export interface Box {
    * True when the box was carried across a frame the detector missed rather than measured in it. Present so a solver can weigh a bridged frame differently from a seen one, and so nobody reads a gap-filled track as continuous evidence.
    */
   interpolated?: boolean;
+  /**
+   * How much the lower face changed since this track's previous measured box, beyond what the upper face moved: 0 is still, 1 is the most change. Absent on interpolated boxes, on a track's first box, and from producers that did not measure it. A face that is talking changes here more than one that is listening.
+   */
+  mouth_motion?: number;
 }

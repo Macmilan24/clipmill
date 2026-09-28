@@ -7,11 +7,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { ExportPlan, ExportRequest, QueuedExport } from '../daemon/client.js';
+import type { ExportPlan, ExportRequest, PreviewPlan, QueuedExport } from '../daemon/client.js';
 import { DocumentPicker } from '../editor/DocumentPicker.js';
 import { useEditDocuments } from '../editor/documents.js';
-import { latestExportOf, useDelivery } from '../export/delivery.js';
-import type { ClipRef } from '../shell/route.js';
+import { shapeOfFrame } from '../editor/layouts.js';
+import { ClipLoop } from '../export/ClipLoop.js';
+import { latestExportOf, rememberExportRate, useDelivery } from '../export/delivery.js';
+import {
+  type FormatChoice,
+  outputFormat,
+  recallFolder,
+  recallFormat,
+  rememberFolder,
+  rememberFormat,
+  sourceFpsOf,
+} from '../export/format.js';
+import type { ClipRef, EditorFocus } from '../shell/route.js';
 import { Export } from './Export.js';
 import { BatchExportScreen } from './BatchExportScreen.js';
 import { UploadPanel } from '../youtube/UploadPanel.js';
@@ -22,7 +33,6 @@ const PLAN_DEBOUNCE_MS = 250;
 const RIGHTS_GATE_SECONDS = 60;
 const DURATION_GATE = 'duration_60s';
 /** The confirmation that ships a subtitle file faster than the reading profile. */
-const READING_RATE_GATE = 'captions_reading_rate';
 const HOT_CAPTION_CODE = 'captions.reading_rate';
 /** The tokens that make each clip's name its own; the daemon insists on one. */
 const UNIQUE_TOKENS = ['{index}', '{clip}', '{address}'] as const;
@@ -52,7 +62,8 @@ export interface ExportScreenProps {
   readonly clip: ClipRef | null;
   /** Open a different clip here — from the list this screen offers. */
   readonly onOpen: (clip: ClipRef) => void;
-  readonly onEdit?: (clip: ClipRef) => void;
+  /** Open the clip in the editor — on a particular caption, when a finding named one. */
+  readonly onEdit?: (clip: ClipRef, focus?: EditorFocus) => void;
   readonly onOpenChannelSettings?: () => void;
   readonly api?: ShellApi;
 }
@@ -69,22 +80,59 @@ export function ExportScreen({
   const docId = clip?.docId ?? null;
   const [durationTicks, setDurationTicks] = useState(0);
   const [title, setTitle] = useState('');
-  const [destination, setDestination] = useState('');
+  const [destination, setDestination] = useState(() => recallFolder());
   const [pattern, setPattern] = useState('{index}-{clip}');
   const [attestation, setAttestation] = useState('');
   const [rightsApproval, setRightsApproval] = useState<string | null>(null);
-  const [captionApproval, setCaptionApproval] = useState<string | null>(null);
   const [plan, setPlan] = useState<ExportPlan | null>(null);
+  // The clip's own preview plan, for its length, its words and its loop.
+  const [previewPlan, setPreviewPlan] = useState<PreviewPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queued, setQueued] = useState<QueuedExport | null>(null);
   const [archive, setArchive] = useState<{ path: string; entryCount: number } | null>(null);
+  const [format, setFormat] = useState<FormatChoice>(() => recallFormat());
+  const [sourceFps, setSourceFps] = useState<number | null>(null);
+  const sourceId = clip?.sourceId ?? null;
+  useEffect(() => {
+    setSourceFps(null);
+    if (!sourceId) return undefined;
+    let live = true;
+    // A shell without source details answers nothing, rather than stopping
+    // the screen: this is information, not a precondition.
+    Promise.resolve()
+      .then(() => api.getSource(sourceId))
+      .then((details) => {
+        if (live) setSourceFps(sourceFpsOf(details.sourceMapJson));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, sourceId]);
+  // Read when the document loads, not a reason to reload it.
+  const clipTitle = useRef('');
+  clipTitle.current = clip?.labels?.clip?.trim() ?? '';
+  const onFormatChange = useCallback((next: FormatChoice) => {
+    setFormat(next);
+    rememberFormat(next);
+  }, []);
   /** Bumped to plan again over the document as it is now, after a conflict. */
   const [replan, setReplan] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectionGeneration = useRef(0);
   const delivery = useDelivery(projectId, queued, api);
+  useEffect(() => {
+    if (queued && delivery?.files && delivery.createdUnixMillis && delivery.updatedUnixMillis) {
+      rememberExportRate(
+        queued.jobId,
+        durationTicks / 90_000,
+        delivery.createdUnixMillis,
+        delivery.updatedUnixMillis,
+      );
+    }
+  }, [queued, delivery, durationTicks]);
   const approvalKey = plan
     ? JSON.stringify([
         projectId,
@@ -97,7 +145,6 @@ export function ExportScreen({
       ])
     : null;
   const gatePassed = approvalKey !== null && rightsApproval === approvalKey;
-  const hotCaptionsConfirmed = approvalKey !== null && captionApproval === approvalKey;
   const [audition, setAudition] = useState<{
     projectId: string;
     renderId: string;
@@ -141,10 +188,10 @@ export function ExportScreen({
     setBusy(false);
     setAttestation('');
     setRightsApproval(null);
-    setCaptionApproval(null);
     setDurationTicks(0);
     setTitle('');
     setPlan(null);
+    setPreviewPlan(null);
     setQueued(null);
     setArchive(null);
     setError(null);
@@ -158,9 +205,13 @@ export function ExportScreen({
         if (!live) {
           return;
         }
+        setPreviewPlan(preview);
         const seconds = (preview.frameCount * preview.rateDen) / preview.rateNum;
         setDurationTicks(Math.round(seconds * 90_000));
-        setTitle(firstWords(preview));
+        // The clip's title when it has one, as the pickers and the batch
+        // export name it; its opening words only when nothing named it.
+        const named = clipTitle.current;
+        setTitle(named && !/^Clip \d+$/.test(named) ? named : firstWords(preview));
       } catch (cause) {
         if (live) {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -199,16 +250,14 @@ export function ExportScreen({
       destinationDir: destination,
       namingPattern: effectivePattern(pattern),
       sourceAttestation: attestation,
-      gatesPassed: [
-        ...(gatePassed ? [DURATION_GATE] : []),
-        ...(hotCaptionsConfirmed ? [READING_RATE_GATE] : []),
-      ],
+      gatesPassed: gatePassed ? [DURATION_GATE] : [],
       aiAssistance: [...AI_ASSISTANCE],
       index: 1,
       date: today(),
       title,
+      format: outputFormat(format),
     };
-  }, [docId, destination, pattern, gatePassed, hotCaptionsConfirmed, title, attestation]);
+  }, [docId, destination, pattern, gatePassed, title, attestation, format]);
 
   // The captions the strip named as too fast to read. Once confirmed they
   // come back as advisories under the same code, so the confirmation stays
@@ -267,6 +316,23 @@ export function ExportScreen({
     }
   }, [api]);
 
+  const onRelink = useCallback(async () => {
+    if (!clip || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const chosen = await api.chooseSourceFile();
+      if (chosen === null) return;
+      await api.relinkSource(clip.projectId, clip.sourceId, chosen);
+      setPlan(null);
+      setReplan((count) => count + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }, [api, clip, busy]);
+
   const onExport = useCallback(async () => {
     if (request === null || plan === null || !attestation) {
       return;
@@ -277,6 +343,7 @@ export function ExportScreen({
     try {
       // The revision the plan checked is the revision that may leave.
       const exported = await api.exportClip({ ...request, expectedRevision: plan.revision });
+      rememberFolder(request.destinationDir);
       if (selectionGeneration.current === generation) setQueued(exported);
     } catch (cause) {
       if (selectionGeneration.current !== generation) return;
@@ -287,7 +354,6 @@ export function ExportScreen({
         // now, so the findings and the names on screen are of that, and let
         // the person look before asking again.
         setRightsApproval(null);
-        setCaptionApproval(null);
         setPlan(null);
         setReplan((count) => count + 1);
       }
@@ -295,6 +361,18 @@ export function ExportScreen({
       if (selectionGeneration.current === generation) setBusy(false);
     }
   }, [api, request, plan, attestation]);
+
+  const onCancel = useCallback(async () => {
+    if (!queued || delivery?.settled) return;
+    setBusy(true);
+    try {
+      await api.cancelJob(queued.jobId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The export could not be stopped.');
+    } finally {
+      setBusy(false);
+    }
+  }, [api, queued, delivery?.settled]);
 
   const onReveal = useCallback(
     async (path: string) => {
@@ -337,6 +415,7 @@ export function ExportScreen({
     );
   return (
     <Export
+      preview={projectId ? <ClipLoop api={api} projectId={projectId} plan={previewPlan} /> : null}
       publishing={
         projectId && docId ? (
           <UploadPanel
@@ -355,7 +434,7 @@ export function ExportScreen({
         ) : null
       }
       onBatch={() => setBatchMode(true)}
-      onEdit={clip && onEdit ? () => onEdit(clip) : undefined}
+      onEdit={clip && onEdit ? (focus) => onEdit(clip, focus) : undefined}
       docId={docId}
       labels={clip?.labels ?? null}
       picker={clip === null ? <ClipList onOpen={onOpen} api={api} /> : null}
@@ -379,19 +458,25 @@ export function ExportScreen({
       rightsGateNeeded={rightsGateNeeded}
       rightsGatePassed={gatePassed}
       hotCaptions={hotCaptions}
-      hotCaptionsConfirmed={hotCaptionsConfirmed}
-      onHotCaptionsChange={(checked) => setCaptionApproval(checked ? approvalKey : null)}
       plan={plan}
       planning={planning}
       busy={busy}
       error={error}
       delivery={delivery}
+      mediaSeconds={durationTicks / 90_000}
+      format={format}
+      sourceFps={sourceFps}
+      shape={previewPlan ? shapeOfFrame(previewPlan) : 'vertical'}
+      onFormatChange={onFormatChange}
       archive={archive}
       onDestinationChange={setDestination}
       onPatternChange={setPattern}
       onChooseFolder={() => void onChooseFolder()}
       onRightsGateChange={(checked) => setRightsApproval(checked ? approvalKey : null)}
       onExport={() => void onExport()}
+      onCancel={() => void onCancel()}
+      onRetry={() => void onExport()}
+      onRelink={clip === null ? undefined : () => void onRelink()}
       onArchive={() => void onArchive()}
       onReveal={(path) => void onReveal(path)}
     />

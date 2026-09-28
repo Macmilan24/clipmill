@@ -30,6 +30,7 @@ def main() -> int:
     parser.add_argument("--ffmpeg", type=Path, default=Path(".cache/bin/ffmpeg"))
     parser.add_argument("--ffprobe", type=Path, default=Path(".cache/bin/ffprobe"))
     parser.add_argument("--fonts", type=Path, default=Path(".cache/fonts"))
+    parser.add_argument("--emoji", type=Path, default=Path(".cache/emoji"))
     options = parser.parse_args()
     try:
         bom = tomllib.loads(options.bom.read_text(encoding="utf-8"))
@@ -76,6 +77,7 @@ def main() -> int:
         for name, path in (("ffmpeg", options.ffmpeg), ("ffprobe", options.ffprobe)):
             _verify_binary(name, path, version, allow_nonfree)
         _verify_font(bom, options.fonts)
+        _verify_emoji(bom, options.emoji)
     except (
         KeyError,
         OSError,
@@ -87,9 +89,49 @@ def main() -> int:
         return 1
     print(
         "bom-policy: OK (pinned hashes; runtime license flags match the "
-        "platform distribution policy; SQLite floor; caption font and libass)"
+        "platform distribution policy; SQLite floor; caption font and libass; emoji)"
     )
     return 0
+
+
+EMOJI_CODE_PATTERN = re.compile(r"^[0-9a-f]{4,5}(_[0-9a-f]{4,5})*$")
+
+
+def _verify_emoji(bom: dict, emoji_dir: Path) -> None:
+    """The emoji drawn over clips: a permitted licence, one pinned commit, digests."""
+    emoji = bom["emoji"]
+    if emoji.get("license") not in FONT_LICENSE_ALLOWLIST:
+        raise ValueError(f"emoji license {emoji.get('license')!r} is not permitted")
+    commit = str(emoji.get("commit"))
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise ValueError("emoji must be pinned to a commit")
+    for key in ("base_url", "license_url", "notice_url"):
+        url = urlparse(str(emoji[key]))
+        if (
+            url.scheme != "https"
+            or url.hostname != "raw.githubusercontent.com"
+            or not url.path.startswith(f"/googlefonts/noto-emoji/{commit}/")
+        ):
+            raise ValueError(f"emoji {key} is not a pinned upstream file")
+    for key in ("license_sha256", "notice_sha256"):
+        if SHA256_PATTERN.fullmatch(str(emoji.get(key))) is None:
+            raise ValueError(f"emoji {key} is invalid")
+    codes = [code for code in str(emoji["ids"]).split(",") if code]
+    digests = emoji["sha256"]
+    if sorted(codes) != sorted(digests) or len(codes) != len(set(codes)):
+        raise ValueError("the emoji list and its digests disagree")
+    for code in codes:
+        if EMOJI_CODE_PATTERN.fullmatch(code) is None:
+            raise ValueError(f"emoji {code!r} is not a code point name")
+        if SHA256_PATTERN.fullmatch(str(digests[code])) is None:
+            raise ValueError(f"emoji {code} digest is invalid")
+        installed = emoji_dir / f"emoji_u{code}.png"
+        if installed.is_symlink() or not installed.is_file():
+            raise ValueError(f"pinned emoji is missing or unsafe: {installed}")
+        if hashlib.sha256(installed.read_bytes()).hexdigest() != digests[code]:
+            raise ValueError(f"installed emoji {code} does not match its pinned digest")
+    if not (emoji_dir / "LICENSE.txt").is_file():
+        raise ValueError("the emoji licence text was not installed beside them")
 
 
 def _current_platform() -> str:
@@ -160,6 +202,53 @@ def _verify_font(bom: dict, fonts_dir: Path) -> None:
     licence = fonts_dir / f"{family}-LICENSE.txt"
     if not licence.is_file():
         raise ValueError(f"caption font licence text was not installed beside it: {licence}")
+    _verify_faces(bom, fonts_dir)
+
+
+# The upstream repositories the other caption faces are taken from, each at a
+# pinned commit rather than a branch.
+FACE_PROVIDERS = {
+    "/google/fonts/",
+    "/JulietaUla/Montserrat/",
+}
+COMMIT_PATTERN = re.compile(r"/[0-9a-f]{40}/")
+FILE_PATTERN = re.compile(r"^[A-Za-z0-9-]+\.(ttf|otf|txt)$")
+
+
+def _verify_faces(bom: dict, fonts_dir: Path) -> None:
+    """The other caption faces: permitted licences, pinned commits and digests."""
+    ids = [face for face in str(bom["fonts"]["faces"]["ids"]).split(",") if face]
+    faces = bom["fonts"]["face"]
+    if sorted(ids) != sorted(faces):
+        raise ValueError("the caption face list and its entries disagree")
+    for face_id in ids:
+        face = faces[face_id]
+        if face.get("license") not in FONT_LICENSE_ALLOWLIST:
+            raise ValueError(
+                f"caption face {face_id} license {face.get('license')!r} is not permitted"
+            )
+        for url_key in ("url", "license_url"):
+            url = urlparse(str(face[url_key]))
+            if (
+                url.scheme != "https"
+                or url.hostname != "raw.githubusercontent.com"
+                or not any(url.path.startswith(provider) for provider in FACE_PROVIDERS)
+                or COMMIT_PATTERN.search(url.path) is None
+            ):
+                raise ValueError(f"caption face {face_id} {url_key} is not a pinned upstream file")
+        for key in ("sha256", "license_sha256"):
+            if SHA256_PATTERN.fullmatch(str(face.get(key))) is None:
+                raise ValueError(f"caption face {face_id} {key} is invalid")
+        for key in ("file", "license_file"):
+            if FILE_PATTERN.fullmatch(str(face.get(key))) is None:
+                raise ValueError(f"caption face {face_id} {key} is not a plain file name")
+        installed = fonts_dir / str(face["file"])
+        if installed.is_symlink() or not installed.is_file():
+            raise ValueError(f"pinned caption face is missing or unsafe: {installed}")
+        if hashlib.sha256(installed.read_bytes()).hexdigest() != face["sha256"]:
+            raise ValueError(f"installed caption face {installed.name} does not match its pin")
+        if not (fonts_dir / str(face["license_file"])).is_file():
+            raise ValueError(f"caption face {face_id} licence text was not installed beside it")
 
 
 if __name__ == "__main__":

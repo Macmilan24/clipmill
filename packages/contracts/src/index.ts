@@ -19,6 +19,7 @@ export type { SpeechVad } from './gen/schemas/speech-vad.js';
 export type { SpeechAsr } from './gen/schemas/speech-asr.js';
 export type { SpeechAlignment } from './gen/schemas/speech-alignment.js';
 export type { SpeechTranscript } from './gen/schemas/speech-transcript.js';
+export type { SpeechSpeakers } from './gen/schemas/speech-speakers.js';
 export type { EvidenceShots } from './gen/schemas/evidence-shots.js';
 export type { EditorialJudgments } from './gen/schemas/editorial-judgments.js';
 export type { EditorialLooks } from './gen/schemas/editorial-looks.js';

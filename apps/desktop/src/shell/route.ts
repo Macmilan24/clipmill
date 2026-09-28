@@ -78,8 +78,27 @@ export type Route =
    * names the clip. Reaching the row with no clip open is the plain section
    * route, and the screen says what to do about that.
    */
-  | { readonly kind: 'editor'; readonly clip: ClipRef }
+  | { readonly kind: 'editor'; readonly clip: ClipRef; readonly focus?: EditorFocus }
   | { readonly kind: 'export'; readonly clip: ClipRef };
+
+/**
+ * What the editor should open on, when the screen that sent a person there
+ * knows.
+ *
+ * The export strip names the caption it refused; a button that then dropped
+ * the person at the top of the editor would leave them to find it again by
+ * its timestamp. So the route carries the caption track and the cue, and the
+ * editor lands on that cue with the playhead there. Only captions take an
+ * argument today; the shape is a union so the next panel that needs one can
+ * add its own without the editor guessing from a string.
+ */
+export type EditorFocus = {
+  readonly panel: 'captions';
+  /** The sidecar grouping or the burned-in one — two lists of the same words. */
+  readonly track: 'reading' | 'on-screen';
+  /** The cue to select. Absent lands on the track's first problem, if any. */
+  readonly cueId?: string;
+};
 
 export const DEFAULT_ROUTE: Route = { kind: 'section', sectionId: 'library' };
 
@@ -143,8 +162,13 @@ export function inspectorRoute(
   };
 }
 
-export function editorRoute(clip: ClipRef): Route {
-  return { kind: 'editor', clip };
+export function editorRoute(clip: ClipRef, focus?: EditorFocus): Route {
+  return focus ? { kind: 'editor', clip, focus } : { kind: 'editor', clip };
+}
+
+/** What the editor was asked to open on, when the route said. */
+export function focusOf(route: Route): EditorFocus | null {
+  return route.kind === 'editor' ? (route.focus ?? null) : null;
 }
 
 export function exportRoute(clip: ClipRef): Route {

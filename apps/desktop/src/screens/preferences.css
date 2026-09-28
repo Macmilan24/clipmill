@@ -401,3 +401,16 @@
     transition: none;
   }
 }
+
+.preference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 24px;
+}
+
+@media (max-width: 720px) {
+  .preference-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

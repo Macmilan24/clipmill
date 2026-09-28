@@ -55,6 +55,12 @@ pub mod error {
 #[doc = "      \"description\": \"True when the box was carried across a frame the detector missed rather than measured in it. Present so a solver can weigh a bridged frame differently from a seen one, and so nobody reads a gap-filled track as continuous evidence.\","]
 #[doc = "      \"type\": \"boolean\""]
 #[doc = "    },"]
+#[doc = "    \"mouth_motion\": {"]
+#[doc = "      \"description\": \"How much the lower face changed since this track's previous measured box, beyond what the upper face moved: 0 is still, 1 is the most change. Absent on interpolated boxes, on a track's first box, and from producers that did not measure it. A face that is talking changes here more than one that is listening.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 1.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
 #[doc = "    \"score\": {"]
 #[doc = "      \"description\": \"The detector's own confidence in this box, kept raw so a re-tuned threshold can be applied without decoding anything again.\","]
 #[doc = "      \"type\": \"number\","]
@@ -92,6 +98,9 @@ pub struct Box {
     #[doc = "True when the box was carried across a frame the detector missed rather than measured in it. Present so a solver can weigh a bridged frame differently from a seen one, and so nobody reads a gap-filled track as continuous evidence."]
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub interpolated: ::std::option::Option<bool>,
+    #[doc = "How much the lower face changed since this track's previous measured box, beyond what the upper face moved: 0 is still, 1 is the most change. Absent on interpolated boxes, on a track's first box, and from producers that did not measure it. A face that is talking changes here more than one that is listening."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub mouth_motion: ::std::option::Option<f64>,
     #[doc = "The detector's own confidence in this box, kept raw so a re-tuned threshold can be applied without decoding anything again."]
     pub score: f64,
     pub t_ticks: u64,
@@ -742,6 +751,7 @@ pub mod builder {
     pub struct Box {
         h: ::std::result::Result<f64, ::std::string::String>,
         interpolated: ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
+        mouth_motion: ::std::result::Result<::std::option::Option<f64>, ::std::string::String>,
         score: ::std::result::Result<f64, ::std::string::String>,
         t_ticks: ::std::result::Result<u64, ::std::string::String>,
         w: ::std::result::Result<f64, ::std::string::String>,
@@ -753,6 +763,7 @@ pub mod builder {
             Self {
                 h: Err("no value supplied for h".to_string()),
                 interpolated: Ok(Default::default()),
+                mouth_motion: Ok(Default::default()),
                 score: Err("no value supplied for score".to_string()),
                 t_ticks: Err("no value supplied for t_ticks".to_string()),
                 w: Err("no value supplied for w".to_string()),
@@ -780,6 +791,16 @@ pub mod builder {
             self.interpolated = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for interpolated: {e}"));
+            self
+        }
+        pub fn mouth_motion<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<f64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.mouth_motion = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for mouth_motion: {e}"));
             self
         }
         pub fn score<T>(mut self, value: T) -> Self
@@ -839,6 +860,7 @@ pub mod builder {
             Ok(Self {
                 h: value.h?,
                 interpolated: value.interpolated?,
+                mouth_motion: value.mouth_motion?,
                 score: value.score?,
                 t_ticks: value.t_ticks?,
                 w: value.w?,
@@ -852,6 +874,7 @@ pub mod builder {
             Self {
                 h: Ok(value.h),
                 interpolated: Ok(value.interpolated),
+                mouth_motion: Ok(value.mouth_motion),
                 score: Ok(value.score),
                 t_ticks: Ok(value.t_ticks),
                 w: Ok(value.w),

@@ -6,6 +6,7 @@
  */
 
 export type Sha256 = string;
+export type HexColour = string;
 
 /**
  * The edit document (book ch. 17): a versioned, multi-track, non-destructive timeline that the preview, the render compiler, and later the NLE exporter all read. No subsystem may render, preview, or export from any other representation. All time is integer ticks at 1/90000 (D06); a segment's program position is the sum of the durations before it and is never stored, so a trim cannot leave a stale offset behind.
@@ -18,10 +19,18 @@ export interface EditIr {
   };
   video: {
     /**
+     * The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.
+     */
+    shape?: "vertical" | "portrait" | "square" | "landscape";
+    /**
      * Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.
      */
     transition_ticks?: number;
     segments?: VideoSegment[];
+    /**
+     * Moments covered by another picture while the voice carries on, in program order, none overlapping.
+     */
+    cutaways?: Cutaway[];
   };
   captions: {
     /**
@@ -32,11 +41,51 @@ export interface EditIr {
      * Saved clip-wide overrides over the named preset. Case changes burned-in captions only; sidecars retain the spoken spelling.
      */
     options?: {
+      /**
+       * Override the preset's spoken-word highlight independently of its typography.
+       */
+      highlight_spoken_word?: boolean;
       font_size?: number;
       spoken?: string;
       unspoken?: string;
       outline?: string;
       text_case?: "original" | "upper" | "lower";
+      /**
+       * How the spoken word is marked. Absent is the sweep.
+       */
+      highlight_style?: "fill" | "word" | "box" | "pop" | "underline";
+      /**
+       * One of the caption fonts, by family name. Absent is the look's own.
+       */
+      font_family?:
+        | "Inter"
+        | "Montserrat Black"
+        | "Poppins ExtraBold"
+        | "Anton"
+        | "Bebas Neue"
+        | "Luckiest Guy"
+        | "DM Serif Display";
+      /**
+       * Outline thickness at the 1920-pixel design height.
+       */
+      outline_width?: number;
+      /**
+       * Drop-shadow offset at the 1920-pixel design height.
+       */
+      shadow_depth?: number;
+      /**
+       * How opaque a boxed look's plate is, in percent.
+       */
+      plate_opacity?: number;
+      /**
+       * The colour key words are set in.
+       */
+      accent?: string;
+      position?: CaptionPosition;
+      /**
+       * The most words the on-screen captions were last grouped into.
+       */
+      words_on_screen?: number;
     };
     /**
      * What a reader gets. Every sidecar is written from this list and only this list, because a sidecar is what a viewer who cannot hear is left with — so it carries the conservative grouping, always.
@@ -57,6 +106,60 @@ export interface EditIr {
       t_ticks: number;
       gain_db: number;
     }[];
+    /**
+     * Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.
+     */
+    music?: {
+      asset: Sha256;
+      /**
+       * Its level where nobody speaks.
+       */
+      level_db: number;
+      /**
+       * How much further it drops under speech.
+       */
+      duck_db: number;
+      /**
+       * Where in the sound the clip starts.
+       */
+      offset_ticks?: number;
+    };
+    /**
+     * The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.
+     */
+    cleanup?: "light" | "strong";
+  };
+  /**
+   * Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.
+   */
+  overlays?: Overlay[];
+  /**
+   * What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.
+   */
+  brand?: {
+    progress?: {
+      colour: HexColour;
+      edge: "top" | "bottom";
+      /**
+       * At the 1920-pixel design height.
+       */
+      thickness: number;
+    };
+    logo?: {
+      /**
+       * The picture's content hash; the clip's assets list it.
+       */
+      asset: string;
+      corner: "top_left" | "top_right" | "bottom_left" | "bottom_right";
+      /**
+       * Its longer side as a share of the frame's short side, per mille.
+       */
+      size: number;
+      /**
+       * In percent.
+       */
+      opacity: number;
+    };
   };
   /**
    * Assets referenced by content hash, each carrying the licence record the render manifest echoes.
@@ -72,6 +175,10 @@ export interface EditIr {
     candidate_id?: string;
     decisions?: string[];
   };
+  /**
+   * What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.
+   */
+  title?: string;
 }
 export interface VideoSegment {
   segment_id: string;
@@ -79,7 +186,10 @@ export interface VideoSegment {
   in_ticks: number;
   out_ticks: number;
   layout: {
-    state: "speaker_fill" | "fit" | "two_up";
+    /**
+     * picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.
+     */
+    state: "speaker_fill" | "fit" | "two_up" | "picture_in_picture";
     /**
      * Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.
      */
@@ -89,12 +199,49 @@ export interface VideoSegment {
       easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
     }[];
     /**
-     * Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.
+     * Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.
      */
     secondary_crop_path?: {
       t_ticks: number;
       rect: CropRect;
       easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
+    }[];
+    /**
+     * two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.
+     */
+    split?: number;
+    /**
+     * What fills around a fitted picture. Absent is the picture itself, blurred.
+     */
+    background?:
+      | {
+          kind: "blur";
+        }
+      | {
+          kind: "colour";
+          colour: string;
+        };
+    /**
+     * How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.
+     */
+    zoom?: number;
+    /**
+     * Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.
+     */
+    inset?: {
+      corner: "top_left" | "top_right" | "bottom_left" | "bottom_right";
+      size: number;
+    };
+    /**
+     * Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.
+     */
+    punches?: {
+      start_ticks: number;
+      end_ticks: number;
+      /**
+       * How much closer, in percent.
+       */
+      zoom: number;
     }[];
   };
 }
@@ -106,6 +253,48 @@ export interface CropRect {
   y: number;
   width: number;
   height: number;
+}
+/**
+ * B-roll: a moment of the program covered by a picture from the clip's assets, or by footage from a recording of the project, without its sound. Program time, like a caption.
+ */
+export interface Cutaway {
+  cutaway_id: string;
+  start_ticks: number;
+  /**
+   * At least a fifth of a second after it starts.
+   */
+  end_ticks: number;
+  /**
+   * fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.
+   */
+  fit?: "fill" | "fit";
+  content:
+    | {
+        kind: "picture";
+        /**
+         * The picture's content hash; the clip's assets list it.
+         */
+        asset: string;
+        /**
+         * Move slowly closer, eight per cent by its last frame.
+         */
+        push_in?: boolean;
+      }
+    | {
+        kind: "footage";
+        source_fingerprint: Sha256;
+        /**
+         * Where in the recording it starts.
+         */
+        in_ticks: number;
+      };
+}
+/**
+ * Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.
+ */
+export interface CaptionPosition {
+  x: number;
+  y: number;
 }
 export interface CaptionCue {
   cue_id: string;
@@ -132,6 +321,10 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         },
         ...{
           text: string;
@@ -141,6 +334,10 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         }[]
       ];
     },
@@ -157,6 +354,10 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         },
         ...{
           text: string;
@@ -166,8 +367,73 @@ export interface CaptionCue {
            * Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.
            */
           word_id?: string;
+          /**
+           * A key word, set in the accent colour so it stands out of its line.
+           */
+          emphasis?: boolean;
         }[]
       ];
     }[]
   ];
+  position?: CaptionPosition1;
+}
+/**
+ * Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position.
+ */
+export interface CaptionPosition1 {
+  x: number;
+  y: number;
+}
+/**
+ * Something laid over the program for a span of it.
+ */
+export interface Overlay {
+  overlay_id: string;
+  start_ticks: number;
+  end_ticks: number;
+  content:
+    | {
+        kind: "text";
+        text: string;
+        /**
+         * A hook opens the clip and names what it is about. Absent is a label.
+         */
+        role?: "hook" | "label";
+        /**
+         * Where its centre sits, per mille of the frame's width.
+         */
+        x: number;
+        /**
+         * Where its centre sits, per mille of the frame's height.
+         */
+        y: number;
+        /**
+         * Its size at the 1920-pixel design height.
+         */
+        size: number;
+        colour: HexColour;
+        /**
+         * An opaque plate behind the text. Absent draws an outline.
+         */
+        plate?: string;
+      }
+    | {
+        kind: "emoji";
+        /**
+         * Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.
+         */
+        emoji: string;
+        /**
+         * Where its centre sits, per mille of the frame's width.
+         */
+        x: number;
+        /**
+         * Where its centre sits, per mille of the frame's height.
+         */
+        y: number;
+        /**
+         * Its side, per mille of the frame's short side.
+         */
+        size: number;
+      };
 }

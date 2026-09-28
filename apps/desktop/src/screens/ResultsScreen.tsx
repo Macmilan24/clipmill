@@ -5,11 +5,12 @@
  * full clip identity to the editor when opening it; review decisions stay on the
  * Inspector, advance through the queue, and can be undone most recent first.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { ClipDecision, Project } from '../daemon/client.js';
+import { exactCaptionsOf } from '../editor/exactCaptions.js';
 import { nextUndecided } from '../inspector/review.js';
 import type { ClipRow } from '../results/model.js';
 import { ManualClip } from '../results/ManualClip.js';
@@ -122,7 +123,9 @@ export function ResultsScreen({
     const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
     return {
       ...(project ? { project: project.name } : {}),
-      ...(row ? { clip: `Clip ${String(row.rank).padStart(2, '0')}` } : {}),
+      // The clip's own title, as everywhere else it is named; the rank is a
+      // position on this board and means nothing on the next screen.
+      ...(row ? { clip: row.headline.trim() || `Clip ${String(row.rank).padStart(2, '0')}` } : {}),
     };
   };
 
@@ -254,6 +257,27 @@ export function ResultsScreen({
     }
   }, [candidateId, solveFor, requestTranscript]);
 
+  // The clip an approval would build, for the clip on screen only: another
+  // clip's plan would frame this one by the wrong sections.
+  const planned =
+    candidateId && results.preview?.candidateId === candidateId ? results.preview.plan : null;
+  const plannedCaptions = useMemo(
+    () => exactCaptionsOf(planned, api.captionFontUrl ?? null),
+    [planned, api],
+  );
+  const { previewFor } = results;
+  // The manual clip's own preview: asked for by the sheet as its span moves.
+  const manualPlanned =
+    manualOpen && results.preview?.candidateId === '' ? results.preview.plan : null;
+  const manualCaptions = useMemo(
+    () => exactCaptionsOf(manualPlanned, api.captionFontUrl ?? null),
+    [manualPlanned, api],
+  );
+  // The sheet snaps to words, so it needs them read.
+  useEffect(() => {
+    if (manualOpen) requestTranscript();
+  }, [manualOpen, requestTranscript]);
+
   if (candidateId && (projectsLoading || results.loading))
     return (
       <div className="workspace-page" aria-label="Loading clip" aria-busy="true">
@@ -270,6 +294,10 @@ export function ResultsScreen({
         candidateId={candidateId}
         proxyUrl={results.proxyUrl}
         crop={results.crop}
+        preview={planned}
+        previewCaptions={plannedCaptions}
+        onPreview={(cut) => previewFor(candidateId, cut)}
+        framing={results.framing}
         peaks={snapshot.peaks}
         tileUrl={results.tileUrl}
         transcript={results.transcript}
@@ -316,6 +344,12 @@ export function ResultsScreen({
         proxyUrl={results.proxyUrl}
         busy={results.busy}
         notice={results.notice}
+        transcript={results.transcript.status === 'ready' ? results.transcript.transcript : null}
+        peaks={snapshot.peaks}
+        tileUrl={results.tileUrl}
+        preview={manualPlanned}
+        previewCaptions={manualCaptions}
+        onPreview={(cut) => previewFor('', cut)}
         onCreate={async (startTicks, endTicks) => {
           const directed = await results.manual(startTicks, endTicks);
           if (!directed || !mounted.current || intentRef.current !== intent) return false;
@@ -350,6 +384,7 @@ export function ResultsScreen({
         sourceName={sourceName}
         run={snapshot.run}
         tileUrl={results.tileUrl}
+        framing={results.framing}
         projects={projects}
         activeProjectId={project?.projectId ?? null}
         busy={results.busy}

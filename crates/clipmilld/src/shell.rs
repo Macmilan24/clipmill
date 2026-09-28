@@ -27,7 +27,7 @@
 /// Ordered by where a shell meets them: the source it imported, what ingest
 /// derived, the transcript, the structure over it, the nominations, the ranking,
 /// the analysis that roots them all, then the edit and its render.
-const DOCUMENTS: [(&str, &str); 13] = [
+const DOCUMENTS: [(&str, &str); 14] = [
     ("evidence.source_map.v1", "source-map.json"),
     ("media.ingest_manifest.v1", "ingest-manifest.json"),
     // Results needs exact source ticks to choose the nearest thumbnail. Only
@@ -38,6 +38,8 @@ const DOCUMENTS: [(&str, &str); 13] = [
     // observation.
     ("media.audio_peaks.v1", "peaks.json"),
     ("speech.transcript.v1", "transcript.json"),
+    // Who speaks when, so a transcript can say.
+    ("speech.speakers.v1", "speakers.json"),
     ("evidence.shots.v1", "shots.json"),
     ("index.transcript.v1", "index.json"),
     ("discovery.candidates.v1", "candidates.json"),
@@ -218,6 +220,7 @@ mod tests {
                 "media.ingest_manifest.v1",
                 "ranking.set.v1",
                 "render.clip.v1",
+                "speech.speakers.v1",
                 "speech.transcript.v1",
             ])
         );

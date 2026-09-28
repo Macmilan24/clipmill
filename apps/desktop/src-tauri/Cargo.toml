@@ -22,6 +22,7 @@ tauri-build = { version = "2", features = [] }
 # not compiled into this binary at all, so the sandbox is a build fact rather
 # than a runtime policy the renderer could talk its way past.
 tauri = { version = "2", features = [] }
+clipmill-captions = { workspace = true }
 clipmill-contracts = { workspace = true }
 clipmilld = { workspace = true }
 prost = { workspace = true }

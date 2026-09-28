@@ -207,6 +207,8 @@ fn tokens_of(
         .filter(|word| {
             as_i64(word.start_ticks) >= span.start_ticks && as_i64(word.end_ticks) <= span.end_ticks
         })
+        .filter(|word| captionable_word(word.text.as_str()))
+        .filter(|word| !lexicon::is_hesitation(&lexicon::normalize(word.text.as_str())))
         .map(|word| {
             let text = word.text.to_string();
             let normalized = lexicon::normalize(&text);
@@ -424,4 +426,85 @@ fn nonzero(value: i64) -> Result<NonZeroU64, DeriveError> {
 fn nonzero_usize(value: usize) -> Result<NonZeroU64, DeriveError> {
     NonZeroU64::new(as_u64_from_usize(value))
         .ok_or_else(|| DeriveError::Contract("a value the contract requires to be positive".into()))
+}
+
+/// Recognition emits speaker dashes, silence markers, and annotations as
+/// ordinary words. They are not spoken captions and often create a one-frame
+/// subtitle that the export checker quite rightly refuses.
+pub fn captionable_word(text: &str) -> bool {
+    let text = text.trim();
+    let annotation = (text.starts_with('[') && text.ends_with(']'))
+        || (text.starts_with('(') && text.ends_with(')'));
+    !annotation && text.chars().any(char::is_alphanumeric)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use super::*;
+
+    #[test]
+    fn recognition_annotations_and_punctuation_are_omitted_without_renumbering_words() {
+        let raw =
+            include_str!("../../../contracts/fixtures/speech.transcript/valid/ten_words.json");
+        let mut transcript: SpeechTranscript = serde_json::from_str(raw).expect("transcript");
+        for (index, text) in [
+            (1, "[BLANK_AUDIO]"),
+            (2, "[music]"),
+            (3, "-"),
+            (4, "(speaking in foreign language)"),
+        ] {
+            transcript.words[index].text = text.parse().expect("text");
+        }
+        let request = DeriveRequest::new("test");
+        let cues = derive(&transcript, None, None, Inputs {
+            transcript_artifact_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            index_artifact_id: None, shots_artifact_id: None,
+        }, &request).expect("captions");
+        let expected: Vec<_> = transcript
+            .words
+            .iter()
+            .filter(|word| captionable_word(word.text.as_str()))
+            .map(|word| word.index)
+            .collect();
+        assert_eq!(
+            cues.tokens
+                .iter()
+                .map(|token| token.word_index)
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(
+            cues.tokens
+                .iter()
+                .all(|token| captionable_word(token.text.as_str()))
+        );
+        for grouping in [&cues.intents.accessibility, &cues.intents.burn_in] {
+            assert_eq!(
+                grouping
+                    .cues
+                    .iter()
+                    .map(|cue| cue.token_count.get())
+                    .sum::<u64>(),
+                u64::try_from(cues.tokens.len()).expect("count")
+            );
+        }
+    }
+
+    #[test]
+    fn hesitations_are_left_out_of_captions_and_other_fillers_kept() {
+        let raw =
+            include_str!("../../../contracts/fixtures/speech.transcript/valid/ten_words.json");
+        let mut transcript: SpeechTranscript = serde_json::from_str(raw).expect("transcript");
+        for (index, text) in [(1, "um,"), (2, "Uh"), (3, "basically")] {
+            transcript.words[index].text = text.parse().expect("text");
+        }
+        let cues = derive(&transcript, None, None, Inputs {
+            transcript_artifact_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            index_artifact_id: None, shots_artifact_id: None,
+        }, &DeriveRequest::new("test")).expect("captions");
+        let kept: Vec<u64> = cues.tokens.iter().map(|token| token.word_index).collect();
+        assert!(!kept.contains(&1) && !kept.contains(&2), "{kept:?}");
+        assert!(kept.contains(&3), "a filler that is a word stays");
+    }
 }

@@ -100,6 +100,9 @@ impl From<SourceRecord> for Source {
             source_fingerprint: record.source_fingerprint,
             source_map_artifact_id: record.source_map_artifact_id,
             created_unix_millis: record.created_unix_millis,
+            // A store read does not look at the disk; the service does, when
+            // it answers with the source.
+            missing: false,
         }
     }
 }
@@ -227,6 +230,60 @@ pub(super) fn register_source(
         &response,
         created_unix_millis,
     )?;
+    transaction.commit()?;
+    Ok(response)
+}
+
+/// Change only a source's local observation after a full re-probe proves it is
+/// the same recording. Its id, fingerprint, artifact roots, jobs and edits stay
+/// attached to the original source.
+pub(super) fn relink_source(
+    connection: &mut Connection,
+    request_id: &str,
+    request_hash: &[u8; 32],
+    project_id: &str,
+    source_id: &str,
+    inspection: &InspectedSource,
+    now: u64,
+) -> Result<Vec<u8>, StoreError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if let Some(response) = replay(&transaction, request_id, request_hash)? {
+        transaction.commit()?;
+        return Ok(response);
+    }
+    let existing = get_source_tx(&transaction, source_id)?;
+    if existing.project_id != project_id {
+        return Err(StoreError::NotFound);
+    }
+    if existing.source_fingerprint != inspection.source_fingerprint {
+        return Err(StoreError::RelinkMismatch);
+    }
+    let observed = &inspection.observation;
+    transaction.execute(
+        "UPDATE source_file_observations SET absolute_path = ?1, byte_size = ?2,
+         sample_sha256 = ?3, device_id = ?4, inode = ?5, modified_unix_nanos = ?6
+         WHERE source_id = ?7",
+        params![
+            observed.absolute_path,
+            sqlite_u64(observed.byte_size, "source byte size")?,
+            observed.sample_sha256,
+            sqlite_u64(observed.device_id, "source device id")?,
+            sqlite_u64(observed.inode, "source inode")?,
+            sqlite_u64(observed.modified_unix_nanos, "source modification time")?,
+            source_id,
+        ],
+    )?;
+    let source = get_source_tx(&transaction, source_id)?;
+    let response = Response {
+        request_id: request_id.to_owned(),
+        body: Some(response::Body::RegisterSource(RegisterSourceResponse {
+            source_map_json: probe_json(&source),
+            source: Some(source.into()),
+            observation_cache_hit: false,
+        })),
+    }
+    .encode_to_vec();
+    remember(&transaction, request_id, request_hash, &response, now)?;
     transaction.commit()?;
     Ok(response)
 }

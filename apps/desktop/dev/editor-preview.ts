@@ -5,6 +5,7 @@
  */
 import type { EditIr } from '@clipmill/contracts';
 import type { EditCommandJson, PreviewPlan } from '../src/daemon/client.js';
+import { type FrameShape, frameOfShape } from '../src/editor/layouts.js';
 
 const SECOND = 90_000;
 
@@ -159,7 +160,298 @@ export function applyPreview(edit: PreviewEdit, command: EditCommandJson): Previ
         document: { ...document, audio: { ...document.audio, gain_curve: curve } },
       };
     }
+    case 'add_overlay':
+    case 'remove_overlay':
+    case 'set_overlay': {
+      const overlays = [...(document.overlays ?? [])];
+      if (command.op === 'add_overlay') {
+        const added = command.overlay as (typeof overlays)[number];
+        overlays.splice(typeof command.at === 'number' ? command.at : overlays.length, 0, added);
+      } else if (command.op === 'remove_overlay') {
+        const at = overlays.findIndex((item) => item.overlay_id === command.overlay_id);
+        if (at < 0) return null;
+        overlays.splice(at, 1);
+      } else {
+        const changed = command.overlay as (typeof overlays)[number];
+        const at = overlays.findIndex((item) => item.overlay_id === changed.overlay_id);
+        if (at < 0) return null;
+        overlays[at] = changed;
+      }
+      const next = { ...document, overlays };
+      return {
+        plan: bumped({
+          overlays: overlays.map((overlay) => {
+            const content = overlay.content;
+            const timing = {
+              overlayId: overlay.overlay_id,
+              startTicks: overlay.start_ticks,
+              endTicks: overlay.end_ticks,
+              firstFrame: frame(overlay.start_ticks),
+              endFrame: Math.min(plan.frameCount, frame(overlay.end_ticks)),
+              x: content.x,
+              y: content.y,
+              size: content.size,
+            };
+            return content.kind === 'emoji'
+              ? {
+                  ...timing,
+                  kind: 'emoji' as const,
+                  emoji: content.emoji,
+                  text: '',
+                  role: 'label' as const,
+                  colour: '',
+                  plate: null,
+                }
+              : {
+                  ...timing,
+                  kind: 'text' as const,
+                  text: content.text,
+                  role: content.role === 'hook' ? ('hook' as const) : ('label' as const),
+                  colour: content.colour,
+                  plate: content.plate ?? null,
+                };
+          }),
+        }),
+        document: next,
+      };
+    }
+    case 'set_music':
+    case 'set_cleanup': {
+      const audio = { ...document.audio };
+      if (command.op === 'set_music') {
+        if (command.music) audio.music = command.music as NonNullable<EditIr['audio']['music']>;
+        else delete audio.music;
+      } else if (command.cleanup) {
+        audio.cleanup = command.cleanup as NonNullable<EditIr['audio']['cleanup']>;
+      } else {
+        delete audio.cleanup;
+      }
+      const assets = (command.assets as EditIr['assets'] | undefined) ?? document.assets;
+      return {
+        plan: bumped({}),
+        document: { ...document, audio, ...(assets ? { assets } : {}) } as EditIr,
+      };
+    }
+    case 'set_brand': {
+      const brand = command.brand as EditIr['brand'] | undefined;
+      const assets = (command.assets as EditIr['assets'] | undefined) ?? document.assets;
+      const next = { ...document, ...(assets ? { assets } : {}) } as EditIr;
+      if (brand) next.brand = brand;
+      else delete next.brand;
+      const thickness = brand?.progress
+        ? Math.max(2, (Math.floor((brand.progress.thickness * plan.height) / 1920) + 1) & ~1)
+        : 0;
+      return {
+        plan: bumped({
+          progress: brand?.progress
+            ? { colour: brand.progress.colour, edge: brand.progress.edge, thickness }
+            : null,
+          logo: brand?.logo
+            ? {
+                asset: brand.logo.asset,
+                corner: brand.logo.corner,
+                side: Math.floor((Math.min(plan.width, plan.height) * brand.logo.size) / 1000) & ~1,
+                insetX: Math.floor((Math.min(plan.width, plan.height) * 40) / 1000) & ~1,
+                insetY:
+                  plan.height > plan.width
+                    ? Math.floor(
+                        (plan.height * (brand.logo.corner.startsWith('top') ? 90 : 260)) / 1000,
+                      ) & ~1
+                    : Math.floor((Math.min(plan.width, plan.height) * 40) / 1000) & ~1,
+                opacity: brand.logo.opacity,
+              }
+            : null,
+        }),
+        document: next,
+      };
+    }
+    case 'set_cutaways': {
+      const cutaways = command.cutaways as NonNullable<EditIr['video']['cutaways']>;
+      const assets = (command.assets as EditIr['assets'] | undefined) ?? document.assets;
+      const next = {
+        ...document,
+        ...(assets ? { assets } : {}),
+        video: { ...document.video, cutaways },
+      } as EditIr;
+      // Frames as the render counts them: the first at or after its start.
+      const ceil = (ticks: number) => Math.ceil((ticks * plan.rateNum) / plan.rateDen / SECOND);
+      return {
+        plan: bumped({
+          cutaways: cutaways.map((cutaway) => ({
+            cutawayId: cutaway.cutaway_id,
+            startTicks: cutaway.start_ticks,
+            endTicks: cutaway.end_ticks,
+            firstFrame: Math.min(plan.frameCount, ceil(cutaway.start_ticks)),
+            endFrame: Math.min(plan.frameCount, ceil(cutaway.end_ticks)),
+            fit: cutaway.fit ?? 'fill',
+            kind: cutaway.content.kind,
+            asset: cutaway.content.kind === 'picture' ? cutaway.content.asset : null,
+            pushIn: cutaway.content.kind === 'picture' && cutaway.content.push_in === true,
+            sourceFingerprint:
+              cutaway.content.kind === 'footage' ? cutaway.content.source_fingerprint : null,
+            inTicks: cutaway.content.kind === 'footage' ? cutaway.content.in_ticks : 0,
+          })),
+        }),
+        document: next,
+      };
+    }
+    case 'set_frame_shape': {
+      const shape = command.shape as FrameShape;
+      const next = { ...document, video: { ...document.video, shape } };
+      const resized = { ...plan, ...frameOfShape(shape) };
+      return {
+        plan: bumped({ ...frameOfShape(shape), ...framing(resized, next) }),
+        document: next,
+      };
+    }
+    case 'set_punches':
+    case 'set_layout':
+    case 'set_layout_style':
+    case 'replace_crop_path':
+    case 'replace_secondary_crop_path':
+    case 'set_crop_keyframe':
+    case 'set_secondary_crop_keyframe':
+    case 'swap_portraits': {
+      const segments = (document.video.segments ?? []).map((segment) =>
+        segment.segment_id === command.segment_id
+          ? Object.assign({}, segment, { layout: relaid(segment.layout, command) })
+          : segment,
+      );
+      const next = { ...document, video: { ...document.video, segments } };
+      return { plan: bumped(framing(plan, next)), document: next };
+    }
     default:
       return null;
   }
+}
+
+type Layout = NonNullable<EditIr['video']['segments']>[number]['layout'];
+type Keyframe = NonNullable<Layout['crop_path']>[number];
+type Crop = readonly [number, number, number, number];
+
+/** A section's layout after one framing command, as the daemon applies it. */
+function relaid(layout: Layout, command: EditCommandJson): Layout {
+  switch (command.op) {
+    case 'set_layout':
+      return { ...layout, state: command.state as Layout['state'] };
+    case 'set_layout_style': {
+      const {
+        split: _split,
+        background: _background,
+        zoom: _zoom,
+        inset: _inset,
+        ...rest
+      } = layout;
+      return {
+        ...rest,
+        ...(command.split === undefined ? {} : { split: command.split as number }),
+        ...(command.background === undefined
+          ? {}
+          : { background: command.background as NonNullable<Layout['background']> }),
+        ...(command.zoom === undefined ? {} : { zoom: command.zoom as number }),
+        ...(command.inset === undefined
+          ? {}
+          : { inset: command.inset as NonNullable<Layout['inset']> }),
+      };
+    }
+    case 'replace_crop_path':
+      return { ...layout, crop_path: command.path as Keyframe[] };
+    case 'replace_secondary_crop_path':
+      return { ...layout, secondary_crop_path: command.path as Keyframe[] };
+    case 'set_crop_keyframe':
+    case 'set_secondary_crop_keyframe': {
+      const key = command.op === 'set_crop_keyframe' ? 'crop_path' : 'secondary_crop_path';
+      const at = Number(command.t_ticks);
+      const path = [
+        ...(layout[key] ?? []).filter((keyframe) => keyframe.t_ticks !== at),
+        { t_ticks: at, rect: command.rect as Keyframe['rect'] },
+      ].toSorted((a, b) => a.t_ticks - b.t_ticks);
+      return { ...layout, [key]: path };
+    }
+    case 'swap_portraits':
+      return {
+        ...layout,
+        crop_path: layout.secondary_crop_path ?? [],
+        secondary_crop_path: layout.crop_path ?? [],
+      };
+    case 'set_punches': {
+      const { punches: _punches, ...rest } = layout;
+      const punches = command.punches as NonNullable<Layout['punches']>;
+      return punches.length > 0 ? { ...rest, punches } : rest;
+    }
+    default:
+      return layout;
+  }
+}
+
+/**
+ * Each frame's crops and each section's layout geometry, from the document,
+ * the way the render's preview plan works them out (a stand-in, for looks).
+ */
+function framing(plan: PreviewPlan, document: EditIr): Partial<PreviewPlan> {
+  const crops: (Crop | null)[] = [...plan.crops];
+  const secondaryCrops: (Crop | null)[] = [...(plan.secondaryCrops ?? plan.crops.map(() => null))];
+  const segments = plan.segments.map((segment) => {
+    const layout = document.video.segments?.find(
+      (saved) => saved.segment_id === segment.segmentId,
+    )?.layout;
+    if (!layout) return segment;
+    for (let at = segment.firstFrame; at < segment.endFrame; at += 1) {
+      const local = ((at - segment.firstFrame) * SECOND * plan.rateDen) / plan.rateNum;
+      crops[at] = layout.state === 'fit' ? null : along(layout.crop_path, local);
+      secondaryCrops[at] =
+        layout.state === 'two_up' || layout.state === 'picture_in_picture'
+          ? along(layout.secondary_crop_path, local)
+          : null;
+    }
+    const inset = layout.inset ?? { corner: 'top_right', size: 360 };
+    const short = Math.min(plan.width, plan.height);
+    const tall = plan.height > plan.width;
+    const side = Math.floor((short * inset.size) / 1000) & ~1;
+    const margin = Math.floor((short * 40) / 1000) & ~1;
+    const left = inset.corner.endsWith('left') ? margin : plan.width - margin - side;
+    const top = inset.corner.startsWith('top')
+      ? tall
+        ? Math.floor((plan.height * 90) / 1000) & ~1
+        : margin
+      : (plan.height - Math.floor((plan.height * (tall ? 260 : 200)) / 1000) - side) & ~1;
+    const across = plan.width > plan.height;
+    return {
+      ...segment,
+      layout: layout.state,
+      hasTwoUpPaths:
+        (layout.crop_path?.length ?? 0) > 0 && (layout.secondary_crop_path?.length ?? 0) > 0,
+      upperHeight:
+        layout.state === 'two_up'
+          ? Math.floor(((across ? plan.width : plan.height) * (layout.split ?? 500)) / 1000) & ~1
+          : 0,
+      inset: layout.state === 'picture_in_picture' ? ([left, top, side] as const) : null,
+      backgroundColour: layout.background?.kind === 'colour' ? layout.background.colour : null,
+      zoomPercent: layout.zoom ?? 100,
+    };
+  });
+  return { crops, secondaryCrops, segments };
+}
+
+/** A path's crop at a segment-local tick, straight between keyframes. */
+function along(path: readonly Keyframe[] | undefined, ticks: number): Crop | null {
+  if (!path || path.length === 0) return null;
+  let before = path[0]!;
+  let after = path.at(-1)!;
+  for (const keyframe of path) {
+    if (keyframe.t_ticks <= ticks) before = keyframe;
+    if (keyframe.t_ticks >= ticks) {
+      after = keyframe;
+      break;
+    }
+  }
+  const span = after.t_ticks - before.t_ticks;
+  const share = span > 0 ? (ticks - before.t_ticks) / span : 0;
+  const mix = (from: number, to: number) => Math.round(from + (to - from) * share);
+  return [
+    mix(before.rect.x, after.rect.x),
+    mix(before.rect.y, after.rect.y),
+    mix(before.rect.width, after.rect.width),
+    mix(before.rect.height, after.rect.height),
+  ];
 }

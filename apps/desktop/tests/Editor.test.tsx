@@ -8,6 +8,7 @@
  * the mapping under a playhead that did not move.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '../src/components/ui/tooltip.js';
@@ -42,10 +43,15 @@ function canvasContext() {
   };
 }
 
-function show(initial: PreviewPlan, urls?: ReadonlyMap<string, string>) {
+function show(
+  initial: PreviewPlan,
+  urls?: ReadonlyMap<string, string>,
+  extra: Partial<ComponentProps<typeof Editor>> = {},
+) {
   const onApply = vi.fn();
   // The URL map is what the hook derives from the plan's proxies.
   const props = (current: PreviewPlan, docId = 'edt_A') => ({
+    ...extra,
     plan: current,
     proxyUrls:
       urls ?? new Map(current.proxies.map((proxy) => [proxy.sourceFingerprint, PROXY_URL])),
@@ -384,6 +390,112 @@ describe('decoded playback across shots and documents', () => {
     expect(screen.queryByText(/preparing preview/i)).toBeNull();
     control.decode(element, 600 + 17 / 30);
     expect(screen.getByTestId('timecode').textContent).toContain('frame 17 of 60');
+  });
+
+  it('keeps the captions on the sound while a boost plays through Web Audio', () => {
+    class Context {
+      readonly currentTime = 0;
+      readonly baseLatency = 0.02;
+      readonly outputLatency = 0.08;
+      readonly destination = {};
+      readonly createGain = () => ({
+        gain: { setValueAtTime: vi.fn() },
+        connect: (next: unknown) => next,
+      });
+      readonly createMediaElementSource = () => ({ connect: (next: unknown) => next });
+      readonly resume = () => Promise.resolve();
+      readonly close = () => Promise.resolve();
+    }
+    vi.stubGlobal('AudioContext', Context);
+    try {
+      control = playback();
+      const first = plan().cues[0]!;
+      show({
+        ...program(900, 600),
+        gain: [{ frame: 0, gainDb: 3 }],
+        cues: [
+          { ...first, firstFrame: 0, endFrame: 30 },
+          {
+            ...first,
+            cueId: 'cue_2',
+            firstFrame: 30,
+            endFrame: 60,
+            lines: [[{ text: 'Afterwards', holdCentis: 100, wordId: 'w3' }]],
+          },
+        ],
+      });
+      const element = video();
+      control.ready(element);
+      fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+      control.decode(element, 600 + 31 / 30);
+      expect(screen.getByTestId('timecode').textContent).toContain('frame 31 of 900');
+      // A tenth of a second behind at 30 fps: what is heard is frame 28's.
+      expect(document.querySelector('.edit-caption')!.textContent).toContain('Charging');
+
+      fireEvent.click(screen.getByRole('button', { name: /^pause$/i }));
+      expect(document.querySelector('.edit-caption')!.textContent).toContain('Afterwards');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('plays the music with the picture, at the render’s level for each frame', () => {
+    control = playback();
+    const hash = `sha256:${'3'.repeat(64)}`;
+    const scored: PreviewPlan = {
+      ...program(900, 600),
+      music: {
+        asset: hash,
+        offsetTicks: 90_000,
+        levels: [
+          { frame: 0, gainDb: -20 },
+          { frame: 60, gainDb: -20 },
+          { frame: 90, gainDb: -40 },
+        ],
+      },
+    };
+    render(
+      <TooltipProvider>
+        <Editor
+          plan={scored}
+          proxyUrls={new Map(scored.proxies.map((proxy) => [proxy.sourceFingerprint, PROXY_URL]))}
+          docId="edt_A"
+          labels={null}
+          loading={false}
+          problem={null}
+          busy={false}
+          canUndo={false}
+          canRedo={false}
+          resolving={false}
+          resolveRefusal={null}
+          picker={null}
+          onOpenResults={() => {}}
+          onExport={null}
+          onApply={() => {}}
+          onUndo={() => {}}
+          onRedo={() => {}}
+          onResolve={() => {}}
+          assets={{
+            list: vi.fn().mockResolvedValue([]),
+            bring: vi.fn().mockResolvedValue(null),
+            url: (asset) => `asset://${asset}`,
+          }}
+        />
+      </TooltipProvider>,
+    );
+    const music = screen.getByTestId('music') as HTMLAudioElement;
+    expect(music.getAttribute('src')).toBe(`asset://${hash}`);
+    expect(music.volume).toBeCloseTo(0.1, 6);
+    const element = video();
+    control.ready(element);
+    fireEvent.click(screen.getByRole('button', { name: /^play$/i }));
+    expect(control.state(music).paused).toBe(false);
+    control.decode(element, 600 + 75 / 30);
+    // A second in the music, and two and a half more of the program.
+    expect(music.currentTime).toBeCloseTo(1 + 75 / 30, 3);
+    expect(music.volume).toBeCloseTo(10 ** (-30 / 20), 6);
+    fireEvent.click(screen.getByRole('button', { name: /^pause$/i }));
+    expect(control.state(music).paused).toBe(true);
   });
 
   it('honors Pause during buffering instead of resuming when the reference arrives', () => {
@@ -866,7 +978,7 @@ it('uses the renderer’s caption style and placement while labelling proxy audi
   const caption = screen.getByTestId('caption');
   expect(caption.style.fontWeight).toBe('400');
   expect(caption.style.top).toBe('12.5%');
-  fireEvent.mouseDown(screen.getByRole('tab', { name: /details/i }));
+  fireEvent.mouseDown(screen.getByRole('tab', { name: /brand/i }));
   expect(screen.getByText(/drawn from the render plan/i)).toBeTruthy();
 });
 
@@ -887,4 +999,339 @@ it('keeps the current media and playhead when focusing the preview and returning
   );
   expect(video()).toBe(originalVideo);
   expect(screen.getByTestId('timecode').textContent).toContain('frame 450');
+});
+
+describe('captions made before a better transcript', () => {
+  it('refreshes them from the transcript as one saved step', () => {
+    const { onApply } = show(program(900, 600));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /captions/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh captions' }));
+    expect(onApply).toHaveBeenCalledWith({ op: 'refresh_captions' });
+  });
+});
+
+describe('b-roll over the clip', () => {
+  const PICTURE = `sha256:${'3'.repeat(64)}`;
+  const RECORDING = `sha256:${'2'.repeat(64)}`;
+  const assets = {
+    list: async (kind: 'image' | 'audio') =>
+      kind === 'image'
+        ? [
+            {
+              hash: PICTURE,
+              kind: 'image' as const,
+              name: 'chart.png',
+              mediaType: 'image/png',
+              bytes: 10,
+              width: 800,
+              height: 600,
+              durationTicks: 0,
+              license: 'licensed' as const,
+              addedUnixMillis: 1,
+            },
+          ]
+        : [],
+    bring: async () => null,
+    url: (hash: string) => `media://assets/${hash}`,
+  };
+  const recordings = {
+    list: async () => [{ fingerprint: RECORDING, name: 'interview.mp4' }],
+  };
+
+  it('puts a picture over the moment at the playhead, with its licence', async () => {
+    const document = {
+      version: 'ir/1',
+      timebase: { num: 1, den: 90_000 },
+      video: { segments: [] },
+      captions: { style_ref: 'clean' },
+      audio: { target_lufs: -14, true_peak_dbtp: -1 },
+    } as never;
+    const { onApply } = show(program(900, 600), undefined, { assets, recordings, document });
+    seekTo(program(900, 600), 90);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Framing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add a picture' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show chart.png' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 270_000,
+          end_ticks: 495_000,
+          content: { kind: 'picture', asset: PICTURE, push_in: true },
+        },
+      ],
+      assets: [{ hash: PICTURE, license: 'licensed' }],
+    });
+  });
+
+  it('cuts to footage from one of the project’s recordings', async () => {
+    const { onApply } = show(program(900, 600), undefined, { assets, recordings });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Framing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add footage' }));
+    fireEvent.click(await screen.findByRole('button', { name: /interview\.mp4/ }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 0,
+          end_ticks: 225_000,
+          content: { kind: 'footage', source_fingerprint: RECORDING, in_ticks: 0 },
+        },
+      ],
+    });
+  });
+
+  it('shows a cutaway over the picture, picks it there, changes it and deletes it', () => {
+    const { onApply } = show(
+      {
+        ...program(900, 600),
+        cutaways: [
+          {
+            cutawayId: 'cut_1',
+            startTicks: 0,
+            endTicks: 90_000,
+            firstFrame: 0,
+            endFrame: 30,
+            fit: 'fill',
+            kind: 'picture',
+            asset: PICTURE,
+            pushIn: true,
+            inTicks: 0,
+          },
+        ],
+      },
+      undefined,
+      { assets, recordings },
+    );
+    const cutaway = screen.getByTestId('cutaway');
+    expect(cutaway.querySelector('img')?.getAttribute('src')).toBe(`media://assets/${PICTURE}`);
+    fireEvent.pointerDown(cutaway, { button: 0 });
+    expect(screen.getByRole('tab', { name: 'Framing' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('heading', { name: 'This cutaway' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Whole' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 0,
+          end_ticks: 90_000,
+          fit: 'fit',
+          content: { kind: 'picture', asset: PICTURE, push_in: true },
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Still' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_cutaways',
+      cutaways: [
+        {
+          cutaway_id: 'cut_1',
+          start_ticks: 0,
+          end_ticks: 90_000,
+          content: { kind: 'picture', asset: PICTURE },
+        },
+      ],
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onApply).toHaveBeenLastCalledWith({ op: 'set_cutaways', cutaways: [] });
+  });
+});
+
+describe('text over the clip', () => {
+  const hooked = (): PreviewPlan => ({
+    ...program(900, 600),
+    overlays: [
+      {
+        overlayId: 'ovl_1',
+        startTicks: 0,
+        endTicks: 270_000,
+        firstFrame: 0,
+        endFrame: 90,
+        text: 'Charging less',
+        role: 'hook',
+        x: 500,
+        y: 140,
+        size: 88,
+        colour: '#111111',
+        plate: '#FFFFFF',
+      },
+    ],
+  });
+
+  it('adds a hook title named after the clip, as one saved step', () => {
+    const { onApply } = show(program(900, 600));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    fireEvent.click(screen.getByRole('button', { name: /add a hook title/i }));
+    expect(onApply).toHaveBeenCalledWith({
+      op: 'add_overlay',
+      overlay: {
+        overlay_id: 'ovl_1',
+        start_ticks: 0,
+        end_ticks: 270_000,
+        content: {
+          kind: 'text',
+          text: 'Clip 01',
+          role: 'hook',
+          x: 500,
+          y: 140,
+          size: 88,
+          colour: '#111111',
+          plate: '#FFFFFF',
+        },
+      },
+    });
+  });
+
+  it('shows the hook on the picture, picks it there, restyles and removes it', () => {
+    const { onApply } = show(hooked());
+    const text = screen.getByTestId('overlay-text');
+    expect(text.textContent).toBe('Charging less');
+    fireEvent.pointerDown(text, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { button: 0, clientX: 10, clientY: 10 });
+    expect(screen.getByRole('tab', { name: 'Text' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('textbox', { name: 'Text words' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Red plate' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_overlay',
+      overlay: {
+        overlay_id: 'ovl_1',
+        start_ticks: 0,
+        end_ticks: 270_000,
+        content: {
+          kind: 'text',
+          text: 'Charging less',
+          role: 'hook',
+          x: 500,
+          y: 140,
+          size: 88,
+          colour: '#FFFFFF',
+          plate: '#E0245E',
+        },
+      },
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onApply).toHaveBeenLastCalledWith({ op: 'remove_overlay', overlay_id: 'ovl_1' });
+  });
+
+  it('puts an emoji at the playhead, drawn from its pinned picture', () => {
+    const { onApply } = show(program(900, 600), undefined, {
+      emojiUrl: (code) => `media://emoji/${code}.png`,
+    });
+    seekTo(program(900, 600), 90);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    const fire = screen.getByRole('button', { name: 'Add Fire' });
+    expect(fire.querySelector('img')?.getAttribute('src')).toBe('media://emoji/1f525.png');
+    fireEvent.click(fire);
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'add_overlay',
+      overlay: {
+        overlay_id: 'ovl_1',
+        start_ticks: 270_000,
+        end_ticks: 378_000,
+        content: { kind: 'emoji', emoji: '1f525', x: 500, y: 640, size: 180 },
+      },
+    });
+    // One row until the rest are asked for.
+    expect(screen.queryByRole('button', { name: 'Add Skull' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'All 40' }));
+    expect(screen.getByRole('button', { name: 'Add Skull' })).toBeTruthy();
+  });
+
+  it('puts emoji on the words that call for one, as one step', () => {
+    const inTicks = 600 * 90_000;
+    const said = (text: string, seconds: number) => ({
+      text,
+      startTicks: inTicks + seconds * 90_000,
+      endTicks: inTicks + (seconds + 0.4) * 90_000,
+    });
+    const { onApply } = show(program(900, 600), undefined, {
+      transcript: {
+        words: [said('We', 0.5), said('made', 0.8), said('money', 1), said('then', 6)],
+        sentences: [],
+      },
+    });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    fireEvent.click(screen.getByRole('button', { name: /on key words/i }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'batch',
+      commands: [
+        {
+          op: 'add_overlay',
+          overlay: {
+            overlay_id: 'ovl_1',
+            start_ticks: 90_000,
+            end_ticks: 198_000,
+            content: { kind: 'emoji', emoji: '1f4b0', x: 500, y: 640, size: 180 },
+          },
+        },
+      ],
+    });
+    expect(screen.getByText(/added 1 where words call for one/i)).toBeTruthy();
+  });
+
+  it('shows an emoji on the picture, moves it there and changes it here', () => {
+    const { onApply } = show({
+      ...program(900, 600),
+      overlays: [
+        {
+          overlayId: 'ovl_4',
+          kind: 'emoji',
+          emoji: '1f525',
+          startTicks: 0,
+          endTicks: 108_000,
+          firstFrame: 0,
+          endFrame: 36,
+          text: '',
+          role: 'label',
+          x: 500,
+          y: 640,
+          size: 180,
+          colour: '',
+        },
+      ],
+    });
+    const shown = screen.getByTestId('overlay-emoji');
+    expect(screen.queryByTestId('overlay-text')).toBeNull();
+    // Without a picture to load, the character stands in.
+    expect(shown.textContent).toBe('🔥');
+    fireEvent.pointerDown(shown, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { button: 0, clientX: 10, clientY: 10 });
+    expect(screen.getByRole('tab', { name: 'Text' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('heading', { name: 'This emoji' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Top' }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'set_overlay',
+      overlay: {
+        overlay_id: 'ovl_4',
+        start_ticks: 0,
+        end_ticks: 108_000,
+        content: { kind: 'emoji', emoji: '1f525', x: 500, y: 140, size: 180 },
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /remove all 1/i }));
+    expect(onApply).toHaveBeenLastCalledWith({
+      op: 'batch',
+      commands: [{ op: 'remove_overlay', overlay_id: 'ovl_4' }],
+    });
+  });
+
+  it('keeps the words a person types, with their line breaks', () => {
+    const { onApply } = show(hooked());
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Text' }));
+    fireEvent.click(screen.getByRole('button', { name: /charging less/i }));
+    const words = screen.getByRole('textbox', { name: 'Text words' });
+    fireEvent.change(words, { target: { value: 'Charge\nless' } });
+    fireEvent.blur(words);
+    expect(onApply).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        op: 'set_overlay',
+        overlay: expect.objectContaining({
+          content: expect.objectContaining({ text: 'Charge\nless' }),
+        }),
+      }),
+    );
+  });
 });

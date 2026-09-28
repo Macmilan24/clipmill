@@ -113,6 +113,10 @@ pub mod speech_alignment;
 pub mod speech_asr;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/speech_speakers.rs"]
+pub mod speech_speakers;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/speech_transcript.rs"]
 pub mod speech_transcript;
 

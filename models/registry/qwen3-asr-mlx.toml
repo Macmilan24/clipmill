@@ -15,7 +15,7 @@ quantization = "int4"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Qwen3-ASR 1.7B"
-summary = "Faster transcription on the Apple silicon GPU."
+summary = "More accurate than Whisper Base, and quick on the Apple silicon GPU."
 recommended = false
 
 [source]

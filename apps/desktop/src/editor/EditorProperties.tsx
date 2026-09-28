@@ -4,8 +4,29 @@
  * controls on top. Sliders and colours send one command when let go.
  */
 import type { EditIr } from '@clipmill/contracts';
-import { AudioLines, Captions as CaptionsIcon, Crop, Info, Minus, Plus, X } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  ArrowDownLeft,
+  ArrowDownRight,
+  ArrowUpLeft,
+  ArrowUpRight,
+  AudioLines,
+  Captions as CaptionsIcon,
+  Columns2,
+  Copy,
+  Crop,
+  Minus,
+  PanelLeft,
+  PanelTop,
+  PictureInPicture2,
+  Plus,
+  RectangleHorizontal,
+  Rows2,
+  ScanFace,
+  Stamp,
+  Type,
+  X,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
@@ -17,17 +38,56 @@ import {
   SelectValue,
 } from '../components/ui/select.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
-import type { EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
-import { clockTenths, timecode } from '../inspector/review.js';
+import type { CaptionFont, EditCommandJson, PreviewCue, PreviewPlan } from '../daemon/client.js';
+import type { CaptionDraft } from '../screens/Editor.js';
+import { clockTenths } from '../inspector/review.js';
+import type { EditorFocus } from '../shell/route.js';
+import { repairAll, shortCues } from './captionRepairs.js';
+import { CaptionStyleControls, LOOKS } from './CaptionStyle.js';
+import { CommitSlider, Field, Swatch } from './controls.js';
+import {
+  INSET_SIZES,
+  type InsetCorner,
+  type LayoutChoice,
+  type LayoutStyle,
+  SPLITS,
+  ZOOMS,
+  DEFAULT_INSET,
+  FRAME_SHAPES,
+  layoutCommands,
+  recordingSplit,
+  refit,
+  setLayoutStyle,
+  shapeCommand,
+  shapeOfFrame,
+  splitCommands,
+  splitsAcross,
+  styleOf,
+  switchCommands,
+  viewports,
+} from './layouts.js';
+import { CueTiming } from './CueTiming.js';
+import { TextTab } from './TextTab.js';
+import type { AssetAccess } from './brand.js';
+import { BrandTab } from './BrandTab.js';
+import { MusicSection } from './MusicSection.js';
+import {
+  PUNCH_ZOOMS,
+  autoPunches,
+  clearPunches,
+  punchHere,
+  punchSummary,
+  rezoomPunches,
+} from './punches.js';
+import type { ProgramWord } from './transcript.js';
 import {
   batch,
   correctWord,
+  refreshCaptions,
   mergeCues,
   removeCaptionWord,
   removeCropKeyframe,
   removeGainPoint,
-  setCaptionOptions,
-  setCaptionStyle,
   setCropKeyframe,
   setCueLines,
   setCueRegion,
@@ -37,16 +97,11 @@ import {
   splitCue,
   swapPortraits,
 } from './commands.js';
+import { CutawaysSection, type RecordingAccess } from './CutawaysSection.js';
 import { cropAt, gainAt, segmentAt, sourceOf } from './player.js';
 import type { EditorSelection, PropertiesTab } from './selection.js';
 import { freshCueId, programTicks, ticksOfFrame } from './timeline.js';
 import { shownCues } from './transcript.js';
-
-const PRESETS = [
-  { label: 'Clean', ref: 'clipmill.captions.clean.v1' },
-  { label: 'Minimal', ref: 'clipmill.captions.minimal.v1' },
-  { label: 'Boxed', ref: 'clipmill.captions.boxed.v1' },
-] as const;
 
 const REGIONS = [
   ['upper_safe', 'Top'],
@@ -56,10 +111,10 @@ const REGIONS = [
 
 type Region = (typeof REGIONS)[number][0];
 type Easing = 'linear' | 'ease_in' | 'ease_out' | 'ease_in_out';
-const FRAME = 3_003;
 
 export interface EditorPropertiesProps {
   readonly plan: PreviewPlan;
+  readonly focus?: EditorFocus | null;
   readonly document: EditIr | null;
   readonly frame: number;
   readonly selection: EditorSelection;
@@ -72,12 +127,36 @@ export interface EditorPropertiesProps {
   readonly onResolve: () => void;
   readonly onSelect: (selection: EditorSelection) => void;
   readonly onSeek: (frame: number) => void;
+  /** Draw a caption look before it is chosen; null goes back to the saved one. */
+  readonly onTryLook?: ((look: CaptionDraft | null) => void) | null;
+  /** Every caption typeface, with whether this installation has it. */
+  readonly fonts?: readonly CaptionFont[];
+  /** What a new hook title says until it is changed. */
+  readonly hook?: string;
+  /** The clip's words in program time, for punch-ins on its sentences. */
+  readonly words?: readonly ProgramWord[];
+  /** The person's pictures and sounds; absent outside the app. */
+  readonly assets?: AssetAccess | null;
+  /** Where a pinned emoji's picture loads from; absent draws the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
+  /** The project's recordings, for B-roll footage; absent outside the app. */
+  readonly recordings?: RecordingAccess | null;
 }
 
 export function EditorProperties(props: EditorPropertiesProps) {
   const { tab, onTab } = props;
+  const [captionTrack, setCaptionTrack] = useState<'on-screen' | 'reading'>(
+    props.focus?.track ?? 'on-screen',
+  );
+  useEffect(() => {
+    if (props.focus?.panel === 'captions') setCaptionTrack(props.focus.track);
+  }, [props.focus]);
+  const captionPlan: PreviewPlan =
+    captionTrack === 'reading' && props.plan.readingCues
+      ? { ...props.plan, cues: props.plan.readingCues, presentation: 'reading' }
+      : props.plan;
   return (
-    <aside className="review-side edit-side" aria-label="Properties">
+    <aside className="review-side edit-side" aria-label="Properties" data-coach="edit-properties">
       <Tabs
         value={tab}
         onValueChange={(next) => onTab(next as PropertiesTab)}
@@ -88,6 +167,10 @@ export function EditorProperties(props: EditorPropertiesProps) {
             <CaptionsIcon aria-hidden="true" />
             Captions
           </TabsTrigger>
+          <TabsTrigger value="text">
+            <Type aria-hidden="true" />
+            Text
+          </TabsTrigger>
           <TabsTrigger value="framing">
             <Crop aria-hidden="true" />
             Framing
@@ -96,13 +179,37 @@ export function EditorProperties(props: EditorPropertiesProps) {
             <AudioLines aria-hidden="true" />
             Audio
           </TabsTrigger>
-          <TabsTrigger value="details">
-            <Info aria-hidden="true" />
-            Details
+          <TabsTrigger value="brand">
+            <Stamp aria-hidden="true" />
+            Brand
           </TabsTrigger>
         </TabsList>
         <TabsContent value="captions" className="review-tab-panel">
-          <CaptionsTab {...props} />
+          <div
+            className="review-segmented edit-wide mx-3 mt-3"
+            role="group"
+            aria-label="Caption track"
+          >
+            <button
+              type="button"
+              aria-pressed={captionTrack === 'on-screen'}
+              onClick={() => setCaptionTrack('on-screen')}
+            >
+              On-screen
+            </button>
+            <button
+              type="button"
+              aria-pressed={captionTrack === 'reading'}
+              disabled={!props.plan.readingCues}
+              onClick={() => setCaptionTrack('reading')}
+            >
+              Subtitle file
+            </button>
+          </div>
+          <CaptionsTab {...props} plan={captionPlan} />
+        </TabsContent>
+        <TabsContent value="text" className="review-tab-panel">
+          <TextTab {...props} hook={props.hook ?? 'Your hook here'} />
         </TabsContent>
         <TabsContent value="framing" className="review-tab-panel">
           <FramingTab {...props} />
@@ -110,7 +217,14 @@ export function EditorProperties(props: EditorPropertiesProps) {
         <TabsContent value="audio" className="review-tab-panel">
           <AudioTab {...props} />
         </TabsContent>
-        <TabsContent value="details" className="review-tab-panel">
+        <TabsContent value="brand" className="review-tab-panel">
+          <BrandTab
+            plan={props.plan}
+            document={props.document}
+            busy={props.busy}
+            onApply={props.onApply}
+            assets={props.assets ?? null}
+          />
           <DetailsTab {...props} />
         </TabsContent>
       </Tabs>
@@ -128,25 +242,77 @@ function CaptionsTab({
   onApply,
   onSelect,
   onSeek,
+  onTryLook = null,
+  fonts = [],
 }: EditorPropertiesProps) {
   const cue =
     selection.kind === 'cue' ? plan.cues.find((item) => item.cueId === selection.cueId) : undefined;
-  const styleRef = document?.captions.style_ref ?? plan.captionStyle?.styleRef ?? PRESETS[0].ref;
-  const options = document?.captions.options ?? {};
-  const update = (change: Partial<typeof options>) =>
-    onApply(setCaptionOptions({ ...options, ...change }));
-  const style = plan.captionStyle;
-  const regionOfAll = plan.cues.every((item) => item.region === plan.cues[0]?.region)
-    ? plan.cues[0]?.region
-    : null;
-  const [perLine, setPerLine] = useState(4);
+  const problems = plan.presentation === 'reading' ? shortCues(plan) : [];
 
   if (plan.cues.length === 0) {
-    return <p className="review-empty-note">This clip has no captions. Nothing was said in it.</p>;
+    return (
+      <div className="review-panel-body">
+        <p className="review-empty-note">This clip has no captions. Nothing was said in it.</p>
+        <RefreshCaptions busy={busy} onApply={onApply} />
+      </div>
+    );
   }
 
   return (
     <div className="review-panel-body">
+      {problems.length > 0 && (
+        <section className="review-section" aria-label="Caption problems">
+          <h3 className="review-section-title">Subtitle timing · {problems.length} to review</h3>
+          <p className="review-footnote">
+            Captions shorter than the reading guideline appear here. Only flashes under a third of a
+            second block export.
+          </p>
+          {problems.map((problem) => (
+            <div
+              key={problem.cue.cueId}
+              className="flex items-center justify-between gap-2 py-1 text-xs"
+            >
+              <button
+                type="button"
+                className="min-w-0 truncate text-left underline"
+                onClick={() => {
+                  onSelect({ kind: 'cue', cueId: problem.cue.cueId });
+                  onSeek(problem.cue.firstFrame);
+                }}
+              >
+                {problem.cue.lines
+                  .flat()
+                  .map((word) => word.text)
+                  .join(' ')}{' '}
+                · {((problem.endTicks - problem.startTicks) / 90_000).toFixed(2)}s
+              </button>
+              {problem.repair && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onApply(problem.repair!.command)}
+                >
+                  Fix
+                </Button>
+              )}
+            </div>
+          ))}
+          {problems.length > 1 && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                const command = repairAll(plan);
+                if (command) onApply(command);
+              }}
+            >
+              Fix all
+            </Button>
+          )}
+        </section>
+      )}
       {cue && (
         <SelectedCaption
           key={`${cue.cueId}:${plan.revision}`}
@@ -160,120 +326,49 @@ function CaptionsTab({
         />
       )}
 
-      <section className="review-section">
-        <h3 className="review-section-title">Look</h3>
-        <div className="review-segmented edit-wide" role="group" aria-label="Caption look">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.ref}
-              type="button"
-              aria-pressed={styleRef.includes(`.${preset.label.toLowerCase()}.`)}
-              disabled={busy}
-              onClick={() => onApply(setCaptionStyle(preset.ref))}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-        <Field label="Size">
-          <CommitSlider
-            label="Caption size"
-            min={40}
-            max={140}
-            value={options.font_size ?? style?.fontSize ?? 84}
-            disabled={busy}
-            format={(value) => `${value}`}
-            onCommit={(value) => update({ font_size: value })}
-          />
-        </Field>
-        <Field label="Colours">
-          <div className="edit-swatches">
-            <Swatch
-              label="Highlight"
-              value={options.spoken ?? style?.spoken ?? '#ffd65c'}
-              disabled={busy}
-              onCommit={(value) => update({ spoken: value })}
-            />
-            <Swatch
-              label="Text"
-              value={options.unspoken ?? style?.unspoken ?? '#ffffff'}
-              disabled={busy}
-              onCommit={(value) => update({ unspoken: value })}
-            />
-            <Swatch
-              label="Outline"
-              value={options.outline ?? style?.outline ?? '#000000'}
-              disabled={busy}
-              onCommit={(value) => update({ outline: value })}
-            />
-          </div>
-        </Field>
-        <Field label="Case">
-          <div className="review-segmented" role="group" aria-label="Letter case">
-            {(
-              [
-                ['original', 'As said'],
-                ['upper', 'AA'],
-                ['lower', 'aa'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={(options.text_case ?? 'original') === value}
-                disabled={busy}
-                onClick={() => update({ text_case: value })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </Field>
-      </section>
-
-      <section className="review-section">
-        <h3 className="review-section-title">All captions</h3>
-        <Field label="Position">
-          <RegionPicker
-            label="Where every caption sits"
-            value={regionOfAll ?? null}
-            disabled={busy}
-            onPick={(region) => {
-              const moving = plan.cues.filter((item) => item.region !== region);
-              if (moving.length > 0)
-                onApply(
-                  batch(moving.map((item) => setCueRegion(item.cueId, region, plan.presentation))),
-                );
-            }}
-          />
-        </Field>
-        <Field label="Words per line">
-          <div className="edit-inline">
-            <Stepper label="Words per line" value={perLine} min={1} max={8} onChange={setPerLine} />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                onApply(
-                  batch(
-                    plan.cues.map((item) =>
-                      setCueLines(
-                        item.cueId,
-                        wordCounts(item.lines.flat().length, perLine),
-                        plan.presentation,
-                      ),
-                    ),
-                  ),
-                )
-              }
-            >
-              Apply
-            </Button>
-          </div>
-        </Field>
-      </section>
+      <CaptionStyleControls
+        plan={plan}
+        document={document}
+        busy={busy}
+        fonts={fonts}
+        onApply={onApply}
+        onTryLook={onTryLook}
+      />
+      <RefreshCaptions busy={busy} onApply={onApply} />
     </div>
+  );
+}
+
+/**
+ * Captions derived again from the transcript: for a clip made before a
+ * better transcript or a timing fix, which would otherwise keep the captions
+ * of the day it was made.
+ */
+function RefreshCaptions({
+  busy,
+  onApply,
+}: {
+  readonly busy: boolean;
+  readonly onApply: (command: EditCommandJson) => void;
+}) {
+  return (
+    <section className="review-section" aria-label="Refresh captions">
+      <h3 className="review-section-title">From the transcript</h3>
+      <p className="review-footnote">
+        Derive these captions again from the newest transcript of the recording, with the current
+        timing fixes. The look, size and placement stay; words you corrected go back to what was
+        said. Undo brings the old captions back.
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        className="self-start"
+        disabled={busy}
+        onClick={() => onApply(refreshCaptions())}
+      >
+        Refresh captions
+      </Button>
+    </section>
   );
 }
 
@@ -314,7 +409,7 @@ function SelectedCaption({
         ? (inner[0]?.start_ticks ?? saved.start_ticks)
         : (cues[position + 1]?.start_ticks ?? duration);
     const current = edge === 'start' ? saved.start_ticks : saved.end_ticks;
-    const moved = Math.max(low, Math.min(high, current + direction * FRAME));
+    const moved = Math.max(low, Math.min(high, current + direction * ticksOfFrame(plan, 1)));
     if (moved === current) return;
     onApply(
       edge === 'start'
@@ -387,6 +482,7 @@ function SelectedCaption({
           </Field>
         </>
       )}
+      <CueTiming plan={plan} cue={cue} busy={busy} onApply={onApply} />
       <Field label="Position">
         <RegionPicker
           label="Where this caption sits"
@@ -500,6 +596,91 @@ function WordEditor({
 
 /* Framing ------------------------------------------------------------------- */
 
+/**
+ * Punch-ins across the clip: every other sentence moves in closer, on every
+ * section that follows someone. Clip-wide, because a rhythm of emphasis is.
+ */
+function PunchIns({
+  plan,
+  document,
+  words,
+  part,
+  localTicks,
+  busy,
+  onApply,
+}: {
+  readonly plan: PreviewPlan;
+  readonly document: EditIr | null;
+  readonly words: readonly ProgramWord[];
+  readonly part: PreviewPlan['segments'][number];
+  readonly localTicks: number;
+  readonly busy: boolean;
+  readonly onApply: (command: EditCommandJson) => void;
+}) {
+  if (!document) return null;
+  const { count, zoom } = punchSummary(document);
+  const auto = words.length > 0 ? autoPunches(plan, document, words, zoom) : null;
+  const saved = document.video.segments?.find((item) => item.segment_id === part.segmentId);
+  const here = saved ? punchHere(saved, localTicks, zoom, part.outTicks - part.inTicks) : null;
+  const clear = clearPunches(document);
+  return (
+    <section className="review-section">
+      <h3 className="review-section-title">Punch-ins</h3>
+      <p className="review-footnote">
+        {count > 0
+          ? `${count} ${count === 1 ? 'punch-in moves' : 'punch-ins move'} the camera closer for emphasis. The framing under them is kept.`
+          : 'Move the camera closer on every other sentence, for emphasis. Only sections that follow someone punch in.'}
+      </p>
+      <div className="edit-inline">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || !auto}
+          onClick={() => {
+            if (auto) onApply(auto);
+          }}
+        >
+          {count > 0 ? 'Punch in again' : 'Punch in on every other sentence'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || !here}
+          onClick={() => {
+            if (here) onApply(here);
+          }}
+        >
+          Punch in here
+        </Button>
+        {clear && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onApply(clear)}>
+            Remove them
+          </Button>
+        )}
+      </div>
+      {words.length === 0 && (
+        <p className="review-footnote">Punch-ins on sentences need this clip’s transcript.</p>
+      )}
+      {count > 0 && (
+        <Field label="How close">
+          <CommitSlider
+            label="Punch-in closeness"
+            min={PUNCH_ZOOMS.min}
+            max={PUNCH_ZOOMS.max}
+            value={zoom}
+            disabled={busy}
+            format={(value) => `${value}%`}
+            onCommit={(value) => {
+              const rezoomed = rezoomPunches(document, value);
+              if (rezoomed) onApply(rezoomed);
+            }}
+          />
+        </Field>
+      )}
+    </section>
+  );
+}
+
 function FramingTab({
   plan,
   document,
@@ -511,6 +692,10 @@ function FramingTab({
   onApply,
   onResolve,
   onSelect,
+  onSeek,
+  words = [],
+  assets = null,
+  recordings = null,
 }: EditorPropertiesProps) {
   const part =
     selection.kind === 'section' || selection.kind === 'keyframe'
@@ -532,27 +717,82 @@ function FramingTab({
   const localTicks = Math.max(0, ticksOfFrame(plan, frame) - part.programStartTicks);
   const here = cropAt(plan, frame);
 
+  const layout = saved?.layout;
+  const style = styleOf(layout);
+  const output = { width: plan.width, height: plan.height };
+  const across = splitsAcross(output);
+  const shape = document?.video.shape ?? shapeOfFrame(output);
+  const screenSplit = source ? recordingSplit(source, output) : null;
+  const [firstViewport, secondViewport] = viewports(style.split ?? SPLITS.even, output);
+  const choose = (choice: LayoutChoice) => {
+    if (!source) {
+      onApply(setLayout(choice === 'screen_and_face' ? 'two_up' : choice, part.segmentId));
+      return;
+    }
+    onApply(batch(layoutCommands(part.segmentId, choice, layout, output, source)));
+  };
+  const restyle = (next: LayoutStyle) => onApply(setLayoutStyle(part.segmentId, next));
+  const pressed = (choice: LayoutChoice) =>
+    choice === 'screen_and_face'
+      ? state === 'two_up' && style.split === screenSplit
+      : choice === 'two_up'
+        ? state === 'two_up' && style.split !== screenSplit
+        : state === choice;
+  const wholeMain = state === 'picture_in_picture' && (layout?.crop_path?.length ?? 0) === 0;
+  const others = document?.video.segments?.filter((item) => item.segment_id !== part.segmentId);
+
   return (
     <div className="review-panel-body">
+      <section className="review-section">
+        <h3 className="review-section-title">Shape</h3>
+        <div className="edit-shapes" role="group" aria-label="Shape">
+          {FRAME_SHAPES.map((item) => (
+            <button
+              key={item.shape}
+              type="button"
+              aria-pressed={shape === item.shape}
+              aria-label={`${item.label} ${item.ratio}`}
+              title={item.use}
+              disabled={busy || !document}
+              onClick={() => {
+                if (document && item.shape !== shape)
+                  onApply(shapeCommand(item.shape, document, plan));
+              }}
+            >
+              <span className="edit-shape-glyph" data-shape={item.shape} aria-hidden="true" />
+              <span className="mono">{item.ratio}</span>
+              <span className="edit-shape-label">{item.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="review-footnote">
+          {FRAME_SHAPES.find((item) => item.shape === shape)?.use}. The whole clip changes shape;
+          every section keeps what it follows and how close it is.
+        </p>
+      </section>
+
       <section className="review-section">
         <h3 className="review-section-title">
           {plan.segments.length > 1 ? `Section ${index + 1} of ${plan.segments.length}` : 'Framing'}
         </h3>
-        <div className="review-segmented edit-wide" role="group" aria-label="Framing">
+        <div className="edit-layouts" role="group" aria-label="Layout">
           {(
             [
-              ['speaker_fill', 'Follow speaker'],
-              ['fit', 'Whole frame'],
-              ['two_up', 'Two speakers'],
+              ['speaker_fill', 'Follow speaker', ScanFace],
+              ['fit', 'Whole frame', RectangleHorizontal],
+              ['two_up', 'Two speakers', across ? Columns2 : Rows2],
+              ['screen_and_face', 'Screen and face', across ? PanelLeft : PanelTop],
+              ['picture_in_picture', 'Picture in picture', PictureInPicture2],
             ] as const
-          ).map(([mode, label]) => (
+          ).map(([choice, label, Icon]) => (
             <button
-              key={mode}
+              key={choice}
               type="button"
-              aria-pressed={state === mode}
-              disabled={busy || (mode === 'two_up' && !part.hasTwoUpPaths)}
-              onClick={() => onApply(setLayout(mode, part.segmentId))}
+              aria-pressed={pressed(choice)}
+              disabled={busy || (choice === 'two_up' && !part.hasTwoUpPaths)}
+              onClick={() => choose(choice)}
             >
+              <Icon className="size-4" aria-hidden="true" />
               {label}
             </button>
           ))}
@@ -566,7 +806,13 @@ function FramingTab({
               size="sm"
               variant="outline"
               disabled={busy}
-              onClick={() => onApply(swapPortraits(part.segmentId))}
+              onClick={() =>
+                onApply(
+                  source
+                    ? batch(switchCommands(part.segmentId, layout, output, source))
+                    : swapPortraits(part.segmentId),
+                )
+              }
             >
               Switch speakers
             </Button>
@@ -586,6 +832,240 @@ function FramingTab({
           keyframe on the timeline.
         </p>
       </section>
+
+      <PunchIns
+        plan={plan}
+        document={document}
+        words={words}
+        part={part}
+        localTicks={localTicks}
+        busy={busy}
+        onApply={onApply}
+      />
+
+      <CutawaysSection
+        plan={plan}
+        document={document}
+        frame={frame}
+        selection={selection}
+        busy={busy}
+        onApply={onApply}
+        onSelect={onSelect}
+        onSeek={onSeek}
+        assets={assets}
+        recordings={recordings}
+      />
+
+      {state === 'two_up' && source && (
+        <section className="review-section">
+          <h3 className="review-section-title">Split</h3>
+          <Field label={across ? 'Left' : 'Top'}>
+            <CommitSlider
+              label={across ? 'Left viewport share' : 'Top viewport share'}
+              min={SPLITS.min / 10}
+              max={SPLITS.max / 10}
+              value={Math.round((style.split ?? SPLITS.even) / 10)}
+              disabled={busy}
+              format={(value) => `${value}%`}
+              onCommit={(value) =>
+                onApply(
+                  batch(
+                    splitCommands(
+                      part.segmentId,
+                      { ...style, split: value * 10 },
+                      layout,
+                      output,
+                      source,
+                    ),
+                  ),
+                )
+              }
+            />
+          </Field>
+          <p className="review-footnote">
+            {across
+              ? `Left ${firstViewport.width} px, right ${secondViewport.width} px. `
+              : `Top ${firstViewport.height} px, bottom ${secondViewport.height} px. `}
+            Both crops keep their centre as the split moves.
+          </p>
+        </section>
+      )}
+
+      {(state === 'fit' || wholeMain) && (
+        <section className="review-section">
+          <h3 className="review-section-title">
+            {wholeMain ? 'Behind the picture' : 'Background'}
+          </h3>
+          <Field label="Fill">
+            <div className="flex items-center gap-2">
+              <div className="review-segmented" role="group" aria-label="Background">
+                <button
+                  type="button"
+                  aria-pressed={style.background?.kind !== 'colour'}
+                  disabled={busy}
+                  onClick={() => restyle({ ...style, background: undefined })}
+                >
+                  Blur
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={style.background?.kind === 'colour'}
+                  disabled={busy}
+                  onClick={() =>
+                    restyle({ ...style, background: { kind: 'colour', colour: '#000000' } })
+                  }
+                >
+                  Colour
+                </button>
+              </div>
+              {style.background?.kind === 'colour' && (
+                <Swatch
+                  label="Background colour"
+                  value={style.background.colour}
+                  disabled={busy}
+                  onCommit={(colour) =>
+                    restyle({ ...style, background: { kind: 'colour', colour } })
+                  }
+                />
+              )}
+            </div>
+          </Field>
+          <Field label="Zoom">
+            <CommitSlider
+              label="Picture zoom"
+              min={ZOOMS.min}
+              max={ZOOMS.max}
+              value={style.zoom ?? ZOOMS.min}
+              disabled={busy}
+              format={(value) => `${value}%`}
+              onCommit={(value) =>
+                restyle({ ...style, zoom: value === ZOOMS.min ? undefined : value })
+              }
+            />
+          </Field>
+          <p className="review-footnote">
+            Zooming grows the picture about its centre; its sides give way at the frame’s edge.
+          </p>
+        </section>
+      )}
+
+      {state === 'picture_in_picture' && (
+        <section className="review-section">
+          <h3 className="review-section-title">Inset</h3>
+          <Field label="Corner">
+            <div className="review-segmented" role="group" aria-label="Inset corner">
+              {(
+                [
+                  ['top_left', 'Top left', ArrowUpLeft],
+                  ['top_right', 'Top right', ArrowUpRight],
+                  ['bottom_left', 'Bottom left', ArrowDownLeft],
+                  ['bottom_right', 'Bottom right', ArrowDownRight],
+                ] as const satisfies readonly (readonly [InsetCorner, string, unknown])[]
+              ).map(([corner, label, Icon]) => (
+                <button
+                  key={corner}
+                  type="button"
+                  aria-label={label}
+                  title={label}
+                  aria-pressed={(style.inset ?? DEFAULT_INSET).corner === corner}
+                  disabled={busy}
+                  onClick={() =>
+                    restyle({ ...style, inset: { ...(style.inset ?? DEFAULT_INSET), corner } })
+                  }
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Size">
+            <CommitSlider
+              label="Inset size"
+              min={INSET_SIZES.min / 10}
+              max={INSET_SIZES.max / 10}
+              value={Math.round((style.inset ?? DEFAULT_INSET).size / 10)}
+              disabled={busy}
+              format={(value) => `${value}%`}
+              onCommit={(value) =>
+                restyle({
+                  ...style,
+                  inset: { ...(style.inset ?? DEFAULT_INSET), size: value * 10 },
+                })
+              }
+            />
+          </Field>
+          <Field label="Main picture">
+            <div className="review-segmented" role="group" aria-label="Main picture">
+              <button
+                type="button"
+                aria-pressed={wholeMain}
+                disabled={busy}
+                onClick={() =>
+                  onApply({ op: 'replace_crop_path', segment_id: part.segmentId, path: [] })
+                }
+              >
+                Whole frame
+              </button>
+              <button
+                type="button"
+                aria-pressed={!wholeMain}
+                disabled={busy || !source}
+                onClick={() => {
+                  if (!source) return;
+                  onApply({
+                    op: 'replace_crop_path',
+                    segment_id: part.segmentId,
+                    path: refit(
+                      [
+                        {
+                          t_ticks: 0,
+                          rect: {
+                            x: 0,
+                            y: 0,
+                            width: source.displayWidth,
+                            height: source.displayHeight,
+                          },
+                        },
+                      ],
+                      output,
+                      source,
+                    ),
+                  });
+                }}
+              >
+                Cropped
+              </button>
+            </div>
+          </Field>
+          <p className="review-footnote">
+            Drag the inset on the preview to choose who it shows; drag elsewhere to move the main
+            picture.
+          </p>
+        </section>
+      )}
+
+      {others && others.length > 0 && state !== 'speaker_fill' && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="self-start"
+          disabled={busy}
+          onClick={() =>
+            onApply(
+              batch(
+                others.flatMap((item) =>
+                  item.layout.state === 'two_up' && source
+                    ? splitCommands(item.segment_id, style, item.layout, output, source)
+                    : [setLayoutStyle(item.segment_id, style)],
+                ),
+              ),
+            )
+          }
+        >
+          <Copy className="size-4" aria-hidden="true" />
+          Use this style in every section
+        </Button>
+      )}
 
       {selection.kind === 'keyframe' && keyframe && source ? (
         <KeyframeControls
@@ -777,6 +1257,7 @@ function AudioTab({
   busy,
   onApply,
   onSelect,
+  assets = null,
 }: EditorPropertiesProps) {
   const playhead = ticksOfFrame(plan, frame);
   const point =
@@ -852,6 +1333,7 @@ function AudioTab({
           Double-click the audio lane to add a point, and drag points to shape the level.
         </p>
       </section>
+      <MusicSection document={document} busy={busy} onApply={onApply} assets={assets} />
       <section className="review-section">
         <h3 className="review-section-title">Loudness</h3>
         <p className="edit-fact">
@@ -872,9 +1354,9 @@ function AudioTab({
 function DetailsTab({ plan, document }: EditorPropertiesProps) {
   const first = plan.segments[0];
   const last = plan.segments.at(-1);
-  const look = PRESETS.find((preset) =>
+  const look = LOOKS.find((preset) =>
     (document?.captions.style_ref ?? plan.captionStyle?.styleRef ?? '').includes(
-      `.${preset.label.toLowerCase()}.`,
+      `.${preset.look}.`,
     ),
   );
   return (
@@ -884,7 +1366,7 @@ function DetailsTab({ plan, document }: EditorPropertiesProps) {
         {first && last && (
           <Fact
             label="From the recording"
-            value={`${timecode(first.inTicks)} – ${timecode(last.outTicks)}`}
+            value={`${clockTenths(first.inTicks)} – ${clockTenths(last.outTicks)}`}
             mono
           />
         )}
@@ -917,15 +1399,6 @@ function DetailsTab({ plan, document }: EditorPropertiesProps) {
 }
 
 /* Controls ------------------------------------------------------------------ */
-
-function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-  return (
-    <div className="edit-field">
-      <span className="edit-field-label">{label}</span>
-      <div className="edit-field-control">{children}</div>
-    </div>
-  );
-}
 
 function Fact({
   label,
@@ -972,131 +1445,6 @@ function RegionPicker({
   );
 }
 
-/** A slider that moves freely and sends its value once, when let go. */
-function CommitSlider({
-  label,
-  min,
-  max,
-  value,
-  disabled,
-  format,
-  onCommit,
-}: {
-  readonly label: string;
-  readonly min: number;
-  readonly max: number;
-  readonly value: number;
-  readonly disabled: boolean;
-  readonly format: (value: number) => string;
-  readonly onCommit: (value: number) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const commit = () => {
-    if (draft !== value) onCommit(draft);
-  };
-  return (
-    <div className="edit-slider">
-      <input
-        type="range"
-        aria-label={label}
-        min={min}
-        max={max}
-        step={1}
-        value={draft}
-        disabled={disabled}
-        onChange={(event) => setDraft(Number(event.target.value))}
-        onPointerUp={commit}
-        onKeyUp={commit}
-        onBlur={commit}
-      />
-      <span className="mono">{format(draft)}</span>
-    </div>
-  );
-}
-
-/** A colour well that sends its colour once the picker closes. */
-function Swatch({
-  label,
-  value,
-  disabled,
-  onCommit,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly disabled: boolean;
-  readonly onCommit: (value: string) => void;
-}) {
-  const shown = value.slice(0, 7).toLowerCase();
-  const [draft, setDraft] = useState(shown);
-  const input = useRef<HTMLInputElement>(null);
-  const latest = useRef({ shown, onCommit });
-  latest.current = { shown, onCommit };
-  useEffect(() => setDraft(shown), [shown]);
-  // React's onChange is the input event; the picker's own change is its close.
-  useEffect(() => {
-    const element = input.current;
-    if (!element) return;
-    const closed = () => {
-      if (element.value !== latest.current.shown) latest.current.onCommit(element.value);
-    };
-    element.addEventListener('change', closed);
-    return () => element.removeEventListener('change', closed);
-  }, []);
-  return (
-    <label className="edit-swatch" title={label}>
-      <input
-        ref={input}
-        type="color"
-        aria-label={label}
-        value={draft}
-        disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
-      />
-      <span style={{ background: draft }} aria-hidden="true" />
-      <span className="edit-swatch-label">{label}</span>
-    </label>
-  );
-}
-
-function Stepper({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  readonly label: string;
-  readonly value: number;
-  readonly min: number;
-  readonly max: number;
-  readonly onChange: (value: number) => void;
-}) {
-  return (
-    <div className="edit-stepper" role="group" aria-label={label}>
-      <button
-        type="button"
-        aria-label="Fewer"
-        disabled={value <= min}
-        onClick={() => onChange(value - 1)}
-      >
-        <Minus className="size-3" aria-hidden="true" />
-      </button>
-      <span className="mono" aria-live="polite">
-        {value}
-      </span>
-      <button
-        type="button"
-        aria-label="More"
-        disabled={value >= max}
-        onClick={() => onChange(value + 1)}
-      >
-        <Plus className="size-3" aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
-
 function TimeNudge({
   label,
   ticks,
@@ -1139,10 +1487,4 @@ function clockHundredths(ticks: number): string {
   const hundredths = Math.max(0, Math.round(ticks / 900));
   const seconds = Math.floor(hundredths / 100);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}.${String(hundredths % 100).padStart(2, '0')}`;
-}
-
-function wordCounts(total: number, limit: number): number[] {
-  const counts: number[] = [];
-  for (let left = total; left > 0; left -= limit) counts.push(Math.min(left, limit));
-  return counts;
 }

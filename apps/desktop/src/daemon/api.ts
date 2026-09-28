@@ -7,10 +7,16 @@ import { modelLibraryApi, type ModelLibraryApi } from './models.js';
 import { publishingApi, type PublishingApi } from './publishing.js';
 import {
   type AnalyzeRequest,
+  type Asset,
+  type AssetLicense,
+  type CaptionPreview,
+  type EditHistoryEntry,
   type ClipDecision,
   type ClipDecisionRecord,
   type AppliedCommand,
   type CropPath,
+  type FaceSighting,
+  type SolveOptions,
   type EditCommandJson,
   type EditDocSummary,
   type PreviewPlan,
@@ -34,6 +40,9 @@ import {
   type Readiness,
   chooseExportFolder,
   chooseSourceFile,
+  importAsset,
+  listAssets,
+  assetUrl,
   cancelJob,
   createProject,
   deleteProject,
@@ -49,9 +58,17 @@ import {
   listEditDocs,
   getEditDoc,
   previewPlan,
+  previewDirect,
   solveCropPath,
+  listFaces,
+  thumbnailFraming,
   readDocument,
   registerSource,
+  relinkSource,
+  previewCaptions,
+  listEditHistory,
+  captionFontUrl,
+  emojiUrl,
   getSource,
   startYoutubeImport,
   getYoutubeImport,
@@ -87,7 +104,26 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   deleteProject(projectId: string): Promise<void>;
   cancelJob(jobId: string): Promise<Job>;
   chooseSourceFile(): Promise<string | null>;
+  /** Bring a picture or a sound in. Absent from shells without assets. */
+  importAsset?(kind: Asset['kind'], license: AssetLicense): Promise<Asset | null>;
+  /** Every asset of a kind. Absent from shells without assets. */
+  listAssets?(kind: Asset['kind']): Promise<readonly Asset[]>;
+  /** Not a call: the URL an asset loads from. */
+  assetUrl?(hash: string): string;
   registerSource(projectId: string, absolutePath: string): Promise<RegisteredSource>;
+  relinkSource(
+    projectId: string,
+    sourceId: string,
+    absolutePath: string,
+  ): Promise<RegisteredSource>;
+  /** Captions under a look not chosen yet. Absent from shells without it. */
+  previewCaptions?(docId: string, styleRef: string, optionsJson: string): Promise<CaptionPreview>;
+  /** A document's whole edit history. Absent from shells without it. */
+  listEditHistory?(docId: string): Promise<readonly EditHistoryEntry[]>;
+  /** Where a pinned caption font is served from. Absent where none are. */
+  captionFontUrl?(file: string): string;
+  /** Where a pinned emoji's picture is served from. Absent where none are. */
+  emojiUrl?(code: string): string;
   getSource(sourceId: string): Promise<SourceDetails>;
   startYoutubeImport(
     projectId: string,
@@ -100,12 +136,28 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi {
   updateYoutubeImport(importId: string, action: 'cancel' | 'retry'): Promise<YoutubeImport>;
   submitAnalyze(projectId: string, request: AnalyzeRequest): Promise<Job>;
   directClip(request: DirectClipInput): Promise<DirectedClip>;
+  /** The clip approving would build, not saved. Absent from shells without it. */
+  previewDirect?(request: DirectClipInput): Promise<PreviewPlan>;
   solveCropPath(
     projectId: string,
     faceTrackArtifactId: string,
     startTicks: number,
     endTicks: number,
+    options?: SolveOptions,
   ): Promise<CropPath>;
+  /** Where the camera would point at each moment. Absent from shells without it. */
+  thumbnailFraming?(
+    projectId: string,
+    faceTrackArtifactId: string,
+    moments: readonly number[],
+  ): Promise<readonly number[]>;
+  /** The faces seen over a span. Absent from shells without it. */
+  listFaces?(
+    projectId: string,
+    faceTrackArtifactId: string,
+    startTicks: number,
+    endTicks: number,
+  ): Promise<readonly FaceSighting[]>;
   previewPlan(projectId: string, docId: string): Promise<PreviewPlan>;
   listEditDocs(projectId: string): Promise<readonly EditDocSummary[]>;
   getEditDoc?(docId: string): Promise<import('./client.js').EditDocDetail>;
@@ -156,7 +208,15 @@ export const daemonApi: ShellApi = {
   deleteProject,
   cancelJob,
   chooseSourceFile,
+  importAsset,
+  listAssets,
+  assetUrl,
   registerSource,
+  relinkSource,
+  previewCaptions,
+  listEditHistory,
+  captionFontUrl,
+  emojiUrl,
   getSource,
   startYoutubeImport,
   getYoutubeImport,
@@ -164,7 +224,10 @@ export const daemonApi: ShellApi = {
   updateYoutubeImport,
   submitAnalyze,
   directClip,
+  previewDirect,
   solveCropPath,
+  listFaces,
+  thumbnailFraming,
   previewPlan,
   listEditDocs,
   getEditDoc,

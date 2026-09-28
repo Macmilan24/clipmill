@@ -162,11 +162,162 @@ pub fn interpolate(from: i64, to: i64, offset: i64, span: i64) -> i64 {
 pub enum LayoutState {
     /// Crop to a single speaker and follow them along the crop path.
     SpeakerFill,
-    /// Two deliberate, equal-height viewports; no active-speaker inference.
+    /// Two deliberate viewports stacked, upper and lower; no active-speaker
+    /// inference. The split sets how the height is shared.
     TwoUp,
     /// Letterbox the whole frame; the crop path is inert but preserved.
     #[default]
     Fit,
+    /// A full picture — the followed crop, or the whole frame when there is no
+    /// crop path — with the secondary crop inset in one corner. A screen with
+    /// the speaker over it, or one person with the other's reactions.
+    PictureInPicture,
+}
+
+/// What fills the frame around a fitted picture.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FitBackground {
+    /// The picture itself, scaled to fill and blurred.
+    Blur,
+    /// One colour, `#RRGGBB`.
+    Colour { colour: String },
+}
+
+/// The shape of the delivered frame. Crops are fitted to it and the render is
+/// sized by it; captions keep their proportions at every shape.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrameShape {
+    /// 9:16, the frame of the vertical short-video apps.
+    #[default]
+    Vertical,
+    /// 4:5, the tallest a feed shows whole.
+    Portrait,
+    /// 1:1.
+    Square,
+    /// 16:9, for a landscape player.
+    Landscape,
+}
+
+impl FrameShape {
+    /// Width to height, in lowest terms.
+    pub const fn ratio(self) -> (u32, u32) {
+        match self {
+            Self::Vertical => (9, 16),
+            Self::Portrait => (4, 5),
+            Self::Square => (1, 1),
+            Self::Landscape => (16, 9),
+        }
+    }
+
+    /// The frame whose short side is `short`, in even pixels.
+    pub fn frame(self, short: i64) -> (i64, i64) {
+        let (width, height) = self.ratio();
+        let (width, height) = (i64::from(width), i64::from(height));
+        let long = |across: i64, along: i64| (short * along / across) & !1;
+        if width <= height {
+            (short, long(width, height))
+        } else {
+            (long(height, width), short)
+        }
+    }
+
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde skip_serializing_if requires a reference"
+    )]
+    pub fn is_vertical(&self) -> bool {
+        *self == Self::Vertical
+    }
+}
+
+/// Whether two viewports sit side by side in a frame this size, rather than
+/// one above the other: across a frame wider than it is tall.
+pub const fn splits_across(width: i64, height: i64) -> bool {
+    width > height
+}
+
+/// The corner a picture-in-picture inset sits in.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InsetCorner {
+    TopLeft,
+    #[default]
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+/// Where a picture-in-picture inset sits and how large it is. It is square.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Inset {
+    pub corner: InsetCorner,
+    /// Its side as a share of the frame's short side, per mille.
+    pub size: u16,
+}
+
+impl Default for Inset {
+    fn default() -> Self {
+        Self {
+            corner: InsetCorner::TopRight,
+            size: 360,
+        }
+    }
+}
+
+impl Inset {
+    /// The sizes offered: from a corner badge to most of the width.
+    pub const SIZES: std::ops::RangeInclusive<u16> = 200..=600;
+    /// The gap between the inset and the frame's edges, per mille of the
+    /// short side.
+    pub const MARGIN: i64 = 40;
+
+    /// The inset's square in pixels of a frame this size: `(x, y, side)`.
+    pub fn place(self, width: i64, height: i64) -> (i64, i64, i64) {
+        let short = width.min(height);
+        let side = (short * i64::from(self.size) / 1_000) & !1;
+        let margin = (short * Self::MARGIN / 1_000) & !1;
+        let x = match self.corner {
+            InsetCorner::TopLeft | InsetCorner::BottomLeft => margin,
+            InsetCorner::TopRight | InsetCorner::BottomRight => width - margin - side,
+        };
+        // A tall frame keeps clear of the platforms' top bar and of the
+        // caption and button block along the bottom; any other keeps its
+        // margin at the top and clear of the captions at the bottom.
+        let tall = height > width;
+        let y = match self.corner {
+            InsetCorner::TopLeft | InsetCorner::TopRight if tall => (height * 90 / 1_000) & !1,
+            InsetCorner::TopLeft | InsetCorner::TopRight => margin,
+            InsetCorner::BottomLeft | InsetCorner::BottomRight => {
+                let clear = if tall { 260 } else { 200 };
+                (height - (height * clear / 1_000) - side) & !1
+            }
+        };
+        (x, y.max(0), side)
+    }
+}
+
+/// A moment the camera moves in closer: the crop, whatever it is doing,
+/// taken tighter about its own centre for a span of the section, then back.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Punch {
+    /// Segment-local, like a crop keyframe.
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    /// How much closer, in percent.
+    pub zoom: u16,
+}
+
+impl Punch {
+    /// How much closer a punch may go, in percent.
+    pub const ZOOMS: std::ops::RangeInclusive<u16> = 105..=200;
+    /// How long the move in or out takes: longer than one frame at any rate
+    /// a recording is played at, so it is a snap rather than two keyframes
+    /// on one frame.
+    pub const MOVE_TICKS: i64 = 6_000;
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -175,12 +326,39 @@ pub struct Layout {
     pub state: LayoutState,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crop_path: Vec<CropKeyframe>,
-    /// Lower viewport in a two-person composition, inert in other layouts.
+    /// Lower viewport in a two-person composition and the inset of a
+    /// picture-in-picture, inert in other layouts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secondary_crop_path: Vec<CropKeyframe>,
+    /// Two viewports: the first one's share of the frame, per mille — of the
+    /// height when they are stacked, of the width when they sit side by side
+    /// in a landscape frame. Absent is an even split; a screen share over a
+    /// face is the first viewport at the recording's own shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub split: Option<u16>,
+    /// What fills around a fitted picture. Absent is the blurred picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<FitBackground>,
+    /// How far past fitting a fitted picture is zoomed, in percent, centred:
+    /// the sides give way so the picture grows. Absent is 100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<u16>,
+    /// Where a picture-in-picture inset sits. Absent is the default corner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inset: Option<Inset>,
+    /// Moments the followed crop moves in closer, in order and apart. They
+    /// apply to a followed picture; the crop path under them is kept as it
+    /// is, so taking them away leaves the framing that was there.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub punches: Vec<Punch>,
 }
 
 impl Layout {
+    /// The split ratios offered, per mille of the height for the upper viewport.
+    pub const SPLITS: std::ops::RangeInclusive<u16> = 250..=750;
+    /// The zooms a fitted picture may take, in percent.
+    pub const ZOOMS: std::ops::RangeInclusive<u16> = 100..=250;
+
     /// Old documents may request a followed crop without having saved one.
     /// Keep them editable, but make the missing framing explicit to delivery.
     pub fn needs_crop_repair(&self) -> bool {
@@ -188,8 +366,212 @@ impl Layout {
             LayoutState::Fit => false,
             LayoutState::SpeakerFill => self.crop_path.is_empty(),
             LayoutState::TwoUp => self.crop_path.is_empty() || self.secondary_crop_path.is_empty(),
+            LayoutState::PictureInPicture => self.secondary_crop_path.is_empty(),
         }
     }
+
+    /// The followed crop as it is drawn: the path, with every punch taken
+    /// in about the crop's centre. Only a followed picture punches in.
+    pub fn drawn_crop_path(&self) -> std::borrow::Cow<'_, [CropKeyframe]> {
+        if self.punches.is_empty() || self.state != LayoutState::SpeakerFill {
+            return std::borrow::Cow::Borrowed(&self.crop_path);
+        }
+        std::borrow::Cow::Owned(punched(&self.crop_path, &self.punches))
+    }
+
+    /// Punches in order, each at least two moves long, meeting the one
+    /// before or at least two moves after it, inside the section.
+    fn punches_are_valid(&self, duration: i64) -> bool {
+        let span = 2 * Punch::MOVE_TICKS;
+        let mut previous: Option<i64> = None;
+        self.punches.iter().all(|punch| {
+            let apart = previous
+                .is_none_or(|end| punch.start_ticks == end || punch.start_ticks - end >= span);
+            let valid = apart
+                && punch.start_ticks >= 0
+                && punch.end_ticks - punch.start_ticks >= span
+                && punch.end_ticks <= duration
+                && Punch::ZOOMS.contains(&punch.zoom);
+            previous = Some(punch.end_ticks);
+            valid
+        })
+    }
+
+    /// The upper viewport's share of the height, per mille.
+    pub fn split_permille(&self) -> u16 {
+        self.split.unwrap_or(500)
+    }
+
+    /// The two viewports' lengths along a split of this length, first
+    /// first. Both even, so each encodes.
+    pub fn viewport_heights(&self, height: i64) -> (i64, i64) {
+        let upper = (height * i64::from(self.split_permille()) / 1_000) & !1;
+        (upper, height - upper)
+    }
+
+    /// The two viewports of a frame this size, as `(width, height)`, first
+    /// first: stacked, or side by side when the frame is landscape.
+    pub fn viewports(&self, width: i64, height: i64) -> ((i64, i64), (i64, i64)) {
+        if splits_across(width, height) {
+            let (first, second) = self.viewport_heights(width);
+            ((first, height), (second, height))
+        } else {
+            let (first, second) = self.viewport_heights(height);
+            ((width, first), (width, second))
+        }
+    }
+
+    /// The fitted picture's zoom, in percent.
+    pub fn zoom_percent(&self) -> u16 {
+        self.zoom.unwrap_or(100)
+    }
+
+    /// The inset of a picture-in-picture.
+    pub fn inset_or_default(&self) -> Inset {
+        self.inset.unwrap_or_default()
+    }
+
+    /// Whether the style values are ones this layout can draw.
+    fn style_is_valid(&self) -> bool {
+        self.split.is_none_or(|split| Self::SPLITS.contains(&split))
+            && self.zoom.is_none_or(|zoom| Self::ZOOMS.contains(&zoom))
+            && self
+                .inset
+                .is_none_or(|inset| Inset::SIZES.contains(&inset.size))
+            && self
+                .background
+                .as_ref()
+                .is_none_or(|background| match background {
+                    FitBackground::Blur => true,
+                    FitBackground::Colour { colour } => is_hex_colour(colour),
+                })
+    }
+}
+
+/// `#RRGGBB`.
+/// A crop path with each punch taken in: keyframes a move's length before
+/// and at each edge, the crop in between tighter about its own centre, and
+/// the path's own keyframes kept — tightened inside a punch — except where
+/// one would fall within a move of those, which the move then stands for.
+fn punched(path: &[CropKeyframe], punches: &[Punch]) -> Vec<CropKeyframe> {
+    let inside = |t: i64| {
+        punches
+            .iter()
+            .find(|punch| punch.start_ticks <= t && t < punch.end_ticks)
+    };
+    let at = |t: i64| crop_along_keyframes(path, t);
+    let key = |t_ticks: i64, rect: CropRect| CropKeyframe {
+        t_ticks,
+        rect,
+        easing: CropEasing::Linear,
+    };
+    let mut moves = Vec::with_capacity(punches.len() * 4);
+    for punch in punches {
+        let (start, end) = (punch.start_ticks, punch.end_ticks);
+        let before = start - Punch::MOVE_TICKS;
+        if before >= 0
+            && inside(before).is_none()
+            && let Some(rect) = at(before)
+        {
+            moves.push(key(before, rect));
+        }
+        if let Some(rect) = at(start) {
+            moves.push(key(start, tighter(rect, punch.zoom)));
+        }
+        if let Some(rect) = at(end - Punch::MOVE_TICKS) {
+            moves.push(key(end - Punch::MOVE_TICKS, tighter(rect, punch.zoom)));
+        }
+        if inside(end).is_none()
+            && let Some(rect) = at(end)
+        {
+            moves.push(key(end, rect));
+        }
+    }
+    let clear = |t: i64| {
+        moves
+            .iter()
+            .all(|moved| (moved.t_ticks - t).abs() >= Punch::MOVE_TICKS)
+    };
+    let mut keys: Vec<CropKeyframe> = path
+        .iter()
+        .filter(|key| clear(key.t_ticks))
+        .map(|key| CropKeyframe {
+            rect: inside(key.t_ticks).map_or(key.rect, |punch| tighter(key.rect, punch.zoom)),
+            ..*key
+        })
+        .collect();
+    keys.extend(moves);
+    keys.sort_by_key(|key| key.t_ticks);
+    keys
+}
+
+/// A crop `zoom` percent closer, about its own centre, keeping its shape.
+fn tighter(rect: CropRect, zoom: u16) -> CropRect {
+    let scale = |length: i64| ((length * 100 / i64::from(zoom.max(100))) & !1).max(2);
+    let (width, height) = (scale(rect.width), scale(rect.height));
+    CropRect {
+        x: rect.x + (rect.width - width) / 2,
+        y: rect.y + (rect.height - height) / 2,
+        width,
+        height,
+    }
+}
+
+/// Whether what is left of a punch is still long enough to be one.
+fn lasts(punch: &Punch) -> bool {
+    punch.end_ticks - punch.start_ticks >= 2 * Punch::MOVE_TICKS
+}
+
+/// Punches after a segment's source window moved: kept where the new window
+/// still plays them, cut to it, and counted from its new start; one left too
+/// short to be a punch is dropped.
+pub(crate) fn retime_punches(
+    punches: &[Punch],
+    old_in: i64,
+    new_in: i64,
+    new_duration: i64,
+) -> Vec<Punch> {
+    punches
+        .iter()
+        .filter_map(|punch| {
+            let start = (old_in + punch.start_ticks - new_in).max(0);
+            let end = (old_in + punch.end_ticks - new_in).min(new_duration);
+            Some(Punch {
+                start_ticks: start,
+                end_ticks: end,
+                ..*punch
+            })
+            .filter(lasts)
+        })
+        .collect()
+}
+
+/// Punches either side of a split at `at`, the tail's counted from it.
+pub(crate) fn split_punches(punches: &[Punch], at: i64) -> (Vec<Punch>, Vec<Punch>) {
+    let head = punches
+        .iter()
+        .filter(|punch| punch.start_ticks < at)
+        .map(|punch| Punch {
+            end_ticks: punch.end_ticks.min(at),
+            ..*punch
+        })
+        .filter(lasts)
+        .collect();
+    let tail = punches
+        .iter()
+        .filter(|punch| punch.end_ticks > at)
+        .map(|punch| Punch {
+            start_ticks: (punch.start_ticks - at).max(0),
+            end_ticks: punch.end_ticks - at,
+            ..*punch
+        })
+        .filter(lasts)
+        .collect();
+    (head, tail)
+}
+
+fn is_hex_colour(hex: &str) -> bool {
+    hex.len() == 7 && hex.starts_with('#') && hex[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// One span of one source, placed on the program timeline by its position in
@@ -214,12 +596,18 @@ impl VideoSegment {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct VideoTrack {
+    /// The delivered frame's shape. Absent is 9:16.
+    #[serde(default, skip_serializing_if = "FrameShape::is_vertical")]
+    pub shape: FrameShape,
     /// Requested soft-cut duration. Zero preserves legacy hard cuts. The
     /// renderer bounds each blend by its incoming shot's frame allocation.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub transition_ticks: i64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segments: Vec<VideoSegment>,
+    /// Moments covered by another picture, in program order, none overlapping.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cutaways: Vec<Cutaway>,
 }
 
 #[allow(
@@ -247,6 +635,17 @@ pub struct CaptionWord {
     /// ever a document nobody has migrated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub word_id: Option<String>,
+    /// A key word, set in the accent colour so it stands out of its line.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub emphasis: bool,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if requires a reference"
+)]
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// One rendered line. Line breaks are **decided once and stored here** — the
@@ -285,6 +684,47 @@ pub struct CaptionCue {
     pub region: CaptionRegion,
     pub anim: CaptionAnimation,
     pub lines: Vec<CaptionLine>,
+    /// Where this cue sits, when it was placed by hand rather than by its
+    /// region. Overrides the region and the clip-wide position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<CaptionPosition>,
+}
+
+/// A caption's centre on the frame, in thousandths of its width and height.
+///
+/// Thousandths rather than pixels so a position means the same place at any
+/// output size, and integers so two renders of one document agree exactly.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaptionPosition {
+    pub x: u32,
+    pub y: u32,
+}
+
+impl CaptionPosition {
+    /// The largest coordinate: the right or bottom edge of the frame.
+    pub const FULL: u32 = 1_000;
+
+    pub fn is_valid(self) -> bool {
+        self.x <= Self::FULL && self.y <= Self::FULL
+    }
+}
+
+/// How the word being spoken is marked while its caption is on screen.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HighlightStyle {
+    /// Words take the spoken colour as they are said and keep it.
+    #[default]
+    Fill,
+    /// Only the word being said takes the spoken colour.
+    Word,
+    /// The word being said sits on a box in the spoken colour.
+    Box,
+    /// The word being said grows briefly, in the spoken colour.
+    Pop,
+    /// The word being said is underlined, in the spoken colour.
+    Underline,
 }
 
 impl CaptionCue {
@@ -363,6 +803,9 @@ pub enum CaptionCase {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CaptionOptions {
+    /// Override the preset's spoken-word sweep without changing typography.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub highlight_spoken_word: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -373,6 +816,33 @@ pub struct CaptionOptions {
     pub outline: Option<String>,
     #[serde(default, skip_serializing_if = "is_original_case")]
     pub text_case: CaptionCase,
+    /// How the spoken word is marked, when it is. Absent is the sweep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub highlight_style: Option<HighlightStyle>,
+    /// One of the caption fonts, by family name. Absent is the look's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    /// Outline thickness at the design height, in pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline_width: Option<u32>,
+    /// Drop-shadow offset at the design height, in pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow_depth: Option<u32>,
+    /// How opaque a boxed look's plate is, in percent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plate_opacity: Option<u32>,
+    /// The colour key words are set in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    /// Where every caption sits, unless a cue was placed on its own. Absent
+    /// leaves each cue in its region.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<CaptionPosition>,
+    /// The most words the on-screen captions were last grouped into, which
+    /// is what the editor shows as chosen. The cues themselves carry the
+    /// grouping; this only remembers the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words_on_screen: Option<u32>,
 }
 
 impl CaptionOptions {
@@ -496,6 +966,9 @@ fn validate_cues(cues: &[CaptionCue]) -> Result<(), DocumentError> {
         if cue.lines.is_empty() || cue.lines.iter().any(|line| line.words.is_empty()) {
             return Err(DocumentError::EmptyCaptionLine);
         }
+        if cue.position.is_some_and(|position| !position.is_valid()) {
+            return Err(DocumentError::InvalidCaptionOptions);
+        }
         let mut word_cursor: Option<i64> = None;
         for word in cue.words() {
             if word.text.is_empty() || word.end_ticks <= word.start_ticks {
@@ -595,6 +1068,13 @@ pub struct AudioTrack {
     pub true_peak_dbtp: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gain_curve: Vec<GainPoint>,
+    /// Music under the voice, dropping wherever someone speaks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub music: Option<MusicBed>,
+    /// The voice cleaned before it is mixed: rumble cut, noise lowered,
+    /// level evened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cleanup: Option<VoiceCleanup>,
 }
 
 impl Default for AudioTrack {
@@ -603,7 +1083,318 @@ impl Default for AudioTrack {
             target_lufs: -14.0,
             true_peak_dbtp: -1.0,
             gain_curve: Vec::new(),
+            music: None,
+            cleanup: None,
         }
+    }
+}
+
+/// A moment of the program covered by another picture while the voice
+/// carries on — B-roll: a still from the clip's assets, or footage from one
+/// of the project's recordings. Program-anchored like a caption, so a cut
+/// takes it in or moves it with the material around it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Cutaway {
+    pub cutaway_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    /// How it meets the frame. Absent fills it.
+    #[serde(default, skip_serializing_if = "CutawayFit::is_fill")]
+    pub fit: CutawayFit,
+    pub content: CutawayContent,
+}
+
+impl Cutaway {
+    /// The shortest a cutaway can be: a fifth of a second.
+    pub const SHORTEST_TICKS: i64 = 18_000;
+    /// How much closer a picture that pushes in is by its last frame, in
+    /// per mille.
+    pub const PUSH_IN: u16 = 80;
+
+    /// Whether it is well formed for a clip with these assets.
+    fn is_valid(&self, assets: &[Asset]) -> bool {
+        self.start_ticks >= 0
+            && self.end_ticks.saturating_sub(self.start_ticks) >= Self::SHORTEST_TICKS
+            && match &self.content {
+                CutawayContent::Picture { asset, .. } => {
+                    assets.iter().any(|listed| &listed.hash == asset)
+                }
+                CutawayContent::Footage {
+                    source_fingerprint,
+                    in_ticks,
+                } => *in_ticks >= 0 && is_fingerprint(source_fingerprint),
+            }
+    }
+}
+
+/// How a cutaway meets the frame.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CutawayFit {
+    /// Covering the frame, what does not fit cropped away.
+    #[default]
+    Fill,
+    /// The whole of it, over a blurred copy that fills the rest.
+    Fit,
+}
+
+impl CutawayFit {
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde skip_serializing_if requires a reference"
+    )]
+    fn is_fill(&self) -> bool {
+        *self == Self::Fill
+    }
+}
+
+/// What a cutaway shows.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CutawayContent {
+    /// A picture from the clip's assets, which can move slowly closer.
+    Picture {
+        asset: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        push_in: bool,
+    },
+    /// A recording of the project from `in_ticks` in it, without its sound.
+    Footage {
+        source_fingerprint: String,
+        in_ticks: i64,
+    },
+}
+
+/// A content address of a recording: `sha256:` and 64 hex digits.
+fn is_fingerprint(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
+/// A sound played under the whole clip, from one of the clip's assets.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MusicBed {
+    /// The sound's content hash, one of the clip's assets.
+    pub asset: String,
+    /// Its level where nobody speaks, in decibels.
+    pub level_db: f64,
+    /// How much further it drops under speech, in decibels.
+    pub duck_db: f64,
+    /// Where in the sound the clip starts.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset_ticks: i64,
+}
+
+impl MusicBed {
+    pub const LEVELS: std::ops::RangeInclusive<f64> = -40.0..=0.0;
+    pub const DUCKS: std::ops::RangeInclusive<f64> = -30.0..=0.0;
+
+    fn is_valid(&self, assets: &[Asset]) -> bool {
+        Self::LEVELS.contains(&self.level_db)
+            && Self::DUCKS.contains(&self.duck_db)
+            && self.offset_ticks >= 0
+            && assets.iter().any(|asset| asset.hash == self.asset)
+    }
+}
+
+/// How much the voice is cleaned.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceCleanup {
+    /// A quiet room: rumble cut, a little hiss lowered, level evened.
+    Light,
+    /// A noisy one: more noise lowered, sibilance softened, level held.
+    Strong,
+}
+
+/// Something laid over the program for a span of it: a title, a label.
+///
+/// Its span is program time, like a cue's, so a cut moves it with the
+/// material around it and takes whatever it removed.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Overlay {
+    pub overlay_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub content: OverlayContent,
+}
+
+/// What an overlay shows.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OverlayContent {
+    /// Words set in the clip's caption font, by the same renderer as the
+    /// captions. Lines break where the text says, never elsewhere.
+    Text {
+        text: String,
+        /// A hook opens the clip and names what it is about; any other text
+        /// is a label.
+        #[serde(default, skip_serializing_if = "TextRole::is_label")]
+        role: TextRole,
+        /// Where its centre sits, per mille of the frame's width and height.
+        x: u16,
+        y: u16,
+        /// Its size at the 1920-pixel design height, as a caption's.
+        size: u16,
+        /// `#RRGGBB`.
+        colour: String,
+        /// An opaque plate behind it, `#RRGGBB`; absent draws an outline.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plate: Option<String>,
+    },
+    /// A colour emoji, drawn from its pinned picture.
+    Emoji {
+        /// Its code point, as the pinned picture names it: `1f525`.
+        emoji: String,
+        /// Where its centre sits, per mille of the frame's width and height.
+        x: u16,
+        y: u16,
+        /// Its side as a share of the frame's short side, per mille.
+        size: u16,
+    },
+}
+
+/// What a text overlay is for.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextRole {
+    Hook,
+    #[default]
+    Label,
+}
+
+impl TextRole {
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde skip_serializing_if requires a reference"
+    )]
+    pub fn is_label(&self) -> bool {
+        *self == Self::Label
+    }
+}
+
+impl Overlay {
+    /// The sizes a text may be set at, at the design height.
+    pub const TEXT_SIZES: std::ops::RangeInclusive<u16> = 24..=240;
+
+    /// Whether it is words, set by the caption renderer, rather than a picture.
+    #[must_use]
+    pub const fn is_text(&self) -> bool {
+        matches!(self.content, OverlayContent::Text { .. })
+    }
+
+    /// The most characters a text may hold.
+    pub const TEXT_LENGTH: usize = 160;
+    /// The sizes an emoji may be, per mille of the frame's short side.
+    pub const EMOJI_SIZES: std::ops::RangeInclusive<u16> = 60..=400;
+
+    fn is_valid(&self) -> bool {
+        match &self.content {
+            OverlayContent::Text {
+                text,
+                x,
+                y,
+                size,
+                colour,
+                plate,
+                ..
+            } => {
+                !text.trim().is_empty()
+                    && text.chars().count() <= Self::TEXT_LENGTH
+                    && !text
+                        .chars()
+                        .any(|character| matches!(character, '{' | '}' | '\\'))
+                    && !text
+                        .chars()
+                        .any(|character| character.is_control() && character != '\n')
+                    && *x <= 1_000
+                    && *y <= 1_000
+                    && Self::TEXT_SIZES.contains(size)
+                    && is_hex_colour(colour)
+                    && plate.as_deref().is_none_or(is_hex_colour)
+            }
+            OverlayContent::Emoji { emoji, x, y, size } => {
+                (4..=40).contains(&emoji.len())
+                    && emoji
+                        .bytes()
+                        .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f' | b'_'))
+                    && *x <= 1_000
+                    && *y <= 1_000
+                    && Self::EMOJI_SIZES.contains(size)
+            }
+        }
+    }
+}
+
+/// What marks a clip as its creator's, over every frame of it.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Brand {
+    /// A bar along one edge that fills as the clip plays.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<ProgressBar>,
+    /// A picture in one corner, from an asset the clip lists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
+}
+
+/// The edge a progress bar runs along.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BarEdge {
+    Top,
+    #[default]
+    Bottom,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProgressBar {
+    /// `#RRGGBB`.
+    pub colour: String,
+    pub edge: BarEdge,
+    /// Its thickness at the 1920-pixel design height.
+    pub thickness: u16,
+}
+
+impl ProgressBar {
+    pub const THICKNESSES: std::ops::RangeInclusive<u16> = 4..=40;
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Logo {
+    /// The picture's content hash, one of the clip's assets.
+    pub asset: String,
+    pub corner: InsetCorner,
+    /// Its longer side as a share of the frame's short side, per mille.
+    pub size: u16,
+    /// How opaque it is, in percent.
+    pub opacity: u8,
+}
+
+impl Logo {
+    pub const SIZES: std::ops::RangeInclusive<u16> = 60..=300;
+    pub const OPACITIES: std::ops::RangeInclusive<u8> = 20..=100;
+}
+
+impl Brand {
+    pub fn is_empty(&self) -> bool {
+        self.progress.is_none() && self.logo.is_none()
+    }
+
+    fn is_valid(&self, assets: &[Asset]) -> bool {
+        self.progress.as_ref().is_none_or(|bar| {
+            is_hex_colour(&bar.colour) && ProgressBar::THICKNESSES.contains(&bar.thickness)
+        }) && self.logo.as_ref().is_none_or(|logo| {
+            Logo::SIZES.contains(&logo.size)
+                && Logo::OPACITIES.contains(&logo.opacity)
+                && assets.iter().any(|asset| asset.hash == logo.asset)
+        })
     }
 }
 
@@ -635,10 +1426,20 @@ pub struct EditDocument {
     pub video: VideoTrack,
     pub captions: CaptionTrack,
     pub audio: AudioTrack,
+    /// Titles and labels over the program, bottom first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overlays: Vec<Overlay>,
+    /// A progress bar and a logo over every frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brand: Option<Brand>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assets: Vec<Asset>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rationale: Option<Rationale>,
+    /// What the clip is called, when somebody named it. Kept out of every
+    /// render path like the rationale: renaming a clip is not a new picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 impl Default for EditDocument {
@@ -649,8 +1450,11 @@ impl Default for EditDocument {
             video: VideoTrack::default(),
             captions: CaptionTrack::default(),
             audio: AudioTrack::default(),
+            overlays: Vec::new(),
+            brand: None,
             assets: Vec::new(),
             rationale: None,
+            title: None,
         }
     }
 }
@@ -678,6 +1482,7 @@ impl EditDocument {
             serde_json::to_value(self).map_err(|error| DocumentError::Json(error.to_string()))?;
         if let Some(object) = value.as_object_mut() {
             object.remove("rationale");
+            object.remove("title");
         }
         Ok(value)
     }
@@ -846,7 +1651,10 @@ impl EditDocument {
         let cues_before = self.caption_cue_count();
         let gain_before = self.audio.gain_curve.len();
         let gain_was = self.audio.gain_curve.clone();
+        let overlays_were = self.overlays.clone();
+        let cutaways_were = self.video.cutaways.clone();
         if remove > 0 {
+            self.take_in_placed(at, removed_end, delta);
             // Both presentations: they are two groupings of one word list and
             // a word that no longer plays is gone from each. Splicing only the
             // reading cues left the burned-in ones showing a caption over
@@ -898,7 +1706,9 @@ impl EditDocument {
         let destroyed = self.caption_word_count() != words_before
             || self.caption_cue_count() != cues_before
             || self.audio.gain_curve.len() != gain_before
-            || self.audio.gain_curve != gain_was;
+            || self.audio.gain_curve != gain_was
+            || self.overlays != overlays_were
+            || self.video.cutaways != cutaways_were;
         if delta == 0 {
             return destroyed;
         }
@@ -923,7 +1733,63 @@ impl EditDocument {
                 point.t_ticks = point.t_ticks.saturating_add(delta).max(0);
             }
         }
+        let spans = self
+            .overlays
+            .iter_mut()
+            .map(|overlay| (&mut overlay.start_ticks, &mut overlay.end_ticks))
+            .chain(
+                self.video
+                    .cutaways
+                    .iter_mut()
+                    .map(|cutaway| (&mut cutaway.start_ticks, &mut cutaway.end_ticks)),
+            );
+        for (start, end) in spans {
+            if *start >= shift_from {
+                *start = start.saturating_add(delta).max(0);
+                *end = end.saturating_add(delta).max(0);
+            }
+        }
         destroyed
+    }
+
+    /// What is placed over a span of the program — overlays and cutaways —
+    /// taken in by a cut from `at` to `removed_end`. One the cut fell inside
+    /// closes up around it; one it reached into from either side keeps what
+    /// is left; one wholly inside it is gone with the material it was over.
+    /// Footage whose head was cut starts that much further into its
+    /// recording, so what is left of it shows what it showed.
+    fn take_in_placed(&mut self, at: i64, removed_end: i64, delta: i64) {
+        let take_in = |start: &mut i64, end: &mut i64| -> i64 {
+            if *end <= at || *start >= removed_end {
+                return 0;
+            }
+            if at <= *start {
+                let moved = removed_end.min(*end) - *start;
+                *start += moved;
+                moved
+            } else {
+                *end = if removed_end >= *end {
+                    at
+                } else {
+                    end.saturating_add(delta)
+                };
+                0
+            }
+        };
+        for overlay in &mut self.overlays {
+            take_in(&mut overlay.start_ticks, &mut overlay.end_ticks);
+        }
+        self.overlays
+            .retain(|overlay| overlay.end_ticks > overlay.start_ticks);
+        for cutaway in &mut self.video.cutaways {
+            let moved = take_in(&mut cutaway.start_ticks, &mut cutaway.end_ticks);
+            if let CutawayContent::Footage { in_ticks, .. } = &mut cutaway.content {
+                *in_ticks = in_ticks.saturating_add(moved);
+            }
+        }
+        self.video.cutaways.retain(|cutaway| {
+            cutaway.end_ticks.saturating_sub(cutaway.start_ticks) >= Cutaway::SHORTEST_TICKS
+        });
     }
 
     /// Keep what the gain curve was doing at the edges of a cut.
@@ -970,6 +1836,14 @@ impl EditDocument {
         }
         self.audio.gain_curve.extend(pins);
         self.audio.gain_curve.sort_by_key(|point| point.t_ticks);
+    }
+
+    /// Where an overlay sits in the stack.
+    pub(crate) fn overlay_index(&self, overlay_id: &str) -> Result<usize, DocumentError> {
+        self.overlays
+            .iter()
+            .position(|overlay| overlay.overlay_id == overlay_id)
+            .ok_or_else(|| DocumentError::UnknownOverlay(overlay_id.to_owned()))
     }
 
     fn caption_word_count(&self) -> usize {
@@ -1072,13 +1946,7 @@ impl EditDocument {
             if segment.in_ticks < 0 || segment.out_ticks <= segment.in_ticks {
                 return Err(DocumentError::EmptySegment(segment.segment_id.clone()));
             }
-            if !segment
-                .source_fingerprint
-                .strip_prefix("sha256:")
-                .is_some_and(|digest| {
-                    digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-                })
-            {
+            if !is_fingerprint(&segment.source_fingerprint) {
                 return Err(DocumentError::InvalidSourceFingerprint(
                     segment.segment_id.clone(),
                 ));
@@ -1091,6 +1959,21 @@ impl EditDocument {
                 return Err(DocumentError::TwoUpWithoutCropPaths(
                     segment.segment_id.clone(),
                 ));
+            }
+            if segment.layout.state == LayoutState::PictureInPicture
+                && segment.layout.secondary_crop_path.is_empty()
+            {
+                return Err(DocumentError::InsetWithoutCropPath(
+                    segment.segment_id.clone(),
+                ));
+            }
+            if !segment.layout.style_is_valid() {
+                return Err(DocumentError::InvalidLayoutStyle(
+                    segment.segment_id.clone(),
+                ));
+            }
+            if !segment.layout.punches_are_valid(segment.duration_ticks()) {
+                return Err(DocumentError::InvalidPunch(segment.segment_id.clone()));
             }
             for path in [
                 &segment.layout.crop_path,
@@ -1119,6 +2002,52 @@ impl EditDocument {
             }
         }
 
+        if self
+            .title
+            .as_ref()
+            .is_some_and(|title| title.trim().is_empty() || title.chars().count() > 120)
+        {
+            return Err(DocumentError::InvalidTitle);
+        }
+        if self
+            .brand
+            .as_ref()
+            .is_some_and(|brand| brand.is_empty() || !brand.is_valid(&self.assets))
+        {
+            return Err(DocumentError::InvalidBrand);
+        }
+        let mut seen_overlays = Vec::with_capacity(self.overlays.len());
+        for overlay in &self.overlays {
+            if overlay.overlay_id.is_empty() {
+                return Err(DocumentError::EmptyIdentifier);
+            }
+            if seen_overlays.contains(&overlay.overlay_id.as_str()) {
+                return Err(DocumentError::DuplicateOverlay(overlay.overlay_id.clone()));
+            }
+            seen_overlays.push(overlay.overlay_id.as_str());
+            if overlay.start_ticks < 0 || overlay.end_ticks <= overlay.start_ticks {
+                return Err(DocumentError::EmptyOverlay(overlay.overlay_id.clone()));
+            }
+            if !overlay.is_valid() {
+                return Err(DocumentError::InvalidOverlay(overlay.overlay_id.clone()));
+            }
+        }
+        let mut seen_cutaways = Vec::with_capacity(self.video.cutaways.len());
+        let mut covered_until = 0;
+        for cutaway in &self.video.cutaways {
+            if cutaway.cutaway_id.is_empty() {
+                return Err(DocumentError::EmptyIdentifier);
+            }
+            if seen_cutaways.contains(&cutaway.cutaway_id.as_str()) {
+                return Err(DocumentError::DuplicateCutaway(cutaway.cutaway_id.clone()));
+            }
+            seen_cutaways.push(cutaway.cutaway_id.as_str());
+            // One picture at a time, in program order.
+            if !cutaway.is_valid(&self.assets) || cutaway.start_ticks < covered_until {
+                return Err(DocumentError::InvalidCutaway(cutaway.cutaway_id.clone()));
+            }
+            covered_until = cutaway.end_ticks;
+        }
         validate_cues(&self.captions.cues)?;
         validate_cues(&self.captions.burn_in)?;
         validate_shared_words(&self.captions)?;
@@ -1130,16 +2059,30 @@ impl EditDocument {
         {
             return Err(DocumentError::InvalidCaptionOptions);
         }
+        let options = &self.captions.options;
+        if options.outline_width.is_some_and(|width| width > 16)
+            || options.shadow_depth.is_some_and(|depth| depth > 12)
+            || options.plate_opacity.is_some_and(|opacity| opacity > 100)
+            || options
+                .words_on_screen
+                .is_some_and(|words| !(1..=8).contains(&words))
+            || options
+                .position
+                .is_some_and(|position| !position.is_valid())
+            || options
+                .font_family
+                .as_deref()
+                .is_some_and(|family| clipmill_captions::font(family).is_none())
+        {
+            return Err(DocumentError::InvalidCaptionOptions);
+        }
         for colour in [
             &self.captions.options.spoken,
             &self.captions.options.unspoken,
             &self.captions.options.outline,
+            &self.captions.options.accent,
         ] {
-            if colour.as_ref().is_some_and(|hex| {
-                hex.len() != 7
-                    || !hex.starts_with('#')
-                    || !hex[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
-            }) {
+            if colour.as_ref().is_some_and(|hex| !is_hex_colour(hex)) {
                 return Err(DocumentError::InvalidCaptionOptions);
             }
         }
@@ -1160,16 +2103,26 @@ impl EditDocument {
         if !self.audio.target_lufs.is_finite() || !self.audio.true_peak_dbtp.is_finite() {
             return Err(DocumentError::NonFiniteGain);
         }
+        if self
+            .audio
+            .music
+            .as_ref()
+            .is_some_and(|music| !music.is_valid(&self.assets))
+        {
+            return Err(DocumentError::InvalidMusic);
+        }
         Ok(())
     }
 }
 
 #[derive(Debug, Error)]
 pub enum DocumentError {
-    #[error("caption size or colour is outside the supported range")]
+    #[error("caption size, colour, font or position is outside the supported range")]
     InvalidCaptionOptions,
     #[error("soft cuts must be between zero and 250 milliseconds")]
     InvalidTransitionDuration,
+    #[error("a clip title has between one and 120 characters")]
+    InvalidTitle,
     #[error("edit document version {0} is not supported")]
     UnsupportedVersion(String),
     #[error("edit documents must use the 1/90000 edit timebase")]
@@ -1218,8 +2171,36 @@ pub enum DocumentError {
     UnorderedGainCurve,
     #[error("loudness and gain values must be finite")]
     NonFiniteGain,
+    #[error(
+        "the music's level, drop or start is outside what can be played, or it is not an asset of the clip"
+    )]
+    InvalidMusic,
     #[error("two-person layout on segment {0} requires both crop paths")]
     TwoUpWithoutCropPaths(String),
+    #[error("picture-in-picture on segment {0} requires an inset crop path")]
+    InsetWithoutCropPath(String),
+    #[error("segment {0} asks for a split, zoom, inset or background it cannot draw")]
+    InvalidLayoutStyle(String),
+    #[error("segment {0} has punches out of order, overlapping, outside it or too close")]
+    InvalidPunch(String),
+    #[error(
+        "the progress bar or logo is outside what can be drawn, or the logo is not an asset of the clip"
+    )]
+    InvalidBrand,
+    #[error("overlay {0} appears more than once")]
+    DuplicateOverlay(String),
+    #[error("overlay {0} has an empty or negative time span")]
+    EmptyOverlay(String),
+    #[error("overlay {0} has text, a size, a colour or a place it cannot be drawn with")]
+    InvalidOverlay(String),
+    #[error("no overlay named {0}")]
+    UnknownOverlay(String),
+    #[error("cutaway {0} appears more than once")]
+    DuplicateCutaway(String),
+    #[error(
+        "cutaway {0} is shorter than a fifth of a second, overlaps the one before, or shows a picture the clip does not list"
+    )]
+    InvalidCutaway(String),
     #[error("no segment named {0}")]
     UnknownSegment(String),
     #[error("no cue named {0}")]

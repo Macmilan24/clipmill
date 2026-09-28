@@ -13,7 +13,8 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::{
-    graph::{self, DecodeSpan, FilterGraph, GraphRequest},
+    cutaways::{self, FootageInput},
+    graph::{self, DecodeSpan, FilterGraph, GraphRequest, decoder_groups},
     profile::RenderProfile,
     subtitles::{self, CueWindow, unrenderable_character},
     timing::ticks_to_seconds,
@@ -25,6 +26,8 @@ pub const ASS_FILE: &str = "clip.ass";
 pub const SRT_FILE: &str = "clip.srt";
 pub const VTT_FILE: &str = "clip.vtt";
 pub const MANIFEST_FILE: &str = "render-manifest.json";
+/// Fixed worker count keeps the x264 output independent of machine defaults.
+pub const ENCODER_THREADS: u32 = 4;
 
 /// A source the document's segments may reference, resolved to something the
 /// decoder can open.
@@ -49,7 +52,7 @@ pub struct SourceInput {
 impl SourceInput {
     /// The last keyframe at or before `ticks` — the point a decoder can start
     /// from and still reproduce the requested frame exactly.
-    fn seek_target(&self, ticks: i64) -> i64 {
+    pub(crate) fn seek_target(&self, ticks: i64) -> i64 {
         self.keyframe_ticks
             .iter()
             .copied()
@@ -114,6 +117,8 @@ pub struct RenderPlan {
     pub cue_windows: Vec<CueWindow>,
     pub duration_ticks: i64,
     pub frame_count: i64,
+    /// The decoders footage cutaways read from, after the sections' own.
+    pub footage: Vec<FootageInput>,
     paths: BTreeMap<String, String>,
 }
 
@@ -139,6 +144,7 @@ impl RenderPlan {
         );
         config.insert("frame_count".to_owned(), json!(self.frame_count));
         config.insert("duration_ticks".to_owned(), json!(self.duration_ticks));
+        config.insert("encoder_threads".to_owned(), json!(ENCODER_THREADS));
         config.insert(
             "segments".to_owned(),
             json!(
@@ -180,9 +186,8 @@ impl RenderPlan {
 
     /// FFmpeg arguments for the encode.
     ///
-    /// The determinism flags are the profile's contract: one encoder thread so
-    /// libx264's slice decisions cannot depend on scheduling, and bitexact on
-    /// every layer so the container carries no build string and no clock.
+    /// A fixed encoder thread count and bitexact flags keep the output stable
+    /// across machines while allowing more than one core to encode.
     pub fn encode_args(&self, measurement: LoudnessMeasurement) -> Vec<String> {
         let graph = self.encode_graph(measurement);
         let profile = &self.profile;
@@ -204,6 +209,8 @@ impl RenderPlan {
             profile.pixel_format.clone(),
             "-profile:v".to_owned(),
             "high".to_owned(),
+            "-threads:v".to_owned(),
+            ENCODER_THREADS.to_string(),
             "-r".to_owned(),
             format!("{}/{}", profile.frame_rate.num, profile.frame_rate.den),
             "-frames:v".to_owned(),
@@ -216,8 +223,6 @@ impl RenderPlan {
             profile.audio_sample_rate.to_string(),
             "-ac".to_owned(),
             profile.audio_channels.to_string(),
-            "-threads".to_owned(),
-            "1".to_owned(),
             "-fflags".to_owned(),
             "+bitexact".to_owned(),
             "-flags:v".to_owned(),
@@ -291,7 +296,8 @@ impl RenderPlan {
 
     fn input_args(&self) -> Vec<String> {
         let mut args = Vec::new();
-        for span in &self.spans {
+        for group in decoder_groups(&self.spans) {
+            let span = &self.spans[group.start];
             let path = self
                 .paths
                 .get(&span.source_fingerprint)
@@ -304,6 +310,23 @@ impl RenderPlan {
             args.push("-i".to_owned());
             args.push(path);
         }
+        // A cutaway's recording is read only as far as it shows, and a
+        // second past it for the resampler's slack.
+        for input in &self.footage {
+            if input.seek_ticks > 0 {
+                args.push("-ss".to_owned());
+                args.push(ticks_to_seconds(input.seek_ticks));
+            }
+            args.push("-t".to_owned());
+            args.push(ticks_to_seconds(input.trim_end_ticks + 90_000));
+            args.push("-i".to_owned());
+            args.push(
+                self.paths
+                    .get(&input.source_fingerprint)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        }
         args
     }
 }
@@ -311,6 +334,17 @@ impl RenderPlan {
 /// Everything about the caption track that must hold before an encoder is
 /// asked to burn it in.
 fn check_captions(document: &EditDocument, duration_ticks: i64) -> Result<(), RenderError> {
+    // An overlay may run on to the end of the program, which ends it; one
+    // that would start after it was left behind by an edit and says so.
+    if let Some(overlay) = document
+        .overlays
+        .iter()
+        .find(|overlay| overlay.start_ticks >= duration_ticks)
+    {
+        return Err(RenderError::OverlayOutsideProgram(
+            overlay.overlay_id.clone(),
+        ));
+    }
     for cue in &document.captions.cues {
         if cue.start_ticks >= duration_ticks {
             return Err(RenderError::CueOutsideProgram(cue.cue_id.clone()));
@@ -330,32 +364,20 @@ fn check_captions(document: &EditDocument, duration_ticks: i64) -> Result<(), Re
     Ok(())
 }
 
-pub fn compile(
+/// Each segment's decode span and report, on the program's frame grid.
+struct LaidOut {
+    spans: Vec<DecodeSpan>,
+    segments: Vec<SegmentReport>,
+    paths: BTreeMap<String, String>,
+}
+
+fn lay_out(
     document: &EditDocument,
     sources: &[SourceInput],
-    profile: &RenderProfile,
-) -> Result<RenderPlan, RenderError> {
-    document.validate()?;
-    if document.video.segments.is_empty() {
-        return Err(RenderError::EmptyProgram);
-    }
-    let mut effective_profile = profile.clone();
-    effective_profile.caption_style = crate::profile::CaptionStyle::for_track(&document.captions)
-        .or_else(|| {
-            document
-                .captions
-                .cues
-                .is_empty()
-                .then(|| profile.caption_style.clone())
-        })
-        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
-    let profile = &effective_profile;
-    let rate = profile.rate();
-    let duration_ticks = document.program_duration_ticks();
-    check_captions(document, duration_ticks)?;
-
-    let mut spans = Vec::with_capacity(document.video.segments.len());
-    let mut segments = Vec::with_capacity(document.video.segments.len());
+    rate: crate::timing::FrameRate,
+) -> Result<LaidOut, RenderError> {
+    let mut spans: Vec<DecodeSpan> = Vec::with_capacity(document.video.segments.len());
+    let mut segments: Vec<SegmentReport> = Vec::with_capacity(document.video.segments.len());
     let mut paths = BTreeMap::new();
     let mut program_start = 0;
     for segment in &document.video.segments {
@@ -374,7 +396,15 @@ pub fn compile(
         let frame_count = rate.frame_ceil(program_end) - rate.frame_ceil(program_start);
         let video_offset_ticks = rate.frame_ticks(rate.frame_ceil(program_start)) - program_start;
         program_start = program_end;
-        let seek_ticks = source.seek_target(segment.in_ticks);
+        let seek_ticks = spans
+            .last()
+            .and_then(|previous: &DecodeSpan| {
+                let preceding = segments.last()?;
+                (preceding.source_fingerprint == segment.source_fingerprint
+                    && preceding.out_ticks == segment.in_ticks)
+                    .then_some(previous.seek_ticks)
+            })
+            .unwrap_or_else(|| source.seek_target(segment.in_ticks));
         spans.push(DecodeSpan {
             segment_id: segment.segment_id.clone(),
             source_fingerprint: segment.source_fingerprint.clone(),
@@ -394,6 +424,7 @@ pub fn compile(
                 LayoutState::Fit => "fit",
                 LayoutState::SpeakerFill => "speaker_fill",
                 LayoutState::TwoUp => "two_up",
+                LayoutState::PictureInPicture => "picture_in_picture",
             }
             .to_owned(),
             frame_count,
@@ -401,12 +432,84 @@ pub fn compile(
         paths.insert(segment.source_fingerprint.clone(), source.path.clone());
     }
 
-    let burn = (!document.captions.cues.is_empty()).then_some(ASS_FILE);
+    Ok(LaidOut {
+        spans,
+        segments,
+        paths,
+    })
+}
+
+/// A profile of another shape than the document's would render every fitted
+/// section in the wrong frame without a word; refuse it instead.
+pub(crate) fn check_shape(
+    document: &EditDocument,
+    profile: &RenderProfile,
+) -> Result<(), RenderError> {
+    let (width, height) = document.video.shape.ratio();
+    if profile.width * i64::from(height) == profile.height * i64::from(width) {
+        Ok(())
+    } else {
+        Err(RenderError::ShapeMismatch {
+            width: profile.width,
+            height: profile.height,
+        })
+    }
+}
+
+pub fn compile(
+    document: &EditDocument,
+    sources: &[SourceInput],
+    profile: &RenderProfile,
+) -> Result<RenderPlan, RenderError> {
+    document.validate()?;
+    if document.video.segments.is_empty() {
+        return Err(RenderError::EmptyProgram);
+    }
+    check_shape(document, profile)?;
+    let mut effective_profile = profile.clone();
+    effective_profile.caption_style = crate::profile::CaptionStyle::for_track(&document.captions)
+        .or_else(|| {
+            document
+                .captions
+                .cues
+                .is_empty()
+                .then(|| profile.caption_style.clone())
+        })
+        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
+    let profile = &effective_profile;
+    let rate = profile.rate();
+    let duration_ticks = document.program_duration_ticks();
+    check_captions(document, duration_ticks)?;
+    cutaways::check_cutaways(document, duration_ticks)?;
+
+    let LaidOut {
+        spans,
+        segments,
+        mut paths,
+    } = lay_out(document, sources, rate)?;
+    let footage = cutaways::footage_inputs(document, sources)?;
+    for input in &footage {
+        if let Some(source) = sources
+            .iter()
+            .find(|source| source.fingerprint == input.source_fingerprint)
+        {
+            paths.insert(source.fingerprint.clone(), source.path.clone());
+        }
+    }
+
+    // Emoji are laid as pictures; only captions and words need libass.
+    let burn = (!document.captions.cues.is_empty()
+        || document
+            .overlays
+            .iter()
+            .any(clipmill_edit_ir::Overlay::is_text))
+    .then_some(ASS_FILE);
     let graph = graph::build(&GraphRequest {
         document,
         profile,
         spans: &spans,
         sources,
+        footage: &footage,
         subtitle_file: burn,
         loudnorm: None,
         audio_only: false,
@@ -416,6 +519,7 @@ pub fn compile(
         profile,
         spans: &spans,
         sources,
+        footage: &footage,
         subtitle_file: None,
         loudnorm: Some(format!(
             "loudnorm=I={}:TP={}:LRA={}:print_format=json",
@@ -427,7 +531,7 @@ pub fn compile(
     })?;
 
     Ok(RenderPlan {
-        ass: subtitles::write_ass(&document.captions, profile),
+        ass: subtitles::write_ass(&document.captions, &document.overlays, profile),
         srt: subtitles::write_srt(&document.captions, rate),
         vtt: subtitles::write_vtt(&document.captions, rate),
         cue_windows: subtitles::cue_windows(&document.captions, rate),
@@ -438,6 +542,7 @@ pub fn compile(
         segments,
         graph,
         measurement_graph,
+        footage,
         paths,
     })
 }
@@ -458,6 +563,16 @@ pub enum RenderError {
     UnknownCaptionStyle(String),
     #[error("cue {0} starts after the program ends")]
     CueOutsideProgram(String),
+    #[error("overlay {0} starts after the end of the program")]
+    OverlayOutsideProgram(String),
+    #[error("{0} is not one of the emoji the app offers")]
+    UnknownEmoji(String),
+    #[error("cutaway {0} starts after the end of the program")]
+    CutawayOutsideProgram(String),
+    #[error("cutaway {0} reaches past the end of its recording")]
+    CutawayPastEndOfSource(String),
+    #[error("{0} is not a picture's address")]
+    UnresolvedAsset(String),
     #[error("cue {cue_id} carries {character:?}, which cannot be rendered as caption text")]
     UnrenderableCaptionText { cue_id: String, character: char },
     #[error("segment {0} asks for speaker fill without a crop path")]
@@ -466,8 +581,85 @@ pub enum RenderError {
     ZoomingCropPath(String),
     #[error("segment {0} has a crop path whose aspect ratio is not the output's")]
     CropAspectMismatch(String),
+    #[error("a {width} x {height} output is not the shape this clip is edited in")]
+    ShapeMismatch { width: i64, height: i64 },
     #[error("segment {0} has a crop rectangle reaching outside the source frame")]
     CropOutsideFrame(String),
     #[error("segment {0} has two crop keyframes on the same output frame")]
     CropKeyframesTooDense(String),
+}
+
+/// How many times the most-enlarged section of the program magnifies the
+/// recording's own pixels, or `None` when the program has no picture.
+///
+/// A 9:16 crop of a 1080p recording is already a 1.78× enlargement at
+/// 1080 × 1920; at 4K the same crop is 3.56×, and no encoder setting makes
+/// detail the recording never had. The export screen warns from this number
+/// rather than refusing, because a creator may want the larger file anyway.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "frame dimensions, far inside a double's exact integers"
+)]
+pub fn largest_upscale(
+    document: &EditDocument,
+    sources: &[SourceInput],
+    profile: &RenderProfile,
+) -> Option<f64> {
+    let mut largest: Option<f64> = None;
+    for segment in &document.video.segments {
+        let Some(source) = sources
+            .iter()
+            .find(|source| source.fingerprint == segment.source_fingerprint)
+        else {
+            continue;
+        };
+        let layout = &segment.layout;
+        let fitted = || {
+            (source.width > 0 && source.height > 0).then(|| {
+                (profile.width as f64 / source.width as f64)
+                    .min(profile.height as f64 / source.height as f64)
+                    * f64::from(layout.zoom_percent())
+                    / 100.0
+            })
+        };
+        // How far a path's tightest crop is stretched to fill its viewport.
+        let stretched = |path: &[clipmill_edit_ir::CropKeyframe], viewport: i64| {
+            path.iter()
+                .map(|keyframe| keyframe.rect.height)
+                .filter(|height| *height > 0)
+                .min()
+                .map(|crop| viewport as f64 / crop as f64)
+        };
+        let factors = match layout.state {
+            LayoutState::Fit => vec![fitted()],
+            LayoutState::SpeakerFill => {
+                vec![stretched(&layout.drawn_crop_path(), profile.height)]
+            }
+            LayoutState::TwoUp => {
+                let ((_, first), (_, second)) = layout.viewports(profile.width, profile.height);
+                vec![
+                    stretched(&layout.crop_path, first),
+                    stretched(&layout.secondary_crop_path, second),
+                ]
+            }
+            LayoutState::PictureInPicture => {
+                let (_, _, side) = layout
+                    .inset_or_default()
+                    .place(profile.width, profile.height);
+                vec![
+                    if layout.crop_path.is_empty() {
+                        fitted()
+                    } else {
+                        stretched(&layout.crop_path, profile.height)
+                    },
+                    stretched(&layout.secondary_crop_path, side),
+                ]
+            }
+        };
+        let Some(factor) = factors.into_iter().flatten().reduce(f64::max) else {
+            continue;
+        };
+        largest = Some(largest.map_or(factor, |current: f64| current.max(factor)));
+    }
+    largest
 }

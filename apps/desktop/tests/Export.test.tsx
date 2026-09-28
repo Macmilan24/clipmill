@@ -47,7 +47,6 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
     rightsGateNeeded: false,
     rightsGatePassed: false,
     hotCaptions: [],
-    hotCaptionsConfirmed: false,
     plan: plan(),
     planning: false,
     busy: false,
@@ -58,7 +57,6 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
     onPatternChange: vi.fn(),
     onChooseFolder: vi.fn(),
     onRightsGateChange: vi.fn(),
-    onHotCaptionsChange: vi.fn(),
     onExport,
     onArchive: vi.fn(),
     onReveal: vi.fn(),
@@ -68,7 +66,125 @@ function show(overrides: Partial<Parameters<typeof Export>[0]> = {}) {
   return { onExport, props };
 }
 
+describe('what the export screen says is left', () => {
+  it('names the one thing still missing and then says it is ready', () => {
+    show({ destination: '' });
+    expect(screen.getByText('Choose a folder to export into.')).toBeTruthy();
+  });
+
+  it('says ready when every check passes', () => {
+    show();
+    expect(screen.getByText('Ready to export.')).toBeTruthy();
+  });
+
+  it('counts the blocking checks', () => {
+    show({
+      plan: plan({
+        passes: false,
+        findings: [
+          { code: 'destination.unusable', severity: 'blocking', detail: 'Not writable.' },
+          { code: 'source.missing', severity: 'blocking', detail: 'The recording moved.' },
+        ],
+      }),
+    });
+    expect(screen.getByText('2 checks to fix first.')).toBeTruthy();
+  });
+});
+
+describe('a moved recording', () => {
+  it('offers to locate it on the finding and nowhere else', () => {
+    const onRelink = vi.fn();
+    show({
+      onRelink,
+      plan: plan({
+        passes: false,
+        findings: [
+          {
+            code: 'source.missing',
+            severity: 'blocking',
+            detail: 'The recording ep41.mov is no longer where it was imported from.',
+          },
+        ],
+      }),
+    });
+    const buttons = screen.getAllByRole('button', { name: /Locate recording/ });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]!);
+    expect(onRelink).toHaveBeenCalledOnce();
+  });
+
+  it('shows no relink when the recording is where it was', () => {
+    show({ onRelink: vi.fn() });
+    expect(screen.queryByRole('button', { name: /Locate recording/ })).toBeNull();
+  });
+});
+
+describe('the delivery format', () => {
+  it('states the recording rate and the chosen size', () => {
+    show({
+      format: { rate: 'source', height: 2560 },
+      sourceFps: 24_000 / 1_001,
+      onFormatChange: vi.fn(),
+    });
+    expect(screen.getByText('1440 × 2560 · 23.98 fps · MP4')).toBeTruthy();
+    expect(screen.getByLabelText('Frame rate')).toBeTruthy();
+    expect(screen.getByLabelText('Resolution')).toBeTruthy();
+  });
+});
+
 describe('the export screen', () => {
+  it('offers an editor recovery path for a blocked subtitle', () => {
+    const onEdit = vi.fn();
+    const { onExport } = show({
+      onEdit,
+      plan: plan({
+        passes: false,
+        findings: [
+          {
+            code: 'captions.too_brief',
+            severity: 'blocking',
+            detail:
+              'Subtitle 4 at 0:42.51 — “[BLANK_AUDIO]” is on screen for 0.64s; the minimum is 0.83s.',
+            cueId: 'cue_4',
+          },
+        ],
+      }),
+    });
+    expect(screen.getByText(/Subtitle 4 at 0:42.51/)).toBeTruthy();
+    expect(screen.getByText(/cannot be exported as it is/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /fix captions/i }));
+    // The editor is sent to the cue itself, on the track the finding is about.
+    expect(onEdit).toHaveBeenCalledWith({ panel: 'captions', track: 'reading', cueId: 'cue_4' });
+    fireEvent.click(screen.getByRole('button', { name: /^export clip$/i }));
+    expect(onExport).not.toHaveBeenCalled();
+  });
+
+  it('still points at a brief subtitle the strip only advises on, without blocking', () => {
+    const onEdit = vi.fn();
+    show({
+      onEdit,
+      plan: plan({
+        passes: true,
+        findings: [
+          {
+            code: 'captions.too_brief',
+            severity: 'advisory',
+            detail:
+              'Subtitle 4 at 0:42.51 — “[BLANK_AUDIO]” is on screen for 0.64s; the minimum is 0.83s.',
+            cueId: 'cue_4',
+          },
+        ],
+      }),
+    });
+    expect(screen.getByText(/worth a look before exporting/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /fix captions/i }));
+    expect(onEdit).toHaveBeenCalledWith({ panel: 'captions', track: 'reading', cueId: 'cue_4' });
+    expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty(
+      'disabled',
+      false,
+    );
+  });
+
   it('describes render progress as media time and delivery as the next step', () => {
     show({
       delivery: {
@@ -185,16 +301,16 @@ it('keeps export disabled while a changed destination or filename is being valid
   expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
 });
 
-it('groups fast captions into one review control while keeping the export blocked', () => {
+it('groups fast captions as advice without holding up export', () => {
   const finding = {
     code: 'captions.reading_rate',
-    severity: 'blocking' as const,
+    severity: 'advisory' as const,
     detail: 'Passage one asks for 22.1 characters a second.',
   };
-  show({ hotCaptions: [finding], plan: plan({ passes: false, findings: [finding] }) });
-  expect(screen.getByTestId('hot-captions-gate').textContent).toContain('One caption');
+  show({ hotCaptions: [finding], plan: plan({ passes: true, findings: [finding] }) });
+  expect(screen.getByText(/1 fast subtitle passage/)).toBeTruthy();
   expect(screen.getAllByText(finding.detail)).toHaveLength(1);
   expect(screen.queryByText(/captions[._]reading_rate/)).toBeNull();
   expect(screen.getByText('Review caption details (1)')).toBeTruthy();
-  expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: /^export clip$/i })).toHaveProperty('disabled', false);
 });

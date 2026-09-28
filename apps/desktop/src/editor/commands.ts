@@ -17,7 +17,7 @@ import { secondsAt, segmentAt, sourceTicksAt } from './player.js';
 export const SEGMENT = 'seg_1';
 
 /** Which way the camera is framed. Three modes, exactly as the plan names them. */
-export type LayoutMode = 'speaker_fill' | 'fit' | 'two_up';
+export type LayoutMode = 'speaker_fill' | 'fit' | 'two_up' | 'picture_in_picture';
 
 export function setLayout(mode: LayoutMode, segmentId = SEGMENT): EditCommandJson {
   return { op: 'set_layout', segment_id: segmentId, state: mode };
@@ -37,6 +37,15 @@ export function splitSegment(
 }
 
 /** The daemon derives captions for only the newly exposed source span. */
+/**
+ * Derive the clip's captions again from the newest transcript of its
+ * recording. The daemon turns this into the cues themselves, so the saved
+ * step replays and undoes without the transcript.
+ */
+export function refreshCaptions(): EditCommandJson {
+  return { op: 'refresh_captions' };
+}
+
 export function extendWithCaptions(
   segmentId: string,
   inTicks: number,
@@ -70,34 +79,6 @@ export function setCueRegion(
   presentation: Presentation = 'reading',
 ): EditCommandJson {
   return { op: 'set_cue_region', cue_id: cueId, region, ...inList(presentation) };
-}
-
-export function setCueTiming(
-  cueId: string,
-  startTicks: number,
-  endTicks: number,
-  presentation: Presentation = 'reading',
-): EditCommandJson {
-  return {
-    op: 'set_cue_timing',
-    cue_id: cueId,
-    start_ticks: startTicks,
-    end_ticks: endTicks,
-    ...inList(presentation),
-  };
-}
-
-export function removeCaptionWord(
-  cueId: string,
-  wordIndex: number,
-  presentation: Presentation = 'reading',
-): EditCommandJson {
-  return {
-    op: 'remove_caption_word',
-    cue_id: cueId,
-    word_index: wordIndex,
-    ...inList(presentation),
-  };
 }
 
 /** The whole clip's soft-cut duration in document ticks; zero disables it. */
@@ -139,6 +120,46 @@ export function trim(inTicks: number, outTicks: number, segmentId = SEGMENT): Ed
 
 /** Which of the document's two cue lists a cue-scoped command means. */
 export type Presentation = 'reading' | 'burn_in';
+
+/** A caption's centre on the frame, in thousandths of its width and height. */
+export interface CaptionPosition {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** Place one caption by hand, or hand it back to its region with null. */
+export function setCuePosition(
+  cueId: string,
+  position: CaptionPosition | null,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'set_cue_position',
+    cue_id: cueId,
+    ...(position ? { position } : {}),
+    ...inList(presentation),
+  };
+}
+
+/** Mark or unmark a key word, in both caption presentations. */
+export function setWordEmphasis(wordId: string, emphasis: boolean): EditCommandJson {
+  return { op: 'set_word_emphasis', word_id: wordId, emphasis };
+}
+
+/** Show at most this many words on screen at once. The subtitle files keep theirs. */
+export function regroupOnScreen(maxWords: number): EditCommandJson {
+  return { op: 'regroup_on_screen', max_words: maxWords };
+}
+
+/** Remove recognizer dashes, silence markers and bracketed annotations. */
+export function dropNonSpeechWords(): EditCommandJson {
+  return { op: 'drop_non_speech_words' };
+}
+
+/** Name the clip, or clear the name with null. */
+export function setTitle(title: string | null): EditCommandJson {
+  return title === null ? { op: 'set_title' } : { op: 'set_title', title };
+}
 
 /** The presentation field, written only when it is not the default. */
 function inList(presentation: Presentation): { readonly presentation?: Presentation } {
@@ -321,6 +342,43 @@ export function mergeCues(
     op: 'merge_cues',
     first_cue_id: firstCueId,
     second_cue_id: secondCueId,
+    ...inList(presentation),
+  };
+}
+
+/**
+ * Stop showing a word, in both caption tracks at once.
+ *
+ * A caption edit and not a media edit: the word was said and the audio is
+ * untouched. Addressed by cue and position in the track on screen; the daemon
+ * follows the word's identity into the other track, and drops a cue that is
+ * left with nothing to show.
+ */
+export function removeCaptionWord(
+  cueId: string,
+  wordIndex: number,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'remove_caption_word',
+    cue_id: cueId,
+    word_index: wordIndex,
+    ...inList(presentation),
+  };
+}
+
+/** Hold a cue for a different window. Its spoken words do not move. */
+export function setCueTiming(
+  cueId: string,
+  startTicks: number,
+  endTicks: number,
+  presentation: Presentation = 'reading',
+): EditCommandJson {
+  return {
+    op: 'set_cue_timing',
+    cue_id: cueId,
+    start_ticks: startTicks,
+    end_ticks: endTicks,
     ...inList(presentation),
   };
 }
