@@ -4,14 +4,15 @@
 find moments, review the suggestions, edit the framing and captions, and export
 video ready to upload.
 
-ClipMill runs on **macOS 14 or later on Apple silicon** and on **64-bit Linux**.
-The import-to-export workflow is complete; clip selection still benefits from
-your editorial judgment. On Apple silicon a local Qwen model proposes and reviews
-moments; on Linux a built-in picker does. Windows is planned for a later release.
+ClipMill runs on **macOS 14 or later on Apple silicon**, on **64-bit Linux**,
+and, as a beta, on **64-bit Windows 10 and 11**. The import-to-export workflow is
+complete; clip selection still benefits from your editorial judgment. On Apple
+silicon a local Qwen model proposes and reviews moments; on Linux and Windows a
+built-in picker does.
 
 ## Install
 
-Download ClipMill for macOS or Linux from the
+Download ClipMill for macOS, Linux or Windows (beta) from the
 [latest release](https://github.com/Macmilan24/clipmill/releases/latest), then
 follow [Installing ClipMill](docs/install.md). On first run, **Set up ClipMill**
 installs the app's components and the recommended models in one step; after
