@@ -225,3 +225,32 @@ def test_runtime_check_has_no_network_and_requires_compatible_node(tmp_path, mon
     )
     with pytest.raises(importer.ImportFailure, match=r"Node\.js 22"):
         importer.check_runtime(str(binary), "/node")
+
+
+def test_node_outside_a_launcher_path_is_found_where_installers_put_it(tmp_path, monkeypatch):
+    """An app opened from the Finder has a minimal PATH without Homebrew or nvm."""
+    binary = tmp_path / "ffmpeg"
+    binary.touch(mode=0o700)
+    old = tmp_path / ".nvm/versions/node/v20.1.0/bin/node"
+    new = tmp_path / ".nvm/versions/node/v22.4.0/bin/node"
+    for node in (old, new):
+        node.parent.mkdir(parents=True)
+        node.write_text(f"#!/bin/sh\necho {node.parts[-3]}\n")
+        node.chmod(0o700)
+    monkeypatch.setattr(importer.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(importer.shutil, "which", lambda _name: None)
+    monkeypatch.delenv("CLIPMILL_NODE", raising=False)
+    assert importer.node_candidates()[0] == new
+    assert importer.check_runtime(str(binary), None) == str(new.resolve())
+
+
+def test_an_explicit_node_is_the_only_one_tried(tmp_path, monkeypatch):
+    binary = tmp_path / "ffmpeg"
+    binary.touch(mode=0o700)
+    found = tmp_path / ".volta/bin/node"
+    found.parent.mkdir(parents=True)
+    found.write_text("#!/bin/sh\necho v24.0.0\n")
+    found.chmod(0o700)
+    monkeypatch.setattr(importer.Path, "home", lambda: tmp_path)
+    with pytest.raises(importer.ImportFailure, match=r"Node\.js 22"):
+        importer.check_runtime(str(binary), str(tmp_path / "missing-node"))

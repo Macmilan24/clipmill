@@ -101,6 +101,43 @@ def inspect_metadata(info: dict, expected_id: str) -> dict:
     }
 
 
+def node_candidates() -> list[Path]:
+    """Where Node.js is usually installed, beyond PATH.
+
+    An app opened from the Finder or a desktop launcher gets a minimal PATH,
+    so a Node installed by Homebrew, nvm, Volta or fnm is not on it. These are
+    the places those installers use; the newest nvm or fnm version comes
+    first. Each is still version-checked before it is used.
+    """
+
+    home = Path.home()
+    fixed = [
+        Path("/opt/homebrew/bin/node"),
+        Path("/usr/local/bin/node"),
+        Path("/usr/bin/node"),
+        Path("/snap/bin/node"),
+        home / ".volta/bin/node",
+        home / ".local/bin/node",
+    ]
+    managed = sorted(
+        [
+            *home.glob(".nvm/versions/node/v*/bin/node"),
+            *home.glob(".local/share/fnm/node-versions/v*/installation/bin/node"),
+            *home.glob("Library/Application Support/fnm/node-versions/v*/installation/bin/node"),
+        ],
+        key=lambda path: _version_key(path),
+        reverse=True,
+    )
+    return [path for path in [*managed, *fixed] if path.is_file()]
+
+
+def _version_key(path: Path) -> tuple[int, ...]:
+    for part in path.parts:
+        if re.fullmatch(r"v\d+(\.\d+)*", part):
+            return tuple(int(number) for number in part[1:].split("."))
+    return ()
+
+
 def check_runtime(ffmpeg: str, node: str | None) -> str:
     for name, version in (("yt-dlp", "2026.8.19"), ("yt-dlp-ejs", "0.8.0")):
         if importlib.metadata.version(name) != version:
@@ -110,22 +147,32 @@ def check_runtime(ffmpeg: str, node: str | None) -> str:
         raise ImportFailure(
             "setup_required", "The configured FFmpeg is unavailable. Run just setup."
         )
-    node = node or os.environ.get("CLIPMILL_NODE") or shutil.which("node")
-    if not node:
-        raise ImportFailure("setup_required", "YouTube import requires Node.js 22 or newer.")
-    node = str(Path(node).resolve())
+    explicit = node or os.environ.get("CLIPMILL_NODE")
+    on_path = shutil.which("node")
+    candidates = (
+        [explicit]
+        if explicit
+        else [
+            *([on_path] if on_path else []),
+            *(str(path) for path in node_candidates()),
+        ]
+    )
+    for candidate in candidates:
+        resolved = str(Path(candidate).resolve())
+        if _node_major(resolved) >= 22:
+            return resolved
+    raise ImportFailure("setup_required", "YouTube import requires Node.js 22 or newer.")
+
+
+def _node_major(node: str) -> int:
+    """The major version of the Node.js at `node`, or 0 when it will not say."""
     try:
         result = subprocess.run(
             [node, "--version"], capture_output=True, timeout=5, check=True, text=True
         )
-        major = int(result.stdout.strip().removeprefix("v").split(".")[0])
-        if major < 22:
-            raise ValueError
+        return int(result.stdout.strip().removeprefix("v").split(".")[0])
     except (OSError, ValueError, subprocess.SubprocessError):
-        raise ImportFailure(
-            "setup_required", "YouTube import requires Node.js 22 or newer."
-        ) from None
-    return node
+        return 0
 
 
 def prepare_destination(value: str) -> Path:
