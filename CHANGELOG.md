@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Windows (beta).** ClipMill runs on 64-bit Windows 10 and 11: the same
+  daemon, components and workers, with an installer built by the release
+  workflow. The app talks to its daemon and workers over loopback, each end
+  proving it holds a secret the daemon made at start (decision R68).
+
 ## 0.1.0 — first release
 
 The first installable ClipMill, for macOS on Apple silicon (macOS 14 or later)

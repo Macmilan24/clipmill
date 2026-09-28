@@ -1,7 +1,7 @@
 # Installing ClipMill
 
 ClipMill runs on **macOS 14 or later on Apple silicon** and on **64-bit Linux
-(x86_64)**. Windows support is planned for a later release.
+(x86_64)**, and from version 0.2 on **64-bit Windows 10 and 11** as a beta.
 
 Download the installer for your computer from the
 [latest release](https://github.com/Macmilan24/clipmill/releases/latest).
@@ -32,6 +32,19 @@ Either package works on distributions with at least the glibc of Ubuntu
 
 On Linux, clips are chosen by ClipMill's built-in picker. The local editorial
 model (Qwen) currently runs only on Apple silicon.
+
+## Windows (beta)
+
+Windows support is new: try it, and report what happens.
+
+1. Download `ClipMill_<version>_x64-setup.exe` and run it. The installer is not
+   signed yet, so Windows may say **Windows protected your PC**: choose **More
+   info**, then **Run anyway**.
+2. ClipMill installs for your user account and adds itself to the Start menu.
+   It draws its window with Microsoft Edge WebView2, which Windows 11 includes;
+   the installer fetches it where it is missing.
+
+As on Linux, clips are chosen by ClipMill's built-in picker.
 
 ## First run: Set up ClipMill
 
@@ -66,9 +79,9 @@ use.
 
 ## Where ClipMill keeps things
 
-|                                       | macOS                                                 | Linux                     |
-| ------------------------------------- | ----------------------------------------------------- | ------------------------- |
-| Projects, components, models and logs | `~/Library/Application Support/dev.clipmill.ClipMill` | `~/.local/share/clipmill` |
+|                                       | macOS                                                 | Linux                     | Windows                                 |
+| ------------------------------------- | ----------------------------------------------------- | ------------------------- | --------------------------------------- |
+| Projects, components, models and logs | `~/Library/Application Support/dev.clipmill.ClipMill` | `~/.local/share/clipmill` | `%LOCALAPPDATA%\clipmill\ClipMill\data` |
 
 Inside it, `engine/` holds the components, `models/` the weights, and `logs/`
 what each component's process says, which is the first place to look when
@@ -82,7 +95,8 @@ an export, resumes the next time you open it.
 
 Delete the app (macOS: drag it from Applications to the Bin; Debian/Ubuntu:
 remove the ClipMill package with your package manager; AppImage: delete the
-file), then delete the folder above to remove projects, components and models.
+file; Windows: **Settings → Apps → Installed apps → ClipMill → Uninstall**),
+then delete the folder above to remove projects, components and models.
 
 ## Troubleshooting
 
