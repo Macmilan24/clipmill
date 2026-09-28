@@ -24,6 +24,15 @@ mod unix_main {
         /// Pinned `FFprobe` sidecar executable.
         #[arg(long)]
         ffprobe: Option<PathBuf>,
+        /// A packaged app's resources: fonts, emoji, model manifests and the
+        /// processing engine's packages. Given, the daemon installs and runs
+        /// its own workers.
+        #[arg(long)]
+        resources: Option<PathBuf>,
+        /// The pinned uv the engine is installed with. Defaults to the one
+        /// beside this executable.
+        #[arg(long, requires = "resources")]
+        uv: Option<PathBuf>,
     }
 
     pub(crate) fn main() -> ExitCode {
@@ -51,13 +60,22 @@ mod unix_main {
     }
 
     async fn run(arguments: Arguments) -> Result<(), clipmilld::DaemonError> {
-        let config = Config::resolve_daemon(
+        let mut config = Config::resolve_daemon(
             arguments.data_dir,
             arguments.socket,
             arguments.worker_socket,
             arguments.artifact_gc_grace,
             arguments.ffprobe,
         )?;
+        if let Some(resources) = arguments.resources {
+            let uv = arguments.uv.unwrap_or_else(|| {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(|dir| dir.join("uv")))
+                    .unwrap_or_else(|| PathBuf::from("uv"))
+            });
+            config = config.with_bundle(resources, uv);
+        }
         let daemon = Daemon::start(config).await?;
         tracing::info!(socket = %daemon.socket_path().display(), "ClipMill daemon ready");
         daemon.serve_until(shutdown_signal()).await

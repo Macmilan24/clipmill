@@ -1,5 +1,6 @@
 mod assets;
 mod batch;
+mod engine;
 mod models;
 mod storage;
 mod youtube;
@@ -112,6 +113,11 @@ pub(crate) struct Service {
     /// The person's own pictures and sounds. Absent in the tests that build
     /// a service without a workspace.
     assets: Option<crate::assets::AssetStore>,
+    /// The processing engine a packaged app installs and runs. Absent in a
+    /// development checkout, whose workers are started by hand.
+    engine: Option<std::sync::Arc<crate::engine::Engine>>,
+    /// Woken by a shutdown request; the daemon's serve loop waits on it.
+    shutdown: std::sync::Arc<tokio::sync::Notify>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -178,6 +184,8 @@ impl Service {
             collector: None,
             evidence: crate::inspector::EvidenceCache::default(),
             assets: None,
+            engine: None,
+            shutdown: std::sync::Arc::default(),
         }
     }
 
@@ -230,6 +238,8 @@ impl Service {
             collector: None,
             evidence: crate::inspector::EvidenceCache::default(),
             assets: None,
+            engine: None,
+            shutdown: std::sync::Arc::default(),
         }
     }
 
@@ -603,6 +613,10 @@ impl Service {
             request::Body::AddCustomModel(asked) => self.add_custom_model(request_id, &asked).await,
             request::Body::ForgetModel(asked) => self.forget_model(request_id, &asked).await,
             request::Body::CleanStorage(asked) => self.clean_storage(request_id, &asked).await,
+            request::Body::GetEngine(_) => self.get_engine(request_id),
+            request::Body::InstallEngine(asked) => self.install_engine(request_id, &asked),
+            request::Body::CancelEngineInstall(_) => self.cancel_engine_install(request_id),
+            request::Body::Shutdown(_) => self.shutdown(request_id),
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -4031,6 +4045,10 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::AddCustomModel(_)) => "add_custom_model",
         Some(request::Body::ForgetModel(_)) => "forget_model",
         Some(request::Body::CleanStorage(_)) => "clean_storage",
+        Some(request::Body::GetEngine(_)) => "get_engine",
+        Some(request::Body::InstallEngine(_)) => "install_engine",
+        Some(request::Body::CancelEngineInstall(_)) => "cancel_engine_install",
+        Some(request::Body::Shutdown(_)) => "shutdown",
         None => "missing_body",
     }
 }
@@ -4964,6 +4982,11 @@ impl Service {
             ));
         }
         stages.sort_by(|left, right| left.stage.cmp(&right.stage));
+        if let Some(engine) = &self.engine {
+            for stage in &mut stages {
+                engine_remedy(stage, engine);
+            }
+        }
         let decoder_path = self
             .decoder
             .as_ref()
@@ -5049,6 +5072,48 @@ impl Service {
                 ))
             }
         }
+    }
+}
+
+/// In a packaged app the daemon installs and starts the workers itself, so a
+/// remedy that names a terminal command is replaced by what to do in the app.
+fn engine_remedy(stage: &mut StageReadinessV1, engine: &crate::engine::Engine) {
+    if stage.ready {
+        return;
+    }
+    if stage.model_present && !stage.worker_present {
+        // A stage with no model is served by the family of the same name.
+        let family = crate::implementations::lookup(&stage.implementation)
+            .map_or(stage.stage.as_str(), |known| known.worker);
+        let Some(part) = engine.part_for_family(family) else {
+            return;
+        };
+        stage.remedy = match (part.state.as_str(), part.process.as_str()) {
+            ("missing" | "failed", _) => format!(
+                "{} is part of the processing engine, which is not installed yet. Install it from Set up ClipMill, or under Processing engine in Models.",
+                part.title
+            ),
+            ("queued" | "installing", _) => {
+                format!(
+                    "{} is being installed. This stage starts when it is.",
+                    part.title
+                )
+            }
+            ("outdated", _) => format!(
+                "{} was installed by an earlier version of ClipMill. Update the processing engine in Models.",
+                part.title
+            ),
+            (_, "waiting") => format!(
+                "The {} worker stopped ({}) and restarts on its own. If it keeps stopping, its log is at {}.",
+                part.title, part.detail, part.log_path
+            ),
+            _ => format!("The {} worker is starting.", part.title),
+        };
+    } else if stage.remedy.contains("`just workers`") {
+        stage.remedy = stage.remedy.replace(
+            "Restart `just workers` to run the check",
+            "Quit and reopen ClipMill to run the check",
+        );
     }
 }
 

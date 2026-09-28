@@ -931,6 +931,13 @@ fn editorial_document_is_complete(kind: &str, reader: impl Read) -> bool {
     }
 }
 
+/// The trust store as the worker service reads it, for tests elsewhere that
+/// check they wrote something it accepts.
+#[cfg(test)]
+pub(crate) fn load_trust_for_tests(path: &Path) -> Result<BTreeMap<String, [u8; 32]>, WorkerError> {
+    load_trust(path)
+}
+
 fn load_trust(path: &Path) -> Result<BTreeMap<String, [u8; 32]>, WorkerError> {
     let mut keys = BTreeMap::new();
     let mut public_keys = BTreeSet::new();

@@ -1,0 +1,559 @@
+//! The processing engine of a packaged ClipMill: its model workers, installed
+//! on this computer when the person asks and kept running by the daemon.
+//!
+//! A development checkout builds its workers with `just setup` and starts them
+//! with `just workers`; nothing here runs there. A packaged app instead ships
+//! the engine's packages and a pinned uv, and this module does what those two
+//! commands did: it installs each part into the data directory (downloading
+//! the pinned Python and the third-party wheels, which is a network operation
+//! the person starts and the Local Lock counts), and it starts, watches and
+//! stops one worker process per installed part.
+//!
+//! Keys come first. The worker service reads the keys it trusts once, when
+//! the daemon starts, so [`Engine::prepare`] enrols every part this computer
+//! runs before that read, whether or not the part is installed yet.
+
+mod identity;
+mod install;
+mod manifest;
+mod process;
+
+use std::{
+    collections::{BTreeMap, VecDeque},
+    path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+
+use clipmill_contracts::proto::ipc::v1::{EnginePartV1, EngineResponse};
+use tokio::sync::{Notify, watch};
+
+use self::{
+    install::{CANCELLED, Installer},
+    manifest::{Manifest, Part},
+    process::{Launch, Watch},
+};
+use crate::policy::LocalLockPolicy;
+
+/// Where the engine lives and what its workers connect to.
+#[derive(Clone, Debug)]
+pub(crate) struct EnginePaths {
+    /// The app's pinned uv.
+    pub uv: PathBuf,
+    /// `<resources>/engine`: the manifest and the packages the app carries.
+    pub shipped: PathBuf,
+    /// `<data>/engine`: Python, installs and uv's cache.
+    pub engine_dir: PathBuf,
+    /// `<data>/logs`.
+    pub logs_dir: PathBuf,
+    pub identity_dir: PathBuf,
+    pub trust_dir: PathBuf,
+    pub worker_socket: PathBuf,
+    pub shm_socket: PathBuf,
+}
+
+/// Why a request to the engine was refused. One sentence a screen can show.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Refusal {
+    NotFound(String),
+    Unavailable(String),
+}
+
+impl Refusal {
+    pub(crate) fn message(&self) -> &str {
+        match self {
+            Self::NotFound(message) | Self::Unavailable(message) => message,
+        }
+    }
+}
+
+/// The latest attempt at installing one part.
+#[derive(Clone, Debug)]
+enum Attempt {
+    Queued,
+    Installing { step: String },
+    Failed { message: String },
+}
+
+#[derive(Debug, Default)]
+struct State {
+    attempts: BTreeMap<String, Attempt>,
+    queue: VecDeque<String>,
+    active: Option<watch::Sender<bool>>,
+}
+
+/// One part this computer runs, with what keeps its worker going.
+#[derive(Debug)]
+struct Running {
+    part: Part,
+    /// The install its worker runs from; replaced after a new install.
+    install: watch::Sender<Option<PathBuf>>,
+    watch: Arc<Mutex<Watch>>,
+    log: PathBuf,
+}
+
+#[derive(Debug)]
+pub(crate) struct Engine {
+    manifest: Result<Manifest, String>,
+    installer: Installer,
+    paths: EnginePaths,
+    policy: Arc<LocalLockPolicy>,
+    parts: Vec<Running>,
+    state: Mutex<State>,
+    wake: Notify,
+    stop: watch::Sender<bool>,
+    stopping: AtomicBool,
+    tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+}
+
+impl Engine {
+    /// Read the app's engine and enrol a key for every part this computer
+    /// runs. Nothing starts yet: see [`Engine::start`].
+    pub(crate) fn prepare(paths: EnginePaths, policy: Arc<LocalLockPolicy>) -> Arc<Self> {
+        let manifest = Manifest::load(&paths.shipped);
+        if let Err(problem) = &manifest {
+            tracing::warn!(problem, "the app's processing engine cannot be installed");
+        }
+        let installer = Installer {
+            uv: paths.uv.clone(),
+            shipped: paths.shipped.clone(),
+            engine_dir: paths.engine_dir.clone(),
+            log: paths.logs_dir.join("engine-install.log"),
+        };
+        let mut parts = Vec::new();
+        if let Ok(manifest) = &manifest {
+            for part in manifest.parts_here() {
+                if let Err(problem) =
+                    identity::enrol(&paths.identity_dir, &paths.trust_dir, &part.name)
+                {
+                    tracing::warn!(part = part.name, problem, "an engine worker has no key");
+                    continue;
+                }
+                let current = installer.current(&part.name).map(|(_, dir)| dir);
+                parts.push(Running {
+                    part: part.clone(),
+                    install: watch::channel(current).0,
+                    watch: Arc::new(Mutex::new(Watch::default())),
+                    log: paths
+                        .logs_dir
+                        .join("workers")
+                        .join(format!("{}.log", part.name)),
+                });
+            }
+        }
+        let (stop, _) = watch::channel(false);
+        Arc::new(Self {
+            manifest,
+            installer,
+            paths,
+            policy,
+            parts,
+            state: Mutex::new(State::default()),
+            wake: Notify::new(),
+            stop,
+            stopping: AtomicBool::new(false),
+            tasks: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// Start every installed part's worker and the install runner. Call once
+    /// the worker socket is listening. Must be called inside a Tokio runtime.
+    pub(crate) fn start(self: &Arc<Self>) {
+        let names: Vec<&str> = self
+            .parts
+            .iter()
+            .map(|running| running.part.name.as_str())
+            .collect();
+        self.installer.remove_unreferenced(&names);
+        let mut tasks = self
+            .tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for running in &self.parts {
+            let launch = Launch {
+                part: running.part.name.clone(),
+                command: running.part.command.clone(),
+                identity: identity::identity_path(&self.paths.identity_dir, &running.part.name),
+                worker_socket: self.paths.worker_socket.clone(),
+                shm_socket: self.paths.shm_socket.clone(),
+                log: running.log.clone(),
+            };
+            tasks.push(tokio::spawn(process::keep_running(
+                launch,
+                running.install.subscribe(),
+                self.stop.subscribe(),
+                Arc::clone(&running.watch),
+            )));
+        }
+        tasks.push(tokio::spawn(Arc::clone(self).run_installs()));
+    }
+
+    /// Stop installing and stop every worker, waiting for them to leave.
+    pub(crate) async fn stop(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
+        {
+            let mut state = self.lock();
+            state.queue.clear();
+            if let Some(cancel) = &state.active {
+                let _ = cancel.send(true);
+            }
+        }
+        let _ = self.stop.send(true);
+        self.wake.notify_one();
+        let tasks: Vec<_> = self
+            .tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+            .collect();
+        for task in tasks {
+            if tokio::time::timeout(Duration::from_secs(15), task)
+                .await
+                .is_err()
+            {
+                tracing::warn!("an engine task did not stop in time");
+            }
+        }
+    }
+
+    /// Install `names`, or every part here that is not installed at its
+    /// current version when `names` is empty. The installs run one after
+    /// another in the background; the listing says how far they got.
+    pub(crate) fn install(&self, names: &[String]) -> Result<(), Refusal> {
+        if let Err(problem) = &self.manifest {
+            return Err(Refusal::Unavailable(problem.clone()));
+        }
+        let python = self.python();
+        let wanted: Vec<&Running> = if names.is_empty() {
+            self.parts
+                .iter()
+                .filter(|running| self.install_state(running, &python) != "installed")
+                .collect()
+        } else {
+            names
+                .iter()
+                .map(|name| {
+                    self.parts
+                        .iter()
+                        .find(|running| &running.part.name == name)
+                        .ok_or_else(|| {
+                            Refusal::NotFound(format!("this computer runs no engine part {name:?}"))
+                        })
+                })
+                .collect::<Result<_, _>>()?
+        };
+        let mut state = self.lock();
+        for running in wanted {
+            let name = &running.part.name;
+            let busy = matches!(
+                state.attempts.get(name),
+                Some(Attempt::Queued | Attempt::Installing { .. })
+            );
+            if !busy {
+                state.attempts.insert(name.clone(), Attempt::Queued);
+                state.queue.push_back(name.clone());
+            }
+        }
+        drop(state);
+        self.wake.notify_one();
+        Ok(())
+    }
+
+    /// Stop the install in progress and forget the queue. Parts already
+    /// installed stay installed.
+    pub(crate) fn cancel(&self) {
+        let mut state = self.lock();
+        for name in state.queue.drain(..).collect::<Vec<_>>() {
+            state.attempts.remove(&name);
+        }
+        if let Some(cancel) = &state.active {
+            let _ = cancel.send(true);
+        }
+    }
+
+    /// The engine as it stands now.
+    pub(crate) fn list(&self) -> EngineResponse {
+        let attempts = self.lock().attempts.clone();
+        EngineResponse {
+            managed: true,
+            parts: self
+                .parts
+                .iter()
+                .map(|running| self.describe(running, &attempts, true))
+                .collect(),
+            python_version: self.python(),
+            unavailable: self.manifest.as_ref().err().cloned().unwrap_or_default(),
+        }
+    }
+
+    /// The part whose worker family is `family`, when the engine runs it.
+    /// Its size is not measured: readiness asks often, and never shows it.
+    pub(crate) fn part_for_family(&self, family: &str) -> Option<EnginePartV1> {
+        let attempts = self.lock().attempts.clone();
+        self.parts
+            .iter()
+            .find(|running| running.part.family == family)
+            .map(|running| self.describe(running, &attempts, false))
+    }
+
+    fn describe(
+        &self,
+        running: &Running,
+        attempts: &BTreeMap<String, Attempt>,
+        measure: bool,
+    ) -> EnginePartV1 {
+        let python = self.python();
+        let (state, detail) = match attempts.get(&running.part.name) {
+            Some(Attempt::Queued) => ("queued".to_owned(), String::new()),
+            Some(Attempt::Installing { step }) => ("installing".to_owned(), step.clone()),
+            Some(Attempt::Failed { message }) => ("failed".to_owned(), message.clone()),
+            None => (
+                self.install_state(running, &python).to_owned(),
+                String::new(),
+            ),
+        };
+        let watch = running
+            .watch
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let detail = match (&watch.state, detail.is_empty()) {
+            (process::ProcessState::Waiting { reason }, true) => reason.clone(),
+            _ => detail,
+        };
+        let installed_bytes = if measure {
+            self.installer
+                .current(&running.part.name)
+                .map_or(0, |(_, dir)| crate::library::tree_bytes(&dir))
+        } else {
+            0
+        };
+        EnginePartV1 {
+            name: running.part.name.clone(),
+            title: running.part.title.clone(),
+            family: running.part.family.clone(),
+            state,
+            detail,
+            installed_bytes,
+            download_bytes: running.part.download_bytes_here(),
+            process: watch.state.name().to_owned(),
+            restarts: watch.restarts,
+            log_path: running.log.display().to_string(),
+        }
+    }
+
+    fn python(&self) -> String {
+        self.manifest
+            .as_ref()
+            .map(|manifest| manifest.python.clone())
+            .unwrap_or_default()
+    }
+
+    /// missing, installed or outdated, from what is on disk.
+    fn install_state(&self, running: &Running, python: &str) -> &'static str {
+        match self.installer.current(&running.part.name) {
+            None => "missing",
+            Some((pointer, _)) if pointer.digest == running.part.digest(python) => "installed",
+            Some(_) => "outdated",
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, State> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    async fn run_installs(self: Arc<Self>) {
+        loop {
+            if self.stopping.load(Ordering::SeqCst) {
+                return;
+            }
+            let next = {
+                let mut state = self.lock();
+                state.queue.pop_front().map(|name| {
+                    let (cancel, cancelled) = watch::channel(false);
+                    state.active = Some(cancel);
+                    state.attempts.insert(
+                        name.clone(),
+                        Attempt::Installing {
+                            step: "Starting".to_owned(),
+                        },
+                    );
+                    (name, cancelled)
+                })
+            };
+            let Some((name, mut cancelled)) = next else {
+                let mut stop = self.stop.subscribe();
+                tokio::select! {
+                    () = self.wake.notified() => {}
+                    () = until_true(&mut stop) => return,
+                }
+                continue;
+            };
+            let outcome = self.install_one(&name, &mut cancelled).await;
+            let mut state = self.lock();
+            state.active = None;
+            match outcome {
+                Ok(()) => {
+                    state.attempts.remove(&name);
+                }
+                Err(message) if message == CANCELLED => {
+                    state.attempts.remove(&name);
+                }
+                Err(message) => {
+                    tracing::warn!(part = name, message, "an engine part failed to install");
+                    state.attempts.insert(name, Attempt::Failed { message });
+                }
+            }
+        }
+    }
+
+    async fn install_one(
+        &self,
+        name: &str,
+        cancelled: &mut watch::Receiver<bool>,
+    ) -> Result<(), String> {
+        let Some(running) = self.parts.iter().find(|running| running.part.name == name) else {
+            return Err(format!("this computer runs no engine part {name:?}"));
+        };
+        // Python and the third-party wheels are downloaded: counted by the
+        // Local Lock like every network operation the person starts.
+        self.policy.note_task_start("engine-install");
+        let python = self.python();
+        let step = |step: &str| {
+            let mut state = self.lock();
+            if let Some(Attempt::Installing { step: current }) = state.attempts.get_mut(name) {
+                step.clone_into(current);
+            }
+        };
+        let dir = self
+            .installer
+            .install(&running.part, &python, &step, cancelled)
+            .await?;
+        tracing::info!(part = name, install = %dir.display(), "engine part installed");
+        // The worker moves to the new install; its old one is removed the
+        // next time the daemon starts, when nothing runs from it.
+        running.install.send_replace(Some(dir));
+        Ok(())
+    }
+}
+
+/// Resolve once `flag` is true, or once nothing can set it any more. The
+/// borrow `wait_for` returns is dropped inside, so the caller's future stays
+/// `Send`.
+pub(crate) async fn until_true(flag: &mut watch::Receiver<bool>) {
+    let _ = flag.wait_for(|value| *value).await;
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use std::fs;
+
+    use super::*;
+
+    fn paths(root: &std::path::Path) -> EnginePaths {
+        EnginePaths {
+            uv: root.join("uv"),
+            shipped: root.join("resources").join("engine"),
+            engine_dir: root.join("data").join("engine"),
+            logs_dir: root.join("data").join("logs"),
+            identity_dir: root.join("data").join("state").join("worker-identity"),
+            trust_dir: root.join("data").join("state").join("worker-trust"),
+            worker_socket: root.join("w.sock"),
+            shm_socket: root.join("s.sock"),
+        }
+    }
+
+    fn ship(root: &std::path::Path, parts: &[(&str, &str)]) {
+        let shipped = root.join("resources").join("engine");
+        fs::create_dir_all(&shipped).unwrap();
+        let digest = "a".repeat(64);
+        let parts: Vec<String> = parts
+            .iter()
+            .map(|(name, platform)| {
+                format!(
+                    r#"{{"name":"{name}","title":"Part {name}","family":"fam-{name}","command":"clipmill-worker-{name}","module":"clipmill_worker_{name}","platforms":["{platform}"],"requirements":"requirements/{name}.txt","requirements_sha256":"{digest}","wheels":[{{"file":"wheels/{name}.whl","sha256":"{digest}"}}],"download_bytes":{{"{platform}":1234}}}}"#
+                )
+            })
+            .collect();
+        fs::write(
+            shipped.join("engine.json"),
+            format!(
+                r#"{{"schema_version":"clipmill.engine.v1","python":"3.12.13","parts":[{}]}}"#,
+                parts.join(",")
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn only_the_parts_this_computer_runs_are_listed_and_enrolled() {
+        let root = tempfile::tempdir().unwrap();
+        ship(
+            root.path(),
+            &[("one", manifest::platform()), ("two", "elsewhere")],
+        );
+        let engine = Engine::prepare(paths(root.path()), Arc::new(LocalLockPolicy::new()));
+        let listing = engine.list();
+        assert!(listing.managed);
+        assert_eq!(listing.python_version, "3.12.13");
+        assert_eq!(listing.parts.len(), 1);
+        let part = &listing.parts[0];
+        assert_eq!(
+            (part.name.as_str(), part.state.as_str()),
+            ("one", "missing")
+        );
+        assert_eq!(part.download_bytes, 1234);
+        assert_eq!(part.process, "stopped");
+        let trusted = fs::read_dir(root.path().join("data/state/worker-trust"))
+            .unwrap()
+            .count();
+        assert_eq!(trusted, 1, "a key for the one part here");
+    }
+
+    #[test]
+    fn an_app_without_an_engine_says_why_and_refuses_to_install() {
+        let root = tempfile::tempdir().unwrap();
+        let engine = Engine::prepare(paths(root.path()), Arc::new(LocalLockPolicy::new()));
+        let listing = engine.list();
+        assert!(listing.parts.is_empty());
+        assert!(!listing.unavailable.is_empty());
+        assert!(matches!(engine.install(&[]), Err(Refusal::Unavailable(_))));
+    }
+
+    #[test]
+    fn asking_for_a_part_this_computer_does_not_run_is_refused_by_name() {
+        let root = tempfile::tempdir().unwrap();
+        ship(root.path(), &[("one", manifest::platform())]);
+        let engine = Engine::prepare(paths(root.path()), Arc::new(LocalLockPolicy::new()));
+        let refused = engine.install(&["two".to_owned()]).unwrap_err();
+        assert!(refused.message().contains("two"), "{refused:?}");
+    }
+
+    #[tokio::test]
+    async fn an_install_that_cannot_start_fails_with_a_reason_and_counts_as_network_use() {
+        let root = tempfile::tempdir().unwrap();
+        ship(root.path(), &[("one", manifest::platform())]);
+        let policy = Arc::new(LocalLockPolicy::new());
+        let engine = Engine::prepare(paths(root.path()), Arc::clone(&policy));
+        engine.start();
+        engine.install(&[]).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let part = engine.list().parts.remove(0);
+            if part.state == "failed" {
+                assert!(part.detail.contains("could not start"), "{}", part.detail);
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "still {}", part.state);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(policy.status().egress_attempts, 1);
+        engine.stop().await;
+    }
+}

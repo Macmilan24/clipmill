@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -165,6 +165,14 @@ pub mod request {
         ListAssets(super::ListAssetsRequest),
         #[prost(message, tag = "78")]
         ResolveAsset(super::ResolveAssetRequest),
+        #[prost(message, tag = "79")]
+        GetEngine(super::GetEngineRequest),
+        #[prost(message, tag = "80")]
+        InstallEngine(super::InstallEngineRequest),
+        #[prost(message, tag = "81")]
+        CancelEngineInstall(super::CancelEngineInstallRequest),
+        #[prost(message, tag = "82")]
+        Shutdown(super::ShutdownRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -175,7 +183,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -296,6 +304,11 @@ pub mod response {
         ListAssets(super::ListAssetsResponse),
         #[prost(message, tag = "64")]
         ResolveAsset(super::ResolveAssetResponse),
+        /// Every engine request answers with the engine as it now stands.
+        #[prost(message, tag = "65")]
+        Engine(super::EngineResponse),
+        #[prost(message, tag = "66")]
+        Shutdown(super::ShutdownResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -3251,6 +3264,83 @@ pub struct CleanStorageResponse {
     #[prost(message, optional, tag = "3")]
     pub storage: ::core::option::Option<GetStorageStatsResponse>,
 }
+// ---- The processing engine ----
+//
+// The model workers a packaged ClipMill installs on first run and keeps
+// running itself: one Python environment per part, built by the app's pinned
+// uv from packages the app carries and third-party wheels pinned by hash. A
+// development checkout starts its workers by hand, so its daemon reports
+// `managed` false and installs nothing.
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetEngineRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InstallEngineRequest {
+    /// The parts to install or bring up to date, by name. Empty installs every
+    /// part this computer runs that is missing, out of date or failed.
+    #[prost(string, repeated, tag = "1")]
+    pub parts: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Stop the install in progress; parts already installed stay installed.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CancelEngineInstallRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EnginePartV1 {
+    /// Its name in the app's engine, e.g. "vad".
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// What it does, for a person: "Speech detection".
+    #[prost(string, tag = "2")]
+    pub title: ::prost::alloc::string::String,
+    /// The worker family its tasks are leased to, e.g. "speech-vad".
+    #[prost(string, tag = "3")]
+    pub family: ::prost::alloc::string::String,
+    /// missing, queued, installing, installed, outdated or failed. Outdated is
+    /// an install from an earlier version of the app: it keeps running until
+    /// the new one is in place.
+    #[prost(string, tag = "4")]
+    pub state: ::prost::alloc::string::String,
+    /// The step running now, or one sentence on why the last attempt failed.
+    #[prost(string, tag = "5")]
+    pub detail: ::prost::alloc::string::String,
+    /// Bytes on disk, when installed.
+    #[prost(uint64, tag = "6")]
+    pub installed_bytes: u64,
+    /// What installing it downloads, measured when the app was built; zero when
+    /// not measured.
+    #[prost(uint64, tag = "7")]
+    pub download_bytes: u64,
+    /// Its worker process: stopped, starting, running or waiting (restarting
+    /// after it stopped on its own).
+    #[prost(string, tag = "8")]
+    pub process: ::prost::alloc::string::String,
+    /// How often its process stopped on its own since the daemon started.
+    #[prost(uint32, tag = "9")]
+    pub restarts: u32,
+    /// Where its process writes what it says, for a problem report.
+    #[prost(string, tag = "10")]
+    pub log_path: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EngineResponse {
+    /// Whether this daemon installs and runs its own workers.
+    #[prost(bool, tag = "1")]
+    pub managed: bool,
+    #[prost(message, repeated, tag = "2")]
+    pub parts: ::prost::alloc::vec::Vec<EnginePartV1>,
+    /// The CPython the engine runs its workers on.
+    #[prost(string, tag = "3")]
+    pub python_version: ::prost::alloc::string::String,
+    /// One sentence when a managed engine cannot be installed at all here.
+    #[prost(string, tag = "4")]
+    pub unavailable: ::prost::alloc::string::String,
+}
+/// Stop the daemon: accepted work is recorded as it is at shutdown and
+/// resumes when a daemon next starts. Answered before the daemon stops.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ShutdownRequest {}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ShutdownResponse {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ErrorCode {

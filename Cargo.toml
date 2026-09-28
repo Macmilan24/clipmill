@@ -50,7 +50,7 @@ hex = "0.4.3"
 humantime = "2.4.0"
 memfd = "0.6.5"
 mmap-io = { version = "1.0.0", default-features = false }
-nix = { version = "0.31.3", features = ["fs", "mman", "socket", "uio"] }
+nix = { version = "0.31.3", features = ["fs", "mman", "signal", "socket", "uio"] }
 prost = "0.14"
 rusqlite = { version = "0.40.1", features = ["backup", "bundled"] }
 serde = { version = "1", features = ["derive"] }

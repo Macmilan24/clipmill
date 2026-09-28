@@ -13,6 +13,8 @@ mod db;
 mod device;
 mod discovery;
 mod editorial;
+#[cfg(unix)]
+mod engine;
 mod error;
 mod evidence;
 mod export;
@@ -43,7 +45,7 @@ mod worker;
 mod youtube_transport;
 
 pub use artifacts::{ArtifactCoordinator, ArtifactServiceError};
-pub use config::{Config, Paths};
+pub use config::{Bundle, Config, Paths};
 #[cfg(unix)]
 pub use daemon::{Daemon, EditLog};
 pub use device::{
