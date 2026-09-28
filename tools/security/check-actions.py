@@ -12,6 +12,11 @@ ACTION_PATTERN = re.compile(
 )
 JOB_PATTERN = re.compile(r"^  ([a-zA-Z0-9_-]+):\s*$", re.MULTILINE)
 PIN_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+# The one place a workflow may write: the release workflow's publish job,
+# which turns what the read-only build jobs produced into a draft release.
+# It may run no third-party action but the artifact download, so nothing
+# outside this repository ever holds a token that can write to it.
+WRITE_EXCEPTION = ("release.yml", "publish", {"actions/download-artifact"})
 
 
 def main() -> int:
@@ -25,9 +30,10 @@ def main() -> int:
             errors.append(f"{path}: workflow permissions must be contents: read")
         if re.search(r"^\s+cancel-in-progress:\s+true\s*$", text, re.MULTILINE) is None:
             errors.append(f"{path}: pull-request concurrency cancellation is missing")
-        if re.search(r"^\s+[a-zA-Z_-]+:\s+write\s*$", text, re.MULTILINE):
-            errors.append(f"{path}: write workflow permission is forbidden")
         jobs_start = re.search(r"^jobs:\s*$", text, re.MULTILINE)
+        header = text if jobs_start is None else text[: jobs_start.start()]
+        if re.search(r"^\s+[a-zA-Z_-]+:\s+write\s*$", header, re.MULTILINE):
+            errors.append(f"{path}: write workflow permission is forbidden")
         if jobs_start is None:
             errors.append(f"{path}: jobs mapping is missing")
             continue
@@ -45,6 +51,21 @@ def main() -> int:
                 r"^\s+persist-credentials:\s+false\s*$", block, re.MULTILINE
             ):
                 errors.append(f"{path}:{job}: checkout credentials must not persist")
+            if re.search(r"^\s+[a-zA-Z_-]+:\s+write\s*$", block, re.MULTILINE):
+                name, allowed_job, allowed_actions = WRITE_EXCEPTION
+                used = {action for action, _, _ in ACTION_PATTERN.findall(block)}
+                if (
+                    path.name != name
+                    or job != allowed_job
+                    or not re.search(r"^\s+contents:\s+write\s*$", block, re.MULTILINE)
+                    or re.search(r"^\s+(?!contents)[a-zA-Z_-]+:\s+write\s*$", block, re.MULTILINE)
+                    or not used <= allowed_actions
+                ):
+                    errors.append(
+                        f"{path}:{job}: write permission is allowed only for the release "
+                        "workflow's publish job, with contents only and no third-party action "
+                        "but the artifact download"
+                    )
         for action, revision, comment in ACTION_PATTERN.findall(text):
             if action.startswith("./"):
                 continue
