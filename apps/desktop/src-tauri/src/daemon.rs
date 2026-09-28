@@ -28,11 +28,11 @@ use clipmill_contracts::proto::ipc::v1::{
     SubmitExportBatchRequest, SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent,
     UpdateExportBatchItemRequest, request, response,
 };
+use clipmilld::endpoint::{self, Stream};
 use prost::Message;
 use serde::Serialize;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
     process::{Child, Command},
     sync::{Mutex, RwLock, Semaphore},
     time::{sleep, timeout},
@@ -139,7 +139,7 @@ fn encode_varint(mut value: u64, out: &mut Vec<u8>) {
     }
 }
 
-async fn write_frame(stream: &mut UnixStream, payload: &[u8]) -> Result<(), DaemonLinkError> {
+async fn write_frame(stream: &mut Stream, payload: &[u8]) -> Result<(), DaemonLinkError> {
     let mut frame = Vec::with_capacity(payload.len() + 10);
     encode_varint(payload.len() as u64, &mut frame);
     frame.extend_from_slice(payload);
@@ -148,7 +148,7 @@ async fn write_frame(stream: &mut UnixStream, payload: &[u8]) -> Result<(), Daem
     Ok(())
 }
 
-async fn read_frame(stream: &mut UnixStream) -> Result<Vec<u8>, DaemonLinkError> {
+async fn read_frame(stream: &mut Stream) -> Result<Vec<u8>, DaemonLinkError> {
     let mut length = 0_u64;
     let mut shift = 0_u32;
     for index in 0..10_u32 {
@@ -640,7 +640,7 @@ impl DaemonClient {
         // exchange, reply included.
         let _permit = CALLS.acquire().await.map_err(|_| DaemonLinkError::Closed)?;
         let exchange = || async {
-            let mut stream = UnixStream::connect(&self.socket)
+            let mut stream = endpoint::connect(&self.socket)
                 .await
                 .map_err(DaemonLinkError::Unavailable)?;
             write_frame(&mut stream, &frame).await?;
@@ -956,7 +956,7 @@ impl DaemonClient {
                 },
             )),
         };
-        let mut stream = UnixStream::connect(&self.socket)
+        let mut stream = endpoint::connect(&self.socket)
             .await
             .map_err(DaemonLinkError::Unavailable)?;
         write_frame(&mut stream, &envelope.encode_to_vec()).await?;

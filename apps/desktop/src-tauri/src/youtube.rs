@@ -392,30 +392,24 @@ async fn open_google_authorization(raw: &str) -> Result<(), String> {
 async fn open_browser(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let mut command = tokio::process::Command::new("/usr/bin/open");
-    #[cfg(target_os = "linux")]
+    #[cfg(windows)]
+    let mut command = tokio::process::Command::new("explorer.exe");
+    #[cfg(all(unix, not(target_os = "macos")))]
     let mut command = tokio::process::Command::new("xdg-open");
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            command
-                .arg(url)
-                .kill_on_drop(true)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status(),
-        )
-        .await;
-        match result {
-            Ok(Ok(status)) if status.success() => Ok(()),
-            _ => Err("The system browser could not be opened. Start sign-in again.".to_owned()),
-        }
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _unused = url;
-        Err("Opening the browser is unavailable on this platform.".to_owned())
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        command
+            .arg(url)
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status(),
+    )
+    .await;
+    match result {
+        Ok(Ok(status)) if crate::file_manager_succeeded(status) => Ok(()),
+        _ => Err("The system browser could not be opened. Start sign-in again.".to_owned()),
     }
 }
 
