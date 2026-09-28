@@ -82,6 +82,10 @@ message Request {
     ImportAssetRequest import_asset = 76;
     ListAssetsRequest list_assets = 77;
     ResolveAssetRequest resolve_asset = 78;
+    GetEngineRequest get_engine = 79;
+    InstallEngineRequest install_engine = 80;
+    CancelEngineInstallRequest cancel_engine_install = 81;
+    ShutdownRequest shutdown = 82;
   }
 }
 
@@ -147,6 +151,9 @@ message Response {
     ImportAssetResponse import_asset = 62;
     ListAssetsResponse list_assets = 63;
     ResolveAssetResponse resolve_asset = 64;
+    // Every engine request answers with the engine as it now stands.
+    EngineResponse engine = 65;
+    ShutdownResponse shutdown = 66;
   }
 }
 
@@ -2359,3 +2366,67 @@ message CleanStorageResponse {
   // Measured again after the clean-up.
   GetStorageStatsResponse storage = 3;
 }
+
+// ---- The processing engine ----
+//
+// The model workers a packaged ClipMill installs on first run and keeps
+// running itself: one Python environment per part, built by the app's pinned
+// uv from packages the app carries and third-party wheels pinned by hash. A
+// development checkout starts its workers by hand, so its daemon reports
+// `managed` false and installs nothing.
+
+message GetEngineRequest {}
+
+message InstallEngineRequest {
+  // The parts to install or bring up to date, by name. Empty installs every
+  // part this computer runs that is missing, out of date or failed.
+  repeated string parts = 1;
+}
+
+// Stop the install in progress; parts already installed stay installed.
+message CancelEngineInstallRequest {}
+
+message EnginePartV1 {
+  // Its name in the app's engine, e.g. "vad".
+  string name = 1;
+  // What it does, for a person: "Speech detection".
+  string title = 2;
+  // The worker family its tasks are leased to, e.g. "speech-vad".
+  string family = 3;
+  // missing, queued, installing, installed, outdated or failed. Outdated is
+  // an install from an earlier version of the app: it keeps running until
+  // the new one is in place.
+  string state = 4;
+  // The step running now, or one sentence on why the last attempt failed.
+  string detail = 5;
+  // Bytes on disk, when installed.
+  uint64 installed_bytes = 6;
+  // What installing it downloads, measured when the app was built; zero when
+  // not measured.
+  uint64 download_bytes = 7;
+  // Its worker process: stopped, starting, running or waiting (restarting
+  // after it stopped on its own).
+  string process = 8;
+  // How often its process stopped on its own since the daemon started.
+  uint32 restarts = 9;
+  // Where its process writes what it says, for a problem report.
+  string log_path = 10;
+  // Installed for the daemon to run when a task needs it (YouTube import),
+  // rather than kept running as a worker; `process` then stays stopped.
+  bool tool = 11;
+}
+
+message EngineResponse {
+  // Whether this daemon installs and runs its own workers.
+  bool managed = 1;
+  repeated EnginePartV1 parts = 2;
+  // The CPython the engine runs its workers on.
+  string python_version = 3;
+  // One sentence when a managed engine cannot be installed at all here.
+  string unavailable = 4;
+}
+
+// Stop the daemon: accepted work is recorded as it is at shutdown and
+// resumes when a daemon next starts. Answered before the daemon stops.
+message ShutdownRequest {}
+message ShutdownResponse {}

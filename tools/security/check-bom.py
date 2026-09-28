@@ -15,10 +15,14 @@ from urllib.parse import urlparse
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 BUILD_PATTERN = re.compile(r"^[0-9]+_[0-9]+\.[0-9]+\.[0-9]+$")
+# Every pinned build is one a released app may carry (R4): GPL, never
+# nonfree. A build that is not redistributable cannot be pinned at all.
 LICENSE_POLICY = {
     "macos-arm64": ("gpl-v3", True),
-    "linux-amd64": ("gpl-v3-nonfree", False),
+    "linux-amd64": ("gpl-v3", True),
+    "windows-amd64": ("gpl-v3", True),
 }
+UV_PLATFORMS = {"macos-arm64", "linux-amd64", "windows-amd64"}
 # Fonts ship inside the rendered pixels of every clip a user publishes, so the
 # licence has to permit that without a per-user grant.
 FONT_LICENSE_ALLOWLIST = {"OFL-1.1", "Apache-2.0", "CC0-1.0"}
@@ -35,47 +39,22 @@ def main() -> int:
     try:
         bom = tomllib.loads(options.bom.read_text(encoding="utf-8"))
         ffmpeg = bom["ffmpeg"]
-        version = ffmpeg["version"]
-        if not isinstance(version, str) or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
-            raise ValueError("FFmpeg version is invalid")
-        provider_host = urlparse(str(ffmpeg["provider"]).split(" ", 1)[0]).hostname
-        if not provider_host:
-            raise ValueError("FFmpeg provider must be HTTPS")
         platforms = {key for key, value in ffmpeg.items() if isinstance(value, dict)}
-        if platforms != {"macos-arm64", "linux-amd64"}:
-            raise ValueError("FFmpeg BOM must pin exactly macOS arm64 and Linux amd64")
+        if platforms != set(LICENSE_POLICY):
+            raise ValueError(
+                "FFmpeg BOM must pin exactly macOS arm64, Linux amd64 and Windows amd64"
+            )
         for platform in sorted(platforms):
-            entry = ffmpeg[platform]
-            build = entry.get("build")
-            if (
-                not isinstance(build, str)
-                or BUILD_PATTERN.fullmatch(build) is None
-                or not build.endswith(version)
-            ):
-                raise ValueError(f"{platform} build identity is invalid")
-            expected_license, expected_redistributable = LICENSE_POLICY[platform]
-            if (
-                entry.get("license_mode") != expected_license
-                or entry.get("redistributable") is not expected_redistributable
-            ):
-                raise ValueError(f"{platform} license/distribution policy is invalid")
-            for binary in ("ffmpeg", "ffprobe"):
-                url = entry.get(f"{binary}_url")
-                digest = entry.get(f"{binary}_sha256")
-                parsed = urlparse(str(url))
-                if parsed.scheme != "https" or parsed.hostname != provider_host:
-                    raise ValueError(f"{platform} {binary} URL has an untrusted provider")
-                if build not in parsed.path:
-                    raise ValueError(f"{platform} {binary} URL omits its build identity")
-                if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None:
-                    raise ValueError(f"{platform} {binary} digest is invalid")
+            _check_ffmpeg_pin(platform, ffmpeg, ffmpeg[platform])
+        _check_uv(bom)
         sqlite = bom["sqlite"]
         if sqlite.get("min_version") != "3.51.3" or sqlite.get("min_version_number") != 3051003:
             raise ValueError("SQLite corruption-fix floor changed without a BOM decision")
         current_platform = _current_platform()
-        allow_nonfree = ffmpeg[current_platform]["license_mode"] == "gpl-v3-nonfree"
+        entry = ffmpeg[current_platform]
+        reports = str(entry.get("reports", entry.get("version", ffmpeg["version"])))
         for name, path in (("ffmpeg", options.ffmpeg), ("ffprobe", options.ffprobe)):
-            _verify_binary(name, path, version, allow_nonfree)
+            _verify_binary(name, path, reports)
         _verify_font(bom, options.fonts)
         _verify_emoji(bom, options.emoji)
     except (
@@ -92,6 +71,99 @@ def main() -> int:
         "platform distribution policy; SQLite floor; caption font and libass; emoji)"
     )
     return 0
+
+
+def _check_ffmpeg_pin(platform: str, ffmpeg: dict, entry: dict) -> None:
+    """One platform's build: its provider, identity, licence and every digest.
+
+    A platform either pins ffmpeg and ffprobe as two files, or pins one
+    archive and names the two members taken out of it.
+    """
+    version = str(entry.get("version", ffmpeg["version"]))
+    if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
+        raise ValueError(f"{platform} FFmpeg version is invalid")
+    provider_host = urlparse(
+        str(entry.get("provider", ffmpeg["provider"])).split(" ", 1)[0]
+    ).hostname
+    if not provider_host:
+        raise ValueError(f"{platform} FFmpeg provider must be HTTPS")
+    build = entry.get("build")
+    if (
+        not isinstance(build, str)
+        or BUILD_PATTERN.fullmatch(build) is None
+        or not build.endswith(version)
+    ):
+        raise ValueError(f"{platform} build identity is invalid")
+    expected_license, expected_redistributable = LICENSE_POLICY[platform]
+    if (
+        entry.get("license_mode") != expected_license
+        or entry.get("redistributable") is not expected_redistributable
+    ):
+        raise ValueError(f"{platform} license/distribution policy is invalid")
+    # The identity the URL must carry: the provider's own build name when it
+    # prints one, otherwise the pinned build.
+    identity = str(entry.get("reports", build))
+    if "archive_url" in entry:
+        pins = [("archive", entry.get("archive_url"), entry.get("archive_sha256"))]
+        for binary in ("ffmpeg", "ffprobe"):
+            member = Path(str(entry.get(f"{binary}_member", "")))
+            if (
+                not member.parts
+                or member.is_absolute()
+                or ".." in member.parts
+                or not member.name.startswith(binary)
+            ):
+                raise ValueError(f"{platform} {binary} member escapes its archive")
+    else:
+        pins = [
+            (binary, entry.get(f"{binary}_url"), entry.get(f"{binary}_sha256"))
+            for binary in ("ffmpeg", "ffprobe")
+        ]
+    for label, url, digest in pins:
+        parsed = urlparse(str(url))
+        if parsed.scheme != "https" or parsed.hostname != provider_host:
+            raise ValueError(f"{platform} {label} URL has an untrusted provider")
+        if identity not in parsed.path:
+            raise ValueError(f"{platform} {label} URL omits its build identity")
+        if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None:
+            raise ValueError(f"{platform} {label} digest is invalid")
+    # A GPL build is shipped with a pointer to its complete source, which the
+    # app's FFmpeg notice prints: the provider's scripts and library versions.
+    source = entry.get("source")
+    if (
+        not isinstance(source, list)
+        or not source
+        or any(urlparse(str(url)).scheme != "https" for url in source)
+    ):
+        raise ValueError(f"{platform} FFmpeg names no HTTPS source for its build")
+
+
+def _check_uv(bom: dict) -> None:
+    """The installer a packaged app ships: one pinned release, every archive hashed."""
+    uv = bom["uv"]
+    version = str(uv.get("version"))
+    if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
+        raise ValueError("uv version is invalid")
+    platforms = {key for key, value in uv.items() if isinstance(value, dict)}
+    if platforms != UV_PLATFORMS:
+        raise ValueError("uv must be pinned for macOS arm64, Linux amd64 and Windows amd64")
+    for platform in sorted(platforms):
+        entry = uv[platform]
+        url = urlparse(str(entry.get("url")))
+        if (
+            url.scheme != "https"
+            or url.hostname != "github.com"
+            or not url.path.startswith(f"/astral-sh/uv/releases/download/{version}/")
+        ):
+            raise ValueError(f"{platform} uv is not a pinned upstream release")
+        if SHA256_PATTERN.fullmatch(str(entry.get("sha256"))) is None:
+            raise ValueError(f"{platform} uv digest is invalid")
+        member = Path(str(entry.get("member", "")))
+        if not member.parts or member.is_absolute() or ".." in member.parts:
+            raise ValueError(f"{platform} uv member escapes its archive")
+    python = str(bom["python"].get("version"))
+    if re.fullmatch(r"3\.[0-9]+\.[0-9]+", python) is None:
+        raise ValueError("the engine's Python version is invalid")
 
 
 EMOJI_CODE_PATTERN = re.compile(r"^[0-9a-f]{4,5}(_[0-9a-f]{4,5})*$")
@@ -141,10 +213,12 @@ def _current_platform() -> str:
         return "macos-arm64"
     if system == "Linux" and machine in {"amd64", "x86_64"}:
         return "linux-amd64"
+    if system == "Windows" and machine in {"amd64", "x86_64"}:
+        return "windows-amd64"
     raise ValueError(f"unsupported BOM verification platform: {system}-{machine}")
 
 
-def _verify_binary(name: str, path: Path, version: str, allow_nonfree: bool) -> None:
+def _verify_binary(name: str, path: Path, reports: str) -> None:
     if path.is_symlink() or not path.is_file():
         raise ValueError(f"installed {name} is missing or unsafe: {path}")
     result = subprocess.run(
@@ -157,13 +231,14 @@ def _verify_binary(name: str, path: Path, version: str, allow_nonfree: bool) -> 
     )
     output = result.stdout
     first_line = output.splitlines()[0] if output else ""
-    if not first_line.startswith(f"{name} version {version}"):
-        raise ValueError(f"installed {name} does not match BOM version {version}")
+    if not first_line.startswith(f"{name} version {reports}"):
+        raise ValueError(f"installed {name} does not match its pinned build {reports}")
     if "--enable-gpl" not in output or "--enable-version3" not in output:
         raise ValueError(f"installed {name} omitted its declared GPL/version3 license flags")
-    has_nonfree = "--enable-nonfree" in output
-    if has_nonfree != allow_nonfree:
-        raise ValueError(f"installed {name} nonfree mode differs from its BOM policy")
+    # Nonfree builds cannot be redistributed, and every pinned build is one a
+    # released app carries.
+    if "--enable-nonfree" in output:
+        raise ValueError(f"installed {name} is a nonfree build, which cannot be redistributed")
     # Captions burn in through libass. A build without it cannot produce a
     # compliant clip, so its absence is a policy failure rather than a
     # surprise discovered mid-render.

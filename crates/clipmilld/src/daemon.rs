@@ -33,6 +33,8 @@ use crate::{
 };
 
 const MAX_CONNECTIONS: usize = 64;
+/// The component a packaged app imports `YouTube` videos with.
+const YOUTUBE_IMPORT: &str = "youtube-import";
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -215,6 +217,23 @@ impl Daemon {
         // One counter for the whole process, offered every task either lease
         // path starts, and read by Health and by Settings.
         let policy = Arc::new(crate::policy::LocalLockPolicy::new());
+        // A packaged app's engine enrols its workers' keys here, before the
+        // worker service reads the keys it trusts.
+        let engine = config.bundle.as_ref().map(|bundle| {
+            crate::engine::Engine::prepare(
+                crate::engine::EnginePaths {
+                    uv: bundle.uv.clone(),
+                    shipped: bundle.resources_dir.join("engine"),
+                    engine_dir: config.paths.engine_dir.clone(),
+                    logs_dir: config.paths.logs_dir.clone(),
+                    identity_dir: config.paths.worker_identity_dir.clone(),
+                    trust_dir: config.paths.worker_trust_dir.clone(),
+                    worker_socket: config.paths.worker_socket.clone(),
+                    shm_socket: config.paths.shm_socket.clone(),
+                },
+                Arc::clone(&policy),
+            )
+        });
         let scheduler = Scheduler::start(
             database.handle(),
             artifacts.handle(),
@@ -309,6 +328,13 @@ impl Daemon {
         .with_library(library)
         .with_collector(collector)
         .with_fonts(config.fonts_dir.clone());
+        let service = match engine {
+            // A packaged app imports from YouTube with its own component.
+            Some(engine) => service
+                .with_youtube_helper(engine.launcher(YOUTUBE_IMPORT))
+                .with_engine(engine),
+            None => service,
+        };
         // The person's own pictures and sounds. A folder that cannot be made
         // leaves the rest of the daemon working; bringing one in says why.
         let service = match crate::assets::AssetStore::new(
@@ -430,11 +456,32 @@ impl Daemon {
             maintenance_stopped,
         ));
         tokio::pin!(shutdown);
+        let requested = service.shutdown_requested();
+        // The engine's workers connect to the socket this loop accepts on;
+        // until it runs they wait in the listener's backlog or retry.
+        if let Some(engine) = service.engine() {
+            engine.start();
+            // A Mac's editorial model proves it runs before its Metal worker
+            // is admitted; the engine does this once the component and the
+            // model are both here, whichever arrives last.
+            let prover = service.clone();
+            let mut stopping = engine.stopping();
+            tokio::spawn(async move {
+                loop {
+                    prover.prove_editorial_runtime().await;
+                    tokio::select! {
+                        () = tokio::time::sleep(Duration::from_secs(15)) => {}
+                        () = crate::engine::until_true(&mut stopping) => return,
+                    }
+                }
+            });
+        }
 
         loop {
             tokio::select! {
                 biased;
                 () = &mut shutdown => break,
+                () = requested.notified() => break,
                 joined = connections.join_next(), if !connections.is_empty() => {
                     if let Some(result) = joined {
                         log_connection_result(result);
@@ -525,6 +572,11 @@ impl Daemon {
         drop(worker_listener);
         drop(shm_listener);
         worker_service.stop_scheduling();
+        // Ask the daemon's own workers to leave now, so each releases its
+        // lease over a connection the drain below still serves.
+        if let Some(engine) = service.engine() {
+            engine.stop().await;
+        }
         service.stop_youtube_imports().await;
         service.stop_youtube_publishing().await;
         service.stop_model_library().await;

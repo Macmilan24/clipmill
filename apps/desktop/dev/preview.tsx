@@ -31,6 +31,7 @@ import { Settings } from '../src/screens/Settings.js';
 import { ModelsDevice } from '../src/screens/ModelsDevice.js';
 import { device, readiness, lock } from './settings-fixtures.js';
 import { previewClean, previewModelApi, storageWithCleanUp } from './model-fixtures.js';
+import { previewComponentsApi, setupScenario } from './setup-fixtures.js';
 import { NewProject } from '../src/screens/NewProject.js';
 import { LibraryLoader } from '../src/library/loader.js';
 import { ImportLoader } from '../src/import/loader.js';
@@ -62,9 +63,16 @@ import '../src/styles.css';
 const noAction = () => {};
 const modelScenario =
   new URLSearchParams(location.search).get('models') === 'installed' ? 'installed' : 'fresh';
+// ?setup=fresh|update|failed|installed: a packaged app's components, on New
+// Project and Models, with the model library starting fresh beside them.
+const setupState = setupScenario();
+const componentApi = setupState === null ? {} : previewComponentsApi(setupState);
 const modelApi = {
   ...daemonApi,
-  ...previewModelApi(modelScenario),
+  ...previewModelApi(
+    setupState === null ? modelScenario : setupState === 'installed' ? 'installed' : 'fresh',
+  ),
+  ...componentApi,
   fetchReadiness: async () => readiness,
 };
 const project = {
@@ -103,6 +111,7 @@ const publishingApi = {
 };
 const importLoader = new ImportLoader({
   ...daemonApi,
+  ...(setupState === null ? {} : { ...modelApi, ...componentApi }),
   fetchReadiness: async () => ({
     ready: true,
     decoderPresent: true,

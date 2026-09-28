@@ -40,7 +40,20 @@ pub struct Config {
     /// path, never a URL. Must be writable for in-app downloads; a packaged
     /// build points `CLIPMILL_WEIGHTS_DIR` at the user's data directory.
     pub weights_dir: PathBuf,
+    /// What a packaged app carries beside the daemon, when it runs from one.
+    /// A development checkout has none: its workers are started by hand.
+    pub bundle: Option<Bundle>,
     pub(crate) builtin_fixture_executor: bool,
+}
+
+/// A packaged installation: the read-only files the app ships, and the
+/// installer its engine is built with.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Bundle {
+    /// Fonts, emoji, model manifests and the engine's packages.
+    pub resources_dir: PathBuf,
+    /// The pinned uv that installs the engine's Python and its workers.
+    pub uv: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -71,6 +84,13 @@ pub struct Paths {
     pub custom_models_dir: PathBuf,
     /// Which model the person chose for each job.
     pub model_choices: PathBuf,
+    /// The processing engine a packaged app installs: its Python, one
+    /// environment per worker, and the installer's cache.
+    pub engine_dir: PathBuf,
+    /// What the daemon's own worker processes say, one file each.
+    pub logs_dir: PathBuf,
+    /// The private keys of the workers the daemon starts itself.
+    pub worker_identity_dir: PathBuf,
 }
 
 impl Config {
@@ -78,6 +98,28 @@ impl Config {
     #[must_use]
     pub fn with_builtin_fixture_executor_for_tests(mut self) -> Self {
         self.builtin_fixture_executor = true;
+        self
+    }
+
+    /// Run from a packaged app: everything it ships is read from
+    /// `resources_dir`, and everything it writes goes to the data directory.
+    /// An explicit environment override still wins, so a packaged daemon can
+    /// be pointed at a checkout's files while it is being examined.
+    #[must_use]
+    pub fn with_bundle(mut self, resources_dir: PathBuf, uv: PathBuf) -> Self {
+        if env::var_os(FONTS_DIR_ENV).is_none() {
+            self.fonts_dir = resources_dir.join("fonts");
+        }
+        if env::var_os(EMOJI_DIR_ENV).is_none() {
+            self.emoji_dir = resources_dir.join("emoji");
+        }
+        if env::var_os(MODELS_DIR_ENV).is_none() {
+            self.models_dir = resources_dir.join("models").join("registry");
+        }
+        if env::var_os(WEIGHTS_DIR_ENV).is_none() {
+            self.weights_dir = self.paths.data_dir.join("models");
+        }
+        self.bundle = Some(Bundle { resources_dir, uv });
         self
     }
 
@@ -270,6 +312,9 @@ impl Config {
                 speech_benchmark: state_dir.join("speech-benchmark.json"),
                 custom_models_dir: state_dir.join("models"),
                 model_choices: state_dir.join("model-choices.json"),
+                engine_dir: data_dir.join("engine"),
+                logs_dir: data_dir.join("logs"),
+                worker_identity_dir: state_dir.join("worker-identity"),
                 data_dir,
                 state_dir,
                 run_dir,
@@ -283,6 +328,7 @@ impl Config {
             emoji_dir,
             models_dir,
             weights_dir,
+            bundle: None,
             builtin_fixture_executor: false,
         })
     }

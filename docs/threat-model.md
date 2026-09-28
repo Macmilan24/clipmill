@@ -10,10 +10,11 @@ canary is denied. The protected repository also verifies dependency policy,
 generated code, pinned FFmpeg provenance, and the signed Seed-40 result.
 
 This is not the final desktop security boundary. Production OS firewall
-enforcement, the signed worker/model registry, desktop WebView capabilities,
-release signing, notarization, and packaging remain Phase 4 or the release
-workstream. The Phase 0 Local Lock claim is exactly the CI namespace and egress
-canary—not a promise that an arbitrary host process is contained.
+enforcement, the signed worker/model registry, desktop WebView capabilities and
+notarization remain later work; packaging and the release workflow are
+described in the packaged app extension below. The Phase 0 Local Lock claim is
+exactly the CI namespace and egress canary—not a promise that an arbitrary host
+process is contained.
 
 ## Milestone 2 extension
 
@@ -62,6 +63,58 @@ process-group cancellation, durable duplicate/retry behavior and restart
 interruption. [YouTube import](youtube-import.md) records setup and scope. A live
 download check is separate from these offline tests, and neither verifies the
 creator's permission on the user's behalf.
+
+## Packaged app extension
+
+A packaged app carries the daemon, the pinned FFmpeg, FFprobe and uv, and the
+components' packages; the daemon installs the components when the person asks
+(Set up ClipMill) and keeps their processes running (R65).
+
+- **What is downloaded.** The pinned Python build, through uv's own
+  checksums, and each component's third-party wheels, installed with
+  `--require-hashes --only-binary :all:` from a requirements file whose digest
+  `engine.json` pins: nothing is built from source, and a wheel that does not
+  match its hash is refused. ClipMill's own wheels come from the app bundle and
+  are checked against their digests before installation. The engine's
+  manifest is parsed as untrusted input: names are plain words, paths stay
+  inside the engine directory, digests are hex.
+- **When.** Only after a person starts Set up or presses Install or Try
+  again; each install counts as a network operation on the Local Lock. Nothing
+  is installed or updated automatically.
+- **What runs.** uv and the installed interpreters are started with fixed
+  argument lists, no shell, a deadline, and output to a log file. `PYTHON*`,
+  `UV_*`, `PIP_*`, `VIRTUAL_ENV` and Conda variables are removed so the
+  machine's Python configuration cannot redirect an install or an import;
+  proxy settings are kept. Workers also run with Hugging Face offline, since
+  weights reach them as verified paths. A tool component (YouTube import) runs
+  through a launcher script the daemon writes, which quotes the one install
+  path it names and passes arguments through unchanged.
+- **Who a worker is.** The daemon generates each component's Ed25519 identity
+  and trusts its public half before the worker service reads its trust store;
+  both files are private to the user. A worker still proves its identity at
+  registration exactly as a hand-started one does.
+- **Stopping.** Quitting the app asks its daemon to stop over the control
+  socket (the Shutdown request, available to the same user who could end the
+  process anyway); the daemon asks each worker to leave and ends one that has
+  not gone after a grace period. Lease recovery covers anything a worker held.
+- **The editorial proof.** On a Mac the daemon runs the planned editorial
+  model once in its component, after hashing every file, before admitting
+  Metal work (R59); the receipt names the machine and the model digest.
+
+Residual: the components run as the user, so a compromised package index that
+also served a wheel matching a pinned hash is outside this model, as is any
+code in the components themselves. The Mac app is not notarized in the first
+release; a person trusts the download it came from, and `SHA256SUMS.txt` in
+each release lets them check it.
+
+## Release workflow
+
+A tag builds each platform's installers in read-only jobs that stage and
+verify every component on that platform first; one job, which may write
+contents and runs no third-party action but the artifact download, drafts the
+release with `gh`, and a person publishes it (R67). The actions policy refuses
+write permission anywhere else. Signing secrets, when configured, are imported
+into a throwaway keychain in the macOS build job only.
 
 ## YouTube publishing extension
 
@@ -176,12 +229,11 @@ the code is risk-free.
 - The speech chain's ONNX and GGML parsers are the first production model
   formats in the system and are covered above. Formats introduced later join
   this model and the no-network suite the same way.
-- Release archives, signing keys, notarization, update metadata, and rollback
-  are owned by the desktop/release workstream.
-- The pinned Linux FFmpeg development/CI sidecar enables DeckLink and reports
-  FFmpeg `nonfree`. Its hash and non-redistributable status are fail-closed in
-  the BOM, and Phase 0 publishes no binary. The release workstream must replace
-  it with a redistributable build before any application packaging.
+- Notarization, signed update metadata and rollback are not yet in place:
+  releases are updated by downloading a new one, and the first Mac release is
+  signed ad hoc.
+- Every pinned FFmpeg is now a redistributable GPL build (R66); the Linux
+  development build that enabled DeckLink is no longer pinned.
 - Phase 0 keeps Seed-40 media private. Its committed signature proves the run
   and aggregate rights metadata without publishing restricted bytes or paths.
   | A page reading the store | The renderer runs web content and is the part an attacker reaches first, so what it may read is a list rather than a rule. Eleven document kinds carry one named file each over the control socket; four media kinds are served by `clipmill-media://` and only the files their own descriptor names. Model weights and the three speech intermediates are on neither list. Both doors check that the address parses, that this project produced the artifact, and that the kind is listed, then re-verify the object against its manifest on every read — the one failure a content address cannot reveal is a store that corrupted its own object. A project that does not own an artifact is told "not found" rather than "denied", so it learns nothing about another project. The media handler receives no path: it derives the object directory from the content address the same way the store does, and the file name came from the descriptor, so neither can traverse. A file dialog is the host's, not the page's — the capability grants no `dialog:` or `fs:` permission, so the only way to a path is a command that returns exactly one the user chose. | `gate-shell-pipeline` runs the whole path against a live daemon: a real encode is registered, probed, submitted, watched, read as a document, and streamed as a byte range, then four refusals are asserted — an unlisted kind over both doors, another project's id, and a file the descriptor never named. `media.rs` unit tests cover path escape, the three range forms, an unsatisfiable range, and an unbounded one being capped. `shell.rs` tests read the published schemas to confirm each media layout names the key it claims. |
