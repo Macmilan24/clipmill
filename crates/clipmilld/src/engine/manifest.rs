@@ -107,7 +107,7 @@ impl Manifest {
             if part.title.trim().is_empty() || part.title.chars().count() > 80 {
                 return Err(format!("the engine part {} has no usable title", part.name));
             }
-            if part.platforms.is_empty() || part.platforms.iter().any(|value| !is_word(value)) {
+            if part.platforms.is_empty() || part.platforms.iter().any(|value| !is_platform(value)) {
                 return Err(format!("the engine part {} names no platform", part.name));
             }
             if !is_inside(&part.requirements) || !is_digest(&part.requirements_sha256) {
@@ -209,6 +209,14 @@ fn is_word(value: &str) -> bool {
         && !value.starts_with('-')
 }
 
+/// A platform as [`platform`] names one: `linux-x86_64` has an underscore.
+fn is_platform(value: &str) -> bool {
+    (1..=32).contains(&value.len())
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
+        })
+}
+
 fn is_module(value: &str) -> bool {
     (1..=64).contains(&value.len())
         && value
@@ -284,6 +292,21 @@ mod tests {
             let refused = load(&manifest(&part("vad", bad)));
             assert!(refused.is_err(), "{bad:?} should be refused");
         }
+    }
+
+    #[test]
+    fn every_platform_the_daemon_names_is_one_a_manifest_may_list() {
+        let digest = "a".repeat(64);
+        let part = format!(
+            r#"{{"name":"vad","title":"Speech detection","family":"speech-vad","command":"clipmill-worker-vad","module":"clipmill_worker_vad","platforms":["macos-arm64","macos-x86_64","linux-x86_64","linux-arm64","windows-x86_64"],"requirements":"r.txt","requirements_sha256":"{digest}","wheels":[{{"file":"w.whl","sha256":"{digest}"}}]}}"#
+        );
+        let loaded = load(&manifest(&part)).unwrap();
+        assert_eq!(
+            loaded.parts_here().count(),
+            1,
+            "this computer is one of them"
+        );
+        assert!(load(&manifest(&part.replace("linux-arm64", "Linux ARM"))).is_err());
     }
 
     #[test]
