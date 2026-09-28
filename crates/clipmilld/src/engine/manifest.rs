@@ -68,14 +68,14 @@ impl Manifest {
     pub(crate) fn load(engine_dir: &Path) -> Result<Self, String> {
         let path = engine_dir.join("engine.json");
         let metadata = fs::metadata(&path)
-            .map_err(|error| format!("the app's engine list cannot be read: {error}"))?;
+            .map_err(|error| format!("the app's list of components cannot be read: {error}"))?;
         if metadata.len() > MAX_MANIFEST_BYTES {
-            return Err("the app's engine list is too large to be one".to_owned());
+            return Err("the app's list of components is too large to be one".to_owned());
         }
         let bytes = fs::read(&path)
-            .map_err(|error| format!("the app's engine list cannot be read: {error}"))?;
+            .map_err(|error| format!("the app's list of components cannot be read: {error}"))?;
         let manifest: Self = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("the app's engine list is not valid: {error}"))?;
+            .map_err(|error| format!("the app's list of components is not valid: {error}"))?;
         manifest.check()?;
         Ok(manifest)
     }
@@ -83,7 +83,7 @@ impl Manifest {
     fn check(&self) -> Result<(), String> {
         if self.schema_version != SCHEMA_VERSION {
             return Err(format!(
-                "the app's engine list is {}, and this daemon reads {SCHEMA_VERSION}",
+                "the app's list of components is {}, and this daemon reads {SCHEMA_VERSION}",
                 self.schema_version
             ));
         }
