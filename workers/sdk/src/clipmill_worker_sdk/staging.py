@@ -10,6 +10,8 @@ from pathlib import Path, PurePosixPath
 
 from clipmill.worker.v1 import worker_pb2
 
+from .privacy import is_shared
+
 
 def validate_artifact_path(value: str) -> PurePosixPath:
     if (
@@ -37,7 +39,7 @@ class StagingArea:
             raise ValueError("staging directory does not match its token")
         if not root.is_absolute() or root.is_symlink() or not root.is_dir():
             raise ValueError("staging directory is not a private directory")
-        if stat.S_IMODE(root.stat().st_mode) & 0o077:
+        if is_shared(root.stat().st_mode):
             raise ValueError("staging directory permissions are not private")
         self.staging_id = staging_id
         self.root = root.resolve(strict=True)
@@ -115,6 +117,6 @@ class StagingArea:
         while current != self.root:
             if current.is_symlink() or not current.is_dir():
                 raise ValueError("staging parent is not a regular directory")
-            if stat.S_IMODE(current.stat().st_mode) & 0o077:
+            if is_shared(current.stat().st_mode):
                 raise ValueError("staging parent permissions are not private")
             current = current.parent
