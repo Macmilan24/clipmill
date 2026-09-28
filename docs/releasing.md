@@ -46,6 +46,13 @@ decision R65 and [the threat model](threat-model.md).
 A failed build can be re-run from the Actions page; a changed commit needs a
 new tag (delete the old tag and the draft first).
 
+## Trial builds
+
+Run the release workflow by hand (**Actions → release → Run workflow**) on any
+branch to build every installer without releasing anything: the installers are
+kept as the run's artifacts for 14 days, and no draft is made. This is how a
+Windows installer reaches a test machine before a release includes it.
+
 ## Signing
 
 The workflow signs only with secrets that exist; without them it still builds.

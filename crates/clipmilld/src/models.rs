@@ -597,7 +597,8 @@ mod tests {
             .binding("silero-vad", Path::new("/opt/clipmill/models"))
             .expect("silero-vad is pinned");
 
-        assert_eq!(binding.root, "/opt/clipmill/models/silero-vad");
+        let expected = Path::new("/opt/clipmill/models").join("silero-vad");
+        assert_eq!(binding.root, expected.display().to_string());
         assert_eq!(binding.capability, "vad");
         // Prefixed. The worker echoes this straight into
         // `producer.model_digest`, and every published speech schema requires

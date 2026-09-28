@@ -34,3 +34,5 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 ulid = { workspace = true }
 tauri-plugin-dialog = "2.7.2"
+# Canonical paths without Windows' `\\?\` form, which Explorer cannot read.
+dunce = "1.0.5"

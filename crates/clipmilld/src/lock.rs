@@ -28,7 +28,12 @@ impl DaemonLock {
             .map_err(|source| DaemonError::io(path, source))?;
         match FileExt::try_lock_exclusive(&file) {
             Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            // Windows reports a held lock as ERROR_LOCK_VIOLATION, not as
+            // WouldBlock; fs2 names each platform's own error.
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    || error.raw_os_error() == fs2::lock_contended_error().raw_os_error() =>
+            {
                 return Err(DaemonError::AlreadyRunning(path.to_path_buf()));
             }
             Err(source) => return Err(DaemonError::io(path, source)),

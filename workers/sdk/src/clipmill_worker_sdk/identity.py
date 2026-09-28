@@ -12,6 +12,8 @@ from clipmill.worker.v1 import worker_pb2
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from .privacy import is_shared
+
 _WORKER_ID = re.compile(r"^wrk_[0-9A-HJKMNP-TV-Z]{26}$")
 _WORD = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _DOMAIN = b"clipmill.worker.registration.v1\0"
@@ -41,7 +43,7 @@ class WorkerIdentity:
         if (
             path.is_symlink()
             or not stat.S_ISREG(metadata.st_mode)
-            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or is_shared(metadata.st_mode)
             or metadata.st_size > 1024
         ):
             raise ValueError("worker identity is not a private regular file")

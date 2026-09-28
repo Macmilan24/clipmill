@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,9 @@ BOM = "ffmpeg-8.1.2-btb-n8.1.2"
 
 
 def executable(root: Path, name: str = "ffmpeg") -> Path:
-    path = root / name
+    """A program as this system knows one: executable on Unix, an .exe on
+    Windows. Nothing here runs it."""
+    path = root / (f"{name}.exe" if sys.platform == "win32" else name)
     path.write_bytes(b"#!/bin/sh\nexit 0\n")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
     return path
@@ -53,6 +56,7 @@ def test_a_relative_path_is_refused(tmp_path: Path) -> None:
         verify_tool(worker_pb2.ToolBinding(name="ffmpeg", path="ffmpeg", bom=BOM))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="a symbolic link needs a privilege there")
 def test_a_symlink_is_refused_rather_than_followed(tmp_path: Path) -> None:
     real = executable(tmp_path, "ffmpeg-real")
     link = tmp_path / "ffmpeg"

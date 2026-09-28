@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     path::{Path, PathBuf},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -2138,8 +2138,7 @@ fn create_schema_backup(
         let check: String = destination.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
         enforce_integrity_check(&check)?;
         drop(destination);
-        File::open(&temporary)
-            .and_then(|file| file.sync_all())
+        crate::platform::sync_file(&temporary)
             .map_err(|source| DaemonError::io(&temporary, source))?;
         fs::rename(&temporary, &final_path)
             .map_err(|source| DaemonError::io(&final_path, source))?;
@@ -2165,6 +2164,7 @@ fn create_private_directory(path: &Path) -> Result<(), DaemonError> {
     Ok(())
 }
 
+#[cfg_attr(not(unix), allow(clippy::unnecessary_wraps))]
 fn set_private_file_permissions(path: &Path) -> Result<(), DaemonError> {
     #[cfg(unix)]
     {
@@ -2178,9 +2178,7 @@ fn set_private_file_permissions(path: &Path) -> Result<(), DaemonError> {
 }
 
 fn sync_directory(path: &Path) -> Result<(), DaemonError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(|source| DaemonError::io(path, source))
+    crate::platform::sync_dir(path).map_err(|source| DaemonError::io(path, source))
 }
 
 fn create_project(
@@ -2446,7 +2444,9 @@ fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> 
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-    use std::{collections::BTreeSet, fs, path::Path};
+    #[cfg(unix)]
+    use std::path::Path;
+    use std::{collections::BTreeSet, fs};
 
     use clipmill_contracts::proto::{
         ipc::v1::{JobState, TaskState},

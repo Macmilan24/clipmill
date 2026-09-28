@@ -11,6 +11,7 @@ available."""
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,9 +51,18 @@ def verify_tool(binding: worker_pb2.ToolBinding) -> VerifiedTool:
         raise ToolUnavailableError(f"{binding.name} at {binding.path} is a symbolic link")
     if not path.is_file():
         raise ToolUnavailableError(f"{binding.name} at {binding.path} is not a regular file")
-    if not os.access(path, os.X_OK):
+    if not _executable(path):
         raise ToolUnavailableError(f"{binding.name} at {binding.path} is not executable")
     return VerifiedTool(name=binding.name, path=path, bom=binding.bom)
+
+
+def _executable(path: Path) -> bool:
+    """Whether the system would run ``path`` as a program. Windows has no
+    permission bit for it (``os.access`` only reports that the file exists
+    there): a program is a file the system runs by its extension."""
+    if sys.platform == "win32":
+        return path.suffix.lower() in {".exe", ".com"}
+    return os.access(path, os.X_OK)
 
 
 def require_tool(lease: worker_pb2.TaskLease, name: str) -> VerifiedTool:

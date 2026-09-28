@@ -152,6 +152,27 @@ jobs:
             uv run --frozen --project "$project" python tools/security/check-python-licenses.py --child
           done
 
+  # Windows is a beta platform: the whole workspace must lint clean there,
+  # and its unit tests and the worker kit's run. Suites that fake a sidecar
+  # with a shell script, and the drills, run on macOS and Linux.
+  windows:
+    name: windows (lint, unit tests, worker kit)
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --lib --bins
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Worker kit tests
+        working-directory: workers/sdk
+        run: uv run pytest
+
   kill-drill:
     name: kill-drill (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

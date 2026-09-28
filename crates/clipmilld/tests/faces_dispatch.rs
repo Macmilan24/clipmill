@@ -38,7 +38,6 @@ use support::{create, get_job, send, wait_until_ready, workspace_tempdir};
 use tempfile::TempDir;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
     sync::oneshot,
     task::JoinHandle,
     time::timeout,
@@ -345,9 +344,9 @@ fn signing_preimage(
     bytes
 }
 
-async fn worker(fixture: &Fixture) -> UnixStream {
+async fn worker(fixture: &Fixture) -> clipmilld::endpoint::Stream {
     let key = SigningKey::from_bytes(&[7; 32]);
-    let mut stream = UnixStream::connect(&fixture.config.paths.worker_socket)
+    let mut stream = clipmilld::endpoint::connect(&fixture.config.paths.worker_socket)
         .await
         .expect("worker socket");
     let worker_response::Body::Challenge(challenge) = read_worker(&mut stream).await else {
@@ -383,14 +382,14 @@ async fn worker(fixture: &Fixture) -> UnixStream {
     stream
 }
 
-async fn write_worker(stream: &mut UnixStream, body: worker_request::Body) {
+async fn write_worker(stream: &mut clipmilld::endpoint::Stream, body: worker_request::Body) {
     stream
         .write_all(&WorkerRequest { body: Some(body) }.encode_length_delimited_to_vec())
         .await
         .expect("write worker frame");
 }
 
-async fn read_worker(stream: &mut UnixStream) -> worker_response::Body {
+async fn read_worker(stream: &mut clipmilld::endpoint::Stream) -> worker_response::Body {
     timeout(DISPATCH_DEADLINE, async {
         let mut length = 0_usize;
         for shift in (0..=28).step_by(7) {
@@ -412,7 +411,7 @@ async fn read_worker(stream: &mut UnixStream) -> worker_response::Body {
     .expect("worker responds before lease expiry")
 }
 
-async fn pull(stream: &mut UnixStream) -> worker_response::Body {
+async fn pull(stream: &mut clipmilld::endpoint::Stream) -> worker_response::Body {
     write_worker(
         stream,
         worker_request::Body::WorkRequest(WorkRequest { max_wait_ms: 0 }),

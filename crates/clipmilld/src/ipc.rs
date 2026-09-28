@@ -5,13 +5,15 @@ use prost::Message;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    net::{UnixStream, unix::OwnedWriteHalf},
     sync::mpsc,
     task::JoinSet,
     time::{Instant, timeout},
 };
 
-use crate::service::{Service, Subscription, request_kind};
+use crate::{
+    endpoint::{Stream, WriteHalf},
+    service::{Service, Subscription, request_kind},
+};
 
 pub(crate) const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -35,10 +37,7 @@ pub(crate) enum FrameError {
     MalformedRequest,
 }
 
-pub(crate) async fn handle_connection(
-    stream: UnixStream,
-    service: Service,
-) -> Result<(), FrameError> {
+pub(crate) async fn handle_connection(stream: Stream, service: Service) -> Result<(), FrameError> {
     let (mut reader, writer) = stream.into_split();
     let (outgoing, receiver) = mpsc::channel::<Vec<u8>>(128);
     let mut writer = tokio::spawn(write_outgoing(writer, receiver));
@@ -93,7 +92,7 @@ pub(crate) async fn handle_connection(
 }
 
 async fn write_outgoing(
-    mut writer: OwnedWriteHalf,
+    mut writer: WriteHalf,
     mut receiver: mpsc::Receiver<Vec<u8>>,
 ) -> Result<(), FrameError> {
     while let Some(payload) = receiver.recv().await {

@@ -197,9 +197,9 @@ impl Pattern {
             // Every token can expand to nothing — an untitled clip, a project
             // named only in an alphabet the sanitizer strips. A name is still
             // required, so the address answers, and it is always there.
-            return sanitize(&short_address(&fields.address));
+            return avoid_reserved(sanitize(&short_address(&fields.address)));
         }
-        cleaned
+        avoid_reserved(cleaned)
     }
 }
 
@@ -216,6 +216,35 @@ fn expand(token: Token, fields: &Fields) -> String {
 
 fn short_address(address: &str) -> String {
     address.chars().take(8).collect()
+}
+
+/// Windows keeps these names for devices, in every folder, whatever the case
+/// and whatever follows the first dot: `CON.mp4` names the console. A stem
+/// that begins with one gets an underscore after it, on every platform, so a
+/// folder of clips made anywhere copies onto Windows intact.
+fn avoid_reserved(stem: String) -> String {
+    let first = stem.split('.').next().unwrap_or_default();
+    if !is_reserved_device(first) {
+        return stem;
+    }
+    let (device, rest) = stem.split_at(first.len());
+    let mut renamed = format!("{device}_{rest}");
+    while renamed.chars().count() > MAX_STEM_CHARACTERS {
+        renamed.pop();
+    }
+    renamed.trim_end_matches(['-', '.', ' ']).to_owned()
+}
+
+fn is_reserved_device(name: &str) -> bool {
+    let upper = name.to_uppercase();
+    let mut characters = upper.chars();
+    let prefix: String = characters.by_ref().take(3).collect();
+    let rest: Vec<char> = characters.collect();
+    match (prefix.as_str(), rest.as_slice()) {
+        ("CON" | "PRN" | "AUX" | "NUL", []) => true,
+        ("COM" | "LPT", [digit]) => matches!(digit, '1'..='9' | '¹' | '²' | '³'),
+        _ => false,
+    }
 }
 
 /// Limit a resolved name to letters, digits, and three separators.
@@ -274,6 +303,28 @@ mod tests {
             date: "2026-08-03".to_owned(),
             address: "7f3c9ab21d5e4408aa".to_owned(),
         }
+    }
+
+    #[test]
+    fn a_name_windows_keeps_for_a_device_is_given_an_underscore() {
+        let named = |clip: &str| {
+            let fields = Fields {
+                clip: clip.to_owned(),
+                ..fields()
+            };
+            Pattern::parse("{clip}").expect("parses").resolve(&fields)
+        };
+        assert_eq!(named("Con"), "Con_");
+        assert_eq!(named("nul"), "nul_");
+        assert_eq!(named("COM1"), "COM1_");
+        assert_eq!(named("lpt9"), "lpt9_");
+        assert_eq!(named("COM¹"), "COM¹_");
+        assert_eq!(named("CON.v2"), "CON_.v2");
+        // Only the whole name before the first dot is a device.
+        assert_eq!(named("Console"), "Console");
+        assert_eq!(named("nul-and-void"), "nul-and-void");
+        assert_eq!(named("COM10"), "COM10");
+        assert_eq!(named("COM0"), "COM0");
     }
 
     #[test]

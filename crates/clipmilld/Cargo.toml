@@ -30,6 +30,7 @@ getrandom.workspace = true
 humantime.workspace = true
 nix.workspace = true
 hex.workspace = true
+hmac.workspace = true
 prost.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
@@ -48,6 +49,9 @@ mmap-io.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 memfd.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi-util = "0.1.11"
 
 [dev-dependencies]
 clipmill-edit-ir.workspace = true

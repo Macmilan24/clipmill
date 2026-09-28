@@ -13,6 +13,7 @@ class TransportType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     TRANSPORT_TYPE_UNSPECIFIED: _ClassVar[TransportType]
     TRANSPORT_TYPE_SCM_RIGHTS_MEMFD: _ClassVar[TransportType]
     TRANSPORT_TYPE_POSIX_SHM: _ClassVar[TransportType]
+    TRANSPORT_TYPE_PRIVATE_FILE: _ClassVar[TransportType]
 
 class DataType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -25,6 +26,7 @@ class DataType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
 TRANSPORT_TYPE_UNSPECIFIED: TransportType
 TRANSPORT_TYPE_SCM_RIGHTS_MEMFD: TransportType
 TRANSPORT_TYPE_POSIX_SHM: TransportType
+TRANSPORT_TYPE_PRIVATE_FILE: TransportType
 DATA_TYPE_UNSPECIFIED: DataType
 DATA_TYPE_U8: DataType
 DATA_TYPE_I16: DataType

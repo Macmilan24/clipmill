@@ -3,10 +3,6 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader},
     io::{Read, Seek, SeekFrom},
-    os::unix::{
-        fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt},
-        process::CommandExt,
-    },
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
@@ -23,6 +19,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::sync::{Semaphore, watch};
 use ulid::Ulid;
+
+use crate::platform::{self, Stop};
 
 const SMALL_FILE_LIMIT: u64 = 16 * 1024 * 1024;
 const EDGE_SAMPLE_BYTES: u64 = 1024 * 1024;
@@ -162,7 +160,7 @@ impl Drop for StopInspectionOnDrop {
 impl SourceInspector {
     pub(crate) fn new(ffprobe: PathBuf, scratch: PathBuf) -> Result<Self, SourceProbeError> {
         fs::create_dir_all(&scratch).map_err(io_error)?;
-        fs::set_permissions(&scratch, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+        platform::restrict_dir(&scratch).map_err(io_error)?;
         recover_probe_scratch(&scratch)?;
         Ok(Self {
             ffprobe,
@@ -281,10 +279,7 @@ fn sample_source(value: &str) -> Result<SampledSource, SourceProbeError> {
         return Err(SourceProbeError::InvalidPath("symlinks are not accepted"));
     }
     if link_metadata.file_type().is_dir()
-        || link_metadata.file_type().is_block_device()
-        || link_metadata.file_type().is_char_device()
-        || link_metadata.file_type().is_fifo()
-        || link_metadata.file_type().is_socket()
+        || platform::is_special(link_metadata.file_type())
         || !link_metadata.file_type().is_file()
     {
         return Err(SourceProbeError::InvalidPath(
@@ -296,15 +291,13 @@ fn sample_source(value: &str) -> Result<SampledSource, SourceProbeError> {
         .to_str()
         .ok_or(SourceProbeError::InvalidPath("path must be valid UTF-8"))?
         .to_owned();
-    let mut file = OpenOptions::new()
-        .read(true)
-        .custom_flags(nonblocking_flag() | nofollow_flag())
+    let mut file = platform::no_follow(OpenOptions::new().read(true))
         .open(&canonical)
         .map_err(io_error)?;
-    let before = identity(&file.metadata().map_err(io_error)?)?;
+    let before = open_identity(&file)?;
     let samples = read_sample_windows(&mut file, before.byte_size)?;
-    let after = identity(&file.metadata().map_err(io_error)?)?;
-    let path_after = identity(&fs::metadata(&canonical).map_err(io_error)?)?;
+    let after = open_identity(&file)?;
+    let path_after = path_identity(&canonical)?;
     if before != after || before != path_after {
         return Err(SourceProbeError::SourceChanged);
     }
@@ -324,7 +317,7 @@ fn sample_source(value: &str) -> Result<SampledSource, SourceProbeError> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn complete_inspection(
     ffprobe: &Path,
     scratch: &Path,
@@ -342,7 +335,7 @@ fn complete_inspection_controlled(
     let (raw_probe, packet_runs) =
         run_ffprobe_controlled(ffprobe, scratch, &sampled.path, PROBE_TIMEOUT, control)?;
     control.check()?;
-    let path_after = identity(&fs::metadata(&sampled.path).map_err(io_error)?)?;
+    let path_after = path_identity(&sampled.path)?;
     if path_after != sampled.identity {
         return Err(SourceProbeError::SourceChanged);
     }
@@ -443,7 +436,21 @@ fn digest_samples(
     Sha256Digest::from_bytes(hasher.finalize().into())
 }
 
-fn identity(metadata: &fs::Metadata) -> Result<FileIdentity, SourceProbeError> {
+/// What the open file is now.
+fn open_identity(file: &File) -> Result<FileIdentity, SourceProbeError> {
+    let metadata = file.metadata().map_err(io_error)?;
+    let key = platform::file_key(file, &metadata).map_err(io_error)?;
+    identity(&metadata, key)
+}
+
+/// What the path names now.
+fn path_identity(path: &Path) -> Result<FileIdentity, SourceProbeError> {
+    let metadata = fs::metadata(path).map_err(io_error)?;
+    let key = platform::path_key(path, &metadata).map_err(io_error)?;
+    identity(&metadata, key)
+}
+
+fn identity(metadata: &fs::Metadata, key: (u64, u64)) -> Result<FileIdentity, SourceProbeError> {
     if !metadata.file_type().is_file() {
         return Err(SourceProbeError::InvalidPath(
             "source stopped being a regular file",
@@ -454,9 +461,10 @@ fn identity(metadata: &fs::Metadata) -> Result<FileIdentity, SourceProbeError> {
         .duration_since(UNIX_EPOCH)
         .map_err(|_| SourceProbeError::InvalidPath("source modification time predates Unix epoch"))?
         .as_nanos();
+    let (device_id, inode) = key;
     Ok(FileIdentity {
-        device_id: metadata.dev(),
-        inode: metadata.ino(),
+        device_id,
+        inode,
         byte_size: metadata.len(),
         modified_unix_nanos: u64::try_from(modified_unix_nanos).unwrap_or(u64::MAX),
     })
@@ -488,23 +496,19 @@ fn run_ffprobe_controlled(
     control.check()?;
     let work = scratch.join(format!("probe_{}", Ulid::new()));
     fs::create_dir(&work).map_err(io_error)?;
-    fs::set_permissions(&work, fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+    platform::restrict_dir(&work).map_err(io_error)?;
     let _cleanup = ScratchGuard(work.clone());
     let stdout_path = work.join("stdout.json");
     let stderr_path = work.join("stderr.txt");
-    let stdout = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let stdout = platform::private_file(OpenOptions::new().write(true).create_new(true))
         .open(&stdout_path)
         .map_err(io_error)?;
-    let stderr = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let stderr = platform::private_file(OpenOptions::new().write(true).create_new(true))
         .open(&stderr_path)
         .map_err(io_error)?;
     let mut command = Command::new(ffprobe);
+    platform::clear_environment(&mut command);
+    platform::own_group(&mut command);
     command
         .arg("-v")
         .arg("error")
@@ -517,13 +521,11 @@ fn run_ffprobe_controlled(
         .arg("-show_chapters")
         .arg(source)
         .current_dir(&work)
-        .env_clear()
         .env("LANG", "C")
         .env("LC_ALL", "C")
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
-    command.process_group(0);
     let mut child = command.spawn().map_err(io_error)?;
     let deadline = Instant::now() + probe_timeout;
     let status = wait_bounded(&mut child, deadline, control)?;
@@ -634,13 +636,13 @@ fn stream_packets(
 ) -> Result<BTreeMap<u64, StreamRuns>, SourceProbeError> {
     control.check()?;
     let stderr_path = work.join("packets-stderr.txt");
-    let stderr = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let stderr = platform::private_file(OpenOptions::new().write(true).create_new(true))
         .open(&stderr_path)
         .map_err(io_error)?;
-    let mut child = Command::new(ffprobe)
+    let mut command = Command::new(ffprobe);
+    platform::clear_environment(&mut command);
+    platform::own_group(&mut command);
+    let mut child = command
         .arg("-v")
         .arg("error")
         .arg("-protocol_whitelist")
@@ -653,13 +655,11 @@ fn stream_packets(
         .arg("csv=p=0")
         .arg(source)
         .current_dir(work)
-        .env_clear()
         .env("LANG", "C")
         .env("LC_ALL", "C")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(stderr))
-        .process_group(0)
         .spawn()
         .map_err(io_error)?;
     let Some(stdout) = child.stdout.take() else {
@@ -770,7 +770,7 @@ fn wait_bounded(
 }
 
 fn terminate_child(child: &mut std::process::Child) {
-    signal_probe_group(child.id(), "-TERM");
+    platform::end_group(child.id(), Stop::Terminate);
     let deadline = Instant::now() + TERMINATE_GRACE;
     while Instant::now() < deadline {
         if child.try_wait().ok().flatten().is_some() {
@@ -780,18 +780,9 @@ fn terminate_child(child: &mut std::process::Child) {
     }
     // Even when the immediate child already exited, a descendant may still
     // hold the packet pipe. Finish the group before joining its reader.
-    signal_probe_group(child.id(), "-KILL");
+    platform::end_group(child.id(), Stop::Kill);
     let _killed = child.kill();
     let _waited = child.wait();
-}
-
-fn signal_probe_group(pid: u32, signal: &str) {
-    let _status = Command::new("/bin/kill")
-        .args([signal, "--", &format!("-{pid}")])
-        .env_clear()
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1237,28 +1228,6 @@ fn io_error(error: std::io::Error) -> SourceProbeError {
     SourceProbeError::Io(error.to_string())
 }
 
-const fn nonblocking_flag() -> i32 {
-    #[cfg(target_os = "linux")]
-    {
-        0x800
-    }
-    #[cfg(target_os = "macos")]
-    {
-        0x0004
-    }
-}
-
-const fn nofollow_flag() -> i32 {
-    #[cfg(target_os = "linux")]
-    {
-        0x20_000
-    }
-    #[cfg(target_os = "macos")]
-    {
-        0x0100
-    }
-}
-
 #[derive(Debug)]
 struct ScratchGuard(PathBuf);
 
@@ -1275,13 +1244,17 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        SMALL_FILE_LIMIT, SourceProbeError, StreamRuns, complete_inspection,
-        decimal_seconds_to_ticks, normalize_probe, parse_ratio, round_ratio,
-        run_ffprobe_with_timeout, sample_source, sample_spans, to_edit_ticks,
+        SMALL_FILE_LIMIT, SourceProbeError, StreamRuns, decimal_seconds_to_ticks, normalize_probe,
+        parse_ratio, round_ratio, run_ffprobe_with_timeout, sample_spans, to_edit_ticks,
     };
     use serde_json::json;
-    use std::{fs, os::unix::fs::PermissionsExt, time::Duration};
-    use tempfile::TempDir;
+    // What the tests that fake FFprobe with a shell script use.
+    #[cfg(unix)]
+    use {
+        super::{complete_inspection, sample_source},
+        std::{fs, os::unix::fs::PermissionsExt, time::Duration},
+        tempfile::TempDir,
+    };
 
     #[test]
     fn small_sources_hash_every_byte_and_large_sources_use_eighteen_windows() {
@@ -1544,6 +1517,8 @@ mod tests {
         }
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[test]
     fn probe_deadline_terminates_a_stuck_sidecar() {
         let temp = TempDir::new().expect("tempdir");
@@ -1559,6 +1534,8 @@ mod tests {
         assert!(matches!(error, SourceProbeError::Timeout));
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     fn blocked_packet_probe(root: &std::path::Path, partial_line: bool) -> std::path::PathBuf {
         let sidecar = root.join("blocked-packet-ffprobe");
         fs::write(
@@ -1575,6 +1552,7 @@ mod tests {
         sidecar
     }
 
+    #[cfg(unix)]
     fn assert_packet_probe_reaped(root: &std::path::Path) {
         let pid = fs::read_to_string(root.join("packet.pid")).expect("packet process started");
         let status = std::process::Command::new("/bin/kill")
@@ -1585,6 +1563,8 @@ mod tests {
         assert!(!status.success(), "packet process survived inspection");
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[test]
     fn packet_deadline_reaps_silent_and_unterminated_output_without_waiting_for_newline() {
         for partial_line in [false, true] {
@@ -1605,6 +1585,8 @@ mod tests {
         }
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[tokio::test]
     async fn cancellation_and_dropped_inspection_reap_packet_probe_before_releasing_permit() {
         for abandon in [false, true] {
@@ -1671,6 +1653,8 @@ mod tests {
         ));
     }
 
+    // Fakes FFprobe with a shell script.
+    #[cfg(unix)]
     #[test]
     fn mutation_during_probe_is_retryably_detected() {
         let temp = TempDir::new().expect("tempdir");

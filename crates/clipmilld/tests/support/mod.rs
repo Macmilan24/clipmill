@@ -17,7 +17,6 @@ use clipmill_contracts::proto::ipc::v1::{
 use prost::Message;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
     time::sleep,
 };
 
@@ -29,14 +28,17 @@ pub fn workspace_tempdir() -> tempfile::TempDir {
 }
 
 pub async fn send(socket: &Path, request: Request) -> Result<Response, String> {
-    let mut stream = UnixStream::connect(socket)
+    let mut stream = clipmilld::endpoint::connect(socket)
         .await
         .map_err(|error| error.to_string())?;
     send_on_stream(&mut stream, request).await?;
     read_response(&mut stream).await
 }
 
-pub async fn send_on_stream(stream: &mut UnixStream, request: Request) -> Result<(), String> {
+pub async fn send_on_stream(
+    stream: &mut clipmilld::endpoint::Stream,
+    request: Request,
+) -> Result<(), String> {
     let mut encoded = Vec::new();
     request
         .encode_length_delimited(&mut encoded)
@@ -47,7 +49,7 @@ pub async fn send_on_stream(stream: &mut UnixStream, request: Request) -> Result
         .map_err(|error| error.to_string())
 }
 
-pub async fn read_response(stream: &mut UnixStream) -> Result<Response, String> {
+pub async fn read_response(stream: &mut clipmilld::endpoint::Stream) -> Result<Response, String> {
     let length = read_varint(stream).await?;
     let length = usize::try_from(length).map_err(|error| error.to_string())?;
     let mut response = vec![0_u8; length];
@@ -59,7 +61,7 @@ pub async fn read_response(stream: &mut UnixStream) -> Result<Response, String> 
 }
 
 pub async fn send_without_reading_response(socket: &Path, request: Request) -> Result<(), String> {
-    let mut stream = UnixStream::connect(socket)
+    let mut stream = clipmilld::endpoint::connect(socket)
         .await
         .map_err(|error| error.to_string())?;
     let mut encoded = Vec::new();
@@ -466,7 +468,7 @@ pub async fn wait_for_exit(child: &mut Child) -> Result<ExitStatus, String> {
     Err("daemon did not exit within seven seconds".to_owned())
 }
 
-async fn read_varint(stream: &mut UnixStream) -> Result<u64, String> {
+async fn read_varint(stream: &mut clipmilld::endpoint::Stream) -> Result<u64, String> {
     let mut value = 0_u64;
     for index in 0..10 {
         let byte = stream.read_u8().await.map_err(|error| error.to_string())?;
