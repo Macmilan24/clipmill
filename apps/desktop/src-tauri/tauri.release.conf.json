@@ -22,6 +22,9 @@
     "linux": {
       "appimage": {
         "bundleMediaFramework": false
+      },
+      "deb": {
+        "depends": ["libgl1", "libglib2.0-0"]
       }
     }
   }
