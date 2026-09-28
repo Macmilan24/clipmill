@@ -160,8 +160,16 @@ impl Config {
         cli_artifact_gc_grace: Option<Duration>,
         cli_ffprobe: Option<PathBuf>,
     ) -> Result<Self, DaemonError> {
+        // Windows keeps it in the local profile: the roaming one is copied
+        // between machines, and this holds gigabytes of models.
         let platform_default = ProjectDirs::from("dev", "clipmill", "ClipMill")
-            .map(|dirs| dirs.data_dir().to_path_buf())
+            .map(|dirs| {
+                if cfg!(windows) {
+                    dirs.data_local_dir().to_path_buf()
+                } else {
+                    dirs.data_dir().to_path_buf()
+                }
+            })
             .ok_or(DaemonError::PlatformDataDirectory)?;
         let mut config = Self::from_all_sources(
             cli_data_dir,
