@@ -111,6 +111,7 @@ release, so add its text to `tools/release/licenses` or `notices.py`.
 
 `tools/release/licenses/JASSUB-LIBRARIES.txt` names the libraries compiled
 into the caption player's WebAssembly, at the commits the JASSUB release was
-built from, with each library's own licence files. Staging refuses a JASSUB
+built from, and the fallback font it ships (Liberation Sans), with each one's
+own licence files. Staging refuses a JASSUB
 version the notice does not name, so updating JASSUB means rebuilding that
 notice for the new release.
