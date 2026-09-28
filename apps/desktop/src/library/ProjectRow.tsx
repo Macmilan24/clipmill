@@ -70,7 +70,12 @@ export function ProjectRow({
         {formatRelative(entry.project.createdUnixMillis)}
       </TableCell>
       <TableCell className="text-right">
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+        <span className="inline-flex items-center gap-1.5">
+          {entry.source?.missing === true && (
+            <StatusBadge tone="warning">Recording moved</StatusBadge>
+          )}
+          <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+        </span>
       </TableCell>
       <TableCell className="w-10 text-right" onClick={(event) => event.stopPropagation()}>
         {actions && <ProjectActions entry={entry} onOpen={onOpen} {...actions} />}

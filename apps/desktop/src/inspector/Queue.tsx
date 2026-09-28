@@ -7,7 +7,8 @@ import { useEffect, useRef } from 'react';
 
 import { Switch } from '../components/ui/switch.js';
 import { type ClipRow, duration } from '../results/model.js';
-import { progress } from './review.js';
+import { thumbnailPosition } from '../results/thumbnails.js';
+import { overlapsOf, progress } from './review.js';
 
 export type QueueFilter = 'all' | 'undecided';
 
@@ -17,6 +18,8 @@ export interface QueueProps {
   readonly filter: QueueFilter;
   readonly onFilter: (filter: QueueFilter) => void;
   readonly tileUrl: (atTicks: number) => string | null;
+  /** Where each clip's camera would point, by candidate, for its thumbnail. */
+  readonly framing?: ReadonlyMap<string, number> | undefined;
   readonly busy: boolean;
   readonly onSelect: (candidateId: string) => void;
   readonly autoAdvance: boolean;
@@ -35,6 +38,7 @@ export function Queue({
   filter,
   onFilter,
   tileUrl,
+  framing,
   busy,
   onSelect,
   autoAdvance,
@@ -94,6 +98,7 @@ export function Queue({
           const current = row.candidateId === candidateId;
           const mark = row.decision ? DECISION[row.decision] : null;
           const still = tileUrl(row.startTicks);
+          const repeated = overlapsOf(rows, row).find((other) => other.rank < row.rank);
           return (
             <li key={row.candidateId}>
               <button
@@ -105,7 +110,18 @@ export function Queue({
                 onClick={() => onSelect(row.candidateId)}
               >
                 <span className="review-queue-still">
-                  {still ? <img src={still} alt="" loading="lazy" /> : <Film aria-hidden="true" />}
+                  {still ? (
+                    <img
+                      src={still}
+                      alt=""
+                      loading="lazy"
+                      style={{
+                        objectPosition: thumbnailPosition(framing?.get(row.candidateId) ?? 0.5),
+                      }}
+                    />
+                  ) : (
+                    <Film aria-hidden="true" />
+                  )}
                   <span className="mono">{duration(row.durationSeconds)}</span>
                 </span>
                 <span className="review-queue-text">
@@ -119,6 +135,14 @@ export function Queue({
                       </span>
                     ) : (
                       <span>{row.bandLabel}</span>
+                    )}
+                    {repeated && (
+                      <span
+                        className="review-queue-repeat"
+                        title={`Covers the same ground as clip ${String(repeated.rank).padStart(2, '0')}`}
+                      >
+                        covers {String(repeated.rank).padStart(2, '0')}
+                      </span>
                     )}
                   </span>
                 </span>

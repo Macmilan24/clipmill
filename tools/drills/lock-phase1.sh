@@ -158,8 +158,8 @@ echo "    $loaded pinned models"
 echo "==> launching the worker fleet"
 identity_dir="$data_dir/state/worker-dev-identity"
 for entry in vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr \
-             align:clipmill-worker-align shots:clipmill-worker-shots \
-             faces:clipmill-worker-faces; do
+             align:clipmill-worker-align speakers:clipmill-worker-speakers \
+             shots:clipmill-worker-shots faces:clipmill-worker-faces; do
   family="${entry%%:*}"
   command="${entry##*:}"
   (

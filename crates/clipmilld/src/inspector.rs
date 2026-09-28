@@ -128,15 +128,14 @@ impl Stages {
     }
 }
 
-/// Load a clip's evidence: from the run named, or the newest of each stage.
-pub(crate) async fn load(
+/// Where a clip's evidence is read from: the run named, or the newest of each
+/// stage over the source.
+async fn stages_for(
     database: &DbHandle,
-    artifacts: &ArtifactHandle,
     source_id: &str,
-    source_map_json: &[u8],
     run: Option<&str>,
-) -> Result<Evidence, LoadError> {
-    let stages = match run {
+) -> Result<Stages, LoadError> {
+    match run {
         Some(job_id) => {
             let run = database
                 .run_task_artifacts(job_id.to_owned())
@@ -145,24 +144,93 @@ pub(crate) async fn load(
             if run.source_id.as_deref() != Some(source_id) {
                 return Err(LoadError::NoSuchRun);
             }
-            Stages::Run(run)
+            Ok(Stages::Run(run))
         }
-        None => Stages::Newest {
+        None => Ok(Stages::Newest {
             source_id: source_id.to_owned(),
-        },
-    };
+        }),
+    }
+}
 
+/// The last evidence loaded, kept so reviewing clip after clip of one run
+/// does not read and parse the same documents — a long recording's face
+/// tracks run to megabytes — for every clip.
+#[derive(Clone, Default)]
+pub(crate) struct EvidenceCache(std::sync::Arc<std::sync::Mutex<Option<Kept>>>);
+
+/// What the cache holds: the evidence, and the addresses it was read from.
+type Kept = (String, std::sync::Arc<Evidence>);
+
+impl std::fmt::Debug for EvidenceCache {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("EvidenceCache")
+    }
+}
+
+/// [`load`], through the cache. The key is the address of every document
+/// read, so a run still publishing — faces arriving after the ranking — or a
+/// newer publication is never answered from what was kept before it.
+pub(crate) async fn load_cached(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    source_id: &str,
+    source_map_json: &[u8],
+    run: Option<&str>,
+    cache: &EvidenceCache,
+) -> Result<std::sync::Arc<Evidence>, LoadError> {
+    let stages = stages_for(database, source_id, run).await?;
+    let mut key = source_id.to_owned();
+    for kind in REQUIRED
+        .iter()
+        .map(|(kind, _, _)| *kind)
+        .chain(OPTIONAL.iter().map(|(kind, _)| *kind))
+    {
+        key.push('|');
+        key.push_str(&stages.address(database, kind).await.unwrap_or_default());
+    }
+    if let Ok(held) = cache.0.lock()
+        && let Some((kept, evidence)) = held.as_ref()
+        && *kept == key
+    {
+        return Ok(std::sync::Arc::clone(evidence));
+    }
+    let evidence =
+        std::sync::Arc::new(load_from(database, artifacts, &stages, source_map_json).await?);
+    if let Ok(mut held) = cache.0.lock() {
+        *held = Some((key, std::sync::Arc::clone(&evidence)));
+    }
+    Ok(evidence)
+}
+
+/// Load a clip's evidence: from the run named, or the newest of each stage.
+pub(crate) async fn load(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    source_id: &str,
+    source_map_json: &[u8],
+    run: Option<&str>,
+) -> Result<Evidence, LoadError> {
+    let stages = stages_for(database, source_id, run).await?;
+    load_from(database, artifacts, &stages, source_map_json).await
+}
+
+async fn load_from(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    stages: &Stages,
+    source_map_json: &[u8],
+) -> Result<Evidence, LoadError> {
     let (candidates_id, candidates): (String, DiscoveryCandidates) =
-        require(database, artifacts, &stages, REQUIRED[0]).await?;
+        require(database, artifacts, stages, REQUIRED[0]).await?;
     let (_, ranking): (String, RankingSet) =
-        require(database, artifacts, &stages, REQUIRED[1]).await?;
+        require(database, artifacts, stages, REQUIRED[1]).await?;
     let (transcript_id, transcript): (String, SpeechTranscript) =
-        require(database, artifacts, &stages, REQUIRED[2]).await?;
+        require(database, artifacts, stages, REQUIRED[2]).await?;
     check_coherence(&ranking, &candidates_id, &transcript_id)?;
 
-    let index: Option<IndexTranscript> = optional(database, artifacts, &stages, OPTIONAL[0]).await;
-    let shots: Option<EvidenceShots> = optional(database, artifacts, &stages, OPTIONAL[1]).await;
-    let faces: Option<VisionFaceTrack> = optional(database, artifacts, &stages, OPTIONAL[2]).await;
+    let index: Option<IndexTranscript> = optional(database, artifacts, stages, OPTIONAL[0]).await;
+    let shots: Option<EvidenceShots> = optional(database, artifacts, stages, OPTIONAL[1]).await;
+    let faces: Option<VisionFaceTrack> = optional(database, artifacts, stages, OPTIONAL[2]).await;
 
     Ok(Evidence {
         candidates,
@@ -172,6 +240,43 @@ pub(crate) async fn load(
         shots,
         faces,
         frame: frame_of(source_map_json).ok_or(LoadError::NoFrame)?,
+    })
+}
+
+/// What a caption refresh derives from: the newest transcript over a source,
+/// and the index and shots when there are ones to go with it.
+pub(crate) struct Speech {
+    pub transcript: SpeechTranscript,
+    pub index: Option<IndexTranscript>,
+    pub shots: Option<EvidenceShots>,
+}
+
+/// The newest speech evidence over a source.
+///
+/// The newest rather than the run a clip was cut from, on purpose: an
+/// analysis run again with a better transcript is exactly what a refresh is
+/// for. The index counts sentences in one transcript's words, so an index
+/// computed over another transcript is left out rather than misread.
+pub(crate) async fn load_speech(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    source_id: &str,
+) -> Result<Speech, LoadError> {
+    let stages = Stages::Newest {
+        source_id: source_id.to_owned(),
+    };
+    let (transcript_id, transcript): (String, SpeechTranscript) =
+        require(database, artifacts, &stages, REQUIRED[2]).await?;
+    let index: Option<IndexTranscript> = optional(database, artifacts, &stages, OPTIONAL[0])
+        .await
+        .filter(|index: &IndexTranscript| {
+            index.inputs.transcript_artifact_id.as_str() == transcript_id
+        });
+    let shots: Option<EvidenceShots> = optional(database, artifacts, &stages, OPTIONAL[1]).await;
+    Ok(Speech {
+        transcript,
+        index,
+        shots,
     })
 }
 
@@ -251,13 +356,28 @@ pub(crate) fn frame_of(source_map_json: &[u8]) -> Option<Frame> {
     (width > 0 && height > 0).then_some(Frame { width, height })
 }
 
+/// Use the recorded source rate for both preview and output. Older source maps
+/// may omit it; those retain the render profile's default rate.
+pub(crate) fn frame_rate_of(source_map_json: &[u8]) -> Option<clipmill_render::FrameRateSpec> {
+    let map: Value = serde_json::from_slice(source_map_json).ok()?;
+    let video = map
+        .get("streams")?
+        .as_array()?
+        .iter()
+        .find(|stream| stream["kind"] == "video")?;
+    let rate = &video["video"]["frame_rate"];
+    let num = rate["num"].as_i64()?;
+    let den = rate["den"].as_i64()?;
+    (num > 0 && den > 0).then_some(clipmill_render::FrameRateSpec { num, den })
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
     use clipmill_contracts::schemas::ranking_set::RankingSet;
 
-    use super::{LoadError, check_coherence, frame_of};
+    use super::{LoadError, check_coherence, frame_of, frame_rate_of};
 
     #[test]
     fn the_display_dimensions_are_preferred_over_the_coded_ones() {
@@ -289,6 +409,21 @@ mod tests {
         let map = br#"{"streams":[{"kind":"video","video":{
             "coded_width":0,"coded_height":720}}]}"#;
         assert!(frame_of(map).is_none());
+    }
+
+    #[test]
+    fn source_frame_rate_is_kept_as_an_exact_rational() {
+        let map =
+            br#"{"streams":[{"kind":"video","video":{"frame_rate":{"num":24000,"den":1001}}}]}"#;
+        let rate = frame_rate_of(map).expect("source rate");
+        assert_eq!((rate.num, rate.den), (24_000, 1_001));
+        assert!(frame_rate_of(br#"{"streams":[{"kind":"video","video":{}}]}"#).is_none());
+        assert!(
+            frame_rate_of(
+                br#"{"streams":[{"kind":"video","video":{"frame_rate":{"num":0,"den":1}}}]}"#
+            )
+            .is_none()
+        );
     }
 
     /// The published interview ranking, whose inputs name the fixtures it was

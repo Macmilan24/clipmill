@@ -15,6 +15,7 @@ const WORKER_SOCKET_ENV: &str = "CLIPMILL_WORKER_SOCKET";
 const ARTIFACT_GC_GRACE_ENV: &str = "CLIPMILL_ARTIFACT_GC_GRACE";
 const FFPROBE_ENV: &str = "CLIPMILL_FFPROBE";
 const FONTS_DIR_ENV: &str = "CLIPMILL_FONTS_DIR";
+const EMOJI_DIR_ENV: &str = "CLIPMILL_EMOJI_DIR";
 const MODELS_DIR_ENV: &str = "CLIPMILL_MODELS_DIR";
 const WEIGHTS_DIR_ENV: &str = "CLIPMILL_WEIGHTS_DIR";
 const DEFAULT_ARTIFACT_GC_GRACE: Duration = Duration::from_hours(168);
@@ -28,6 +29,8 @@ pub struct Config {
     /// could pick up a host-installed face are renders nobody else can
     /// reproduce, so this holds exactly the pinned font (book ch. 19).
     pub fonts_dir: PathBuf,
+    /// The pinned emoji pictures (`bom.toml`, `[emoji]`), beside the fonts.
+    pub emoji_dir: PathBuf,
     /// Directory of bundled model manifests. Read at startup; never written.
     /// Models the person pins in the app live in `paths.custom_models_dir`.
     pub models_dir: PathBuf,
@@ -46,6 +49,8 @@ pub struct Paths {
     pub state_dir: PathBuf,
     pub backups_dir: PathBuf,
     pub artifacts_dir: PathBuf,
+    /// The person's own pictures and sounds, by content hash.
+    pub assets_dir: PathBuf,
     pub run_dir: PathBuf,
     pub database: PathBuf,
     pub socket: PathBuf,
@@ -131,6 +136,9 @@ impl Config {
         )?;
         if let Some(fonts_dir) = env::var_os(FONTS_DIR_ENV) {
             config.fonts_dir = PathBuf::from(fonts_dir);
+        }
+        if let Some(emoji_dir) = env::var_os(EMOJI_DIR_ENV) {
+            config.emoji_dir = PathBuf::from(emoji_dir);
         }
         if let Some(models_dir) = env::var_os(MODELS_DIR_ENV) {
             config.models_dir = PathBuf::from(models_dir);
@@ -243,6 +251,7 @@ impl Config {
         }
 
         let fonts_dir = default_sidecar_dir(&ffprobe, "fonts");
+        let emoji_dir = default_sidecar_dir(&ffprobe, "emoji");
         let weights_dir = default_sidecar_dir(&ffprobe, "models");
         let models_dir = PathBuf::from("models/registry");
 
@@ -251,6 +260,7 @@ impl Config {
                 database: state_dir.join("clipmill.db"),
                 backups_dir: state_dir.join("backups"),
                 artifacts_dir: data_dir.join("artifacts"),
+                assets_dir: data_dir.join("assets"),
                 lock: run_dir.join("daemon.lock"),
                 probe_scratch_dir: state_dir.join("probe-scratch"),
                 media_scratch_dir: state_dir.join("media-scratch"),
@@ -270,6 +280,7 @@ impl Config {
             artifact_gc_grace,
             ffprobe,
             fonts_dir,
+            emoji_dir,
             models_dir,
             weights_dir,
             builtin_fixture_executor: false,

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fromBinary, toBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 
@@ -12,6 +12,10 @@ import type { ArtifactManifest } from '../src/gen/schemas/artifact-manifest.js';
 import type { EditIr } from '../src/gen/schemas/edit-ir.js';
 import type { RenderClipManifest } from '../src/gen/schemas/render-clip.js';
 import { PingRequestSchema } from '../src/index.js';
+import {
+  DirectClipRequestSchema,
+  RegisterSourceRequestSchema,
+} from '../src/gen/proto/clipmill/ipc/v1/daemon_pb.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const fixtures = join(repo, 'contracts', 'fixtures');
@@ -48,6 +52,24 @@ describe('ping proto', () => {
     const message = fromBinary(PingRequestSchema, bytes);
     expect(message.echo).toBe(twin.echo);
     expect(toBinary(PingRequestSchema, message)).toEqual(bytes);
+  });
+});
+
+describe('release IPC additions', () => {
+  it('round-trips a source relink id and an explicit highlight-off request', () => {
+    const relink = create(RegisterSourceRequestSchema, {
+      projectId: 'project',
+      absolutePath: '/recordings/moved.mp4',
+      sourceId: 'source',
+    });
+    expect(
+      fromBinary(RegisterSourceRequestSchema, toBinary(RegisterSourceRequestSchema, relink))
+        .sourceId,
+    ).toBe('source');
+
+    const direct = create(DirectClipRequestSchema, { highlightSpokenWord: false });
+    const decoded = fromBinary(DirectClipRequestSchema, toBinary(DirectClipRequestSchema, direct));
+    expect(decoded.highlightSpokenWord).toBe(false);
   });
 });
 

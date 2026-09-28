@@ -41,6 +41,14 @@
   font-size: var(--cm-type-label);
 }
 
+.edit-alert-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 5px;
+}
+
 /* Body ------------------------------------------------------------------ */
 
 .edit-body {
@@ -55,7 +63,8 @@
 }
 
 .edit-workspace[data-focused='true'] .edit-side,
-.edit-workspace[data-focused='true'] .edit-resizer {
+.edit-workspace[data-focused='true'] .edit-resizer,
+.edit-workspace[data-focused='true'] .edit-resizer-lanes {
   display: none;
 }
 
@@ -85,7 +94,13 @@
   container-type: inline-size;
 }
 
-@container (max-width: 304px) {
+/* The five tabs sit in from the panel's edge, as its sections do. */
+.edit-side .review-tabs .review-tab-list[data-slot] {
+  padding-inline: 12px;
+}
+
+/* Below this their names alone fit the panel, without icons. */
+@container (max-width: 400px) {
   .edit-side .review-tab-list svg {
     display: none;
   }
@@ -347,6 +362,146 @@
   min-width: 0;
 }
 
+/* A label above its control, for fields too wide to sit beside one. */
+.edit-field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.edit-link {
+  color: var(--cm-accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.edit-link:disabled {
+  opacity: 0.5;
+}
+
+/* The Text tab: the clip's texts, and the one being changed. */
+.edit-text-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.edit-text-list button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  text-align: left;
+}
+
+.edit-text-list button:hover {
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+}
+
+.edit-text-list button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-text-role {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--cm-recessed);
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+}
+
+.edit-text-words {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-text-time {
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+}
+
+.edit-text-input {
+  width: 100%;
+  min-height: 64px;
+  padding: 7px 9px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/* The emoji a clip can show, one click each. */
+.edit-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.edit-emoji-grid button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.edit-emoji-grid button:hover:not(:disabled) {
+  background: var(--cm-recessed);
+}
+
+.edit-emoji-grid img {
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+}
+
+/* An emoji set among words: a list row, a menu item, a timeline block. */
+.edit-emoji-inline {
+  display: inline-block;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.25em;
+  object-fit: contain;
+  line-height: 1;
+}
+
+.edit-text-looks {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.edit-text-looks button {
+  height: 30px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.edit-text-looks button[aria-pressed='true'] {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: 1px;
+}
+
 .edit-wide {
   display: flex;
   width: 100%;
@@ -355,6 +510,14 @@
 .edit-wide button {
   flex: 1;
   justify-content: center;
+}
+
+.edit-wide .edit-look-button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px;
 }
 
 .review-segmented button:disabled {
@@ -574,6 +737,192 @@
   cursor: grabbing;
 }
 
+/* The filler review's opt-ins, and words whose timing was estimated. */
+.edit-filler-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+}
+
+.edit-word[data-guessed='true'] {
+  text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+/* The Framing tab's layouts: a grid, since five names do not fit one row. */
+.edit-layouts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--cm-recessed-border);
+  border-radius: calc(var(--cm-radius-control) + 2px);
+  background: var(--cm-recessed);
+}
+
+.edit-layouts button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  text-align: left;
+}
+
+.edit-layouts button:hover:not(:disabled) {
+  color: var(--cm-text-primary);
+}
+
+.edit-layouts button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-layouts button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The clip's shape: four frames drawn at their own proportions. */
+.edit-shapes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--cm-recessed-border);
+  border-radius: calc(var(--cm-radius-control) + 2px);
+  background: var(--cm-recessed);
+}
+
+.edit-shapes button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 4px 5px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+}
+
+.edit-shapes button:hover:not(:disabled) {
+  color: var(--cm-text-primary);
+}
+
+.edit-shapes button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-shapes button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.edit-shape-glyph {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+}
+
+.edit-shape-glyph::before {
+  content: '';
+  display: block;
+  border: 1.5px solid currentcolor;
+  border-radius: 2px;
+}
+
+.edit-shape-glyph[data-shape='vertical']::before {
+  width: 11px;
+  height: 20px;
+}
+
+.edit-shape-glyph[data-shape='portrait']::before {
+  width: 15px;
+  height: 19px;
+}
+
+.edit-shape-glyph[data-shape='square']::before {
+  width: 17px;
+  height: 17px;
+}
+
+.edit-shape-glyph[data-shape='landscape']::before {
+  width: 21px;
+  height: 12px;
+}
+
+.edit-shape-label {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The Original view's faces: each detected person is a button over the whole
+ * frame, and clicking one follows them through the section.
+ */
+.edit-faces {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.edit-face {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border: 2px solid rgb(255 255 255 / 0.85);
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.45);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.edit-face span {
+  transform: translateY(calc(100% + 4px));
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.7);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.edit-face:hover,
+.edit-face:focus-visible {
+  border-color: var(--cm-accent);
+  outline: none;
+}
+
+.edit-face:hover span,
+.edit-face:focus-visible span {
+  opacity: 1;
+}
+
+.edit-face:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .edit-caption {
   position: absolute;
   z-index: 2;
@@ -597,6 +946,106 @@
 .edit-caption[data-dragging='true'] {
   cursor: grabbing;
   opacity: 0.85;
+}
+
+/*
+ * libass draws the captions the export burns in (CaptionCanvas). The CSS
+ * caption then only takes clicks and drags: its text stays laid out, so the
+ * hit box has the caption's size, and is invisible — except while it is being
+ * dragged, when it is the only thing that can follow the pointer.
+ */
+.edit-caption-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.edit-caption-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.edit-caption[data-exact='true']:not([data-dragging='true']),
+.edit-caption[data-exact='true']:not([data-dragging='true']) * {
+  color: transparent !important;
+  -webkit-text-stroke: 0 transparent !important;
+  text-shadow: none !important;
+  background: transparent !important;
+  text-decoration: none !important;
+}
+
+/* A text over the picture, at its centre; exact pixels come from libass. */
+.edit-overlay-text {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  white-space: pre;
+  paint-order: stroke fill;
+  cursor: grab;
+  touch-action: none;
+}
+
+.edit-overlay-text:hover,
+.edit-overlay-text[data-selected='true'] {
+  outline: 1px dashed rgb(255 255 255 / 0.7);
+  outline-offset: 5px;
+}
+
+.edit-overlay-text[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.edit-overlay-text[data-exact='true']:not([data-dragging='true']) {
+  color: transparent !important;
+  -webkit-text-stroke: 0 transparent !important;
+  background: transparent !important;
+}
+
+/*
+ * An emoji over the picture: its pinned picture, placed and sized as the
+ * render lays it, under the captions as the export draws it.
+ */
+.edit-overlay-emoji {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.edit-overlay-emoji img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.edit-overlay-emoji:hover,
+.edit-overlay-emoji[data-selected='true'] {
+  outline: 1px dashed rgb(255 255 255 / 0.7);
+  outline-offset: 4px;
+}
+
+.edit-overlay-emoji[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.edit-stage:has(.edit-overlay-text[data-dragging='true']) .edit-caption-layer {
+  opacity: 0.25;
+}
+
+.edit-stage:has(.edit-caption[data-dragging='true']) .edit-caption-layer {
+  opacity: 0.25;
 }
 
 .edit-grid {
@@ -681,7 +1130,10 @@
 
 .edit-track-labels {
   display: grid;
-  grid-template-rows: 18px 42px 26px 22px 42px;
+  grid-template-rows:
+    18px calc(42px * var(--edit-lane-scale, 1)) calc(26px * var(--edit-lane-scale, 1))
+    calc(20px * var(--edit-lane-scale, 1)) calc(22px * var(--edit-lane-scale, 1))
+    calc(42px * var(--edit-lane-scale, 1));
   align-items: center;
   padding-top: 1px;
   color: var(--cm-text-muted);
@@ -689,7 +1141,10 @@
 }
 
 .edit-track {
-  grid-template-rows: 18px 42px 26px 22px 42px;
+  grid-template-rows:
+    18px calc(42px * var(--edit-lane-scale, 1)) calc(26px * var(--edit-lane-scale, 1))
+    calc(20px * var(--edit-lane-scale, 1)) calc(22px * var(--edit-lane-scale, 1))
+    calc(42px * var(--edit-lane-scale, 1));
   cursor: default;
 }
 
@@ -845,6 +1300,219 @@
   font-size: 10.5px;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* The brand over the preview: placed as the render places it. */
+/*
+ * B-roll over the picture, as the render lays it: over the program, under
+ * the brand, the emoji and the captions, which come after it at its level.
+ */
+.edit-cutaway {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background: #000000;
+  cursor: pointer;
+}
+
+.edit-cutaway[data-selected='true'] {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: -2px;
+}
+
+.edit-cutaway-frame {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+
+.edit-cutaway-backdrop,
+.edit-cutaway-picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+/* A blur fades at its own edges; the render's does not. */
+.edit-cutaway-backdrop {
+  transform: scale(1.08);
+}
+
+.edit-cutaway[data-fit='fit'] .edit-cutaway-picture {
+  object-fit: contain;
+}
+
+.edit-cutaway-missing {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 16px;
+  color: rgb(255 255 255 / 0.75);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Level with the captions' layer and before it, so under it, as exported. */
+.edit-brand-bar {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  pointer-events: none;
+}
+
+.edit-brand-logo {
+  position: absolute;
+  z-index: 1;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.edit-brand-pictures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.edit-brand-pictures button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  background: repeating-conic-gradient(var(--cm-recessed) 0 25%, transparent 0 50%) 50% / 12px 12px;
+}
+
+.edit-brand-pictures button[aria-pressed='true'] {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: 1px;
+}
+
+.edit-brand-pictures img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Sounds the person has brought in, to put under a clip. */
+.edit-sounds {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.edit-sounds button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--cm-radius-control);
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-meta);
+  text-align: left;
+}
+
+.edit-sounds button:hover:not(:disabled) {
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+}
+
+.edit-sounds button[aria-pressed='true'] {
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+  box-shadow: 0 0 0 1px var(--cm-glass-border);
+}
+
+.edit-sound-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-sound-length {
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
+}
+
+/* A punch-in, along the bottom of the section it moves in on. */
+.edit-punch {
+  position: absolute;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: #e0a13a;
+  pointer-events: none;
+}
+
+/* B-roll on the stills it covers, clear of the sections' edges. */
+.edit-cutaway-block {
+  position: absolute;
+  bottom: 4px;
+  height: 46%;
+  display: flex;
+  align-items: center;
+  min-width: 3px;
+  overflow: hidden;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, #5fb3a1 70%, var(--cm-glass-border));
+  border-radius: 3px;
+  background: color-mix(in srgb, #5fb3a1 45%, rgb(0 0 0 / 0.5));
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.edit-cutaway-block[data-selected='true'] {
+  box-shadow: 0 0 0 1.5px #5fb3a1;
+}
+
+.edit-cutaway-block > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* A text over the picture, on its own lane under the captions. */
+.edit-text-block {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 3px;
+  overflow: hidden;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, #e0a13a 55%, var(--cm-glass-border));
+  border-radius: 3px;
+  background: color-mix(in srgb, #e0a13a 20%, var(--cm-glass));
+  color: var(--cm-text-primary);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.edit-text-block[data-selected='true'] {
+  box-shadow: 0 0 0 1.5px #e0a13a;
+}
+
+.edit-text-block > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 .edit-cue > span {
@@ -1016,7 +1684,10 @@
   }
   .edit-track,
   .edit-track-labels {
-    grid-template-rows: 18px 34px 22px 20px 32px;
+    grid-template-rows:
+      18px calc(34px * var(--edit-lane-scale, 1)) calc(22px * var(--edit-lane-scale, 1))
+      calc(18px * var(--edit-lane-scale, 1)) calc(20px * var(--edit-lane-scale, 1))
+      calc(32px * var(--edit-lane-scale, 1));
   }
 }
 
@@ -1024,4 +1695,189 @@
   .edit-cleanup-chip {
     transition: none;
   }
+}
+
+/* Caption style ------------------------------------------------------------ */
+
+.edit-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.edit-section-head .review-section-title {
+  margin: 0;
+}
+
+.edit-highlights {
+  margin-top: 10px;
+}
+
+.edit-highlights button {
+  font-size: var(--cm-type-meta, 11px);
+}
+
+.edit-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--cm-warning-ink) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cm-warning-ink) 8%, transparent);
+  font-size: var(--cm-type-meta, 11px);
+  line-height: 1.4;
+}
+
+.edit-saved-styles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.edit-saved-style {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: 999px;
+  font-size: var(--cm-type-meta, 11px);
+}
+
+.edit-saved-style button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  color: var(--cm-text-secondary);
+}
+
+.edit-saved-style button:hover {
+  background: var(--cm-accent-selected, rgb(255 255 255 / 0.06));
+  color: var(--cm-text-primary);
+}
+
+.edit-saved-style button + button {
+  padding-inline: 6px;
+  border-left: 1px solid var(--cm-glass-border);
+}
+
+/* Title and history -------------------------------------------------------- */
+
+.edit-title-button {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  margin-left: -4px;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.edit-title-button:hover {
+  background: var(--cm-accent-selected, rgb(255 255 255 / 0.06));
+}
+
+.edit-title-input {
+  width: min(560px, 100%);
+  padding: 0 4px;
+  margin-left: -4px;
+  border: 1px solid var(--cm-accent);
+  border-radius: 4px;
+  background: var(--cm-recessed, transparent);
+  color: var(--cm-text-primary);
+  font: inherit;
+  font-size: var(--cm-type-card-title, 17px);
+  font-weight: var(--cm-weight-heading, 600);
+  outline: none;
+}
+
+.edit-history {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 12px 16px;
+  list-style: none;
+}
+
+.edit-history li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 8px 8px;
+  border-radius: 6px;
+}
+
+.edit-history li[data-current] {
+  background: var(--cm-accent-selected, rgb(255 255 255 / 0.05));
+}
+
+.edit-history-label {
+  overflow: hidden;
+  font-size: var(--cm-type-label, 13px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-history-time {
+  grid-column: 1;
+  color: var(--cm-text-muted);
+  font-size: var(--cm-type-meta, 11px);
+}
+
+.edit-history li > button,
+.edit-history-now {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+.edit-history-now {
+  color: var(--cm-text-muted);
+  font-size: var(--cm-type-meta, 11px);
+}
+
+.edit-history-note {
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-label, 13px);
+}
+
+/* A key word in the transcript: marked as the accent will mark it on screen. */
+.edit-word[data-key='true'] {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-success, #4ade80) 70%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* The lanes share one menu; their box must not change the timeline's layout. */
+.edit-lanes {
+  display: contents;
+}
+
+/* The timeline's top edge: drag for taller or shorter lanes. */
+.edit-resizer-lanes {
+  flex: none;
+  width: 100%;
+  height: 6px;
+  margin-top: -3px;
+  margin-bottom: -3px;
+  cursor: row-resize;
+  position: relative;
+  z-index: 3;
+}
+
+.edit-resizer-lanes:hover,
+.edit-resizer-lanes:active {
+  background: color-mix(in srgb, var(--cm-accent) 35%, transparent);
 }

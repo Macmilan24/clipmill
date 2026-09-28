@@ -9,7 +9,8 @@
  */
 import { isTauri, type StorageStats } from './client.js';
 
-export type ModelCapability = 'editorial' | 'asr' | 'forced-align' | 'vad' | 'detect-faces';
+export type ModelCapability =
+  'editorial' | 'asr' | 'forced-align' | 'vad' | 'speaker-embed' | 'detect-faces';
 export type InstallState = 'installed' | 'partial' | 'missing';
 export type DownloadState = 'queued' | 'downloading' | 'verifying' | 'failed' | 'cancelled';
 /** How the memory a model needs compares with this device. A warning, never a gate. */
@@ -76,6 +77,11 @@ export interface ModelJob {
   readonly choice: string;
   /** Every model registered for the job, in display order. */
   readonly models: readonly string[];
+  /**
+   * A model more accurate than the planned one that this computer can run
+   * and hold in memory; empty or absent when there is none.
+   */
+  readonly moreAccurate?: string;
 }
 
 export interface ModelLibrary {

@@ -586,6 +586,7 @@ dependencies = [
  "clipmill-edit-ir",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.19",
 ]
 
@@ -593,6 +594,7 @@ dependencies = [
 name = "clipmill-shell"
 version = "0.0.1"
 dependencies = [
+ "clipmill-captions",
  "clipmill-contracts",
  "clipmilld",
  "prost",

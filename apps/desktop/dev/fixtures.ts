@@ -54,6 +54,31 @@ export const rows: ClipRow[] = titles.map((headline, i) => ({
   },
   flagged: i === 2,
 }));
+const previewCues = [
+  'The best ideas start',
+  'with a better question.',
+  'You have to leave room',
+  'for a different answer.',
+  'And sometimes that means',
+  'slowing the conversation down.',
+  'Listen to what they say,',
+  'not what you expect.',
+  'That changes everything.',
+  'Start with one small thing.',
+].map((text, i) => ({
+  cueId: `cue_${i}`,
+  startTicks: i * 360_000,
+  endTicks: (i + 1) * 360_000,
+  firstFrame: i * 120,
+  endFrame: (i + 1) * 120,
+  region: 'lower_safe',
+  karaoke: true,
+  leadInCentis: 0,
+  lines: [
+    text.split(' ').map((word, j) => ({ text: word, wordId: `word_${i}_${j}`, holdCentis: 70 })),
+  ],
+}));
+
 export const plan: PreviewPlan = {
   revision: 4,
   rateNum: 30,
@@ -63,28 +88,24 @@ export const plan: PreviewPlan = {
   height: 1920,
   presentation: 'burn_in',
   crops: Array.from({ length: 1260 }, () => [656, 0, 608, 1080] as const),
-  cues: [
-    'The best ideas start',
-    'with a better question.',
-    'You have to leave room',
-    'for a different answer.',
-    'And sometimes that means',
-    'slowing the conversation down.',
-    'Listen to what they say,',
-    'not what you expect.',
-    'That changes everything.',
-    'Start with one small thing.',
-  ].map((text, i) => ({
-    cueId: `cue_${i}`,
-    firstFrame: i * 120,
-    endFrame: (i + 1) * 120,
-    region: 'lower_safe',
-    karaoke: true,
-    leadInCentis: 0,
-    lines: [
-      text.split(' ').map((word, j) => ({ text: word, wordId: `word_${i}_${j}`, holdCentis: 70 })),
-    ],
-  })),
+  cues: previewCues,
+  readingCues: previewCues.map((cue) =>
+    // The fourth subtitle is what whisper leaves for a window it heard
+    // nothing in, held for 0.64 s: the export strip's too-brief finding, and
+    // the repair the subtitle track offers for it.
+    cue.cueId === 'cue_3'
+      ? {
+          ...cue,
+          cueId: `subtitle_${cue.cueId}`,
+          karaoke: false,
+          endTicks: cue.startTicks + 57_432,
+          endFrame: cue.firstFrame + 19,
+          lines: [[{ text: '[BLANK_AUDIO]', wordId: 'word_3_silence', holdCentis: 64 }]],
+        }
+      : { ...cue, cueId: `subtitle_${cue.cueId}`, karaoke: false },
+  ),
+  readingMinDurationTicks: 75_000,
+  readingMinGapTicks: 7_500,
   gain: [
     { frame: 0, gainDb: 0 },
     { frame: 600, gainDb: -2 },

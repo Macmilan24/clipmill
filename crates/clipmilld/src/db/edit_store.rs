@@ -133,6 +133,7 @@ pub(crate) struct EditCommandRecord {
     pub revision: u64,
     pub command_json: String,
     pub inverse_json: String,
+    pub applied_unix_millis: u64,
 }
 
 /// Which clip a hand-created document is, when the caller says.
@@ -650,7 +651,7 @@ pub(super) fn get_edit_log(
         return Err(StoreError::NotFound);
     };
     let mut statement = connection.prepare(
-        "SELECT revision, command, inverse FROM edit_commands
+        "SELECT revision, command, inverse, applied_unix_millis FROM edit_commands
          WHERE doc_id = ?1 ORDER BY revision",
     )?;
     let entries = statement
@@ -659,6 +660,7 @@ pub(super) fn get_edit_log(
                 revision: sql_u64(row, 0)?,
                 command_json: row.get(1)?,
                 inverse_json: row.get(2)?,
+                applied_unix_millis: sql_u64(row, 3)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

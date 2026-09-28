@@ -41,6 +41,7 @@ pub fn face(t_ticks: u64, cx: f64, cy: f64, height: f64, score: f64) -> FaceBox 
         h: height,
         score,
         interpolated: None,
+        mouth_motion: None,
     }
 }
 

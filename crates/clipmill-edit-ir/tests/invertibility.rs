@@ -9,8 +9,9 @@
 
 use clipmill_edit_ir::{
     Asset, AudioTrack, CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionTrack,
-    CaptionWord, CropKeyframe, CropRect, EditCommand, EditDocument, GainPoint, Layout, LayoutState,
-    Presentation, Rationale, VideoSegment, VideoTrack,
+    CaptionWord, CropKeyframe, CropRect, Cutaway, CutawayContent, CutawayFit, EditCommand,
+    EditDocument, GainPoint, Layout, LayoutState, Overlay, OverlayContent, Presentation, Rationale,
+    TextRole, VideoSegment, VideoTrack,
 };
 
 const FINGERPRINT: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -40,12 +41,17 @@ fn word(text: &str, start: i64, end: i64) -> CaptionWord {
         start_ticks: start,
         end_ticks: end,
         word_id: Some(format!("w@{start}")),
+        emphasis: false,
     }
 }
 
 /// A document with several segments, cues, crop keyframes, and gain points —
 /// enough structure that a command can plausibly disturb something it should
 /// not.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one fixture document, written out field by field"
+)]
 fn sample_document() -> EditDocument {
     let segment = |id: &str, in_ticks: i64, out_ticks: i64, keyframes: Vec<i64>| VideoSegment {
         segment_id: id.to_owned(),
@@ -68,6 +74,7 @@ fn sample_document() -> EditDocument {
                     easing: clipmill_edit_ir::CropEasing::Linear,
                 })
                 .collect(),
+            ..Layout::default()
         },
     };
     let cue = |id: &str, start: i64, words: Vec<CaptionWord>| CaptionCue {
@@ -77,14 +84,29 @@ fn sample_document() -> EditDocument {
         region: CaptionRegion::LowerSafe,
         anim: CaptionAnimation::Karaoke,
         lines: vec![CaptionLine { words }],
+        position: None,
     };
     EditDocument {
         video: VideoTrack {
+            shape: clipmill_edit_ir::FrameShape::default(),
             transition_ticks: 0,
             segments: vec![
-                segment("seg_a", 0, 90_000, vec![0, 45_000, 90_000]),
+                {
+                    // A punch for cuts and trims to carry.
+                    let mut punched = segment("seg_a", 0, 90_000, vec![0, 45_000, 90_000]);
+                    punched.layout.punches = vec![clipmill_edit_ir::Punch {
+                        start_ticks: 20_000,
+                        end_ticks: 60_000,
+                        zoom: 130,
+                    }];
+                    punched
+                },
                 segment("seg_b", 180_000, 270_000, vec![0, 90_000]),
                 segment("seg_c", 900_000, 990_000, Vec::new()),
+            ],
+            cutaways: vec![
+                picture_cutaway("cut_still", 30_000, 80_000),
+                footage_cutaway("cut_room", 150_000, 240_000, 450_000),
             ],
         },
         captions: CaptionTrack {
@@ -120,6 +142,8 @@ fn sample_document() -> EditDocument {
             burn_in: Vec::new(),
         },
         audio: AudioTrack {
+            music: None,
+            cleanup: None,
             target_lufs: -14.0,
             true_peak_dbtp: -1.0,
             gain_curve: vec![
@@ -137,6 +161,10 @@ fn sample_document() -> EditDocument {
                 },
             ],
         },
+        overlays: vec![
+            text_overlay("ovl_hook", 0, 120_000, TextRole::Hook),
+            text_overlay("ovl_label", 100_000, 200_000, TextRole::Label),
+        ],
         assets: vec![Asset {
             hash: FINGERPRINT.to_owned(),
             license: "own_content".to_owned(),
@@ -146,6 +174,49 @@ fn sample_document() -> EditDocument {
             decisions: vec!["hook at 0".to_owned()],
         }),
         ..EditDocument::default()
+    }
+}
+
+fn text_overlay(id: &str, start_ticks: i64, end_ticks: i64, role: TextRole) -> Overlay {
+    Overlay {
+        overlay_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        content: OverlayContent::Text {
+            text: "Why the second\nquestion wins".to_owned(),
+            role,
+            x: 500,
+            y: 150,
+            size: 96,
+            colour: "#FFFFFF".to_owned(),
+            plate: (role == TextRole::Hook).then(|| "#101820".to_owned()),
+        },
+    }
+}
+
+fn picture_cutaway(id: &str, start_ticks: i64, end_ticks: i64) -> Cutaway {
+    Cutaway {
+        cutaway_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        fit: CutawayFit::Fill,
+        content: CutawayContent::Picture {
+            asset: FINGERPRINT.to_owned(),
+            push_in: true,
+        },
+    }
+}
+
+fn footage_cutaway(id: &str, start_ticks: i64, end_ticks: i64, in_ticks: i64) -> Cutaway {
+    Cutaway {
+        cutaway_id: id.to_owned(),
+        start_ticks,
+        end_ticks,
+        fit: CutawayFit::Fit,
+        content: CutawayContent::Footage {
+            source_fingerprint: FINGERPRINT.to_owned(),
+            in_ticks,
+        },
     }
 }
 
@@ -196,6 +267,41 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
             } else {
                 LayoutState::SpeakerFill
             },
+        });
+        commands.push(EditCommand::SetFrameShape {
+            shape: [
+                clipmill_edit_ir::FrameShape::Vertical,
+                clipmill_edit_ir::FrameShape::Portrait,
+                clipmill_edit_ir::FrameShape::Square,
+                clipmill_edit_ir::FrameShape::Landscape,
+            ][usize::try_from(rng.below(4)).unwrap_or(0)],
+        });
+        let span = segment.duration_ticks();
+        let punch_start =
+            i64::try_from(rng.below(u64::try_from(span / 2).unwrap_or(1).max(1))).unwrap_or(0);
+        commands.push(EditCommand::SetPunches {
+            segment_id: segment_id.clone(),
+            punches: vec![clipmill_edit_ir::Punch {
+                start_ticks: punch_start,
+                end_ticks: (punch_start + 30_000).min(span),
+                zoom: 105 + u16::try_from(rng.below(96)).unwrap_or(0),
+            }],
+        });
+        commands.push(EditCommand::SetLayoutStyle {
+            segment_id: segment_id.clone(),
+            split: (rng.below(2) == 0).then(|| 250 + u16::try_from(rng.below(501)).unwrap_or(0)),
+            background: match rng.below(3) {
+                0 => None,
+                1 => Some(clipmill_edit_ir::FitBackground::Blur),
+                _ => Some(clipmill_edit_ir::FitBackground::Colour {
+                    colour: format!("#{:06X}", rng.below(0x0100_0000)),
+                }),
+            },
+            zoom: (rng.below(2) == 0).then(|| 100 + u16::try_from(rng.below(151)).unwrap_or(0)),
+            inset: (rng.below(2) == 0).then(|| clipmill_edit_ir::Inset {
+                corner: clipmill_edit_ir::InsetCorner::BottomRight,
+                size: 200 + u16::try_from(rng.below(401)).unwrap_or(0),
+            }),
         });
         let local =
             i64::try_from(rng.below(u64::try_from(segment.duration_ticks().max(1)).unwrap_or(1)))
@@ -262,6 +368,52 @@ fn candidate_commands(rng: &mut Rng, document: &EditDocument) -> Vec<EditCommand
         gain_db: -6.0,
     });
     commands.push(EditCommand::RemoveGainPoint { t_ticks: 150_000 });
+    commands.push(EditCommand::RegroupOnScreen {
+        max_words: u32::try_from(rng.below(4)).unwrap_or(0) + 1,
+    });
+    let overlay_start = i64::try_from(rng.below(u64::try_from(duration).unwrap_or(1))).unwrap_or(0);
+    let overlay_end = (overlay_start + 45_000).min(duration);
+    commands.push(EditCommand::AddOverlay {
+        overlay: text_overlay("ovl_new", overlay_start, overlay_end, TextRole::Label),
+        at: (rng.below(2) == 0).then_some(0),
+    });
+    commands.push(EditCommand::RemoveOverlay {
+        overlay_id: if rng.below(2) == 0 {
+            "ovl_hook"
+        } else {
+            "ovl_label"
+        }
+        .to_owned(),
+    });
+    commands.push(EditCommand::SetOverlay {
+        overlay: text_overlay("ovl_hook", overlay_start, overlay_end, TextRole::Hook),
+    });
+    commands.push(EditCommand::DropNonSpeechWords {});
+    // A cutaway list replaced wholesale: a new one alone, or none.
+    let cutaway_start = i64::try_from(rng.below(u64::try_from(duration).unwrap_or(1))).unwrap_or(0);
+    commands.push(EditCommand::SetCutaways {
+        cutaways: if rng.below(3) == 0 {
+            Vec::new()
+        } else {
+            vec![footage_cutaway(
+                "cut_new",
+                cutaway_start,
+                (cutaway_start + 36_000).min(duration),
+                i64::try_from(rng.below(900_000)).unwrap_or(0),
+            )]
+        },
+        assets: None,
+    });
+    if let Some(cue_id) = pick(rng, &cue_ids) {
+        commands.push(EditCommand::SetCuePosition {
+            cue_id,
+            position: Some(clipmill_edit_ir::CaptionPosition {
+                x: u32::try_from(rng.below(1_001)).unwrap_or(0),
+                y: u32::try_from(rng.below(1_001)).unwrap_or(0),
+            }),
+            presentation: Presentation::Reading,
+        });
+    }
     commands
 }
 
@@ -570,7 +722,15 @@ fn invalid_documents_are_refused() {
 #[test]
 fn published_contract_fixtures_load_into_the_operational_document() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for name in ["clip.json", "minimal.json", "first_slice.json"] {
+    for name in [
+        "clip.json",
+        "minimal.json",
+        "first_slice.json",
+        "landscape_two_up.json",
+        "hook_title.json",
+        "emoji_on_words.json",
+        "b_roll.json",
+    ] {
         let path = repo.join("contracts/fixtures/edit_ir/valid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {
             panic!("cannot read {}: {error}", path.display());
@@ -593,6 +753,9 @@ fn published_contract_fixtures_load_into_the_operational_document() {
         "wrong-timebase.json",
         "float-ticks.json",
         "empty-caption-line.json",
+        "overlay-markup.json",
+        "emoji-path.json",
+        "cutaway-path.json",
     ] {
         let path = repo.join("contracts/fixtures/edit_ir/invalid").join(name);
         let raw = std::fs::read(&path).unwrap_or_else(|error| {

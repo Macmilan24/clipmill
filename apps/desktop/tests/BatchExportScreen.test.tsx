@@ -113,7 +113,7 @@ it('requires an explicit rights choice instead of silently assuming ownership', 
   expect(screen.getByRole('button', { name: 'Export 1 clip' })).toHaveProperty('disabled', true);
   expect(api.submitExportBatch).not.toHaveBeenCalled();
 });
-it('scopes fast-caption and duration confirmations to the revision actually read', async () => {
+it('scopes duration confirmation to the revision while fast captions stay advisory', async () => {
   let revision = 4;
   const { api } = fixture({
     previewPlan: vi.fn<ShellApi['previewPlan']>(async () => {
@@ -128,18 +128,14 @@ it('scopes fast-caption and duration confirmations to the revision actually read
       };
     }),
     planExport: vi.fn<ShellApi['planExport']>(async (request) => {
-      const confirmed = request.gatesPassed?.includes('captions_reading_rate');
       return {
         revision,
-        passes:
-          !!request.sourceAttestation &&
-          !!confirmed &&
-          !!request.gatesPassed?.includes('duration_60s'),
+        passes: !!request.sourceAttestation && !!request.gatesPassed?.includes('duration_60s'),
         findings: [
           {
             code: 'captions.reading_rate',
-            severity: confirmed ? ('advisory' as const) : ('blocking' as const),
-            detail: `A caption runs at 24 characters a second${confirmed ? ' — confirmed as read.' : ''}`,
+            severity: 'advisory' as const,
+            detail: 'A caption runs at 24 characters a second',
           },
         ],
         stem: '01-clip',
@@ -151,13 +147,6 @@ it('scopes fast-caption and duration confirmations to the revision actually read
   render(<BatchExportScreen api={api} />);
   await selectClips(1);
   fireEvent.click(await screen.findByRole('checkbox', { name: /reviewed this clip’s duration/ }));
-  await waitFor(() =>
-    expect(screen.getByRole('checkbox', { name: /reviewed the 1 fast caption/ })).toHaveProperty(
-      'disabled',
-      false,
-    ),
-  );
-  fireEvent.click(screen.getByRole('checkbox', { name: /reviewed the 1 fast caption/ }));
   await ready(1);
   revision = 5;
   fireEvent.change(screen.getByLabelText('File naming'), { target: { value: 'revised-{index}' } });
@@ -170,7 +159,7 @@ it('scopes fast-caption and duration confirmations to the revision actually read
   );
   expect(
     screen
-      .getByRole('checkbox', { name: /reviewed the 1 fast caption/ })
+      .getByRole('checkbox', { name: /reviewed this clip’s duration/ })
       .getAttribute('aria-checked'),
   ).toBe('false');
   expect(api.submitExportBatch).not.toHaveBeenCalled();

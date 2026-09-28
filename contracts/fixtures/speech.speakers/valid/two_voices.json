@@ -1,0 +1,67 @@
+{
+  "audio_artifact_id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "clustering": {
+    "hop_ticks": 67500,
+    "link": 0.5,
+    "merge": 0.65,
+    "smallest": 0.02,
+    "window_ticks": 135000
+  },
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 3420000,
+    "start_ticks": 0
+  },
+  "producer": {
+    "implementation": "clipmill-worker-speakers@0.1.0+campplus-voxceleb",
+    "model_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "stage": "speech-speakers"
+  },
+  "schema_version": "clipmill.speech.speakers.v1",
+  "source_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "speakers": [
+    {
+      "first_ticks": 0,
+      "speaker_id": "spk_1",
+      "speech_ticks": 1629000
+    },
+    {
+      "first_ticks": 670500,
+      "speaker_id": "spk_2",
+      "speech_ticks": 1368000
+    }
+  ],
+  "turns": [
+    {
+      "end_ticks": 634500,
+      "speaker_id": "spk_1",
+      "start_ticks": 0
+    },
+    {
+      "end_ticks": 1280700,
+      "speaker_id": "spk_2",
+      "start_ticks": 670500
+    },
+    {
+      "end_ticks": 1836000,
+      "speaker_id": "spk_1",
+      "start_ticks": 1316700
+    },
+    {
+      "end_ticks": 2449000,
+      "speaker_id": "spk_2",
+      "start_ticks": 1872000
+    },
+    {
+      "end_ticks": 3031800,
+      "speaker_id": "spk_1",
+      "start_ticks": 2485000
+    },
+    {
+      "end_ticks": 3419600,
+      "speaker_id": "spk_2",
+      "start_ticks": 3067800
+    }
+  ],
+  "vad_artifact_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+}

@@ -13,6 +13,7 @@ updates:
       - /workers/sdk
       - /workers/echo
       - /workers/vad
+      - /workers/speakers
       - /workers/asr-whispercpp
       - /workers/align
       - /workers/speech-mlx

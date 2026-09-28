@@ -6,8 +6,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import type { ClipCut, ClipDecision, CropPath, DirectedClip } from '../daemon/client.js';
-import { lookFor } from './captionLook.js';
+import type {
+  ClipCut,
+  ClipDecision,
+  CropPath,
+  DirectClipInput,
+  DirectedClip,
+  PreviewPlan,
+} from '../daemon/client.js';
+import { kitRequest } from '../editor/brand.js';
+import { highlightFor, lookFor, optionsFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { TICKS_PER_SECOND } from './model.js';
 import type { Transcript } from './transcript.js';
@@ -79,6 +87,24 @@ export interface ResultsState {
    */
   readonly tileUrl: (atTicks: number) => string | null;
   readonly solveFor: (candidateId: string) => void;
+  /**
+   * Where each clip's camera would point, as a share across the frame, by
+   * candidate. Empty until asked and answered; a clip with no entry sits in
+   * the middle.
+   */
+  readonly framing: ReadonlyMap<string, number>;
+  /**
+   * The clip an approval of the cut on screen would build, as a preview plan,
+   * for the clip it was asked for. Null until it arrives, or on a shell that
+   * cannot build one — the solver's crop stands in then.
+   */
+  readonly preview: {
+    readonly candidateId: string;
+    readonly key: string;
+    readonly plan: PreviewPlan;
+  } | null;
+  /** Ask for that preview for this clip and this cut; `null` is the search's cut. */
+  readonly previewFor: (candidateId: string, window: Window | null) => void;
   /** Build an edit from a span nobody proposed, without deciding anything. */
   readonly manual: (startTicks: number, endTicks: number) => Promise<DirectedClip | null>;
   /** The recording's words, read when the Inspector first asks for them. */
@@ -101,6 +127,16 @@ export function useResults(
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropPath | null>(null);
+  // The clip an approval would build, for the cut on screen.
+  const [preview, setPreview] = useState<{
+    readonly candidateId: string;
+    readonly key: string;
+    readonly plan: PreviewPlan;
+  } | null>(null);
+  const previewSequence = useRef(0);
+  const previewKey = useRef<string | null>(null);
+  // Where each clip's camera would point, for thumbnails framed as the clip.
+  const [framing, setFraming] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [transcript, setTranscript] = useState<TranscriptState>({
     status: 'idle',
     transcript: null,
@@ -299,12 +335,51 @@ export function useResults(
     [api, projectId, refresh, mark, snapshot.source],
   );
 
-  const approve = useCallback(
-    async (candidateId: string, window: Window | null): Promise<DirectedClip | null> => {
+  // One question for the whole board: where would each clip's camera point
+  // half a second in. A shell or a run without faces keeps the middle.
+  const framingFor = useRef<string | null>(null);
+  useEffect(() => {
+    const faceTrack = snapshot.faceTrackArtifactId;
+    const rows = snapshot.rows;
+    const key =
+      projectId && faceTrack && rows.length > 0 && api.thumbnailFraming
+        ? `${faceTrack}:${rows.map((row) => `${row.candidateId}@${row.startTicks}`).join(',')}`
+        : null;
+    if (key === framingFor.current) return undefined;
+    framingFor.current = key;
+    if (!key || !projectId || !faceTrack) {
+      setFraming(new Map());
+      return undefined;
+    }
+    let live = true;
+    Promise.resolve()
+      .then(() =>
+        api.thumbnailFraming!(
+          projectId,
+          faceTrack,
+          rows.map((row) => row.startTicks + TICKS_PER_SECOND / 2),
+        ),
+      )
+      .then((centres) => {
+        if (!live) return;
+        setFraming(new Map(rows.map((row, at) => [row.candidateId, centres[at] ?? 0.5])));
+      })
+      // No framing is the middle of the frame, not a broken board.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, projectId, snapshot.faceTrackArtifactId, snapshot.rows]);
+
+  /**
+   * The request that builds this clip with this cut: the one approving sends,
+   * and the one the Inspector's preview sends, so the clip judged is the clip
+   * made — same cut, same look, same run.
+   */
+  const clipRequest = useCallback(
+    (candidateId: string, window: Window | null): DirectClipInput | null => {
       const row = snapshot.rows.find((candidate) => candidate.candidateId === candidateId);
-      if (!projectId || !snapshot.source || !row) {
-        return null;
-      }
+      if (!projectId || !snapshot.source || !row) return null;
       const chosen = { startTicks: row.startTicks, endTicks: row.endTicks };
       const moved = window !== null && !same(window, chosen);
       const alternative = row.boundary?.alternative ?? null;
@@ -315,6 +390,101 @@ export function useResults(
         : alternative && same(window, alternative)
           ? 'alternative'
           : 'exact';
+      const look = lookFor(projectId);
+      const options = optionsFor(projectId);
+      return {
+        projectId,
+        sourceId: snapshot.source.sourceId,
+        candidateId,
+        cut,
+        ...(look ? { styleRef: look } : {}),
+        ...(options ? { captionOptionsJson: options } : {}),
+        // The saved brand kit, and the shape clips are framed for.
+        ...kitRequest(),
+        highlightSpokenWord: highlightFor(projectId),
+        ...(cut === 'exact' && window
+          ? { startTicks: window.startTicks, endTicks: window.endTicks }
+          : {}),
+        ...(row.review?.status === 'rejected' ? { allowDeclined: true } : {}),
+        // The run the board is showing: its candidate, its boundaries, its
+        // transcript — not whichever run published each stage last.
+        ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
+      };
+    },
+    [projectId, snapshot.source, snapshot.run, snapshot.rows],
+  );
+
+  /** The request that builds a span nobody proposed: the manual clip's. */
+  const manualRequest = useCallback(
+    (startTicks: number, endTicks: number): DirectClipInput | null => {
+      if (!projectId || !snapshot.source || !snapshot.run) return null;
+      const look = lookFor(projectId);
+      const options = optionsFor(projectId);
+      return {
+        projectId,
+        sourceId: snapshot.source.sourceId,
+        jobId: snapshot.run.jobId,
+        candidateId: '',
+        cut: 'exact',
+        ...(look ? { styleRef: look } : {}),
+        ...(options ? { captionOptionsJson: options } : {}),
+        // The saved brand kit, and the shape clips are framed for.
+        ...kitRequest(),
+        highlightSpokenWord: highlightFor(projectId),
+        startTicks,
+        endTicks,
+        manualSpan: true,
+      };
+    },
+    [projectId, snapshot.source, snapshot.run],
+  );
+
+  /**
+   * Ask for the clip an approval of this cut would build, to draw it — or,
+   * for the candidate `''`, the manual clip this span would make. Nothing is
+   * written. A newer ask supersedes an older one still in flight, and the
+   * same ask twice is asked once.
+   */
+  const previewFor = useCallback(
+    (candidateId: string, window: Window | null) => {
+      const request = !api.previewDirect
+        ? null
+        : candidateId === ''
+          ? window
+            ? manualRequest(window.startTicks, window.endTicks)
+            : null
+          : clipRequest(candidateId, window);
+      const key = request ? JSON.stringify(request) : null;
+      if (key !== null && key === previewKey.current) return;
+      previewKey.current = key;
+      const sequence = ++previewSequence.current;
+      if (!request || !key) {
+        setPreview(null);
+        return;
+      }
+      void Promise.resolve()
+        .then(() => api.previewDirect!(request))
+        .then((plan) => {
+          if (sequence === previewSequence.current) setPreview({ candidateId, key, plan });
+        })
+        // A clip that cannot be previewed is judged from the solver's crop,
+        // as before; the approval itself will say what is wrong.
+        .catch(() => {
+          if (sequence === previewSequence.current) setPreview(null);
+        });
+    },
+    [api, clipRequest, manualRequest],
+  );
+
+  const approve = useCallback(
+    async (candidateId: string, window: Window | null): Promise<DirectedClip | null> => {
+      const row = snapshot.rows.find((candidate) => candidate.candidateId === candidateId);
+      const request = clipRequest(candidateId, window);
+      if (!projectId || !snapshot.source || !row || !request) {
+        return null;
+      }
+      const chosen = { startTicks: row.startTicks, endTicks: row.endTicks };
+      const moved = window !== null && !same(window, chosen);
       const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
@@ -322,25 +492,13 @@ export function useResults(
         // Approving is what creates the edit document, and the daemon records
         // the decision in the same write — so there is no moment where the
         // board says approved and the editor has nothing to open.
-        const look = lookFor(projectId);
         const directed = await api.directClip({
-          projectId,
-          sourceId: snapshot.source.sourceId,
-          candidateId,
-          cut,
+          ...request,
           approve: true,
-          ...(look ? { styleRef: look } : {}),
-          ...(cut === 'exact' && window
-            ? { startTicks: window.startTicks, endTicks: window.endTicks }
-            : {}),
           // A different cut of a clip that already has an edit is a second
           // edit. Without asking for one by name, the daemon would hand back
           // the existing document — with the boundary this was replacing.
           ...(moved && row.docId ? { variation: true } : {}),
-          ...(row.review?.status === 'rejected' ? { allowDeclined: true } : {}),
-          // The run the board is showing: its candidate, its boundaries, its
-          // transcript — not whichever run published each stage last.
-          ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
         });
         if (context !== contextSequence.current) return null;
         mark(candidateId, 'approved', directed);
@@ -360,29 +518,18 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, refresh, mark, snapshot.source, snapshot.run, snapshot.rows],
+    [api, projectId, refresh, mark, snapshot.source, snapshot.rows, clipRequest],
   );
 
   const manual = useCallback(
     async (startTicks: number, endTicks: number): Promise<DirectedClip | null> => {
-      if (!projectId || !snapshot.source || !snapshot.run) return null;
+      const request = manualRequest(startTicks, endTicks);
+      if (!request) return null;
       const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
       try {
-        const look = lookFor(projectId);
-        const directed = await api.directClip({
-          projectId,
-          sourceId: snapshot.source.sourceId,
-          jobId: snapshot.run.jobId,
-          candidateId: '',
-          cut: 'exact',
-          ...(look ? { styleRef: look } : {}),
-          startTicks,
-          endTicks,
-          manualSpan: true,
-          approve: false,
-        });
+        const directed = await api.directClip({ ...request, approve: false });
         if (context !== contextSequence.current) return null;
         setNotice('Sent to the editor.');
         reload();
@@ -394,7 +541,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run],
+    [api, reload, manualRequest],
   );
 
   const approveMany = useCallback(
@@ -421,15 +568,12 @@ export function useResults(
               failures.push('Inspect declined moments individually before choosing to edit.');
               continue;
             }
+            // The same request one approval sends, look and all: a clip
+            // approved in a batch is the clip approved on its own.
+            const request = clipRequest(candidateId, null);
+            if (!request) continue;
             // eslint-disable-next-line no-await-in-loop -- see above
-            await api.directClip({
-              projectId,
-              sourceId: snapshot.source.sourceId,
-              candidateId,
-              cut: 'chosen',
-              approve: true,
-              ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
-            });
+            await api.directClip({ ...request, approve: true });
           } catch (error) {
             failures.push((error as Error).message);
           }
@@ -448,7 +592,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run, snapshot.rows],
+    [api, projectId, reload, snapshot.source, snapshot.rows, clipRequest],
   );
 
   return {
@@ -465,6 +609,9 @@ export function useResults(
     approveMany,
     tileUrl,
     solveFor,
+    framing,
+    preview,
+    previewFor,
     manual,
     transcript,
     requestTranscript,

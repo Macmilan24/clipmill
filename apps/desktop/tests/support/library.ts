@@ -330,6 +330,12 @@ export function fakeApi(world: FakeWorld): ShellApi {
       return Promise.resolve({ ...found, state: JobState.CANCELLED });
     },
     chooseSourceFile: () => Promise.resolve(world.chosenPath ?? null),
+    relinkSource: (projectId, _sourceId, absolutePath) =>
+      Promise.resolve({
+        source: source(projectId, { absolutePath }),
+        observationCacheHit: false,
+        sourceMapJson: JSON.stringify(sourceMap()),
+      }),
     registerSource: (projectId, absolutePath) =>
       Promise.resolve({
         source: source(projectId, { absolutePath }),

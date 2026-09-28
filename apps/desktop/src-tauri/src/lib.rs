@@ -231,6 +231,61 @@ async fn choose_source_file(app: tauri::AppHandle) -> Result<Option<String>, Str
     Ok(path.map(|value| value.to_string()))
 }
 
+/// Pictures and sounds an asset may be, offered as the dialog's filters.
+const IMAGE_EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
+const AUDIO_EXTENSIONS: [&str; 7] = ["mp3", "wav", "flac", "m4a", "aac", "ogg", "oga"];
+
+/// Bring a picture or a sound in: the host opens the picker, and the daemon
+/// copies the chosen file into the asset folder by its hash. The renderer
+/// never names a path. `None` when the person closed the picker.
+#[tauri::command]
+async fn import_asset(
+    app: tauri::AppHandle,
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    kind: String,
+    license: String,
+) -> Result<Option<views::AssetView>, String> {
+    let (title, filter, extensions): (&str, &str, &[&str]) = match kind.as_str() {
+        "image" => ("Choose a picture", "Picture", &IMAGE_EXTENSIONS),
+        "audio" => ("Choose a sound", "Sound", &AUDIO_EXTENSIONS),
+        _ => return Err("choose a picture or a sound".to_owned()),
+    };
+    let (reply, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title(title)
+        .add_filter(filter, extensions)
+        .pick_file(move |path| {
+            let _sent = reply.send(path);
+        });
+    let Some(path) = chosen
+        .await
+        .map_err(|_| "the file dialog closed".to_owned())?
+    else {
+        return Ok(None);
+    };
+    supervisor
+        .client()
+        .import_asset(path.to_string(), license)
+        .await
+        .map(|asset| Some(asset.into()))
+        .map_err(|error| error.to_string())
+}
+
+/// Every asset of a kind, newest first.
+#[tauri::command]
+async fn list_assets(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    kind: String,
+) -> Result<Vec<views::AssetView>, String> {
+    supervisor
+        .client()
+        .list_assets(kind)
+        .await
+        .map(|assets| assets.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
 /// Open a native export-folder picker. The renderer has no direct dialog
 /// permission; this command returns the directory selected by the user.
 #[tauri::command]
@@ -258,6 +313,24 @@ async fn register_source(
     supervisor
         .client()
         .register_source(&project_id, &absolute_path)
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|registered| {
+            views::RegisteredSourceView::try_from(registered).map_err(ToOwned::to_owned)
+        })
+}
+
+/// Locate the same recording after it has moved, preserving its source id.
+#[tauri::command]
+async fn relink_source(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    source_id: String,
+    absolute_path: String,
+) -> Result<views::RegisteredSourceView, String> {
+    supervisor
+        .client()
+        .register_source_with_id(&project_id, &absolute_path, &source_id)
         .await
         .map_err(|error| error.to_string())
         .and_then(|registered| {
@@ -432,6 +505,104 @@ async fn list_edit_docs(
         .list_edit_docs(&project_id)
         .await
         .map(|docs| docs.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+/// Captions under a look being tried, without saving it.
+#[tauri::command]
+async fn preview_captions(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    doc_id: String,
+    style_ref: String,
+    options_json: String,
+) -> Result<views::CaptionPreviewView, String> {
+    supervisor
+        .client()
+        .preview_captions(&doc_id, &style_ref, &options_json)
+        .await
+        .map(|reply| views::CaptionPreviewView {
+            ass: reply.ass,
+            revision: reply.revision,
+        })
+        .map_err(|error| error.to_string())
+}
+
+/// Ask for attention when a long run finishes while the window is behind
+/// others: the Dock icon bounces once, and nothing else changes.
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects the calling window by value"
+)]
+fn request_attention(window: tauri::WebviewWindow) {
+    // Nothing to do when the platform will not bounce anything.
+    let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+}
+
+/// Where the camera would point at each moment, for vertical thumbnails.
+#[tauri::command]
+async fn thumbnail_framing(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    face_track_artifact_id: String,
+    moments: Vec<u64>,
+) -> Result<Vec<f64>, String> {
+    let request = clipmill_contracts::proto::ipc::v1::ThumbnailFramingRequest {
+        project_id,
+        face_track_artifact_id,
+        moments,
+    };
+    supervisor
+        .client()
+        .thumbnail_framing(request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// The faces seen over a span, for picking who the camera follows.
+#[tauri::command]
+async fn list_faces(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    face_track_artifact_id: String,
+    start_ticks: u64,
+    end_ticks: u64,
+) -> Result<Vec<views::FaceSightingView>, String> {
+    let request = clipmill_contracts::proto::ipc::v1::ListFacesRequest {
+        project_id,
+        face_track_artifact_id,
+        start_ticks,
+        end_ticks,
+    };
+    supervisor
+        .client()
+        .list_faces(request)
+        .await
+        .map(|sightings| sightings.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+/// A document's whole edit history, oldest first.
+#[tauri::command]
+async fn list_edit_history(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    doc_id: String,
+) -> Result<Vec<views::EditHistoryEntryView>, String> {
+    supervisor
+        .client()
+        .list_edit_history(&doc_id)
+        .await
+        .map(|entries| {
+            entries
+                .into_iter()
+                .map(|entry| views::EditHistoryEntryView {
+                    revision: entry.revision,
+                    command_json: entry.command_json,
+                    inverse_json: entry.inverse_json,
+                    applied_unix_millis: entry.applied_unix_millis,
+                })
+                .collect()
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -615,22 +786,41 @@ async fn local_lock(
 
 /// The crop path for a span, as a proposal. Nothing is written, so the
 /// Inspector may ask again every time a boundary moves.
+///
+/// `track_id` follows that face instead of the one the gate would choose,
+/// `two_up` solves both portraits of a two-person layout, and the aspect is
+/// the clip's frame, 9:16 when absent.
 #[tauri::command]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "a Tauri command's arguments are its JSON fields"
+)]
 async fn solve_crop_path(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
     project_id: String,
     face_track_artifact_id: String,
     start_ticks: u64,
     end_ticks: u64,
+    track_id: Option<u32>,
+    two_up: Option<bool>,
+    aspect_width: Option<u32>,
+    aspect_height: Option<u32>,
 ) -> Result<views::CropPathView, String> {
+    let (aspect_width, aspect_height) = match (aspect_width, aspect_height) {
+        (Some(width), Some(height)) if width > 0 && height > 0 => (width, height),
+        _ => (9, 16),
+    };
     let request = clipmill_contracts::proto::ipc::v1::SolveCropPathRequest {
         project_id,
         face_track_artifact_id,
         start_ticks,
         end_ticks,
-        aspect_width: 9,
-        aspect_height: 16,
+        aspect_width,
+        aspect_height,
         weights: None,
+        track_id: track_id.unwrap_or(0),
+        follow_track: track_id.is_some(),
+        two_up: two_up.unwrap_or(false),
     };
     supervisor
         .client()
@@ -652,6 +842,21 @@ async fn direct_clip(
     supervisor
         .client()
         .direct_clip(request.into())
+        .await
+        .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// The clip approving would build, drawn as the Editor draws it — built and
+/// not saved, so the Inspector shows what an approval makes.
+#[tauri::command]
+async fn preview_direct(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    request: views::DirectClipInput,
+) -> Result<views::PreviewPlanView, String> {
+    supervisor
+        .client()
+        .preview_direct(request.into())
         .await
         .map(Into::into)
         .map_err(|error| error.to_string())
@@ -753,10 +958,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let background = Arc::clone(&supervisor);
     // The media door. It holds the store root so it can derive an object
     // directory from a content address; it receives no path from the daemon.
-    let media = Arc::new(media::MediaProtocol::new(
-        Arc::clone(&supervisor),
-        config.paths.artifacts_dir.clone(),
-    ));
+    let media = Arc::new(
+        media::MediaProtocol::new(Arc::clone(&supervisor), config.paths.artifacts_dir.clone())
+            .with_fonts(config.fonts_dir.clone())
+            .with_emoji(config.emoji_dir.clone())
+            .with_assets(config.paths.assets_dir.clone()),
+    );
 
     tauri::Builder::default()
         // Registered for `choose_source_file` alone. The renderer is granted no
@@ -806,9 +1013,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             get_job,
             read_document,
             resolve_media,
+            import_asset,
+            list_assets,
             storage_stats,
             choose_source_file,
             register_source,
+            relink_source,
+            preview_captions,
+            list_edit_history,
+            list_faces,
+            preview_direct,
+            request_attention,
+            thumbnail_framing,
             get_source,
             start_youtube_import,
             get_youtube_import,

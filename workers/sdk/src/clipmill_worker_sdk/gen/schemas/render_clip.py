@@ -28,6 +28,21 @@ class AiUseSummary(BaseModel):
     requires_youtube_ai_disclosure: bool
 
 
+class License(Enum):
+    own_content = 'own_content'
+    licensed = 'licensed'
+    royalty_free = 'royalty_free'
+    public_domain = 'public_domain'
+
+
+class Asset(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    hash: constr(pattern=r'^sha256:[0-9a-f]{64}$')
+    license: License
+
+
 class Rights(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -36,6 +51,10 @@ class Rights(BaseModel):
         ..., description='What the user attested about the footage, echoed verbatim.'
     )
     gates_passed: list[constr(min_length=1)]
+    assets: list[Asset] | None = Field(
+        None,
+        description='Every picture and sound drawn or played besides the footage, with the licence the person stated when they brought it in.',
+    )
 
 
 class Layout(Enum):

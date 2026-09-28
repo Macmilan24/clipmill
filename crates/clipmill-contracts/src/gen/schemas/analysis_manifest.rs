@@ -427,6 +427,7 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"speech.asr.v1\","]
 #[doc = "        \"speech.alignment.v1\","]
 #[doc = "        \"speech.transcript.v1\","]
+#[doc = "        \"speech.speakers.v1\","]
 #[doc = "        \"evidence.shots.v1\","]
 #[doc = "        \"vision.face_track.v1\","]
 #[doc = "        \"index.transcript.v1\","]
@@ -468,6 +469,7 @@ impl Stage {
 #[doc = "    \"speech.asr.v1\","]
 #[doc = "    \"speech.alignment.v1\","]
 #[doc = "    \"speech.transcript.v1\","]
+#[doc = "    \"speech.speakers.v1\","]
 #[doc = "    \"evidence.shots.v1\","]
 #[doc = "    \"vision.face_track.v1\","]
 #[doc = "    \"index.transcript.v1\","]
@@ -506,6 +508,8 @@ pub enum StageKind {
     SpeechAlignmentV1,
     #[serde(rename = "speech.transcript.v1")]
     SpeechTranscriptV1,
+    #[serde(rename = "speech.speakers.v1")]
+    SpeechSpeakersV1,
     #[serde(rename = "evidence.shots.v1")]
     EvidenceShotsV1,
     #[serde(rename = "vision.face_track.v1")]
@@ -534,6 +538,7 @@ impl ::std::fmt::Display for StageKind {
             Self::SpeechAsrV1 => f.write_str("speech.asr.v1"),
             Self::SpeechAlignmentV1 => f.write_str("speech.alignment.v1"),
             Self::SpeechTranscriptV1 => f.write_str("speech.transcript.v1"),
+            Self::SpeechSpeakersV1 => f.write_str("speech.speakers.v1"),
             Self::EvidenceShotsV1 => f.write_str("evidence.shots.v1"),
             Self::VisionFaceTrackV1 => f.write_str("vision.face_track.v1"),
             Self::IndexTranscriptV1 => f.write_str("index.transcript.v1"),
@@ -556,6 +561,7 @@ impl ::std::str::FromStr for StageKind {
             "speech.asr.v1" => Ok(Self::SpeechAsrV1),
             "speech.alignment.v1" => Ok(Self::SpeechAlignmentV1),
             "speech.transcript.v1" => Ok(Self::SpeechTranscriptV1),
+            "speech.speakers.v1" => Ok(Self::SpeechSpeakersV1),
             "evidence.shots.v1" => Ok(Self::EvidenceShotsV1),
             "vision.face_track.v1" => Ok(Self::VisionFaceTrackV1),
             "index.transcript.v1" => Ok(Self::IndexTranscriptV1),

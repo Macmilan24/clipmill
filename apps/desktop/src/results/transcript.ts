@@ -5,8 +5,21 @@
  */
 import type { IndexTranscript, SpeechTranscript } from '@clipmill/contracts';
 
+import type { Voices } from './voices.js';
+
 export interface TranscriptWord {
   readonly text: string;
+  readonly startTicks: number;
+  readonly endTicks: number;
+  /**
+   * True when the aligner could not place the word and its interval was
+   * spread across the span it sits in: said, but not measured.
+   */
+  readonly guessed?: boolean;
+}
+
+/** A stretch voice activity heard no speech in: where a cut may land. */
+export interface TranscriptSilence {
   readonly startTicks: number;
   readonly endTicks: number;
 }
@@ -24,6 +37,10 @@ export interface Transcript {
   readonly words: readonly TranscriptWord[];
   /** Ordered by time, covering the words the index grouped. */
   readonly sentences: readonly TranscriptSentence[];
+  /** Measured silences, ordered by time. Absent from older readers. */
+  readonly silences?: readonly TranscriptSilence[];
+  /** Who speaks when, where the analysis told voices apart. */
+  readonly voices?: Voices;
 }
 
 /**
@@ -43,11 +60,17 @@ export const EDGE_PAD_TICKS = 9_000;
 export function readTranscript(
   speech: SpeechTranscript,
   index: IndexTranscript | null,
+  voices: Voices | null = null,
 ): Transcript {
   const words = speech.words.map((word) => ({
     text: word.text,
     startTicks: word.start_ticks,
     endTicks: word.end_ticks,
+    ...(word.timing === 'aligned' ? {} : { guessed: true }),
+  }));
+  const silences = (speech.silences ?? []).map((silence) => ({
+    startTicks: silence.start_ticks,
+    endTicks: silence.end_ticks,
   }));
   const position = new Map(speech.words.map((word, at) => [word.index, at]));
   const grouped = index?.sentences?.length
@@ -72,7 +95,7 @@ export function readTranscript(
       wordCount: Math.min(group.count, words.length - group.first),
     });
   }
-  return { words, sentences };
+  return { words, sentences, silences, ...(voices ? { voices } : {}) };
 }
 
 /** The position of the last word that starts at or before `ticks`, or −1. */

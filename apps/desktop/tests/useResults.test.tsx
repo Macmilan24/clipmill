@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CropPath } from '../src/daemon/client.js';
-import { rememberLook } from '../src/results/captionLook.js';
+import { rememberLook, rememberOptions } from '../src/results/captionLook.js';
 import { EMPTY_SNAPSHOT, ResultsLoader, type ResultsSnapshot } from '../src/results/loader.js';
 import { useResults } from '../src/results/useResults.js';
 import { emptyWorld, fakeApi, source } from './support/library.js';
@@ -129,6 +129,7 @@ it('creates a manual edit from the named run without pretending it was approved 
     endTicks: 630 * 90_000,
     manualSpan: true,
     approve: false,
+    highlightSpokenWord: true,
   });
 });
 
@@ -263,5 +264,74 @@ describe('approving the cut on screen', () => {
       hook.result.current.snapshot.rows.find((row) => row.candidateId === CANDIDATE)?.decision,
     ).toBeNull();
     expect(hook.result.current.notice).toBe('Decision cleared.');
+  });
+});
+
+describe('previewing what an approval builds', () => {
+  it('asks for the clip with the very request an approval sends, look and all', async () => {
+    rememberLook(OLD, 'clipmill.captions.minimal.v1');
+    const api = fakeApi(twoProjects());
+    const plan = {
+      segments: [],
+      crops: [],
+    } as unknown as import('../src/daemon/client.js').PreviewPlan;
+    const previewDirect = vi.fn().mockResolvedValue(plan);
+    Object.assign(api, { previewDirect });
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    const cut = { startTicks: 598 * 90_000, endTicks: 633 * 90_000 };
+    act(() => hook.result.current.previewFor(CANDIDATE, cut));
+    await waitFor(() => expect(hook.result.current.preview?.plan).toBe(plan));
+    expect(hook.result.current.preview?.candidateId).toBe(CANDIDATE);
+    // The same ask twice is asked once.
+    act(() => hook.result.current.previewFor(CANDIDATE, cut));
+    expect(previewDirect).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, cut);
+    });
+    const { approve: _approve, variation: _variation, ...approved } = direct.mock.calls[0]![0];
+    expect(previewDirect.mock.calls[0]![0]).toEqual(approved);
+    expect(approved).toMatchObject({ styleRef: 'clipmill.captions.minimal.v1', cut: 'exact' });
+    localStorage.removeItem(`clipmill.captionLook.${OLD}`);
+  });
+
+  it('builds a batch approval in the project’s look too', async () => {
+    rememberLook(OLD, 'clipmill.captions.boxed.v1');
+    const api = fakeApi(twoProjects());
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => hook.result.current.approveMany([CANDIDATE, OTHER_CANDIDATE]));
+    expect(direct.mock.calls.map(([request]) => request.styleRef)).toEqual([
+      'clipmill.captions.boxed.v1',
+      'clipmill.captions.boxed.v1',
+    ]);
+    localStorage.removeItem(`clipmill.captionLook.${OLD}`);
+  });
+});
+
+describe('a project started from a saved style', () => {
+  it('builds every clip with that style’s options', async () => {
+    rememberLook(OLD, 'clipmill.captions.boxed.v1');
+    rememberOptions(OLD, { font_family: 'Anton', accent: '#FF5A1F' });
+    const api = fakeApi(twoProjects());
+    const direct = vi.spyOn(api, 'directClip');
+    const hook = renderHook(() => useResults(OLD, OLD_SOURCE, OLD_JOB, api));
+    await waitFor(() => expect(hook.result.current.snapshot.rows).toHaveLength(2));
+    await act(async () => {
+      await hook.result.current.approve(CANDIDATE, null);
+    });
+    await act(async () => {
+      await hook.result.current.manual(600 * 90_000, 630 * 90_000);
+    });
+    for (const [request] of direct.mock.calls) {
+      expect(JSON.parse(request.captionOptionsJson ?? '{}')).toEqual({
+        font_family: 'Anton',
+        accent: '#FF5A1F',
+      });
+    }
+    rememberOptions(OLD, null);
+    localStorage.removeItem(`clipmill.captionLook.${OLD}`);
   });
 });

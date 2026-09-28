@@ -43,15 +43,21 @@ const SENTENCES = [
   'Then do it again the day after that.',
 ];
 
-/** Words timed like a steady speaker: three words a second, a breath per sentence. */
+/**
+ * Words timed like a steady speaker: three words a second, a breath per
+ * sentence. A host asks the questions and cuts in now and then; the guest
+ * says the rest, so the transcript has two voices to tell apart.
+ */
 function speak(): Transcript {
   const words: TranscriptWord[] = [];
   const sentences: TranscriptSentence[] = [];
+  const turns: { startTicks: number; endTicks: number; speakerId: string }[] = [];
   let at = 4 * SECOND;
   let sentence = 0;
   while (at < REVIEW_DURATION_TICKS - 6 * SECOND) {
     const text = SENTENCES[sentence % SENTENCES.length]!;
     const firstWord = words.length;
+    const speakerId = text.endsWith('?') || sentence % 7 === 3 ? 'spk_2' : 'spk_1';
     for (const word of text.split(' ')) {
       const length = Math.round((0.18 + word.length * 0.035) * SECOND);
       words.push({ text: word, startTicks: at, endTicks: at + length });
@@ -63,10 +69,22 @@ function speak(): Transcript {
       firstWord,
       wordCount: words.length - firstWord,
     });
+    const last = turns.at(-1);
+    if (last?.speakerId === speakerId) last.endTicks = words.at(-1)!.endTicks;
+    else
+      turns.push({
+        startTicks: words[firstWord]!.startTicks,
+        endTicks: words.at(-1)!.endTicks,
+        speakerId,
+      });
     at += Math.round((sentence % 3 === 0 ? 0.9 : 0.55) * SECOND);
     sentence += 1;
   }
-  return { words, sentences };
+  return {
+    words,
+    sentences,
+    voices: { sourceFingerprint: 'preview', ids: ['spk_1', 'spk_2'], turns },
+  };
 }
 
 export const reviewTranscript: Transcript = speak();

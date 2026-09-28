@@ -106,7 +106,12 @@ export function ProjectCard({
           )}
 
           <div className="mt-3 flex items-center justify-between gap-2">
-            <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+              {entry.source?.missing === true && (
+                <StatusBadge tone="warning">Recording moved</StatusBadge>
+              )}
+            </span>
             <span className="text-meta text-[var(--cm-text-muted)]">
               {formatRelative(entry.project.createdUnixMillis)}
             </span>

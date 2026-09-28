@@ -5,7 +5,9 @@
 //! Burn-in uses kinetic cues when present and reading cues otherwise. Sidecars
 //! always use reading cues, with no kinetic fallback.
 
-use clipmill_edit_ir::{CaptionAnimation, CaptionCase, CaptionCue, CaptionRegion, CaptionTrack};
+use clipmill_edit_ir::{
+    CaptionAnimation, CaptionCase, CaptionCue, CaptionRegion, CaptionTrack, Overlay,
+};
 
 pub(crate) fn burned_text(text: &str, text_case: CaptionCase) -> String {
     match text_case {
@@ -17,7 +19,7 @@ pub(crate) fn burned_text(text: &str, text_case: CaptionCase) -> String {
 
 use crate::{
     profile::{CaptionStyle, RenderProfile},
-    timing::{FrameRate, centis_to_ass, millis_to_srt, millis_to_vtt},
+    timing::{FrameRate, millis_to_srt, millis_to_vtt},
 };
 
 /// The frames a cue occupies in the rendered program: `[first_frame,
@@ -69,17 +71,23 @@ fn plain_text(cue: &CaptionCue, separator: &str) -> String {
         .join(separator)
 }
 
-pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String {
+/// The burned-in captions, and the text laid over the program, as one script.
+pub(crate) fn write_ass(
+    track: &CaptionTrack,
+    overlays: &[Overlay],
+    profile: &RenderProfile,
+) -> String {
     let rate = profile.rate();
     let style = &profile.caption_style;
+    let (play_x, play_y) = crate::profile::design_resolution(profile.width, profile.height);
     let mut lines = vec![
         "[Script Info]".to_owned(),
         "ScriptType: v4.00+".to_owned(),
-        // The render is authored at output resolution, so libass never
-        // rescales the style and a preview at proxy resolution can scale by
-        // one factor.
-        format!("PlayResX: {}", profile.width),
-        format!("PlayResY: {}", profile.height),
+        // Styles are authored at the design height and libass scales them to
+        // whatever the output is, so every output size keeps one proportion
+        // and a preview at proxy resolution scales by one factor.
+        format!("PlayResX: {play_x}"),
+        format!("PlayResY: {play_y}"),
         // 2: no automatic wrapping. The document already decided the breaks.
         "WrapStyle: 2".to_owned(),
         "ScaledBorderAndShadow: yes".to_owned(),
@@ -91,34 +99,56 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
          BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding"
             .to_owned(),
     ];
-    lines.extend(
-        [
-            CaptionRegion::LowerSafe,
-            CaptionRegion::UpperSafe,
-            CaptionRegion::Center,
-        ]
-        .into_iter()
-        .map(|region| style_line(style, region)),
-    );
+    let regions = [
+        CaptionRegion::LowerSafe,
+        CaptionRegion::UpperSafe,
+        CaptionRegion::Center,
+    ];
+    lines.extend(regions.into_iter().map(|region| style_line(style, region)));
+    // The box mark draws with two helper styles of its own; nothing else
+    // needs them, so a document that never boxes a word does not carry them.
+    let boxes = style.highlight == clipmill_edit_ir::HighlightStyle::Box
+        && track
+            .burned()
+            .iter()
+            .any(|cue| highlight_enabled(cue, track.options.highlight_spoken_word));
+    if boxes {
+        for region in regions {
+            lines.push(mark_style_line(style, region));
+            lines.push(word_style_line(style, region));
+        }
+    }
+    // Likewise the text styles, only for a clip with text over it.
+    if overlays.iter().any(clipmill_edit_ir::Overlay::is_text) {
+        lines.extend(crate::overlays::style_lines(style));
+    }
     lines.push(String::new());
     lines.push("[Events]".to_owned());
     lines.push(
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
             .to_owned(),
     );
+    let context = crate::kinetic::CueContext {
+        style,
+        rate,
+        text_case: track.options.text_case,
+        position: track.options.position,
+        play: (play_x, play_y),
+    };
     for cue in track.burned() {
-        let start_centis = rate.frame_centis(rate.frame_ceil(cue.start_ticks));
-        let end_centis = rate.frame_centis(rate.frame_ceil(cue.end_ticks));
-        lines.push(format!(
-            "Dialogue: 0,{},{},{},,0,0,0,,{}",
-            centis_to_ass(start_centis),
-            centis_to_ass(end_centis),
-            region_style_name(cue.region),
-            dialogue_text(cue, rate, start_centis, end_centis, track.options.text_case),
+        lines.extend(crate::kinetic::cue_dialogues(
+            cue,
+            highlight_enabled(cue, track.options.highlight_spoken_word),
+            &context,
         ));
     }
+    lines.extend(crate::overlays::dialogues(overlays, rate, (play_x, play_y)));
     lines.push(String::new());
     lines.join("\n")
+}
+
+pub(crate) fn highlight_enabled(cue: &CaptionCue, override_value: Option<bool>) -> bool {
+    override_value.unwrap_or(matches!(cue.anim, CaptionAnimation::Karaoke))
 }
 
 /// Where a cue's highlight is at every moment it is on screen.
@@ -131,9 +161,9 @@ pub(crate) fn write_ass(track: &CaptionTrack, profile: &RenderProfile) -> String
 /// a frame nobody checked.
 ///
 /// Durations are centiseconds from the dialogue's own start, and each word
-/// holds the highlight until the next word begins — so the sweep advances
-/// exactly when speech does and the holds sum to the cue's length with no
-/// accumulated drift.
+/// holds the highlight until the next word begins, with a short floor when
+/// several guessed starts collapse on one frame. Holds still sum to the cue's
+/// length with no accumulated drift.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Sweep {
     /// Before the first word is sung. Zero when speech starts with the cue.
@@ -148,81 +178,43 @@ pub(crate) fn sweep(
     start_centis: i64,
     end_centis: i64,
 ) -> Sweep {
-    // Boundaries in dialogue-relative centiseconds: the cue start, then each
-    // word's start, then the cue end.
-    let mut boundaries = vec![0_i64];
-    for word in cue.words() {
-        let centis = rate.frame_centis(rate.frame_ceil(word.start_ticks));
-        boundaries.push((centis - start_centis).max(0));
+    let words = cue.words().collect::<Vec<_>>();
+    if words.is_empty() {
+        return Sweep {
+            lead_in_centis: 0,
+            holds_centis: Vec::new(),
+        };
     }
-    boundaries.push((end_centis - start_centis).max(0));
-
-    let holds = (0..cue.words().count())
-        .map(|index| {
-            let start = boundaries.get(index + 1).copied().unwrap_or(0);
-            let end = boundaries.get(index + 2).copied().unwrap_or(start);
+    let total = (end_centis - start_centis).max(0);
+    // An aligner may put several words on one tick. Reserve about two output
+    // frames for each word by borrowing from the long holds around that run.
+    // When the cue is too short to fit that floor, divide its available time
+    // evenly rather than creating an impossible boundary beyond its end.
+    let two_frames = (rate.frame_centis(2) - rate.frame_centis(0)).max(1);
+    let floor = two_frames.min(total / i64::try_from(words.len()).unwrap_or(1).max(1));
+    let mut starts = Vec::with_capacity(words.len());
+    for (index, word) in words.iter().enumerate() {
+        let desired =
+            (rate.frame_centis(rate.frame_ceil(word.start_ticks)) - start_centis).clamp(0, total);
+        let lower = starts
+            .last()
+            .copied()
+            .map_or(0, |previous| previous + floor);
+        let remaining = i64::try_from(words.len() - index).unwrap_or(1);
+        let upper = total.saturating_sub(remaining.saturating_mul(floor));
+        starts.push(desired.clamp(lower, upper));
+    }
+    let holds = starts
+        .iter()
+        .enumerate()
+        .map(|(index, &start)| {
+            let end = starts.get(index + 1).copied().unwrap_or(total);
             (end - start).max(0)
         })
         .collect();
     Sweep {
-        lead_in_centis: boundaries.get(1).copied().unwrap_or(0),
+        lead_in_centis: starts[0],
         holds_centis: holds,
-    }
-}
-
-/// A cue's text with karaoke timing, when the cue asks for it.
-fn dialogue_text(
-    cue: &CaptionCue,
-    rate: FrameRate,
-    start_centis: i64,
-    end_centis: i64,
-    text_case: CaptionCase,
-) -> String {
-    let karaoke = matches!(cue.anim, CaptionAnimation::Karaoke);
-    if !karaoke {
-        return cue
-            .lines
-            .iter()
-            .map(|line| {
-                line.words
-                    .iter()
-                    .map(|word| burned_text(&word.text, text_case))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
-            .collect::<Vec<_>>()
-            .join("\\N");
-    }
-    let swept = sweep(cue, rate, start_centis, end_centis);
-    let mut pieces = Vec::new();
-    if swept.lead_in_centis > 0 {
-        pieces.push(format!("{{\\k{}}}", swept.lead_in_centis));
-    }
-    let mut index = 0_usize;
-    for (line_index, line) in cue.lines.iter().enumerate() {
-        if line_index > 0 {
-            pieces.push("\\N".to_owned());
-        }
-        for (word_index, word) in line.words.iter().enumerate() {
-            if word_index > 0 {
-                pieces.push(" ".to_owned());
-            }
-            let hold = swept.holds_centis.get(index).copied().unwrap_or(0);
-            pieces.push(format!(
-                "{{\\k{hold}}}{}",
-                burned_text(&word.text, text_case)
-            ));
-            index += 1;
-        }
-    }
-    pieces.concat()
-}
-
-fn region_style_name(region: CaptionRegion) -> &'static str {
-    match region {
-        CaptionRegion::LowerSafe => "lower_safe",
-        CaptionRegion::UpperSafe => "upper_safe",
-        CaptionRegion::Center => "center",
     }
 }
 
@@ -239,7 +231,7 @@ fn style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
         "Style: {name},{font},{size},{spoken},{unspoken},{outline},{shadow},{bold},0,0,0,\
          100,100,0,0,{border},{outline_width},{shadow_depth},{alignment},{margin_h},{margin_h},\
          {margin_v},1",
-        name = region_style_name(region),
+        name = crate::kinetic::region_style_name(region),
         // 1 draws an outline and a drop shadow; 3 fills an opaque plate behind
         // the line, using the outline colour as the plate.
         border = if style.boxed { 3 } else { 1 },
@@ -262,6 +254,57 @@ fn style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
             style.margin_vertical
         },
     )
+}
+
+/// The opaque box a marked word sits on: the style's spoken colour, padded
+/// around the word, with its text drawn invisible by the event.
+fn mark_style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
+    let padding = (style.font_size / 7).max(8);
+    format!(
+        "Style: {name}{suffix},{font},{size},&HFF000000,&HFF000000,{box_colour},&HFF000000,{bold},0,0,0,\
+         100,100,0,0,3,{padding},0,{alignment},{margin_h},{margin_h},{margin_v},1",
+        name = crate::kinetic::region_style_name(region),
+        suffix = crate::kinetic::MARK_SUFFIX,
+        font = style.font_family,
+        size = style.font_size,
+        box_colour = style.spoken.to_ass(),
+        bold = i32::from(style.bold),
+        alignment = region_alignment(region),
+        margin_h = style.margin_horizontal,
+        margin_v = region_margin(style, region),
+    )
+}
+
+/// The marked word redrawn over its box: the look's outline, no plate and no
+/// shadow, so the box shows around the letters rather than under a plate.
+fn word_style_line(style: &CaptionStyle, region: CaptionRegion) -> String {
+    format!(
+        "Style: {name}{suffix},{font},{size},{text},{text},{outline},&HFF000000,{bold},0,0,0,\
+         100,100,0,0,1,{outline_width},0,{alignment},{margin_h},{margin_h},{margin_v},1",
+        name = crate::kinetic::region_style_name(region),
+        suffix = crate::kinetic::WORD_SUFFIX,
+        font = style.font_family,
+        size = style.font_size,
+        text = style.unspoken.to_ass(),
+        outline = crate::profile::Colour {
+            transparency: 0,
+            ..style.outline
+        }
+        .to_ass(),
+        outline_width = style.outline_width.max(2),
+        bold = i32::from(style.bold),
+        alignment = region_alignment(region),
+        margin_h = style.margin_horizontal,
+        margin_v = region_margin(style, region),
+    )
+}
+
+fn region_margin(style: &CaptionStyle, region: CaptionRegion) -> u32 {
+    if matches!(region, CaptionRegion::Center) {
+        0
+    } else {
+        style.margin_vertical
+    }
 }
 
 pub(crate) fn write_srt(track: &CaptionTrack, rate: FrameRate) -> String {
@@ -313,7 +356,7 @@ mod tests {
         CaptionAnimation, CaptionCue, CaptionLine, CaptionRegion, CaptionTrack, CaptionWord,
     };
 
-    use super::{cue_windows, unrenderable_character, write_ass, write_srt, write_vtt};
+    use super::{cue_windows, sweep, unrenderable_character, write_ass, write_srt, write_vtt};
     use crate::{profile::RenderProfile, timing::FrameRate};
 
     const FRAME_TICKS: i64 = 3_003;
@@ -325,6 +368,7 @@ mod tests {
             start_ticks: start_frame * FRAME_TICKS,
             end_ticks: end_frame * FRAME_TICKS,
             word_id: None,
+            emphasis: false,
         }
     }
 
@@ -346,6 +390,7 @@ mod tests {
                         words: vec![word("point", 60, 75)],
                     },
                 ],
+                position: None,
             }],
             burn_in: Vec::new(),
         }
@@ -353,7 +398,7 @@ mod tests {
 
     #[test]
     fn karaoke_durations_sum_to_the_cue_length() {
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         let dialogue = ass
             .lines()
             .find(|line| line.starts_with("Dialogue:"))
@@ -375,7 +420,7 @@ mod tests {
 
     #[test]
     fn a_word_holds_the_highlight_until_the_next_one_starts() {
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         let dialogue = ass
             .lines()
             .find(|line| line.starts_with("Dialogue:"))
@@ -390,9 +435,30 @@ mod tests {
     }
 
     #[test]
+    fn collapsed_word_starts_each_get_visible_highlight_time() {
+        let mut caption = track().cues[0].clone();
+        caption.start_ticks = 0;
+        caption.end_ticks = 90 * FRAME_TICKS;
+        for word in caption.lines.iter_mut().flat_map(|line| &mut line.words) {
+            word.start_ticks = 30 * FRAME_TICKS;
+            word.end_ticks = 30 * FRAME_TICKS;
+        }
+        let measured = sweep(&caption, RATE, 0, RATE.frame_centis(90));
+        let floor = RATE.frame_centis(2) - RATE.frame_centis(0);
+        assert!(
+            measured.holds_centis.iter().all(|hold| *hold >= floor),
+            "{measured:?}"
+        );
+        assert_eq!(
+            measured.lead_in_centis + measured.holds_centis.iter().sum::<i64>(),
+            RATE.frame_centis(90)
+        );
+    }
+
+    #[test]
     fn stored_line_breaks_survive_into_every_output() {
         let profile = RenderProfile::default();
-        let ass = write_ass(&track(), &profile);
+        let ass = write_ass(&track(), &[], &profile);
         assert!(ass.contains("WrapStyle: 2"), "libass must not re-wrap");
         assert!(ass.contains("\\Npoint") || ass.contains("\\N{\\k"));
         let srt = write_srt(&track(), RATE);
@@ -415,6 +481,7 @@ mod tests {
                 lines: vec![CaptionLine {
                     words: vec![word(text, from, to)],
                 }],
+                position: None,
             })
             .collect()
     }
@@ -428,7 +495,7 @@ mod tests {
         let mut both = track();
         both.burn_in = kinetic();
 
-        let ass = write_ass(&both, &RenderProfile::default());
+        let ass = write_ass(&both, &[], &RenderProfile::default());
         let srt = write_srt(&both, RATE);
         let vtt = write_vtt(&both, RATE);
 
@@ -451,7 +518,7 @@ mod tests {
     fn without_a_kinetic_grouping_the_reading_cues_are_what_gets_burned_in() {
         // Every document written before the second track existed behaves this
         // way, and must keep behaving this way.
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         assert_eq!(
             ass.lines()
                 .filter(|line| line.starts_with("Dialogue:"))
@@ -508,7 +575,7 @@ mod tests {
 
     #[test]
     fn every_region_has_a_style_with_its_own_anchor() {
-        let ass = write_ass(&track(), &RenderProfile::default());
+        let ass = write_ass(&track(), &[], &RenderProfile::default());
         assert!(ass.contains("Style: lower_safe,Inter,84,"));
         assert!(ass.contains("Style: upper_safe,"));
         assert!(ass.contains("Style: center,"));

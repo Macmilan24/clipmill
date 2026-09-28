@@ -3,7 +3,17 @@
  * approved clip. Every picture, crop and caption comes from the preview plan the
  * render code computed; the player maps media time onto the plan's program frames.
  */
-import { ArrowLeft, Check, Maximize2, Minimize2, Redo2, Undo2, Upload } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  Keyboard,
+  Link2,
+  Maximize2,
+  Minimize2,
+  Redo2,
+  Undo2,
+  Upload,
+} from 'lucide-react';
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -18,7 +28,7 @@ import type { EditIr } from '@clipmill/contracts';
 
 import { Button } from '../components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '../components/ui/empty.js';
-import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
+import type { EditCommandJson, FaceSighting, PreviewPlan } from '../daemon/client.js';
 import { type Cut, clockTenths } from '../inspector/review.js';
 import { TipButton } from '../inspector/TipButton.js';
 import type { Filmstrip, Peaks } from '../results/loader.js';
@@ -30,8 +40,13 @@ import {
   removeGainPoint,
   splitSegment,
 } from '../editor/commands.js';
+import { removeOverlay, suggestedHook } from '../editor/overlays.js';
+import type { AssetAccess } from '../editor/brand.js';
+import { useMusicBed } from '../editor/music.js';
 import { EditorMonitor, type MonitorPlayback } from '../editor/EditorMonitor.js';
 import { EditorProperties } from '../editor/EditorProperties.js';
+import type { RecordingAccess } from '../editor/CutawaysSection.js';
+import { savedCutaways, setCutaways } from '../editor/cutaways.js';
 import { EditorTimeline, type Tool, deleteRange } from '../editor/EditorTimeline.js';
 import { EditorTranscript } from '../editor/EditorTranscript.js';
 import {
@@ -50,9 +65,21 @@ import {
   ticksOfFrame,
   zoomSpan,
 } from '../editor/timeline.js';
-import { cutWords, programWords, rippleRange, shownCues } from '../editor/transcript.js';
+import {
+  cutWords,
+  programSilences,
+  programWords,
+  rippleRange,
+  shownCues,
+} from '../editor/transcript.js';
 import { useDraftAudio } from '../editor/useDraftAudio.js';
 import { useEditorKeys } from '../editor/useEditorKeys.js';
+import { ClipTitle, HistoryButton } from '../editor/EditorHistory.js';
+import { exactCaptionsOf } from '../editor/exactCaptions.js';
+import type { HistoryStep } from '../editor/history.js';
+import type { EditorFocus } from '../shell/route.js';
+import { openShortcuts } from '../shell/ShortcutSheet.js';
+import { type CoachMark, CoachMarks } from '../onboarding/CoachMarks.js';
 import {
   gainAt,
   proxySecondsAt,
@@ -79,6 +106,7 @@ export interface EditorProps {
   readonly docId: string | null;
   /** What the clip is called — the project and the clip — when the route knew. */
   readonly labels: { readonly project?: string; readonly clip?: string } | null;
+  readonly focus?: EditorFocus | null;
   readonly loading: boolean;
   readonly problem: string | null;
   readonly busy: boolean;
@@ -96,14 +124,66 @@ export interface EditorProps {
   readonly onOpenResults: () => void;
   /** Take this clip to the export screen. Null when no clip is open. */
   readonly onExport: (() => void) | null;
+  readonly onRelink?: (() => void) | null;
+  readonly relinking?: boolean;
   readonly onApply: (command: EditCommandJson) => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
   readonly onResolve: (frame: number) => void;
+  /** Follow one face through the section at `frame`. Absent hides the faces. */
+  readonly onFollow?: ((frame: number, trackId: number) => void) | null;
+  /** The faces seen over a span of the source, for choosing whom to follow. */
+  readonly loadFaces?:
+    ((startTicks: number, endTicks: number) => Promise<readonly FaceSighting[]>) | null;
+  /** The clip's whole edit history, newest last. Absent hides History. */
+  readonly onLoadHistory?: (() => Promise<readonly HistoryStep[]>) | null;
+  /** The person's pictures and sounds. Absent shows no logo and offers none. */
+  readonly assets?: AssetAccess | null;
+  /** The project's recordings, for B-roll footage. Absent offers none. */
+  readonly recordings?: RecordingAccess | null;
+  /** Where a pinned caption font is served from. Absent keeps CSS captions. */
+  readonly fontUrl?: ((file: string) => string) | null;
+  /** Where a pinned emoji's picture is served from. Absent draws the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
+  /**
+   * The captions under a look not chosen yet, as the export would write them.
+   * Absent makes every look a saved choice, as before.
+   */
+  readonly previewCaptions?: ((draft: CaptionDraft) => Promise<string | null>) | null;
 }
 
+/** A caption look being tried: a preset, clip-wide options, or both. */
+export interface CaptionDraft {
+  readonly styleRef?: string;
+  readonly options?: NonNullable<EditIr['captions']['options']>;
+}
+
+/** The Editor's tips, the first time it opens. */
+const EDITOR_TIPS: readonly CoachMark[] = [
+  {
+    target: 'edit-transcript',
+    title: 'Edit by word',
+    body: 'Select words to cut them from the picture and the sound, hide them from the captions, or correct them. Fillers and long pauses are gathered above for review.',
+  },
+  {
+    target: 'edit-preview',
+    title: 'The picture is yours to frame',
+    body: 'Drag it to reframe, pinch or ⌘-scroll to zoom, and drag a caption to move it. Original shows the whole frame, and a face there to follow.',
+  },
+  {
+    target: 'edit-properties',
+    title: 'Captions, framing and sound',
+    body: 'Try a look before choosing it. Every change is one step: undo takes it back, and History lists them all.',
+  },
+  {
+    target: 'edit-export',
+    title: 'When it is ready',
+    body: 'Export makes the 9:16 file and its subtitles, and shows you the clip first.',
+  },
+];
+
 const PANELS_KEY = 'clipmill.editor.panels';
-const DEFAULT_PANELS = { left: 300, right: 320 };
+const DEFAULT_PANELS = { left: 300, right: 320, lanes: 1 };
 
 function remembered<T>(key: string, fallback: T): T {
   try {
@@ -132,6 +212,7 @@ export function Editor({
   proxyUrls,
   docId,
   labels,
+  focus = null,
   loading,
   problem,
   busy,
@@ -142,10 +223,20 @@ export function Editor({
   picker,
   onOpenResults,
   onExport,
+  onRelink = null,
+  relinking = false,
   onApply,
   onUndo,
   onRedo,
   onResolve,
+  onFollow = null,
+  loadFaces = null,
+  fontUrl = null,
+  emojiUrl = null,
+  previewCaptions = null,
+  onLoadHistory = null,
+  assets = null,
+  recordings = null,
 }: EditorProps) {
   const video = useRef<HTMLVideoElement>(null);
   const [playhead, setFrame] = useState(0);
@@ -168,6 +259,46 @@ export function Editor({
   const reverseTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [selection, setSelection] = useState<EditorSelection>(NOTHING);
   const [tab, setTab] = useState<PropertiesTab>('captions');
+  // A caption look being tried: the script libass draws until it is chosen
+  // or let go. Tagged with the revision it was drawn over, so an edit that
+  // lands meanwhile shows the saved captions rather than a stale draft.
+  const [draft, setDraft] = useState<{ ass: string; revision: number } | null>(null);
+  const draftRequest = useRef(0);
+  const tryLook = useCallback(
+    (look: CaptionDraft | null) => {
+      draftRequest.current += 1;
+      const request = draftRequest.current;
+      if (!look || !previewCaptions || !plan) {
+        setDraft(null);
+        return;
+      }
+      const revision = plan.revision;
+      void previewCaptions(look).then((ass) => {
+        if (request === draftRequest.current && ass !== null) setDraft({ ass, revision });
+      });
+    },
+    [previewCaptions, plan],
+  );
+  const clipWords = useMemo(() => (plan ? programWords(plan, transcript) : []), [plan, transcript]);
+  // A hook title starts as what the clip is called, or the first thing said.
+  const hook = useMemo(() => {
+    if (!plan) return 'Your hook here';
+    const opening: string[] = [];
+    for (const word of clipWords) {
+      opening.push(word.text);
+      if (/[.?!]$/.test(word.text) || opening.length >= 14) break;
+    }
+    return suggestedHook(document?.title ?? labels?.clip, opening.join(' '));
+  }, [plan, clipWords, document?.title, labels?.clip]);
+  const exactCaptions = useMemo(
+    () =>
+      exactCaptionsOf(
+        plan,
+        fontUrl,
+        draft && plan && draft.revision === plan.revision ? draft.ass : plan?.ass,
+      ),
+    [plan, fontUrl, draft],
+  );
   const [tool, setTool] = useState<Tool>('select');
   const [snap, setSnap] = useState(true);
   const [marks, setMarks] = useState<{ in: number | null; out: number | null }>({
@@ -187,7 +318,14 @@ export function Editor({
   // the effect below that moves it back, a frame past the end would find no
   // segment — and no segment would take the picture down with it.
   const frame = plan ? Math.max(0, Math.min(playhead, plan.frameCount - 1)) : playhead;
-  const draftAudio = useDraftAudio(video, plan ? gainAt(plan, frame) : 0);
+  // The music under the voice, on the program's clock at the render's levels.
+  const musicElement = useRef<HTMLAudioElement>(null);
+  useMusicBed(musicElement, plan ?? null, frame, playing, muted);
+  const draftAudio = useDraftAudio(
+    video,
+    plan ? gainAt(plan, frame) : 0,
+    plan?.gain.some((point) => point.gainDb > 0) ?? false,
+  );
   const range =
     marks.in !== null && marks.out !== null && marks.out > marks.in
       ? { first: marks.in, last: marks.out }
@@ -266,11 +404,29 @@ export function Editor({
         }
         // Set whether or not the media has loaded: before metadata a browser
         // keeps it as the position to start from, which is what is wanted.
-        element.currentTime = seconds;
+        // Not when it is there already: a seek in place fires `seeking`, which
+        // drops the decoded frame the composition redraws a paused edit from,
+        // and a paused seek to the same frame never decodes a new one — so a
+        // layout chosen while paused would not show until the next frame.
+        if (Math.abs(element.currentTime - seconds) > 1 / 90_000) element.currentTime = seconds;
       }
     },
     [plan, proxyUrls, updateFrame],
   );
+
+  const focusedCue = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focus || !plan || !docId) return;
+    const key = `${docId}:${focus.track}:${focus.cueId ?? ''}`;
+    if (focusedCue.current === key) return;
+    const cues = focus.track === 'reading' ? (plan.readingCues ?? plan.cues) : plan.cues;
+    const target = cues.find((cue) => cue.cueId === focus.cueId) ?? cues[0];
+    if (!target) return;
+    focusedCue.current = key;
+    setTab('captions');
+    setSelection({ kind: 'cue', cueId: target.cueId });
+    seek(target.firstFrame);
+  }, [docId, focus, plan, seek]);
 
   // A new plan is a new mapping. A trim moved the segment's window, so the
   // frame the playhead is on now shows different footage and may not exist
@@ -547,11 +703,22 @@ export function Editor({
     if (!plan || busy) return;
     let command: EditCommandJson | null = null;
     if (selection.kind === 'words') {
-      command = cutWords(plan, programWords(plan, transcript), positions(selection.range));
+      command = cutWords(
+        plan,
+        programWords(plan, transcript),
+        positions(selection.range),
+        programSilences(plan, transcript),
+      );
     } else if (selection.kind === 'keyframe') {
       command = removeCropKeyframe(selection.tTicks, selection.segmentId, selection.secondary);
     } else if (selection.kind === 'gain') {
       command = removeGainPoint(selection.tTicks);
+    } else if (selection.kind === 'overlay') {
+      command = removeOverlay(selection.overlayId);
+    } else if (selection.kind === 'cutaway') {
+      command = setCutaways(
+        savedCutaways(plan).filter((cutaway) => cutaway.cutaway_id !== selection.cutawayId),
+      );
     } else if (selection.kind === 'cue') {
       const cue = plan.cues.find((item) => item.cueId === selection.cueId);
       const count = cue?.lines.flat().length ?? 0;
@@ -645,6 +812,31 @@ export function Editor({
     plan !== null && docId !== null,
   );
 
+  /**
+   * Taller or shorter timeline lanes, by dragging the timeline's top edge:
+   * more filmstrip and waveform for close work, more picture otherwise.
+   */
+  const resizeLanes = (event: ReactPointerEvent) => {
+    event.preventDefault();
+    const origin = event.clientY;
+    const starting = panels.lanes ?? 1;
+    const move = (next: PointerEvent) =>
+      setPanels((current) => ({
+        ...current,
+        lanes: Math.max(0.75, Math.min(2.4, starting + (origin - next.clientY) / 130)),
+      }));
+    const done = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', done);
+      setPanels((current) => {
+        remember(PANELS_KEY, current);
+        return current;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', done);
+  };
+
   const resize = (side: 'left' | 'right', event: ReactPointerEvent) => {
     event.preventDefault();
     const origin = event.clientX;
@@ -695,6 +887,12 @@ export function Editor({
             </EmptyDescription>
           </EmptyHeader>
           {picker}
+          {onRelink && (
+            <Button variant="outline" disabled={relinking} onClick={onRelink}>
+              <Link2 className="size-4" />
+              {relinking ? 'Checking recording…' : 'Locate recording…'}
+            </Button>
+          )}
           <Button variant="outline" onClick={onOpenResults}>
             Go to Results
           </Button>
@@ -708,6 +906,13 @@ export function Editor({
   const captions = shownCues(plan, document).length || plan.cues.length;
   const playback: MonitorPlayback = {
     frame,
+    heardFrame:
+      playing && draftAudio.lag > 0
+        ? Math.max(
+            0,
+            frame - Math.round((draftAudio.lag * plan.rateNum) / Math.max(1, plan.rateDen)),
+          )
+        : frame,
     playing,
     speed,
     loop,
@@ -731,14 +936,36 @@ export function Editor({
   };
 
   return (
-    <div className="review-workspace edit-workspace" data-focused={focused ? 'true' : undefined}>
+    <div
+      className="review-workspace edit-workspace"
+      data-focused={focused ? 'true' : undefined}
+      style={{ '--edit-lane-scale': String(panels.lanes ?? 1) } as CSSProperties}
+    >
+      <CoachMarks place="editor" marks={EDITOR_TIPS} />
+      {plan.music && assets && (
+        // The music the clip plays under the voice; the picture's own sound
+        // plays from the proxy.
+        <audio
+          ref={musicElement}
+          src={assets.url(plan.music.asset)}
+          preload="auto"
+          loop
+          hidden
+          data-testid="music"
+        />
+      )}
       <header className="review-heading">
         <div className="review-identity">
           <TipButton label="Back to results" onClick={onOpenResults}>
             <ArrowLeft className="size-4" />
           </TipButton>
           <div className="review-title">
-            <h1 data-testid="clip-name">{labels?.clip ?? 'Clip editor'}</h1>
+            <ClipTitle
+              title={document?.title ?? null}
+              fallback={labels?.clip ?? 'Clip editor'}
+              busy={busy}
+              onApply={onApply}
+            />
             <p>
               <span>{labels?.project ?? 'Your edit'}</span>
               <span aria-hidden="true">·</span>
@@ -772,6 +999,17 @@ export function Editor({
           <TipButton label="Redo" disabled={!canRedo || busy} onClick={onRedo}>
             <Redo2 className="size-4" />
           </TipButton>
+          <TipButton label="Keyboard shortcuts" onClick={openShortcuts}>
+            <Keyboard className="size-4" />
+          </TipButton>
+          {onLoadHistory && (
+            <HistoryButton
+              revision={plan.revision}
+              busy={busy}
+              onLoad={onLoadHistory}
+              onApply={onApply}
+            />
+          )}
           <span className="review-divider" aria-hidden="true" />
           <TipButton
             label={focused ? 'Restore editing panels' : 'Focus preview'}
@@ -781,7 +1019,13 @@ export function Editor({
             {focused ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </TipButton>
           {onExport && (
-            <Button size="sm" onClick={onExport} disabled={busy} aria-label="Export this clip">
+            <Button
+              size="sm"
+              onClick={onExport}
+              disabled={busy}
+              aria-label="Export this clip"
+              data-coach="edit-export"
+            >
               <Upload className="size-4" aria-hidden="true" />
               Export
             </Button>
@@ -792,6 +1036,18 @@ export function Editor({
         <p role="alert" className="edit-alert">
           {alert}
         </p>
+      )}
+      {onRelink && (
+        <div role="status" className="edit-alert edit-alert-action">
+          <span>
+            The original recording is no longer where it was imported from. Editing continues from
+            the preview copy; exporting needs the original.
+          </span>
+          <Button variant="outline" size="sm" disabled={relinking} onClick={onRelink}>
+            <Link2 className="size-4" aria-hidden="true" />
+            {relinking ? 'Checking recording…' : 'Locate recording…'}
+          </Button>
+        </div>
       )}
       <div
         className="edit-body"
@@ -835,6 +1091,12 @@ export function Editor({
           selection={selection}
           onSelect={select}
           onApply={onApply}
+          captions={exactCaptions}
+          captionOptions={document?.captions.options ?? {}}
+          loadFaces={loadFaces}
+          onFollow={onFollow ? (trackId) => onFollow(frame, trackId) : null}
+          assetUrl={assets?.url ?? null}
+          emojiUrl={emojiUrl}
         />
         <div
           className="edit-resizer"
@@ -845,6 +1107,7 @@ export function Editor({
         />
         <EditorProperties
           plan={plan}
+          focus={focus}
           document={document}
           frame={frame}
           selection={selection}
@@ -857,8 +1120,27 @@ export function Editor({
           onResolve={() => onResolve(frame)}
           onSelect={select}
           onSeek={seek}
+          onTryLook={previewCaptions ? tryLook : null}
+          fonts={plan.fonts ?? []}
+          hook={hook}
+          words={clipWords}
+          assets={assets}
+          recordings={recordings}
+          emojiUrl={emojiUrl}
         />
       </div>
+      <div
+        className="edit-resizer-lanes"
+        role="separator"
+        aria-label="Resize the timeline"
+        aria-orientation="horizontal"
+        onPointerDown={resizeLanes}
+        onDoubleClick={() => {
+          const next = { ...panels, lanes: 1 };
+          setPanels(next);
+          remember(PANELS_KEY, next);
+        }}
+      />
       <EditorTimeline
         plan={plan}
         document={document}
@@ -885,6 +1167,7 @@ export function Editor({
         onApply={onApply}
         onSplit={splitAt}
         onDeleteRange={deleteMarked}
+        emojiUrl={emojiUrl}
       />
     </div>
   );

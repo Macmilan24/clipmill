@@ -117,6 +117,8 @@ pub struct SourceView {
     pub source_map_artifact_id: String,
     #[serde(rename = "createdUnixMillis")]
     pub created_unix_millis: u64,
+    /// The file is not where it was registered; exporting needs it relinked.
+    pub missing: bool,
 }
 
 impl From<Source> for SourceView {
@@ -129,6 +131,7 @@ impl From<Source> for SourceView {
             source_fingerprint: source.source_fingerprint,
             source_map_artifact_id: source.source_map_artifact_id,
             created_unix_millis: source.created_unix_millis,
+            missing: source.missing,
         }
     }
 }
@@ -153,6 +156,11 @@ pub struct TaskView {
     /// there was one would be promising a document nobody can open.
     #[serde(rename = "outputArtifactId")]
     pub output_artifact_id: String,
+    /// When it first ran and when it succeeded; zero until it has.
+    #[serde(rename = "startedUnixMillis")]
+    pub started_unix_millis: u64,
+    #[serde(rename = "finishedUnixMillis")]
+    pub finished_unix_millis: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<ProgressView>,
 }
@@ -177,6 +185,8 @@ impl From<Task> for TaskView {
             max_attempts: task.max_attempts,
             wait_reason: task.wait_reason,
             output_artifact_id: task.output_artifact_id,
+            started_unix_millis: task.started_unix_millis,
+            finished_unix_millis: task.finished_unix_millis,
             progress: task.progress.map(|progress| ProgressView {
                 unit: progress.unit,
                 done: progress.done,
@@ -497,6 +507,17 @@ pub struct DirectClipInput {
     pub cut: String,
     #[serde(default)]
     pub style_ref: String,
+    #[serde(default)]
+    pub highlight_spoken_word: Option<bool>,
+    /// The caption options a saved style starts the clip with, as JSON.
+    #[serde(default)]
+    pub caption_options_json: String,
+    /// The brand a saved kit starts the clip with, as JSON.
+    #[serde(default)]
+    pub brand_json: String,
+    /// The frame the clip is framed for; empty is vertical.
+    #[serde(default)]
+    pub shape: String,
     /// Read only for `exact`. The daemon moves an edge that falls inside a
     /// word out to keep the whole word; anywhere between words is kept.
     #[serde(default)]
@@ -532,6 +553,7 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
                 _ => 1,
             },
             style_ref: input.style_ref,
+            highlight_spoken_word: input.highlight_spoken_word,
             start_ticks: input.start_ticks,
             end_ticks: input.end_ticks,
             variation: input.variation,
@@ -539,6 +561,9 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             allow_declined: input.allow_declined,
             manual_span: input.manual_span,
             job_id: input.job_id,
+            caption_options_json: input.caption_options_json,
+            brand_json: input.brand_json,
+            shape: input.shape,
         }
     }
 }
@@ -647,24 +672,60 @@ pub struct CropPathView {
     pub fit: bool,
     pub fit_reason: String,
     pub containment: f64,
+    /// The face followed, when one was.
+    pub track_id: Option<u32>,
+    /// The lower portrait's path, for a two-person solve; empty otherwise.
+    pub secondary_keyframes: Vec<CropKeyframeView>,
+}
+
+fn keyframe_views(
+    keyframes: Vec<clipmill_contracts::proto::ipc::v1::CropKeyframeV1>,
+) -> Vec<CropKeyframeView> {
+    keyframes
+        .into_iter()
+        .map(|keyframe| CropKeyframeView {
+            t_ticks: keyframe.t_ticks,
+            center_x: keyframe.center_x,
+            center_y: keyframe.center_y,
+            scale: keyframe.scale,
+        })
+        .collect()
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::SolveCropPathResponse> for CropPathView {
     fn from(reply: clipmill_contracts::proto::ipc::v1::SolveCropPathResponse) -> Self {
         Self {
-            keyframes: reply
-                .keyframes
-                .into_iter()
-                .map(|keyframe| CropKeyframeView {
-                    t_ticks: keyframe.t_ticks,
-                    center_x: keyframe.center_x,
-                    center_y: keyframe.center_y,
-                    scale: keyframe.scale,
-                })
-                .collect(),
+            keyframes: keyframe_views(reply.keyframes),
             fit: reply.fit,
             fit_reason: reply.fit_reason,
             containment: reply.containment,
+            track_id: reply.has_track.then_some(reply.track_id),
+            secondary_keyframes: keyframe_views(reply.secondary_keyframes),
+        }
+    }
+}
+
+/// One face in one sampled frame, as shares of the source's display frame.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FaceSightingView {
+    pub track_id: u32,
+    pub t_ticks: u64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::FaceSightingV1> for FaceSightingView {
+    fn from(seen: clipmill_contracts::proto::ipc::v1::FaceSightingV1) -> Self {
+        Self {
+            track_id: seen.track_id,
+            t_ticks: seen.t_ticks,
+            x: seen.x,
+            y: seen.y,
+            width: seen.width,
+            height: seen.height,
         }
     }
 }
@@ -686,6 +747,13 @@ pub struct PreviewPlanView {
     pub secondary_crops: Vec<Option<[i64; 4]>>,
     pub caption_style: Option<PreviewCaptionStyleView>,
     pub cues: Vec<PreviewCueView>,
+    pub reading_cues: Vec<PreviewCueView>,
+    pub reading_min_duration_ticks: i64,
+    pub reading_min_gap_ticks: i64,
+    /// The burned-in captions exactly as the export writes them.
+    pub ass: String,
+    /// Every caption typeface, with whether this installation has it.
+    pub fonts: Vec<CaptionFontView>,
     pub gain: Vec<PreviewGainView>,
     pub width: i64,
     pub height: i64,
@@ -698,6 +766,85 @@ pub struct PreviewPlanView {
     pub proxies: Vec<PreviewProxyView>,
     /// Which cue list `cues` came from: `burn_in` or `reading`.
     pub presentation: String,
+    /// Why the director built the clip as it did; filled for a dry run.
+    pub decisions: Vec<String>,
+    /// Titles and labels over the program, bottom first.
+    pub overlays: Vec<PreviewOverlayView>,
+    /// B-roll over the program's own picture.
+    pub cutaways: Vec<PreviewCutawayView>,
+    /// The progress bar, when the clip has one.
+    pub progress: Option<PreviewProgressView>,
+    /// The logo, when the clip has one.
+    pub logo: Option<PreviewLogoView>,
+    /// The music, when the clip has some.
+    pub music: Option<PreviewMusicView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCutawayView {
+    pub cutaway_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    pub fit: String,
+    pub kind: String,
+    /// A picture's hash; absent for footage.
+    pub asset: Option<String>,
+    pub push_in: bool,
+    /// Footage's recording; absent for a picture.
+    pub source_fingerprint: Option<String>,
+    pub in_ticks: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewMusicView {
+    pub asset: String,
+    pub offset_ticks: i64,
+    pub levels: Vec<PreviewGainView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewLogoView {
+    pub asset: String,
+    pub corner: String,
+    pub side: i64,
+    pub inset_x: i64,
+    pub inset_y: i64,
+    pub opacity: u32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewProgressView {
+    pub colour: String,
+    pub edge: String,
+    pub thickness: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewOverlayView {
+    pub overlay_id: String,
+    /// `text` or `emoji`.
+    pub kind: String,
+    /// An emoji's code; absent for a text.
+    pub emoji: Option<String>,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    pub text: String,
+    pub role: String,
+    pub x: u32,
+    pub y: u32,
+    pub size: u32,
+    pub colour: String,
+    /// Absent draws an outline.
+    pub plate: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -725,6 +872,18 @@ pub struct PreviewCaptionStyleView {
     pub boxed: bool,
     pub margin_horizontal: u32,
     pub margin_vertical: u32,
+    pub accent: String,
+    pub highlight: String,
+}
+
+/// One caption typeface and whether this installation has it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionFontView {
+    pub family: String,
+    pub label: String,
+    pub file: String,
+    pub installed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -739,6 +898,17 @@ pub struct PreviewSegmentView {
     pub framing_warning: String,
     pub first_frame: i64,
     pub end_frame: i64,
+    /// `fit`, `speaker_fill`, `two_up` or `picture_in_picture`; empty from a
+    /// daemon older than the field.
+    pub layout: String,
+    /// Two viewports: the upper one's height in output pixels.
+    pub upper_height: i64,
+    /// Picture in picture: the inset's `[x, y, side]` in output pixels.
+    pub inset: Option<[i64; 3]>,
+    /// A fitted picture's fill: `None` for the picture blurred.
+    pub background_colour: Option<String>,
+    /// A fitted picture's zoom past fitting, in percent.
+    pub zoom_percent: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -768,6 +938,10 @@ pub struct PreviewProxyView {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewCueView {
     pub cue_id: String,
+    /// `[x, y]` in thousandths of the frame when the cue was placed by hand.
+    pub position: Option<[u32; 2]>,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
     pub first_frame: i64,
     pub end_frame: i64,
     pub region: String,
@@ -791,6 +965,36 @@ pub struct PreviewWordView {
 pub struct PreviewGainView {
     pub frame: i64,
     pub gain_db: f64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::PreviewCueV1> for PreviewCueView {
+    fn from(cue: clipmill_contracts::proto::ipc::v1::PreviewCueV1) -> Self {
+        PreviewCueView {
+            cue_id: cue.cue_id,
+            position: cue.positioned.then_some([cue.position_x, cue.position_y]),
+            start_ticks: cue.start_ticks,
+            end_ticks: cue.end_ticks,
+            first_frame: cue.first_frame,
+            end_frame: cue.end_frame,
+            region: cue.region,
+            karaoke: cue.karaoke,
+            lead_in_centis: cue.lead_in_centis,
+            lines: cue
+                .lines
+                .into_iter()
+                .map(|line| {
+                    line.words
+                        .into_iter()
+                        .map(|word| PreviewWordView {
+                            text: word.text,
+                            hold_centis: word.hold_centis,
+                            word_id: word.word_id,
+                        })
+                        .collect()
+                })
+                .collect(),
+        }
+    }
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for PreviewPlanView {
@@ -837,7 +1041,89 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 boxed: style.boxed,
                 margin_horizontal: style.margin_horizontal,
                 margin_vertical: style.margin_vertical,
+                accent: style.accent,
+                highlight: style.highlight,
             }),
+            ass: reply.ass,
+            fonts: reply
+                .fonts
+                .into_iter()
+                .map(|font| CaptionFontView {
+                    family: font.family,
+                    label: font.label,
+                    file: font.file,
+                    installed: font.installed,
+                })
+                .collect(),
+            decisions: reply.decisions,
+            music: reply.music.map(|music| PreviewMusicView {
+                asset: music.asset,
+                offset_ticks: music.offset_ticks,
+                levels: music
+                    .levels
+                    .into_iter()
+                    .map(|point| PreviewGainView {
+                        frame: point.frame,
+                        gain_db: point.gain_db,
+                    })
+                    .collect(),
+            }),
+            logo: reply.logo.map(|logo| PreviewLogoView {
+                asset: logo.asset,
+                corner: logo.corner,
+                side: logo.side,
+                inset_x: logo.inset_x,
+                inset_y: logo.inset_y,
+                opacity: logo.opacity,
+            }),
+            progress: reply.progress.map(|bar| PreviewProgressView {
+                colour: bar.colour,
+                edge: bar.edge,
+                thickness: bar.thickness,
+            }),
+            overlays: reply
+                .overlays
+                .into_iter()
+                .map(|overlay| PreviewOverlayView {
+                    overlay_id: overlay.overlay_id,
+                    // A daemon from before emoji sends texts only.
+                    kind: if overlay.kind.is_empty() {
+                        "text".to_owned()
+                    } else {
+                        overlay.kind
+                    },
+                    emoji: (!overlay.emoji.is_empty()).then_some(overlay.emoji),
+                    start_ticks: overlay.start_ticks,
+                    end_ticks: overlay.end_ticks,
+                    first_frame: overlay.first_frame,
+                    end_frame: overlay.end_frame,
+                    text: overlay.text,
+                    role: overlay.role,
+                    x: overlay.x,
+                    y: overlay.y,
+                    size: overlay.size,
+                    colour: overlay.colour,
+                    plate: (!overlay.plate.is_empty()).then_some(overlay.plate),
+                })
+                .collect(),
+            cutaways: reply
+                .cutaways
+                .into_iter()
+                .map(|cutaway| PreviewCutawayView {
+                    cutaway_id: cutaway.cutaway_id,
+                    start_ticks: cutaway.start_ticks,
+                    end_ticks: cutaway.end_ticks,
+                    first_frame: cutaway.first_frame,
+                    end_frame: cutaway.end_frame,
+                    fit: cutaway.fit,
+                    kind: cutaway.kind,
+                    asset: (!cutaway.asset.is_empty()).then_some(cutaway.asset),
+                    push_in: cutaway.push_in,
+                    source_fingerprint: (!cutaway.source_fingerprint.is_empty())
+                        .then_some(cutaway.source_fingerprint),
+                    in_ticks: cutaway.in_ticks,
+                })
+                .collect(),
             secondary_crops: reply
                 .secondary_crops
                 .into_iter()
@@ -846,32 +1132,14 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                         .then_some([crop.x, crop.y, crop.width, crop.height])
                 })
                 .collect(),
-            cues: reply
-                .cues
+            cues: reply.cues.into_iter().map(PreviewCueView::from).collect(),
+            reading_cues: reply
+                .reading_cues
                 .into_iter()
-                .map(|cue| PreviewCueView {
-                    cue_id: cue.cue_id,
-                    first_frame: cue.first_frame,
-                    end_frame: cue.end_frame,
-                    region: cue.region,
-                    karaoke: cue.karaoke,
-                    lead_in_centis: cue.lead_in_centis,
-                    lines: cue
-                        .lines
-                        .into_iter()
-                        .map(|line| {
-                            line.words
-                                .into_iter()
-                                .map(|word| PreviewWordView {
-                                    text: word.text,
-                                    hold_centis: word.hold_centis,
-                                    word_id: word.word_id,
-                                })
-                                .collect()
-                        })
-                        .collect(),
-                })
+                .map(PreviewCueView::from)
                 .collect(),
+            reading_min_duration_ticks: reply.reading_min_duration_ticks,
+            reading_min_gap_ticks: reply.reading_min_gap_ticks,
             gain: reply
                 .gain
                 .into_iter()
@@ -895,6 +1163,16 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                     framing_warning: segment.framing_warning,
                     first_frame: segment.first_frame,
                     end_frame: segment.end_frame,
+                    layout: segment.layout,
+                    upper_height: segment.upper_height,
+                    inset: segment.has_inset.then_some([
+                        segment.inset_x,
+                        segment.inset_y,
+                        segment.inset_side,
+                    ]),
+                    background_colour: (!segment.background_colour.is_empty())
+                        .then_some(segment.background_colour),
+                    zoom_percent: segment.zoom_percent.max(100),
                 })
                 .collect(),
             sources: reply
@@ -942,11 +1220,19 @@ pub struct EditDocView {
     pub revision: u64,
     pub created_unix_millis: u64,
     pub updated_unix_millis: u64,
+    /// What somebody named the clip, when they did.
+    pub title: Option<String>,
 }
 
 impl From<clipmill_contracts::proto::ipc::v1::EditDoc> for EditDocView {
     fn from(doc: clipmill_contracts::proto::ipc::v1::EditDoc) -> Self {
+        // Read from the document itself, where the title is an edit like any
+        // other; a document that does not parse simply has no title here.
+        let title = serde_json::from_str::<serde_json::Value>(&doc.document_json)
+            .ok()
+            .and_then(|value| value.get("title")?.as_str().map(str::to_owned));
         Self {
+            title,
             doc_id: doc.doc_id,
             project_id: doc.project_id,
             source_id: doc.source_id,
@@ -1027,6 +1313,10 @@ pub struct ExportFindingView {
     /// screen cannot mistake one enum ordinal for another.
     pub severity: String,
     pub detail: String,
+    /// The caption cue a `captions.*` finding is about. Absent, not empty, for
+    /// every other check, so a screen tests for it rather than for `""`.
+    #[serde(rename = "cueId", skip_serializing_if = "Option::is_none")]
+    pub cue_id: Option<String>,
 }
 
 impl From<PlanExportResponse> for ExportPlanView {
@@ -1051,6 +1341,7 @@ impl From<PlanExportResponse> for ExportPlanView {
                         "blocking".to_owned()
                     },
                     detail: finding.detail,
+                    cue_id: (!finding.cue_id.is_empty()).then_some(finding.cue_id),
                 })
                 .collect(),
             stem: plan.stem,
@@ -1232,6 +1523,43 @@ pub struct ExportRequestInput {
     /// other. Absent takes the current revision.
     #[serde(default)]
     pub expected_revision: Option<u64>,
+    /// Frame rate and size of the delivered picture. Absent keeps the
+    /// recording's frame rate at 1080 x 1920.
+    #[serde(default)]
+    pub format: Option<OutputFormatInput>,
+}
+
+/// The delivered picture's frame rate and height. A zero numerator keeps the
+/// recording's own rate; a zero height is 1920.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputFormatInput {
+    #[serde(default)]
+    pub frame_rate_num: u32,
+    #[serde(default)]
+    pub frame_rate_den: u32,
+    #[serde(default)]
+    pub height: u32,
+}
+
+impl From<OutputFormatInput> for clipmill_contracts::proto::ipc::v1::OutputFormatV1 {
+    fn from(input: OutputFormatInput) -> Self {
+        Self {
+            frame_rate_num: input.frame_rate_num,
+            frame_rate_den: input.frame_rate_den,
+            height: input.height,
+        }
+    }
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::OutputFormatV1> for OutputFormatInput {
+    fn from(format: clipmill_contracts::proto::ipc::v1::OutputFormatV1) -> Self {
+        Self {
+            frame_rate_num: format.frame_rate_num,
+            frame_rate_den: format.frame_rate_den,
+            height: format.height,
+        }
+    }
 }
 
 impl From<ExportRequestInput> for ExportRequestV1 {
@@ -1247,6 +1575,7 @@ impl From<ExportRequestInput> for ExportRequestV1 {
             date: input.date,
             title: input.title,
             expected_revision: input.expected_revision,
+            format: input.format.map(Into::into),
         }
     }
 }
@@ -1264,6 +1593,7 @@ impl From<ExportRequestV1> for ExportRequestInput {
             date: request.date,
             title: request.title,
             expected_revision: request.expected_revision,
+            format: request.format.map(Into::into),
         }
     }
 }
@@ -1358,5 +1688,56 @@ mod youtube_view_tests {
             ..Default::default()
         });
         assert_eq!(serde_json::to_value(view).unwrap()["maxHeight"], 360);
+    }
+}
+
+/// One logged edit, with the command that undoes it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditHistoryEntryView {
+    pub revision: u64,
+    pub command_json: String,
+    pub inverse_json: String,
+    pub applied_unix_millis: u64,
+}
+
+/// Captions drawn under a look that has not been chosen yet.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionPreviewView {
+    pub ass: String,
+    pub revision: u64,
+}
+
+/// One of the person's own pictures or sounds, for the renderer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetView {
+    pub hash: String,
+    pub kind: String,
+    pub name: String,
+    pub media_type: String,
+    pub bytes: u64,
+    pub width: i64,
+    pub height: i64,
+    pub duration_ticks: i64,
+    pub license: String,
+    pub added_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::AssetV1> for AssetView {
+    fn from(asset: clipmill_contracts::proto::ipc::v1::AssetV1) -> Self {
+        Self {
+            hash: asset.hash,
+            kind: asset.kind,
+            name: asset.name,
+            media_type: asset.media_type,
+            bytes: asset.bytes,
+            width: asset.width,
+            height: asset.height,
+            duration_ticks: asset.duration_ticks,
+            license: asset.license,
+            added_unix_millis: asset.added_unix_millis,
+        }
     }
 }

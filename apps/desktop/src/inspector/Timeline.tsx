@@ -10,7 +10,7 @@ import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
 import { type Transcript, snapEnd, snapStart } from '../results/transcript.js';
 import { waveformPath } from '../results/waveform.js';
 import type { PlaybackController } from './playback.js';
-import { type Cut, FRAME_TICKS, clamp, clockTenths, rulerStep, timecode } from './review.js';
+import { type Cut, FRAME_TICKS, clamp, clockTenths, rulerStep } from './review.js';
 
 /** The shortest cut a handle can make: a second, so a clip is never a flash. */
 const MINIMUM_CUT_TICKS = TICKS_PER_SECOND;
@@ -398,7 +398,7 @@ export function BoundaryStrip({
             className="review-suggestion"
             data-edge="in"
             style={{ left: at(tick) }}
-            title={`Suggested start · ${timecode(tick)}`}
+            title={`Suggested start · ${clockTenths(tick)}`}
           />
         ))}
         {suggestedEnds.filter(inView).map((tick) => (
@@ -407,7 +407,7 @@ export function BoundaryStrip({
             className="review-suggestion"
             data-edge="out"
             style={{ left: at(tick) }}
-            title={`Suggested end · ${timecode(tick)}`}
+            title={`Suggested end · ${clockTenths(tick)}`}
           />
         ))}
         {alternative && (
@@ -461,7 +461,7 @@ export function BoundaryStrip({
                 aria-valuemin={0}
                 aria-valuemax={durationTicks}
                 aria-valuenow={tick}
-                aria-valuetext={timecode(tick)}
+                aria-valuetext={clockTenths(tick)}
                 onPointerDown={handlePointer(edge)}
                 onPointerMove={onPointerMove}
                 onPointerUp={release}

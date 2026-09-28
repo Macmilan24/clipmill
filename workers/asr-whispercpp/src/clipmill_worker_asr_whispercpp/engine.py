@@ -15,6 +15,18 @@ from pywhispercpp.model import ContextParams, Model, pw
 
 IMPLEMENTATION = "whisper.cpp"
 
+#: What a window is primed with to keep the fillers Whisper otherwise writes
+#: out, by language. Whisper continues the style of the text it is shown, and
+#: this text says "um" and "like". Only languages with a prompt someone has
+#: listened to are here; any other decodes unprimed rather than being nudged
+#: toward English by an English prompt.
+VERBATIM_PROMPTS = {
+    "en": "Umm, let me think like, hmm... Okay, here's what I'm, like, thinking.",
+}
+#: Carried in the producer's implementation when a prompt was used: a primed
+#: decode is a different transcript, and must be keyed and read as one.
+VERBATIM = "verbatim-1"
+
 
 @dataclass(frozen=True, slots=True)
 class Token:
@@ -61,6 +73,12 @@ class WhisperCppRecognizer:
         (language, probability), _ = self._whisper.auto_detect_language(samples, n_threads=1)
         return (str(language), float(probability))
 
+    def use_prompt(self, prompt: str) -> None:
+        """Prime every later window with `prompt`, as context and not output."""
+
+        # The same reach past the wrapper as `use_language`, for the same reason.
+        self._whisper._set_params({"initial_prompt": prompt})
+
     def use_language(self, language: str) -> None:
         self.language = language
         # Reaching past the wrapper. It exposes no way to change the language
@@ -105,6 +123,8 @@ def decode_pcm16(frames: bytes) -> np.ndarray:
 
 __all__ = [
     "IMPLEMENTATION",
+    "VERBATIM",
+    "VERBATIM_PROMPTS",
     "Decoded",
     "Token",
     "WhisperCppRecognizer",

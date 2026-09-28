@@ -69,13 +69,16 @@ pub(crate) fn caption_lane(
                     / as_f64(crop.height);
                 if segment.layout.state == LayoutState::Fit {
                     let source_aspect = as_f64(request.frame.width) / as_f64(request.frame.height);
-                    let output_aspect =
-                        f64::from(request.aspect.width) / f64::from(request.aspect.height);
+                    let aspect = request.aspect();
+                    let output_aspect = f64::from(aspect.width) / f64::from(aspect.height);
                     let displayed_height = (output_aspect / source_aspect).min(1.0);
                     top = (1.0 - displayed_height) / 2.0 + top * displayed_height;
                     bottom = (1.0 - displayed_height) / 2.0 + bottom * displayed_height;
                 }
-                if viewports == 2 {
+                // Stacked viewports each hold half the height; side by side,
+                // each keeps all of it.
+                let (width, height) = request.shape.ratio();
+                if viewports == 2 && width <= height {
                     top = top / 2.0 + if viewport == 0 { 0.0 } else { 0.5 };
                     bottom = bottom / 2.0 + if viewport == 0 { 0.0 } else { 0.5 };
                 }

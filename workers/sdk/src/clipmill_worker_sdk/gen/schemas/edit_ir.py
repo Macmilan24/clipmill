@@ -6,7 +6,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
 
 
 class Timebase(BaseModel):
@@ -17,21 +17,35 @@ class Timebase(BaseModel):
     den: Literal[90000]
 
 
+class Shape(Enum):
+    vertical = 'vertical'
+    portrait = 'portrait'
+    square = 'square'
+    landscape = 'landscape'
+
+
 class TextCase(Enum):
     original = 'original'
     upper = 'upper'
     lower = 'lower'
 
 
-class Options(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    font_size: conint(ge=24, le=160) | None = None
-    spoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
-    unspoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
-    outline: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
-    text_case: TextCase | None = None
+class HighlightStyle(Enum):
+    fill = 'fill'
+    word = 'word'
+    box = 'box'
+    pop = 'pop'
+    underline = 'underline'
+
+
+class FontFamily(Enum):
+    Inter = 'Inter'
+    Montserrat_Black = 'Montserrat Black'
+    Poppins_ExtraBold = 'Poppins ExtraBold'
+    Anton = 'Anton'
+    Bebas_Neue = 'Bebas Neue'
+    Luckiest_Guy = 'Luckiest Guy'
+    DM_Serif_Display = 'DM Serif Display'
 
 
 class GainCurveItem(BaseModel):
@@ -42,16 +56,21 @@ class GainCurveItem(BaseModel):
     gain_db: float
 
 
-class Audio(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    target_lufs: float = Field(
-        ...,
-        description='Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.',
-    )
-    true_peak_dbtp: float
-    gain_curve: list[GainCurveItem] | None = None
+class Cleanup(Enum):
+    light = 'light'
+    strong = 'strong'
+
+
+class Edge(Enum):
+    top = 'top'
+    bottom = 'bottom'
+
+
+class Corner(Enum):
+    top_left = 'top_left'
+    top_right = 'top_right'
+    bottom_left = 'bottom_left'
+    bottom_right = 'bottom_right'
 
 
 class Rationale(BaseModel):
@@ -64,6 +83,113 @@ class Rationale(BaseModel):
 
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
+
+
+class HexColour(RootModel[constr(pattern=r'^#[0-9A-Fa-f]{6}$')]):
+    root: constr(pattern=r'^#[0-9A-Fa-f]{6}$')
+
+
+class Fit(Enum):
+    fill = 'fill'
+    fit = 'fit'
+
+
+class Content(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['picture']
+    asset: Sha256 = Field(
+        ..., description="The picture's content hash; the clip's assets list it."
+    )
+    push_in: bool | None = Field(
+        None, description='Move slowly closer, eight per cent by its last frame.'
+    )
+
+
+class Content1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['footage']
+    source_fingerprint: Sha256
+    in_ticks: conint(ge=0) = Field(..., description='Where in the recording it starts.')
+
+
+class Cutaway(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    cutaway_id: constr(min_length=1)
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=18000) = Field(
+        ..., description='At least a fifth of a second after it starts.'
+    )
+    fit: Fit | None = Field(
+        None,
+        description='fill covers the frame, cropping what does not fit; fit shows the whole of it over a blurred copy. Absent fills.',
+    )
+    content: Content | Content1
+
+
+class Role(Enum):
+    hook = 'hook'
+    label = 'label'
+
+
+class Content2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['text']
+    text: constr(pattern=r'^[^{}\\]*$', min_length=1, max_length=160)
+    role: Role | None = Field(
+        None,
+        description='A hook opens the clip and names what it is about. Absent is a label.',
+    )
+    x: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's width."
+    )
+    y: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's height."
+    )
+    size: conint(ge=24, le=240) = Field(
+        ..., description='Its size at the 1920-pixel design height.'
+    )
+    colour: HexColour
+    plate: HexColour | None = Field(
+        None, description='An opaque plate behind the text. Absent draws an outline.'
+    )
+
+
+class Content3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['emoji']
+    emoji: constr(pattern=r'^[0-9a-f_]{4,40}$') = Field(
+        ...,
+        description='Its code point, as the pinned picture names it: 1f525, or 1f44f_1f3fd for a sequence.',
+    )
+    x: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's width."
+    )
+    y: conint(ge=0, le=1000) = Field(
+        ..., description="Where its centre sits, per mille of the frame's height."
+    )
+    size: conint(ge=60, le=400) = Field(
+        ..., description="Its side, per mille of the frame's short side."
+    )
+
+
+class Overlay(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    overlay_id: constr(min_length=1)
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=1)
+    content: Content2 | Content3
 
 
 class CropRect(BaseModel):
@@ -80,6 +206,7 @@ class State(Enum):
     speaker_fill = 'speaker_fill'
     fit = 'fit'
     two_up = 'two_up'
+    picture_in_picture = 'picture_in_picture'
 
 
 class Easing(Enum):
@@ -107,18 +234,75 @@ class SecondaryCropPathItem(BaseModel):
     easing: Easing | None = None
 
 
+class Background(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['blur']
+
+
+class Background1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['colour']
+    colour: constr(pattern=r'^#[0-9A-Fa-f]{6}$')
+
+
+class Inset(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    corner: Corner
+    size: conint(ge=200, le=600)
+
+
+class Punch(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=1)
+    zoom: conint(ge=105, le=200) = Field(
+        ..., description='How much closer, in percent.'
+    )
+
+
 class Layout(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    state: State
+    state: State = Field(
+        ...,
+        description='picture_in_picture draws the full picture (the crop path, or the whole frame when it is empty) with the secondary path inset in one corner.',
+    )
     crop_path: list[CropPathItem] | None = Field(
         None,
         description='Crop keyframes in segment-local ticks, so trimming the source window cannot silently re-time the camera move.',
     )
     secondary_crop_path: list[SecondaryCropPathItem] | None = Field(
         None,
-        description='Lower viewport crop keyframes for a two_up composition. The primary path fills the upper half; both paths use segment-local ticks.',
+        description='Lower viewport crop keyframes for a two_up composition, or the inset of a picture_in_picture. The primary path fills the upper viewport; both paths use segment-local ticks.',
+    )
+    split: conint(ge=250, le=750) | None = Field(
+        None,
+        description="two_up: the first viewport's share of the frame, per mille: of the height when the viewports are stacked, of the width side by side in a landscape frame. Absent is an even split; a screen share over a face is the first viewport at the recording's own shape.",
+    )
+    background: Background | Background1 | None = Field(
+        None,
+        description='What fills around a fitted picture. Absent is the picture itself, blurred.',
+    )
+    zoom: conint(ge=100, le=250) | None = Field(
+        None,
+        description='How far past fitting a fitted picture is zoomed, in percent, about its centre. Absent is 100.',
+    )
+    inset: Inset | None = Field(
+        None,
+        description="Where a picture_in_picture inset sits: a corner, and its side as a share of the frame's short side, per mille. It is square.",
+    )
+    punches: list[Punch] | None = Field(
+        None,
+        description='Moments a followed crop moves in closer, in order and apart, segment-local like its keyframes. The crop path under them is kept as it is. Each lasts at least two moves (12000 ticks) and meets the one before or starts at least two moves after it.',
     )
 
 
@@ -155,6 +339,10 @@ class Word(BaseModel):
         None,
         description='Which word this is, shared by its occurrence in the reading cues and in the burned-in cues. A correction is addressed to the word, so it lands in both presentations. Absent only in a document that predates word identities; the daemon assigns them on migration.',
     )
+    emphasis: bool | None = Field(
+        None,
+        description='A key word, set in the accent colour so it stands out of its line.',
+    )
 
 
 class Line(BaseModel):
@@ -162,6 +350,153 @@ class Line(BaseModel):
         extra='forbid',
     )
     words: list[Word] = Field(..., min_length=1)
+
+
+class CaptionPosition(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    x: conint(ge=0, le=1000)
+    y: conint(ge=0, le=1000)
+
+
+class Video(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    shape: Shape | None = Field(
+        None,
+        description="The delivered frame's shape: vertical 9:16, portrait 4:5, square 1:1 or landscape 16:9. Absent is vertical. Crops are fitted to it and the render is sized by it; two viewports sit side by side in a landscape frame.",
+    )
+    transition_ticks: conint(ge=0, le=22500) | None = Field(
+        None,
+        description='Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.',
+    )
+    segments: list[VideoSegment] | None = None
+    cutaways: list[Cutaway] | None = Field(
+        None,
+        description='Moments covered by another picture while the voice carries on, in program order, none overlapping.',
+    )
+
+
+class Options(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    highlight_spoken_word: bool | None = Field(
+        None,
+        description="Override the preset's spoken-word highlight independently of its typography.",
+    )
+    font_size: conint(ge=24, le=160) | None = None
+    spoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    unspoken: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    outline: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = None
+    text_case: TextCase | None = None
+    highlight_style: HighlightStyle | None = Field(
+        None, description='How the spoken word is marked. Absent is the sweep.'
+    )
+    font_family: FontFamily | None = Field(
+        None,
+        description="One of the caption fonts, by family name. Absent is the look's own.",
+    )
+    outline_width: conint(ge=0, le=16) | None = Field(
+        None, description='Outline thickness at the 1920-pixel design height.'
+    )
+    shadow_depth: conint(ge=0, le=12) | None = Field(
+        None, description='Drop-shadow offset at the 1920-pixel design height.'
+    )
+    plate_opacity: conint(ge=0, le=100) | None = Field(
+        None, description="How opaque a boxed look's plate is, in percent."
+    )
+    accent: constr(pattern=r'^#[0-9a-fA-F]{6}$') | None = Field(
+        None, description='The colour key words are set in.'
+    )
+    position: CaptionPosition | None = Field(
+        None,
+        description='Where every caption sits unless a cue was placed on its own. Absent leaves each cue in its region.',
+    )
+    words_on_screen: conint(ge=1, le=8) | None = Field(
+        None,
+        description='The most words the on-screen captions were last grouped into.',
+    )
+
+
+class Music(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    asset: Sha256
+    level_db: confloat(ge=-40.0, le=0.0) = Field(
+        ..., description='Its level where nobody speaks.'
+    )
+    duck_db: confloat(ge=-30.0, le=0.0) = Field(
+        ..., description='How much further it drops under speech.'
+    )
+    offset_ticks: conint(ge=0) | None = Field(
+        None, description='Where in the sound the clip starts.'
+    )
+
+
+class Audio(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    target_lufs: float = Field(
+        ...,
+        description='Loudness target in LUFS. Loudness is a measurement, not a time, so it is legitimately real-valued.',
+    )
+    true_peak_dbtp: float
+    gain_curve: list[GainCurveItem] | None = None
+    music: Music | None = Field(
+        None,
+        description="Music under the voice, from one of the clip's assets. It drops by duck_db wherever the clip's words are said, fades in at the start and out at the end, and loops if it is shorter than the clip.",
+    )
+    cleanup: Cleanup | None = Field(
+        None,
+        description='The voice cleaned before it is mixed: light for a quiet room, strong for a noisy one.',
+    )
+
+
+class Progress(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    colour: HexColour
+    edge: Edge
+    thickness: conint(ge=4, le=40) = Field(
+        ..., description='At the 1920-pixel design height.'
+    )
+
+
+class Logo(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    asset: Sha256 = Field(
+        ..., description="The picture's content hash; the clip's assets list it."
+    )
+    corner: Corner
+    size: conint(ge=60, le=300) = Field(
+        ...,
+        description="Its longer side as a share of the frame's short side, per mille.",
+    )
+    opacity: conint(ge=20, le=100) = Field(..., description='In percent.')
+
+
+class Brand(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    progress: Progress | None = None
+    logo: Logo | None = None
+
+
+class Asset(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    hash: Sha256
+    license: str
 
 
 class CaptionCue(BaseModel):
@@ -178,17 +513,10 @@ class CaptionCue(BaseModel):
         description='Line breaks are decided once and stored here — the parity keystone. Preview and render must never re-wrap text independently.',
         min_length=1,
     )
-
-
-class Video(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    transition_ticks: conint(ge=0, le=22500) | None = Field(
+    position: CaptionPosition | None = Field(
         None,
-        description='Requested duration of soft cuts: hold the last outgoing composition over incoming video. Zero or absent preserves hard cuts. Effective duration is bounded by the incoming shot; audio, captions and program timing remain unchanged.',
+        description='Where this cue sits, when it was placed by hand. Overrides the region and the clip-wide position.',
     )
-    segments: list[VideoSegment] | None = None
 
 
 class Captions(BaseModel):
@@ -213,14 +541,6 @@ class Captions(BaseModel):
     )
 
 
-class Asset(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    hash: Sha256
-    license: str
-
-
 class EditIr(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -230,6 +550,14 @@ class EditIr(BaseModel):
     video: Video
     captions: Captions
     audio: Audio
+    overlays: list[Overlay] | None = Field(
+        None,
+        description="Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut.",
+    )
+    brand: Brand | None = Field(
+        None,
+        description="What marks the clip as its creator's over every frame: a progress bar along one edge that fills as it plays, and a logo in a corner from one of the clip's assets.",
+    )
     assets: list[Asset] | None = Field(
         None,
         description='Assets referenced by content hash, each carrying the licence record the render manifest echoes.',
@@ -237,4 +565,8 @@ class EditIr(BaseModel):
     rationale: Rationale | None = Field(
         None,
         description='Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels.',
+    )
+    title: constr(min_length=1, max_length=120) | None = Field(
+        None,
+        description='What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.',
     )

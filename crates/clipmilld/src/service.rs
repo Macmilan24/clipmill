@@ -1,3 +1,4 @@
+mod assets;
 mod batch;
 mod models;
 mod storage;
@@ -19,20 +20,24 @@ use clipmill_contracts::proto::ipc::v1::{
     DetectShotsPayloadV1, DirectClipRequest, DiscoverCandidatesPayloadV1, Error, ErrorCode,
     ExportArchiveRequest, ExportArchiveResponse, ExportClipPayloadV1, ExportClipRequest,
     ExportClipResponse, ExportFindingV1, ExportRequestV1, ExportSeverity, ExportValidationV1,
-    GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse, GetJobResponse,
-    GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse, GetProjectResponse,
-    GetReadinessResponse, GetSourceResponse, HealthResponse, IndexTranscriptPayloadV1,
-    IngestSourcePayloadV1, ListClipDecisionsRequest, ListClipDecisionsResponse,
-    ListEditDocsResponse, ListJobsResponse, ListProjectsResponse, ListSourcesResponse,
-    LocalLockStatusV1, MediaFileV1, PingResponse, PlanExportRequest, PlanExportResponse,
-    PreviewCropV1, PreviewCueV1, PreviewGainV1, PreviewLineV1, PreviewProxyV1, PreviewSegmentV1,
+    FaceSightingV1, GetDeviceProfileRequest, GetDeviceProfileResponse, GetEditDocResponse,
+    GetJobResponse, GetLocalLockResponse, GetPreviewPlanRequest, GetPreviewPlanResponse,
+    GetProjectResponse, GetReadinessResponse, GetSourceResponse, HealthResponse,
+    IndexTranscriptPayloadV1, IngestSourcePayloadV1, ListClipDecisionsRequest,
+    ListClipDecisionsResponse, ListEditDocsResponse, ListFacesRequest, ListFacesResponse,
+    ListJobsResponse, ListProjectsResponse, ListSourcesResponse, LocalLockStatusV1, MediaFileV1,
+    PingResponse, PlanExportRequest, PlanExportResponse, PreviewCropV1, PreviewCueV1,
+    PreviewCutawayV1, PreviewDirectRequest, PreviewGainV1, PreviewLineV1, PreviewLogoV1,
+    PreviewMusicV1, PreviewOverlayV1, PreviewProgressV1, PreviewProxyV1, PreviewSegmentV1,
     PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
     ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
     ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
     SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
     StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
-    TranscribeSourcePayloadV1, WorkerPresenceV1, request, response,
+    ThumbnailFramingRequest, ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1,
+    request, response,
 };
+use clipmill_contracts::schemas::vision_face_track::VisionFaceTrack;
 use clipmill_core::{EditDocId, JobId, ProjectId, Sha256Digest, SourceId, TaskEventCursor};
 use clipmill_reframe::{FocusGate, Weights};
 use prost::Message;
@@ -91,6 +96,8 @@ pub(crate) struct Service {
     roster: crate::worker::WorkerRoster,
     /// The pinned decoder every media stage runs, for the same question.
     decoder: Option<std::path::PathBuf>,
+    /// Where the pinned caption fonts are, to say which this installation has.
+    fonts_dir: Option<std::path::PathBuf>,
     batch_admission: std::sync::Arc<tokio::sync::Mutex<()>>,
     youtube: Option<std::sync::Arc<youtube::YoutubeRuntime>>,
     publishing: std::sync::Arc<youtube_publish::PublishingRuntime>,
@@ -100,6 +107,11 @@ pub(crate) struct Service {
     /// The loop every artifact collection runs through, for the clean-ups
     /// Settings asks for. Absent where no daemon runs that loop.
     collector: Option<crate::collector::Collector>,
+    /// The evidence the last clip was directed from, for the next one.
+    evidence: crate::inspector::EvidenceCache,
+    /// The person's own pictures and sounds. Absent in the tests that build
+    /// a service without a workspace.
+    assets: Option<crate::assets::AssetStore>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -158,11 +170,14 @@ impl Service {
             policy: std::sync::Arc::default(),
             roster: crate::worker::new_roster(),
             decoder: None,
+            fonts_dir: None,
             batch_admission: std::sync::Arc::default(),
             youtube: None,
             publishing: std::sync::Arc::default(),
             library: None,
             collector: None,
+            evidence: crate::inspector::EvidenceCache::default(),
+            assets: None,
         }
     }
 
@@ -207,26 +222,61 @@ impl Service {
             policy,
             roster,
             decoder: Some(decoder),
+            fonts_dir: None,
             batch_admission: std::sync::Arc::default(),
             youtube,
             publishing: std::sync::Arc::default(),
             library: None,
             collector: None,
+            evidence: crate::inspector::EvidenceCache::default(),
+            assets: None,
         }
+    }
+
+    /// Tell the service where the pinned caption fonts are.
+    pub(crate) fn with_fonts(mut self, fonts_dir: std::path::PathBuf) -> Self {
+        self.fonts_dir = Some(fonts_dir);
+        self
+    }
+
+    /// Every caption typeface, with whether its pinned file is installed.
+    ///
+    /// The editor offers only the installed ones: a face whose file is not
+    /// here could be chosen and then refused by the render.
+    fn caption_fonts(&self) -> Vec<clipmill_contracts::proto::ipc::v1::CaptionFontV1> {
+        clipmill_captions::FONTS
+            .iter()
+            .map(|face| clipmill_contracts::proto::ipc::v1::CaptionFontV1 {
+                family: face.family.to_owned(),
+                label: face.label.to_owned(),
+                file: face.file.to_owned(),
+                installed: self
+                    .fonts_dir
+                    .as_ref()
+                    .is_some_and(|dir| dir.join(face.file).is_file()),
+            })
+            .collect()
     }
 
     /// One derivative ingest produced for a source, with the source's
     /// fingerprint.
     ///
     /// Resolved through the ingest manifest rather than by searching the
-    /// store, because the manifest is the job's single rooted artifact and its
+    /// store, because the manifest is what roots the derivatives and its
     /// children are what garbage collection keeps reachable. Anything found
     /// another way might be an object nobody is holding on to.
+    ///
+    /// The manifest is found by the stage that published it, whatever job ran
+    /// it: ingest lives inside the `analyze-source` DAG now, and a lookup by
+    /// the old standalone job kind answered "never ingested" for every source.
     async fn ingested_derivative(&self, source_id: &str, kind: &str) -> Option<(String, String)> {
         let artifacts = self.artifacts.as_ref()?;
         let manifest_id = self
             .database
-            .latest_source_job_artifact(source_id.to_owned(), "ingest-source".to_owned())
+            .latest_source_task_artifact(
+                source_id.to_owned(),
+                crate::media::KIND_MANIFEST.to_owned(),
+            )
             .await
             .ok()
             .flatten()?
@@ -436,6 +486,22 @@ impl Service {
                     .await
             }
             request::Body::GetEditDoc(get) => self.get_edit_doc(request_id, &get.doc_id).await,
+            request::Body::PreviewCaptions(preview) => {
+                self.preview_captions(request_id, &preview).await
+            }
+            request::Body::ListEditHistory(list) => {
+                self.list_edit_history(request_id, &list.doc_id).await
+            }
+            request::Body::ListFaces(list) => self.list_faces(request_id, &list).await,
+            request::Body::PreviewDirect(preview) => {
+                self.preview_direct(request_id, &preview).await
+            }
+            request::Body::ThumbnailFraming(framing) => {
+                self.thumbnail_framing(request_id, &framing).await
+            }
+            request::Body::ImportAsset(import) => self.import_asset(request_id, &import).await,
+            request::Body::ListAssets(list) => self.list_assets(request_id, &list),
+            request::Body::ResolveAsset(resolve) => self.resolve_asset(request_id, &resolve),
             request::Body::SnapshotEditDoc(snapshot) => {
                 self.snapshot_edit_doc(request_id, &snapshot.doc_id).await
             }
@@ -1655,20 +1721,19 @@ impl Service {
         clippy::too_many_lines,
         reason = "explicit selection admission and retry recovery precede one document transaction"
     )]
-    async fn direct_clip(
+    /// A clip request with its names checked and a manual span given its
+    /// identity: where approving and a dry run both start.
+    async fn check_clip(
         &self,
-        request_id: String,
-        request_hash: [u8; 32],
         direct: &DirectClipRequest,
-    ) -> Reply {
+    ) -> Result<CheckedClip, (ErrorCode, String)> {
         let mut normalized = direct.clone();
         if direct.manual_span {
             if direct.job_id.is_empty() || direct.start_ticks >= direct.end_ticks {
-                return error_reply(
-                    request_id,
+                return Err((
                     ErrorCode::InvalidArgument,
-                    "Choose an analysis run and a nonempty source interval",
-                );
+                    "Choose an analysis run and a nonempty source interval".to_owned(),
+                ));
             }
             let identity = format!(
                 "{}:{}:{}:{}",
@@ -1680,43 +1745,72 @@ impl Service {
             );
             normalized.approve = false;
         }
-        let direct = &normalized;
-        let Ok(project_id) = direct.project_id.parse::<ProjectId>() else {
-            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        let Ok(project_id) = normalized.project_id.parse::<ProjectId>() else {
+            return Err((ErrorCode::InvalidArgument, "no project named".to_owned()));
         };
-        let Ok(source_id) = direct.source_id.parse::<SourceId>() else {
-            return error_reply(request_id, ErrorCode::InvalidArgument, "no source named");
+        let Ok(source_id) = normalized.source_id.parse::<SourceId>() else {
+            return Err((ErrorCode::InvalidArgument, "no source named".to_owned()));
         };
-        let Some(artifacts) = self.artifacts.as_ref() else {
-            return error_reply(
-                request_id,
+        if self.artifacts.is_none() {
+            return Err((
                 ErrorCode::Unavailable,
-                "this daemon serves no artifact store",
-            );
-        };
-        let source = match self.database.get_source(source_id.to_string()).await {
-            Ok(source) => source,
-            Err(error) => return store_error_reply(request_id, &error),
-        };
+                "this daemon serves no artifact store".to_owned(),
+            ));
+        }
+        let source = self
+            .database
+            .get_source(source_id.to_string())
+            .await
+            .map_err(|error| {
+                let code = store_error_code(&error);
+                let message = if code == ErrorCode::Internal {
+                    tracing::warn!(error = %error, "store request failed");
+                    "internal database error".to_owned()
+                } else {
+                    error.to_string()
+                };
+                (code, message)
+            })?;
         if source.project_id != project_id.as_str() {
-            return error_reply(
-                request_id,
+            return Err((
                 ErrorCode::InvalidArgument,
-                "source does not belong to the requested project",
-            );
+                "source does not belong to the requested project".to_owned(),
+            ));
         }
-        if direct.candidate_id.is_empty() {
-            return error_reply(request_id, ErrorCode::InvalidArgument, "no candidate named");
+        if normalized.candidate_id.is_empty() {
+            return Err((ErrorCode::InvalidArgument, "no candidate named".to_owned()));
         }
-        let now = match unix_millis() {
-            Ok(now) => now,
-            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
-        };
         let identity = crate::db::ClipIdentity {
             project: project_id.to_string(),
             source: source_id.to_string(),
-            candidate: direct.candidate_id.clone(),
-            run: (!direct.job_id.is_empty()).then(|| direct.job_id.clone()),
+            candidate: normalized.candidate_id.clone(),
+            run: (!normalized.job_id.is_empty()).then(|| normalized.job_id.clone()),
+        };
+        Ok(CheckedClip {
+            direct: normalized,
+            source,
+            identity,
+        })
+    }
+
+    async fn direct_clip(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        direct: &DirectClipRequest,
+    ) -> Reply {
+        let CheckedClip {
+            direct,
+            source,
+            identity,
+        } = match self.check_clip(direct).await {
+            Ok(checked) => checked,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        let direct = &direct;
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
 
         if !direct.variation {
@@ -1743,9 +1837,16 @@ impl Service {
         }
 
         let document_json = match self
-            .assemble_clip(artifacts, &source.source_map_json, identity.clone(), direct)
+            .assemble_clip(&source.source_map_json, identity.clone(), direct)
             .await
-        {
+            .and_then(|document| {
+                serde_json::to_string(&document).map_err(|_| {
+                    (
+                        ErrorCode::Internal,
+                        "the directed document did not serialize".to_owned(),
+                    )
+                })
+            }) {
             Ok(json) => json,
             Err((code, message)) => return error_reply(request_id, code, message),
         };
@@ -1776,37 +1877,150 @@ impl Service {
         }
     }
 
+    /// The clip approving would build, drawn as the Editor draws it, and not
+    /// saved: what the Inspector shows, so the clip judged is the clip made.
+    async fn preview_direct(&self, request_id: String, preview: &PreviewDirectRequest) -> Reply {
+        let Some(direct) = preview.direct.as_ref() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no clip named");
+        };
+        let checked = match self.check_clip(direct).await {
+            Ok(checked) => checked,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        let document = match self
+            .assemble_clip(
+                &checked.source.source_map_json,
+                checked.identity.clone(),
+                &checked.direct,
+            )
+            .await
+        {
+            Ok(document) => document,
+            Err((code, message)) => return error_reply(request_id, code, message),
+        };
+        let Ok(project_id) = checked.identity.project.parse::<ProjectId>() else {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        };
+        let profile = self.preview_profile(project_id.as_str(), &document).await;
+        let plan = match clipmill_render::preview_plan(&document, &profile) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let (sources, proxies) = self.preview_media(&project_id, &document).await;
+        let mut reply = preview_response(0, &plan);
+        reply.sources = sources;
+        reply.proxies = proxies;
+        reply.fonts = self.caption_fonts();
+        reply.decisions = document
+            .rationale
+            .map(|rationale| rationale.decisions)
+            .unwrap_or_default();
+        response_reply(request_id, response::Body::PreviewDirect(reply))
+    }
+
     /// Read the clip's run and build the document the director proposes.
     async fn assemble_clip(
         &self,
-        artifacts: &ArtifactHandle,
         source_map_json: &[u8],
         identity: crate::db::ClipIdentity,
         direct: &DirectClipRequest,
-    ) -> Result<String, (ErrorCode, String)> {
-        let evidence = crate::inspector::load(
+    ) -> Result<clipmill_edit_ir::EditDocument, (ErrorCode, String)> {
+        let Some(artifacts) = self.artifacts.as_ref() else {
+            return Err((
+                ErrorCode::Unavailable,
+                "this daemon serves no artifact store".to_owned(),
+            ));
+        };
+        let evidence = crate::inspector::load_cached(
             &self.database,
             artifacts,
             &identity.source,
             source_map_json,
             identity.run.as_deref(),
+            &self.evidence,
         )
         .await
         .map_err(|error| (ErrorCode::Conflict, error.message()))?;
-        let document =
+        let mut document =
             assemble(&evidence, direct).map_err(|message| (ErrorCode::InvalidArgument, message))?;
+        if !direct.caption_options_json.is_empty() {
+            document.captions.options = serde_json::from_str(&direct.caption_options_json)
+                .map_err(|_| {
+                    (
+                        ErrorCode::InvalidArgument,
+                        "the caption style could not be read".to_owned(),
+                    )
+                })?;
+        }
+        // The request's own highlight choice, when it makes one, is the last word.
+        if direct.highlight_spoken_word.is_some() {
+            document.captions.options.highlight_spoken_word = direct.highlight_spoken_word;
+        }
+        if !direct.brand_json.is_empty() {
+            self.start_with_brand(&mut document, &direct.brand_json)?;
+        }
+        document.validate().map_err(|error| {
+            (
+                ErrorCode::InvalidArgument,
+                format!("the caption style cannot be used: {error}"),
+            )
+        })?;
+        // How many words show at once regroups the burned-in captions, which
+        // the option alone would only claim.
+        if let Some(max_words) = document.captions.options.words_on_screen {
+            clipmill_edit_ir::EditCommand::RegroupOnScreen { max_words }
+                .apply(&mut document)
+                .map_err(|error| (ErrorCode::InvalidArgument, error.to_string()))?;
+        }
         if document.video.segments.is_empty() {
             return Err((
                 ErrorCode::Internal,
                 "the director produced a document with no segment".to_owned(),
             ));
         }
-        serde_json::to_string(&document).map_err(|_| {
-            (
-                ErrorCode::Internal,
-                "the directed document did not serialize".to_owned(),
-            )
-        })
+        Ok(document)
+    }
+
+    /// A saved kit's brand on a new clip. Its logo comes with the licence
+    /// the asset folder holds for it, and is left out when the folder no
+    /// longer has the picture — the clip is still worth making.
+    fn start_with_brand(
+        &self,
+        document: &mut clipmill_edit_ir::EditDocument,
+        brand_json: &str,
+    ) -> Result<(), (ErrorCode, String)> {
+        let mut brand: clipmill_edit_ir::Brand =
+            serde_json::from_str(brand_json).map_err(|_| {
+                (
+                    ErrorCode::InvalidArgument,
+                    "the brand could not be read".to_owned(),
+                )
+            })?;
+        if let Some(logo) = &brand.logo {
+            match self
+                .assets
+                .as_ref()
+                .and_then(|store| store.get(&logo.asset))
+            {
+                Some(record) => {
+                    if !document
+                        .assets
+                        .iter()
+                        .any(|asset| asset.hash == record.hash)
+                    {
+                        document.assets.push(clipmill_edit_ir::Asset {
+                            hash: record.hash,
+                            license: record.license,
+                        });
+                    }
+                }
+                None => brand.logo = None,
+            }
+        }
+        document.brand = (!brand.is_empty()).then_some(brand);
+        Ok(())
     }
 
     async fn set_clip_decision(
@@ -1929,27 +2143,26 @@ impl Service {
         clippy::too_many_lines,
         reason = "source geometry and matching evidence must be resolved before solving"
     )]
-    async fn solve_crop_path(&self, request_id: String, solve: &SolveCropPathRequest) -> Reply {
-        let Ok(project_id) = solve.project_id.parse::<ProjectId>() else {
-            return error_reply(
-                request_id,
-                ErrorCode::InvalidArgument,
-                "solve names no project",
-            );
+    /// A face track this project published, verified and parsed, with the
+    /// display frame of the source it was measured on.
+    async fn face_track(
+        &self,
+        request_id: &str,
+        project: &str,
+        artifact: &str,
+    ) -> Result<(VisionFaceTrack, (u32, u32)), Reply> {
+        let refuse = |code, message: &str| Err(error_reply(request_id.to_owned(), code, message));
+        let Ok(project_id) = project.parse::<ProjectId>() else {
+            return refuse(ErrorCode::InvalidArgument, "the request names no project");
         };
-        let Ok(artifact_id) = solve
-            .face_track_artifact_id
-            .parse::<clipmill_core::ArtifactId>()
-        else {
-            return error_reply(
-                request_id,
+        let Ok(artifact_id) = artifact.parse::<clipmill_core::ArtifactId>() else {
+            return refuse(
                 ErrorCode::InvalidArgument,
-                "solve names no face track address",
+                "the request names no face track address",
             );
         };
         let Some(artifacts) = self.artifacts.as_ref() else {
-            return error_reply(
-                request_id,
+            return refuse(
                 ErrorCode::Unavailable,
                 "this daemon serves no artifact store",
             );
@@ -1963,35 +2176,29 @@ impl Service {
         {
             Ok(true) => {}
             Ok(false) => {
-                return error_reply(
-                    request_id,
+                return refuse(
                     ErrorCode::NotFound,
                     "this project published no such artifact",
                 );
             }
-            Err(error) => return store_error_reply(request_id, &error),
+            Err(error) => return Err(store_error_reply(request_id.to_owned(), &error)),
         }
         let Ok(lease) = artifacts.open(artifact_id).await else {
-            return error_reply(
-                request_id,
-                ErrorCode::NotFound,
-                "the artifact is not in this store",
-            );
+            return refuse(ErrorCode::NotFound, "the artifact is not in this store");
         };
         if lease.kind() != "vision.face_track.v1" {
-            return error_reply(
-                request_id,
+            return Err(error_reply(
+                request_id.to_owned(),
                 ErrorCode::InvalidArgument,
                 format!("{} is not a face track", lease.kind()),
-            );
+            ));
         }
-        let document: clipmill_contracts::schemas::vision_face_track::VisionFaceTrack =
+        let document: VisionFaceTrack =
             match crate::media::read_artifact_document(&lease, "faces.json") {
                 Ok(value) => value,
                 Err(error) => {
                     tracing::warn!(?error, "a published face track failed verification");
-                    return error_reply(
-                        request_id,
+                    return refuse(
                         ErrorCode::Internal,
                         "the face track does not match its manifest",
                     );
@@ -2000,47 +2207,123 @@ impl Service {
 
         let registered = match self.database.list_sources(project_id.to_string()).await {
             Ok(sources) => sources,
-            Err(error) => return store_error_reply(request_id, &error),
+            Err(error) => return Err(store_error_reply(request_id.to_owned(), &error)),
         };
         let frame = registered
             .iter()
             .find(|source| source.source_fingerprint == document.source_fingerprint.as_str())
             .and_then(|source| crate::inspector::frame_of(&source.source_map_json));
         let Some(frame) = frame else {
-            return error_reply(
-                request_id,
+            return refuse(
                 ErrorCode::InvalidArgument,
                 "the face tracks have no registered source display dimensions",
             );
         };
-        let (Ok(source_width), Ok(source_height)) =
-            (u32::try_from(frame.width), u32::try_from(frame.height))
+        let (Ok(width), Ok(height)) = (u32::try_from(frame.width), u32::try_from(frame.height))
         else {
-            return error_reply(
-                request_id,
+            return refuse(
                 ErrorCode::InvalidArgument,
                 "source display dimensions are too large",
             );
         };
-        match clipmill_reframe::solve_in_frame(
-            &document,
-            solve.start_ticks,
-            solve.end_ticks,
-            clipmill_reframe::FrameGeometry {
-                source_width,
-                source_height,
-                output_width: solve.aspect_width,
-                output_height: solve.aspect_height,
-            },
-            crop_weights(solve.weights.as_ref()),
-            FocusGate::default(),
-        ) {
-            Ok(solved) => response_reply(
-                request_id,
-                response::Body::SolveCropPath(crop_response(&solved)),
-            ),
+        Ok((document, (width, height)))
+    }
+
+    async fn solve_crop_path(&self, request_id: String, solve: &SolveCropPathRequest) -> Reply {
+        let (document, frame) = match self
+            .face_track(
+                &request_id,
+                &solve.project_id,
+                &solve.face_track_artifact_id,
+            )
+            .await
+        {
+            Ok(found) => found,
+            Err(reply) => return reply,
+        };
+        match crop_solve(document, solve, frame) {
+            Ok(solved) => response_reply(request_id, response::Body::SolveCropPath(solved)),
             Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
         }
+    }
+
+    /// Where the camera would point at each of a board's thumbnails.
+    async fn thumbnail_framing(
+        &self,
+        request_id: String,
+        framing: &ThumbnailFramingRequest,
+    ) -> Reply {
+        if framing.moments.len() > MAX_THUMBNAILS {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "ask for at most 500 thumbnails at once",
+            );
+        }
+        let (document, _) = match self
+            .face_track(
+                &request_id,
+                &framing.project_id,
+                &framing.face_track_artifact_id,
+            )
+            .await
+        {
+            Ok(found) => found,
+            Err(reply) => return reply,
+        };
+        let centres = framing
+            .moments
+            .iter()
+            .map(|&moment| framing_centre(&document, moment))
+            .collect();
+        response_reply(
+            request_id,
+            response::Body::ThumbnailFraming(ThumbnailFramingResponse { centres }),
+        )
+    }
+
+    /// The faces seen over a span, so a person can point at the one to follow.
+    async fn list_faces(&self, request_id: String, list: &ListFacesRequest) -> Reply {
+        if list.end_ticks <= list.start_ticks
+            || list.end_ticks - list.start_ticks > MAX_FACE_SPAN_TICKS
+        {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "ask for the faces of one section, up to ten minutes of it",
+            );
+        }
+        let (document, _) = match self
+            .face_track(&request_id, &list.project_id, &list.face_track_artifact_id)
+            .await
+        {
+            Ok(found) => found,
+            Err(reply) => return reply,
+        };
+        let sightings = document
+            .tracks
+            .iter()
+            .flat_map(|track| {
+                track
+                    .boxes
+                    .iter()
+                    .filter(|seen| {
+                        seen.t_ticks >= list.start_ticks && seen.t_ticks < list.end_ticks
+                    })
+                    .map(|seen| FaceSightingV1 {
+                        track_id: u32::try_from(track.track_id).unwrap_or(u32::MAX),
+                        t_ticks: seen.t_ticks,
+                        x: seen.x,
+                        y: seen.y,
+                        width: seen.w,
+                        height: seen.h,
+                    })
+            })
+            .collect();
+        response_reply(
+            request_id,
+            response::Body::ListFaces(ListFacesResponse { sightings }),
+        )
     }
 
     /// Authorize a media artifact and say what it holds.
@@ -2451,23 +2734,29 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
-        let command_json = if serde_json::from_str::<serde_json::Value>(&apply.command_json)
+        // Two requests are resolved here into commands the log can replay
+        // without the evidence they were derived from.
+        let op = serde_json::from_str::<serde_json::Value>(&apply.command_json)
             .ok()
             .and_then(|value| {
                 value
                     .get("op")
                     .and_then(|op| op.as_str())
                     .map(str::to_owned)
-            })
-            .as_deref()
-            == Some("extend_with_captions")
-        {
-            match self.prepare_extension(&doc_id.to_string(), apply).await {
-                Ok(command) => command,
-                Err((code, message)) => return error_reply(request_id, code, message),
+            });
+        let resolved = match op.as_deref() {
+            Some("extend_with_captions") => {
+                Some(self.prepare_extension(&doc_id.to_string(), apply).await)
             }
-        } else {
-            apply.command_json.clone()
+            Some("refresh_captions") => {
+                Some(self.prepare_refresh(&doc_id.to_string(), apply).await)
+            }
+            _ => None,
+        };
+        let command_json = match resolved {
+            Some(Ok(command)) => command,
+            Some(Err((code, message))) => return error_reply(request_id, code, message),
+            None => apply.command_json.clone(),
         };
         match self
             .database
@@ -2645,6 +2934,88 @@ impl Service {
         .map_err(|error| (ErrorCode::Internal, error.to_string()))
     }
 
+    /// Resolve "refresh the captions" into one replayable command: both
+    /// presentations derived afresh from the newest transcript over the
+    /// recording, carried whole so the log replays without it, and undone as
+    /// one step. The clip-wide look and options stay; corrections made to the
+    /// old captions do not, which the Editor says before asking.
+    async fn prepare_refresh(
+        &self,
+        doc_id: &str,
+        apply: &ApplyEditCommandRequest,
+    ) -> Result<String, (ErrorCode, String)> {
+        let record = self
+            .database
+            .get_edit_doc(doc_id.to_owned())
+            .await
+            .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
+        if record.revision != apply.expected_revision {
+            return Err((
+                ErrorCode::Conflict,
+                "The edit changed. Reload before refreshing its captions.".to_owned(),
+            ));
+        }
+        let document =
+            clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes())
+                .map_err(|error| (ErrorCode::Internal, error.to_string()))?;
+        let source_id = record.source_id.ok_or((
+            ErrorCode::InvalidArgument,
+            "This edit has no linked source".to_owned(),
+        ))?;
+        let artifacts = self
+            .artifacts
+            .as_ref()
+            .ok_or((ErrorCode::Unavailable, "No artifact store".to_owned()))?;
+        let source = self
+            .database
+            .get_source(source_id.clone())
+            .await
+            .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
+        if source.project_id != record.project_id
+            || document
+                .video
+                .segments
+                .iter()
+                .any(|part| part.source_fingerprint != source.source_fingerprint)
+        {
+            return Err((
+                ErrorCode::Conflict,
+                "The edit source no longer matches its recording".to_owned(),
+            ));
+        }
+        let speech = crate::inspector::load_speech(&self.database, artifacts, &source_id)
+            .await
+            .map_err(|error| (ErrorCode::Conflict, error.message()))?;
+        let (reading, burn_in) = clipmill_director::captions_for_program(
+            &speech.transcript,
+            speech.index.as_ref(),
+            speech.shots.as_ref(),
+            &document,
+        )
+        .map_err(|error| (ErrorCode::InvalidArgument, error.to_string()))?;
+        let mut commands = vec![
+            clipmill_edit_ir::EditCommand::ReplaceCues {
+                cues: reading,
+                presentation: clipmill_edit_ir::Presentation::Reading,
+            },
+            clipmill_edit_ir::EditCommand::ReplaceCues {
+                cues: burn_in,
+                presentation: clipmill_edit_ir::Presentation::BurnIn,
+            },
+        ];
+        // How many words the clip shows at once is the person's choice, and a
+        // refresh keeps it.
+        if let Some(max_words) = document.captions.options.words_on_screen {
+            commands.push(clipmill_edit_ir::EditCommand::RegroupOnScreen { max_words });
+        }
+        String::from_utf8(
+            clipmill_edit_ir::EditCommand::Batch { commands }
+                .to_canonical_json()
+                .map_err(|error| (ErrorCode::Internal, error.to_string()))?,
+        )
+        .map_err(|error| (ErrorCode::Internal, error.to_string()))
+    }
+
     /// What the editor's player must draw.
     ///
     /// Interpreted here rather than in the renderer process, by the same code
@@ -2681,10 +3052,8 @@ impl Service {
                 "the stored document did not parse",
             );
         };
-        let plan = match clipmill_render::preview_plan(
-            &document,
-            &clipmill_render::RenderProfile::default(),
-        ) {
+        let profile = self.preview_profile(project_id.as_str(), &document).await;
+        let plan = match clipmill_render::preview_plan(&document, &profile) {
             Ok(plan) => plan,
             Err(error) => {
                 return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
@@ -2694,6 +3063,7 @@ impl Service {
         let mut reply = preview_response(record.revision, &plan);
         reply.sources = sources;
         reply.proxies = proxies;
+        reply.fonts = self.caption_fonts();
         response_reply(request_id, response::Body::GetPreviewPlan(reply))
     }
 
@@ -2718,8 +3088,24 @@ impl Service {
             return (sources, proxies);
         };
         let mut seen: Vec<&str> = Vec::new();
-        for segment in &document.video.segments {
-            let fingerprint = segment.source_fingerprint.as_str();
+        // The sections' recordings, and those B-roll footage is cut from.
+        let footage = document
+            .video
+            .cutaways
+            .iter()
+            .filter_map(|cutaway| match &cutaway.content {
+                clipmill_edit_ir::CutawayContent::Footage {
+                    source_fingerprint, ..
+                } => Some(source_fingerprint.as_str()),
+                clipmill_edit_ir::CutawayContent::Picture { .. } => None,
+            });
+        for fingerprint in document
+            .video
+            .segments
+            .iter()
+            .map(|segment| segment.source_fingerprint.as_str())
+            .chain(footage)
+        {
             if seen.contains(&fingerprint) {
                 continue;
             }
@@ -2805,6 +3191,128 @@ impl Service {
                 response::Body::GetEditDoc(GetEditDocResponse {
                     doc: Some(record.into()),
                 }),
+            ),
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
+    /// The profile a document is previewed at: the default size in the
+    /// clip's shape, at the frame rate of the recording the clip opens on,
+    /// which is what an export renders at unless another rate is chosen.
+    async fn preview_profile(
+        &self,
+        project_id: &str,
+        document: &clipmill_edit_ir::EditDocument,
+    ) -> clipmill_render::RenderProfile {
+        let sources = self
+            .database
+            .list_sources(project_id.to_owned())
+            .await
+            .unwrap_or_default();
+        let mut profile = clipmill_render::RenderProfile::for_output(
+            document.video.shape,
+            clipmill_render::RenderProfile::default().height,
+            clipmill_render::RenderProfile::default().frame_rate,
+        )
+        .unwrap_or_default();
+        if let Some(first) = document.video.segments.first()
+            && let Some(rate) = sources
+                .iter()
+                .find(|source| source.source_fingerprint == first.source_fingerprint)
+                .and_then(|source| crate::inspector::frame_rate_of(&source.source_map_json))
+        {
+            profile.frame_rate = rate;
+        }
+        profile
+    }
+
+    /// The captions a document would burn in under another look, unsaved.
+    ///
+    /// Trying a look is not an edit: the editor draws this while a person is
+    /// still choosing and sends one command when they have chosen.
+    async fn preview_captions(
+        &self,
+        request_id: String,
+        request: &clipmill_contracts::proto::ipc::v1::PreviewCaptionsRequest,
+    ) -> Reply {
+        let doc_id = match request.doc_id.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        let record = match self.database.get_edit_doc(doc_id.to_string()).await {
+            Ok(record) => record,
+            Err(error) => return store_error_reply(request_id, &error),
+        };
+        let Ok(mut document) =
+            clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes())
+        else {
+            return error_reply(
+                request_id,
+                ErrorCode::Internal,
+                "the stored document did not parse",
+            );
+        };
+        if !request.style_ref.is_empty() {
+            if clipmill_captions::preset(&request.style_ref).is_none() {
+                return error_reply(
+                    request_id,
+                    ErrorCode::InvalidArgument,
+                    "unknown caption look",
+                );
+            }
+            document.captions.style_ref.clone_from(&request.style_ref);
+        }
+        if !request.options_json.is_empty() {
+            match serde_json::from_str::<clipmill_edit_ir::CaptionOptions>(&request.options_json) {
+                Ok(options) => document.captions.options = options,
+                Err(error) => {
+                    return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+                }
+            }
+        }
+        let profile = self.preview_profile(&record.project_id, &document).await;
+        match clipmill_render::caption_ass(&document, &profile) {
+            Ok(ass) => response_reply(
+                request_id,
+                response::Body::PreviewCaptions(
+                    clipmill_contracts::proto::ipc::v1::PreviewCaptionsResponse {
+                        ass,
+                        revision: record.revision,
+                    },
+                ),
+            ),
+            Err(error) => error_reply(request_id, ErrorCode::InvalidArgument, error.to_string()),
+        }
+    }
+
+    /// Every command a document has had, oldest first, with its inverse.
+    async fn list_edit_history(&self, request_id: String, value: &str) -> Reply {
+        let doc_id = match value.parse::<EditDocId>() {
+            Ok(value) => value,
+            Err(error) => {
+                return error_reply(request_id, ErrorCode::InvalidArgument, error.to_string());
+            }
+        };
+        match self.database.get_edit_log(doc_id.to_string()).await {
+            Ok((_initial, entries)) => response_reply(
+                request_id,
+                response::Body::ListEditHistory(
+                    clipmill_contracts::proto::ipc::v1::ListEditHistoryResponse {
+                        entries: entries
+                            .into_iter()
+                            .map(
+                                |entry| clipmill_contracts::proto::ipc::v1::EditHistoryEntryV1 {
+                                    revision: entry.revision,
+                                    command_json: entry.command_json,
+                                    inverse_json: entry.inverse_json,
+                                    applied_unix_millis: entry.applied_unix_millis,
+                                },
+                            )
+                            .collect(),
+                    },
+                ),
             ),
             Err(error) => store_error_reply(request_id, &error),
         }
@@ -2987,6 +3495,55 @@ impl Service {
         Ok(path)
     }
 
+    /// Point a registered source at the file it moved to.
+    ///
+    /// The new file is fully inspected and accepted only when its fingerprint
+    /// is the one the source was registered with, so everything already made
+    /// from the recording — analysis, clips, edits — stays attached to it.
+    async fn relink_source(
+        &self,
+        request_id: String,
+        request_hash: [u8; 32],
+        project_id: ProjectId,
+        register: &RegisterSourceRequest,
+        inspector: &crate::sources::SourceInspector,
+        sampled: crate::sources::SampledSource,
+    ) -> Reply {
+        if register.source_id.parse::<SourceId>().is_err() {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "source id is invalid",
+            );
+        }
+        let inspection = match inspector.complete(sampled).await {
+            Ok(value) => value,
+            Err(error) => return source_probe_error_reply(request_id, &error),
+        };
+        let now = match unix_millis() {
+            Ok(value) => value,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        match self
+            .database
+            .relink_source(
+                request_id.clone(),
+                request_hash,
+                project_id.to_string(),
+                register.source_id.clone(),
+                inspection,
+                now,
+            )
+            .await
+        {
+            Ok(bytes) => Reply {
+                bytes,
+                outcome: Outcome::Success,
+            },
+            Err(error) => store_error_reply(request_id, &error),
+        }
+    }
+
     async fn register_source(
         &self,
         request_id: String,
@@ -3013,6 +3570,18 @@ impl Service {
             Ok(value) => value,
             Err(error) => return source_probe_error_reply(request_id, &error),
         };
+        if !register.source_id.is_empty() {
+            return self
+                .relink_source(
+                    request_id,
+                    request_hash,
+                    project_id,
+                    register,
+                    inspector,
+                    sampled,
+                )
+                .await;
+        }
         let existing = self
             .database
             .find_source_observation(project_id.to_string(), sampled.observation().clone())
@@ -3079,7 +3648,7 @@ impl Service {
                 response::Body::GetSource(GetSourceResponse {
                     source_map_json: String::from_utf8(source.source_map_json.clone())
                         .unwrap_or_default(),
-                    source: Some(source.into()),
+                    source: Some(source_reply(source)),
                 }),
             ),
             Err(error) => store_error_reply(request_id, &error),
@@ -3097,7 +3666,7 @@ impl Service {
             Ok(sources) => response_reply(
                 request_id,
                 response::Body::ListSources(ListSourcesResponse {
-                    sources: sources.into_iter().map(Into::into).collect(),
+                    sources: sources.into_iter().map(source_reply).collect(),
                 }),
             ),
             Err(error) => store_error_reply(request_id, &error),
@@ -3197,6 +3766,157 @@ fn crop_weights(asked: Option<&CropWeightsV1>) -> Weights {
     }
 }
 
+/// A clip request ready to direct: normalized, with its source and identity.
+struct CheckedClip {
+    direct: DirectClipRequest,
+    source: crate::db::SourceRecord,
+    identity: crate::db::ClipIdentity,
+}
+
+/// The gate for a face somebody picked: it only has to be seen in the span.
+/// Presence, score and margin keep the automatic camera honest; a person who
+/// points at a face has already made the call they guard.
+const CHOSEN_FACE: FocusGate = FocusGate {
+    min_presence: 0.05,
+    min_score: 0.0,
+    min_margin: 0.0,
+};
+
+/// The most thumbnails one `ThumbnailFraming` answers for.
+const MAX_THUMBNAILS: usize = 500;
+
+/// Where the camera would point in the two seconds after `moment`: the centre
+/// of the face the focus gate would follow, or the middle of the frame.
+fn framing_centre(document: &VisionFaceTrack, moment: u64) -> f64 {
+    let end = moment.saturating_add(2 * 90_000);
+    let clipmill_reframe::Focus::Track { track_id, .. } =
+        clipmill_reframe::resolve(document, moment, end, FocusGate::default())
+    else {
+        return 0.5;
+    };
+    let centres: Vec<f64> = document
+        .tracks
+        .iter()
+        .filter(|track| track.track_id == track_id)
+        .flat_map(|track| track.boxes.iter())
+        .filter(|seen| seen.t_ticks >= moment && seen.t_ticks < end)
+        .map(|seen| seen.x + seen.w / 2.0)
+        .collect();
+    if centres.is_empty() {
+        return 0.5;
+    }
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "a thumbnail's two seconds hold a handful of boxes"
+    )]
+    let mean = centres.iter().sum::<f64>() / centres.len() as f64;
+    mean.clamp(0.0, 1.0)
+}
+
+/// The longest span `ListFaces` answers for: a clip's section, not a recording.
+const MAX_FACE_SPAN_TICKS: u64 = 10 * 60 * 90_000;
+
+/// A fitted answer with the reason for it.
+fn refused_crop(reason: &str) -> SolveCropPathResponse {
+    SolveCropPathResponse {
+        fit: true,
+        fit_reason: reason.to_owned(),
+        ..SolveCropPathResponse::default()
+    }
+}
+
+/// The camera a solve request asks for: the gate's choice, the face a person
+/// picked, or both portraits of a two-person layout.
+fn crop_solve(
+    document: VisionFaceTrack,
+    solve: &SolveCropPathRequest,
+    (source_width, source_height): (u32, u32),
+) -> Result<SolveCropPathResponse, clipmill_reframe::SolveError> {
+    let geometry = |aspect: clipmill_director::Aspect| clipmill_reframe::FrameGeometry {
+        source_width,
+        source_height,
+        output_width: aspect.width,
+        output_height: aspect.height,
+    };
+    let aspect = clipmill_director::Aspect {
+        width: solve.aspect_width,
+        height: solve.aspect_height,
+    };
+    let weights = crop_weights(solve.weights.as_ref());
+    if solve.two_up {
+        // Each viewport is half the frame: half as tall stacked, half as wide
+        // side by side across a landscape frame.
+        return two_up_solve(&document, solve, geometry(aspect.half()), weights);
+    }
+    let (document, gate) = if solve.follow_track {
+        let mut one = document;
+        one.tracks
+            .retain(|track| track.track_id == u64::from(solve.track_id));
+        if one.tracks.is_empty() {
+            return Ok(refused_crop("that person is not in this recording"));
+        }
+        (one, CHOSEN_FACE)
+    } else {
+        (document, FocusGate::default())
+    };
+    clipmill_reframe::solve_in_frame(
+        &document,
+        solve.start_ticks,
+        solve.end_ticks,
+        geometry(aspect),
+        weights,
+        gate,
+    )
+    .map(|solved| crop_response(&solved))
+}
+
+/// Both portraits of a two-person layout, solved the way the director solves
+/// them: the pair the two-up gate finds, left-hand face on top, each followed
+/// alone through the span.
+fn two_up_solve(
+    document: &VisionFaceTrack,
+    solve: &SolveCropPathRequest,
+    halves: clipmill_reframe::FrameGeometry,
+    weights: Weights,
+) -> Result<SolveCropPathResponse, clipmill_reframe::SolveError> {
+    let Some(pair) = clipmill_reframe::resolve_pair(document, solve.start_ticks, solve.end_ticks)
+    else {
+        return Ok(refused_crop(
+            "two people are not both clearly in this section",
+        ));
+    };
+    let mut solved = Vec::with_capacity(2);
+    for id in pair {
+        let mut one = document.clone();
+        one.tracks.retain(|track| track.track_id == id);
+        let path = clipmill_reframe::solve_in_frame(
+            &one,
+            solve.start_ticks,
+            solve.end_ticks,
+            halves,
+            weights,
+            FocusGate::default(),
+        )?;
+        if path.fit {
+            return Ok(refused_crop(
+                "one of the two people is not clear enough in this section to follow",
+            ));
+        }
+        solved.push(path);
+    }
+    let [upper, lower] = solved.as_slice() else {
+        return Ok(refused_crop(
+            "two people are not both clearly in this section",
+        ));
+    };
+    let mut response = crop_response(upper);
+    let second = crop_response(lower);
+    response.secondary_keyframes = second.keyframes;
+    response.secondary_track_id = second.track_id;
+    response.containment = upper.containment.min(lower.containment);
+    Ok(response)
+}
+
 fn crop_response(solved: &clipmill_reframe::CropPath) -> SolveCropPathResponse {
     SolveCropPathResponse {
         keyframes: solved
@@ -3220,6 +3940,7 @@ fn crop_response(solved: &clipmill_reframe::CropPath) -> SolveCropPathResponse {
         track_id: u32::try_from(solved.track_id.unwrap_or(0)).unwrap_or(0),
         has_track: solved.track_id.is_some(),
         containment: solved.containment,
+        ..SolveCropPathResponse::default()
     }
 }
 
@@ -3291,6 +4012,14 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::CreateEditDoc(_)) => "create_edit_doc",
         Some(request::Body::ApplyEditCommand(_)) => "apply_edit_command",
         Some(request::Body::GetEditDoc(_)) => "get_edit_doc",
+        Some(request::Body::PreviewCaptions(_)) => "preview_captions",
+        Some(request::Body::ListEditHistory(_)) => "list_edit_history",
+        Some(request::Body::ListFaces(_)) => "list_faces",
+        Some(request::Body::PreviewDirect(_)) => "preview_direct",
+        Some(request::Body::ThumbnailFraming(_)) => "thumbnail_framing",
+        Some(request::Body::ImportAsset(_)) => "import_asset",
+        Some(request::Body::ListAssets(_)) => "list_assets",
+        Some(request::Body::ResolveAsset(_)) => "resolve_asset",
         Some(request::Body::SnapshotEditDoc(_)) => "snapshot_edit_doc",
         Some(request::Body::ListModels(_)) => "list_models",
         Some(request::Body::DownloadModels(_)) => "download_models",
@@ -3338,9 +4067,25 @@ fn error_reply(request_id: String, code: ErrorCode, message: impl Into<String>) 
     }
 }
 
+/// The code a store failure is reported with, for a caller that builds its
+/// own reply. The reason for an internal failure stays in the log.
+fn store_error_code(error: &StoreError) -> ErrorCode {
+    match error {
+        StoreError::Conflict
+        | StoreError::RelinkMismatch
+        | StoreError::ImportQualityConflict
+        | StoreError::PublishingConflict(_) => ErrorCode::Conflict,
+        StoreError::NotFound => ErrorCode::NotFound,
+        StoreError::Database(_) | StoreError::InvalidData(_) | StoreError::Stopped => {
+            ErrorCode::Internal
+        }
+    }
+}
+
 fn store_error_reply(request_id: String, error: &StoreError) -> Reply {
     match error {
         StoreError::Conflict
+        | StoreError::RelinkMismatch
         | StoreError::ImportQualityConflict
         | StoreError::PublishingConflict(_) => {
             error_reply(request_id, ErrorCode::Conflict, error.to_string())
@@ -3478,7 +4223,21 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
             boxed: plan.caption_style.boxed,
             margin_horizontal: plan.caption_style.margin_horizontal,
             margin_vertical: plan.caption_style.margin_vertical,
+            accent: preview_colour(plan.caption_style.accent),
+            highlight: match plan.caption_style.highlight {
+                clipmill_edit_ir::HighlightStyle::Fill => "fill",
+                clipmill_edit_ir::HighlightStyle::Word => "word",
+                clipmill_edit_ir::HighlightStyle::Box => "box",
+                clipmill_edit_ir::HighlightStyle::Pop => "pop",
+                clipmill_edit_ir::HighlightStyle::Underline => "underline",
+            }
+            .to_owned(),
         }),
+        ass: plan.ass.clone(),
+        // Filled by the caller, which knows where the fonts are installed.
+        fonts: Vec::new(),
+        // Filled for a dry run, whose document is nowhere else to read.
+        decisions: Vec::new(),
         secondary_crops: plan
             .secondary_crops
             .iter()
@@ -3493,44 +4252,78 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 None => PreviewCropV1::default(),
             })
             .collect(),
-        cues: plan
-            .cues
-            .iter()
-            .map(|cue| PreviewCueV1 {
-                cue_id: cue.cue_id.clone(),
-                first_frame: cue.first_frame,
-                end_frame: cue.end_frame,
-                region: match cue.region {
-                    clipmill_edit_ir::CaptionRegion::LowerSafe => "lower_safe",
-                    clipmill_edit_ir::CaptionRegion::UpperSafe => "upper_safe",
-                    clipmill_edit_ir::CaptionRegion::Center => "center",
-                }
-                .to_owned(),
-                karaoke: cue.karaoke,
-                lead_in_centis: cue.lead_in_centis,
-                lines: cue
-                    .lines
-                    .iter()
-                    .map(|line| PreviewLineV1 {
-                        words: line
-                            .words
-                            .iter()
-                            .map(|word| PreviewWordV1 {
-                                text: word.text.clone(),
-                                hold_centis: word.hold_centis,
-                                word_id: word.word_id.clone().unwrap_or_default(),
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-            })
-            .collect(),
+        cues: plan.cues.iter().map(preview_cue_response).collect(),
+        reading_cues: plan.reading_cues.iter().map(preview_cue_response).collect(),
+        reading_min_duration_ticks: clipmill_captions::Profile::ACCESSIBILITY_EN.min_duration_ticks,
+        reading_min_gap_ticks: clipmill_captions::Profile::ACCESSIBILITY_EN.min_gap_ticks,
         gain: plan
             .gain
             .iter()
             .map(|point| PreviewGainV1 {
                 frame: point.frame,
                 gain_db: point.gain_db,
+            })
+            .collect(),
+        music: plan.music.as_ref().map(|music| PreviewMusicV1 {
+            asset: music.asset.clone(),
+            offset_ticks: music.offset_ticks,
+            levels: music
+                .levels
+                .iter()
+                .map(|point| PreviewGainV1 {
+                    frame: point.frame,
+                    gain_db: point.gain_db,
+                })
+                .collect(),
+        }),
+        logo: plan.logo.as_ref().map(|logo| PreviewLogoV1 {
+            asset: logo.asset.clone(),
+            corner: logo.corner.to_owned(),
+            side: logo.side,
+            inset_x: logo.inset_x,
+            inset_y: logo.inset_y,
+            opacity: u32::from(logo.opacity),
+        }),
+        progress: plan.progress.as_ref().map(|bar| PreviewProgressV1 {
+            colour: bar.colour.clone(),
+            edge: bar.edge.to_owned(),
+            thickness: bar.thickness,
+        }),
+        cutaways: plan
+            .cutaways
+            .iter()
+            .map(|cutaway| PreviewCutawayV1 {
+                cutaway_id: cutaway.cutaway_id.clone(),
+                start_ticks: cutaway.start_ticks,
+                end_ticks: cutaway.end_ticks,
+                first_frame: cutaway.first_frame,
+                end_frame: cutaway.end_frame,
+                fit: cutaway.fit.to_owned(),
+                kind: cutaway.kind.to_owned(),
+                asset: cutaway.asset.clone(),
+                push_in: cutaway.push_in,
+                source_fingerprint: cutaway.source_fingerprint.clone(),
+                in_ticks: cutaway.in_ticks,
+            })
+            .collect(),
+        overlays: plan
+            .overlays
+            .iter()
+            .map(|overlay| PreviewOverlayV1 {
+                overlay_id: overlay.overlay_id.clone(),
+                start_ticks: overlay.start_ticks,
+                end_ticks: overlay.end_ticks,
+                first_frame: overlay.first_frame,
+                end_frame: overlay.end_frame,
+                text: overlay.text.clone(),
+                role: overlay.role.to_owned(),
+                x: u32::from(overlay.x),
+                y: u32::from(overlay.y),
+                size: u32::from(overlay.size),
+                colour: overlay.colour.clone(),
+                plate: overlay.plate.clone().unwrap_or_default(),
+                kind: overlay.kind.to_owned(),
+                emoji: overlay.emoji.clone(),
             })
             .collect(),
         width: plan.width,
@@ -3548,12 +4341,56 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 end_frame: segment.end_frame,
                 has_two_up_paths: segment.has_two_up_paths,
                 framing_warning: segment.framing_warning.clone(),
+                layout: segment.layout.to_owned(),
+                upper_height: segment.upper_height,
+                has_inset: segment.inset.is_some(),
+                inset_x: segment.inset.map_or(0, |(x, _, _)| x),
+                inset_y: segment.inset.map_or(0, |(_, y, _)| y),
+                inset_side: segment.inset.map_or(0, |(_, _, side)| side),
+                background_colour: segment.background_colour.clone().unwrap_or_default(),
+                zoom_percent: u32::from(segment.zoom_percent),
             })
             .collect(),
         // Resolved by the handler, which is the one with a database.
         sources: Vec::new(),
         proxies: Vec::new(),
         presentation: plan.presentation.as_str().to_owned(),
+    }
+}
+
+fn preview_cue_response(cue: &clipmill_render::PreviewCue) -> PreviewCueV1 {
+    PreviewCueV1 {
+        cue_id: cue.cue_id.clone(),
+        positioned: cue.position.is_some(),
+        position_x: cue.position.map_or(0, |position| position.x),
+        position_y: cue.position.map_or(0, |position| position.y),
+        start_ticks: cue.start_ticks,
+        end_ticks: cue.end_ticks,
+        first_frame: cue.first_frame,
+        end_frame: cue.end_frame,
+        region: match cue.region {
+            clipmill_edit_ir::CaptionRegion::LowerSafe => "lower_safe",
+            clipmill_edit_ir::CaptionRegion::UpperSafe => "upper_safe",
+            clipmill_edit_ir::CaptionRegion::Center => "center",
+        }
+        .to_owned(),
+        karaoke: cue.karaoke,
+        lead_in_centis: cue.lead_in_centis,
+        lines: cue
+            .lines
+            .iter()
+            .map(|line| PreviewLineV1 {
+                words: line
+                    .words
+                    .iter()
+                    .map(|word| PreviewWordV1 {
+                        text: word.text.clone(),
+                        hold_centis: word.hold_centis,
+                        word_id: word.word_id.clone().unwrap_or_default(),
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 
@@ -3610,7 +4447,13 @@ fn assemble(
         cut,
         style_ref,
         frame: evidence.frame,
-        aspect: clipmill_director::Aspect::default(),
+        shape: match direct.shape.as_str() {
+            "" | "vertical" => clipmill_director::FrameShape::Vertical,
+            "portrait" => clipmill_director::FrameShape::Portrait,
+            "square" => clipmill_director::FrameShape::Square,
+            "landscape" => clipmill_director::FrameShape::Landscape,
+            other => return Err(format!("{other} is not a frame shape")),
+        },
     };
     if direct.manual_span {
         let boundary = clipmill_director::Boundary {
@@ -3681,7 +4524,17 @@ impl Service {
         };
 
         let available = available_at(&asked.destination_dir);
-        let estimated = clipmill_export::estimate_bytes(document.program_duration_ticks());
+        let (height, chosen_rate) = match crate::render::output_request(asked.format.as_ref()) {
+            Ok(value) => value,
+            Err(message) => return error_reply(request_id, ErrorCode::InvalidArgument, message),
+        };
+        let sources = self
+            .database
+            .list_sources(record.project_id.clone())
+            .await
+            .unwrap_or_default();
+        let output = output_profile(&document, &sources, height, chosen_rate);
+        let estimated = scaled_estimate(document.program_duration_ticks(), &output);
         let report = clipmill_export::validate(
             &document,
             &clipmill_export::Context {
@@ -3695,26 +4548,24 @@ impl Service {
         // than an error, so it arrives beside the others in the same list a
         // user is already reading.
         let mut findings = validation_of(&report);
+        for path in missing_recordings(&document, &sources) {
+            findings.passes = false;
+            findings.findings.push(missing_recording_finding(&path));
+        }
+        if let Some(finding) = upscale_finding(&document, &sources, &output) {
+            findings.findings.push(finding);
+        }
         if let Err(error) = crate::export::probe_destination(&asked.destination_dir) {
             findings.passes = false;
             findings.findings.push(ExportFindingV1 {
                 code: "destination.unusable".to_owned(),
                 severity: ExportSeverity::Blocking as i32,
                 detail: error.to_string(),
+                cue_id: String::new(),
             });
         }
 
-        let stem = pattern.resolve(&clipmill_export::Fields {
-            project: String::new(),
-            clip: asked.title.clone(),
-            index: asked.index.max(1),
-            duration_seconds: u64::try_from(document.program_duration_ticks().max(0) / 90_000)
-                .unwrap_or(0),
-            date: asked.date.clone(),
-            // Resolved before a render exists, so `{address}` has nothing to
-            // shorten yet and the preview says so rather than inventing one.
-            address: String::new(),
-        });
+        let stem = planned_stem(&pattern, asked, &document);
         response_reply(
             request_id,
             response::Body::PlanExport(PlanExportResponse {
@@ -3727,6 +4578,40 @@ impl Service {
                 revision: record.revision,
             }),
         )
+    }
+
+    /// Why an export may not start, in the words the export strip uses, or
+    /// `None` when it may. A recording that moved is named first: nothing
+    /// else can be fixed from here until it is found.
+    async fn export_refusal(
+        &self,
+        asked: &ExportRequestV1,
+        document: &clipmill_edit_ir::EditDocument,
+        project_id: &str,
+    ) -> Option<String> {
+        if let Ok(sources) = self.database.list_sources(project_id.to_owned()).await
+            && let Some(path) = missing_recordings(document, &sources).first()
+        {
+            return Some(missing_recording_finding(path).detail);
+        }
+        let report = clipmill_export::validate(
+            document,
+            &clipmill_export::Context {
+                source_attestation: &asked.source_attestation,
+                gates_passed: &asked.gates_passed,
+                estimated_bytes: clipmill_export::estimate_bytes(document.program_duration_ticks()),
+                available_bytes: available_at(&asked.destination_dir),
+            },
+        );
+        // The reasons travel in the message: an export that failed without
+        // saying why is a dialog a user closes and gives up on.
+        (!report.passes()).then(|| {
+            report
+                .blocking()
+                .map(|finding| finding.detail.clone())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
     }
 
     /// Perform an export: snapshot, render, deliver — as one job.
@@ -3770,23 +4655,10 @@ impl Service {
         }
         // Checked before the destination is created, so a refused export leaves
         // no empty folder behind explaining nothing.
-        let report = clipmill_export::validate(
-            &document,
-            &clipmill_export::Context {
-                source_attestation: &asked.source_attestation,
-                gates_passed: &asked.gates_passed,
-                estimated_bytes: clipmill_export::estimate_bytes(document.program_duration_ticks()),
-                available_bytes: available_at(&asked.destination_dir),
-            },
-        );
-        if !report.passes() {
-            // The reasons travel in the message: an export that failed without
-            // saying why is a dialog a user closes and gives up on.
-            let reasons = report
-                .blocking()
-                .map(|finding| finding.detail.clone())
-                .collect::<Vec<_>>()
-                .join(" ");
+        if let Some(reasons) = self
+            .export_refusal(asked, &document, &record.project_id)
+            .await
+        {
             return error_reply(request_id, ErrorCode::PolicyDenied, reasons);
         }
         let destination = match crate::export::resolve_destination(&asked.destination_dir) {
@@ -3859,6 +4731,7 @@ impl Service {
             source_attestation: resolved.source_attestation.clone(),
             gates_passed: resolved.gates_passed.clone(),
             ai_assistance: resolved.ai_assistance.clone(),
+            format: resolved.format,
         }
         .encode_to_vec();
         let deliver_payload = DeliverExportPayloadV1 {
@@ -4374,7 +5247,153 @@ fn admit_export(asked: &ExportRequestV1, revision: u64) -> Result<(), (ErrorCode
             format!("an export declared a disclosure token nobody recognises: {token}"),
         ));
     }
+    crate::render::output_request(asked.format.as_ref())
+        .map_err(|message| (ErrorCode::InvalidArgument, message))?;
     Ok(())
+}
+
+/// The file name an export would take, resolved before any render exists.
+fn planned_stem(
+    pattern: &clipmill_export::Pattern,
+    asked: &ExportRequestV1,
+    document: &clipmill_edit_ir::EditDocument,
+) -> String {
+    pattern.resolve(&clipmill_export::Fields {
+        project: String::new(),
+        clip: asked.title.clone(),
+        index: asked.index.max(1),
+        duration_seconds: u64::try_from(document.program_duration_ticks().max(0) / 90_000)
+            .unwrap_or(0),
+        date: asked.date.clone(),
+        // Resolved before a render exists, so `{address}` has nothing to
+        // shorten yet and the preview says so rather than inventing one.
+        address: String::new(),
+    })
+}
+
+/// The profile an export would render with: the chosen height, and the chosen
+/// rate or else the rate of the recording the clip opens on.
+fn output_profile(
+    document: &clipmill_edit_ir::EditDocument,
+    sources: &[crate::db::SourceRecord],
+    height: i64,
+    chosen_rate: Option<clipmill_render::FrameRateSpec>,
+) -> clipmill_render::RenderProfile {
+    let source_rate = document.video.segments.first().and_then(|first| {
+        sources
+            .iter()
+            .find(|source| source.source_fingerprint == first.source_fingerprint)
+            .and_then(|source| crate::inspector::frame_rate_of(&source.source_map_json))
+    });
+    let rate = chosen_rate
+        .or(source_rate)
+        .unwrap_or(clipmill_render::RenderProfile::default().frame_rate);
+    clipmill_render::RenderProfile::for_output(document.video.shape, height, rate)
+        .unwrap_or_default()
+}
+
+/// The size estimate, scaled from the 1080 × 1920 rate it is stated at by the
+/// picture's area and by frame rates above thirty.
+fn scaled_estimate(duration_ticks: i64, profile: &clipmill_render::RenderProfile) -> u64 {
+    let base = clipmill_export::estimate_bytes(duration_ticks);
+    let default = clipmill_render::RenderProfile::default();
+    let area = u64::try_from(profile.width * profile.height).unwrap_or(1);
+    let default_area = u64::try_from(default.width * default.height).unwrap_or(1);
+    let fast = profile.frame_rate.num > 31 * profile.frame_rate.den;
+    base.saturating_mul(area)
+        .checked_div(default_area.max(1))
+        .unwrap_or(base)
+        .saturating_mul(if fast { 3 } else { 2 })
+        / 2
+}
+
+/// Advice when the chosen size enlarges the recording more than twice over.
+fn upscale_finding(
+    document: &clipmill_edit_ir::EditDocument,
+    sources: &[crate::db::SourceRecord],
+    profile: &clipmill_render::RenderProfile,
+) -> Option<ExportFindingV1> {
+    let inputs = sources
+        .iter()
+        .filter_map(|source| {
+            let frame = crate::inspector::frame_of(&source.source_map_json)?;
+            Some(clipmill_render::SourceInput {
+                fingerprint: source.source_fingerprint.clone(),
+                path: String::new(),
+                width: frame.width,
+                height: frame.height,
+                has_audio: true,
+                duration_ticks: 0,
+                keyframe_ticks: Vec::new(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let factor = clipmill_render::largest_upscale(document, &inputs, profile)?;
+    (factor > 2.0).then(|| ExportFindingV1 {
+        code: "format.upscaled".to_owned(),
+        severity: ExportSeverity::Advisory as i32,
+        detail: format!(
+            "At {}p this clip enlarges the recording up to {factor:.1} times, so it will not look sharper than a smaller export. It still exports.",
+            profile.width
+        ),
+        cue_id: String::new(),
+    })
+}
+
+/// A source as a reply states it, including whether its file is still there.
+fn source_reply(record: crate::db::SourceRecord) -> clipmill_contracts::proto::ipc::v1::Source {
+    let missing = !source_file_present(&record.observation);
+    let mut source: clipmill_contracts::proto::ipc::v1::Source = record.into();
+    source.missing = missing;
+    source
+}
+
+/// Whether the registered file is still where it was, at the size it had.
+///
+/// A size check rather than a fingerprint: this runs on every listing, and a
+/// different size is already proof of a different file. Relinking is where
+/// the whole fingerprint is compared.
+fn source_file_present(observation: &crate::sources::FileObservation) -> bool {
+    std::fs::metadata(&observation.absolute_path)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() == observation.byte_size)
+}
+
+/// The recordings a document cuts from that are not where they were
+/// registered, by path, so an export can say which one to find.
+fn missing_recordings(
+    document: &clipmill_edit_ir::EditDocument,
+    sources: &[crate::db::SourceRecord],
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    for source in sources {
+        let used = document
+            .video
+            .segments
+            .iter()
+            .any(|segment| segment.source_fingerprint == source.source_fingerprint);
+        if used
+            && !source_file_present(&source.observation)
+            && !missing.contains(&source.observation.absolute_path)
+        {
+            missing.push(source.observation.absolute_path.clone());
+        }
+    }
+    missing
+}
+
+fn missing_recording_finding(path: &str) -> ExportFindingV1 {
+    let name = std::path::Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    ExportFindingV1 {
+        code: "source.missing".to_owned(),
+        severity: ExportSeverity::Blocking as i32,
+        detail: format!(
+            "The recording {name} is no longer where it was imported from. Locate it to export this clip."
+        ),
+        cue_id: String::new(),
+    }
 }
 
 /// Free space where an export would land, or on the nearest folder above it
@@ -4406,6 +5425,7 @@ fn validation_of(report: &clipmill_export::Report) -> ExportValidationV1 {
                     clipmill_export::Severity::Advisory => ExportSeverity::Advisory as i32,
                 },
                 detail: finding.detail.clone(),
+                cue_id: finding.cue_id.clone().unwrap_or_default(),
             })
             .collect(),
     }
@@ -4515,6 +5535,177 @@ mod tests {
     use super::{Service, validate_project_name, validate_request_id};
     use crate::db::DbActor;
 
+    /// Two people side by side for ten seconds at four frames a second: the
+    /// left one at a quarter of the frame, the right at three quarters.
+    fn two_people() -> clipmill_contracts::schemas::vision_face_track::VisionFaceTrack {
+        let track = |id: u64, x: f64| {
+            let boxes: Vec<_> = (0..40u64)
+                .map(|frame| serde_json::json!({ "t_ticks": frame * 22_500, "x": x, "y": 0.3, "w": 0.1, "h": 0.2, "score": 0.95 }))
+                .collect();
+            serde_json::json!({ "track_id": id, "first_ticks": 0, "last_ticks": 39 * 22_500, "frames_present": 40, "mean_score": 0.95, "boxes": boxes })
+        };
+        serde_json::from_value(serde_json::json!({
+            "schema_version": "clipmill.vision.face_track.v1",
+            "source_fingerprint": format!("sha256:{}", "1".repeat(64)),
+            "frames_artifact_id": format!("sha256:{}", "2".repeat(64)),
+            "producer": { "stage": "detect-faces", "implementation": "fixture" },
+            "coverage": { "start_ticks": 0, "end_ticks": 900_000, "analyzed": true },
+            "detection": { "score_threshold": 0.6, "nms_iou": 0.3, "input_width": 320, "input_height": 320, "match_iou": 0.5, "recover_iou": 0.3, "max_gap_frames": 6, "min_track_frames": 4, "frame_rate": { "num": 4, "den": 1 } },
+            "tracks": [track(0, 0.2), track(1, 0.7)],
+        }))
+        .expect("a face track")
+    }
+
+    fn ask(adjust: impl FnOnce(&mut super::SolveCropPathRequest)) -> super::SolveCropPathRequest {
+        let mut solve = super::SolveCropPathRequest {
+            start_ticks: 0,
+            end_ticks: 900_000,
+            aspect_width: 9,
+            aspect_height: 16,
+            ..super::SolveCropPathRequest::default()
+        };
+        adjust(&mut solve);
+        solve
+    }
+
+    #[test]
+    fn a_thumbnail_centres_on_the_face_the_camera_would_follow() {
+        let mut alone = two_people();
+        alone.tracks.retain(|track| track.track_id == 1);
+        let centre = super::framing_centre(&alone, 0);
+        assert!((centre - 0.75).abs() < 0.01, "{centre}");
+        // Two alike: the camera would fit the frame, so the middle it is.
+        assert!((super::framing_centre(&two_people(), 0) - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn two_people_alike_leave_the_automatic_camera_fitted() {
+        let solved = super::crop_solve(two_people(), &ask(|_| {}), (1_920, 1_080)).expect("solve");
+        assert!(solved.fit, "neither face is more worth following");
+        assert!(!solved.fit_reason.is_empty());
+    }
+
+    #[test]
+    fn a_face_somebody_picked_is_followed() {
+        for (track, side) in [(0u32, 0.25), (1, 0.75)] {
+            let solved = super::crop_solve(
+                two_people(),
+                &ask(|solve| {
+                    solve.follow_track = true;
+                    solve.track_id = track;
+                }),
+                (1_920, 1_080),
+            )
+            .expect("solve");
+            assert!(!solved.fit, "{}", solved.fit_reason);
+            assert!(solved.has_track && solved.track_id == track);
+            assert!((solved.keyframes[0].center_x - side).abs() < 0.05);
+        }
+        let absent = super::crop_solve(
+            two_people(),
+            &ask(|solve| {
+                solve.follow_track = true;
+                solve.track_id = 7;
+            }),
+            (1_920, 1_080),
+        )
+        .expect("solve");
+        assert!(absent.fit && absent.fit_reason.contains("not in this recording"));
+    }
+
+    #[test]
+    fn a_two_up_solve_returns_both_portraits_with_the_left_face_on_top() {
+        let solved = super::crop_solve(
+            two_people(),
+            &ask(|solve| solve.two_up = true),
+            (1_920, 1_080),
+        )
+        .expect("solve");
+        assert!(!solved.fit, "{}", solved.fit_reason);
+        assert!(!solved.keyframes.is_empty() && !solved.secondary_keyframes.is_empty());
+        assert!(solved.keyframes[0].center_x < solved.secondary_keyframes[0].center_x);
+        assert_eq!((solved.track_id, solved.secondary_track_id), (0, 1));
+
+        let mut alone = two_people();
+        alone.tracks.truncate(1);
+        let refused = super::crop_solve(alone, &ask(|solve| solve.two_up = true), (1_920, 1_080))
+            .expect("solve");
+        assert!(refused.fit && refused.secondary_keyframes.is_empty());
+        assert!(refused.fit_reason.contains("two people"));
+    }
+
+    #[test]
+    fn an_export_may_ask_for_the_offered_sizes_and_rates_only() {
+        use clipmill_contracts::proto::ipc::v1::OutputFormatV1;
+        let ask = |num, den, height| {
+            crate::render::output_request(Some(&OutputFormatV1 {
+                frame_rate_num: num,
+                frame_rate_den: den,
+                height,
+            }))
+        };
+        assert_eq!(crate::render::output_request(None), Ok((1_920, None)));
+        assert_eq!(ask(0, 0, 0), Ok((1_920, None)));
+        let (height, rate) = ask(60, 1, 3_840).expect("4K at sixty");
+        assert_eq!(height, 3_840);
+        assert_eq!(rate.map(|rate| (rate.num, rate.den)), Some((60, 1)));
+        assert!(ask(0, 0, 1_000).is_err(), "an odd height");
+        assert!(ask(1_000, 1, 0).is_err(), "an absurd rate");
+        assert!(ask(30, 0, 0).is_err(), "a rate with no denominator");
+    }
+
+    #[test]
+    fn a_moved_recording_is_named_by_the_export_checks() {
+        use crate::{db::SourceRecord, sources::FileObservation};
+        use clipmill_edit_ir::{EditDocument, Layout, LayoutState, VideoSegment};
+        let temp = TempDir::new().expect("tempdir");
+        let present = temp.path().join("present.mov");
+        std::fs::write(&present, b"12345").expect("recording");
+        let record = |path: &std::path::Path, fingerprint: &str, size: u64| SourceRecord {
+            source_id: "src_1".to_owned(),
+            project_id: "prj_1".to_owned(),
+            observation: FileObservation {
+                absolute_path: path.to_string_lossy().into_owned(),
+                byte_size: size,
+                sample_sha256: String::new(),
+                device_id: 0,
+                inode: 0,
+                modified_unix_nanos: 0,
+            },
+            source_fingerprint: fingerprint.to_owned(),
+            source_map_json: Vec::new(),
+            source_map_artifact_id: String::new(),
+            created_unix_millis: 0,
+        };
+        let mut document = EditDocument::default();
+        document.video.segments = vec![VideoSegment {
+            segment_id: "seg".to_owned(),
+            source_fingerprint: "sha256:aa".to_owned(),
+            in_ticks: 0,
+            out_ticks: 90_000,
+            layout: Layout {
+                state: LayoutState::Fit,
+                crop_path: Vec::new(),
+                secondary_crop_path: Vec::new(),
+                ..Layout::default()
+            },
+        }];
+        let here = [record(&present, "sha256:aa", 5)];
+        assert!(super::missing_recordings(&document, &here).is_empty());
+        // Replaced by a different file of another size: not the recording.
+        let changed = [record(&present, "sha256:aa", 6)];
+        assert_eq!(super::missing_recordings(&document, &changed).len(), 1);
+        let gone = [record(&temp.path().join("gone.mov"), "sha256:aa", 5)];
+        let missing = super::missing_recordings(&document, &gone);
+        assert_eq!(missing.len(), 1);
+        let finding = super::missing_recording_finding(&missing[0]);
+        assert_eq!(finding.code, "source.missing");
+        assert!(finding.detail.contains("gone.mov"), "{}", finding.detail);
+        // A recording the clip does not use is none of the export's business.
+        let unrelated = [record(&temp.path().join("gone.mov"), "sha256:bb", 5)];
+        assert!(super::missing_recordings(&document, &unrelated).is_empty());
+    }
+
     #[test]
     fn extension_cues_never_reuse_an_id_and_stay_inside_their_span() {
         use clipmill_edit_ir::{
@@ -4532,8 +5723,10 @@ mod tests {
                     text: "word".to_owned(),
                     start_ticks: start,
                     end_ticks: start + 10_000,
+                    emphasis: false,
                 }],
             }],
+            position: None,
         };
         let existing = [cue("cue_1", 0, 60_000), cue("cue_x500_2", 60_000, 90_000)];
         let fitted = super::fit_extension_cues(

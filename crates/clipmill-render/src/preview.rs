@@ -5,15 +5,13 @@
 //! pixel tolerances, but words, crop rectangles, and cue frames must agree.
 //! `gate-editor` compares rendered fixture documents.
 
-use clipmill_edit_ir::{
-    CaptionAnimation, CaptionCue, CaptionRegion, EditDocument, LayoutState, Presentation,
-};
+use clipmill_edit_ir::{CaptionCue, CaptionRegion, EditDocument, LayoutState, Presentation};
 
 use crate::{
     graph::crop_rect_at,
     plan::RenderError,
     profile::{CaptionStyle, RenderProfile},
-    subtitles::{Sweep, burned_text, sweep},
+    subtitles::{Sweep, burned_text, highlight_enabled, sweep},
     timing::FrameRate,
 };
 
@@ -59,6 +57,19 @@ pub struct PreviewSegment {
     /// Empty when the stored framing can render. A legacy missing crop stays
     /// playable as a draft so the user can repair it with Fit or a new solve.
     pub framing_warning: String,
+    /// How the section is drawn: `fit`, `speaker_fill`, `two_up` or
+    /// `picture_in_picture`, and the geometry the render uses for it, in
+    /// output pixels, so the player draws what the export will.
+    pub layout: &'static str,
+    /// Two viewports: the first one's length along the split — its height
+    /// when stacked, its width side by side in a landscape frame.
+    pub upper_height: i64,
+    /// Picture in picture: the inset's square, `(x, y, side)`.
+    pub inset: Option<(i64, i64, i64)>,
+    /// A fitted picture's fill: `None` for the picture blurred, or a colour.
+    pub background_colour: Option<String>,
+    /// A fitted picture's zoom past fitting, in percent.
+    pub zoom_percent: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -74,6 +85,11 @@ pub struct PreviewLine {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewCue {
     pub cue_id: String,
+    /// Where the cue's centre sits when it was placed by hand, its own or the
+    /// clip-wide one; `None` leaves it to its region.
+    pub position: Option<clipmill_edit_ir::CaptionPosition>,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
     pub first_frame: i64,
     pub end_frame: i64,
     pub region: CaptionRegion,
@@ -93,6 +109,86 @@ pub struct PreviewGain {
     pub gain_db: f64,
 }
 
+/// A text over the program, in frames, for the editor to show and move. The
+/// pixels come from the script, which draws it as the render will.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewOverlay {
+    pub overlay_id: String,
+    /// `text` or `emoji`.
+    pub kind: &'static str,
+    /// An emoji's code point; empty for a text.
+    pub emoji: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    pub text: String,
+    /// `hook` or `label`.
+    pub role: &'static str,
+    pub x: u16,
+    pub y: u16,
+    pub size: u16,
+    pub colour: String,
+    pub plate: Option<String>,
+}
+
+/// A progress bar as the render draws it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewProgress {
+    pub colour: String,
+    /// `top` or `bottom`.
+    pub edge: &'static str,
+    /// In output pixels.
+    pub thickness: i64,
+}
+
+/// Music as the render mixes it: which sound, from where in it, and its
+/// level in decibels at points through the program, by frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewMusic {
+    pub asset: String,
+    pub offset_ticks: i64,
+    pub levels: Vec<PreviewGain>,
+}
+
+/// A logo as the render draws it: which picture, which corner, and its
+/// place in output pixels.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewLogo {
+    pub asset: String,
+    /// `top_left`, `top_right`, `bottom_left` or `bottom_right`.
+    pub corner: &'static str,
+    pub side: i64,
+    pub inset_x: i64,
+    pub inset_y: i64,
+    /// In percent.
+    pub opacity: u8,
+}
+
+/// A cutaway as the render lays it: what it shows, how it meets the frame,
+/// and the program frames it covers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewCutaway {
+    pub cutaway_id: String,
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub first_frame: i64,
+    pub end_frame: i64,
+    /// `fill` or `fit`.
+    pub fit: &'static str,
+    /// `picture` or `footage`.
+    pub kind: &'static str,
+    /// A picture's hash; empty for footage.
+    pub asset: String,
+    /// Whether a picture moves closer, [`clipmill_edit_ir::Cutaway::PUSH_IN`]
+    /// per mille by its last frame.
+    pub push_in: bool,
+    /// Footage's recording; empty for a picture.
+    pub source_fingerprint: String,
+    /// Where in its recording footage starts.
+    pub in_ticks: i64,
+}
+
 /// Everything the player needs, and nothing it has to work out.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewPlan {
@@ -104,11 +200,24 @@ pub struct PreviewPlan {
     /// the whole picture is shown — which is a different statement from a crop
     /// that happens to cover everything.
     pub crops: Vec<Option<PreviewCrop>>,
-    /// Lower viewports in two-person compositions, indexed exactly like crops.
+    /// Lower viewports in two-person compositions and picture-in-picture
+    /// insets, indexed exactly like crops.
     pub secondary_crops: Vec<Option<PreviewCrop>>,
     pub caption_style: CaptionStyle,
     pub cues: Vec<PreviewCue>,
+    /// The SRT/VTT grouping, editable independently of the burned-in grouping.
+    pub reading_cues: Vec<PreviewCue>,
     pub gain: Vec<PreviewGain>,
+    /// What is laid over the program, bottom first.
+    pub overlays: Vec<PreviewOverlay>,
+    /// B-roll over the program's own picture, in program order.
+    pub cutaways: Vec<PreviewCutaway>,
+    /// The progress bar, in output pixels: its colour, edge and thickness.
+    pub progress: Option<PreviewProgress>,
+    /// The logo, where the render puts it.
+    pub logo: Option<PreviewLogo>,
+    /// The music, and its level through the program as the render plays it.
+    pub music: Option<PreviewMusic>,
     /// The output frame the crops are fitted into.
     pub width: i64,
     pub height: i64,
@@ -117,6 +226,37 @@ pub struct PreviewPlan {
     /// Which cue list `cues` came from, so a surface showing them addresses
     /// its cue-scoped commands to the same list.
     pub presentation: Presentation,
+    /// The burned-in captions as the export writes them, so a player that
+    /// runs libass draws exactly the pixels the render will burn in.
+    pub ass: String,
+}
+
+/// The burned-in captions a document has, as the export writes them.
+///
+/// For a caller that only needs the captions — the editor trying a look
+/// before choosing it — without sampling every frame's crop.
+pub fn caption_ass(
+    document: &EditDocument,
+    profile: &RenderProfile,
+) -> Result<String, RenderError> {
+    document.validate()?;
+    let caption_style = CaptionStyle::for_track(&document.captions)
+        .or_else(|| {
+            document
+                .captions
+                .cues
+                .is_empty()
+                .then(|| profile.caption_style.clone())
+        })
+        .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
+    Ok(crate::subtitles::write_ass(
+        &document.captions,
+        &document.overlays,
+        &RenderProfile {
+            caption_style,
+            ..profile.clone()
+        },
+    ))
 }
 
 /// Interpret a document against the proxy timeline.
@@ -131,6 +271,7 @@ pub fn preview_plan(
     profile: &RenderProfile,
 ) -> Result<PreviewPlan, RenderError> {
     document.validate()?;
+    crate::plan::check_shape(document, profile)?;
     let rate = profile.rate();
     let duration: i64 = document
         .video
@@ -152,16 +293,26 @@ pub fn preview_plan(
                 .then(|| profile.caption_style.clone())
         })
         .ok_or_else(|| RenderError::UnknownCaptionStyle(document.captions.style_ref.clone()))?;
+    let ass = crate::subtitles::write_ass(
+        &document.captions,
+        &document.overlays,
+        &RenderProfile {
+            caption_style: caption_style.clone(),
+            ..profile.clone()
+        },
+    );
     Ok(PreviewPlan {
         transition_ticks: document.video.transition_ticks,
         transitions: crate::transitions::transitions(document, rate),
         caption_style,
+        ass,
         rate,
         frame_count,
         crops: crops(document, rate, frame_count, false),
         secondary_crops: crops(document, rate, frame_count, true),
-        cues: cues(document, rate),
-        segments: segments(document, rate),
+        cues: cues(document.captions.burned(), rate, &document.captions.options),
+        reading_cues: cues(&document.captions.cues, rate, &document.captions.options),
+        segments: segments(document, rate, profile),
         presentation: document.captions.burned_presentation(),
         gain: document
             .audio
@@ -172,14 +323,165 @@ pub fn preview_plan(
                 gain_db: point.gain_db,
             })
             .collect(),
+        overlays: overlays(document, rate, frame_count),
+        cutaways: cutaways(document, rate, frame_count),
+        progress: progress(document, profile),
+        logo: logo(document, profile),
+        music: document.audio.music.as_ref().map(|music| PreviewMusic {
+            asset: music.asset.clone(),
+            offset_ticks: music.offset_ticks,
+            levels: crate::music::music_envelope(document, duration)
+                .iter()
+                .map(|point| PreviewGain {
+                    frame: rate.frame_ceil(point.t_ticks),
+                    gain_db: point.gain_db,
+                })
+                .collect(),
+        }),
         width: profile.width,
         height: profile.height,
     })
 }
 
+/// The cutaways, on the frames the render lays them over.
+fn cutaways(document: &EditDocument, rate: FrameRate, frame_count: i64) -> Vec<PreviewCutaway> {
+    use clipmill_edit_ir::{CutawayContent, CutawayFit};
+    document
+        .video
+        .cutaways
+        .iter()
+        .map(|cutaway| {
+            let (kind, asset, push_in, source_fingerprint, in_ticks) = match &cutaway.content {
+                CutawayContent::Picture { asset, push_in } => {
+                    ("picture", asset.clone(), *push_in, String::new(), 0)
+                }
+                CutawayContent::Footage {
+                    source_fingerprint,
+                    in_ticks,
+                } => (
+                    "footage",
+                    String::new(),
+                    false,
+                    source_fingerprint.clone(),
+                    *in_ticks,
+                ),
+            };
+            PreviewCutaway {
+                cutaway_id: cutaway.cutaway_id.clone(),
+                start_ticks: cutaway.start_ticks,
+                end_ticks: cutaway.end_ticks,
+                first_frame: rate.frame_ceil(cutaway.start_ticks).min(frame_count),
+                end_frame: rate.frame_ceil(cutaway.end_ticks).min(frame_count),
+                fit: match cutaway.fit {
+                    CutawayFit::Fill => "fill",
+                    CutawayFit::Fit => "fit",
+                },
+                kind,
+                asset,
+                push_in,
+                source_fingerprint,
+                in_ticks,
+            }
+        })
+        .collect()
+}
+
+/// What is over the program, in frames, bottom first.
+fn overlays(document: &EditDocument, rate: FrameRate, frame_count: i64) -> Vec<PreviewOverlay> {
+    document
+        .overlays
+        .iter()
+        .map(|overlay| {
+            let first_frame = rate.frame_ceil(overlay.start_ticks);
+            let end_frame = rate.frame_ceil(overlay.end_ticks).min(frame_count);
+            match &overlay.content {
+                clipmill_edit_ir::OverlayContent::Text {
+                    text,
+                    role,
+                    x,
+                    y,
+                    size,
+                    colour,
+                    plate,
+                } => PreviewOverlay {
+                    overlay_id: overlay.overlay_id.clone(),
+                    kind: "text",
+                    emoji: String::new(),
+                    start_ticks: overlay.start_ticks,
+                    end_ticks: overlay.end_ticks,
+                    first_frame,
+                    end_frame,
+                    text: text.clone(),
+                    role: match role {
+                        clipmill_edit_ir::TextRole::Hook => "hook",
+                        clipmill_edit_ir::TextRole::Label => "label",
+                    },
+                    x: *x,
+                    y: *y,
+                    size: *size,
+                    colour: colour.clone(),
+                    plate: plate.clone(),
+                },
+                clipmill_edit_ir::OverlayContent::Emoji { emoji, x, y, size } => PreviewOverlay {
+                    overlay_id: overlay.overlay_id.clone(),
+                    kind: "emoji",
+                    emoji: emoji.clone(),
+                    start_ticks: overlay.start_ticks,
+                    end_ticks: overlay.end_ticks,
+                    first_frame,
+                    end_frame,
+                    text: String::new(),
+                    role: "label",
+                    x: *x,
+                    y: *y,
+                    size: *size,
+                    colour: String::new(),
+                    plate: None,
+                },
+            }
+        })
+        .collect()
+}
+
+/// The progress bar as the render draws it.
+fn progress(document: &EditDocument, profile: &RenderProfile) -> Option<PreviewProgress> {
+    let bar = document.brand.as_ref()?.progress.as_ref()?;
+    Some(PreviewProgress {
+        colour: bar.colour.clone(),
+        edge: match bar.edge {
+            clipmill_edit_ir::BarEdge::Top => "top",
+            clipmill_edit_ir::BarEdge::Bottom => "bottom",
+        },
+        thickness: crate::graph::progress_thickness(bar, profile.height),
+    })
+}
+
+/// The logo where the render puts it.
+fn logo(document: &EditDocument, profile: &RenderProfile) -> Option<PreviewLogo> {
+    let logo = document.brand.as_ref()?.logo.as_ref()?;
+    let place = crate::graph::logo_place(logo, profile.width, profile.height);
+    Some(PreviewLogo {
+        asset: logo.asset.clone(),
+        corner: match logo.corner {
+            clipmill_edit_ir::InsetCorner::TopLeft => "top_left",
+            clipmill_edit_ir::InsetCorner::TopRight => "top_right",
+            clipmill_edit_ir::InsetCorner::BottomLeft => "bottom_left",
+            clipmill_edit_ir::InsetCorner::BottomRight => "bottom_right",
+        },
+        side: place.side,
+        inset_x: place.inset_x,
+        inset_y: place.inset_y,
+        opacity: logo.opacity,
+    })
+}
+
 /// Where each segment sits, in frames and in ticks, by the same walk the crops
 /// use — so the frame a segment starts on is the frame its first crop is at.
-fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
+fn segments(
+    document: &EditDocument,
+    rate: FrameRate,
+    profile: &RenderProfile,
+) -> Vec<PreviewSegment> {
     let starts = document.segment_program_starts();
     document
         .video
@@ -202,6 +504,33 @@ fn segments(document: &EditDocument, rate: FrameRate) -> Vec<PreviewSegment> {
                 framing_warning: if segment.layout.needs_crop_repair() {
                     "This shot has no saved crop path. Open Reframe and choose Fit or recalculate the crop before exporting.".to_owned()
                 } else { String::new() },
+                layout: match segment.layout.state {
+                    LayoutState::Fit => "fit",
+                    LayoutState::SpeakerFill => "speaker_fill",
+                    LayoutState::TwoUp => "two_up",
+                    LayoutState::PictureInPicture => "picture_in_picture",
+                },
+                upper_height: if segment.layout.state == LayoutState::TwoUp {
+                    let (first, _) = segment.layout.viewports(profile.width, profile.height);
+                    if clipmill_edit_ir::splits_across(profile.width, profile.height) {
+                        first.0
+                    } else {
+                        first.1
+                    }
+                } else {
+                    0
+                },
+                inset: (segment.layout.state == LayoutState::PictureInPicture).then(|| {
+                    segment
+                        .layout
+                        .inset_or_default()
+                        .place(profile.width, profile.height)
+                }),
+                background_colour: match &segment.layout.background {
+                    Some(clipmill_edit_ir::FitBackground::Colour { colour }) => Some(colour.clone()),
+                    None | Some(clipmill_edit_ir::FitBackground::Blur) => None,
+                },
+                zoom_percent: segment.layout.zoom_percent(),
             }
         })
         .collect()
@@ -218,31 +547,38 @@ fn crops(
     frame_count: i64,
     secondary: bool,
 ) -> Vec<Option<PreviewCrop>> {
+    // Each section's path once, as it is drawn: the followed crop with its
+    // punches taken in, as the render takes them.
     let mut boundaries = Vec::with_capacity(document.video.segments.len());
     let mut at = 0_i64;
     for segment in &document.video.segments {
         let end = at + segment.duration_ticks();
-        boundaries.push((rate.frame_ceil(at), rate.frame_ceil(end), segment));
+        let path = if secondary {
+            std::borrow::Cow::Borrowed(segment.layout.secondary_crop_path.as_slice())
+        } else {
+            segment.layout.drawn_crop_path()
+        };
+        boundaries.push((rate.frame_ceil(at), rate.frame_ceil(end), segment, path));
         at = end;
     }
 
     (0..frame_count)
         .map(|frame| {
-            let (start, _, segment) = *boundaries
+            let (start, _, segment, path) = boundaries
                 .iter()
-                .find(|(start, end, _)| frame >= *start && frame < *end)
+                .find(|(start, end, _, _)| frame >= *start && frame < *end)
                 .or_else(|| boundaries.last())?;
             if matches!(segment.layout.state, LayoutState::Fit) {
                 return None;
             }
-            let path = if secondary {
-                if segment.layout.state != LayoutState::TwoUp {
-                    return None;
-                }
-                &segment.layout.secondary_crop_path
-            } else {
-                &segment.layout.crop_path
-            };
+            if secondary
+                && !matches!(
+                    segment.layout.state,
+                    LayoutState::TwoUp | LayoutState::PictureInPicture
+                )
+            {
+                return None;
+            }
             crop_rect_at(path, rate, frame - start).map(|rect| PreviewCrop {
                 x: rect.x,
                 y: rect.y,
@@ -258,15 +594,18 @@ fn crops(
 /// The burned-in list, not the reading one: the player is showing what a viewer
 /// watching the export would see, and the sidecars are a different surface with
 /// a different grouping.
-fn cues(document: &EditDocument, rate: FrameRate) -> Vec<PreviewCue> {
-    document
-        .captions
-        .burned()
-        .iter()
+fn cues(
+    cues: &[CaptionCue],
+    rate: FrameRate,
+    options: &clipmill_edit_ir::CaptionOptions,
+) -> Vec<PreviewCue> {
+    let text_case = options.text_case;
+    let highlight_override = options.highlight_spoken_word;
+    cues.iter()
         .map(|cue| {
             let first_frame = rate.frame_ceil(cue.start_ticks);
             let end_frame = rate.frame_ceil(cue.end_ticks);
-            let karaoke = matches!(cue.anim, CaptionAnimation::Karaoke);
+            let karaoke = highlight_enabled(cue, highlight_override);
             let swept = if karaoke {
                 sweep(
                     cue,
@@ -282,12 +621,15 @@ fn cues(document: &EditDocument, rate: FrameRate) -> Vec<PreviewCue> {
             };
             PreviewCue {
                 cue_id: cue.cue_id.clone(),
+                position: cue.position.or(options.position),
+                start_ticks: cue.start_ticks,
+                end_ticks: cue.end_ticks,
                 first_frame,
                 end_frame,
                 region: cue.region,
                 karaoke,
                 lead_in_centis: swept.lead_in_centis,
-                lines: lines(cue, &swept, document.captions.options.text_case),
+                lines: lines(cue, &swept, text_case),
             }
         })
         .collect()

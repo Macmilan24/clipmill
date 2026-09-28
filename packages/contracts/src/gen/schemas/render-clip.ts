@@ -60,6 +60,13 @@ export interface RenderClipManifest {
      */
     source_attestation: string;
     gates_passed: string[];
+    /**
+     * Every picture and sound drawn or played besides the footage, with the licence the person stated when they brought it in.
+     */
+    assets?: {
+      hash: string;
+      license: "own_content" | "licensed" | "royalty_free" | "public_domain";
+    }[];
   };
   /**
    * Every source that contributed frames, in document order.

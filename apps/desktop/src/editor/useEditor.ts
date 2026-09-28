@@ -20,8 +20,9 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { EditCommandJson, Job, PreviewPlan } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
-import { type Filmstrip, type Peaks } from '../results/loader.js';
+import { type Filmstrip, type Peaks, voicesOf } from '../results/loader.js';
 import { type Transcript, readTranscript } from '../results/transcript.js';
+import { historySteps } from './history.js';
 import type { ClipRef } from '../shell/route.js';
 
 const PROXY_KIND = 'media.proxy.v1';
@@ -91,7 +92,11 @@ export function mediaRun(jobs: readonly Job[], clip: ClipRef): Job | null {
   );
 }
 
-export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): EditorState {
+export function useEditor(
+  clip: ClipRef | null,
+  api: ShellApi = daemonApi,
+  sourceRefresh = 0,
+): EditorState {
   const [revision, setRevision] = useState(0);
   const [plan, setPlan] = useState<PreviewPlan | null>(null);
   const [document, setDocument] = useState<EditIr | null>(null);
@@ -166,11 +171,12 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
             .then((item) => ({ artifact, json: item.json }))
             .catch(() => null);
         };
-        const [speechDoc, indexDoc, filmstripDoc, peaksDoc] = await Promise.all([
+        const [speechDoc, indexDoc, filmstripDoc, peaksDoc, speakersDoc] = await Promise.all([
           read('speech.transcript.v1'),
           read('index.transcript.v1'),
           read('media.filmstrip.v1'),
           read('media.audio_peaks.v1'),
+          read('speech.speakers.v1'),
         ]);
         const sourceFingerprint = fetched.sources.find(
           (source) => source.sourceId === sourceId,
@@ -179,7 +185,13 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
         const index = parseDocument<IndexTranscript>(indexDoc?.json);
         const tiles = parseDocument<MediaFilmstrip>(filmstripDoc?.json);
         const waveform = parseDocument<MediaAudioPeaks>(peaksDoc?.json);
+        // The log is the undo history: every command was stored with its
+        // inverse, so undo reaches past this window into earlier sessions.
+        const logged = api.listEditHistory
+          ? await api.listEditHistory(docId).catch(() => null)
+          : null;
         if (live && request === latest.current) {
+          if (logged) setUndoStack(historySteps(logged).map((step) => step.inverse));
           setRevision(fetched.revision);
           setPlan(fetched);
           setDocument(
@@ -191,7 +203,7 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
           setTranscript(
             speech?.schema_version === 'clipmill.speech.transcript.v1' &&
               speech.source_fingerprint === sourceFingerprint
-              ? readTranscript(speech, index)
+              ? readTranscript(speech, index, voicesOf(speakersDoc?.json, sourceFingerprint))
               : null,
           );
           setFilmstrip(
@@ -225,7 +237,7 @@ export function useEditor(clip: ClipRef | null, api: ShellApi = daemonApi): Edit
     return () => {
       live = false;
     };
-  }, [api, projectId, docId, sourceId, jobId]);
+  }, [api, projectId, docId, sourceId, jobId, sourceRefresh]);
 
   /**
    * Send a command, take the inverse, and re-read the plan.

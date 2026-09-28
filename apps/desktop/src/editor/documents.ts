@@ -16,8 +16,10 @@ export interface DocumentEntry {
   readonly projectName: string;
   /** The recording's file name, or null when the document names no source. */
   readonly sourceName: string | null;
-  /** The clip's title from its analysis, once it is known. */
+  /** The clip's title: the one somebody gave it, or its analysis's headline. */
   readonly title: string | null;
+  /** Whether somebody named the clip, so its analysis's headline stays out. */
+  readonly named?: boolean;
   /** A frame of the clip, once it is known. */
   readonly thumbnail: string | null;
   readonly revision: number;
@@ -47,6 +49,9 @@ export function documentEntries(
         continue;
       }
       const source = known.find((candidate) => candidate.sourceId === document.sourceId);
+      // A name somebody gave the clip is its name everywhere, ahead of the
+      // headline its analysis suggested.
+      const named = document.title?.trim() || null;
       entries.push({
         clip: {
           projectId: project.projectId,
@@ -54,11 +59,12 @@ export function documentEntries(
           sourceId: document.sourceId,
           ...(document.candidateId === '' ? {} : { candidateId: document.candidateId }),
           ...(document.jobId === '' ? {} : { jobId: document.jobId }),
-          labels: { project: project.name, clip: clipLabel(document, source) },
+          labels: { project: project.name, clip: named ?? clipLabel(document, source) },
         },
         projectName: project.name,
         sourceName: source ? fileName(source.absolutePath) : null,
-        title: null,
+        title: named,
+        named: named !== null,
         thumbnail: null,
         revision: document.revision,
         updatedUnixMillis: document.updatedUnixMillis,
@@ -96,6 +102,7 @@ export async function withClipNames(
       }
       const name = (await runs.get(key)!).get(candidateId);
       if (!name || !name.title.trim()) return entry;
+      if (entry.named) return { ...entry, thumbnail: name.thumbnail };
       return {
         ...entry,
         title: name.title,

@@ -1,0 +1,44 @@
+# Telling voices apart: a print of how someone sounds over a second and a
+# half of speech, from which the speakers stage says who speaks when.
+#
+# Every file is pinned by digest and the revision is pinned by commit, so
+# the model library and `fetch-models.sh` verify rather than trust. The
+# licence class is what `check-models.py` enforces: weights ship inside
+# what users publish.
+name = "campplus-voxceleb"
+capability = "speaker-embed"
+family = "wespeaker"
+runtime = "onnxruntime"
+backend = "onnx-cpu"
+quantization = "none"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "CAM++ voice prints"
+summary = "Tells voices apart, so transcripts say who speaks. Small and fast on any computer."
+recommended = true
+
+[source]
+provider = "https://huggingface.co"
+repo = "Wespeaker/wespeaker-voxceleb-campplus"
+revision = "acf623ad8ca746e50baa432255cf8fc57c669c45"
+
+[license]
+# The WeSpeaker organisation's own repository declares its terms in its
+# metadata (`license: apache-2.0`) and ships no licence file.
+source = "repo-metadata"
+spdx = "Apache-2.0"
+class = "permissive"
+
+[memory]
+# Exact on-disk weight bytes, and the allowance a runtime needs on top.
+# Admission adds them; a worker that cannot fit both is not given the task.
+# The allowance holds a three-hour rendition as the stage reads it whole.
+weights_bytes = 29292449
+runtime_overhead_bytes = 805306368
+
+[[files]]
+path = "voxceleb_CAM++.onnx"
+sha256 = "b50810498b5bcf5773d086f6993d344476bd0c88b566a41e8d801aaf8461efad"
+bytes = 29292449

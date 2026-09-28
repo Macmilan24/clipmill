@@ -239,6 +239,18 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
+    // Telling voices apart. Beside the chain rather than in it: it reads the
+    // audio and the voice activity, and nothing downstream of the transcript
+    // waits for it. Re-pinning the voice-print model re-keys speakers alone.
+    Recipe {
+        kind: "speech-speakers",
+        output_kind: "speech.speakers.v1",
+        semantic_version: "clipmill.speech.speakers.v1",
+        executor: Executor::Worker,
+        capability: Some("speaker-embed"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
     Recipe {
         kind: "speech-transcript",
         output_kind: "speech.transcript.v1",

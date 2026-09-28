@@ -14,6 +14,8 @@ import {
   wordInside,
 } from '../results/transcript.js';
 import type { TranscriptState } from '../results/useResults.js';
+import { useVoiceNames, voiceOfWords } from '../results/voices.js';
+import { VoiceChip } from './VoiceChip.js';
 import type { PlaybackController } from './playback.js';
 import { type Cut, clockTenths } from './review.js';
 
@@ -86,6 +88,17 @@ function Words({
   const inside = transcript.words.filter((word) =>
     wordInside(word, cut.startTicks, cut.endTicks),
   ).length;
+  const voices = transcript.voices ?? null;
+  const [names, rename] = useVoiceNames(voices?.sourceFingerprint ?? null);
+  // Who says each sentence shown, named where it changes.
+  const speaking = sentences.map((sentence) =>
+    voices
+      ? voiceOfWords(
+          voices,
+          transcript.words.slice(sentence.firstWord, sentence.firstWord + sentence.wordCount),
+        )
+      : null,
+  );
 
   // Follow the spoken sentence while playing, unless the reviewer has just
   // scrolled somewhere to read — the panel must not snatch the page back.
@@ -122,11 +135,13 @@ function Words({
           Show earlier
         </button>
       )}
-      {sentences.map((sentence) => {
+      {sentences.map((sentence, shown) => {
         const words = transcript.words.slice(
           sentence.firstWord,
           sentence.firstWord + sentence.wordCount,
         );
+        const voice = speaking[shown] ?? null;
+        const newVoice = voice !== null && (shown === 0 || speaking[shown - 1] !== voice);
         const lastWord = sentence.firstWord + sentence.wordCount - 1;
         const startAt = startBefore(transcript, sentence.firstWord);
         const endAt = endAfter(transcript, lastWord);
@@ -137,6 +152,11 @@ function Words({
             : 'outside';
         return (
           <div key={sentence.firstWord} className="review-sentence" data-state={state}>
+            {voices && newVoice && (
+              <div className="review-voice-line">
+                <VoiceChip id={voice} voices={voices} names={names} onRename={rename} />
+              </div>
+            )}
             <div className="review-sentence-head">
               <span className="mono">{clockTenths(sentence.startTicks)}</span>
               <span className="review-sentence-actions">

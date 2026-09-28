@@ -60,6 +60,7 @@ fn edit(name: &str, intent: Intent) -> EditDocument {
             secondary_crop_path: Vec::new(),
             state: LayoutState::Fit,
             crop_path: Vec::new(),
+            ..Layout::default()
         },
     }];
     edit.captions = project(&cues, intent, clipmill_captions::DEFAULT_STYLE_REF, 0)

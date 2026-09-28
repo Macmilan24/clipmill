@@ -15,7 +15,7 @@ quantization = "ggml-f16"
 # ignores this table, so rewording it re-keys nothing.
 [catalog]
 title = "Whisper Base"
-summary = "Fast and compact. Runs on any computer, and is used until something else is chosen or measured faster."
+summary = "Fast and compact, and runs on any computer: used until you choose another, or measuring this computer finds a more accurate one that keeps up."
 recommended = true
 
 [source]

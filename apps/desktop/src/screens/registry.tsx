@@ -6,7 +6,7 @@
 import { lazy, Suspense, type JSX } from 'react';
 
 import type { Route } from '../shell/route.js';
-import { clipOf, placementOf } from '../shell/route.js';
+import { clipOf, focusOf, placementOf } from '../shell/route.js';
 import { AnalysisProgress } from './AnalysisProgress.js';
 import { Library } from './Library.js';
 // Hardware charts are loaded only when their screen is opened.
@@ -71,7 +71,9 @@ const SCREENS: Readonly<Record<string, Screen>> = {
       jobId={route.kind === 'section' ? (route.jobId ?? null) : null}
     />
   ),
-  editor: ({ editor, route }) => <EditorScreen {...editor} clip={clipOf(route)} />,
+  editor: ({ editor, route }) => (
+    <EditorScreen {...editor} clip={clipOf(route)} focus={focusOf(route)} />
+  ),
   export: (context) => <ExportScreen {...context.export} clip={clipOf(context.route)} />,
   settings: ({ settings }) => <SettingsScreen {...settings} />,
 };

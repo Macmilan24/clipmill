@@ -252,6 +252,7 @@ async fn registered_sources_cache_probe_publish_and_detect_mutation() {
         body: Some(request::Body::RegisterSource(RegisterSourceRequest {
             project_id: project.project_id.clone(),
             absolute_path: media.to_string_lossy().into_owned(),
+            source_id: String::new(),
         })),
     };
     send_without_reading_response(&socket, registration_request.clone())
@@ -442,6 +443,7 @@ async fn hostile_paths_and_malformed_media_are_rejected() {
             body: Some(request::Body::RegisterSource(RegisterSourceRequest {
                 project_id: project.project_id,
                 absolute_path: "https://example.com/video.mp4".to_owned(),
+                source_id: String::new(),
             })),
         },
     )

@@ -274,7 +274,10 @@ async fn full_ingest_derives_everything_verifies_and_caches() {
         source.source_fingerprint
     );
     assert!(proxy_descriptor["video"]["width"].as_u64().expect("width") <= 1280);
-    assert_eq!(proxy_descriptor["video"]["frame_rate"]["num"], 30_000);
+    // The proxy keeps the recording's own rate (24 fps here), so a frame of
+    // the proxy is a frame of the recording.
+    assert_eq!(proxy_descriptor["video"]["frame_rate"]["num"], 24);
+    assert_eq!(proxy_descriptor["video"]["frame_rate"]["den"], 1);
     assert!(proxy_descriptor["duration_ticks"].as_i64().expect("ticks") > 0);
     let proxy_payload = "proxy.mp4".parse::<ArtifactPath>().expect("path");
     drop(

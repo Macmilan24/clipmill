@@ -19,7 +19,7 @@ use clipmill_contracts::schemas::{
     discovery_candidates::DiscoveryCandidates, ranking_set::RankingSet,
     speech_transcript::SpeechTranscript,
 };
-use clipmill_director::{Aspect, Boundary, Cut, Evidence, Frame, Request, direct};
+use clipmill_director::{Boundary, Cut, Evidence, Frame, FrameShape, Request, direct};
 use serde_json::json;
 
 const FINGERPRINT: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -163,7 +163,7 @@ fn request(cut: Cut) -> Request {
             width: 1_920,
             height: 1_080,
         },
-        aspect: Aspect::default(),
+        shape: FrameShape::default(),
     }
 }
 
@@ -592,4 +592,228 @@ fn human_override_keeps_the_declined_judgment_visible_in_the_edit_rationale() {
             .iter()
             .any(|reason| reason.contains("Human override"))
     );
+}
+
+/// Fifteen words in three sentences of five, ten seconds apart: 10–18.4 s,
+/// 20–28.4 s and 30–38.4 s, and the index that says where each ends.
+fn three_sentences() -> (
+    SpeechTranscript,
+    clipmill_contracts::schemas::index_transcript::IndexTranscript,
+) {
+    let transcript = transcript_timed(|index| {
+        let start = 10 * SECOND + index * 2 * SECOND;
+        (start, start + 2 * SECOND / 5, "aligned")
+    });
+    let sentences: Vec<_> = (0..3u64)
+        .map(|sentence| {
+            let start = 10 * SECOND + sentence * 10 * SECOND;
+            json!({
+                "index": sentence, "utterance_index": sentence,
+                "first_word_index": sentence * 5, "word_count": 5,
+                "start_ticks": start, "end_ticks": start + 8 * SECOND + 2 * SECOND / 5,
+                "text": "five words said in turn", "terminator": "punctuation",
+                "confidence": { "p50": 0.95, "p10": 0.8 }, "words_per_minute": 150.0,
+            })
+        })
+        .collect();
+    let utterances: Vec<_> = (0..3u64)
+        .map(|sentence| {
+            let start = 10 * SECOND + sentence * 10 * SECOND;
+            json!({
+                "index": sentence, "first_word_index": sentence * 5, "word_count": 5,
+                "start_ticks": start, "end_ticks": start + 8 * SECOND + 2 * SECOND / 5,
+                "text": "five words said in turn",
+                "pause_before_ticks": SECOND, "pause_after_ticks": SECOND,
+                "confidence": { "p50": 0.95, "p10": 0.8 }, "words_per_minute": 150.0,
+            })
+        })
+        .collect();
+    let index = serde_json::from_value(json!({
+        "schema_version": "clipmill.index.transcript.v1",
+        "source_fingerprint": FINGERPRINT,
+        "inputs": { "transcript_artifact_id": ADDRESS },
+        "producer": { "stage": "index-transcript", "implementation": "test@1" },
+        "coverage": { "start_ticks": 0, "end_ticks": 120 * SECOND, "analyzed": true },
+        "language": "en",
+        "segmentation": {
+            "block_sentences": 2, "boundary_cutoff": 0.5,
+            "stopwords": "english-minimal.v1", "utterance_gap_ticks": 27_000,
+        },
+        "sentences": sentences,
+        "utterances": utterances,
+        "topics": [],
+        "edges": [],
+        "invalid_regions": [],
+    }))
+    .expect("an index");
+    (transcript, index)
+}
+
+/// Two people side by side for the whole clip, and whose mouth moves when:
+/// `talker(second)` names the one talking at each second, or nobody.
+fn two_people_talking(
+    talker: impl Fn(u64) -> Option<usize>,
+) -> clipmill_contracts::schemas::vision_face_track::VisionFaceTrack {
+    let mut faces = face_evidence(2);
+    for (person, track) in faces.tracks.iter_mut().enumerate() {
+        for sample in &mut track.boxes {
+            let second = sample.t_ticks / SECOND;
+            sample.mouth_motion = Some(if talker(second) == Some(person) {
+                0.24
+            } else {
+                0.04
+            });
+        }
+    }
+    faces
+}
+
+#[test]
+fn the_camera_follows_whoever_is_talking_and_moves_only_between_sentences() {
+    let (candidates, ranking) = (candidates(), ranking());
+    let (transcript, index) = three_sentences();
+    // The left person says the first and last sentences, the right the middle.
+    let faces = two_people_talking(|second| Some(usize::from((20..29).contains(&second))));
+    let mut at = evidence(&candidates, &ranking, &transcript);
+    at.index = Some(&index);
+    at.faces = Some(&faces);
+
+    let document = direct(at, &request(Cut::Chosen)).expect("direct");
+    document.validate().expect("valid");
+
+    let segments = &document.video.segments;
+    assert_eq!(segments.len(), 3, "one camera per turn");
+    assert!(segments.iter().all(|segment| {
+        segment.layout.state == clipmill_edit_ir::LayoutState::SpeakerFill
+            && segment.layout.secondary_crop_path.is_empty()
+    }));
+    // The camera changes in the silence between sentences, never inside one.
+    let breaks: Vec<i64> = segments.iter().skip(1).map(|s| s.in_ticks).collect();
+    let silence = |from: u64, to: u64| {
+        (
+            i64::try_from(from * SECOND / 5).unwrap(),
+            i64::try_from(to * SECOND / 5).unwrap(),
+        )
+    };
+    let (first_gap, second_gap) = (silence(92, 100), silence(142, 150));
+    assert!(breaks[0] > first_gap.0 && breaks[0] < first_gap.1);
+    assert!(breaks[1] > second_gap.0 && breaks[1] < second_gap.1);
+    // Left, right, left: the middle crop sits over the right-hand face.
+    let centre = |segment: &clipmill_edit_ir::VideoSegment| {
+        let rect = segment.layout.crop_path[0].rect;
+        rect.x + rect.width / 2
+    };
+    assert!(centre(&segments[0]) < 960 && centre(&segments[2]) < 960);
+    assert!(centre(&segments[1]) > 960);
+    assert_eq!(document.program_duration_ticks(), 30 * 90_000);
+    let rationale = document.rationale.as_ref().expect("a rationale");
+    assert!(
+        rationale
+            .decisions
+            .iter()
+            .any(|line| line.contains("2 switches")),
+        "{:?}",
+        rationale.decisions
+    );
+}
+
+#[test]
+fn a_listeners_short_reply_does_not_take_the_camera() {
+    let (candidates, ranking) = (candidates(), ranking());
+    let (transcript, index) = three_sentences();
+    // The right person answers for one second in the middle; the left talks on.
+    let faces = two_people_talking(|second| Some(usize::from(second == 20)));
+    let mut at = evidence(&candidates, &ranking, &transcript);
+    at.index = Some(&index);
+    at.faces = Some(&faces);
+
+    let document = direct(at, &request(Cut::Chosen)).expect("direct");
+    let segments = &document.video.segments;
+    assert_eq!(segments.len(), 1, "{segments:?}");
+    assert_eq!(
+        segments[0].layout.state,
+        clipmill_edit_ir::LayoutState::SpeakerFill
+    );
+}
+
+#[test]
+fn nobody_clearly_talking_keeps_both_people_in_the_frame() {
+    let (candidates, ranking) = (candidates(), ranking());
+    let (transcript, index) = three_sentences();
+    // Both laugh alike the whole way through, or the track predates mouth motion.
+    let mut alike = two_people_talking(|_| None);
+    for track in &mut alike.tracks {
+        for sample in &mut track.boxes {
+            sample.mouth_motion = Some(0.2);
+        }
+    }
+    let unmeasured = face_evidence(2);
+    for faces in [alike, unmeasured] {
+        let mut at = evidence(&candidates, &ranking, &transcript);
+        at.index = Some(&index);
+        at.faces = Some(&faces);
+        let document = direct(at, &request(Cut::Chosen)).expect("direct");
+        assert_eq!(document.video.segments.len(), 1);
+        assert_eq!(
+            document.video.segments[0].layout.state,
+            clipmill_edit_ir::LayoutState::TwoUp
+        );
+    }
+}
+
+#[test]
+fn a_refresh_derives_each_section_afresh_and_places_it_where_it_plays() {
+    let (candidates, ranking, transcript) = (candidates(), ranking(), transcript());
+    let mut document = direct(
+        evidence(&candidates, &ranking, &transcript),
+        &request(Cut::Chosen),
+    )
+    .expect("a document");
+    // Words sit at 10 s + half a second each, a third of a second long. Keep
+    // words 0–5, cut 6–9, keep 10–14 — the first edge a tenth into word 0,
+    // which leaves it out.
+    let first = document.video.segments[0].clone();
+    let mut second = first.clone();
+    document.video.segments[0].in_ticks = 909_000;
+    document.video.segments[0].out_ticks = 1_161_000;
+    second.segment_id = "seg_2".to_owned();
+    second.in_ticks = 1_341_000;
+    second.out_ticks = 1_566_000;
+    document.video.segments.push(second);
+
+    let (reading, burned) =
+        clipmill_director::captions_for_program(&transcript, None, None, &document)
+            .expect("a refresh");
+    let spoken: Vec<&str> = reading
+        .iter()
+        .flat_map(clipmill_edit_ir::CaptionCue::words)
+        .map(|word| word.text.as_str())
+        .collect();
+    assert_eq!(
+        spoken,
+        [
+            "whole", "point", "of", "pricing", "is", "decision", "you", "make", "on", "purpose."
+        ],
+        "word 0 is cut by the edge and words 6–9 by the edit"
+    );
+    // The first section plays 10.1 s to 12.9 s, so the second starts 2.8 s
+    // into the program; its first word a tenth of a second after that.
+    let first_of_second = reading
+        .iter()
+        .flat_map(clipmill_edit_ir::CaptionCue::words)
+        .find(|word| word.text == "decision")
+        .expect("the second section's first word");
+    assert_eq!(first_of_second.start_ticks, 252_000 + 9_000);
+    let ids: std::collections::HashSet<_> = reading.iter().map(|cue| &cue.cue_id).collect();
+    assert_eq!(
+        ids.len(),
+        reading.len(),
+        "cue ids stay unique across sections"
+    );
+
+    document.captions.cues = reading;
+    document.captions.burn_in = burned;
+    document
+        .validate()
+        .expect("a refreshed document is a valid one");
 }

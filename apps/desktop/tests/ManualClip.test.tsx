@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { TooltipProvider } from '../src/components/ui/tooltip.js';
 import { ManualClip, type ManualClipProps } from '../src/results/ManualClip.js';
 import { manualSpanProblem, parseSourceTime, sourceTime } from '../src/results/manual.js';
 
@@ -50,12 +51,18 @@ describe('source time entry', () => {
   });
 });
 
+const sheet = (input: ManualClipProps) => (
+  <TooltipProvider>
+    <ManualClip {...input} />
+  </TooltipProvider>
+);
+
 describe('manual clip recovery', () => {
   it('creates the typed source interval and closes only after success', async () => {
     const input = props();
-    render(<ManualClip {...input} />);
-    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00.125' } });
+    render(sheet(input));
     fireEvent.change(screen.getByLabelText('End time'), { target: { value: '10:30.5' } });
+    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00.125' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create manual edit' }));
     await waitFor(() => expect(input.onCreate).toHaveBeenCalledWith(54_011_250, 56_745_000));
     expect(input.onOpenChange).toHaveBeenCalledWith(false);
@@ -63,25 +70,50 @@ describe('manual clip recovery', () => {
   });
   it('blocks unavailable duration and out-of-source spans, even without a proxy', () => {
     const input = props({ sourceDurationTicks: null, proxyUrl: null });
-    const view = render(<ManualClip {...input} />);
+    const view = render(sheet(input));
     expect(createButton().hasAttribute('disabled')).toBe(true);
     // When evidence arrives, a short source gets a valid default end.
-    view.rerender(<ManualClip {...input} sourceDurationTicks={4 * TICKS} />);
+    view.rerender(sheet({ ...input, sourceDurationTicks: 4 * TICKS }));
     expect((screen.getByLabelText('End time') as HTMLInputElement).value).toBe('0:04');
     expect(createButton().hasAttribute('disabled')).toBe(false);
     fireEvent.change(screen.getByLabelText('End time'), { target: { value: '0:05' } });
     expect(createButton().hasAttribute('disabled')).toBe(true);
   });
-  it('uses the real media playhead in source time and can seek to the typed start', () => {
-    render(<ManualClip {...props()} />);
-    const video = screen.getByLabelText('Recording preview') as HTMLVideoElement;
-    video.currentTime = 603.125;
-    fireEvent.timeUpdate(video);
-    fireEvent.click(screen.getByRole('button', { name: 'Use playhead as start' }));
-    expect((screen.getByLabelText('Start time') as HTMLInputElement).value).toBe('10:03.125');
-    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:01' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Jump to start' }));
-    expect(video.currentTime).toBe(601);
+  it('marks the span at the playhead the shared transport moves, on word edges', () => {
+    render(sheet(props()));
+    fireEvent.change(screen.getByLabelText('End time'), { target: { value: '10:30' } });
+    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Go to the end of the cut' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start here' }));
+    // Never past a second before the end.
+    expect((screen.getByLabelText('Start time') as HTMLInputElement).value).toBe('10:29');
+    fireEvent.click(screen.getByRole('button', { name: 'Go to the start of the cut' }));
+    fireEvent.keyDown(screen.getByRole('group', { name: 'Choose the span' }), { key: 'i' });
+    expect((screen.getByLabelText('Start time') as HTMLInputElement).value).toBe('10:29');
+  });
+  it('lands a mark on the nearest word edge when the words are known', () => {
+    const words = [
+      { text: 'Hello', startTicks: 600 * TICKS, endTicks: 600.4 * TICKS },
+      { text: 'there.', startTicks: 600.5 * TICKS, endTicks: 601 * TICKS },
+    ];
+    render(
+      sheet(
+        props({
+          transcript: {
+            words,
+            sentences: [
+              { startTicks: 600 * TICKS, endTicks: 601 * TICKS, firstWord: 0, wordCount: 2 },
+            ],
+          },
+        }),
+      ),
+    );
+    fireEvent.change(screen.getByLabelText('End time'), { target: { value: '10:30' } });
+    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00.2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Go to the start of the cut' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start here' }));
+    // Inside "Hello", nearer its end: the start lands on the edge before "there."
+    expect((screen.getByLabelText('Start time') as HTMLInputElement).value).toBe('10:00.400');
   });
   it('keeps the selection after refusal and reports an unexpected failure without closing', async () => {
     const input = props({
@@ -89,7 +121,7 @@ describe('manual clip recovery', () => {
         throw new Error('Run evidence unavailable');
       }),
     });
-    render(<ManualClip {...input} />);
+    render(sheet(input));
     fireEvent.click(screen.getByRole('button', { name: 'Create manual edit' }));
     expect(await screen.findByRole('status')).toHaveProperty(
       'textContent',

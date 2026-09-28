@@ -21,8 +21,10 @@ fn cue(id: &str, word_id: &str, text: &str, start: i64, end: i64) -> CaptionCue 
                 start_ticks: start,
                 end_ticks: end,
                 word_id: Some(word_id.to_owned()),
+                emphasis: false,
             }],
         }],
+        position: None,
     }
 }
 
@@ -46,6 +48,7 @@ fn document() -> EditDocument {
                 easing: clipmill_edit_ir::CropEasing::Linear,
             }],
             secondary_crop_path: Vec::new(),
+            ..Layout::default()
         },
     }];
     document.captions.cues = vec![cue("authored", "source-1", "Corrected", 5_000, 50_000)];

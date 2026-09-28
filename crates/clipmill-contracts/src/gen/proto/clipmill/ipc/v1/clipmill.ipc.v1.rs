@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -149,6 +149,22 @@ pub mod request {
         CleanStorage(super::CleanStorageRequest),
         #[prost(message, tag = "70")]
         RenameProject(super::RenameProjectRequest),
+        #[prost(message, tag = "71")]
+        PreviewCaptions(super::PreviewCaptionsRequest),
+        #[prost(message, tag = "72")]
+        ListEditHistory(super::ListEditHistoryRequest),
+        #[prost(message, tag = "73")]
+        ListFaces(super::ListFacesRequest),
+        #[prost(message, tag = "74")]
+        PreviewDirect(super::PreviewDirectRequest),
+        #[prost(message, tag = "75")]
+        ThumbnailFraming(super::ThumbnailFramingRequest),
+        #[prost(message, tag = "76")]
+        ImportAsset(super::ImportAssetRequest),
+        #[prost(message, tag = "77")]
+        ListAssets(super::ListAssetsRequest),
+        #[prost(message, tag = "78")]
+        ResolveAsset(super::ResolveAssetRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -159,7 +175,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -264,6 +280,22 @@ pub mod response {
         CleanStorage(super::CleanStorageResponse),
         #[prost(message, tag = "56")]
         RenameProject(super::RenameProjectResponse),
+        #[prost(message, tag = "57")]
+        PreviewCaptions(super::PreviewCaptionsResponse),
+        #[prost(message, tag = "58")]
+        ListEditHistory(super::ListEditHistoryResponse),
+        #[prost(message, tag = "59")]
+        ListFaces(super::ListFacesResponse),
+        #[prost(message, tag = "60")]
+        PreviewDirect(super::GetPreviewPlanResponse),
+        #[prost(message, tag = "61")]
+        ThumbnailFraming(super::ThumbnailFramingResponse),
+        #[prost(message, tag = "62")]
+        ImportAsset(super::ImportAssetResponse),
+        #[prost(message, tag = "63")]
+        ListAssets(super::ListAssetsResponse),
+        #[prost(message, tag = "64")]
+        ResolveAsset(super::ResolveAssetResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -408,6 +440,29 @@ pub struct RenderClipPayloadV1 {
     /// Empty for a hand-authored document, which is the Phase 1 truth.
     #[prost(string, repeated, tag = "6")]
     pub ai_assistance: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// How the file is encoded. Unset keeps the recording's frame rate at
+    /// 1080 x 1920, which is what every render did before the choice existed.
+    #[prost(message, optional, tag = "7")]
+    pub format: ::core::option::Option<OutputFormatV1>,
+}
+/// The delivered picture's frame rate and size.
+///
+/// The frame rate defaults to the recording's own: converting 23.976 or 25
+/// frames a second to 29.97 repeats a frame every few, and pans judder. A
+/// creator who wants 30 or 60 for a platform says so here.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct OutputFormatV1 {
+    /// Frames per second as a fraction. A zero numerator keeps the recording's
+    /// own rate.
+    #[prost(uint32, tag = "1")]
+    pub frame_rate_num: u32,
+    #[prost(uint32, tag = "2")]
+    pub frame_rate_den: u32,
+    /// The size, named by the height the 9:16 frame has at it: 1920 (1080p),
+    /// 2560 (1440p) or 3840 (4K). Zero is 1920. A clip in another shape keeps
+    /// that size's short side: 1080p square is 1080 x 1080, landscape 1920 x 1080.
+    #[prost(uint32, tag = "3")]
+    pub height: u32,
 }
 /// Versioned payload for the speech chain (book ch. 13): voice activity, then
 /// recognition, then forced alignment, then the assembly that fuses them. The
@@ -474,6 +529,12 @@ pub struct SpeechRecognitionV1 {
     /// one bad window should not be able to poison the rest of the recording.
     #[prost(bool, tag = "2")]
     pub conditioned_on_previous: bool,
+    /// Write what was said, fillers included. Whisper otherwise writes clean
+    /// text — no "um", no "uh" — which leaves nothing for a filler cut to find.
+    /// A recognizer that has a way to be asked primes each window with it; one
+    /// that has none for the language decodes as it always has, and says so.
+    #[prost(bool, tag = "3")]
+    pub verbatim: bool,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SpeechAlignmentV1 {
@@ -932,6 +993,13 @@ pub struct Task {
     /// learn that the daemon calls that work "ingest-filmstrip".
     #[prost(string, tag = "9")]
     pub output_kind: ::prost::alloc::string::String,
+    /// When it first started running and when it succeeded, from its own event
+    /// log; zero until it has. Measured, so a machine's past runs can say how
+    /// long the next one will take.
+    #[prost(uint64, tag = "10")]
+    pub started_unix_millis: u64,
+    #[prost(uint64, tag = "11")]
+    pub finished_unix_millis: u64,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetJobRequest {
@@ -985,6 +1053,12 @@ pub struct Source {
     pub source_map_artifact_id: ::prost::alloc::string::String,
     #[prost(uint64, tag = "8")]
     pub created_unix_millis: u64,
+    /// The file is no longer at `absolute_path`, or is a different size than
+    /// when it was registered: moved, renamed, replaced or deleted. Everything
+    /// made from it still works from the preview copies; an export needs the
+    /// original back, which relinking restores.
+    #[prost(bool, tag = "9")]
+    pub missing: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RegisterSourceRequest {
@@ -992,6 +1066,9 @@ pub struct RegisterSourceRequest {
     pub project_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub absolute_path: ::prost::alloc::string::String,
+    /// When set, update this source's path only if the new file has its fingerprint.
+    #[prost(string, tag = "3")]
+    pub source_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RegisterSourceResponse {
@@ -1096,6 +1173,78 @@ pub struct ReadArtifactResponse {
 /// No path leaves the daemon. The shell derives the object directory from the
 /// content address, exactly as the store does, so a response cannot be turned
 /// into a pointer at something outside it.
+/// One of the person's own pictures or sounds — a logo, a music bed — kept by
+/// the SHA-256 of its bytes. A document names it by that hash.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AssetV1 {
+    /// `sha256:` followed by the lowercase hex digest.
+    #[prost(string, tag = "1")]
+    pub hash: ::prost::alloc::string::String,
+    /// image or audio, decided from the bytes, never from a file name.
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    /// The file name it was imported from.
+    #[prost(string, tag = "3")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub media_type: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "5")]
+    pub bytes: u64,
+    /// A picture's size; zero for a sound.
+    #[prost(int64, tag = "6")]
+    pub width: i64,
+    #[prost(int64, tag = "7")]
+    pub height: i64,
+    /// A sound's length; zero for a picture.
+    #[prost(int64, tag = "8")]
+    pub duration_ticks: i64,
+    /// own_content, licensed, royalty_free or public_domain.
+    #[prost(string, tag = "9")]
+    pub license: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "10")]
+    pub added_unix_millis: u64,
+}
+/// Copy a file the person chose into the asset folder. The same bytes twice
+/// are one asset.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ImportAssetRequest {
+    #[prost(string, tag = "1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub license: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ImportAssetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub asset: ::core::option::Option<AssetV1>,
+}
+/// Every asset, newest first; `kind` narrows it to pictures or sounds.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListAssetsRequest {
+    #[prost(string, tag = "1")]
+    pub kind: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListAssetsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub assets: ::prost::alloc::vec::Vec<AssetV1>,
+}
+/// Whether a hash is one of the assets, and how to serve it. A host derives
+/// the file from the hash; it receives no path.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResolveAssetRequest {
+    #[prost(string, tag = "1")]
+    pub hash: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResolveAssetResponse {
+    #[prost(string, tag = "1")]
+    pub hash: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub media_type: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub bytes: u64,
+}
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ResolveMediaRequest {
     #[prost(string, tag = "1")]
@@ -1270,6 +1419,19 @@ pub struct SolveCropPathRequest {
     /// with no opinion should send.
     #[prost(message, optional, tag = "7")]
     pub weights: ::core::option::Option<CropWeightsV1>,
+    /// Follow this face instead of the one the focus gate would choose. A person
+    /// picked it, so it only has to be seen in the span: the presence bar that
+    /// keeps the automatic camera off an empty chair is theirs to overrule.
+    #[prost(uint32, tag = "8")]
+    pub track_id: u32,
+    #[prost(bool, tag = "9")]
+    pub follow_track: bool,
+    /// Solve the two-person layout instead: the pair the two-up gate finds, each
+    /// in its own half of the frame — stacked, the left-hand face on top, or
+    /// side by side for a landscape aspect. Refused, with a reason, when two
+    /// people are not both clearly in the span.
+    #[prost(bool, tag = "10")]
+    pub two_up: bool,
 }
 /// The objective's terms, per ch. 18. Every one of them exists to prevent
 /// chasing — the failure users punish hardest is not a static miscrop but a
@@ -1317,6 +1479,51 @@ pub struct SolveCropPathResponse {
     /// optimal and still fail to contain a subject that left.
     #[prost(double, tag = "6")]
     pub containment: f64,
+    /// With `two_up`: the lower portrait's path and the face it follows. The
+    /// upper portrait's are `keyframes` and `track_id`.
+    #[prost(message, repeated, tag = "7")]
+    pub secondary_keyframes: ::prost::alloc::vec::Vec<CropKeyframeV1>,
+    #[prost(uint32, tag = "8")]
+    pub secondary_track_id: u32,
+}
+/// The faces the detector saw over a span, for a shell to draw over the whole
+/// frame so a person can pick who the camera follows.
+///
+/// Read from a published face track and checked the way every artifact read
+/// is. Like SolveCropPath it is a proposal surface: nothing is written.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListFacesRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub face_track_artifact_id: ::prost::alloc::string::String,
+    /// Source ticks, half-open. A clip's section, normally.
+    #[prost(uint64, tag = "3")]
+    pub start_ticks: u64,
+    #[prost(uint64, tag = "4")]
+    pub end_ticks: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListFacesResponse {
+    /// Every box in the span, bridged ones included, in track then time order.
+    #[prost(message, repeated, tag = "1")]
+    pub sightings: ::prost::alloc::vec::Vec<FaceSightingV1>,
+}
+/// One face in one sampled frame, as shares of the source's display frame.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct FaceSightingV1 {
+    #[prost(uint32, tag = "1")]
+    pub track_id: u32,
+    #[prost(uint64, tag = "2")]
+    pub t_ticks: u64,
+    #[prost(double, tag = "3")]
+    pub x: f64,
+    #[prost(double, tag = "4")]
+    pub y: f64,
+    #[prost(double, tag = "5")]
+    pub width: f64,
+    #[prost(double, tag = "6")]
+    pub height: f64,
 }
 /// One point on the virtual camera path. Centre and scale, both normalized
 /// against the source frame, so the same path drives any resolution.
@@ -1546,6 +1753,23 @@ pub struct DirectClipRequest {
     /// Requires a named run and start/end ticks; candidate_id is ignored.
     #[prost(bool, tag = "12")]
     pub manual_span: bool,
+    /// Separately override the caption look's spoken-word highlight.
+    #[prost(bool, optional, tag = "13")]
+    pub highlight_spoken_word: ::core::option::Option<bool>,
+    /// The clip-wide caption options the document starts with — a saved style's
+    /// font, colours and highlight — as the edit IR's JSON. Empty keeps the
+    /// look's own. Checked like any edit: options the IR refuses are refused.
+    #[prost(string, tag = "14")]
+    pub caption_options_json: ::prost::alloc::string::String,
+    /// The brand a saved kit starts the clip with — a progress bar, a logo — as
+    /// the edit IR's JSON. A logo whose picture is not in the asset folder is
+    /// left out rather than refusing the clip.
+    #[prost(string, tag = "15")]
+    pub brand_json: ::prost::alloc::string::String,
+    /// The frame the clip is framed for: vertical, portrait, square or
+    /// landscape. Empty is vertical.
+    #[prost(string, tag = "16")]
+    pub shape: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {
@@ -1635,6 +1859,19 @@ pub struct PreviewCueV1 {
     /// told not to.
     #[prost(message, repeated, tag = "7")]
     pub lines: ::prost::alloc::vec::Vec<PreviewLineV1>,
+    /// Exact display bounds for edits; frame rounding must not retime a cue.
+    #[prost(int64, tag = "8")]
+    pub start_ticks: i64,
+    #[prost(int64, tag = "9")]
+    pub end_ticks: i64,
+    /// The cue's centre in thousandths of the frame, when it was placed by hand
+    /// (its own position, or the clip-wide one). Unplaced cues sit in `region`.
+    #[prost(bool, tag = "10")]
+    pub positioned: bool,
+    #[prost(uint32, tag = "11")]
+    pub position_x: u32,
+    #[prost(uint32, tag = "12")]
+    pub position_y: u32,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PreviewGainV1 {
@@ -1642,6 +1879,124 @@ pub struct PreviewGainV1 {
     pub frame: i64,
     #[prost(double, tag = "2")]
     pub gain_db: f64,
+}
+/// A progress bar as the render draws it: its colour, edge and thickness in
+/// output pixels. It fills from the left as the program plays.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewProgressV1 {
+    #[prost(string, tag = "1")]
+    pub colour: ::prost::alloc::string::String,
+    /// top or bottom.
+    #[prost(string, tag = "2")]
+    pub edge: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub thickness: i64,
+}
+/// B-roll as the render lays it: what covers the program's picture, how it
+/// meets the frame, and the program frames it covers.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCutawayV1 {
+    #[prost(string, tag = "1")]
+    pub cutaway_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub start_ticks: i64,
+    #[prost(int64, tag = "3")]
+    pub end_ticks: i64,
+    #[prost(int64, tag = "4")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "5")]
+    pub end_frame: i64,
+    /// fill or fit.
+    #[prost(string, tag = "6")]
+    pub fit: ::prost::alloc::string::String,
+    /// picture or footage.
+    #[prost(string, tag = "7")]
+    pub kind: ::prost::alloc::string::String,
+    /// A picture's content hash; empty for footage.
+    #[prost(string, tag = "8")]
+    pub asset: ::prost::alloc::string::String,
+    /// Whether a picture moves closer, eight per cent by its last frame.
+    #[prost(bool, tag = "9")]
+    pub push_in: bool,
+    /// Footage's recording; empty for a picture. Its proxy is listed with the
+    /// sections'.
+    #[prost(string, tag = "10")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    /// Where in its recording footage starts.
+    #[prost(int64, tag = "11")]
+    pub in_ticks: i64,
+}
+/// Music as the render mixes it: which sound, from where in it, and its level
+/// in decibels at frames through the program, to interpolate between.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PreviewMusicV1 {
+    #[prost(string, tag = "1")]
+    pub asset: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub offset_ticks: i64,
+    #[prost(message, repeated, tag = "3")]
+    pub levels: ::prost::alloc::vec::Vec<PreviewGainV1>,
+}
+/// A logo as the render draws it: which asset, which corner, its longer side
+/// and its distance from the corner's two edges, in output pixels.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewLogoV1 {
+    #[prost(string, tag = "1")]
+    pub asset: ::prost::alloc::string::String,
+    /// top_left, top_right, bottom_left or bottom_right.
+    #[prost(string, tag = "2")]
+    pub corner: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub side: i64,
+    #[prost(int64, tag = "4")]
+    pub inset_x: i64,
+    #[prost(int64, tag = "5")]
+    pub inset_y: i64,
+    /// In percent.
+    #[prost(uint32, tag = "6")]
+    pub opacity: u32,
+}
+/// A text or an emoji laid over the program, for the editor to show, select
+/// and move. A text's pixels come from the plan's script, which draws it as
+/// the render will; an emoji is the pinned picture the render lays over.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewOverlayV1 {
+    #[prost(string, tag = "1")]
+    pub overlay_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub start_ticks: i64,
+    #[prost(int64, tag = "3")]
+    pub end_ticks: i64,
+    #[prost(int64, tag = "4")]
+    pub first_frame: i64,
+    #[prost(int64, tag = "5")]
+    pub end_frame: i64,
+    /// Empty for an emoji.
+    #[prost(string, tag = "6")]
+    pub text: ::prost::alloc::string::String,
+    /// hook or label.
+    #[prost(string, tag = "7")]
+    pub role: ::prost::alloc::string::String,
+    /// Its centre, per mille of the frame's width and height.
+    #[prost(uint32, tag = "8")]
+    pub x: u32,
+    #[prost(uint32, tag = "9")]
+    pub y: u32,
+    /// A text's size at the 1920-pixel design height; an emoji's side, per
+    /// mille of the frame's short side.
+    #[prost(uint32, tag = "10")]
+    pub size: u32,
+    #[prost(string, tag = "11")]
+    pub colour: ::prost::alloc::string::String,
+    /// The plate behind it; empty draws an outline.
+    #[prost(string, tag = "12")]
+    pub plate: ::prost::alloc::string::String,
+    /// text or emoji.
+    #[prost(string, tag = "13")]
+    pub kind: ::prost::alloc::string::String,
+    /// An emoji's code, as its picture is named: 1f525, or 1f44f_1f3fd.
+    #[prost(string, tag = "14")]
+    pub emoji: ::prost::alloc::string::String,
 }
 /// One segment of the program, and where in the source it plays.
 ///
@@ -1673,6 +2028,30 @@ pub struct PreviewSegmentV1 {
     pub has_two_up_paths: bool,
     #[prost(string, tag = "9")]
     pub framing_warning: ::prost::alloc::string::String,
+    /// How the section is drawn — fit, speaker_fill, two_up or
+    /// picture_in_picture — and the render's own geometry for it, in output
+    /// pixels, so a player draws what the export will rather than working it out.
+    #[prost(string, tag = "10")]
+    pub layout: ::prost::alloc::string::String,
+    /// Two viewports: the first one's length along the split — its height when
+    /// stacked, its width side by side in a landscape frame.
+    #[prost(int64, tag = "11")]
+    pub upper_height: i64,
+    /// Picture in picture: the inset's square.
+    #[prost(bool, tag = "12")]
+    pub has_inset: bool,
+    #[prost(int64, tag = "13")]
+    pub inset_x: i64,
+    #[prost(int64, tag = "14")]
+    pub inset_y: i64,
+    #[prost(int64, tag = "15")]
+    pub inset_side: i64,
+    /// A fitted picture's fill: empty for the picture blurred, or #RRGGBB.
+    #[prost(string, tag = "16")]
+    pub background_colour: ::prost::alloc::string::String,
+    /// A fitted picture's zoom past fitting, in percent; 100 fits.
+    #[prost(uint32, tag = "17")]
+    pub zoom_percent: u32,
 }
 /// A source the program draws from, as the crops are measured against it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1742,6 +2121,27 @@ pub struct PreviewCaptionStyleV1 {
     pub margin_horizontal: u32,
     #[prost(uint32, tag = "13")]
     pub margin_vertical: u32,
+    /// The colour key words are set in.
+    #[prost(string, tag = "14")]
+    pub accent: ::prost::alloc::string::String,
+    /// How the spoken word is marked: fill, word, box, pop or underline.
+    #[prost(string, tag = "15")]
+    pub highlight: ::prost::alloc::string::String,
+}
+/// One caption typeface, and whether this installation has its pinned file.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CaptionFontV1 {
+    /// The font's own family name, which a caption style names.
+    #[prost(string, tag = "1")]
+    pub family: ::prost::alloc::string::String,
+    /// What a person picks it by.
+    #[prost(string, tag = "2")]
+    pub label: ::prost::alloc::string::String,
+    /// The pinned file, served to the player so it draws with the same face.
+    #[prost(string, tag = "3")]
+    pub file: ::prost::alloc::string::String,
+    #[prost(bool, tag = "4")]
+    pub installed: bool,
 }
 /// A duration-preserving blend of an outgoing still and live incoming video.
 /// Outgoing alpha = (end_frame - frame) / (end_frame - first_frame), for
@@ -1807,6 +2207,74 @@ pub struct GetPreviewPlanResponse {
     pub transition_ticks: i64,
     #[prost(message, repeated, tag = "17")]
     pub transitions: ::prost::alloc::vec::Vec<PreviewTransitionV1>,
+    /// The sidecar grouping and the two numbers the export strip holds it to,
+    /// so the editor can offer a repair that clears the finding rather than one
+    /// that trades it for the next: a cue held to the floor is refused if it
+    /// then crowds its neighbour.
+    #[prost(message, repeated, tag = "18")]
+    pub reading_cues: ::prost::alloc::vec::Vec<PreviewCueV1>,
+    #[prost(int64, tag = "19")]
+    pub reading_min_duration_ticks: i64,
+    #[prost(int64, tag = "20")]
+    pub reading_min_gap_ticks: i64,
+    /// The burned-in captions exactly as the export writes them. A player that
+    /// runs libass draws the pixels the render will burn in from this alone.
+    #[prost(string, tag = "21")]
+    pub ass: ::prost::alloc::string::String,
+    /// Every caption typeface, with whether this installation has it.
+    #[prost(message, repeated, tag = "22")]
+    pub fonts: ::prost::alloc::vec::Vec<CaptionFontV1>,
+    /// Why the director framed and captioned the clip as it did. Filled for a
+    /// dry run, whose document is nowhere else to read it from.
+    #[prost(string, repeated, tag = "23")]
+    pub decisions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Titles and labels over the program, bottom first.
+    #[prost(message, repeated, tag = "24")]
+    pub overlays: ::prost::alloc::vec::Vec<PreviewOverlayV1>,
+    /// The progress bar, when the clip has one.
+    #[prost(message, optional, tag = "25")]
+    pub progress: ::core::option::Option<PreviewProgressV1>,
+    /// The logo, when the clip has one.
+    #[prost(message, optional, tag = "26")]
+    pub logo: ::core::option::Option<PreviewLogoV1>,
+    /// The music, when the clip has some.
+    #[prost(message, optional, tag = "27")]
+    pub music: ::core::option::Option<PreviewMusicV1>,
+    /// B-roll over the program's own picture, in program order.
+    #[prost(message, repeated, tag = "28")]
+    pub cutaways: ::prost::alloc::vec::Vec<PreviewCutawayV1>,
+}
+/// Where the camera would point at a few moments, so a board of clips can show
+/// each as the vertical frame it will have rather than a strip of the source.
+/// One face track read for all of them; a proposal surface, writing nothing.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ThumbnailFramingRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub face_track_artifact_id: ::prost::alloc::string::String,
+    /// Source ticks, one per thumbnail, each judged over the two seconds after
+    /// it. At most 500.
+    #[prost(uint64, repeated, tag = "3")]
+    pub moments: ::prost::alloc::vec::Vec<u64>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ThumbnailFramingResponse {
+    /// The crop's centre across the source frame, 0..1, one per moment in
+    /// order: the face the camera would follow, or the middle where it would
+    /// fit the whole frame.
+    #[prost(double, repeated, tag = "1")]
+    pub centres: ::prost::alloc::vec::Vec<f64>,
+}
+/// The clip approving would build, as the Editor's player would draw it: the
+/// director's document for this request, built and not saved. The Inspector
+/// shows it, so the clip judged is the clip an approval makes — the same
+/// sections, framing and captions. Nothing is written and nothing is recorded.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewDirectRequest {
+    /// As approval would send it; `approve` and `variation` are ignored.
+    #[prost(message, optional, tag = "1")]
+    pub direct: ::core::option::Option<DirectClipRequest>,
 }
 /// The edit documents a project holds, oldest first.
 ///
@@ -1823,6 +2291,53 @@ pub struct ListEditDocsResponse {
     #[prost(message, repeated, tag = "1")]
     pub docs: ::prost::alloc::vec::Vec<EditDoc>,
 }
+/// The burned-in captions a document would have under another caption look,
+/// computed and not saved: what the editor draws while a person is still
+/// choosing, so trying a look is not an edit.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCaptionsRequest {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+    /// A caption preset; empty keeps the document's own.
+    #[prost(string, tag = "2")]
+    pub style_ref: ::prost::alloc::string::String,
+    /// The clip-wide caption options as the edit document stores them, as JSON.
+    /// Empty keeps the document's own.
+    #[prost(string, tag = "3")]
+    pub options_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PreviewCaptionsResponse {
+    /// The ASS the export would burn in with that look.
+    #[prost(string, tag = "1")]
+    pub ass: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
+}
+/// Every command applied to a document, oldest first, with its inverse: the
+/// history an editor can show, and undo that outlives the window it was made in.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListEditHistoryRequest {
+    #[prost(string, tag = "1")]
+    pub doc_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EditHistoryEntryV1 {
+    /// The revision this command produced.
+    #[prost(uint64, tag = "1")]
+    pub revision: u64,
+    #[prost(string, tag = "2")]
+    pub command_json: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub inverse_json: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "4")]
+    pub applied_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListEditHistoryResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub entries: ::prost::alloc::vec::Vec<EditHistoryEntryV1>,
+}
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ExportFindingV1 {
     /// Stable identifier a surface keys off, e.g. "rights.missing". The wording
@@ -1834,6 +2349,10 @@ pub struct ExportFindingV1 {
     /// One sentence naming the thing and the number, ready to show.
     #[prost(string, tag = "3")]
     pub detail: ::prost::alloc::string::String,
+    /// The caption cue a `captions.*` finding is about, so a surface can open
+    /// that cue rather than parse `detail` for it. Empty for every other check.
+    #[prost(string, tag = "4")]
+    pub cue_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExportValidationV1 {
@@ -1887,6 +2406,10 @@ pub struct ExportRequestV1 {
     /// means.
     #[prost(uint64, optional, tag = "10")]
     pub expected_revision: ::core::option::Option<u64>,
+    /// Frame rate and size of the delivered picture. Unset is the recording's
+    /// own frame rate at 1080 x 1920.
+    #[prost(message, optional, tag = "11")]
+    pub format: ::core::option::Option<OutputFormatV1>,
 }
 /// Check an export without performing one. No side effects, no files.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2560,6 +3083,10 @@ pub struct ModelJobV1 {
     /// Every model registered for the job, in display order.
     #[prost(string, repeated, tag = "7")]
     pub models: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// A model more accurate than the planned one that this computer can run
+    /// and hold in memory, when there is one: offered, never switched to.
+    #[prost(string, tag = "8")]
+    pub more_accurate: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListModelsResponse {

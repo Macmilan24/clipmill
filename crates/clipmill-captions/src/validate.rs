@@ -127,10 +127,13 @@ impl Violation {
             Self::TooManyLines { lines, ceiling, .. } => {
                 format!("is {lines} lines, and the profile allows {ceiling}")
             }
-            Self::TooBrief { ticks, .. } => {
+            Self::TooBrief {
+                ticks, floor_ticks, ..
+            } => {
                 format!(
-                    "is on screen for {:.2}s, which is too brief to read",
-                    seconds(*ticks)
+                    "is on screen for {:.2}s; the minimum is {:.2}s",
+                    seconds(*ticks),
+                    seconds(*floor_ticks)
                 )
             }
             Self::HeldTooLong { ticks, .. } => format!(

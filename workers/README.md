@@ -13,6 +13,7 @@ keeps a local, run-scoped budget ledger to account for external requests.
 | `vad/`            | Silero VAD on ONNX Runtime for speech and silence intervals.                                                                   |
 | `asr-whispercpp/` | Portable CPU speech recognition with whisper.cpp.                                                                              |
 | `align/`          | Portable wav2vec2 CTC forced alignment.                                                                                        |
+| `speakers/`       | CAM++ voice prints on ONNX Runtime, grouped into voices: who speaks when.                                                      |
 | `speech-mlx/`     | Qwen3-ASR and Qwen3-ForcedAligner on Apple silicon through the shared speech contracts.                                        |
 | `shots/`          | Model-free PySceneDetect content detection over the ingest proxy.                                                              |
 | `faces/`          | YuNet face detection on sampled ingest frames and deterministic tracking for reframing.                                        |

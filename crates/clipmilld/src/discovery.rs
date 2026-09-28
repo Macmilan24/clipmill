@@ -24,7 +24,7 @@ use crate::{
 
 /// The task kind this module executes.
 pub(crate) const KIND_DISCOVER: &str = "discover-candidates";
-pub(crate) const IMPLEMENTATION: &str = "clipmill-discovery-mesh@1.0.0";
+pub(crate) const IMPLEMENTATION: &str = "clipmill-discovery-mesh@1.1.0";
 const OUTPUT_FILE: &str = "candidates.json";
 
 /// Read the index, the transcript, and the loudness envelope if there is one,

@@ -15,6 +15,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import {
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
@@ -30,14 +31,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select.js';
-import type { EditCommandJson, PreviewPlan } from '../daemon/client.js';
+import type { EditIr } from '@clipmill/contracts';
+
+import type {
+  EditCommandJson,
+  FaceSighting,
+  PreviewOverlay,
+  PreviewPlan,
+} from '../daemon/client.js';
 import { SPEEDS } from '../inspector/playback.js';
-import { timecode as sourceTimecode } from '../inspector/review.js';
+import { clockTenths } from '../inspector/review.js';
+import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
 import { TipButton } from '../inspector/TipButton.js';
-import { batch, setCropKeyframe, setCueRegion, setLayout, ticksAt } from './commands.js';
+import {
+  batch,
+  setCaptionOptions,
+  setCropKeyframe,
+  setCuePosition,
+  setLayout,
+  ticksAt,
+} from './commands.js';
+import { BrandLayer } from './BrandLayer.js';
+import { CaptionCanvas } from './CaptionCanvas.js';
+import { CutawayLayer } from './CutawayLayer.js';
+import type { ExactCaptions } from './exactCaptions.js';
 import { CompositionCanvas } from './CompositionCanvas.js';
+import { type FaceNow, byTrack, facesAt, fittedFrame } from './faces.js';
 import { pressOrDrag } from './gesture.js';
-import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf } from './player.js';
+import { cropAt, cueAt, highlightedWord, segmentAt, sourceOf, sourceTicksAt } from './player.js';
+import { FRAME_SHAPES, shapeOfFrame } from './layouts.js';
+import { EmojiPicture } from './EmojiPicture.js';
+import { emojiBox } from './emoji.js';
+import { overlaysAt, savedOverlay, setOverlay, withContent } from './overlays.js';
 import type { EditorSelection } from './selection.js';
 
 export type MonitorView = 'edit' | 'original';
@@ -68,6 +93,12 @@ const SAFE_LABELS: Record<SafePlatform, string> = {
 
 export interface MonitorPlayback {
   readonly frame: number;
+  /**
+   * The frame whose sound is being heard, which the captions follow: behind
+   * `frame` by the output latency while a boost plays through Web Audio, the
+   * same frame otherwise.
+   */
+  readonly heardFrame?: number;
   readonly playing: boolean;
   readonly speed: number;
   readonly loop: boolean;
@@ -101,7 +132,31 @@ export interface EditorMonitorProps {
   readonly selection: EditorSelection;
   readonly onSelect: (selection: EditorSelection) => void;
   readonly onApply: (command: EditCommandJson) => void;
+  /**
+   * The captions as the export burns them in, for libass to draw: the plan's
+   * script or a look still being tried, and the faces it may use. Null keeps
+   * the CSS approximation.
+   */
+  readonly captions?: ExactCaptions | null;
+  /** The clip-wide caption options, so a drag can move every caption. */
+  readonly captionOptions?: CaptionOptions;
+  /**
+   * The faces seen over a span of the source, so the Original view can offer
+   * each one to follow. Absent shows the frame without them.
+   */
+  readonly loadFaces?:
+    ((startTicks: number, endTicks: number) => Promise<readonly FaceSighting[]>) | null;
+  /** Follow this face through the section at the playhead. */
+  readonly onFollow?: ((trackId: number) => void) | null;
+  /** Where the logo loads from; absent shows none. */
+  readonly assetUrl?: ((hash: string) => string) | null;
+  /** Where a pinned emoji's picture loads from; absent draws the character. */
+  readonly emojiUrl?: ((code: string) => string) | null;
 }
+
+type CaptionOptions = NonNullable<EditIr['captions']['options']>;
+
+export type { ExactCaptions } from './exactCaptions.js';
 
 export function EditorMonitor({
   plan,
@@ -116,16 +171,60 @@ export function EditorMonitor({
   selection,
   onSelect,
   onApply,
+  captions = null,
+  captionOptions = {},
+  loadFaces = null,
+  onFollow = null,
+  assetUrl = null,
+  emojiUrl = null,
 }: EditorMonitorProps) {
   const [view, setView] = useState<MonitorView>('edit');
   const [safe, setSafe] = useState<SafePlatform>('off');
   const [grid, setGrid] = useState(false);
   const segment = segmentAt(plan, playback.frame);
+  // The apps' own buttons and captions are mapped over a 9:16 frame only.
+  const vertical = shapeOfFrame(plan) === 'vertical';
   const twoUp = cropAt(plan, playback.frame, true) !== null;
   const fitted = cropAt(plan, playback.frame) === null;
+  const inset = segment?.layout === 'picture_in_picture';
+
+  // The faces of the section at the playhead, fetched when the Original view
+  // is showing: that is where a person points at the one to follow.
+  const [faces, setFaces] = useState<{
+    readonly key: string;
+    readonly tracks: ReadonlyMap<number, readonly FaceSighting[]>;
+  } | null>(null);
+  const spanIn = segment?.inTicks ?? 0;
+  const spanOut = segment?.outTicks ?? 0;
+  const faceKey = segment ? `${segment.sourceFingerprint}:${spanIn}:${spanOut}` : null;
+  const picking = view === 'original' && loadFaces !== null && onFollow !== null;
+  useEffect(() => {
+    if (!picking || !loadFaces || faceKey === null) return undefined;
+    let live = true;
+    loadFaces(spanIn, spanOut)
+      .then((sightings) => {
+        if (live) setFaces({ key: faceKey, tracks: byTrack(sightings) });
+      })
+      // No faces to offer is the frame without them, not a broken preview.
+      .catch(() => {
+        if (live) setFaces({ key: faceKey, tracks: new Map() });
+      });
+    return () => {
+      live = false;
+    };
+  }, [picking, loadFaces, faceKey, spanIn, spanOut]);
+  const ticksNow = sourceTicksAt(plan, playback.frame);
+  const shown: readonly FaceNow[] =
+    picking && faces && faces.key === faceKey && ticksNow !== null
+      ? facesAt(faces.tracks, ticksNow)
+      : [];
 
   return (
-    <section className="review-viewer edit-viewer" aria-label="Clip preview">
+    <section
+      className="review-viewer edit-viewer"
+      aria-label="Clip preview"
+      data-coach="edit-preview"
+    >
       <div className="review-viewer-bar">
         <div className="review-segmented" role="group" aria-label="What the preview shows">
           <button type="button" aria-pressed={view === 'edit'} onClick={() => setView('edit')}>
@@ -141,34 +240,40 @@ export function EditorMonitor({
         </div>
         <span className="review-viewer-note">
           {view === 'original'
-            ? 'The whole frame, before framing and captions'
-            : twoUp
-              ? 'Two speakers'
-              : fitted
-                ? 'Whole frame'
-                : 'Following the speaker'}
+            ? shown.length > 0
+              ? 'Click a face to follow that person'
+              : 'The whole frame, before framing and captions'
+            : inset
+              ? 'Picture in picture'
+              : twoUp
+                ? 'Two speakers'
+                : fitted
+                  ? 'Whole frame'
+                  : 'Following the speaker'}
           {segment && plan.segments.length > 1
             ? ` · Section ${plan.segments.indexOf(segment) + 1} of ${plan.segments.length}`
             : ''}
         </span>
         <span className="review-spacer" />
-        <Select value={safe} onValueChange={(value) => setSafe(value as SafePlatform)}>
-          <SelectTrigger
-            aria-label="Safe area"
-            className="edit-viewer-select"
-            data-active={safe !== 'off' ? 'true' : undefined}
-            disabled={view !== 'edit'}
-          >
-            <SelectValue>{safe === 'off' ? 'Safe area' : SAFE_LABELS[safe]}</SelectValue>
-          </SelectTrigger>
-          <SelectContent align="end">
-            {(Object.keys(SAFE_LABELS) as SafePlatform[]).map((platform) => (
-              <SelectItem key={platform} value={platform}>
-                {platform === 'off' ? 'Off' : SAFE_LABELS[platform]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {vertical && (
+          <Select value={safe} onValueChange={(value) => setSafe(value as SafePlatform)}>
+            <SelectTrigger
+              aria-label="Safe area"
+              className="edit-viewer-select"
+              data-active={safe !== 'off' ? 'true' : undefined}
+              disabled={view !== 'edit'}
+            >
+              <SelectValue>{safe === 'off' ? 'Safe area' : SAFE_LABELS[safe]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end">
+              {(Object.keys(SAFE_LABELS) as SafePlatform[]).map((platform) => (
+                <SelectItem key={platform} value={platform}>
+                  {platform === 'off' ? 'Off' : SAFE_LABELS[platform]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <button
           type="button"
           className="review-viewer-toggle"
@@ -178,7 +283,9 @@ export function EditorMonitor({
         >
           Grid
         </button>
-        <span className="review-viewer-note mono">9:16</span>
+        <span className="review-viewer-note mono">
+          {FRAME_SHAPES.find((item) => item.shape === shapeOfFrame(plan))?.ratio ?? '9:16'}
+        </span>
       </div>
 
       <div className="review-stage-wrap">
@@ -191,17 +298,69 @@ export function EditorMonitor({
           startSeconds={startSeconds}
           playback={playback}
           view={view}
-          safe={view === 'edit' ? safe : 'off'}
+          safe={view === 'edit' && vertical ? safe : 'off'}
           grid={grid && view === 'edit'}
           busy={busy}
           selection={selection}
           onSelect={onSelect}
           onApply={onApply}
+          captions={view === 'edit' ? captions : null}
+          captionOptions={captionOptions}
+          assetUrl={assetUrl}
+          emojiUrl={emojiUrl}
+          faces={shown}
+          onFollow={
+            onFollow
+              ? (trackId) => {
+                  onFollow(trackId);
+                  setView('edit');
+                }
+              : null
+          }
         />
       </div>
 
       <Transport plan={plan} playback={playback} range={range} disabled={!proxyUrl} />
     </section>
+  );
+}
+
+const percent = (value: number) => `${value * 100}%`;
+
+/** The faces on the whole frame, each a button that follows that person. */
+function FacePicker({
+  faces,
+  frame,
+  disabled,
+  onFollow,
+}: {
+  readonly faces: readonly FaceNow[];
+  readonly frame: ReturnType<typeof fittedFrame>;
+  readonly disabled: boolean;
+  readonly onFollow: (trackId: number) => void;
+}) {
+  return (
+    <div className="edit-faces" role="group" aria-label="People in the frame">
+      {faces.map((face, order) => (
+        <button
+          key={face.trackId}
+          type="button"
+          className="edit-face"
+          disabled={disabled}
+          aria-label={`Follow person ${order + 1}`}
+          title="Follow this person"
+          style={{
+            left: percent(frame.left + face.x * frame.width),
+            top: percent(frame.top + face.y * frame.height),
+            width: percent(face.width * frame.width),
+            height: percent(face.height * frame.height),
+          }}
+          onClick={() => onFollow(face.trackId)}
+        >
+          <span>Follow</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -226,7 +385,19 @@ function Stage({
   selection,
   onSelect,
   onApply,
+  captions,
+  captionOptions,
+  faces,
+  onFollow,
+  assetUrl,
+  emojiUrl,
 }: {
+  readonly assetUrl: ((hash: string) => string) | null;
+  readonly emojiUrl: ((code: string) => string) | null;
+  readonly captions: ExactCaptions | null;
+  readonly captionOptions: CaptionOptions;
+  readonly faces: readonly FaceNow[];
+  readonly onFollow: ((trackId: number) => void) | null;
   readonly plan: PreviewPlan;
   readonly videoRef: RefObject<HTMLVideoElement | null>;
   readonly proxyUrl: string | null;
@@ -247,16 +418,28 @@ function Stage({
   const localTicks = part ? ticksAt(plan, frame) - part.programStartTicks : 0;
   // A reframe in progress: which viewport, and the rectangle it would get.
   const [draft, setDraft] = useState<{ secondary: boolean; rect: Rect } | null>(null);
-  const [captionDrag, setCaptionDrag] = useState<number | null>(null);
+  // Where a caption being dragged would sit, as shares of the frame.
+  const [captionDrag, setCaptionDrag] = useState<{ x: number; y: number } | null>(null);
+  const [overlayDrag, setOverlayDrag] = useState<{
+    overlayId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  // Whether libass is drawing the captions; the CSS ones then only take clicks.
+  const [exact, setExact] = useState(false);
   const zoomTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stage = useRef<HTMLDivElement>(null);
 
   const drawn = useMemo(() => {
     if (view === 'original') {
+      // The recording as it was: no crop, no fill, no zoom.
       return {
         ...plan,
         crops: plan.crops.map(() => null),
         secondaryCrops: plan.secondaryCrops?.map(() => null),
+        segments: plan.segments.map((segment) =>
+          Object.assign({}, segment, { layout: 'fit', backgroundColour: null, zoomPercent: 100 }),
+        ),
       } as PreviewPlan;
     }
     if (!draft) return plan;
@@ -272,6 +455,41 @@ function Stage({
     },
     [],
   );
+
+  /**
+   * Where a viewport sits on the output frame, in output pixels: the whole
+   * frame, one of two viewports at the section's split — stacked, or side by
+   * side in a landscape frame — or the inset.
+   */
+  const viewportOf = (secondary: boolean): Rect => {
+    const whole = { x: 0, y: 0, width: plan.width, height: plan.height };
+    if (part?.layout === 'picture_in_picture') {
+      const inset = part.inset;
+      return secondary && inset
+        ? { x: inset[0], y: inset[1], width: inset[2], height: inset[2] }
+        : whole;
+    }
+    if (cropAt(plan, frame, true) === null) return whole;
+    if (plan.width > plan.height) {
+      const left = part?.upperHeight || plan.width / 2;
+      return secondary
+        ? { x: left, y: 0, width: plan.width - left, height: plan.height }
+        : { x: 0, y: 0, width: left, height: plan.height };
+    }
+    const upper = part?.upperHeight || plan.height / 2;
+    return secondary
+      ? { x: 0, y: upper, width: plan.width, height: plan.height - upper }
+      : { x: 0, y: 0, width: plan.width, height: upper };
+  };
+
+  /** Which viewport a point on the stage is in: the inset or lower one, or not. */
+  const secondaryAt = (clientX: number, clientY: number, box: DOMRect): boolean => {
+    if (cropAt(plan, frame, true) === null) return false;
+    const inner = viewportOf(true);
+    const x = ((clientX - box.left) / Math.max(1, box.width)) * plan.width;
+    const y = ((clientY - box.top) / Math.max(1, box.height)) * plan.height;
+    return x >= inner.x && x < inner.x + inner.width && y >= inner.y && y < inner.y + inner.height;
+  };
 
   /** The rectangle the camera takes now, or the centred full-height one a fit clip would get. */
   const baseRect = (secondary: boolean): Rect | null => {
@@ -290,11 +508,10 @@ function Stage({
   const commit = (secondary: boolean, rect: Rect) => {
     if (!part) return;
     const keyframe = setCropKeyframe(localTicks, rect, part.segmentId, secondary);
-    onApply(
-      cropAt(plan, frame, secondary)
-        ? keyframe
-        : batch([setLayout('speaker_fill', part.segmentId), keyframe]),
-    );
+    // Reframing a fitted picture follows it from here; a picture-in-picture
+    // stays one, its full picture now a followed crop.
+    const keeps = cropAt(plan, frame, secondary) !== null || part.layout === 'picture_in_picture';
+    onApply(keeps ? keyframe : batch([setLayout('speaker_fill', part.segmentId), keyframe]));
     onSelect({ kind: 'keyframe', segmentId: part.segmentId, tTicks: localTicks, secondary });
   };
 
@@ -311,14 +528,14 @@ function Stage({
   const grabFrame = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (busy || view !== 'edit' || !part || !source) return;
     const box = event.currentTarget.getBoundingClientRect();
-    const twoUp = cropAt(plan, frame, true) !== null;
-    const secondary = twoUp && event.clientY - box.top > box.height / 2;
+    const secondary = secondaryAt(event.clientX, event.clientY, box);
     const start = baseRect(secondary);
     if (!start) return;
-    // One screen pixel moves the camera by the share of the crop it covers;
-    // a two-up viewport is half the stage tall.
-    const perX = start.width / Math.max(1, box.width);
-    const perY = start.height / Math.max(1, twoUp ? box.height / 2 : box.height);
+    // One screen pixel moves the camera by the share of the crop its viewport
+    // covers on screen: the whole stage, a split share of it, or the inset.
+    const viewport = viewportOf(secondary);
+    const perX = start.width / Math.max(1, (viewport.width / plan.width) * box.width);
+    const perY = start.height / Math.max(1, (viewport.height / plan.height) * box.height);
     const moved = (dx: number, dy: number) =>
       clampRect({ ...start, x: start.x - dx * perX, y: start.y - dy * perY });
     pressOrDrag(event, {
@@ -337,8 +554,30 @@ function Stage({
 
   // Registered by hand: React's wheel listener is passive, and a pinch the
   // stage cannot cancel would zoom the whole window instead.
-  const wheelState = useRef({ busy, view, part, source, draft, baseRect, clampRect, commit });
-  wheelState.current = { busy, view, part, source, draft, baseRect, clampRect, commit };
+  const wheelState = useRef({
+    busy,
+    view,
+    part,
+    source,
+    draft,
+    baseRect,
+    clampRect,
+    commit,
+    viewportOf,
+    secondaryAt,
+  });
+  wheelState.current = {
+    busy,
+    view,
+    part,
+    source,
+    draft,
+    baseRect,
+    clampRect,
+    commit,
+    viewportOf,
+    secondaryAt,
+  };
   useEffect(() => {
     const element = stage.current;
     if (!element) return;
@@ -347,9 +586,14 @@ function Stage({
       if (!(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
       if (current.busy || current.view !== 'edit' || !current.part || !current.source) return;
-      const secondary = current.draft?.secondary ?? false;
+      const secondary =
+        current.draft?.secondary ??
+        current.secondaryAt(event.clientX, event.clientY, element.getBoundingClientRect());
       const start = current.draft?.rect ?? current.baseRect(secondary);
       if (!start) return;
+      // Each viewport keeps its own shape: a crop of another shape is one the
+      // render refuses rather than stretches.
+      const viewport = current.viewportOf(secondary);
       const factor = Math.exp(event.deltaY * 0.01);
       const height = Math.max(
         Math.round(current.source.displayHeight * 0.2),
@@ -357,7 +601,7 @@ function Stage({
       );
       const width = Math.min(
         current.source.displayWidth,
-        Math.max(2, Math.round((height * plan.width) / plan.height / 2) * 2),
+        Math.max(2, Math.round((height * viewport.width) / viewport.height / 2) * 2),
       );
       const rect = current.clampRect({
         width,
@@ -375,44 +619,126 @@ function Stage({
     };
     element.addEventListener('wheel', listener, { passive: false });
     return () => element.removeEventListener('wheel', listener);
-  }, [plan.width, plan.height]);
+  }, []);
 
-  const cue = cueAt(plan, frame);
+  const heard = playback.heardFrame ?? frame;
+  const cue = cueAt(plan, heard);
   const style = plan.captionStyle;
-  const highlighted = cue ? highlightedWord(plan, cue, frame) : -1;
+  const highlighted = cue ? highlightedWord(plan, cue, heard) : -1;
   const grabCaption = (event: ReactPointerEvent<HTMLParagraphElement>) => {
     if (!cue) return;
     const box = stage.current?.getBoundingClientRect();
+    const caption = event.currentTarget.getBoundingClientRect();
+    // Where the caption's centre was when the drag began, so it follows the
+    // pointer from wherever on the text it was picked up.
+    const origin = box
+      ? {
+          x: (caption.left + caption.width / 2 - box.left) / Math.max(1, box.width),
+          y: (caption.top + caption.height / 2 - box.top) / Math.max(1, box.height),
+        }
+      : null;
+    const placed = (dx: number, dy: number) =>
+      box && origin
+        ? {
+            x: snapCentre(clampShare(origin.x + dx / Math.max(1, box.width))),
+            y: clampShare(origin.y + dy / Math.max(1, box.height)),
+          }
+        : null;
     pressOrDrag(event, {
       onClick: () => onSelect({ kind: 'cue', cueId: cue.cueId }),
-      onDrag: (_dx, _dy, next) => {
-        if (!box || busy) return;
-        setCaptionDrag(Math.max(0, Math.min(1, (next.clientY - box.top) / box.height)));
+      onDrag: (dx, dy) => {
+        if (busy) return;
+        setCaptionDrag(placed(dx, dy));
       },
-      onDrop: (_dx, _dy, next) => {
+      onDrop: (dx, dy, next) => {
         setCaptionDrag(null);
-        if (!box || busy) return;
-        const down = (next.clientY - box.top) / Math.max(1, box.height);
-        const region = down < 0.36 ? 'upper_safe' : down > 0.64 ? 'lower_safe' : 'center';
-        const moving = plan.cues.filter((item) => item.region !== region);
+        const at = placed(dx, dy);
+        if (!at || busy) return;
+        const position = { x: Math.round(at.x * 1000), y: Math.round(at.y * 1000) };
         onSelect({ kind: 'cue', cueId: cue.cueId });
-        if (moving.length > 0)
-          onApply(batch(moving.map((item) => setCueRegion(item.cueId, region, plan.presentation))));
+        // Alt places this caption alone; otherwise every caption moves, as
+        // a creator placing captions over a face means all of them.
+        if (next.altKey) {
+          onApply(setCuePosition(cue.cueId, position, plan.presentation));
+          return;
+        }
+        // A cue placed on its own is one whose position is not the clip's;
+        // moving every caption brings those along too.
+        const track = captionOptions.position;
+        const alone = plan.cues.filter(
+          (item) =>
+            item.position &&
+            (!track || item.position[0] !== track.x || item.position[1] !== track.y),
+        );
+        onApply(
+          batch([
+            setCaptionOptions({ ...captionOptions, position }),
+            ...alone.map((item) => setCuePosition(item.cueId, null, plan.presentation)),
+          ]),
+        );
       },
       onCancel: () => setCaptionDrag(null),
     });
   };
 
-  const relative = (pixels: number) => `${(pixels / plan.width) * 100}cqw`;
-  const verticalMargin = ((style?.marginVertical ?? 260) / plan.height) * 100;
-  const position =
-    captionDrag !== null
-      ? { top: `${captionDrag * 100}%`, transform: 'translateY(-50%)' }
-      : cue?.region === 'upper_safe'
-        ? { top: `${verticalMargin}%` }
-        : cue?.region === 'center'
-          ? { top: '50%', transform: 'translateY(-50%)' }
-          : { bottom: `${verticalMargin}%` };
+  // Texts over the picture: shown, picked and moved here; drawn exactly by
+  // libass when it is drawing, when these only take the pointer. Emoji are
+  // pictures, drawn here as the render lays them, under the captions.
+  const shownOverlays = overlaysAt(plan, frame);
+  const shownTexts = shownOverlays.filter((overlay) => overlay.kind !== 'emoji');
+  const shownEmoji = shownOverlays.filter((overlay) => overlay.kind === 'emoji');
+  const grabOverlay = (event: ReactPointerEvent<HTMLElement>, overlay: PreviewOverlay) => {
+    const box = stage.current?.getBoundingClientRect();
+    const placed = (dx: number, dy: number) =>
+      box
+        ? {
+            x: snapCentre(clampShare(overlay.x / 1000 + dx / Math.max(1, box.width))),
+            y: clampShare(overlay.y / 1000 + dy / Math.max(1, box.height)),
+          }
+        : null;
+    pressOrDrag(event, {
+      onClick: () => onSelect({ kind: 'overlay', overlayId: overlay.overlayId }),
+      onDrag: (dx, dy) => {
+        if (busy) return;
+        const at = placed(dx, dy);
+        setOverlayDrag(at ? { overlayId: overlay.overlayId, ...at } : null);
+      },
+      onDrop: (dx, dy) => {
+        setOverlayDrag(null);
+        const at = placed(dx, dy);
+        if (!at || busy) return;
+        onSelect({ kind: 'overlay', overlayId: overlay.overlayId });
+        onApply(
+          setOverlay(
+            withContent(savedOverlay(overlay), {
+              x: Math.round(at.x * 1000),
+              y: Math.round(at.y * 1000),
+            }),
+          ),
+        );
+      },
+      onCancel: () => setOverlayDrag(null),
+    });
+  };
+
+  // Sizes are stated at the 1920-pixel design height, whatever the shape.
+  const relative = (pixels: number) =>
+    `${((pixels * plan.height) / 1920 / Math.max(1, plan.width)) * 100}cqw`;
+  const verticalMargin = ((style?.marginVertical ?? 260) / 1920) * 100;
+  const centred =
+    captionDrag ??
+    (cue?.position ? { x: cue.position[0] / 1000, y: cue.position[1] / 1000 } : null);
+  const position = centred
+    ? {
+        left: `${centred.x * 100}%`,
+        top: `${centred.y * 100}%`,
+        transform: 'translate(-50%, -50%)',
+      }
+    : cue?.region === 'upper_safe'
+      ? { top: `${verticalMargin}%` }
+      : cue?.region === 'center'
+        ? { top: '50%', transform: 'translateY(-50%)' }
+        : { bottom: `${verticalMargin}%` };
   let index = 0;
   const zone = safe === 'off' ? null : SAFE_ZONES[safe];
   const reframable = view === 'edit' && !busy && proxyUrl !== null;
@@ -423,7 +749,12 @@ function Stage({
       className="review-stage edit-stage"
       data-view="result"
       data-testid="stage"
-      style={{ containerType: 'inline-size' }}
+      style={
+        {
+          containerType: 'inline-size',
+          '--output-aspect': String(plan.width / Math.max(1, plan.height)),
+        } as CSSProperties
+      }
     >
       {proxyUrl ? (
         <>
@@ -466,6 +797,57 @@ function Stage({
             aria-hidden="true"
             onPointerDown={grabFrame}
           />
+          {view === 'edit' && (
+            <CutawayLayer
+              plan={plan}
+              frame={frame}
+              playing={playback.playing}
+              assetUrl={assetUrl}
+              proxyUrls={proxyUrls}
+              selection={selection}
+              onSelect={onSelect}
+            />
+          )}
+          {view === 'edit' && <BrandLayer plan={plan} frame={frame} assetUrl={assetUrl} />}
+          {view === 'edit' &&
+            shownEmoji.map((overlay) => {
+              const moved = overlayDrag?.overlayId === overlay.overlayId ? overlayDrag : null;
+              const box = emojiBox(overlay, plan);
+              return (
+                <div
+                  key={overlay.overlayId}
+                  className="edit-overlay-emoji"
+                  data-testid="overlay-emoji"
+                  data-selected={
+                    selection.kind === 'overlay' && selection.overlayId === overlay.overlayId
+                      ? 'true'
+                      : undefined
+                  }
+                  data-dragging={moved ? 'true' : undefined}
+                  onPointerDown={(event) => grabOverlay(event, overlay)}
+                  style={{
+                    left: moved ? share(moved.x) : share(box.cx / plan.width),
+                    top: moved ? share(moved.y) : share(box.cy / plan.height),
+                    width: share(box.side / plan.width),
+                    height: share(box.side / plan.height),
+                    fontSize: `${(box.side / plan.width) * 80}cqw`,
+                  }}
+                >
+                  <EmojiPicture code={overlay.emoji ?? ''} url={emojiUrl} />
+                </div>
+              );
+            })}
+          {captions && (
+            <CaptionCanvas
+              ass={captions.ass}
+              faces={captions.faces}
+              family={captions.family}
+              seconds={(heard * plan.rateDen) / Math.max(1, plan.rateNum)}
+              frameWidth={plan.width}
+              frameHeight={plan.height}
+              onDrawing={setExact}
+            />
+          )}
         </>
       ) : (
         <div className="review-unavailable" role="note">
@@ -474,6 +856,14 @@ function Stage({
         </div>
       )}
       {grid && <div className="edit-grid" aria-hidden="true" />}
+      {view === 'original' && source && onFollow && faces.length > 0 && (
+        <FacePicker
+          faces={faces}
+          frame={fittedFrame(source, plan)}
+          disabled={busy}
+          onFollow={onFollow}
+        />
+      )}
       {zone && (
         <div className="review-safe-area" aria-hidden="true">
           <span style={{ top: 0, left: 0, right: 0, height: share(zone.top) }} />
@@ -515,10 +905,15 @@ function Stage({
           data-selected={selection.kind === 'cue' && selection.cueId === cue.cueId}
           data-dragging={captionDrag !== null ? 'true' : undefined}
           onPointerDown={grabCaption}
+          data-exact={exact ? 'true' : undefined}
           style={{
+            ...(centred
+              ? { width: 'max-content', maxWidth: '100%' }
+              : {
+                  left: `${(((style?.marginHorizontal ?? 90) * plan.height) / 1920 / plan.width) * 100}%`,
+                  right: `${(((style?.marginHorizontal ?? 90) * plan.height) / 1920 / plan.width) * 100}%`,
+                }),
             ...position,
-            left: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
-            right: `${((style?.marginHorizontal ?? 90) / plan.width) * 100}%`,
             fontFamily:
               !style || style.fontFamily === 'Inter' ? 'ClipMill Caption Inter' : style.fontFamily,
             fontSize: relative(style?.fontSize ?? 84),
@@ -555,8 +950,10 @@ function Stage({
                     <span
                       key={`${word.text}-${mine}`}
                       style={{
+                        // Without a sweep every word is in the words colour,
+                        // as the export draws it.
                         color:
-                          !cue.karaoke || mine <= highlighted
+                          cue.karaoke && mine <= highlighted
                             ? (style?.spoken ?? '#ffd65c')
                             : (style?.unspoken ?? '#ffffff'),
                       }}
@@ -570,14 +967,45 @@ function Stage({
           ))}
         </p>
       )}
+      {proxyUrl &&
+        view === 'edit' &&
+        shownTexts.map((overlay) => {
+          const moved = overlayDrag?.overlayId === overlay.overlayId ? overlayDrag : null;
+          return (
+            <p
+              key={overlay.overlayId}
+              className="edit-overlay-text"
+              data-testid="overlay-text"
+              data-selected={
+                selection.kind === 'overlay' && selection.overlayId === overlay.overlayId
+                  ? 'true'
+                  : undefined
+              }
+              data-dragging={moved ? 'true' : undefined}
+              data-exact={exact ? 'true' : undefined}
+              onPointerDown={(event) => grabOverlay(event, overlay)}
+              style={{
+                left: `${(moved?.x ?? overlay.x / 1000) * 100}%`,
+                top: `${(moved?.y ?? overlay.y / 1000) * 100}%`,
+                fontFamily:
+                  !style || style.fontFamily === 'Inter'
+                    ? 'ClipMill Caption Inter'
+                    : style.fontFamily,
+                fontSize: relative(overlay.size),
+                color: overlay.colour,
+                background: overlay.plate ?? undefined,
+                padding: overlay.plate ? relative(Math.max(8, overlay.size / 5)) : undefined,
+                WebkitTextStroke: overlay.plate
+                  ? undefined
+                  : `${relative(Math.max(2, overlay.size / 16))} #000000`,
+              }}
+            >
+              {overlay.text}
+            </p>
+          );
+        })}
     </div>
   );
-}
-
-/** A position in the clip as `mm:ss;ff`: a short has no hours to show. */
-function clipTimecode(ticks: number): string {
-  const full = sourceTimecode(ticks);
-  return full.startsWith('00:') ? full.slice(3) : full;
 }
 
 function share(value: number): string {
@@ -598,11 +1026,18 @@ function Transport({
   const { frame, playing, speed, loop, muted } = playback;
   const ticks = ticksAt(plan, frame);
   const length = ticksAt(plan, plan.frameCount);
+  const format = useTimeFormat();
+  const fps = plan.rateNum / Math.max(1, plan.rateDen);
+  const recording = sourceTicksAt(plan, frame);
   return (
     <div className="review-transport" aria-label="Transport">
-      <span className="review-timecode mono" data-testid="timecode">
-        {clipTimecode(ticks)}
-        <span className="edit-length"> / {clipTimecode(length)}</span>
+      <span
+        className="review-timecode mono"
+        data-testid="timecode"
+        title={recording === null ? undefined : `${clockTenths(recording)} in the recording`}
+      >
+        {formatTime(ticks, format, fps)}
+        <span className="edit-length"> / {formatTime(length, format, fps)}</span>
         <span className="sr-only">
           {' '}
           · frame {frame} of {plan.frameCount}
@@ -674,4 +1109,14 @@ function Transport({
       </div>
     </div>
   );
+}
+
+/** A share of the frame, kept on it. */
+function clampShare(value: number): number {
+  return Math.max(0.02, Math.min(0.98, value));
+}
+
+/** The horizontal centre pulls a caption dragged close to it. */
+function snapCentre(value: number): number {
+  return Math.abs(value - 0.5) < 0.025 ? 0.5 : value;
 }

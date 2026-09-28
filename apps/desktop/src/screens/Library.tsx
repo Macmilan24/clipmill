@@ -131,8 +131,22 @@ export function Library({
     },
     onReveal: (path: string) => {
       actionsLoader.reveal(path).catch(() => {
-        setNotice('The recording could not be shown. It may have been moved or deleted.');
+        setNotice(
+          'The recording could not be shown. If it was moved, choose Locate recording… from the project’s menu.',
+        );
       });
+    },
+    onRelink: async (entry: LibraryProject) => {
+      if (!entry.source) return;
+      try {
+        const linked = await actionsLoader.relink(entry.project.projectId, entry.source.sourceId);
+        if (linked) {
+          setNotice('Recording located. This project, its clips and edits are ready to use.');
+          reload();
+        }
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+      }
     },
     onDelete: async (entry: LibraryProject) => {
       await actionsLoader.remove(entry.project.projectId);

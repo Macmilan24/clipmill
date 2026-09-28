@@ -50,6 +50,8 @@ export interface ResultsProps {
   /** The analysis that produced them, by the facts the job records. */
   readonly run: RunInfo | null;
   readonly tileUrl: (atTicks: number) => string | null;
+  /** Where each clip's camera would point, by candidate, for its thumbnail. */
+  readonly framing?: ReadonlyMap<string, number>;
   /** Every project, so this screen can reach a recording it was not routed to. */
   readonly projects: readonly Project[];
   readonly activeProjectId: string | null;
@@ -93,6 +95,7 @@ export function Results({
   sourceName,
   run,
   tileUrl,
+  framing = new Map(),
   projects,
   activeProjectId,
   busy,
@@ -355,6 +358,8 @@ export function Results({
             ) : (
               <CandidateGrid
                 rows={shown}
+                board={rows}
+                framing={framing}
                 focusedId={focused?.candidateId ?? null}
                 checked={checked}
                 tileUrl={tileUrl}

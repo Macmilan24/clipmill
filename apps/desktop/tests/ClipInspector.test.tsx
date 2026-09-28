@@ -4,7 +4,7 @@
  * is one click or one key and can be taken back, and nothing the analysis did
  * not measure is drawn as though it had.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '../src/components/ui/tooltip.js';
@@ -160,8 +160,11 @@ describe('reading the clip', () => {
   it('plays from any word', () => {
     show();
     fireEvent.click(word('ticket.'));
-    // "ticket." starts at 14.75 s: frame 22 of the fourteenth second.
-    expect(screen.getByTestId('timecode').textContent).toBe('00:00:14;22');
+    // "ticket." starts at 14.75 s in the recording, three seconds into the
+    // cut: the clock reads clip time, the recording's is on hover.
+    const clock = screen.getByTestId('timecode');
+    expect(clock.textContent).toBe('0:03.0 / 0:03.3');
+    expect(clock.getAttribute('title')).toBe('0:14.8 in the recording');
   });
 
   it('says so when the analysis has no transcript, rather than showing nothing', () => {
@@ -347,8 +350,10 @@ describe('why and details', () => {
     show();
     openTab(/why/i);
     fireEvent.click(screen.getAllByRole('button', { name: /play from/i })[0]!);
-    // The hook is quoted at the clip's start, 11.8 s: frame 23 of second 11.
-    expect(screen.getByTestId('timecode').textContent).toBe('00:00:11;23');
+    // The hook is quoted at the clip's start, 11.8 s into the recording.
+    const clock = screen.getByTestId('timecode');
+    expect(clock.textContent).toBe('0:00.0 / 0:03.3');
+    expect(clock.getAttribute('title')).toBe('0:11.8 in the recording');
   });
 
   it('names the clips that cover the same ground', () => {
@@ -381,5 +386,45 @@ describe('what cannot be shown', () => {
     expect(screen.getByText(/not in the current ranking/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /back to results/i }));
     expect(props.onBack).toHaveBeenCalled();
+  });
+});
+
+describe('judging the clip an approval builds', () => {
+  it('asks for it once the cut settles, and reads its framing', () => {
+    vi.useFakeTimers();
+    try {
+      const onPreview = vi.fn();
+      const plan = {
+        rateNum: 30,
+        rateDen: 1,
+        width: 1080,
+        height: 1920,
+        crops: [],
+        segments: [
+          {
+            segmentId: 'seg_1',
+            sourceFingerprint: 'source',
+            inTicks: CLIP_START,
+            outTicks: CLIP_END,
+            programStartTicks: 0,
+            firstFrame: 0,
+            endFrame: 30,
+            layout: 'two_up',
+          },
+        ],
+        sources: [],
+        decisions: ['Two people remain visible in equal portraits.'],
+      } as unknown as import('../src/daemon/client.js').PreviewPlan;
+      show({ onPreview, preview: plan, proxyUrl: 'http://localhost/proxy.mp4' });
+      expect(onPreview).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onPreview).toHaveBeenCalledWith(null);
+      const note = screen.getByText('Two speakers');
+      expect(note.getAttribute('title')).toContain('equal portraits');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

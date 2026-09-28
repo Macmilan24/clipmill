@@ -264,6 +264,77 @@ async fn a_fresh_install_lists_everything_and_says_what_to_download() {
     );
 }
 
+/// A computer that can run a more accurate recognizer than the one planned
+/// is told so, and offered it, but nothing is switched or downloaded for it:
+/// the floor stays until the person chooses.
+#[tokio::test]
+async fn a_more_accurate_recognizer_that_fits_is_offered_never_imposed() {
+    let fixture = Fixture::new();
+    let library = fixture.library(None);
+    fixture.place("whisper-base");
+    let asr = |listed: &clipmill_contracts::proto::ipc::v1::ListModelsResponse| {
+        listed
+            .jobs
+            .iter()
+            .find(|job| job.capability == "asr")
+            .expect("transcription")
+            .clone()
+    };
+
+    let listed = library.list(&Bindings::portable(), 18 * GIB);
+
+    // Apple silicon runs the MLX recognizer, which measurement may choose;
+    // anywhere else the larger Whisper is the more accurate one it can run.
+    let better = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "qwen3-asr-mlx"
+    } else {
+        "whisper-large-v3-turbo"
+    };
+    let transcription = asr(&listed);
+    assert_eq!(
+        transcription.model, "whisper-base",
+        "the floor is still planned"
+    );
+    assert_eq!(transcription.more_accurate, better);
+    assert!(
+        listed
+            .models
+            .iter()
+            .any(|model| model.name == better && model.recommended),
+        "its row says it is recommended here"
+    );
+    assert!(
+        !listed.recommended_missing.iter().any(|name| name == better),
+        "an upgrade is not part of what analysis needs"
+    );
+    // The other jobs' candidates are equals, so none is offered.
+    assert!(
+        listed
+            .jobs
+            .iter()
+            .filter(|job| job.capability != "asr")
+            .all(|job| job.more_accurate.is_empty())
+    );
+
+    // A model the analysis budget cannot hold is not offered, only listed.
+    assert!(
+        asr(&library.list(&Bindings::portable(), GIB / 2))
+            .more_accurate
+            .is_empty()
+    );
+
+    // Once a recognizer as accurate is chosen, nothing more is offered.
+    fixture.place("whisper-large-v3-turbo");
+    library
+        .set_choice("asr", "whisper-large-v3-turbo")
+        .expect("chosen");
+    assert!(
+        asr(&library.list(&Bindings::portable(), 18 * GIB))
+            .more_accurate
+            .is_empty()
+    );
+}
+
 #[test]
 fn memory_fit_warns_on_every_scale_and_never_hides() {
     assert_eq!(memory_fit(4 * GIB, 12 * GIB, 16 * GIB), "fits");

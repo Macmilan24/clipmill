@@ -23,11 +23,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
-import type { CropPath } from '../daemon/client.js';
+import type { CropPath, PreviewPlan } from '../daemon/client.js';
+import type { ExactCaptions } from '../editor/exactCaptions.js';
 import { DetailsPanel } from '../inspector/DetailsPanel.js';
 import { Monitor, type MonitorView } from '../inspector/Monitor.js';
 import { PlaybackController } from '../inspector/playback.js';
@@ -38,6 +39,7 @@ import { TipButton } from '../inspector/TipButton.js';
 import { TranscriptPanel } from '../inspector/TranscriptPanel.js';
 import { useReviewKeys } from '../inspector/useReviewKeys.js';
 import { WhyPanel } from '../inspector/WhyPanel.js';
+import { type CoachMark, CoachMarks } from '../onboarding/CoachMarks.js';
 import type { Peaks } from '../results/loader.js';
 import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
 import { TONE_INK, stateOf, wash } from '../results/parts/state.js';
@@ -49,6 +51,16 @@ export interface ClipInspectorProps {
   readonly candidateId: string;
   readonly proxyUrl: string | null;
   readonly crop: CropPath | null;
+  /**
+   * The clip an approval of the cut on screen would build, and its captions.
+   * Absent on a shell that cannot build one; the solver's crop stands in.
+   */
+  readonly preview?: PreviewPlan | null;
+  readonly previewCaptions?: ExactCaptions | null;
+  /** Ask for that clip for a cut: `null` is the search's own. */
+  readonly onPreview?: ((cut: Cut | null) => void) | null;
+  /** Where each clip's camera would point, by candidate, for the queue. */
+  readonly framing?: ReadonlyMap<string, number>;
   readonly peaks: Peaks | null;
   readonly tileUrl: (atTicks: number) => string | null;
   readonly transcript: TranscriptState;
@@ -77,6 +89,30 @@ export interface ClipInspectorProps {
 }
 
 type Tab = 'transcript' | 'why' | 'details';
+
+/** The Inspector's tips, the first time it opens. */
+const INSPECTOR_TIPS: readonly CoachMark[] = [
+  {
+    target: 'preview',
+    title: 'The clip as it will be built',
+    body: 'This is what approving makes: the framing and the captions in your look. Source shows the whole recording, with the crop outlined.',
+  },
+  {
+    target: 'cut',
+    title: 'Where it starts and ends',
+    body: 'Drag the handles on the strip, or press I and O at the playhead. Play the start and Play the end let you hear past the edges first.',
+  },
+  {
+    target: 'decide',
+    title: 'Decide',
+    body: 'Approve builds the edit; Keep for later sets it aside; Reject drops it. A, H and X do the same, and a decision can be taken back.',
+  },
+  {
+    target: 'transcript',
+    title: 'What is said',
+    body: 'Every word of the clip and the sentences either side. Click a word to go there.',
+  },
+];
 
 /** A remembered preference, read defensively: storage can be absent or refuse. */
 function remembered<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
@@ -118,6 +154,10 @@ function Review({
   rows,
   proxyUrl,
   crop,
+  preview = null,
+  previewCaptions = null,
+  onPreview = null,
+  framing,
   peaks,
   tileUrl,
   transcript,
@@ -171,6 +211,16 @@ function Review({
   useEffect(() => {
     controller.setCut(shown);
   }, [controller, shown.startTicks, shown.endTicks]);
+
+  // Ask for the clip an approval of the cut on screen would build, once the
+  // cut has stopped moving: a drag is many cuts, and only the last is judged.
+  const askPreview = useRef(onPreview);
+  askPreview.current = onPreview;
+  useEffect(() => {
+    const timer = setTimeout(() => askPreview.current?.(moved ? shown : null), 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cut is the signal
+  }, [moved, shown.startTicks, shown.endTicks]);
 
   const words = transcript.status === 'ready' ? transcript.transcript : null;
   const index = rows.indexOf(row);
@@ -259,6 +309,7 @@ function Review({
 
   return (
     <div className="review-workspace">
+      <CoachMarks place="inspector" marks={INSPECTOR_TIPS} />
       <header className="review-heading">
         <div className="review-identity">
           <TipButton label="Back to results" onClick={onBack}>
@@ -324,7 +375,12 @@ function Review({
               <ChevronRight />
             </TipButton>
           </div>
-          <div className="review-decisions" role="group" aria-label="Decide about this clip">
+          <div
+            className="review-decisions"
+            role="group"
+            aria-label="Decide about this clip"
+            data-coach="decide"
+          >
             <Button
               variant="ghost"
               size="sm"
@@ -377,6 +433,7 @@ function Review({
         {queueOpen && (
           <Queue
             rows={rows}
+            framing={framing}
             candidateId={row.candidateId}
             filter={filter}
             onFilter={(next) => {
@@ -394,6 +451,8 @@ function Review({
         <Monitor
           src={proxyUrl}
           crop={crop}
+          plan={preview}
+          captions={previewCaptions}
           controller={controller}
           cut={shown}
           view={monitorView}
@@ -430,7 +489,7 @@ function Review({
             className="review-tabs"
           >
             <TabsList className="review-tab-list">
-              <TabsTrigger value="transcript">
+              <TabsTrigger value="transcript" data-coach="transcript">
                 <FileText aria-hidden="true" />
                 Transcript
               </TabsTrigger>
@@ -479,7 +538,7 @@ function Review({
           onSelect={onSelect}
           onSeek={(ticks) => controller.seek(ticks)}
         />
-        <div className="review-strip-bar">
+        <div className="review-strip-bar" data-coach="cut">
           <span className="review-cut-summary">
             <span className="review-lane-label">
               {auditioning ? 'Alternative' : moved ? 'Your cut' : 'Cut'}

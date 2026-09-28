@@ -200,7 +200,7 @@ describe('the transcript', () => {
   it('cuts only the filler words left ticked', () => {
     const { onApply } = show([25, 31]);
     fireEvent.click(screen.getByRole('button', { name: /2 filler words/ }));
-    const boxes = screen.getAllByRole('checkbox');
+    const boxes = screen.getAllByRole('checkbox', { name: /^Cut / });
     fireEvent.click(boxes[1]!);
     fireEvent.click(screen.getByRole('button', { name: 'Cut 1' }));
     expect(onApply).toHaveBeenCalledWith({

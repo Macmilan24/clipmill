@@ -3,9 +3,10 @@ use thiserror::Error;
 
 use crate::{
     document::{
-        CaptionCue, CaptionOptions, CaptionRegion, CropEasing, CropKeyframe, CropRect,
-        DocumentError, EditDocument, GainPoint, LayoutState, Presentation, VideoSegment,
-        crop_along_keyframes,
+        Asset, Brand, CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing,
+        CropKeyframe, CropRect, Cutaway, DocumentError, EditDocument, FitBackground, FrameShape,
+        GainPoint, Inset, LayoutState, MusicBed, Overlay, Presentation, Punch, VideoSegment,
+        VoiceCleanup, crop_along_keyframes, retime_punches, split_punches,
     },
     reflow,
 };
@@ -28,6 +29,67 @@ pub enum EditCommand {
     /// This changes no source interval, audio, caption or program timing.
     SetTransition {
         duration_ticks: i64,
+    },
+    /// Replace a section's punches: the moments its followed crop moves in.
+    SetPunches {
+        segment_id: String,
+        punches: Vec<Punch>,
+    },
+    /// Set or take away the clip's progress bar and logo, and list the assets
+    /// the brand draws from. `None` takes the brand away.
+    SetBrand {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        brand: Option<Brand>,
+        /// The clip's asset list with the brand's own; the inverse carries
+        /// the list as it was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assets: Option<Vec<Asset>>,
+    },
+    /// Set or take away the music under the voice, and list the assets it
+    /// plays from. `None` takes the music away.
+    SetMusic {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        music: Option<MusicBed>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assets: Option<Vec<Asset>>,
+    },
+    /// Replace the clip's cutaways, and list the assets their pictures come
+    /// from. The whole list, so its inverse is exactly the list it replaced.
+    SetCutaways {
+        cutaways: Vec<Cutaway>,
+        /// The clip's asset list with the pictures' own; the inverse carries
+        /// the list as it was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assets: Option<Vec<Asset>>,
+    },
+    /// Clean the voice, or stop cleaning it with `None`.
+    SetCleanup {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cleanup: Option<VoiceCleanup>,
+    },
+    /// Deliver the clip in another frame shape. Only the shape: the crops
+    /// that fit it are replaced by commands of their own, batched with this.
+    SetFrameShape {
+        shape: FrameShape,
+    },
+    /// Lay something over the program: on top of the others, or at `at` in
+    /// their stack, which is how removing one is undone in its own place.
+    AddOverlay {
+        overlay: Overlay,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<usize>,
+    },
+    RemoveOverlay {
+        overlay_id: String,
+    },
+    /// Change an overlay in place: its span, text, look or position.
+    SetOverlay {
+        overlay: Overlay,
+    },
+    /// Name the clip, or clear its name with `None`.
+    SetTitle {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
     },
     /// Change the clip's named caption preset without rewriting its words.
     SetCaptionStyle {
@@ -73,6 +135,13 @@ pub enum EditCommand {
         /// what those trims had done to it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         burn_in: Option<Vec<CaptionCue>>,
+        /// The overlays as they were. Absent in a log written before there
+        /// were any, and then left as they stand.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        overlays: Option<Vec<Overlay>>,
+        /// The cutaways as they were, likewise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cutaways: Option<Vec<Cutaway>>,
     },
     SetLayout {
         segment_id: String,
@@ -81,6 +150,21 @@ pub enum EditCommand {
     /// Exchange the upper and lower camera paths in a two-person section.
     SwapPortraits {
         segment_id: String,
+    },
+    /// How a section's layout is drawn: the split between two viewports,
+    /// what fills around a fitted picture and how far it is zoomed, and where
+    /// a picture-in-picture inset sits. All four at once, so the inverse is
+    /// one command and a style can be copied to every section as a batch.
+    SetLayoutStyle {
+        segment_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        split: Option<u16>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        background: Option<FitBackground>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        zoom: Option<u16>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inset: Option<Inset>,
     },
     /// Make two independently framed sections at a source-time cut.
     SplitSegment {
@@ -117,6 +201,12 @@ pub enum EditCommand {
         segment_id: String,
         t_ticks: i64,
     },
+    /// Replace the lower portrait's solved path, as a re-solve of a
+    /// two-person layout does beside `ReplaceCropPath` for the upper one.
+    ReplaceSecondaryCropPath {
+        segment_id: String,
+        path: Vec<CropKeyframe>,
+    },
     /// Correct one word's text without disturbing its timing, addressed by
     /// cue and position. The word's other occurrence — the same word in the
     /// other presentation — is corrected with it when the word carries an id.
@@ -144,6 +234,38 @@ pub enum EditCommand {
     SetCueRegion {
         cue_id: String,
         region: CaptionRegion,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
+    },
+    /// Place one cue by hand, or hand it back to its region with `None`.
+    SetCuePosition {
+        cue_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        position: Option<CaptionPosition>,
+        #[serde(default, skip_serializing_if = "is_reading")]
+        presentation: Presentation,
+    },
+    /// Mark or unmark a key word, wherever it appears. Emphasis belongs to
+    /// the word, like a correction, so both presentations carry it.
+    SetWordEmphasis {
+        word_id: String,
+        emphasis: bool,
+    },
+    /// Regroup the on-screen captions to show at most this many words at
+    /// once. Only the burned-in list changes; the sidecar grouping stays.
+    RegroupOnScreen {
+        max_words: u32,
+    },
+    /// Remove words that are not speech — a recognizer's dash, a silence
+    /// marker, a bracketed annotation — from both presentations.
+    DropNonSpeechWords {},
+    /// Replace one presentation's cues whole.
+    ///
+    /// A regrouping or a re-derivation is computed where the segmenter lives
+    /// and carried here in full, so replaying the log needs nothing but the
+    /// log. The inverse carries the list it replaced.
+    ReplaceCues {
+        cues: Vec<CaptionCue>,
         #[serde(default, skip_serializing_if = "is_reading")]
         presentation: Presentation,
     },
@@ -233,6 +355,99 @@ impl EditCommand {
                     duration_ticks: previous,
                 })
             }
+            Self::SetPunches {
+                segment_id,
+                punches,
+            } => {
+                let index = document.segment_index(segment_id)?;
+                let segment = document
+                    .video
+                    .segments
+                    .get_mut(index)
+                    .ok_or_else(|| DocumentError::UnknownSegment(segment_id.clone()))?;
+                let previous = std::mem::replace(&mut segment.layout.punches, punches.clone());
+                Ok(Self::SetPunches {
+                    segment_id: segment_id.clone(),
+                    punches: previous,
+                })
+            }
+            Self::SetMusic { music, assets } => {
+                let previous = std::mem::replace(&mut document.audio.music, music.clone());
+                let previous_assets = assets
+                    .as_ref()
+                    .map(|assets| std::mem::replace(&mut document.assets, assets.clone()));
+                Ok(Self::SetMusic {
+                    music: previous,
+                    assets: previous_assets,
+                })
+            }
+            Self::SetCleanup { cleanup } => {
+                let previous = std::mem::replace(&mut document.audio.cleanup, *cleanup);
+                Ok(Self::SetCleanup { cleanup: previous })
+            }
+            Self::SetCutaways { cutaways, assets } => {
+                let previous = std::mem::replace(&mut document.video.cutaways, cutaways.clone());
+                let previous_assets = assets
+                    .as_ref()
+                    .map(|assets| std::mem::replace(&mut document.assets, assets.clone()));
+                Ok(Self::SetCutaways {
+                    cutaways: previous,
+                    assets: previous_assets,
+                })
+            }
+            Self::SetBrand { brand, assets } => {
+                let previous = std::mem::replace(&mut document.brand, brand.clone());
+                let previous_assets = assets
+                    .as_ref()
+                    .map(|assets| std::mem::replace(&mut document.assets, assets.clone()));
+                Ok(Self::SetBrand {
+                    brand: previous,
+                    assets: previous_assets,
+                })
+            }
+            Self::SetFrameShape { shape } => {
+                let previous = std::mem::replace(&mut document.video.shape, *shape);
+                Ok(Self::SetFrameShape { shape: previous })
+            }
+            Self::AddOverlay { overlay, at } => {
+                if document
+                    .overlays
+                    .iter()
+                    .any(|existing| existing.overlay_id == overlay.overlay_id)
+                {
+                    return Err(CommandError::OverlayAlreadyExists(
+                        overlay.overlay_id.clone(),
+                    ));
+                }
+                let position = at.unwrap_or(document.overlays.len());
+                if position > document.overlays.len() {
+                    return Err(CommandError::OverlayOutOfStack(position));
+                }
+                document.overlays.insert(position, overlay.clone());
+                Ok(Self::RemoveOverlay {
+                    overlay_id: overlay.overlay_id.clone(),
+                })
+            }
+            Self::RemoveOverlay { overlay_id } => {
+                let position = document.overlay_index(overlay_id)?;
+                let overlay = document.overlays.remove(position);
+                Ok(Self::AddOverlay {
+                    overlay,
+                    at: Some(position),
+                })
+            }
+            Self::SetOverlay { overlay } => {
+                let position = document.overlay_index(&overlay.overlay_id)?;
+                let previous = std::mem::replace(&mut document.overlays[position], overlay.clone());
+                Ok(Self::SetOverlay { overlay: previous })
+            }
+            Self::SetTitle { title } => {
+                let previous = std::mem::replace(
+                    &mut document.title,
+                    title.as_ref().map(|title| title.trim().to_owned()),
+                );
+                Ok(Self::SetTitle { title: previous })
+            }
             Self::SetCaptionStyle { style_ref } => {
                 if clipmill_captions::preset(style_ref).is_none() {
                     return Err(CommandError::UnknownCaptionStyle(style_ref.clone()));
@@ -276,6 +491,8 @@ impl EditCommand {
                 cues,
                 gain_curve,
                 burn_in,
+                overlays,
+                cutaways,
             } => {
                 let inverse = Self::capture(document);
                 document.video.segments.clone_from(segments);
@@ -284,6 +501,12 @@ impl EditCommand {
                     document.captions.burn_in.clone_from(burn_in);
                 }
                 document.audio.gain_curve.clone_from(gain_curve);
+                if let Some(overlays) = overlays {
+                    document.overlays.clone_from(overlays);
+                }
+                if let Some(cutaways) = cutaways {
+                    document.video.cutaways.clone_from(cutaways);
+                }
                 Ok(inverse)
             }
             Self::SetLayout { segment_id, state } => {
@@ -298,6 +521,23 @@ impl EditCommand {
                 Ok(Self::SetLayout {
                     segment_id: segment_id.clone(),
                     state: previous,
+                })
+            }
+            Self::SetLayoutStyle {
+                segment_id,
+                split,
+                background,
+                zoom,
+                inset,
+            } => {
+                let index = document.segment_index(segment_id)?;
+                let layout = &mut document.video.segments[index].layout;
+                Ok(Self::SetLayoutStyle {
+                    segment_id: segment_id.clone(),
+                    split: std::mem::replace(&mut layout.split, *split),
+                    background: std::mem::replace(&mut layout.background, background.clone()),
+                    zoom: std::mem::replace(&mut layout.zoom, *zoom),
+                    inset: std::mem::replace(&mut layout.inset, *inset),
                 })
             }
             Self::SwapPortraits { segment_id } => {
@@ -323,6 +563,17 @@ impl EditCommand {
                     path.clone(),
                 );
                 Ok(Self::ReplaceCropPath {
+                    segment_id: segment_id.clone(),
+                    path: previous,
+                })
+            }
+            Self::ReplaceSecondaryCropPath { segment_id, path } => {
+                let index = document.segment_index(segment_id)?;
+                let previous = std::mem::replace(
+                    &mut document.video.segments[index].layout.secondary_crop_path,
+                    path.clone(),
+                );
+                Ok(Self::ReplaceSecondaryCropPath {
                     segment_id: segment_id.clone(),
                     path: previous,
                 })
@@ -412,6 +663,94 @@ impl EditCommand {
                 Ok(Self::SetCueRegion {
                     cue_id: cue_id.clone(),
                     region: previous,
+                    presentation: *presentation,
+                })
+            }
+            Self::SetCuePosition {
+                cue_id,
+                position,
+                presentation,
+            } => {
+                let index = document.cue_index(*presentation, cue_id)?;
+                let cue = &mut document.captions.list_mut(*presentation)[index];
+                let previous = std::mem::replace(&mut cue.position, *position);
+                Ok(Self::SetCuePosition {
+                    cue_id: cue_id.clone(),
+                    position: previous,
+                    presentation: *presentation,
+                })
+            }
+            Self::SetWordEmphasis { word_id, emphasis } => {
+                let mut previous = None;
+                for word in document.captions.words_mut() {
+                    if word.word_id.as_deref() == Some(word_id.as_str()) {
+                        previous.get_or_insert(word.emphasis);
+                        word.emphasis = *emphasis;
+                    }
+                }
+                let previous =
+                    previous.ok_or_else(|| DocumentError::UnknownWord(word_id.clone()))?;
+                Ok(Self::SetWordEmphasis {
+                    word_id: word_id.clone(),
+                    emphasis: previous,
+                })
+            }
+            Self::RegroupOnScreen { max_words } => {
+                if !(1..=8).contains(max_words) {
+                    return Err(CommandError::InvalidWordsOnScreen);
+                }
+                let previous_cues = document.captions.burn_in.clone();
+                let previous_options = document.captions.options.clone();
+                let regrouped = crate::regroup::regroup(
+                    document.captions.burned(),
+                    usize::try_from(*max_words).unwrap_or(1),
+                );
+                document.captions.burn_in = regrouped;
+                document.captions.options.words_on_screen = Some(*max_words);
+                Ok(Self::Batch {
+                    commands: vec![
+                        Self::SetCaptionOptions {
+                            options: previous_options,
+                        },
+                        Self::ReplaceCues {
+                            cues: previous_cues,
+                            presentation: Presentation::BurnIn,
+                        },
+                    ],
+                })
+            }
+            Self::DropNonSpeechWords {} => {
+                let previous_reading = document.captions.cues.clone();
+                let previous_burn_in = document.captions.burn_in.clone();
+                for presentation in [Presentation::Reading, Presentation::BurnIn] {
+                    let cues = document.captions.list_mut(presentation);
+                    for cue in cues.iter_mut() {
+                        for line in &mut cue.lines {
+                            line.words
+                                .retain(|word| clipmill_captions::captionable_word(&word.text));
+                        }
+                        cue.lines.retain(|line| !line.words.is_empty());
+                    }
+                    cues.retain(|cue| !cue.lines.is_empty());
+                }
+                Ok(Self::Batch {
+                    commands: vec![
+                        Self::ReplaceCues {
+                            cues: previous_reading,
+                            presentation: Presentation::Reading,
+                        },
+                        Self::ReplaceCues {
+                            cues: previous_burn_in,
+                            presentation: Presentation::BurnIn,
+                        },
+                    ],
+                })
+            }
+            Self::ReplaceCues { cues, presentation } => {
+                let previous =
+                    std::mem::replace(document.captions.list_mut(*presentation), cues.clone());
+                Ok(Self::ReplaceCues {
+                    cues: previous,
                     presentation: *presentation,
                 })
             }
@@ -535,6 +874,11 @@ impl EditCommand {
             cues: document.captions.cues.clone(),
             gain_curve: document.audio.gain_curve.clone(),
             burn_in: Some(document.captions.burn_in.clone()),
+            // Only once there is something to restore, so a log of a clip
+            // with none reads as it always has.
+            overlays: (!document.overlays.is_empty()).then(|| document.overlays.clone()),
+            cutaways: (!document.video.cutaways.is_empty())
+                .then(|| document.video.cutaways.clone()),
         }
     }
 
@@ -567,13 +911,16 @@ impl EditCommand {
             Self::split_crop_path(&original.layout.secondary_crop_path, offset);
         let mut head = original.clone();
         head.out_ticks = at_ticks;
+        let (head_punches, tail_punches) = split_punches(&original.layout.punches, offset);
         head.layout.crop_path = head_crop;
         head.layout.secondary_crop_path = head_secondary;
+        head.layout.punches = head_punches;
         let mut tail = original;
         new_segment_id.clone_into(&mut tail.segment_id);
         tail.in_ticks = at_ticks;
         tail.layout.crop_path = tail_crop;
         tail.layout.secondary_crop_path = tail_secondary;
+        tail.layout.punches = tail_punches;
         document.video.segments.splice(index..=index, [head, tail]);
         Ok(inverse)
     }
@@ -607,6 +954,10 @@ impl EditCommand {
         let inverse = Self::capture(document);
         if head {
             let layout = &mut document.video.segments[index].layout;
+            for punch in &mut layout.punches {
+                punch.start_ticks += delta;
+                punch.end_ticks += delta;
+            }
             for path in [&mut layout.crop_path, &mut layout.secondary_crop_path] {
                 if let Some(first) = path.first().copied() {
                     for key in path.iter_mut() {
@@ -692,41 +1043,6 @@ impl EditCommand {
                 }),
         );
         (head, tail)
-    }
-
-    fn remove_caption_word(
-        document: &mut EditDocument,
-        presentation: Presentation,
-        cue_id: &str,
-        word_index: usize,
-    ) -> Result<Self, CommandError> {
-        let index = document.cue_index(presentation, cue_id)?;
-        let word_id = document.captions.list(presentation)[index]
-            .words()
-            .nth(word_index)
-            .ok_or(CommandError::NoSuchWord(word_index))?
-            .word_id
-            .clone();
-        let inverse = Self::capture(document);
-        for list in [Presentation::Reading, Presentation::BurnIn] {
-            let cues = document.captions.list_mut(list);
-            for cue in cues.iter_mut() {
-                let mut position = 0;
-                for line in &mut cue.lines {
-                    line.words.retain(|word| {
-                        let remove = word_id.as_ref().map_or(
-                            list == presentation && cue.cue_id == cue_id && position == word_index,
-                            |id| word.word_id.as_ref() == Some(id),
-                        );
-                        position += 1;
-                        !remove
-                    });
-                }
-                cue.lines.retain(|line| !line.words.is_empty());
-            }
-            cues.retain(|cue| !cue.lines.is_empty());
-        }
-        Ok(inverse)
     }
 
     /// Move a segment's source window, and everything anchored to it.
@@ -886,6 +1202,8 @@ impl EditCommand {
             in_ticks,
             new_duration,
         );
+        segment.layout.punches =
+            retime_punches(&segment.layout.punches, old_in, in_ticks, new_duration);
         // How many words each cue had, so a cue the cut fell inside can be
         // told from one it merely moved.
         let word_counts = Self::caption_word_counts(document);
@@ -959,6 +1277,23 @@ impl EditCommand {
         }
     }
 
+    /// A section's crops and punches after its source window changed from
+    /// `was`'s to its own: each kept where the new window still plays it and
+    /// counted from its new start.
+    fn retime_layout(segment: &mut VideoSegment, was: &VideoSegment) {
+        let (new_in, duration) = (segment.in_ticks, segment.duration_ticks());
+        segment.layout.crop_path =
+            EditDocument::retime_crop_path(&was.layout.crop_path, was.in_ticks, new_in, duration);
+        segment.layout.secondary_crop_path = EditDocument::retime_crop_path(
+            &was.layout.secondary_crop_path,
+            was.in_ticks,
+            new_in,
+            duration,
+        );
+        segment.layout.punches =
+            retime_punches(&was.layout.punches, was.in_ticks, new_in, duration);
+    }
+
     fn apply_ripple_delete(
         document: &mut EditDocument,
         start_ticks: i64,
@@ -998,33 +1333,11 @@ impl EditCommand {
                     .saturating_add(end_ticks.saturating_sub(program_start));
                 let mut head = segment.clone();
                 head.out_ticks = head_out;
-                head.layout.crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.crop_path,
-                    segment.in_ticks,
-                    segment.in_ticks,
-                    head.duration_ticks(),
-                );
-                head.layout.secondary_crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.secondary_crop_path,
-                    segment.in_ticks,
-                    segment.in_ticks,
-                    head.duration_ticks(),
-                );
+                Self::retime_layout(&mut head, segment);
                 let mut tail = segment.clone();
                 tail.segment_id = EditDocument::derive_id(&existing_ids, &segment.segment_id);
                 tail.in_ticks = tail_in;
-                tail.layout.crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.crop_path,
-                    segment.in_ticks,
-                    tail_in,
-                    tail.duration_ticks(),
-                );
-                tail.layout.secondary_crop_path = EditDocument::retime_crop_path(
-                    &segment.layout.secondary_crop_path,
-                    segment.in_ticks,
-                    tail_in,
-                    tail.duration_ticks(),
-                );
+                Self::retime_layout(&mut tail, segment);
                 kept.push(head);
                 kept.push(tail);
                 continue;
@@ -1039,18 +1352,7 @@ impl EditCommand {
                     .in_ticks
                     .saturating_add(end_ticks.saturating_sub(program_start));
             }
-            trimmed.layout.crop_path = EditDocument::retime_crop_path(
-                &segment.layout.crop_path,
-                segment.in_ticks,
-                trimmed.in_ticks,
-                trimmed.duration_ticks(),
-            );
-            trimmed.layout.secondary_crop_path = EditDocument::retime_crop_path(
-                &segment.layout.secondary_crop_path,
-                segment.in_ticks,
-                trimmed.in_ticks,
-                trimmed.duration_ticks(),
-            );
+            Self::retime_layout(&mut trimmed, segment);
             kept.push(trimmed);
         }
         let program_end = document.program_duration_ticks();
@@ -1136,6 +1438,41 @@ impl EditCommand {
         })
     }
 
+    fn remove_caption_word(
+        document: &mut EditDocument,
+        presentation: Presentation,
+        cue_id: &str,
+        word_index: usize,
+    ) -> Result<Self, CommandError> {
+        let index = document.cue_index(presentation, cue_id)?;
+        let word_id = document.captions.list(presentation)[index]
+            .words()
+            .nth(word_index)
+            .ok_or(CommandError::NoSuchWord(word_index))?
+            .word_id
+            .clone();
+        let inverse = Self::capture(document);
+        for list in [Presentation::Reading, Presentation::BurnIn] {
+            let cues = document.captions.list_mut(list);
+            for cue in cues.iter_mut() {
+                let mut position = 0;
+                for line in &mut cue.lines {
+                    line.words.retain(|word| {
+                        let remove = word_id.as_ref().map_or(
+                            list == presentation && cue.cue_id == cue_id && position == word_index,
+                            |id| word.word_id.as_ref() == Some(id),
+                        );
+                        position += 1;
+                        !remove
+                    });
+                }
+                cue.lines.retain(|line| !line.words.is_empty());
+            }
+            cues.retain(|cue| !cue.lines.is_empty());
+        }
+        Ok(inverse)
+    }
+
     fn apply_merge_cues(
         document: &mut EditDocument,
         presentation: Presentation,
@@ -1195,12 +1532,8 @@ pub enum CommandError {
     NotTwoUp,
     #[error("unknown caption preset {0}")]
     UnknownCaptionStyle(String),
-    #[error("caption timing must stay within the clip")]
-    CaptionTimingOutsideProgram,
-    #[error("caption timing overlaps a neighbouring caption")]
-    CaptionTimingOverlaps,
-    #[error("caption timing must include every spoken word")]
-    CaptionTimingExcludesWords,
+    #[error("captions can show between one and eight words at a time")]
+    InvalidWordsOnScreen,
     #[error("the new section id {0} already exists")]
     SegmentAlreadyExists(String),
     #[error("split must be inside the selected section")]
@@ -1221,8 +1554,22 @@ pub enum CommandError {
     SplitOutsideCue(usize),
     #[error("cue {0} already exists")]
     CueAlreadyExists(String),
+    #[error("overlay {0} already exists")]
+    OverlayAlreadyExists(String),
+    #[error("an overlay cannot go at place {0} in the stack")]
+    OverlayOutOfStack(usize),
     #[error("only adjacent cues can be merged")]
     CuesNotAdjacent,
+    #[error("caption timing must stay inside the clip")]
+    CaptionTimingOutsideProgram,
+    #[error(
+        "caption timing overlaps a neighbouring caption; shorten the display window or merge the captions"
+    )]
+    CaptionTimingOverlaps,
+    #[error(
+        "caption timing must include all its spoken words; extend the display window instead of cutting through speech"
+    )]
+    CaptionTimingExcludesWords,
     #[error("edit command is not valid JSON: {0}")]
     Json(String),
 }
