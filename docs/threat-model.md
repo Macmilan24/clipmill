@@ -116,6 +116,39 @@ release with `gh`, and a person publishes it (R67). The actions policy refuses
 write permission anywhere else. Signing secrets, when configured, are imported
 into a throwaway keychain in the macOS build job only.
 
+## Windows extension (beta)
+
+Windows runs the same daemon, planes and workers (R68). What differs:
+
+- **Planes.** Each plane listens on a loopback port, and its path in the
+  private run directory is an endpoint file naming the port and a secret made
+  when the daemon starts. Any process on the machine can connect to the port,
+  and another can listen on it once the daemon stops, so each connection opens
+  with a mutual HMAC-SHA256 handshake over fresh nonces: the daemon proves it
+  holds the secret first, and the client proves it only then, so a client that
+  reached a stranger stops before showing anything. The secret never crosses
+  a connection; a connection that does not complete the handshake within five
+  seconds is dropped, and it holds only its own task until then.
+- **Payloads.** A lease's shared buffer is a read-only file with a random name
+  in `clipmill-shm` in the user's temporary folder. The worker redeems the same
+  one-use token, reads the file into its own memory, checks its size and
+  digest, and closes it before acknowledging; the daemon then deletes it.
+- **Privacy.** The data folder is in the user's local application data, whose
+  inherited access list admits only that user, SYSTEM and administrators. The
+  daemon does not tighten per-file permissions there: where Unix checks mode
+  bits (a worker's trust key), Windows relies on that folder.
+- **Subprocesses.** Tools start with no console window, in a group of their
+  own, and are stopped by ending their process tree. A worker has no signal
+  to ask it to leave, so it is ended at once; lease recovery covers what it
+  held. The YouTube helper watches whether its parent process still runs,
+  because Windows never reparents a process.
+
+Residual: an administrator, or a process running as the same user, can read
+the endpoint secrets, as on Unix such a process can open the sockets. A
+Windows installer is not signed yet, so SmartScreen warns about it; a person
+trusts the download it came from, and `SHA256SUMS.txt` in each release lets
+them check it. Nothing here has been tested outside CI and a trial build yet.
+
 ## YouTube publishing extension
 
 Channel connection and publishing use fixed Google HTTPS endpoints through a
