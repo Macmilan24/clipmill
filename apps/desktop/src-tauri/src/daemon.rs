@@ -44,6 +44,8 @@ const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long a freshly spawned daemon gets to open its socket.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// How long a daemon asked to stop gets before it is ended. It asks its own
 /// workers to leave first, and gives each a grace period.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1187,10 +1189,13 @@ impl DaemonSupervisor {
         }
         let binary = resolve_daemon_binary().ok_or(DaemonLinkError::MissingBinary)?;
         tracing::info!(binary = %binary.display(), "starting clipmilld");
-        let child = Command::new(binary)
-            .args(self.launch().arguments)
-            .kill_on_drop(true)
-            .spawn()?;
+        let mut command = Command::new(binary);
+        command.args(self.launch().arguments).kill_on_drop(true);
+        // The daemon is a console program. Started from this windowed app, it
+        // would open a console window of its own, and closing that would end it.
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+        let child = command.spawn()?;
         *slot = Some(child);
         Ok(())
     }
