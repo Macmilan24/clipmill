@@ -1,13 +1,30 @@
 version: 2
+# One pull request per ecosystem a month, with minor and patch updates only:
+# every pull request runs the whole CI, macOS jobs included, and one per
+# package kept a queue in front of real work. Major versions are taken on
+# purpose, by someone reading what changed. Between those, the supply chain
+# job fails any build a published advisory reaches.
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      cargo:
+        patterns: ['*']
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      npm:
+        patterns: ['*']
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: pip
     directories:
       - /workers/sdk
@@ -23,8 +40,20 @@ updates:
       - /integrations/youtube-import
       - /eval/harness
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
