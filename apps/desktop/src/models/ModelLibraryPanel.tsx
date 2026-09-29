@@ -1,5 +1,6 @@
 import {
   Boxes,
+  ChevronRight,
   Download,
   Eye,
   Globe,
@@ -21,6 +22,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
 import { useReadiness } from '../analysis/readiness.js';
 import type { ShellApi } from '../daemon/api.js';
@@ -245,6 +247,46 @@ function JobCard({
   const planned = byName.get(job.model);
   const plannedReady = planned?.installState === 'installed';
   const upgrade = upgradeNote(job, library);
+  // In use: the model the job runs, and any other one with a download under
+  // way, paused or failed, or only half here. The rest fold away until asked for.
+  const current = models.filter(
+    (model) =>
+      model.name === job.model || model.download !== undefined || model.installState === 'partial',
+  );
+  const inUse = current.length > 0 ? current : models;
+  const available = models.filter((model) => !inUse.includes(model));
+  const availableHere = available.filter((model) => model.installState === 'installed').length;
+  const [showAvailable, setShowAvailable] = useState(false);
+  const row = (model: LibraryModel) => (
+    <ModelRow
+      key={model.name}
+      model={model}
+      job={job}
+      library={library}
+      pending={state.pending}
+      actions={{
+        onDownload: () => {
+          void state.run(`download:${model.name}`, () => api.downloadModels([model.name]));
+        },
+        onCancel: () => {
+          void state.run(`cancel:${model.name}`, () => api.cancelModelDownload(model.name));
+        },
+        onUse: () => {
+          void state.run(`choose:${model.name}`, () =>
+            api.setModelChoice(job.capability, model.name),
+          );
+        },
+        onVerify: () => {
+          void state.run(`verify:${model.name}`, () => api.verifyModel(model.name));
+        },
+        onRemove: () => {
+          void state.run(`remove:${model.name}`, () =>
+            model.custom ? api.forgetModel(model.name) : api.removeModel(model.name),
+          );
+        },
+      }}
+    />
+  );
   return (
     <section aria-labelledby={`job-${job.capability}`}>
       <Card className="preference-section model-job gap-0 overflow-hidden py-0">
@@ -303,42 +345,24 @@ function JobCard({
           </p>
         )}
         <CardContent className="p-0">
-          <ul className="divide-y divide-[var(--cm-glass-border)]">
-            {models.map((model) => (
-              <ModelRow
-                key={model.name}
-                model={model}
-                job={job}
-                library={library}
-                pending={state.pending}
-                actions={{
-                  onDownload: () => {
-                    void state.run(`download:${model.name}`, () =>
-                      api.downloadModels([model.name]),
-                    );
-                  },
-                  onCancel: () => {
-                    void state.run(`cancel:${model.name}`, () =>
-                      api.cancelModelDownload(model.name),
-                    );
-                  },
-                  onUse: () => {
-                    void state.run(`choose:${model.name}`, () =>
-                      api.setModelChoice(job.capability, model.name),
-                    );
-                  },
-                  onVerify: () => {
-                    void state.run(`verify:${model.name}`, () => api.verifyModel(model.name));
-                  },
-                  onRemove: () => {
-                    void state.run(`remove:${model.name}`, () =>
-                      model.custom ? api.forgetModel(model.name) : api.removeModel(model.name),
-                    );
-                  },
-                }}
-              />
-            ))}
-          </ul>
+          <ul className="divide-y divide-[var(--cm-glass-border)]">{inUse.map(row)}</ul>
+          {available.length > 0 && (
+            <button
+              type="button"
+              className="model-job-more"
+              aria-expanded={showAvailable}
+              onClick={() => setShowAvailable((shown) => !shown)}
+            >
+              <ChevronRight className={cn(showAvailable && 'rotate-90')} aria-hidden="true" />
+              Other models ({available.length})
+              {availableHere > 0 && <span>· {availableHere} on this computer</span>}
+            </button>
+          )}
+          {showAvailable && (
+            <ul className="divide-y divide-[var(--cm-glass-border)] border-t border-[var(--cm-glass-border)]">
+              {available.map(row)}
+            </ul>
+          )}
           {models.length === 0 && (
             <p className="px-5 py-5 text-xs text-[var(--cm-text-secondary)]">
               No model is registered for this job.
