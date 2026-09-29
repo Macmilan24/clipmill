@@ -3,6 +3,7 @@ mod batch;
 mod engine;
 mod models;
 mod storage;
+mod updates;
 mod youtube;
 mod youtube_publish;
 
@@ -617,6 +618,7 @@ impl Service {
             request::Body::InstallEngine(asked) => self.install_engine(request_id, &asked),
             request::Body::CancelEngineInstall(_) => self.cancel_engine_install(request_id),
             request::Body::Shutdown(_) => self.shutdown(request_id),
+            request::Body::CheckForUpdate(_) => self.check_for_update(request_id).await,
             request::Body::SubscribeTaskEvents(_) => error_reply(
                 request_id,
                 ErrorCode::Unavailable,
@@ -4049,6 +4051,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::InstallEngine(_)) => "install_engine",
         Some(request::Body::CancelEngineInstall(_)) => "cancel_engine_install",
         Some(request::Body::Shutdown(_)) => "shutdown",
+        Some(request::Body::CheckForUpdate(_)) => "check_for_update",
         None => "missing_body",
     }
 }

@@ -7,6 +7,7 @@ mod engine;
 mod media;
 mod models;
 mod packaged;
+mod updates;
 mod views;
 mod youtube;
 
@@ -1029,6 +1030,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             youtube::update_youtube_upload,
             youtube::publish_youtube_upload,
             youtube::open_youtube_page,
+            updates::check_for_update,
+            updates::open_release_page,
             daemon_state,
             reconnect_daemon,
             device_profile,

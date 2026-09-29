@@ -32,7 +32,11 @@ nix.workspace = true
 hex.workspace = true
 hmac.workspace = true
 prost.workspace = true
+# The release check. The same client and TLS stack the hub and YouTube crates
+# already build, so nothing new enters the lock file.
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider"] }
 rusqlite.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_json_canonicalizer.workspace = true

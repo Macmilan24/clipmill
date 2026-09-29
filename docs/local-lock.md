@@ -17,6 +17,12 @@ Its bounded helper downloads one video before the ordinary local source inspecto
 and analysis pipeline run. It does not enable cloud reasoning or sign in to a
 channel. See [YouTube import](youtube-import.md) for runtime and storage boundaries.
 
+The update notice is also a network operation. Once a day, while the person
+leaves "Say when a new version is out" on in Settings, the daemon asks GitHub
+which release is newest; the first question waits a day after installing. It
+sends no credential and installs nothing. Turning the notice off in Settings
+keeps the badge from counting it.
+
 Channel sign-in, private upload, resume/reconciliation and Publish are separate
 explicit network operations. Reading local publishing status or editing upload
 metadata does not contact Google. [YouTube publishing](youtube-publishing.md)
@@ -36,16 +42,16 @@ local.
 ## What the badge measures
 
 `engaged=true` means no network-allowed task, YouTube import, publishing
-operation, model download or Hugging Face look-up has started in the current
-daemon session. The registry can contain optional cloud recipes while the badge is
+operation, model download, Hugging Face look-up or update check has started in
+the current daemon session. The registry can contain optional cloud recipes while the badge is
 engaged. Once one of these operations starts, the badge remains disengaged until the daemon
 restarts. The separately displayed registry count shows how many stages can use
 the network.
 
 The IPC field `egress_attempts` is a historical name. It counts network-allowed
 task starts, including a task satisfied from cache, admitted YouTube import
-attempts, explicitly admitted publishing operations, and each model download or
-repository look-up started in Models. A request the daemon refuses before
+attempts, explicitly admitted publishing operations, each model download or
+repository look-up started in Models, and each update check. A request the daemon refuses before
 contacting anything — an unsupported job, a malformed repository name — is not
 counted. Offline importer readiness checks do not increment it. It is not a packet counter,
 a byte meter, or proof that a provider request completed. The UI labels it

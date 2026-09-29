@@ -23,6 +23,7 @@ import {
 } from './daemon/client.js';
 import { renderScreen } from './screens/registry.js';
 import { AppSidebar } from './shell/Sidebar.js';
+import { useUpdateNotice } from './shell/updates.js';
 import { TopBar } from './shell/TopBar.js';
 import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
 import { ShortcutSheet, useShortcutSheet } from './shell/ShortcutSheet.js';
@@ -180,6 +181,7 @@ export function App(): JSX.Element {
 
   const { section, trail } = placementOf(route);
   const shortcuts = useShortcutSheet();
+  const update = useUpdateNotice(state.status === 'connected' ? state.daemonVersion : null);
   // The welcome, once for a new installation, and again when Settings asks.
   const [welcoming, setWelcoming] = useState(() => shouldWelcome());
   useEffect(() => {
@@ -222,6 +224,7 @@ export function App(): JSX.Element {
                 onToggleTheme={toggleTheme}
                 state={state}
                 profile={profile}
+                update={update}
               />
             )}
             <main
