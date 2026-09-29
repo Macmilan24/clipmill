@@ -202,13 +202,28 @@ async fn settle(library: &ModelLibrary, name: &str) -> clipmill_contracts::proto
 }
 
 #[tokio::test]
-async fn a_fresh_install_lists_everything_and_says_what_to_download() {
+async fn a_fresh_install_lists_everything_it_runs_and_says_what_to_download() {
     let fixture = Fixture::new();
     let library = fixture.library(None);
 
     let listed = library.list(&Bindings::portable(), 18 * GIB);
 
-    assert_eq!(listed.models.len(), fixture.registry.len());
+    // Everything this computer runs, and nothing it cannot: a Windows PC is
+    // not offered the Mac's MLX models, nor a Mac the GGUF builds.
+    let runnable = fixture
+        .registry
+        .manifests()
+        .into_iter()
+        .filter(|manifest| super::supported(manifest).is_ok())
+        .map(|manifest| manifest.name.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let offered = listed
+        .models
+        .iter()
+        .map(|model| model.name.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(offered, runnable);
+    assert!(runnable.len() < fixture.registry.len());
     assert!(
         listed
             .models
@@ -709,4 +724,50 @@ async fn a_queued_download_can_be_cancelled_before_it_starts() {
     let running = settle(&library, "test-cancel-a").await;
     assert_eq!(running.download.expect("status kept").state, "cancelled");
     library.stop().await;
+}
+
+/// Each platform is offered the editorial runtime it carries: the MLX build on
+/// Apple silicon, the GGUF build for llama.cpp on Windows and Linux PCs.
+#[test]
+fn each_platform_offers_only_the_editorial_runtime_it_carries() {
+    let fixture = Fixture::new();
+    let mlx = fixture
+        .registry
+        .get("qwen3-5-editorial-mlx")
+        .expect("pinned");
+    let gguf = fixture
+        .registry
+        .get("qwen3-5-editorial-gguf")
+        .expect("pinned");
+    let mac = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+    let pc = cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    ));
+    assert_eq!(super::supported(&mlx).is_ok(), mac);
+    assert_eq!(super::supported(&gguf).is_ok(), pc);
+}
+
+/// With nothing installed, the editorial job still names the model this
+/// computer would run, so readiness asks for that one rather than another
+/// platform's.
+#[tokio::test]
+async fn a_fresh_install_asks_for_the_editorial_model_this_platform_runs() {
+    let expected = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "qwen3-5-editorial-mlx"
+    } else if cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    )) {
+        "qwen3-5-editorial-gguf"
+    } else {
+        return;
+    };
+    let fixture = Fixture::new();
+    let library = fixture.library(None);
+    let effective = library.effective_bindings(&Bindings::portable());
+    let binding = effective
+        .for_stage("editorial-propose")
+        .expect("an editorial binding");
+    assert_eq!(binding.model, expected);
 }

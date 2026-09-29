@@ -240,6 +240,9 @@ pub(crate) fn accelerator_bit(backend: &str) -> Option<u32> {
         "cuda" => Some(1 << 2),
         "vulkan" => Some(1 << 3),
         "metal" => Some(1 << 4),
+        // Not a chip: a machine where the pinned llama.cpp server has proven
+        // it runs the editorial model, on the graphics card or the processor.
+        "llama.cpp" => Some(1 << 5),
         _ => None,
     }
 }

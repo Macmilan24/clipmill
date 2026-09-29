@@ -47,8 +47,8 @@ LICENSE_SOURCES = {
 }
 # Runtimes and backends a manifest may name. A typo here would otherwise
 # become a model nothing can load, discovered at the first transcription.
-RUNTIMES = {"onnxruntime", "whisper.cpp", "mlx", "ggml"}
-BACKENDS = {"cpu", "onnx-cpu", "mlx", "coreml", "cuda"}
+RUNTIMES = {"onnxruntime", "whisper.cpp", "mlx", "ggml", "llama.cpp"}
+BACKENDS = {"cpu", "onnx-cpu", "mlx", "coreml", "cuda", "llama.cpp"}
 CAPABILITIES = {
     "vad",
     "asr",

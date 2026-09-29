@@ -178,6 +178,104 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         opt_in: false,
         accuracy: 1,
     },
+    // The same editorial stages on Windows and Linux, through the pinned
+    // llama.cpp server: Qwen3.5 9B by default, 4B when a person picks it.
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/propose-llama.cpp",
+        capability: "editorial",
+        stage: "editorial-propose",
+        model: "qwen3-5-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/review-llama.cpp",
+        capability: "editorial",
+        stage: "editorial-review",
+        model: "qwen3-5-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/look-llama.cpp",
+        capability: "editorial",
+        stage: "editorial-look",
+        model: "qwen3-5-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/metadata-llama.cpp",
+        capability: "editorial",
+        stage: "youtube-metadata",
+        model: "qwen3-5-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/propose-llama.cpp/qwen3-5-4b-editorial-gguf",
+        capability: "editorial",
+        stage: "editorial-propose",
+        model: "qwen3-5-4b-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/review-llama.cpp/qwen3-5-4b-editorial-gguf",
+        capability: "editorial",
+        stage: "editorial-review",
+        model: "qwen3-5-4b-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/look-llama.cpp/qwen3-5-4b-editorial-gguf",
+        capability: "editorial",
+        stage: "editorial-look",
+        model: "qwen3-5-4b-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/metadata-llama.cpp/qwen3-5-4b-editorial-gguf",
+        capability: "editorial",
+        stage: "youtube-metadata",
+        model: "qwen3-5-4b-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
     // The voice-print model that tells speakers apart. One candidate: a 29 MB
     // CPU graph that keeps well ahead of real time on any machine.
     Implementation {
@@ -225,8 +323,10 @@ static CUSTOM: RwLock<Vec<&'static Implementation>> = RwLock::new(Vec::new());
 ///
 /// Only families whose worker loads whatever the lease binds: whisper.cpp
 /// reads the one GGML file a manifest pins, and the editorial worker loads an
-/// MLX model directory. The other capabilities read fixed graph formats with
-/// fixed label sets, where a different file is a different program.
+/// MLX model directory on Apple silicon and a GGUF model with its vision
+/// projector through llama.cpp elsewhere. The other capabilities read fixed
+/// graph formats with fixed label sets, where a different file is a different
+/// program.
 pub(crate) fn custom_runtime(capability: &str) -> Option<CustomRuntime> {
     match capability {
         "asr" => Some(CustomRuntime {
@@ -236,11 +336,20 @@ pub(crate) fn custom_runtime(capability: &str) -> Option<CustomRuntime> {
             quantization: "ggml",
             worker: "speech-asr",
         }),
+        "editorial" if cfg!(all(target_os = "macos", target_arch = "aarch64")) => {
+            Some(CustomRuntime {
+                family: "mlx-vlm",
+                runtime: "mlx",
+                backend: "mlx",
+                quantization: "mlx",
+                worker: "editorial",
+            })
+        }
         "editorial" => Some(CustomRuntime {
-            family: "mlx-vlm",
-            runtime: "mlx",
-            backend: "mlx",
-            quantization: "mlx",
+            family: "gguf",
+            runtime: "llama.cpp",
+            backend: "llama.cpp",
+            quantization: "gguf",
             worker: "editorial",
         }),
         _ => None,
@@ -288,8 +397,15 @@ pub(crate) fn register_custom(model: &str, capability: &str) -> Result<(), &'sta
             ),
         ],
     };
+    // llama.cpp stages are named as the worker names what they produce.
+    let route = if runtime.backend == "llama.cpp" {
+        "-llama.cpp"
+    } else {
+        ""
+    };
     for (prefix, stage) in stages {
-        let name: &'static str = Box::leak(format!("{prefix}/custom/{model}").into_boxed_str());
+        let name: &'static str =
+            Box::leak(format!("{prefix}{route}/custom/{model}").into_boxed_str());
         custom.push(Box::leak(Box::new(Implementation {
             name,
             capability: if capability == "asr" {
@@ -301,10 +417,10 @@ pub(crate) fn register_custom(model: &str, capability: &str) -> Result<(), &'sta
             model,
             backend: runtime.backend,
             worker: runtime.worker,
-            accelerator_class: if runtime.backend == "mlx" {
-                "metal"
-            } else {
-                ""
+            accelerator_class: match runtime.backend {
+                "mlx" => "metal",
+                "llama.cpp" => "llama.cpp",
+                _ => "",
             },
             portable: false,
             opt_in: true,
@@ -703,7 +819,14 @@ mod tests {
         assert!(transcription[0].accelerator_class.is_empty());
         assert!(lookup(transcription[0].name).is_some());
 
-        register_custom("test-editorial-pinned", "editorial").expect("MLX loads a model directory");
+        register_custom("test-editorial-pinned", "editorial")
+            .expect("the editorial worker loads a person's model");
+        // MLX on Apple silicon; the pinned llama.cpp server everywhere else.
+        let (backend, accelerator) = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            ("mlx", "metal")
+        } else {
+            ("llama.cpp", "llama.cpp")
+        };
         for stage in [
             "editorial-propose",
             "editorial-review",
@@ -713,12 +836,36 @@ mod tests {
             let found = for_stage_and_model(stage, "test-editorial-pinned")
                 .unwrap_or_else(|| panic!("{stage} cannot run the pinned model"));
             assert_eq!(found.worker, "editorial");
-            assert_eq!(found.accelerator_class, "metal");
-            assert_eq!(found.backend, "mlx");
+            assert_eq!(found.accelerator_class, accelerator);
+            assert_eq!(found.backend, backend);
             assert!(found.opt_in);
         }
 
         assert!(register_custom("test-vad-pinned", "vad").is_err());
         assert!(custom_runtime("detect-faces").is_none());
+    }
+
+    /// Windows and Linux run every editorial stage through llama.cpp: the 9B
+    /// unless a person picks the 4B, each on the llama.cpp worker, admitted by
+    /// the accelerator its runtime check proves.
+    #[test]
+    fn every_editorial_stage_runs_on_llama_cpp_too() {
+        for stage in [
+            "editorial-propose",
+            "editorial-review",
+            "editorial-look",
+            "youtube-metadata",
+        ] {
+            let nine = for_stage_and_model(stage, "qwen3-5-editorial-gguf").expect(stage);
+            let four = for_stage_and_model(stage, "qwen3-5-4b-editorial-gguf").expect(stage);
+            for implementation in [nine, four] {
+                assert_eq!(implementation.worker, "editorial");
+                assert_eq!(implementation.backend, "llama.cpp");
+                assert_eq!(implementation.accelerator_class, "llama.cpp");
+                assert!(crate::jobs::accelerator_bit(implementation.accelerator_class).is_some());
+            }
+            assert!(!nine.opt_in && four.opt_in);
+            assert_ne!(nine.name, four.name);
+        }
     }
 }
