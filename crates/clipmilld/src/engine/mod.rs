@@ -432,7 +432,8 @@ impl Engine {
         {
             let mut state = self.lock();
             state.proof_tried = Some(key.to_owned());
-            state.proof = Some("Checking that the editorial model runs on this Mac".to_owned());
+            state.proof =
+                Some("Checking that the editorial model runs on this computer".to_owned());
         }
         let outcome = self
             .run_editorial_check(binding, receipt, fingerprint)

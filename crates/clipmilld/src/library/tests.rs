@@ -202,13 +202,28 @@ async fn settle(library: &ModelLibrary, name: &str) -> clipmill_contracts::proto
 }
 
 #[tokio::test]
-async fn a_fresh_install_lists_everything_and_says_what_to_download() {
+async fn a_fresh_install_lists_everything_it_runs_and_says_what_to_download() {
     let fixture = Fixture::new();
     let library = fixture.library(None);
 
     let listed = library.list(&Bindings::portable(), 18 * GIB);
 
-    assert_eq!(listed.models.len(), fixture.registry.len());
+    // Everything this computer runs, and nothing it cannot: a Windows PC is
+    // not offered the Mac's MLX models, nor a Mac the GGUF builds.
+    let runnable = fixture
+        .registry
+        .manifests()
+        .into_iter()
+        .filter(|manifest| super::supported(manifest).is_ok())
+        .map(|manifest| manifest.name.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let offered = listed
+        .models
+        .iter()
+        .map(|model| model.name.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(offered, runnable);
+    assert!(runnable.len() < fixture.registry.len());
     assert!(
         listed
             .models
@@ -251,17 +266,25 @@ async fn a_fresh_install_lists_everything_and_says_what_to_download() {
     assert_eq!(transcription.model, "whisper-base");
     assert!(listed.recommended_missing_bytes > 0);
     assert_eq!(listed.memory_total_bytes, 24 * GIB);
-    // Every model is listed on every device; fit is a warning, never a filter.
+    // Fit is a warning, never a filter: the editorial model this computer runs
+    // is listed whatever memory it has.
+    let editorial = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "qwen3-5-editorial-mlx"
+    } else if cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    )) {
+        "qwen3-5-editorial-gguf"
+    } else {
+        return;
+    };
     let editorial = listed
         .models
         .iter()
-        .find(|model| model.name == "qwen3-5-editorial-mlx")
-        .expect("listed everywhere");
+        .find(|model| model.name == editorial)
+        .expect("listed here");
     assert_eq!(editorial.memory_fit, "fits");
-    assert_eq!(
-        editorial.supported,
-        cfg!(all(target_os = "macos", target_arch = "aarch64"))
-    );
+    assert!(editorial.supported);
 }
 
 /// A computer that can run a more accurate recognizer than the one planned
@@ -450,53 +473,55 @@ async fn a_choice_is_kept_until_its_model_is_removed() {
 /// installed choice replaces it for every editorial stage and for titles.
 #[tokio::test]
 async fn an_editorial_choice_covers_every_stage_the_model_serves() {
+    // A person's model in this platform's format: an MLX folder on a Mac, a
+    // GGUF model for llama.cpp on a Windows or Linux PC.
+    let (runtime, file, bundled) = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        ("mlx", "model.safetensors", "qwen3-5-editorial-mlx")
+    } else if cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    )) {
+        ("llama.cpp", "model.gguf", "qwen3-5-editorial-gguf")
+    } else {
+        return;
+    };
     let fixture = Fixture::new();
     let library = fixture.library(None);
-    let body = b"not really mlx weights".to_vec();
+    let body = b"not really weights".to_vec();
     let mut manifest = tiny_manifest("test-editorial-choice", &body);
     manifest.capability = "editorial".to_owned();
-    manifest.runtime = "mlx".to_owned();
-    manifest.backend = "mlx".to_owned();
-    manifest.files[0].path = "model.safetensors".to_owned();
+    manifest.runtime = runtime.to_owned();
+    manifest.backend = runtime.to_owned();
+    manifest.files[0].path = file.to_owned();
     register(&fixture, manifest);
     fs::create_dir_all(fixture.paths.weights.join("test-editorial-choice")).unwrap();
     fs::write(
         fixture
             .paths
             .weights
-            .join("test-editorial-choice/model.safetensors"),
+            .join("test-editorial-choice")
+            .join(file),
         &body,
     )
     .unwrap();
 
-    let supported = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+    // The bundled model is not installed and this one is: it stands in.
     let fallback = library.effective_bindings(&Bindings::portable());
     let proposing = fallback.for_stage("editorial-propose").expect("bound");
-    if supported {
-        // The bundled model is not installed and this one is: it stands in.
-        assert_eq!(proposing.model, "test-editorial-choice");
-        assert_eq!(proposing.selected_by, "installed_fallback");
-    } else {
-        assert_eq!(proposing.model, "qwen3-5-editorial-mlx");
-    }
+    assert_eq!(proposing.model, "test-editorial-choice");
+    assert_eq!(proposing.selected_by, "installed_fallback");
 
-    fixture.place("qwen3-5-editorial-mlx");
+    fixture.place(bundled);
     let before = library.effective_bindings(&Bindings::portable());
     assert_eq!(
         before.for_stage("editorial-propose").expect("bound").model,
-        "qwen3-5-editorial-mlx",
+        bundled,
         "the installed default comes back"
     );
 
-    let choice = library.set_choice("editorial", "test-editorial-choice");
-    if !supported {
-        assert!(
-            matches!(choice, Err(Refusal::Invalid(_))),
-            "MLX needs Apple silicon"
-        );
-        return;
-    }
-    choice.expect("an installed MLX model is choosable");
+    library
+        .set_choice("editorial", "test-editorial-choice")
+        .expect("an installed model this platform runs is choosable");
     let after = library.effective_bindings(&Bindings::portable());
     for stage in [
         "editorial-propose",
@@ -509,7 +534,7 @@ async fn an_editorial_choice_covers_every_stage_the_model_serves() {
         assert_eq!(
             binding.implementation,
             format!("{}/custom/test-editorial-choice", {
-                implementations::for_stage_and_model(stage, "qwen3-5-editorial-mlx")
+                implementations::for_stage_and_model(stage, bundled)
                     .expect("bundled")
                     .name
             })
@@ -709,4 +734,50 @@ async fn a_queued_download_can_be_cancelled_before_it_starts() {
     let running = settle(&library, "test-cancel-a").await;
     assert_eq!(running.download.expect("status kept").state, "cancelled");
     library.stop().await;
+}
+
+/// Each platform is offered the editorial runtime it carries: the MLX build on
+/// Apple silicon, the GGUF build for llama.cpp on Windows and Linux PCs.
+#[test]
+fn each_platform_offers_only_the_editorial_runtime_it_carries() {
+    let fixture = Fixture::new();
+    let mlx = fixture
+        .registry
+        .get("qwen3-5-editorial-mlx")
+        .expect("pinned");
+    let gguf = fixture
+        .registry
+        .get("qwen3-5-editorial-gguf")
+        .expect("pinned");
+    let mac = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+    let pc = cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    ));
+    assert_eq!(super::supported(&mlx).is_ok(), mac);
+    assert_eq!(super::supported(&gguf).is_ok(), pc);
+}
+
+/// With nothing installed, the editorial job still names the model this
+/// computer would run, so readiness asks for that one rather than another
+/// platform's.
+#[tokio::test]
+async fn a_fresh_install_asks_for_the_editorial_model_this_platform_runs() {
+    let expected = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "qwen3-5-editorial-mlx"
+    } else if cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    )) {
+        "qwen3-5-editorial-gguf"
+    } else {
+        return;
+    };
+    let fixture = Fixture::new();
+    let library = fixture.library(None);
+    let effective = library.effective_bindings(&Bindings::portable());
+    let binding = effective
+        .for_stage("editorial-propose")
+        .expect("an editorial binding");
+    assert_eq!(binding.model, expected);
 }

@@ -78,12 +78,32 @@ url = "https://github.com/astral-sh/uv/releases/download/0.11.19/uv-x86_64-pc-wi
 sha256 = "1665fc8e37b5d70a134820d6d7891747471a2ac8bc940ee7af0b69fd03b28d61"
 member = "uv.exe"
 
+[llama_cpp]
+# llama.cpp's server, which runs the editorial model on Windows and Linux
+# (workers/editorial/src/clipmill_worker_editorial/server_runtime.py). The
+# Vulkan build drives NVIDIA, AMD and Intel graphics and carries CPU backends
+# chosen for the processor when it starts, so one build serves every PC.
+# tools/release/stage.py packs the server and its libraries into the editorial
+# component as a wheel (clipmill_llama_server).
+build = "b11255"
+license = "MIT"
+provider = "https://github.com/ggml-org/llama.cpp (release archives)"
+
+[llama_cpp.windows-amd64]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11255/llama-b11255-bin-win-vulkan-x64.zip"
+sha256 = "3dae91806111ac4a464fb5a6db45188ba870a7e89bfa0a203750115fcef20a31"
+
+[llama_cpp.linux-amd64]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11255/llama-b11255-bin-ubuntu-vulkan-x64.tar.gz"
+sha256 = "751edacb2ec7d2cf4cfe2ecb5e931b71e1b4df6e8a199147fe303f803fa546a5"
+
 [vc_redist]
 # Microsoft's Visual C++ runtime installer, which the Windows installer runs
-# when a PC has no x64 runtime of 14.44 or newer
+# when a PC has no x64 runtime of 14.51 or newer
 # (apps/desktop/src-tauri/windows/installer-hooks.nsh). ONNX Runtime, in four
-# components, links msvcp140.dll and msvcp140_1.dll, which no wheel bundles,
-# and it and the pinned Python were built with toolset 14.44. The daemon
+# components, links msvcp140.dll and msvcp140_1.dll, which no wheel bundles;
+# it and the pinned Python were built with toolset 14.44, and llama.cpp's
+# Vulkan backend with 14.51, the newest the installer must meet. The daemon
 # links the runtime in and needs none. The URL is Microsoft's versioned
 # download, whose path carries the file's SHA-256.
 version = "14.51.36247"

@@ -8,6 +8,35 @@ import time
 import traceback
 from contextlib import suppress
 
+MLX_RUNTIME = "mlx-vlm@0.7.1/clipmill-json-v2"
+
+
+def open_runtime(model, cancellation):
+    """The runtime a verified model runs on: llama.cpp for GGUF files, which is
+    how Windows and Linux run editorial models, and MLX for the rest."""
+    from .server_runtime import ServerModel, is_gguf
+
+    if is_gguf(model):
+        return ServerModel(model, cancellation)
+    return LocalModel(model.root, cancellation)
+
+
+def runtime_name(model) -> str:
+    """The runtime as receipts name it."""
+    from .server_runtime import is_gguf, server_build
+
+    if is_gguf(model):
+        return f"llama.cpp@{server_build()}/clipmill-json-v1"
+    return MLX_RUNTIME
+
+
+def implementation_suffix(model) -> str:
+    """What a producer's implementation adds for the llama.cpp runtime, as the
+    daemon's implementation table names it. MLX keeps the original names."""
+    from .server_runtime import is_gguf
+
+    return "-llama.cpp" if model is not None and is_gguf(model) else ""
+
 
 class LocalModel:
     def __init__(self, root, cancellation):

@@ -4962,7 +4962,9 @@ impl Service {
                 capacity.map(|capacity| capacity.ram_bytes),
             );
             if binding.capability == "editorial" {
-                check_editorial_capacity(&mut readiness, capacity, resident);
+                let accelerator = crate::implementations::lookup(&binding.implementation)
+                    .map_or("metal", |implementation| implementation.accelerator_class);
+                check_editorial_capacity(&mut readiness, capacity, resident, accelerator);
             }
             stages.push(readiness);
         }
@@ -5205,6 +5207,7 @@ fn check_editorial_capacity(
     readiness: &mut StageReadinessV1,
     capacity: Option<crate::jobs::ResourceCapacity>,
     required: Option<u64>,
+    accelerator: &str,
 ) {
     if !readiness.ready {
         return;
@@ -5212,10 +5215,10 @@ fn check_editorial_capacity(
     let (Some(capacity), Some(required)) = (capacity, required) else {
         return;
     };
-    if capacity.accelerator_mask & crate::jobs::accelerator_bit("metal").unwrap_or(0) == 0 {
+    if capacity.accelerator_mask & crate::jobs::accelerator_bit(accelerator).unwrap_or(0) == 0 {
         readiness.ready = false;
         readiness.remedy = format!(
-            "{} has not passed its local runtime check. Restart `just workers` to run the check, then refresh readiness.",
+            "{} has not passed its runtime check on this computer yet. ClipMill runs it once the editorial component and the model are both installed, and Models shows how it went; a development checkout runs it with `just workers`.",
             readiness.model
         );
     } else if capacity.ram_bytes < required {
@@ -5840,18 +5843,18 @@ mod tests {
         };
         let mut capacity = crate::jobs::ResourceCapacity::measured(4, 16 << 30, 10 << 30);
         let mut stage = ready();
-        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30), "metal");
         assert!(!stage.ready);
         assert!(stage.remedy.contains("runtime check"));
         capacity.accelerator_mask = crate::jobs::accelerator_bit("metal").unwrap();
         capacity.ram_bytes = 4 << 30;
         let mut stage = ready();
-        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30), "metal");
         assert!(!stage.ready);
         assert!(stage.remedy.contains("8192 MiB"));
         capacity.ram_bytes = 10 << 30;
         let mut stage = ready();
-        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30));
+        super::check_editorial_capacity(&mut stage, Some(capacity), Some(8 << 30), "metal");
         assert!(stage.ready);
     }
 

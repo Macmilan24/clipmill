@@ -103,9 +103,10 @@ impl Service {
         response_reply(request_id, response::Body::Shutdown(ShutdownResponse {}))
     }
 
-    /// On a Mac, prove the planned editorial model runs here once its
-    /// component and weights are both installed, then measure the device again
-    /// so the scheduler admits the Metal workers.
+    /// Prove the planned editorial model runs here once its component and
+    /// weights are both installed, then measure the device again so the
+    /// scheduler admits its worker: MLX on a Mac's GPU, or the pinned llama.cpp
+    /// server on Windows and Linux.
     ///
     /// A development checkout does this with `tools/editorial-runtime-check.py`
     /// from `just workers`. Here it is tried once per machine, model and
@@ -113,9 +114,6 @@ impl Service {
     /// changes. A receipt that already matches is only re-applied, when the
     /// scheduler has not yet seen it.
     pub(crate) async fn prove_editorial_runtime(&self) {
-        if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-            return;
-        }
         let (Some(engine), Some(storage), Some(profiler)) =
             (&self.engine, &self.storage, &self.device_profiler)
         else {
@@ -147,7 +145,7 @@ impl Service {
         let key = format!("{fingerprint}/{digest}/{install}");
         let admitted = self.scheduler.as_ref().is_some_and(|scheduler| {
             scheduler.machine_capacity().accelerator_mask
-                & crate::jobs::accelerator_bit("metal").unwrap_or(0)
+                & crate::jobs::accelerator_bit(implementation.accelerator_class).unwrap_or(0)
                 != 0
         });
         if receipt_matches(&receipt, &fingerprint, &digest) {
@@ -211,7 +209,7 @@ fn receipt_matches(receipt: &std::path::Path, fingerprint: &str, digest: &str) -
         return false;
     };
     proof["schema_version"] == "clipmill.editorial.runtime.v1"
-        && proof["runtime"] == "mlx-vlm@0.7.1/clipmill-json-v2"
+        && crate::selection::editorial_receipt_accelerator(&proof).is_some()
         && proof["hardware_fingerprint"] == fingerprint
         && proof["model_digest"] == digest
         && proof["validated"] == true

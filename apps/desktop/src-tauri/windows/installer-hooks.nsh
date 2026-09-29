@@ -3,18 +3,19 @@
 ;
 ; ClipMill's components need Microsoft's Visual C++ runtime. ONNX Runtime (in
 ; vad, align, speakers and faces) links msvcp140.dll and msvcp140_1.dll, which
-; no wheel bundles, and it and the pinned Python were built with toolset 14.44,
-; the oldest runtime they can rely on. When Windows records no x64 runtime of
-; 14.44 or newer, the installer runs Microsoft's own redistributable, pinned in
-; bom.toml and staged beside this file by tools/release/stage.py. That asks
-; Windows for permission itself; if it is refused, ClipMill is still installed
-; and the installer says what is missing. The daemon needs no runtime: it links
-; its own in.
+; no wheel bundles. It and the pinned Python were built with toolset 14.44, and
+; llama.cpp's Vulkan backend, which runs the editorial model, with 14.51; a
+; library needs a runtime at least as new as its toolset. When Windows records
+; no x64 runtime of 14.51 or newer, the installer runs Microsoft's own
+; redistributable, pinned in bom.toml and staged beside this file by
+; tools/release/stage.py. That asks Windows for permission itself; if it is
+; refused, ClipMill is still installed and the installer says what is missing.
+; The daemon needs no runtime: it links its own in.
 
 ; Tauri includes this file by its absolute path, so this is its folder.
 !define CLIPMILL_HOOKS_DIR "${__FILEDIR__}"
 !define CLIPMILL_VC_KEY "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
-!define CLIPMILL_VC_MINOR 44
+!define CLIPMILL_VC_MINOR 51
 !define CLIPMILL_VC_SETUP "$TEMP\clipmill_vc_redist.x64.exe"
 
 ; Sets $R0 to 1 when this registry view records a new enough runtime.

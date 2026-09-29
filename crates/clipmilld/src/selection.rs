@@ -375,7 +375,8 @@ pub(crate) fn measure(
         }
     }
     // The chosen editorial model still has to execute successfully on this
-    // device before its Metal worker is admitted. This is runtime proof,
+    // device before its worker is admitted: on Metal for MLX, or in the pinned
+    // llama.cpp server on Windows and Linux. This is runtime proof,
     // deliberately separate from speech-model ranking and editorial quality.
     // Any pinned editorial model counts: the receipt names the digest it ran,
     // and a digest the registry pins is a model this daemon could plan.
@@ -383,21 +384,41 @@ pub(crate) fn measure(
     if let Ok(bytes) = fs::read(receipt)
         && let Ok(proof) = serde_json::from_slice::<Value>(&bytes)
         && proof["schema_version"] == "clipmill.editorial.runtime.v1"
-        && proof["runtime"] == "mlx-vlm@0.7.1/clipmill-json-v2"
+        && let Some(accelerator) = editorial_receipt_accelerator(&proof)
         && proof["hardware_fingerprint"] == hardware_fingerprint
         && proof["validated"] == true
         && proof["elapsed_millis"].as_u64().is_some_and(|n| n > 0)
-        && proof["peak_resident_bytes"].as_u64().is_some_and(|n| n > 0)
         && models.manifests().iter().any(|model| {
             model.capability == "editorial"
                 && proof["model_digest"] == format!("sha256:{}", model.digest())
         })
     {
-        proven_accelerators.insert("metal");
+        proven_accelerators.insert(accelerator);
     }
     Selection {
         value: json!({ "bindings": bindings, "candidates": candidates }),
         proven_accelerators,
+    }
+}
+
+/// The runtime check's name for MLX, as `runtime_check.py` writes it.
+const MLX_EDITORIAL_RUNTIME: &str = "mlx-vlm@0.7.1/clipmill-json-v2";
+
+/// The accelerator an editorial runtime receipt proves, read from the runtime
+/// it names: the Mac's GPU for MLX, which also reports the memory it peaked
+/// at, or the pinned llama.cpp server, which holds the model in its own
+/// process. None for a receipt no runtime check of this daemon's writes.
+pub(crate) fn editorial_receipt_accelerator(proof: &Value) -> Option<&'static str> {
+    let runtime = proof["runtime"].as_str()?;
+    if runtime == MLX_EDITORIAL_RUNTIME {
+        proof["peak_resident_bytes"]
+            .as_u64()
+            .filter(|peak| *peak > 0)
+            .map(|_| "metal")
+    } else if runtime.starts_with("llama.cpp@") && runtime.ends_with("/clipmill-json-v1") {
+        Some("llama.cpp")
+    } else {
+        None
     }
 }
 
@@ -473,6 +494,37 @@ mod tests {
 
     const FINGERPRINT: &str =
         "sha256:aa11bb22cc33dd44ee55ff66aa11bb22cc33dd44ee55ff66aa11bb22cc33dd44";
+
+    /// Windows and Linux prove the GGUF model in the pinned llama.cpp server,
+    /// which holds the model in its own process, so that receipt admits the
+    /// llama.cpp worker without MLX's memory figure, and admits nothing else.
+    #[test]
+    fn a_llama_cpp_receipt_admits_the_llama_cpp_worker_alone() {
+        let temp = TempDir::new().unwrap();
+        let models = registry();
+        let path = temp.path().join("speech-benchmark.json");
+        let receipt = path.with_file_name("editorial-runtime.json");
+        let proof = json!({"schema_version":"clipmill.editorial.runtime.v1",
+            "runtime":"llama.cpp@b11255/clipmill-json-v1",
+            "hardware_fingerprint":FINGERPRINT,"model_digest":digest_of(&models,"qwen3-5-editorial-gguf"),
+            "validated":true,"elapsed_millis":1,"peak_resident_bytes":0,
+            "prompt_tokens_per_second":48.0,"output_tokens_per_second":9.5});
+        std::fs::write(&receipt, serde_json::to_vec(&proof).unwrap()).unwrap();
+        let proven = measure(&path, FINGERPRINT, &models).proven_accelerators;
+        assert!(proven.contains("llama.cpp"));
+        assert!(!proven.contains("metal"));
+        for runtime in ["llama.cpp@b11255/another-grammar", "whisper.cpp@1", ""] {
+            let mut changed = proof.clone();
+            changed["runtime"] = json!(runtime);
+            std::fs::write(&receipt, serde_json::to_vec(&changed).unwrap()).unwrap();
+            assert!(
+                measure(&path, FINGERPRINT, &models)
+                    .proven_accelerators
+                    .is_empty(),
+                "{runtime}"
+            );
+        }
+    }
 
     fn registry() -> ModelRegistry {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");

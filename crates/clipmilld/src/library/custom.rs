@@ -98,17 +98,34 @@ pub(crate) async fn inspect(
     };
     let selection = select(&repository, runtime);
     match &selection {
-        Ok(Selection::Weights(choices)) => {
+        Ok(Selection::Weights {
+            choices,
+            companions,
+        }) => {
             answer.weight_choices = choices
                 .iter()
                 .map(|file| {
-                    let (name, title) = whisper_names(registry, &file.path);
+                    let (name, title) = if runtime.runtime == "llama.cpp" {
+                        gguf_names(registry, &file.path)
+                    } else {
+                        whisper_names(registry, &file.path)
+                    };
                     HubModelFileV1 {
                         path: file.path.clone(),
                         bytes: file.bytes,
                         suggested_name: name,
                         suggested_title: title,
                     }
+                })
+                .collect();
+            // What is pinned beside whichever file is chosen: a GGUF
+            // model's vision projector.
+            answer.files = companions
+                .iter()
+                .map(|file| HubModelFileV1 {
+                    path: file.path.clone(),
+                    bytes: file.bytes,
+                    ..HubModelFileV1::default()
                 })
                 .collect();
             if let Some(first) = answer.weight_choices.first() {
@@ -181,8 +198,11 @@ pub(crate) async fn pin(hub: &Hub, request: &AddRequest<'_>) -> Result<Pinned, S
     let spdx = permissive_spdx(repository.license.as_deref())
         .ok_or_else(|| "Its licence is not one ClipMill permits.".to_owned())?;
     let chosen: Vec<RepositoryFile> = match select(&repository, runtime)? {
-        Selection::Weights(choices) => vec![
-            choices
+        Selection::Weights {
+            choices,
+            companions,
+        } => {
+            let weights = choices
                 .into_iter()
                 .find(|file| file.path == request.weights_file)
                 .ok_or_else(|| {
@@ -190,16 +210,18 @@ pub(crate) async fn pin(hub: &Hub, request: &AddRequest<'_>) -> Result<Pinned, S
                         "{} is not a weight file in this repository.",
                         request.weights_file
                     )
-                })?,
-        ],
+                })?;
+            std::iter::once(weights).chain(companions).collect()
+        }
         Selection::Directory(files) => files,
     };
     let (files, fetched) = pin_files(hub, request, chosen).await?;
     let weights_bytes = files
         .iter()
         .fold(0_u64, |total, file| total.saturating_add(file.bytes));
-    let quantization = match request.capability {
-        "asr" => whisper_quantization(request.weights_file),
+    let quantization = match runtime.runtime {
+        "whisper.cpp" => whisper_quantization(request.weights_file),
+        "llama.cpp" => gguf_quantization(request.weights_file),
         _ => fetched
             .iter()
             .find(|(path, _)| path == "config.json")
@@ -277,8 +299,13 @@ async fn pin_files(
 }
 
 enum Selection {
-    /// whisper.cpp: the GGML files a person chooses between; one is pinned.
-    Weights(Vec<RepositoryFile>),
+    /// Files a person chooses one of, pinned with the companions it needs:
+    /// whisper.cpp's GGML weights need none; a GGUF model needs the vision
+    /// projector (mmproj) llama.cpp looks at frames through.
+    Weights {
+        choices: Vec<RepositoryFile>,
+        companions: Vec<RepositoryFile>,
+    },
     /// MLX: every file the model directory needs, pinned together.
     Directory(Vec<RepositoryFile>),
 }
@@ -302,7 +329,13 @@ fn select(repository: &Repository, runtime: CustomRuntime) -> Result<Selection, 
                     .to_owned(),
             );
         }
-        return Ok(Selection::Weights(choices));
+        return Ok(Selection::Weights {
+            choices,
+            companions: Vec::new(),
+        });
+    }
+    if runtime.runtime == "llama.cpp" {
+        return gguf_selection(repository);
     }
     let files = repository
         .files
@@ -337,6 +370,55 @@ fn select(repository: &Repository, runtime: CustomRuntime) -> Result<Selection, 
         );
     }
     Ok(Selection::Directory(files))
+}
+
+/// A GGUF repository: the model files to choose between, the 4-bit `Q4_K_M`
+/// build first where there is one, then the smaller, and the vision
+/// projector pinned beside the choice, F16 where there is one. A split
+/// model is left out: its parts are one model, and one part alone loads
+/// nothing.
+fn gguf_selection(repository: &Repository) -> Result<Selection, String> {
+    let (projectors, mut choices): (Vec<RepositoryFile>, Vec<RepositoryFile>) = repository
+        .files
+        .iter()
+        .filter(|file| {
+            !file.path.contains('/')
+                && has_extension(&file.path, "gguf")
+                && file.sha256.is_some()
+                && pinnable(&file.path)
+                && !file.path.contains("-of-")
+        })
+        .cloned()
+        .partition(|file| file.path.to_ascii_lowercase().starts_with("mmproj"));
+    if choices.is_empty() {
+        return Err(
+            "This repository has no GGUF model file (a .gguf kept in large-file storage)."
+                .to_owned(),
+        );
+    }
+    let projector = ["mmproj-f16.gguf", "mmproj-bf16.gguf", "mmproj-f32.gguf"]
+        .iter()
+        .find_map(|preferred| {
+            projectors
+                .iter()
+                .find(|file| file.path.eq_ignore_ascii_case(preferred))
+        })
+        .or_else(|| projectors.first())
+        .cloned()
+        .ok_or_else(|| {
+            "This repository has no vision projector (an mmproj .gguf file), which the editorial model needs to look at frames."
+                .to_owned()
+        })?;
+    choices.sort_by_key(|file| {
+        (
+            !file.path.to_ascii_lowercase().contains("q4_k_m"),
+            file.bytes,
+        )
+    });
+    Ok(Selection::Weights {
+        choices,
+        companions: vec![projector],
+    })
 }
 
 /// Files a model directory never loads: documentation, images, git metadata.
@@ -386,6 +468,30 @@ fn whisper_names(registry: &ModelRegistry, path: &str) -> (String, String) {
         format!("Whisper {stem}")
     };
     (unique(registry, &base), title.chars().take(64).collect())
+}
+
+/// `Qwen3.5-9B-Q4_K_M.gguf` → `qwen3.5-9b-q4-k-m`, "Qwen3.5-9B-Q4_K_M".
+fn gguf_names(registry: &ModelRegistry, path: &str) -> (String, String) {
+    let stem = path.rsplit_once('.').map_or(path, |(stem, _)| stem);
+    (
+        unique(registry, &sanitize(stem)),
+        stem.chars().take(64).collect(),
+    )
+}
+
+/// The quantization a GGUF file's name states (`…-Q4_K_M.gguf` is
+/// `q4_k_m`), or plain `gguf` where it states none.
+fn gguf_quantization(file: &str) -> String {
+    let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+    let tail = stem
+        .rsplit(['-', '.'])
+        .next()
+        .unwrap_or(stem)
+        .to_ascii_lowercase();
+    let stated = tail.starts_with('q')
+        || tail.starts_with("iq")
+        || matches!(tail.as_str(), "f16" | "bf16" | "f32");
+    if stated { tail } else { "gguf".to_owned() }
 }
 
 /// `mlx-community/Qwen3.5-4B-4bit` → `qwen3.5-4b-4bit`, "Qwen3.5-4B-4bit".
@@ -476,10 +582,29 @@ mod tests {
     const GIB: u64 = 1024 * 1024 * 1024;
 
     use super::{
-        Selection, directory_names, incidental, mlx_quantization, permissive_spdx,
-        runtime_overhead, sanitize, select, whisper_names, whisper_quantization,
+        Selection, directory_names, gguf_names, gguf_quantization, incidental, mlx_quantization,
+        permissive_spdx, runtime_overhead, sanitize, select, whisper_names, whisper_quantization,
     };
-    use crate::{implementations::custom_runtime, models::ModelRegistry};
+    use crate::{
+        implementations::{CustomRuntime, custom_runtime},
+        models::ModelRegistry,
+    };
+
+    // Each editorial runtime by name, whatever this machine runs itself.
+    const MLX: CustomRuntime = CustomRuntime {
+        family: "mlx-vlm",
+        runtime: "mlx",
+        backend: "mlx",
+        quantization: "mlx",
+        worker: "editorial",
+    };
+    const LLAMA: CustomRuntime = CustomRuntime {
+        family: "gguf",
+        runtime: "llama.cpp",
+        backend: "llama.cpp",
+        quantization: "gguf",
+        worker: "editorial",
+    };
 
     fn registry() -> ModelRegistry {
         ModelRegistry::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry"))
@@ -529,11 +654,14 @@ mod tests {
             file("models/nested.bin", 10, true),
             file("unhashed.bin", 10, false),
         ]);
-        let Ok(Selection::Weights(choices)) =
-            select(&listing, custom_runtime("asr").expect("whisper.cpp"))
+        let Ok(Selection::Weights {
+            choices,
+            companions,
+        }) = select(&listing, custom_runtime("asr").expect("whisper.cpp"))
         else {
             panic!("expected weight choices");
         };
+        assert!(companions.is_empty());
         let paths = choices
             .iter()
             .map(|file| file.path.as_str())
@@ -557,9 +685,7 @@ mod tests {
             file("vocab.json", 6_722_759, false),
             file("figure.png", 10, false),
         ]);
-        let Ok(Selection::Directory(files)) =
-            select(&listing, custom_runtime("editorial").expect("mlx"))
-        else {
+        let Ok(Selection::Directory(files)) = select(&listing, MLX) else {
             panic!("expected a directory");
         };
         let paths = files
@@ -583,7 +709,7 @@ mod tests {
 
     #[test]
     fn a_directory_without_weights_or_with_unsafe_names_is_refused() {
-        let runtime = custom_runtime("editorial").expect("mlx");
+        let runtime = MLX;
         let no_config = repository(vec![file("model.safetensors", 10, true)]);
         assert!(select(&no_config, runtime).is_err());
         let no_weights = repository(vec![file("config.json", 10, false)]);
@@ -635,5 +761,70 @@ mod tests {
             256 * 1024 * 1024
         );
         assert_eq!(runtime_overhead("asr", 3 * GIB), 2 * GIB);
+    }
+
+    #[test]
+    fn a_gguf_repository_offers_its_models_and_pins_the_projector_beside_them() {
+        let listing = repository(vec![
+            file("README.md", 3196, false),
+            file("Qwen3.5-9B-Q8_0.gguf", 9_530_000_000, true),
+            file("Qwen3.5-9B-Q4_K_M.gguf", 5_680_522_464, true),
+            file("Qwen3.5-9B-Q2_K.gguf", 3_600_000_000, true),
+            file("Qwen3.5-9B-BF16-00001-of-00002.gguf", 9_000_000_000, true),
+            file("mmproj-BF16.gguf", 918_000_000, true),
+            file("mmproj-F16.gguf", 918_166_080, true),
+            file("unhashed.gguf", 10, false),
+        ]);
+        let Ok(Selection::Weights {
+            choices,
+            companions,
+        }) = select(&listing, LLAMA)
+        else {
+            panic!("expected model choices");
+        };
+        let paths = choices
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>();
+        // The usual 4-bit build first, then the smaller; no split parts.
+        assert_eq!(
+            paths,
+            [
+                "Qwen3.5-9B-Q4_K_M.gguf",
+                "Qwen3.5-9B-Q2_K.gguf",
+                "Qwen3.5-9B-Q8_0.gguf"
+            ]
+        );
+        let projector = companions
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(projector, ["mmproj-F16.gguf"]);
+    }
+
+    #[test]
+    fn a_gguf_repository_without_a_vision_projector_is_refused() {
+        let listing = repository(vec![file("model-Q4_K_M.gguf", 10, true)]);
+        let Err(problem) = select(&listing, LLAMA) else {
+            panic!("a model that cannot see frames was accepted");
+        };
+        assert!(problem.contains("vision projector"), "{problem}");
+        let Err(problem) = select(&repository(vec![file("mmproj-F16.gguf", 10, true)]), LLAMA)
+        else {
+            panic!("a projector alone was accepted");
+        };
+        assert!(problem.contains("no GGUF model file"), "{problem}");
+    }
+
+    #[test]
+    fn gguf_names_and_quantization_come_from_the_file() {
+        let registry = registry();
+        let (name, title) = gguf_names(&registry, "Qwen3.5-9B-Q4_K_M.gguf");
+        assert_eq!(name, "qwen3.5-9b-q4-k-m");
+        assert_eq!(title, "Qwen3.5-9B-Q4_K_M");
+        assert_eq!(gguf_quantization("Qwen3.5-9B-Q4_K_M.gguf"), "q4_k_m");
+        assert_eq!(gguf_quantization("model.IQ3_XS.gguf"), "iq3_xs");
+        assert_eq!(gguf_quantization("Model-BF16.gguf"), "bf16");
+        assert_eq!(gguf_quantization("model.gguf"), "gguf");
     }
 }

@@ -48,6 +48,7 @@ def main() -> int:
             _check_ffmpeg_pin(platform, ffmpeg, ffmpeg[platform])
         _check_uv(bom)
         _check_vc_redist(bom)
+        _check_llama_cpp(bom)
         sqlite = bom["sqlite"]
         if sqlite.get("min_version") != "3.51.3" or sqlite.get("min_version_number") != 3051003:
             raise ValueError("SQLite corruption-fix floor changed without a BOM decision")
@@ -165,6 +166,31 @@ def _check_uv(bom: dict) -> None:
     python = str(bom["python"].get("version"))
     if re.fullmatch(r"3\.[0-9]+\.[0-9]+", python) is None:
         raise ValueError("the engine's Python version is invalid")
+
+
+def _check_llama_cpp(bom: dict) -> None:
+    """The server Windows and Linux run the editorial model on: one upstream
+    release build, each platform's archive pinned by digest."""
+    llama = bom["llama_cpp"]
+    build = str(llama.get("build"))
+    if re.fullmatch(r"b[0-9]+", build) is None:
+        raise ValueError("the llama.cpp build is invalid")
+    if llama.get("license") != "MIT":
+        raise ValueError("llama.cpp is pinned under a licence the notices do not carry")
+    platforms = {key for key, value in llama.items() if isinstance(value, dict)}
+    if platforms != {"windows-amd64", "linux-amd64"}:
+        raise ValueError("llama.cpp must be pinned for Windows amd64 and Linux amd64")
+    for platform in sorted(platforms):
+        entry = llama[platform]
+        url = urlparse(str(entry.get("url")))
+        if (
+            url.scheme != "https"
+            or url.hostname != "github.com"
+            or not url.path.startswith(f"/ggml-org/llama.cpp/releases/download/{build}/")
+        ):
+            raise ValueError(f"{platform} llama.cpp is not a pinned upstream release")
+        if SHA256_PATTERN.fullmatch(str(entry.get("sha256"))) is None:
+            raise ValueError(f"{platform} llama.cpp digest is invalid")
 
 
 def _check_vc_redist(bom: dict) -> None:

@@ -134,12 +134,12 @@ def execute_metadata(context) -> tuple[str, ...]:
         transcript = transcript_from_ir(source.read(MAX_IR_BYTES + 1))
     context.cancellation.raise_if_cancelled()
     model = require_model(context.lease, "editorial")
-    from .runtime import LocalModel
+    from .runtime import implementation_suffix, open_runtime
 
     runtime = None
     try:
         context.report_progress("metadata", 0, 1)
-        runtime = LocalModel(model.root, context.cancellation)
+        runtime = open_runtime(model, context.cancellation)
         traces = []
         answer, failure = call(
             runtime,
@@ -162,7 +162,7 @@ def execute_metadata(context) -> tuple[str, ...]:
             "schema_version": "clipmill.publishing.metadata.v1",
             "ir_artifact_id": edit_input.artifact_id,
             "producer": {
-                "implementation": IMPLEMENTATION,
+                "implementation": IMPLEMENTATION + implementation_suffix(model),
                 "model": {"name": model.name, "digest": model.digest},
                 "prompt_digest": payload.prompt_digest,
                 "max_output_tokens": MAX_OUTPUT_TOKENS,
