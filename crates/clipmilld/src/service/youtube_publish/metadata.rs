@@ -217,6 +217,7 @@ impl Service {
             self.models
                 .get(implementation.model)
                 .map(|model| model.memory.resident_bytes()),
+            implementation.accelerator_class,
         );
         (!readiness.ready).then_some(readiness.remedy)
     }

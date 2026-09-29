@@ -1,0 +1,39 @@
+# Qwen 3.5-9B for Windows and Linux: the model the Mac runs through MLX, in
+# llama.cpp's GGUF format at 4 bits, with the vision projector it looks at
+# frames through. No comparative quality claim.
+name = "qwen3-5-editorial-gguf"
+capability = "editorial"
+family = "qwen3.5"
+runtime = "llama.cpp"
+backend = "llama.cpp"
+quantization = "q4_k_m"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Qwen3.5 9B"
+summary = "A 9-billion-parameter vision-language model, quantized to 4 bits, that reads the transcript and looks at frames. Runs on the graphics card, or on the processor where there is none."
+recommended = true
+
+[source]
+provider = "https://huggingface.co"
+repo = "unsloth/Qwen3.5-9B-GGUF"
+revision = "3885219b6810b007914f3a7950a8d1b469d598a5"
+[license]
+source = "repo-metadata"
+spdx = "Apache-2.0"
+class = "permissive"
+[memory]
+weights_bytes = 6598688544
+# A 16,384-token context and one slot, as the worker starts llama-server.
+runtime_overhead_bytes = 2147483648
+
+[[files]]
+path = "Qwen3.5-9B-Q4_K_M.gguf"
+sha256 = "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8"
+bytes = 5680522464
+
+[[files]]
+path = "mmproj-F16.gguf"
+sha256 = "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f"
+bytes = 918166080

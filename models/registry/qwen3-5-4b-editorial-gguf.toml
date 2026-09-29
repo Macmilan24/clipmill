@@ -1,0 +1,39 @@
+# Qwen 3.5-4B for Windows and Linux, in llama.cpp's GGUF format at 4 bits with
+# its vision projector: half the size of the 9B, for computers the 9B would
+# crowd or slow. Chosen by the person, never by measurement.
+name = "qwen3-5-4b-editorial-gguf"
+capability = "editorial"
+family = "qwen3.5"
+runtime = "llama.cpp"
+backend = "llama.cpp"
+quantization = "q4_k_m"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "Qwen3.5 4B"
+summary = "A smaller 4-billion-parameter vision-language model at 4 bits: faster and lighter than the 9B, for computers with less memory or no graphics card, at some cost to its judgment."
+recommended = false
+
+[source]
+provider = "https://huggingface.co"
+repo = "unsloth/Qwen3.5-4B-GGUF"
+revision = "e87f176479d0855a907a41277aca2f8ee7a09523"
+[license]
+source = "repo-metadata"
+spdx = "Apache-2.0"
+class = "permissive"
+[memory]
+weights_bytes = 3413361504
+# A 16,384-token context and one slot, as the worker starts llama-server.
+runtime_overhead_bytes = 1610612736
+
+[[files]]
+path = "Qwen3.5-4B-Q4_K_M.gguf"
+sha256 = "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4"
+bytes = 2740937888
+
+[[files]]
+path = "mmproj-F16.gguf"
+sha256 = "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864"
+bytes = 672423616
