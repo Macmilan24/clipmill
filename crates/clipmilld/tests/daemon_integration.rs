@@ -599,8 +599,8 @@ async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
 
     let temp = workspace_tempdir();
     let mut config = config(&temp);
-    config.models_dir =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+    let registry = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/registry");
+    config.models_dir.clone_from(&registry);
     config.weights_dir = temp.path().join("weights");
     let weights = config.weights_dir.clone();
     let (socket, shutdown, task) = running(config).await;
@@ -624,7 +624,11 @@ async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
     let Some(response::Body::ModelLibrary(library)) = listed.body else {
         panic!("expected the library, got {:?}", listed.body);
     };
-    assert_eq!(library.models.len(), 9, "every bundled model is listed");
+    assert_eq!(
+        library.models.len(),
+        runnable_here(&registry),
+        "every bundled model this computer runs is listed"
+    );
     assert!(
         library
             .models
@@ -637,14 +641,25 @@ async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
         library.models.iter().all(|model| !model.worker.is_empty()),
         "every model names the worker that runs it"
     );
-    let aligner = library
-        .models
-        .iter()
-        .find(|model| model.name == "qwen3-aligner-mlx")
-        .expect("the MLX aligner is listed");
-    assert_eq!(aligner.worker, "speech-mlx");
-    assert_eq!(aligner.worker_title, "MLX speech worker");
-    assert!(!aligner.worker_connected, "no worker is connected here");
+    // A model this platform alone runs names its worker too: the MLX aligner
+    // on Apple silicon, the GGUF editorial model on a Windows or Linux PC.
+    let own = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Some(("qwen3-aligner-mlx", "speech-mlx", "MLX speech worker"))
+    } else if cfg!(target_arch = "x86_64") {
+        Some(("qwen3-5-editorial-gguf", "editorial", "editorial worker"))
+    } else {
+        None
+    };
+    if let Some((name, worker, title)) = own {
+        let model = library
+            .models
+            .iter()
+            .find(|model| model.name == name)
+            .expect("listed here");
+        assert_eq!(model.worker, worker);
+        assert_eq!(model.worker_title, title);
+        assert!(!model.worker_connected, "no worker is connected here");
+    }
 
     let refused = ask(
         "choose-missing",
@@ -1125,4 +1140,34 @@ async fn cancelling_a_running_lease_is_durable_and_rejects_late_success() {
             .expect("daemon exits")
             .success()
     );
+}
+
+/// How many bundled models this computer runs: MLX builds on Apple silicon,
+/// llama.cpp's GGUF builds on Windows and Linux PCs, and the rest everywhere.
+fn runnable_here(registry: &std::path::Path) -> usize {
+    let mac = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+    let pc = cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    ));
+    std::fs::read_dir(registry)
+        .expect("the registry")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "toml")
+        })
+        .filter(|path| {
+            let manifest = std::fs::read_to_string(path).expect("a manifest");
+            match manifest
+                .lines()
+                .find_map(|line| line.strip_prefix("runtime = "))
+            {
+                Some("\"mlx\"") => mac,
+                Some("\"llama.cpp\"") => pc,
+                _ => true,
+            }
+        })
+        .count()
 }
