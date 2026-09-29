@@ -3,6 +3,7 @@ import {
   Database,
   HardDrive,
   Info,
+  ListChecks,
   Lock,
   Palette,
   Plug,
@@ -23,6 +24,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { AboutSection } from './AboutSection.js';
 import { AppearancePreferences } from './AppearancePreferences.js';
 import { EditingPreferences } from './EditingPreferences.js';
+import { ReviewPreferences } from './ReviewPreferences.js';
 
 import './preferences.css';
 
@@ -128,6 +130,7 @@ export function Settings({
           {integrations && (
             <SectionLink href="#settings-integrations" icon={<Plug />} label="Connections" />
           )}
+          <SectionLink href="#settings-review" icon={<ListChecks />} label="Review" />
           <SectionLink href="#settings-editing" icon={<SlidersHorizontal />} label="Editing" />
           <SectionLink href="#settings-privacy" icon={<ShieldCheck />} label="Privacy & cloud" />
           <SectionLink href="#settings-storage" icon={<HardDrive />} label="Storage" />
@@ -162,12 +165,24 @@ export function Settings({
               {integrations}
             </section>
           )}
+          <section id="settings-review" className="scroll-mt-6" aria-label="Review">
+            <Card className="preference-section gap-0 overflow-hidden py-0">
+              <SectionHeading
+                icon={<ListChecks />}
+                title="Review"
+                detail="What a decision does next, and how fast clips play."
+              />
+              <CardContent className="px-5 py-5">
+                <ReviewPreferences />
+              </CardContent>
+            </Card>
+          </section>
           <section id="settings-editing" className="scroll-mt-6" aria-label="Editing and export">
             <Card className="preference-section gap-0 overflow-hidden py-0">
               <SectionHeading
                 icon={<SlidersHorizontal />}
                 title="Editing & export"
-                detail="How time reads, what exports start from, your caption styles and keys."
+                detail="How time reads, what new projects and exports start from, your caption styles and keys."
               />
               <CardContent className="px-5 py-5">
                 <EditingPreferences />

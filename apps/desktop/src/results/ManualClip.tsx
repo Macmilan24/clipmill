@@ -23,6 +23,7 @@ import type { PreviewPlan } from '../daemon/client.js';
 import type { ExactCaptions } from '../editor/exactCaptions.js';
 import { Monitor, type MonitorView } from '../inspector/Monitor.js';
 import { PlaybackController } from '../inspector/playback.js';
+import { reviewSpeed } from '../inspector/preferences.js';
 import type { Cut } from '../inspector/review.js';
 import { BoundaryStrip, initialView } from '../inspector/Timeline.js';
 import type { Peaks } from './loader.js';
@@ -125,7 +126,7 @@ function Chooser({
   const [requestProblem, setRequestProblem] = useState<string | null>(null);
   const creating = useRef(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- one clock per opening
-  const controller = useMemo(() => new PlaybackController(cut.startTicks), []);
+  const controller = useMemo(() => new PlaybackController(cut.startTicks, reviewSpeed()), []);
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => {
     controller.setCut(shown);

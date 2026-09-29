@@ -24,6 +24,7 @@ import { cropAt, sourceOf } from '../editor/player.js';
 import { framingNote, programAt, scaledSegment } from './dryRun.js';
 import { TICKS_PER_SECOND } from '../results/model.js';
 import { type PlaybackController, SPEEDS } from './playback.js';
+import { setReviewSpeed } from './preferences.js';
 import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
 import { type Cut, SAFE_AREA, clockTenths, cropRect } from './review.js';
 import { TipButton } from './TipButton.js';
@@ -546,7 +547,10 @@ function Transport({
           className="review-speed mono"
           onClick={() => {
             const at = SPEEDS.indexOf(speed as (typeof SPEEDS)[number]);
-            controller.setSpeed(SPEEDS[(at + 1) % SPEEDS.length]!);
+            const next = SPEEDS[(at + 1) % SPEEDS.length]!;
+            controller.setSpeed(next);
+            // The next clip starts at it too.
+            setReviewSpeed(next);
           }}
         >
           {`${speed}×`}
