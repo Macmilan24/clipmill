@@ -43,7 +43,7 @@ Windows support is new: try it, and report what happens.
 2. ClipMill installs for your user account and adds itself to the Start menu.
    It draws its window with Microsoft Edge WebView2, which Windows 11 includes;
    the installer fetches it where it is missing.
-3. ClipMill's components need Microsoft's Visual C++ runtime, version 14.44 or
+3. ClipMill's components need Microsoft's Visual C++ runtime, version 14.51 or
    newer, which many PCs already have. Where it is missing or older, the
    installer runs Microsoft's own installer for it, and Windows asks for
    permission first. If you decline, ClipMill still installs; install the
