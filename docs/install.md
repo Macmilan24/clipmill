@@ -30,8 +30,8 @@ Either package works on distributions with at least the glibc of Ubuntu
 - **Debian and Ubuntu** — `sudo apt install ./ClipMill_<version>_amd64.deb`,
   which also installs the WebView, OpenGL and GLib libraries it needs.
 
-On Linux, clips are chosen by ClipMill's built-in picker. The local editorial
-model (Qwen) currently runs only on Apple silicon.
+On Linux the editorial model runs in llama.cpp, on the graphics card through
+Vulkan or on the processor; see [the editorial model](#the-editorial-model).
 
 ## Windows (beta)
 
@@ -50,7 +50,8 @@ Windows support is new: try it, and report what happens.
    runtime [from Microsoft](https://aka.ms/vc14/vc_redist.x64.exe) before you
    set ClipMill up.
 
-As on Linux, clips are chosen by ClipMill's built-in picker.
+As on Linux, the editorial model runs in llama.cpp; see
+[the editorial model](#the-editorial-model).
 
 ## First run: Set up ClipMill
 
@@ -59,10 +60,10 @@ without model weights. New Project opens with **Set up ClipMill**, which lists
 what it installs and roughly how much it downloads, and one button does all
 of it:
 
-|                                                   | macOS (Apple silicon)                        | Linux        |
-| ------------------------------------------------- | -------------------------------------------- | ------------ |
-| Components: Python 3.12 and the workers' packages | about 530 MB                                 | about 300 MB |
-| Recommended models                                | about 6.5 GB (with the Qwen editorial model) | about 560 MB |
+|                                                   | macOS (Apple silicon)                        | Linux and Windows                            |
+| ------------------------------------------------- | -------------------------------------------- | -------------------------------------------- |
+| Components: Python 3.12 and the workers' packages | about 530 MB                                 | about 300 MB                                 |
+| Recommended models                                | about 6.5 GB (with the Qwen editorial model) | about 7.2 GB (with the Qwen editorial model) |
 
 Components come from GitHub (the pinned Python build) and PyPI, every package
 pinned by its SHA-256; models come from Hugging Face at a pinned commit and are
@@ -70,10 +71,22 @@ checked against their pinned digests. Nothing about your projects is sent.
 Each download counts as a network operation in the Local Lock badge. After
 setup, analysis and export work without a connection.
 
-On a Mac, once the editorial component and the Qwen model are both installed,
-ClipMill checks once that the model runs on your Mac (about a minute) before
-it gives it work. **Models** shows every component and model, whether each is
+Once the editorial component and the Qwen model are both installed, ClipMill
+checks once that the model runs on your computer (about a minute) before it
+gives it work. **Models** shows every component and model, whether each is
 running, and lets you update, retry or remove them.
+
+### The editorial model
+
+The editorial model is Qwen3.5 9B, a vision-language model that reads the
+transcript and looks at frames to propose and review moments. A Mac runs it
+through MLX on its GPU. Windows and Linux run the same model, in GGUF format,
+in llama.cpp's server, which ClipMill carries: on the graphics card through
+Vulkan (NVIDIA, AMD or Intel) when there is a suitable one, and on the
+processor otherwise. On the processor alone an analysis can take many
+minutes; **Models** also offers Qwen3.5 4B, half the size and faster. Without
+an editorial model, ClipMill's built-in picker proposes clips from the shape
+of the talk.
 
 ## Importing from YouTube
 

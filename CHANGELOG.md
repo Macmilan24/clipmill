@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Editorial AI on Windows and Linux.** The local editorial model now runs
+  there too, in llama.cpp's server, which the editorial component carries: on
+  the graphics card through Vulkan, or on the processor. Models offers Qwen3.5
+  9B and a lighter 4B as GGUF builds, and your own GGUF model with its vision
+  projector. Models lists only what this computer can run (decision R70).
+
 ## 0.2.0 — Windows (beta)
 
 - **Windows (beta).** ClipMill runs on 64-bit Windows 10 and 11: the same

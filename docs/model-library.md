@@ -20,13 +20,15 @@ its licence. Two conditions are warnings rather than filters:
   of physical memory on macOS; three quarters of available memory elsewhere) is
   marked as tight; one needing more than the computer has is marked as unlikely
   to run. Either can still be downloaded.
-- **Platform.** MLX models run only on Apple silicon Macs. Elsewhere they are
-  listed with that reason; they cannot be chosen, and Models does not offer the
-  download.
+- **Platform.** MLX models run only on Apple silicon Macs, and GGUF editorial
+  models only on Windows and Linux PCs, in the llama.cpp server the editorial
+  component carries. Models lists only what this computer can run, and a model
+  of another platform only while some of it is on disk, so it can be removed.
 
 The recommended set — marked in each manifest's `[catalog]` table — is what a
 fresh installation is offered in one download: the portable models every job
-needs, and the editorial model on Apple silicon.
+needs, and the editorial model: the MLX build on Apple silicon, the GGUF build
+on Windows and Linux.
 
 ## Downloading
 
@@ -75,9 +77,13 @@ Two jobs accept a person's own model, because their workers load whatever model
 the lease binds:
 
 - **Transcription:** a whisper.cpp GGML `.bin` file.
-- **Editorial AI:** an MLX vision-language model folder, on Apple silicon.
-  ClipMill's editorial prompts are tuned for Qwen3.5 9B; another model may not
-  follow the format, and an analysis says so if it fails.
+- **Editorial AI:** on Apple silicon, an MLX vision-language model folder; on
+  Windows and Linux, a GGUF model file chosen from a repository (the 4-bit
+  `Q4_K_M` build is offered first), pinned with the repository's vision
+  projector (`mmproj`, F16 where there is one). A GGUF repository without a
+  projector is refused, since the editorial model looks at frames. ClipMill's
+  editorial prompts are tuned for Qwen3.5 9B; another model may not follow the
+  format, and an analysis says so if it fails.
 
 Looking a repository up is a network operation, counted like a download. The
 branch, tag or commit resolves to one commit and only that commit is pinned.
@@ -115,10 +121,13 @@ more than the device's processing budget, so readiness says when either would
 leave a stage waiting. `CLIPMILL_WORKER_MEMORY_BYTES` overrides the measured
 ceiling.
 
-The editorial runtime check (`tools/editorial-runtime-check.py`, run by `just
-workers`) proves the chosen editorial model generates on this machine before its
-Metal worker is admitted. After choosing a different editorial model, restart
-the workers so the check runs against it.
+The editorial runtime check proves the chosen editorial model generates on this
+machine before its worker is admitted: on the Mac's GPU for MLX, or in the
+llama.cpp server on Windows and Linux, where it also records the speed llama.cpp
+measured. A packaged app runs it once its component and model are installed; a
+development checkout runs it with `just workers`
+(`tools/editorial-runtime-check.py`). After choosing a different editorial
+model, restart the workers so the check runs against it.
 
 ## Where models live
 
