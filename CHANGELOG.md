@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — Editorial AI on Windows and Linux
 
 - **Editorial AI on Windows and Linux.** The local editorial model now runs
   there too, in llama.cpp's server, which the editorial component carries: on
