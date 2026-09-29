@@ -287,7 +287,8 @@ def rust_packages(triple: str) -> list[Package]:
         cwd=ROOT,
         check=True,
         capture_output=True,
-        text=True,
+        # Windows would decode it with its code page; Cargo writes UTF-8.
+        encoding="utf-8",
     )
     metadata = json.loads(result.stdout)
     crates = {crate["id"]: crate for crate in metadata["packages"]}
@@ -374,7 +375,7 @@ def javascript_packages() -> list[Package]:
         cwd=ROOT,
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
     found: dict[tuple[str, str], Package] = {}
     workspace: set[str] = set()
