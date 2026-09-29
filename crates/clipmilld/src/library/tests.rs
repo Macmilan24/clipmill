@@ -266,17 +266,25 @@ async fn a_fresh_install_lists_everything_it_runs_and_says_what_to_download() {
     assert_eq!(transcription.model, "whisper-base");
     assert!(listed.recommended_missing_bytes > 0);
     assert_eq!(listed.memory_total_bytes, 24 * GIB);
-    // Every model is listed on every device; fit is a warning, never a filter.
+    // Fit is a warning, never a filter: the editorial model this computer runs
+    // is listed whatever memory it has.
+    let editorial = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "qwen3-5-editorial-mlx"
+    } else if cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    )) {
+        "qwen3-5-editorial-gguf"
+    } else {
+        return;
+    };
     let editorial = listed
         .models
         .iter()
-        .find(|model| model.name == "qwen3-5-editorial-mlx")
-        .expect("listed everywhere");
+        .find(|model| model.name == editorial)
+        .expect("listed here");
     assert_eq!(editorial.memory_fit, "fits");
-    assert_eq!(
-        editorial.supported,
-        cfg!(all(target_os = "macos", target_arch = "aarch64"))
-    );
+    assert!(editorial.supported);
 }
 
 /// A computer that can run a more accurate recognizer than the one planned
