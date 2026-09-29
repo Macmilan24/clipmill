@@ -43,6 +43,12 @@ Windows support is new: try it, and report what happens.
 2. ClipMill installs for your user account and adds itself to the Start menu.
    It draws its window with Microsoft Edge WebView2, which Windows 11 includes;
    the installer fetches it where it is missing.
+3. ClipMill's components need Microsoft's Visual C++ runtime, version 14.44 or
+   newer, which many PCs already have. Where it is missing or older, the
+   installer runs Microsoft's own installer for it, and Windows asks for
+   permission first. If you decline, ClipMill still installs; install the
+   runtime [from Microsoft](https://aka.ms/vc14/vc_redist.x64.exe) before you
+   set ClipMill up.
 
 As on Linux, clips are chosen by ClipMill's built-in picker.
 
@@ -116,6 +122,8 @@ Report problems at
 ClipMill is free software under the GNU Affero General Public License,
 version 3. The licences and notices of everything the app carries (FFmpeg,
 uv, the libraries and packages it is built from, and its fonts) are in the
-app's `resources/licenses` folder, starting with `README.txt`. On a Mac,
+app's `resources/licenses` folder, starting with `README.txt`. The Windows
+installer also carries Microsoft's Visual C++ Redistributable, under
+Microsoft's licence terms, and runs it only where a PC lacks the runtime. On a Mac,
 Control-click ClipMill in Applications, choose **Show Package Contents**, and
 open `Contents/Resources/resources/licenses`.
