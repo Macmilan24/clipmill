@@ -7,8 +7,10 @@ import { type JSX, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 
 import { isTauri } from '../daemon/client.js';
+import { setUpdatesEnabled, useUpdatesEnabled } from '../shell/updates.js';
 
 export const SOURCE_URL = 'https://github.com/Macmilan24/clipmill';
 
@@ -50,6 +52,7 @@ export function debugDetails(appVersion: string | null, engineVersion: string | 
 
 export function AboutSection({ engineVersion, appVersion }: AboutProps): JSX.Element {
   const version = useAppVersion(appVersion);
+  const notifyUpdates = useUpdatesEnabled();
   const [copied, setCopied] = useState<'copied' | 'failed' | null>(null);
   const details = debugDetails(version, engineVersion);
 
@@ -78,6 +81,19 @@ export function AboutSection({ engineVersion, appVersion }: AboutProps): JSX.Ele
           study, change and share it under those terms. Bundled tools and model weights keep their
           own licences.
         </p>
+        <div className="flex items-center gap-3 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-3.5 py-3">
+          <div className="min-w-0 flex-1">
+            <label htmlFor="notify-updates" className="text-xs font-semibold">
+              Say when a new version is out
+            </label>
+            <p className="mt-1 text-[11px] leading-relaxed text-[var(--cm-text-secondary)]">
+              Once a day, ClipMill asks GitHub which release is newest and shows a link to it. The
+              question counts as a network operation in Local Lock. Nothing is downloaded or
+              installed.
+            </p>
+          </div>
+          <Switch id="notify-updates" checked={notifyUpdates} onCheckedChange={setUpdatesEnabled} />
+        </div>
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--cm-glass-border)] bg-[var(--cm-recessed)] px-3.5 py-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-xs font-semibold">Reporting a problem</h3>

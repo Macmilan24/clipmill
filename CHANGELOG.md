@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Says when a new version is out.** Once a day, ClipMill asks GitHub which
+  release is newest and, when it is newer, says so at the top of the window
+  with a link to its page. Nothing is downloaded or installed. The first
+  question waits a day after installing. It counts as a network operation in
+  Local Lock, and Settings → About turns it off.
 - **How fast Editorial AI runs here.** On Windows and Linux, Models shows the
   speed the editorial model measured on this computer, and warns when an
   analysis would be slow, suggesting a smaller model. It never refuses one.

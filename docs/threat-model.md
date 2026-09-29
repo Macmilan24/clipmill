@@ -179,6 +179,28 @@ Residual: a process running as the same user can read the server's
 environment, and so its key, as it can read the endpoint secrets (R68). A
 graphics driver's Vulkan implementation runs inside the server process.
 
+## Update notice
+
+Once a day, while the person leaves "Say when a new version is out" on, the app
+asks the daemon which ClipMill release is newest (R71). Nothing is downloaded or
+installed.
+
+- **Egress.** One HTTPS GET, from the daemon, to GitHub's API for the
+  repository's latest release: the platform's certificate checks, no proxy,
+  HTTPS only, at most three redirects and twenty seconds. It carries the user
+  agent `ClipMill` with no version, and no cookie or credential; GitHub sees
+  the address it came from. The Local Lock counts it, whatever the answer.
+- **Input.** At most 1 MiB is read. Only the tag, and whether the release is a
+  draft or a pre-release, are taken from it, and only a plain `x.y.z` tag
+  counts; the page shows that version and nothing else from the answer.
+- **Browser.** The renderer hands the shell a version, never an address. The
+  shell checks it is three numbers and opens that version's release page in
+  the repository.
+
+Residual: whoever controls the repository's releases, or GitHub, decides which
+version the notice names; the page it opens is still the project's own, and
+the notice cannot install anything.
+
 ## YouTube publishing extension
 
 Channel connection and publishing use fixed Google HTTPS endpoints through a
