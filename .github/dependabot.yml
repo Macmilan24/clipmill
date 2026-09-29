@@ -3,7 +3,8 @@ version: 2
 # every pull request runs the whole CI, macOS jobs included, and one per
 # package kept a queue in front of real work. Major versions are taken on
 # purpose, by someone reading what changed. Between those, the supply chain
-# job fails any build a published advisory reaches.
+# job fails any build a published advisory reaches. Security updates are a
+# repository setting, apart from this file.
 updates:
   - package-ecosystem: cargo
     directory: /
