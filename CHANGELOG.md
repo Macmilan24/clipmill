@@ -2,11 +2,19 @@
 
 ## 0.3.0 — Editorial AI on Windows and Linux
 
-- **Editorial AI on Windows and Linux.** The local editorial model now runs
-  there too, in llama.cpp's server, which the editorial component carries: on
-  the graphics card through Vulkan, or on the processor. Models offers Qwen3.5
-  9B and a lighter 4B as GGUF builds, and your own GGUF model with its vision
-  projector. Models lists only what this computer can run (decision R70).
+- **Editorial AI on Windows and Linux.** A local Qwen3.5 model can now propose
+  and review clips on both platforms. The editorial component carries a pinned
+  llama.cpp server and runs through Vulkan when a suitable graphics card is
+  available, or on the processor. Apple silicon continues to use MLX.
+- **More model choices.** Models offers Qwen3.5 9B and the lighter 4B GGUF
+  builds, plus the option to use your own GGUF model with its vision projector.
+  It shows only models the current computer can run; Windows and Linux do not
+  show MLX models.
+- **Setup and first run.** Editorial AI is available as a component in Setup
+  and Models. After downloading a model, ClipMill checks that it runs before
+  using it for analysis. Processor-only machines may take several minutes to
+  validate a model and analyse a video. The built-in picker remains available
+  without an editorial model.
 
 ## 0.2.0 — Windows (beta)
 
