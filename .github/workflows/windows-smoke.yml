@@ -1,0 +1,87 @@
+name: windows-smoke
+
+# Installs the Windows build a release run made, on a Windows machine, and
+# checks that it runs with nothing set up by hand (tools/drills/packaged_smoke.py):
+# the daemon starts and answers through its handshake, installs every
+# component from the network, runs its workers, probes a recording made with
+# the app's own FFmpeg, and stops when asked.
+#
+# It runs after every release run that built its installers, on that run's
+# installer and with the drill from that run's commit; on a pull request that
+# changes the test, against the newest release run that succeeded; and by hand,
+# on the release run named. It reads; it writes nothing. Only people who can
+# push start a release run (a tag or by hand), so the commit it checks out
+# after one is theirs.
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  pull_request:
+    paths:
+      - .github/workflows/windows-smoke.yml
+      - tools/drills/packaged_smoke.py
+      - eval/harness/src/clipmill_eval/client.py
+  workflow_dispatch:
+    inputs:
+      release-run:
+        description: The release run whose Windows installer to test (default, the newest that succeeded)
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: windows-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: install and run (windows)
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-2025
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Empty except after a release run: the default commit.
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Fetch the release run's Windows installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_RUN: ${{ inputs.release-run || github.event.workflow_run.id }}
+        run: |
+          run="${RELEASE_RUN:-$(gh run list --workflow release.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')}"
+          echo "testing the Windows installer from release run $run"
+          gh run download "$run" --name installers-windows-x86_64 --dir installer
+          ls -la installer
+      # NSIS: /S installs silently, and /D, which must come last, names the
+      # folder.
+      - name: Install it silently
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installer -Filter '*-setup.exe' | Select-Object -First 1
+          $target = Join-Path $env:RUNNER_TEMP 'ClipMill'
+          $installer = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$target" -Wait -PassThru
+          if ($installer.ExitCode -ne 0) { throw "the installer exited with $($installer.ExitCode)" }
+          Get-ChildItem $target | Format-Table Name, Length
+          "APP_DIR=$target" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Run it
+        shell: pwsh
+        run: >
+          uv run --project eval/harness python tools/drills/packaged_smoke.py
+          --app-dir "$env:APP_DIR" --work-dir "$env:RUNNER_TEMP/smoke"
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: windows-smoke-logs
+          path: |
+            ${{ runner.temp }}/smoke/daemon.log
+            ${{ runner.temp }}/smoke/data/logs/
+          if-no-files-found: ignore
+          retention-days: 14
