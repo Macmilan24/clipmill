@@ -105,6 +105,12 @@ open -n target/release/bundle/macos/ClipMill.app --env CLIPMILL_DATA_DIR=/tmp/cm
   `tools/security/check-bom.py` refuses a build that is not redistributable.
   An FFmpeg pin also names its `source`, where the provider publishes the
   build's scripts and library versions; the app's FFmpeg notice prints it.
+- **The Visual C++ runtime** the Windows installer may run: follow
+  <https://aka.ms/vc14/vc_redist.x64.exe> to Microsoft's versioned download
+  and pin that URL; its path names the file's SHA-256, which `check-bom.py`
+  requires the pin to repeat. The oldest runtime the installer accepts is in
+  `apps/desktop/src-tauri/windows/installer-hooks.nsh`; raise it when a
+  component's libraries are built with a newer toolset.
 
 ## Licences in the app
 

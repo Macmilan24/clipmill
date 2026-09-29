@@ -10,6 +10,9 @@ Writes two folders the release Tauri config reads (both ignored by Git):
         holds every licence and notice for what the app carries (notices.py
         writes the third-party ones)
 
+and, for Windows, apps/desktop/src-tauri/windows/vc_redist.x64.exe, which the
+installer carries and runs only when a PC lacks the Visual C++ runtime.
+
 Every download is checked against its pin in bom.toml before it is used, and
 cached under .cache/release/ by digest. The engine folder holds ClipMill's own
 worker wheels, each worker's third-party requirements exported from its
@@ -52,6 +55,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TAURI = ROOT / "apps" / "desktop" / "src-tauri"
 BINARIES = TAURI / "binaries"
 RESOURCES = TAURI / "resources"
+VC_REDIST = TAURI / "windows" / "vc_redist.x64.exe"
 CACHE = ROOT / ".cache" / "release"
 ENGINE_SCHEMA = "clipmill.engine.v1"
 # What a download of the pinned Python costs, roughly; counted once.
@@ -204,8 +208,17 @@ def run(command: list[str], **options: object) -> subprocess.CompletedProcess[st
 
 def stage_daemon(target: Target, skip: bool) -> None:
     built = ROOT / "target" / target.triple / "release" / f"clipmilld{target.exe}"
+    windows = target.triple.endswith("-windows-msvc")
     if not skip:
         say("building clipmilld (release)")
+        environment = dict(os.environ)
+        if windows:
+            # Microsoft's C runtime linked in, so a Windows without the
+            # Visual C++ Redistributable can start the daemon. Tauri does the
+            # same for the app's own executable. With --target, the flag
+            # reaches only what runs on the target, not build scripts.
+            flags = environment.get("RUSTFLAGS", "")
+            environment["RUSTFLAGS"] = f"{flags} -C target-feature=+crt-static".strip()
         run(
             [
                 "cargo",
@@ -220,9 +233,13 @@ def stage_daemon(target: Target, skip: bool) -> None:
                 target.triple,
             ],
             cwd=ROOT,
+            env=environment,
         )
     if not built.is_file():
         raise SystemExit(f"stage: {built} was not built")
+    # A DLL an executable imports is named in its import table.
+    if windows and b"vcruntime140" in built.read_bytes().lower():
+        raise SystemExit(f"stage: {built} still needs the Visual C++ runtime")
     shutil.copy2(built, sidecar(target, "clipmilld"))
 
 
@@ -245,6 +262,16 @@ def stage_uv(target: Target, bom: dict) -> None:
     entry = bom["uv"][target.bom]
     archive = fetch(entry["url"], entry["sha256"])
     extract(archive, entry["url"], entry["member"], sidecar(target, "uv"))
+
+
+def stage_vc_redist(target: Target, bom: dict) -> None:
+    """Microsoft's Visual C++ runtime installer, which the Windows installer
+    runs when a PC lacks the runtime the components' libraries need
+    (src-tauri/windows/installer-hooks.nsh). Other targets carry none."""
+    VC_REDIST.unlink(missing_ok=True)
+    entry = bom["vc_redist"].get(target.bom)
+    if entry is not None:
+        shutil.copy2(fetch(entry["url"], entry["sha256"]), VC_REDIST)
 
 
 # ---- resources ------------------------------------------------------------
@@ -635,6 +662,7 @@ def main() -> int:
     stage_daemon(target, options.skip_daemon)
     stage_ffmpeg(target, bom)
     stage_uv(target, bom)
+    stage_vc_redist(target, bom)
     stage_fonts(bom)
     stage_emoji(bom)
     stage_registry()

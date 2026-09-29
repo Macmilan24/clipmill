@@ -6,7 +6,9 @@
   daemon, components and workers as on macOS and Linux, installed with
   `ClipMill_0.2.0_x64-setup.exe`. The app talks to its daemon and workers over
   loopback, each end proving it holds a secret the daemon made at start
-  (decision R68). Clips are chosen by the built-in picker, as on Linux. See
+  (decision R68). Clips are chosen by the built-in picker, as on Linux. The
+  installer installs Microsoft's Visual C++ runtime where a PC lacks it, and
+  the daemon carries its own (decision R69). See
   [Installing ClipMill](docs/install.md#windows-beta).
 - **Export names** never begin with a name Windows keeps for a device (`CON`,
   `NUL`, `COM1` and so on), so a folder of clips made anywhere copies onto

@@ -117,7 +117,6 @@ def map_shared_buffer(
         if served != descriptor:
             raise ValueError("shared-memory descriptor changed during transfer")
         validate_mapping(served, mapping)
-        arrow_buffer = pa.py_buffer(mapping)
         send_frame(
             stream,
             shm_pb2.MapAcknowledgement(
@@ -126,7 +125,9 @@ def map_shared_buffer(
                 mapped=True,
             ),
         )
-        return MappedBuffer(served, arrow_buffer, mapping)
+        # Nothing points into the mapping until the acknowledgement is sent: a
+        # daemon that dies first leaves a mapping the handler below can close.
+        return MappedBuffer(served, pa.py_buffer(mapping), mapping)
     except Exception:
         if mapping is not None:
             mapping.close()
