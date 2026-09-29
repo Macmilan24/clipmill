@@ -380,7 +380,7 @@ pub(crate) fn measure(
     // deliberately separate from speech-model ranking and editorial quality.
     // Any pinned editorial model counts: the receipt names the digest it ran,
     // and a digest the registry pins is a model this daemon could plan.
-    let receipt = benchmark_path.with_file_name("editorial-runtime.json");
+    let receipt = benchmark_path.with_file_name(EDITORIAL_RECEIPT);
     if let Ok(bytes) = fs::read(receipt)
         && let Ok(proof) = serde_json::from_slice::<Value>(&bytes)
         && proof["schema_version"] == "clipmill.editorial.runtime.v1"
@@ -400,6 +400,10 @@ pub(crate) fn measure(
         proven_accelerators,
     }
 }
+
+/// Where the editorial runtime check leaves its receipt, beside the speech
+/// benchmark in the daemon's state folder.
+pub(crate) const EDITORIAL_RECEIPT: &str = "editorial-runtime.json";
 
 /// The runtime check's name for MLX, as `runtime_check.py` writes it.
 const MLX_EDITORIAL_RUNTIME: &str = "mlx-vlm@0.7.1/clipmill-json-v2";

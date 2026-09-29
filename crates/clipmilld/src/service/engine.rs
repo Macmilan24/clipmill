@@ -141,7 +141,7 @@ impl Service {
             return;
         };
         let digest = format!("sha256:{}", manifest.digest());
-        let receipt = storage.state.join("editorial-runtime.json");
+        let receipt = storage.state.join(crate::selection::EDITORIAL_RECEIPT);
         let key = format!("{fingerprint}/{digest}/{install}");
         let admitted = self.scheduler.as_ref().is_some_and(|scheduler| {
             scheduler.machine_capacity().accelerator_mask

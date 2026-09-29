@@ -205,6 +205,20 @@ describe('the model library', () => {
     ).toBeTruthy();
   });
 
+  it('says how fast the editorial model ran here, and warns when that is slow', async () => {
+    show(
+      withModel(installedLibrary(), 'qwen3-5-editorial-mlx', {
+        measuredPromptTokensPerSecond: 40,
+        measuredOutputTokensPerSecond: 4.5,
+      }),
+    );
+    const qwen = await screen.findByRole('listitem', { name: 'Qwen3.5 9B' });
+    expect(
+      within(qwen).getByText(/reads about 40 and writes about 4.5 tokens a second/),
+    ).toBeTruthy();
+    expect(within(qwen).getByText(/Each editorial step takes about 5 minutes/)).toBeTruthy();
+  });
+
   it('says why a model cannot run here and does not offer the download', async () => {
     show(
       withModel(freshLibrary(), 'qwen3-5-editorial-mlx', {

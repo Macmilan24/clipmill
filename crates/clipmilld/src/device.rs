@@ -179,6 +179,15 @@ impl DeviceProfiler {
         })
     }
 
+    /// The hardware fingerprint once the device's identity has been read, for
+    /// answers that must not wait on reading it.
+    pub(crate) fn known_fingerprint(&self) -> Option<&str> {
+        self.inner
+            .identity
+            .get()
+            .map(|identity| identity.hardware_fingerprint.as_str())
+    }
+
     pub(crate) async fn hardware_fingerprint(&self) -> Result<String, DeviceProfileError> {
         Ok(self.identity().await?.hardware_fingerprint.clone())
     }

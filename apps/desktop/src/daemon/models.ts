@@ -64,6 +64,12 @@ export interface LibraryModel {
   readonly workerTitle: string;
   /** A worker of that family is connected now. */
   readonly workerConnected: boolean;
+  /**
+   * How fast it ran here, as the editorial runtime check measured it, in
+   * tokens a second; absent until measured.
+   */
+  readonly measuredPromptTokensPerSecond?: number;
+  readonly measuredOutputTokensPerSecond?: number;
 }
 
 export interface ModelJob {

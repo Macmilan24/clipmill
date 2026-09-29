@@ -10,6 +10,7 @@ import {
   progressText,
   recommendedTitles,
   runsOn,
+  speedNote,
   upgradeNote,
   workerWarning,
 } from '../src/models/describe.js';
@@ -49,6 +50,30 @@ describe('model library wording', () => {
   it('says where a model runs in words, not backend names', () => {
     expect(runsOn(libraryModel('a', { backend: 'mlx' }))).toBe('Apple silicon GPU');
     expect(runsOn(libraryModel('g', { backend: 'llama.cpp' }))).toBe('Graphics card or CPU');
+  });
+
+  it('says how fast the editorial model ran here, and warns only when that is slow', () => {
+    expect(speedNote(libraryModel('unmeasured', {}))).toBeNull();
+    const gpu = speedNote(
+      libraryModel('gpu', {
+        measuredPromptTokensPerSecond: 1909.9,
+        measuredOutputTokensPerSecond: 72.1,
+      }),
+    );
+    expect(gpu).toEqual({
+      tone: 'neutral',
+      text: 'Measured here: reads about 1,910 and writes about 72 tokens a second.',
+    });
+    const cpu = speedNote(
+      libraryModel('cpu', {
+        measuredPromptTokensPerSecond: 40,
+        measuredOutputTokensPerSecond: 4.5,
+      }),
+    );
+    expect(cpu?.tone).toBe('warning');
+    expect(cpu?.text).toBe(
+      'Measured here: reads about 40 and writes about 4.5 tokens a second. Each editorial step takes about 5 minutes here, so an analysis will be slow; a smaller model is faster.',
+    );
     expect(runsOn(libraryModel('b', { backend: 'onnx-cpu' }))).toBe('CPU');
     expect(runsOn(libraryModel('c', { backend: 'cuda' }))).toBe('cuda');
   });

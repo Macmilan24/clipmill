@@ -2233,6 +2233,12 @@ message ModelV1 {
   string worker_title = 23;
   // A worker of that family is connected now.
   bool worker_connected = 24;
+  // How fast this model ran here, as the editorial runtime check measured it
+  // on this machine: reading a long prompt and writing an answer, in tokens a
+  // second. Zero until the check has measured this model here, and for a
+  // runtime that does not report its speed (MLX).
+  double measured_prompt_tokens_per_second = 25;
+  double measured_output_tokens_per_second = 26;
 }
 
 message ModelDownloadV1 {

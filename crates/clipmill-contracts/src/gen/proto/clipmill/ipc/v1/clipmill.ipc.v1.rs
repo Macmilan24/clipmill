@@ -2985,7 +2985,7 @@ pub struct YoutubeMetadataTaskPayloadV1 {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListModelsRequest {}
 /// One model, and where it stands on this device.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModelV1 {
     /// Registry name: the identity analyses are keyed against.
     #[prost(string, tag = "1")]
@@ -3054,6 +3054,14 @@ pub struct ModelV1 {
     /// A worker of that family is connected now.
     #[prost(bool, tag = "24")]
     pub worker_connected: bool,
+    /// How fast this model ran here, as the editorial runtime check measured it
+    /// on this machine: reading a long prompt and writing an answer, in tokens a
+    /// second. Zero until the check has measured this model here, and for a
+    /// runtime that does not report its speed (MLX).
+    #[prost(double, tag = "25")]
+    pub measured_prompt_tokens_per_second: f64,
+    #[prost(double, tag = "26")]
+    pub measured_output_tokens_per_second: f64,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ModelDownloadV1 {

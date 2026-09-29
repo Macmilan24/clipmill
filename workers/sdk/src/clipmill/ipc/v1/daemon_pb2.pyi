@@ -2506,7 +2506,7 @@ class ListModelsRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class ModelV1(_message.Message):
-    __slots__ = ("name", "title", "summary", "capability", "runtime", "backend", "quantization", "license_spdx", "source_repo", "source_revision", "download_bytes", "memory_bytes", "recommended", "supported", "unsupported_reason", "memory_fit", "custom", "install_state", "installed_bytes", "download", "in_use", "worker", "worker_title", "worker_connected")
+    __slots__ = ("name", "title", "summary", "capability", "runtime", "backend", "quantization", "license_spdx", "source_repo", "source_revision", "download_bytes", "memory_bytes", "recommended", "supported", "unsupported_reason", "memory_fit", "custom", "install_state", "installed_bytes", "download", "in_use", "worker", "worker_title", "worker_connected", "measured_prompt_tokens_per_second", "measured_output_tokens_per_second")
     NAME_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SUMMARY_FIELD_NUMBER: _ClassVar[int]
@@ -2531,6 +2531,8 @@ class ModelV1(_message.Message):
     WORKER_FIELD_NUMBER: _ClassVar[int]
     WORKER_TITLE_FIELD_NUMBER: _ClassVar[int]
     WORKER_CONNECTED_FIELD_NUMBER: _ClassVar[int]
+    MEASURED_PROMPT_TOKENS_PER_SECOND_FIELD_NUMBER: _ClassVar[int]
+    MEASURED_OUTPUT_TOKENS_PER_SECOND_FIELD_NUMBER: _ClassVar[int]
     name: str
     title: str
     summary: str
@@ -2555,7 +2557,9 @@ class ModelV1(_message.Message):
     worker: str
     worker_title: str
     worker_connected: bool
-    def __init__(self, name: _Optional[str] = ..., title: _Optional[str] = ..., summary: _Optional[str] = ..., capability: _Optional[str] = ..., runtime: _Optional[str] = ..., backend: _Optional[str] = ..., quantization: _Optional[str] = ..., license_spdx: _Optional[str] = ..., source_repo: _Optional[str] = ..., source_revision: _Optional[str] = ..., download_bytes: _Optional[int] = ..., memory_bytes: _Optional[int] = ..., recommended: _Optional[bool] = ..., supported: _Optional[bool] = ..., unsupported_reason: _Optional[str] = ..., memory_fit: _Optional[str] = ..., custom: _Optional[bool] = ..., install_state: _Optional[str] = ..., installed_bytes: _Optional[int] = ..., download: _Optional[_Union[ModelDownloadV1, _Mapping]] = ..., in_use: _Optional[bool] = ..., worker: _Optional[str] = ..., worker_title: _Optional[str] = ..., worker_connected: _Optional[bool] = ...) -> None: ...
+    measured_prompt_tokens_per_second: float
+    measured_output_tokens_per_second: float
+    def __init__(self, name: _Optional[str] = ..., title: _Optional[str] = ..., summary: _Optional[str] = ..., capability: _Optional[str] = ..., runtime: _Optional[str] = ..., backend: _Optional[str] = ..., quantization: _Optional[str] = ..., license_spdx: _Optional[str] = ..., source_repo: _Optional[str] = ..., source_revision: _Optional[str] = ..., download_bytes: _Optional[int] = ..., memory_bytes: _Optional[int] = ..., recommended: _Optional[bool] = ..., supported: _Optional[bool] = ..., unsupported_reason: _Optional[str] = ..., memory_fit: _Optional[str] = ..., custom: _Optional[bool] = ..., install_state: _Optional[str] = ..., installed_bytes: _Optional[int] = ..., download: _Optional[_Union[ModelDownloadV1, _Mapping]] = ..., in_use: _Optional[bool] = ..., worker: _Optional[str] = ..., worker_title: _Optional[str] = ..., worker_connected: _Optional[bool] = ..., measured_prompt_tokens_per_second: _Optional[float] = ..., measured_output_tokens_per_second: _Optional[float] = ...) -> None: ...
 
 class ModelDownloadV1(_message.Message):
     __slots__ = ("state", "received_bytes", "total_bytes", "current_file", "error", "updated_unix_millis")
