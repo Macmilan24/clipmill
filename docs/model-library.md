@@ -123,8 +123,13 @@ ceiling.
 
 The editorial runtime check proves the chosen editorial model generates on this
 machine before its worker is admitted: on the Mac's GPU for MLX, or in the
-llama.cpp server on Windows and Linux, where it also records the speed llama.cpp
-measured. A packaged app runs it once its component and model are installed; a
+llama.cpp server on Windows and Linux. There it also measures one
+representative reply, a prompt of about 1,500 tokens and an answer of about 80,
+and Models shows how fast the model read and wrote on this machine. When a
+typical editorial step (about 6,000 tokens read and 800 written) would take
+more than two minutes, Models says so and that a smaller model is faster; it
+never refuses. A packaged app runs the check once its component and model are
+installed; a
 development checkout runs it with `just workers`
 (`tools/editorial-runtime-check.py`). After choosing a different editorial
 model, restart the workers so the check runs against it.

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **How fast Editorial AI runs here.** On Windows and Linux, Models shows the
+  speed the editorial model measured on this computer, and warns when an
+  analysis would be slow, suggesting a smaller model. It never refuses one.
+- **Windows: the editorial check completes.** The runtime check could not
+  write its receipt on Windows (a POSIX-only flag), so Editorial AI was never
+  admitted there; failure traces had the same problem.
+
 ## 0.3.0 — Editorial AI on Windows and Linux
 
 - **Editorial AI on Windows and Linux.** A local Qwen3.5 model can now propose

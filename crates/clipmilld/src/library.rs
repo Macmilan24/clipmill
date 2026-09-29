@@ -567,6 +567,9 @@ impl ModelLibrary {
                 .to_owned(),
             // Whoever holds the worker roster says; the library cannot see it.
             worker_connected: false,
+            // The runtime check's receipt says, which the service reads.
+            measured_prompt_tokens_per_second: 0.0,
+            measured_output_tokens_per_second: 0.0,
         }
     }
 

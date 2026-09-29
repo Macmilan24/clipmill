@@ -65,6 +65,12 @@ struct ModelView {
     worker: String,
     worker_title: String,
     worker_connected: bool,
+    /// How fast it ran here, as the editorial runtime check measured it, in
+    /// tokens a second; absent until measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    measured_prompt_tokens_per_second: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    measured_output_tokens_per_second: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,8 +160,15 @@ impl From<ipc::ModelV1> for ModelView {
             worker: model.worker,
             worker_title: model.worker_title,
             worker_connected: model.worker_connected,
+            measured_prompt_tokens_per_second: measured(model.measured_prompt_tokens_per_second),
+            measured_output_tokens_per_second: measured(model.measured_output_tokens_per_second),
         }
     }
+}
+
+/// A speed only when one was measured: zero on the wire means none yet.
+fn measured(tokens_per_second: f64) -> Option<f64> {
+    (tokens_per_second > 0.0).then_some(tokens_per_second)
 }
 
 /// What pinning a repository would pin, or why it cannot be.
@@ -487,5 +500,11 @@ mod tests {
         assert!(json.get("availableBytes").is_none());
         assert!(json.get("memoryTotalBytes").is_none());
         assert_eq!(json["memoryBudgetBytes"], 12);
+        // No speed until the editorial runtime check has measured one.
+        assert!(
+            json["models"][0]
+                .get("measuredOutputTokensPerSecond")
+                .is_none()
+        );
     }
 }
