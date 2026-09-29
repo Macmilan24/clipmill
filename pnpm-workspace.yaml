@@ -11,13 +11,16 @@ allowBuilds:
   # looks fonts up remotely, so the script is not run.
   lfa-ponyfill: false
 overrides:
-  # Six advisories in the same URI parser, a patch apart each time:
+  # Eight advisories in the same URI parser, a patch apart each time:
   # GHSA-v2hh-gcrm-f6hx and GHSA-7p8r-x3mc-p8w7 (host confusion) closed in
   # 3.1.5; GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf and
   # GHSA-jqff-g426-hqxp (host confusion and SSRF via normalization) closed in
-  # 3.1.6. Reached transitively through ajv, which still resolves 3.1.3.
+  # 3.1.6; GHSA-58mr-gqgx-xq4g (host confusion via an unclosed bracket) and
+  # GHSA-qw65-cvwx-89v3 (authority injection via the port) closed in 3.1.7.
+  # Pinned to 3.1.8, the newest 3.x. Reached transitively through ajv, which
+  # still resolves 3.1.3.
   #
-  # Pinned to the patch rather than an open range: `>=3.1.6` resolves to 4.x,
+  # Pinned to the patch rather than an open range: `>=3.1.8` resolves to 4.x,
   # a semver-major move inside the JSON Schema validator the contract fixtures
   # depend on. Drop this once ajv widens its own range.
-  fast-uri@<3.1.6: '3.1.6'
+  fast-uri@<3.1.8: '3.1.8'
