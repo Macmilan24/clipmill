@@ -6,9 +6,10 @@ video ready to upload.
 
 ClipMill runs on **macOS 14 or later on Apple silicon**, on **64-bit Linux**,
 and, as a beta, on **64-bit Windows 10 and 11**. The import-to-export workflow is
-complete; clip selection still benefits from your editorial judgment. On Apple
-silicon a local Qwen model proposes and reviews moments; on Linux and Windows a
-built-in picker does.
+complete; clip selection still benefits from your editorial judgment. A local
+Qwen model proposes and reviews moments: through MLX on Apple silicon, and
+through llama.cpp on Linux and Windows, on the graphics card or the processor.
+Without it, a built-in picker proposes them.
 
 ## Install
 
@@ -63,8 +64,10 @@ just setup
 # Speech recognition, alignment, voice activity, and face detection
 ./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en yunet-face
 
-# Local editorial model (Apple silicon macOS; approximately 6 GB download)
-./tools/fetch-models.sh qwen3-5-editorial-mlx
+# Local editorial model (about 6.5 GB): MLX on Apple silicon, and GGUF on
+# Linux, where the worker runs it in the llama.cpp server CLIPMILL_LLAMA_SERVER
+# names (a llama.cpp release build)
+./tools/fetch-models.sh qwen3-5-editorial-mlx   # Linux: qwen3-5-editorial-gguf
 ```
 
 Launch the application, then start its workers in a second terminal:

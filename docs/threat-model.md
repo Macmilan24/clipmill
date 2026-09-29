@@ -155,6 +155,30 @@ Windows installer is not signed yet, so SmartScreen warns about it; a person
 trusts the download it came from, and `SHA256SUMS.txt` in each release lets
 them check it. Nothing here has been tested outside CI and a trial build yet.
 
+## Editorial model on Windows and Linux
+
+Windows and Linux run the editorial model in llama.cpp's server (R70), which
+the editorial worker starts for a GGUF model and ends with itself.
+
+- **Binary.** The server is llama.cpp's upstream release build, pinned in
+  `bom.toml` by the archive's digest and packed unchanged into the editorial
+  component's wheel, which the daemon installs offline and by digest.
+- **Listening.** The server binds 127.0.0.1 on a free port and answers only
+  requests bearing an API key the worker made from 32 random bytes. The key
+  reaches the server in its environment, not on its command line, which other
+  processes can read. The web interface and slot monitoring are off, it runs
+  one request at a time, and `--offline` keeps it from any network, since the
+  pinned files are all it loads.
+- **Input.** It loads only the model's two pinned, hash-checked GGUF files.
+  Each request is built by the worker: the prompt, the reply's JSON schema,
+  and frames the worker read from its own artifacts and re-encoded.
+- **Lifetime.** It runs with no console window in the worker's process group,
+  so whatever ends the worker ends it, and the worker stops it on close.
+
+Residual: a process running as the same user can read the server's
+environment, and so its key, as it can read the endpoint secrets (R68). A
+graphics driver's Vulkan implementation runs inside the server process.
+
 ## YouTube publishing extension
 
 Channel connection and publishing use fixed Google HTTPS endpoints through a
