@@ -49,13 +49,13 @@ import {
   stageEstimate,
 } from '../analysis/estimates.js';
 import { useReadiness, waitingReasons } from '../analysis/readiness.js';
+import { announceFinished } from '../shell/announce.js';
 import { AnalysisLoader, useAnalysis } from '../analysis/useAnalysis.js';
 import {
   type AnalysisSettings,
   type AnalyzeRequest,
   type Job,
   type TaskEvent,
-  requestAttention,
 } from '../daemon/client.js';
 import {
   acceleratorMemory,
@@ -163,22 +163,6 @@ function StageLine({
       </span>
     </div>
   );
-}
-
-/**
- * Tell a person who looked away that the run is over: the window asks for
- * attention and its title says so until they come back to it.
- */
-function announceDone(name: string, succeeded: boolean): void {
-  if (typeof document === 'undefined' || (!document.hidden && document.hasFocus())) return;
-  const before = document.title;
-  document.title = succeeded ? `Clips ready · ${name}` : `Analysis stopped · ${name}`;
-  const restore = () => {
-    document.title = before;
-    window.removeEventListener('focus', restore);
-  };
-  window.addEventListener('focus', restore);
-  void requestAttention().catch(() => undefined);
 }
 
 function SourceCard({
@@ -424,9 +408,14 @@ export function AnalysisProgress({
     }
     if (wasRunning.current && (status.kind === 'analyzed' || status.kind === 'failed')) {
       wasRunning.current = false;
-      announceDone(projectName, status.kind === 'analyzed');
+      announceFinished(
+        jobId,
+        status.kind === 'analyzed'
+          ? `Clips ready · ${projectName}`
+          : `Analysis stopped · ${projectName}`,
+      );
     }
-  }, [running, status.kind, projectName]);
+  }, [running, status.kind, projectName, jobId]);
 
   // While the run is live, the readiness report is re-read so a stage that
   // is waiting on a worker or a model says so — and stops saying so the

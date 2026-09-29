@@ -7,6 +7,12 @@
   with a link to its page. Nothing is downloaded or installed. The first
   question waits a day after installing. It counts as a network operation in
   Local Lock, and Settings → About turns it off.
+- **An activity tray.** A button at the top of the window counts what is
+  running (analyses, exports, model downloads, component installs, YouTube
+  imports and uploads) and lists each with how far it has come; a row opens
+  where that work is shown. When an analysis or export finishes while the
+  window is in the background, the Dock icon bounces and the title says so,
+  whichever screen is open.
 - **Models is shorter.** Each job shows the model it uses, and any download
   under way; the other models fold under "Other models", which says how many
   are already on this computer.

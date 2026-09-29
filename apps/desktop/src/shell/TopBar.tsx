@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 
 import type { ConnectionState } from '../daemon/client.js';
+import { ActivityTray, type ActivityTrayProps } from './ActivityTray.js';
 import type { UpdateNotice } from './updates.js';
 
 interface TopBarProps {
@@ -27,6 +28,8 @@ interface TopBarProps {
   readonly profile: DeviceProfile | null;
   /** A newer release to tell the person about, when there is one. */
   readonly update?: UpdateNotice | null;
+  /** The work running now, when the shell follows it. */
+  readonly activity?: ActivityTrayProps | null;
 }
 
 function statusLabel(state: ConnectionState): { text: string; tone: string } {
@@ -49,6 +52,7 @@ export function TopBar({
   onToggleTheme,
   state,
   update = null,
+  activity = null,
 }: TopBarProps): JSX.Element {
   const status = statusLabel(state);
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
@@ -93,6 +97,7 @@ export function TopBar({
             </Button>
           </span>
         )}
+        {activity && <ActivityTray {...activity} />}
         <span
           className="flex items-center gap-2 text-[11px] text-[var(--cm-text-secondary)]"
           title={state.status === 'connected' ? `Local engine ${state.daemonVersion}` : status.text}
