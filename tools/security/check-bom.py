@@ -47,6 +47,7 @@ def main() -> int:
         for platform in sorted(platforms):
             _check_ffmpeg_pin(platform, ffmpeg, ffmpeg[platform])
         _check_uv(bom)
+        _check_vc_redist(bom)
         sqlite = bom["sqlite"]
         if sqlite.get("min_version") != "3.51.3" or sqlite.get("min_version_number") != 3051003:
             raise ValueError("SQLite corruption-fix floor changed without a BOM decision")
@@ -164,6 +165,24 @@ def _check_uv(bom: dict) -> None:
     python = str(bom["python"].get("version"))
     if re.fullmatch(r"3\.[0-9]+\.[0-9]+", python) is None:
         raise ValueError("the engine's Python version is invalid")
+
+
+def _check_vc_redist(bom: dict) -> None:
+    """The runtime installer the Windows installer may run: Microsoft's own
+    versioned download, whose URL names the digest pinned beside it."""
+    redist = bom["vc_redist"]
+    if re.fullmatch(r"14\.[0-9]+\.[0-9]+", str(redist.get("version"))) is None:
+        raise ValueError("the Visual C++ runtime version is invalid")
+    platforms = {key for key, value in redist.items() if isinstance(value, dict)}
+    if platforms != {"windows-amd64"}:
+        raise ValueError("the Visual C++ runtime is pinned for Windows amd64 and nothing else")
+    entry = redist["windows-amd64"]
+    url = urlparse(str(entry.get("url")))
+    if url.scheme != "https" or url.hostname != "download.visualstudio.microsoft.com":
+        raise ValueError("the Visual C++ runtime is not Microsoft's download")
+    digest = str(entry.get("sha256"))
+    if SHA256_PATTERN.fullmatch(digest) is None or f"/{digest.upper()}/" not in url.path:
+        raise ValueError("the Visual C++ runtime digest is invalid or not the one its URL names")
 
 
 EMOJI_CODE_PATTERN = re.compile(r"^[0-9a-f]{4,5}(_[0-9a-f]{4,5})*$")
