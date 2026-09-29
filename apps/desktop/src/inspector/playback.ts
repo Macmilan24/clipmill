@@ -44,13 +44,16 @@ export class PlaybackController {
   private pending: number | null = null;
   private readonly unbind: (() => void)[] = [];
 
-  /** Starts paused at `ticks`, so nothing reads a playhead at zero first. */
-  constructor(ticks = 0) {
+  /**
+   * Starts paused at `ticks`, so nothing reads a playhead at zero first, with
+   * plain play at `speed`.
+   */
+  constructor(ticks = 0, speed = 1) {
     this.state = {
       ticks: Math.max(0, Math.round(ticks)),
       playing: false,
       rate: 0,
-      speed: 1,
+      speed,
       loop: false,
       muted: false,
       ready: false,

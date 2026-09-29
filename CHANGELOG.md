@@ -7,6 +7,13 @@
   with a link to its page. Nothing is downloaded or installed. The first
   question waits a day after installing. It counts as a network operation in
   Local Lock, and Settings → About turns it off.
+- **Models is shorter.** Each job shows the model it uses, and any download
+  under way; the other models fold under "Other models", which says how many
+  are already on this computer.
+- **More in Settings.** A Review section: whether a decision moves on to the
+  next clip, and the speed clips play at (the player remembers a change too).
+  Editing & export gains where exports go, how files are named, and the
+  caption look new projects start with.
 - **How fast Editorial AI runs here.** On Windows and Linux, Models shows the
   speed the editorial model measured on this computer, and warns when an
   analysis would be slow, suggesting a smaller model. It never refuses one.

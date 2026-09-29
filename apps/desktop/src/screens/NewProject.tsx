@@ -46,7 +46,7 @@ import { formatBytes } from '../deviceProfile.js';
 import { type ChosenSource, ImportLoader, isVideoPath } from '../import/loader.js';
 import { formatEstimate, runEstimate } from '../analysis/estimates.js';
 import { savedStyles } from '../editor/captionStyles.js';
-import { CAPTION_LOOKS, DEFAULT_LOOK } from '../results/captionLook.js';
+import { CAPTION_LOOKS, DEFAULT_LOOK, startingLook } from '../results/captionLook.js';
 import { CaptionLookSample } from '../results/CaptionLookSample.js';
 import { YouTubeImport } from '../import/YouTubeImport.js';
 import { recallYoutube, rememberYoutube } from '../import/youtube.js';
@@ -55,6 +55,7 @@ import {
   CUSTOM_PRESET_ID,
   DEFAULT_SETTINGS,
   DURATION_BOUNDS,
+  type ImportSettings,
   LANGUAGES,
   PRESETS,
   applyPreset,
@@ -209,7 +210,10 @@ export function NewProject({
   loader,
 }: NewProjectProps): JSX.Element {
   const [importer] = useState(() => loader ?? new ImportLoader());
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<ImportSettings>(() => ({
+    ...DEFAULT_SETTINGS,
+    captionLook: startingLook(),
+  }));
   // Styles saved from the Editor, offered as a project's starting look.
   const [styles] = useState(() => savedStyles());
   const [chosen, setChosen] = useState<ChosenSource | null>(null);
