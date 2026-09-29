@@ -144,8 +144,8 @@ Windows runs the same daemon, planes and workers (R68). What differs:
   because Windows never reparents a process.
 - **Runtime.** The installer carries Microsoft's Visual C++ Redistributable,
   pinned in `bom.toml` by the digest Microsoft's own download URL names, and
-  runs it only when the registry records no x64 runtime of 14.44 or newer
-  (R69). It is the one step that runs as an administrator, and it asks Windows
+  runs it only when the registry records no x64 runtime of 14.51 or newer
+  (R69, R70). It is the one step that runs as an administrator, and it asks Windows
   for that itself; declining leaves ClipMill installed without it. The daemon
   links its C runtime in, so it depends on nothing installed there.
 

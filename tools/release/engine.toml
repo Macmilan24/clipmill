@@ -67,11 +67,13 @@ platforms = ["macos-arm64"]
 
 [[part]]
 name = "editorial"
-title = "Editorial AI (MLX)"
+title = "Editorial AI"
 family = "editorial"
 command = "clipmill-worker-editorial"
 module = "clipmill_worker_editorial"
-platforms = ["macos-arm64"]
+# MLX on Apple silicon; llama.cpp, packed into the component, on Windows and
+# Linux (tools/release/llama.py).
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
 
 # A tool rather than a worker: the daemon runs it for each YouTube import,
 # never keeps it running. It lives outside workers/ and needs Node.js 22 or

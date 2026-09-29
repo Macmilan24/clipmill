@@ -46,6 +46,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import llama  # beside this script
 import notices  # beside this script
 from packaging.requirements import Requirement
 from packaging.tags import Tag, compatible_tags, cpython_tags, mac_platforms
@@ -274,6 +275,21 @@ def stage_vc_redist(target: Target, bom: dict) -> None:
         shutil.copy2(fetch(entry["url"], entry["sha256"]), VC_REDIST)
 
 
+# ---- llama.cpp ---------------------------------------------------------------
+
+
+def build_llama_wheel(target: Target, bom: dict, out: Path) -> Path | None:
+    """llama.cpp's server as a wheel of the editorial component, on the platforms
+    that run editorial models on it (llama.py)."""
+    pin = bom["llama_cpp"].get(target.bom)
+    if pin is None:
+        return None
+    build = bom["llama_cpp"]["build"]
+    say(f"packing llama.cpp {build}")
+    archive = fetch(pin["url"], pin["sha256"])
+    return llama.build_wheel(archive, build, out, windows=bool(target.exe))
+
+
 # ---- resources ------------------------------------------------------------
 
 
@@ -387,6 +403,10 @@ def stage_engine(target: Target, bom: dict) -> dict:
     table = tomllib.loads((ROOT / "tools" / "release" / "engine.toml").read_text(encoding="utf-8"))
     say("building the worker SDK wheel")
     sdk = build_wheel(ROOT / "workers" / "sdk", wheels)
+    # Built for this target only: the platforms that run editorial models on
+    # llama.cpp carry its server in the editorial component.
+    server = build_llama_wheel(target, bom, wheels)
+    extra = {"editorial": [server]} if server is not None else {}
     parts = []
     # uv downloads a wheel once and links it into every environment that
     # needs it, so each is counted against the first component that does:
@@ -450,7 +470,14 @@ def stage_engine(target: Target, bom: dict) -> dict:
                 "platforms": part["platforms"],
                 "requirements": f"requirements/{name}.txt",
                 "requirements_sha256": sha256(exported),
-                "wheels": [*own, {"file": f"wheels/{wheel.name}", "sha256": sha256(wheel)}],
+                "wheels": [
+                    *own,
+                    {"file": f"wheels/{wheel.name}", "sha256": sha256(wheel)},
+                    *(
+                        {"file": f"wheels/{made.name}", "sha256": sha256(made)}
+                        for made in extra.get(name, [])
+                    ),
+                ],
                 "download_bytes": estimates,
             }
         )
@@ -523,6 +550,9 @@ def verify_engine(target: Target, manifest: dict) -> None:
                 env=environment,
             )
             run([str(interpreter), "-I", "-c", f"import {part['module']}"], env=environment)
+            if any(Path(wheel["file"]).name.startswith(llama.PACKAGE) for wheel in part["wheels"]):
+                # The server loads every library it needs just to say its version.
+                run([str(interpreter), "-I", "-c", llama.VERSION_CHECK], env=environment)
             scripts = env_dir / ("Scripts" if target.exe else "bin")
             command = scripts / f"{part['command']}{target.exe}"
             if not command.is_file():
@@ -587,7 +617,7 @@ def uv_notice(bom: dict) -> str:
     )
 
 
-def licenses_index(linux: bool) -> str:
+def licenses_index(linux: bool, *, llama: bool = False, windows: bool = False) -> str:
     index = """\
 Licences
 
@@ -606,7 +636,7 @@ licence:
   FFmpeg-NOTICE.txt            FFmpeg's ffmpeg and ffprobe, with GPL-3.0.txt
   uv-NOTICE.txt                uv, which installs the components, with
                                Apache-2.0.txt
-  dm-sans-OFL-1.1.txt          the interface's fonts
+{llama}  dm-sans-OFL-1.1.txt          the interface's fonts
   ibm-plex-mono-OFL-1.1.txt
   ../fonts/                    the caption faces, each with its licence
   ../emoji/LICENSE.txt         the colour emoji
@@ -615,6 +645,20 @@ What Set up downloads (Python, the components' packages and the models) is
 not part of the app: each comes with its own licence from where it is
 downloaded.
 """
+    index = index.replace(
+        "{llama}",
+        (
+            "  llama.cpp-NOTICE.txt         llama.cpp's server, which runs the editorial\n"
+            "                               model here, with llama.cpp-LICENSE.txt\n"
+            + (
+                "  LLVM-OpenMP-LICENSE.txt      the OpenMP runtime llama.cpp uses\n"
+                if windows
+                else ""
+            )
+        )
+        if llama
+        else "",
+    )
     if linux:
         index += """
 The AppImage also carries, unchanged, the Ubuntu 22.04 libraries the app
@@ -639,8 +683,19 @@ def stage_licenses(bom: dict, target: Target) -> None:
         shutil.copy2(LICENSE_TEXTS / name, licenses / name)
     (licenses / "FFmpeg-NOTICE.txt").write_text(ffmpeg_notice(bom, target), encoding="utf-8")
     (licenses / "uv-NOTICE.txt").write_text(uv_notice(bom), encoding="utf-8")
+    pin = bom["llama_cpp"].get(target.bom)
+    if pin is not None:
+        shutil.copy2(LICENSE_TEXTS / "llama.cpp-LICENSE.txt", licenses / "llama.cpp-LICENSE.txt")
+        text = llama.notice(bom["llama_cpp"]["build"], pin["url"])
+        (licenses / "llama.cpp-NOTICE.txt").write_text(text, encoding="utf-8")
+        if target.exe:
+            # The OpenMP runtime the Windows build ships, with its own licence.
+            with zipfile.ZipFile(fetch(pin["url"], pin["sha256"])) as bundle:
+                openmp = bundle.read("LICENSE-LLVM-OpenMP")
+            (licenses / "LLVM-OpenMP-LICENSE.txt").write_bytes(openmp)
     notices.write(target.triple, licenses)
-    (licenses / "README.txt").write_text(licenses_index(linux), encoding="utf-8")
+    index = licenses_index(linux, llama=pin is not None, windows=bool(target.exe))
+    (licenses / "README.txt").write_text(index, encoding="utf-8")
 
 
 def main() -> int:
