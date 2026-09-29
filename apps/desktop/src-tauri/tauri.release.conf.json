@@ -19,6 +19,11 @@
       "minimumSystemVersion": "14.0",
       "signingIdentity": "-"
     },
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    },
     "linux": {
       "appimage": {
         "bundleMediaFramework": false
