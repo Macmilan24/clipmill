@@ -151,6 +151,7 @@ pub(crate) fn assemble(
 
         let (ordered, loops) = drop_repeated_loops(&ordered);
         invalid.extend(loops);
+        let ordered = without_annotations(ordered, |entry| entry.2.as_str());
         for (start, end, text, timing, p50, p10) in ordered {
             if matches!(timing, transcript::WordTiming::Interpolated) {
                 invalid.push(transcript::InvalidRegion {
@@ -187,7 +188,9 @@ pub(crate) fn assemble(
             index: segment.index,
             start_ticks: members[0].start_ticks,
             end_ticks: members[members.len() - 1].end_ticks,
-            text: segment.text.clone(),
+            text: strip_annotations(segment.text.as_str())
+                .parse()
+                .unwrap_or_else(|_| segment.text.clone()),
             first_word_index,
             word_count: count,
             confidence: transcript::Confidence {
@@ -648,9 +651,62 @@ fn producer(
     }
 }
 
+/// Recognition writes silence and sound markers as words: whisper.cpp's
+/// `[BLANK_AUDIO]` and `[music]`, or `(speaking in foreign language)`, which
+/// arrives as four. Nobody said them, so a transcript leaves them out: every
+/// word from an opening bracket to the one that closes it, within a segment.
+fn without_annotations<T>(words: Vec<T>, text: impl Fn(&T) -> &str) -> Vec<T> {
+    let mut kept = Vec::with_capacity(words.len());
+    let mut closing = None;
+    for word in words {
+        let text = text(&word).trim();
+        if let Some(close) = closing {
+            if text.contains(close) {
+                closing = None;
+            }
+            continue;
+        }
+        let close = match text.chars().next() {
+            Some('[') => ']',
+            Some('(') => ')',
+            _ => {
+                kept.push(word);
+                continue;
+            }
+        };
+        if !text.contains(close) {
+            closing = Some(close);
+        }
+    }
+    kept
+}
+
+/// A segment's text without the annotations recognition wrote into it. Only
+/// a bracket that closes is an annotation; one that never does is kept.
+fn strip_annotations(text: &str) -> String {
+    let mut kept = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find(['[', '(']) {
+        let close = if rest[open..].starts_with('[') {
+            ']'
+        } else {
+            ')'
+        };
+        let Some(length) = rest[open..].find(close) else {
+            break;
+        };
+        kept.push_str(&rest[..open]);
+        kept.push(' ');
+        rest = &rest[open + length + close.len_utf8()..];
+    }
+    kept.push_str(rest);
+    kept.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// The task kind this module executes.
 pub(crate) const KIND_TRANSCRIPT: &str = "speech-transcript";
-pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.1.0";
+/// 1.2.0 leaves out the annotations recognition writes as words.
+pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.2.0";
 const OUTPUT_FILE: &str = "transcript.json";
 
 /// Read the three published artifacts and publish the transcript that fuses
