@@ -20,6 +20,8 @@ export function runsOn(model: LibraryModel): string {
   switch (model.backend) {
     case 'mlx':
       return 'Apple silicon GPU';
+    case 'llama.cpp':
+      return 'Graphics card or CPU';
     case 'cpu':
     case 'onnx-cpu':
       return 'CPU';

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ModelLibraryPanel } from '../src/models/ModelLibraryPanel.js';
 import type { LibraryModel, ModelLibrary } from '../src/daemon/models.js';
@@ -391,6 +391,72 @@ describe('adding a model from Hugging Face', () => {
     expect(screen.getByRole('button', { name: /Add and download/ }).hasAttribute('disabled')).toBe(
       true,
     );
+  });
+
+  it('adds a GGUF editorial model with its vision projector on Windows and Linux', async () => {
+    const agent = vi
+      .spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/140.0');
+    try {
+      const models = show(installedLibrary());
+      models.inspection = {
+        repo: 'unsloth/Qwen3.5-4B-GGUF',
+        commit: 'e'.repeat(40),
+        capability: 'editorial',
+        license: 'apache-2.0',
+        licenseSpdx: 'Apache-2.0',
+        licenseAllowed: true,
+        problem: '',
+        weightChoices: [
+          {
+            path: 'Qwen3.5-4B-Q4_K_M.gguf',
+            bytes: 2_740_937_888,
+            suggestedName: 'qwen3.5-4b-q4-k-m',
+            suggestedTitle: 'Qwen3.5-4B-Q4_K_M',
+          },
+          {
+            path: 'Qwen3.5-4B-Q8_0.gguf',
+            bytes: 4_480_000_000,
+            suggestedName: 'qwen3.5-4b-q8-0',
+            suggestedTitle: 'Qwen3.5-4B-Q8_0',
+          },
+        ],
+        files: [
+          { path: 'mmproj-F16.gguf', bytes: 672_423_616, suggestedName: '', suggestedTitle: '' },
+        ],
+        suggestedName: 'qwen3.5-4b-q4-k-m',
+        suggestedTitle: 'Qwen3.5-4B-Q4_K_M',
+      };
+      fireEvent.click(await screen.findByRole('button', { name: /Add from Hugging Face/ }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Editorial AI' }));
+      expect(screen.getByText(/GGUF vision-language model/)).toBeTruthy();
+      fireEvent.change(screen.getByLabelText('Repository'), {
+        target: { value: 'unsloth/Qwen3.5-4B-GGUF' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+      expect(await screen.findByText('Model file')).toBeTruthy();
+      expect(screen.getByText(/Pinned with its vision projector/)).toBeTruthy();
+      expect(screen.getByText(/mmproj-F16.gguf/)).toBeTruthy();
+      // The model and its projector together.
+      fireEvent.click(screen.getByRole('button', { name: /Add and download · 3.2 GB/ }));
+      await waitFor(() => {
+        expect(models.asked('add')).toEqual([
+          [
+            'add',
+            {
+              repo: 'unsloth/Qwen3.5-4B-GGUF',
+              commit: 'e'.repeat(40),
+              capability: 'editorial',
+              weightsFile: 'Qwen3.5-4B-Q4_K_M.gguf',
+              name: 'qwen3.5-4b-q4-k-m',
+              title: 'Qwen3.5-4B-Q4_K_M',
+            },
+          ],
+        ]);
+      });
+    } finally {
+      agent.mockRestore();
+    }
   });
 
   it('warns that editorial models other than Qwen may not follow the format', async () => {
