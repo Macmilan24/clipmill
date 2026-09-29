@@ -100,6 +100,11 @@ pub(crate) const FACES_STAGE_KEY_VERSION: &str = "clipmill.faces-stage.v1";
 
 pub(crate) const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) const LEASE_TTL: Duration = Duration::from_secs(15);
+/// How long a task waits, spending no attempt, when the output it would make
+/// is already being made: the same recording analysed in two projects, or a
+/// run cancelled a moment ago that has not yet let go of its output.
+pub(crate) const IDENTICAL_OUTPUT_WAIT: Duration = Duration::from_secs(2);
+pub(crate) const IDENTICAL_OUTPUT_REASON: &str = "waiting: identical output";
 pub(crate) const DEVICE_PROFILE_KEY_VERSION: &str = "clipmill.device-profile.v1";
 pub(crate) const SYSTEM_PROJECT_ID: &str = "prj_00000000000000000000000000";
 const SCHEDULER_TICK: Duration = Duration::from_millis(100);
@@ -2889,6 +2894,15 @@ struct BuiltinExecutors {
 }
 
 impl BuiltinExecutors {
+    /// The same executors, over a store handle that remembers what one task
+    /// opens.
+    fn for_task(&self) -> Self {
+        Self {
+            artifacts: self.artifacts.for_task(),
+            ..self.clone()
+        }
+    }
+
     async fn run(
         &self,
         task: &LeasedTask,
@@ -3002,50 +3016,67 @@ async fn execute_task(executors: BuiltinExecutors, events: EventHub, task: Lease
     let database = executors.database.clone();
     let lease_id = task.lease_id.clone();
     let progress = ProgressSlot::default();
-    let work = async {
-        if let Ok(delay) = std::env::var("CLIPMILL_W4_STEP_DELAY_MS")
-            && let Ok(delay) = delay.parse::<u64>()
-        {
-            tokio::time::sleep(Duration::from_millis(delay.min(30_000))).await;
-        }
-        executors.run(&task, &progress).await
-    };
-    tokio::pin!(work);
-    let mut heartbeat = interval(HEARTBEAT_INTERVAL);
-    heartbeat.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    let outcome = loop {
-        tokio::select! {
-            result = &mut work => break Some(result),
-            _ = heartbeat.tick() => {
-                let now = now_millis();
-                if let Ok(task_events) = database
-                    .heartbeat_task(
-                        lease_id.clone(),
-                        now,
-                        now.saturating_add(duration_millis(LEASE_TTL)),
-                        progress.take(),
-                    )
-                    .await
-                {
-                    events.publish_all(task_events);
-                } else {
-                    tracing::debug!(task_id = task.task_id, "task lease heartbeat was rejected");
-                    progress.cancel();
-                    break None;
+    let executors = executors.for_task();
+    let outcome = {
+        let work = async {
+            if let Ok(delay) = std::env::var("CLIPMILL_W4_STEP_DELAY_MS")
+                && let Ok(delay) = delay.parse::<u64>()
+            {
+                tokio::time::sleep(Duration::from_millis(delay.min(30_000))).await;
+            }
+            executors.run(&task, &progress).await
+        };
+        tokio::pin!(work);
+        let mut heartbeat = interval(HEARTBEAT_INTERVAL);
+        heartbeat.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                result = &mut work => break Some(result),
+                _ = heartbeat.tick() => {
+                    let now = now_millis();
+                    if let Ok(task_events) = database
+                        .heartbeat_task(
+                            lease_id.clone(),
+                            now,
+                            now.saturating_add(duration_millis(LEASE_TTL)),
+                            progress.take(),
+                        )
+                        .await
+                    {
+                        events.publish_all(task_events);
+                    } else {
+                        tracing::debug!(task_id = task.task_id, "task lease heartbeat was rejected");
+                        progress.cancel();
+                        break None;
+                    }
                 }
             }
         }
     };
-    let Some(outcome) = outcome else {
-        return;
-    };
+    // The work is finished or dropped. A cancelled run's half-made output
+    // must not keep its key in flight for the next run that wants it.
+    executors.artifacts.abandon_unfinished().await;
+    if let Some(outcome) = outcome {
+        record_outcome(&database, &events, &task, outcome).await;
+    }
+}
+
+/// Write down how a built-in task's work ended: its output, a wait for an
+/// identical output another lease is making, or a failure.
+async fn record_outcome(
+    database: &DbHandle,
+    events: &EventHub,
+    task: &LeasedTask,
+    outcome: Result<ArtifactId, TaskExecutionError>,
+) {
+    let lease_id = task.lease_id.clone();
     match outcome {
         Ok(artifact_id) => {
             let response = artifact_id.to_string().into_bytes();
             let expected_response = response.clone();
             match database
                 .complete_task(
-                    lease_id.clone(),
+                    lease_id,
                     artifact_id,
                     Sha256::digest(&response).into(),
                     response,
@@ -3071,6 +3102,23 @@ async fn execute_task(executors: BuiltinExecutors, events: EventHub, task: Lease
                 }
             }
         }
+        Err(failure) if failure.in_flight => {
+            let now = now_millis();
+            match database
+                .defer_task(
+                    lease_id,
+                    IDENTICAL_OUTPUT_REASON,
+                    now,
+                    now.saturating_add(duration_millis(IDENTICAL_OUTPUT_WAIT)),
+                )
+                .await
+            {
+                Ok(task_events) => events.publish_all(task_events),
+                Err(error) => {
+                    tracing::warn!(task_id = task.task_id, %error, "task wait could not be persisted");
+                }
+            }
+        }
         Err(failure) => match database
             .fail_task(
                 lease_id,
@@ -3092,6 +3140,8 @@ async fn execute_task(executors: BuiltinExecutors, events: EventHub, task: Lease
 pub(crate) struct TaskExecutionError {
     classification: FailureClass,
     detail: String,
+    /// Another lease is making this task's output: wait for it, not fail.
+    in_flight: bool,
 }
 
 impl TaskExecutionError {
@@ -3099,6 +3149,7 @@ impl TaskExecutionError {
         Self {
             classification: FailureClass::Transient,
             detail,
+            in_flight: false,
         }
     }
 
@@ -3106,6 +3157,16 @@ impl TaskExecutionError {
         Self {
             classification: FailureClass::Deterministic,
             detail: detail.into(),
+            in_flight: false,
+        }
+    }
+
+    /// The artifact store has this task's output in flight for another lease.
+    pub(crate) fn in_flight() -> Self {
+        Self {
+            classification: FailureClass::Transient,
+            detail: "artifact key is already in flight".to_owned(),
+            in_flight: true,
         }
     }
 }
@@ -3177,9 +3238,7 @@ async fn execute_probe_artifact(
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?
     {
         PrepareOutcome::Hit(lease) => Ok(lease.artifact_id()),
-        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::transient(
-            "source-map artifact key is already in flight".to_owned(),
-        )),
+        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::in_flight()),
         PrepareOutcome::Miss(staging) => {
             let path = "source-map.json"
                 .parse::<ArtifactPath>()
@@ -3293,9 +3352,7 @@ async fn execute_device_artifact(
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?
     {
         PrepareOutcome::Hit(lease) => Ok(lease.artifact_id()),
-        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::transient(
-            "device profile artifact key is already in flight".to_owned(),
-        )),
+        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::in_flight()),
         PrepareOutcome::Miss(staging) => {
             let path = "profile.json"
                 .parse::<ArtifactPath>()

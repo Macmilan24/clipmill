@@ -762,9 +762,7 @@ pub(crate) async fn prepare_or_hit(
         .map_err(|error| TaskExecutionError::transient(error.to_string()))?
     {
         PrepareOutcome::Hit(lease) => Ok(Prepared::Hit(lease.artifact_id())),
-        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::transient(
-            "artifact key is already in flight".to_owned(),
-        )),
+        PrepareOutcome::InFlight { .. } => Err(TaskExecutionError::in_flight()),
         PrepareOutcome::Miss(staging) => Ok(Prepared::Staged(staging)),
     }
 }

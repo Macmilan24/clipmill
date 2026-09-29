@@ -148,6 +148,8 @@ export function deliveryWaitText(stage: DeliveryStage): string {
       return 'Trying this step again';
     case 'retry: lease expired':
       return 'Restarting an interrupted step';
+    case 'waiting: identical output':
+      return 'Waiting for the same step in another run';
     default:
       return stage.waitReason || 'waiting';
   }
