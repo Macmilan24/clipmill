@@ -26,7 +26,9 @@ pub struct Layout {
 impl Layout {
     /// The layout of the bundle this shell runs from, when it runs from one.
     pub fn find(app: &tauri::AppHandle) -> Option<Self> {
-        let resources = app.path().resource_dir().ok()?.join("resources");
+        // On Windows Tauri gives this folder in its `\\?\` form. The daemon
+        // passes it on to uv, Python and FFmpeg, so use the ordinary form.
+        let resources = dunce::simplified(&app.path().resource_dir().ok()?).join("resources");
         if !resources.join("engine").join("engine.json").is_file() {
             return None;
         }

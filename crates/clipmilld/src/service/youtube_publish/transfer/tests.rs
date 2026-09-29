@@ -381,7 +381,8 @@ async fn publish_requested_while_previous_worker_retires_runs_once() {
         .remove(0);
     service.dispatch_publication(&pending).await;
     release.notify_one();
-    tokio::time::timeout(std::time::Duration::from_secs(2), done_rx)
+    // Only a guard against a hang: on a Windows runner this can take seconds.
+    tokio::time::timeout(std::time::Duration::from_secs(30), done_rx)
         .await
         .unwrap()
         .unwrap();
