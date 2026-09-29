@@ -465,53 +465,55 @@ async fn a_choice_is_kept_until_its_model_is_removed() {
 /// installed choice replaces it for every editorial stage and for titles.
 #[tokio::test]
 async fn an_editorial_choice_covers_every_stage_the_model_serves() {
+    // A person's model in this platform's format: an MLX folder on a Mac, a
+    // GGUF model for llama.cpp on a Windows or Linux PC.
+    let (runtime, file, bundled) = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        ("mlx", "model.safetensors", "qwen3-5-editorial-mlx")
+    } else if cfg!(all(
+        any(target_os = "windows", target_os = "linux"),
+        target_arch = "x86_64"
+    )) {
+        ("llama.cpp", "model.gguf", "qwen3-5-editorial-gguf")
+    } else {
+        return;
+    };
     let fixture = Fixture::new();
     let library = fixture.library(None);
-    let body = b"not really mlx weights".to_vec();
+    let body = b"not really weights".to_vec();
     let mut manifest = tiny_manifest("test-editorial-choice", &body);
     manifest.capability = "editorial".to_owned();
-    manifest.runtime = "mlx".to_owned();
-    manifest.backend = "mlx".to_owned();
-    manifest.files[0].path = "model.safetensors".to_owned();
+    manifest.runtime = runtime.to_owned();
+    manifest.backend = runtime.to_owned();
+    manifest.files[0].path = file.to_owned();
     register(&fixture, manifest);
     fs::create_dir_all(fixture.paths.weights.join("test-editorial-choice")).unwrap();
     fs::write(
         fixture
             .paths
             .weights
-            .join("test-editorial-choice/model.safetensors"),
+            .join("test-editorial-choice")
+            .join(file),
         &body,
     )
     .unwrap();
 
-    let supported = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+    // The bundled model is not installed and this one is: it stands in.
     let fallback = library.effective_bindings(&Bindings::portable());
     let proposing = fallback.for_stage("editorial-propose").expect("bound");
-    if supported {
-        // The bundled model is not installed and this one is: it stands in.
-        assert_eq!(proposing.model, "test-editorial-choice");
-        assert_eq!(proposing.selected_by, "installed_fallback");
-    } else {
-        assert_eq!(proposing.model, "qwen3-5-editorial-mlx");
-    }
+    assert_eq!(proposing.model, "test-editorial-choice");
+    assert_eq!(proposing.selected_by, "installed_fallback");
 
-    fixture.place("qwen3-5-editorial-mlx");
+    fixture.place(bundled);
     let before = library.effective_bindings(&Bindings::portable());
     assert_eq!(
         before.for_stage("editorial-propose").expect("bound").model,
-        "qwen3-5-editorial-mlx",
+        bundled,
         "the installed default comes back"
     );
 
-    let choice = library.set_choice("editorial", "test-editorial-choice");
-    if !supported {
-        assert!(
-            matches!(choice, Err(Refusal::Invalid(_))),
-            "MLX needs Apple silicon"
-        );
-        return;
-    }
-    choice.expect("an installed MLX model is choosable");
+    library
+        .set_choice("editorial", "test-editorial-choice")
+        .expect("an installed model this platform runs is choosable");
     let after = library.effective_bindings(&Bindings::portable());
     for stage in [
         "editorial-propose",
@@ -524,7 +526,7 @@ async fn an_editorial_choice_covers_every_stage_the_model_serves() {
         assert_eq!(
             binding.implementation,
             format!("{}/custom/test-editorial-choice", {
-                implementations::for_stage_and_model(stage, "qwen3-5-editorial-mlx")
+                implementations::for_stage_and_model(stage, bundled)
                     .expect("bundled")
                     .name
             })
