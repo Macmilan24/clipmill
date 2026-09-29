@@ -199,7 +199,10 @@ def fail_with_trace(context, answers, trace, *, allow_all_failed=False):
         if not re.fullmatch(r"tsk_[A-Za-z0-9]+", context.lease.task_id):
             raise DeterministicTaskError("invalid diagnostic task identity")
         destination = root / (context.lease.task_id + ".json")
-        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        # O_NOFOLLOW is POSIX only, and O_BINARY Windows only, where a
+        # descriptor otherwise rewrites the bytes as text.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+        fd = os.open(destination, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "wb") as handle:
             handle.write(canonical_bytes(trace))
         if allow_all_failed or any(
