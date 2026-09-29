@@ -21,7 +21,9 @@ import {
   reconnectDaemon,
   subscribeDaemonState,
 } from './daemon/client.js';
+import { daemonApi } from './daemon/api.js';
 import { renderScreen } from './screens/registry.js';
+import { engineItems, runItems, useEngineWork } from './shell/activity.js';
 import { AppSidebar } from './shell/Sidebar.js';
 import { useUpdateNotice } from './shell/updates.js';
 import { TopBar } from './shell/TopBar.js';
@@ -87,6 +89,17 @@ export function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const analysisActivity = useAnalysisActivity(state);
+  // The tray: analyses and exports from the tracker, and the engine's own work,
+  // read more often while the tray is open.
+  const [trayOpen, setTrayOpen] = useState(false);
+  const engineWork = useEngineWork(state.status === 'connected', trayOpen, daemonApi);
+  const activityItems = useMemo(
+    () => [
+      ...runItems(analysisActivity.runs, analysisActivity.projectNames),
+      ...engineItems(engineWork),
+    ],
+    [analysisActivity.runs, analysisActivity.projectNames, engineWork],
+  );
 
   // Restore both choices before the first React paint.
   useLayoutEffect(() => {
@@ -225,6 +238,18 @@ export function App(): JSX.Element {
                 state={state}
                 profile={profile}
                 update={update}
+                activity={{
+                  items: activityItems,
+                  open: trayOpen,
+                  onOpenChange: setTrayOpen,
+                  onOpen: (target) => {
+                    if (target.kind === 'analysis') {
+                      openAnalysis(target.projectId, target.jobId, 'library');
+                    } else {
+                      navigate(target.sectionId);
+                    }
+                  },
+                }}
               />
             )}
             <main

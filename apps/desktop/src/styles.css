@@ -122,6 +122,46 @@
 .studio-topbar {
   background: var(--cm-bg-top);
 }
+.activity-trigger {
+  gap: 6px;
+  color: var(--cm-text-secondary);
+}
+.activity-count {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-foreground, #fff);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+.activity-row {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 16px;
+  text-align: left;
+}
+.activity-row:hover,
+.activity-row:focus-visible {
+  background: var(--cm-recessed);
+}
+.activity-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--cm-recessed);
+  color: var(--cm-text-secondary);
+}
+.activity-icon > svg {
+  width: 14px;
+  height: 14px;
+}
 .page-frame {
   width: 100%;
   max-width: 1280px;

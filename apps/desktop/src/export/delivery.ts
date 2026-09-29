@@ -12,7 +12,7 @@ import type { Job, QueuedExport, Task } from '../daemon/client.js';
 
 const PACKAGE_KIND = 'export.package.v1';
 const RENDER_KIND = 'render.clip.v1';
-const EXPORT_JOB_KIND = 'export-clip';
+export const EXPORT_JOB_KIND = 'export-clip';
 /** How often the job is re-read while it runs. A local socket; cheap. */
 const POLL_MILLIS = 750;
 /** How long to wait before asking again after a read that failed. */
