@@ -6,7 +6,9 @@ import argparse
 import json
 import logging
 import os
+import platform
 import signal
+import sys
 import threading
 from pathlib import Path
 
@@ -25,6 +27,7 @@ from clipmill_worker_sdk import (
 )
 
 from .inference import look, prompt_digest, propose, review
+from .runtime import implementation_suffix
 
 CAPABILITIES = (
     "editorial-look",
@@ -85,13 +88,14 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
                 context.lease.job_id,
                 context.cancellation,
             )
-        from .runtime import LocalModel
+        from .runtime import open_runtime
 
-        return LocalModel(model.root, context.cancellation)
+        return open_runtime(model, context.cancellation)
 
+    route = "-cloud" if cloud else implementation_suffix(model)
     producer = {
         "stage": payload.stage,
-        "implementation": f"clipmill-worker-editorial@0.2.0/{operation}{'-cloud' if cloud else ''}",
+        "implementation": f"clipmill-worker-editorial@0.2.0/{operation}{route}",
         **identity,
         "prompt_version": f"{operation}.v1/{payload.prompt_digest}",
         "decoding": {
@@ -211,7 +215,7 @@ def fail_with_trace(context, answers, trace, *, allow_all_failed=False):
 
 
 def execute_look(context, inputs, model, payload):
-    from .runtime import LocalModel
+    from .runtime import open_runtime
 
     def read(kind, name):
         entry = inputs.require(kind)
@@ -235,7 +239,7 @@ def execute_look(context, inputs, model, payload):
     identity = {"route": "local", "model": {"name": model.name, "digest": model.digest}}
     producer = {
         "stage": payload.stage,
-        "implementation": "clipmill-worker-editorial@0.2.0/look",
+        "implementation": f"clipmill-worker-editorial@0.2.0/look{implementation_suffix(model)}",
         **identity,
         "prompt_version": f"look.v1/{payload.prompt_digest}",
         "decoding": {
@@ -247,7 +251,7 @@ def execute_look(context, inputs, model, payload):
     }
     traces = []
     checks = look(
-        lambda: LocalModel(model.root, context.cancellation),
+        lambda: open_runtime(model, context.cancellation),
         candidates,
         judgments,
         frames,
@@ -286,11 +290,17 @@ def main() -> int:
         execute,
         capabilities=CAPABILITIES,
         description="ClipMill local editorial worker",
-        backend="mlx",
-        # Loads whichever MLX model the lease binds, so the ceiling follows
-        # the machine; the floor is the bundled Qwen3.5 9B and its runtime.
+        backend=local_backend(),
+        # Loads whichever model the lease binds, so the ceiling follows the
+        # machine; the floor is the bundled Qwen3.5 9B and its runtime.
         max_memory_bytes=memory_ceiling(5_977_071_067 + 2 * 1024**3),
     )
+
+
+def local_backend() -> str:
+    """The runtime this machine's editorial models run on: MLX on Apple
+    silicon, llama.cpp everywhere else."""
+    return "mlx" if sys.platform == "darwin" and platform.machine() == "arm64" else "llama.cpp"
 
 
 def run_worker(executor, *, capabilities, description, backend, max_memory_bytes) -> int:

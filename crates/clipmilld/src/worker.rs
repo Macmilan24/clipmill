@@ -51,7 +51,7 @@ const PREVIOUS_PROTOCOL: &str = "1.1";
 /// actually knows about itself. Mapping to an accelerator class is the
 /// daemon's job, and doing it in one place is what stops "mlx" and "metal"
 /// from drifting into two different meanings.
-const BACKENDS: [(&str, BackendRequirement); 7] = [
+const BACKENDS: [(&str, BackendRequirement); 8] = [
     ("cpu", BackendRequirement::CpuOnly),
     // Explicitly launched cloud adapters use local CPU/RAM for request handling,
     // not a local accelerator. Consent remains a per-task policy check.
@@ -62,6 +62,9 @@ const BACKENDS: [(&str, BackendRequirement); 7] = [
     // Protocol 1.1 workers named the chip, not the runtime.
     ("metal", BackendRequirement::Accelerator("metal")),
     ("cuda", BackendRequirement::Accelerator("cuda")),
+    // Windows and Linux run editorial models in the pinned llama.cpp server,
+    // admitted once its runtime check has passed on this machine.
+    ("llama.cpp", BackendRequirement::Accelerator("llama.cpp")),
 ];
 
 /// What a backend needs the machine to have.

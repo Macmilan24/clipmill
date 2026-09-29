@@ -19,21 +19,36 @@ import type { HubInspection, ModelLibrary } from '../daemon/models.js';
 import { formatBytes } from '../deviceProfile.js';
 import { reasonOf } from './useModelLibrary.js';
 
-/** The jobs whose worker loads whatever model it is handed. */
-const JOBS = [
-  {
-    capability: 'asr',
-    title: 'Transcription',
-    detail: 'A whisper.cpp model: one GGML .bin file.',
-    example: 'ggerganov/whisper.cpp',
-  },
-  {
-    capability: 'editorial',
-    title: 'Editorial AI',
-    detail: 'An MLX vision-language model folder. Runs on Apple silicon.',
-    example: 'mlx-community/Qwen3.5-9B-4bit',
-  },
-] as const;
+/**
+ * The jobs whose worker loads whatever model it is handed, in the format this
+ * computer runs: an MLX folder on Apple silicon, and on Windows and Linux a
+ * GGUF model with its vision projector, which llama.cpp runs.
+ */
+export function jobsFor(userAgent: string) {
+  const appleSilicon = /Mac/i.test(userAgent);
+  return [
+    {
+      capability: 'asr',
+      title: 'Transcription',
+      detail: 'A whisper.cpp model: one GGML .bin file.',
+      example: 'ggerganov/whisper.cpp',
+    },
+    appleSilicon
+      ? {
+          capability: 'editorial',
+          title: 'Editorial AI',
+          detail: 'An MLX vision-language model folder. Runs on Apple silicon.',
+          example: 'mlx-community/Qwen3.5-9B-4bit',
+        }
+      : {
+          capability: 'editorial',
+          title: 'Editorial AI',
+          detail:
+            'A GGUF vision-language model and its vision projector (mmproj). Runs on the graphics card, or the CPU.',
+          example: 'unsloth/Qwen3.5-9B-GGUF',
+        },
+  ] as const;
+}
 
 /** The registry's rule for a model name, checked here to say so early. */
 export function validModelName(name: string): boolean {
@@ -82,14 +97,18 @@ export function AddModelSheet({
     }
   }, [open]);
 
-  const job = JOBS.find((candidate) => candidate.capability === capability) ?? JOBS[0];
+  const jobs = jobsFor(typeof navigator === 'undefined' ? '' : navigator.userAgent);
+  const job = jobs.find((candidate) => candidate.capability === capability) ?? jobs[0];
   const chosenWeights = inspection?.weightChoices.find((file) => file.path === weightsFile);
+  // A file to choose (whisper.cpp, GGUF) is pinned with any companion the
+  // engine lists, a GGUF model's projector; an MLX folder is pinned whole.
+  const choosing = inspection !== null && inspection.weightChoices.length > 0;
   const pinned =
     inspection === null
       ? []
-      : capability === 'asr'
+      : choosing
         ? chosenWeights
-          ? [chosenWeights]
+          ? [chosenWeights, ...inspection.files]
           : []
         : inspection.files;
   const bytes = pinned.reduce((total, file) => total + file.bytes, 0);
@@ -127,7 +146,7 @@ export function AddModelSheet({
         repo: inspection.repo,
         commit: inspection.commit,
         capability,
-        weightsFile: capability === 'asr' ? weightsFile : '',
+        weightsFile: choosing ? weightsFile : '',
         name: name.trim(),
         title: title.trim(),
       });
@@ -172,7 +191,7 @@ export function AddModelSheet({
               }}
               className="gap-2"
             >
-              {JOBS.map((candidate) => (
+              {jobs.map((candidate) => (
                 <label key={candidate.capability} className="add-model-choice">
                   <RadioGroupItem value={candidate.capability} aria-label={candidate.title} />
                   <span className="min-w-0">
@@ -281,9 +300,11 @@ export function AddModelSheet({
                 </p>
               )}
 
-              {inspection.problem === '' && capability === 'asr' && (
+              {inspection.problem === '' && choosing && (
                 <fieldset>
-                  <legend className="mb-2 text-xs font-medium">Weights file</legend>
+                  <legend className="mb-2 text-xs font-medium">
+                    {capability === 'asr' ? 'Weights file' : 'Model file'}
+                  </legend>
                   <RadioGroup
                     value={weightsFile}
                     onValueChange={(value) => {
@@ -313,20 +334,31 @@ export function AddModelSheet({
 
               {inspection.problem === '' && capability === 'editorial' && (
                 <>
-                  <details className="preference-disclosure">
-                    <summary>
-                      <ChevronDown className="size-3.5" />
-                      {inspection.files.length} files pinned together
-                    </summary>
-                    <ul className="add-model-file-list">
+                  {choosing ? (
+                    <p className="text-[11px] text-[var(--cm-text-secondary)]">
+                      Pinned with its vision projector:{' '}
                       {inspection.files.map((file) => (
-                        <li key={file.path}>
-                          <span className="mono min-w-0 flex-1 truncate">{file.path}</span>
-                          <span className="mono shrink-0">{formatBytes(file.bytes)}</span>
-                        </li>
+                        <span key={file.path} className="mono">
+                          {file.path} ({formatBytes(file.bytes)})
+                        </span>
                       ))}
-                    </ul>
-                  </details>
+                    </p>
+                  ) : (
+                    <details className="preference-disclosure">
+                      <summary>
+                        <ChevronDown className="size-3.5" />
+                        {inspection.files.length} files pinned together
+                      </summary>
+                      <ul className="add-model-file-list">
+                        {inspection.files.map((file) => (
+                          <li key={file.path}>
+                            <span className="mono min-w-0 flex-1 truncate">{file.path}</span>
+                            <span className="mono shrink-0">{formatBytes(file.bytes)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   <p className="add-model-caution">
                     ClipMill&apos;s editorial prompts are tuned for Qwen3.5 9B. Another model may
                     not follow the editorial format; an analysis says so if it fails. Choose it for

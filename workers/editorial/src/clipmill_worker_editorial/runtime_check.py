@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import resource
 import sys
 import time
 from pathlib import Path
@@ -31,10 +30,11 @@ from clipmill.worker.v1 import worker_pb2
 from clipmill_worker_sdk import CancellationToken
 from clipmill_worker_sdk.weights import verify_model
 
-from .runtime import LocalModel
+from .runtime import MLX_RUNTIME, open_runtime, runtime_name
 
 SCHEMA_VERSION = "clipmill.editorial.runtime.v1"
-RUNTIME = "mlx-vlm@0.7.1/clipmill-json-v2"
+# The MLX runtime's name, which tools/editorial-runtime-check.py compares.
+RUNTIME = MLX_RUNTIME
 READY_SCHEMA = {
     "type": "object",
     "properties": {"ready": {"const": True}},
@@ -52,25 +52,31 @@ def prove(binding: worker_pb2.ModelBinding, receipt: Path, fingerprint: str) -> 
 
     model = verify_model(binding)
     started = time.monotonic()
-    runtime = LocalModel(model.root, CancellationToken())
+    runtime = open_runtime(model, CancellationToken())
     try:
         raw, tokens = runtime.generate(
             'Reply with the JSON object {"ready":true}.', READY_SCHEMA, 32
         )
         if json.loads(raw) != {"ready": True}:
             raise RuntimeError("the model did not complete the readiness JSON")
+        timings = getattr(runtime, "last_timings", {})
     finally:
         runtime.close()
     document = {
         "schema_version": SCHEMA_VERSION,
-        "runtime": RUNTIME,
+        "runtime": runtime_name(model),
         "hardware_fingerprint": fingerprint,
         "model_digest": model.digest,
         "validated": True,
         "elapsed_millis": max(1, int((time.monotonic() - started) * 1000)),
-        "peak_resident_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        "peak_resident_bytes": _peak_resident_bytes(),
         "tokens": tokens,
     }
+    if timings:
+        # What llama-server measured for this reply: reading the prompt and
+        # writing the answer, in tokens a second.
+        document["prompt_tokens_per_second"] = timings.get("prompt_per_second", 0)
+        document["output_tokens_per_second"] = timings.get("predicted_per_second", 0)
     pending = receipt.with_suffix(".pending")
     descriptor = os.open(pending, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, "w") as handle:
@@ -79,6 +85,18 @@ def prove(binding: worker_pb2.ModelBinding, receipt: Path, fingerprint: str) -> 
         os.fsync(handle.fileno())
     os.replace(pending, receipt)
     return document
+
+
+def _peak_resident_bytes() -> int:
+    """This process's peak memory where the platform reports it (macOS in
+    bytes, Linux in kilobytes), and 0 on Windows. For a GGUF model the
+    weights live in llama-server, so this is the worker alone."""
+    try:
+        import resource
+    except ImportError:
+        return 0
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak if sys.platform == "darwin" else peak * 1024
 
 
 def main() -> int:

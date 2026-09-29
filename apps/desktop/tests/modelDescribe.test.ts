@@ -48,6 +48,7 @@ describe('the worker a model needs', () => {
 describe('model library wording', () => {
   it('says where a model runs in words, not backend names', () => {
     expect(runsOn(libraryModel('a', { backend: 'mlx' }))).toBe('Apple silicon GPU');
+    expect(runsOn(libraryModel('g', { backend: 'llama.cpp' }))).toBe('Graphics card or CPU');
     expect(runsOn(libraryModel('b', { backend: 'onnx-cpu' }))).toBe('CPU');
     expect(runsOn(libraryModel('c', { backend: 'cuda' }))).toBe('cuda');
   });

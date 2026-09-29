@@ -388,6 +388,9 @@ impl ModelLibrary {
         for manifest in &manifests {
             let (install, installed_bytes) = self.install_state(manifest);
             let supported = supported(manifest);
+            if !self.offered(manifest) {
+                continue;
+            }
             if manifest.catalog.recommended
                 && manifest.origin == ModelOrigin::Bundled
                 && supported.is_ok()
@@ -415,6 +418,7 @@ impl ModelLibrary {
                 let mut listed = manifests
                     .iter()
                     .filter(|manifest| manifest.capability == job.capability)
+                    .filter(|manifest| self.offered(manifest))
                     .filter(|manifest| {
                         implementations::for_stage_and_model(job.stages[0], &manifest.name)
                             .is_some()
@@ -461,6 +465,13 @@ impl ModelLibrary {
             recommended_missing_bytes,
             recommended_missing,
         }
+    }
+
+    /// Whether the library offers a model on this computer: one it can run,
+    /// or one some of which is on disk, where the list is how it gets
+    /// removed. A Windows PC is not offered the Mac's MLX models at all.
+    fn offered(&self, manifest: &ModelManifest) -> bool {
+        supported(manifest).is_ok() || self.install_state(manifest).0 != Install::Missing
     }
 
     /// The most accurate model for a job that this computer can run and hold
@@ -634,8 +645,11 @@ impl ModelLibrary {
                     .map(|implementation| (implementation, Reason::Raw(binding.clone())))
             })
             .or_else(|| {
-                registered
+                // One this platform runs, where there is one: on Windows the
+                // default editorial model is the GGUF build, not the Mac's.
+                candidates
                     .iter()
+                    .chain(registered.iter())
                     .copied()
                     .find(|implementation| !implementation.opt_in)
                     .map(|implementation| (implementation, Reason::Decided("default")))
@@ -1246,6 +1260,15 @@ fn display_reason(selected_by: &str) -> &'static str {
 pub(crate) fn supported(manifest: &ModelManifest) -> Result<(), &'static str> {
     if manifest.runtime == "mlx" && !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return Err("Runs only on Macs with Apple silicon.");
+    }
+    // The pinned llama.cpp server ships in the Windows and Linux builds only.
+    if manifest.runtime == "llama.cpp"
+        && !cfg!(all(
+            any(target_os = "windows", target_os = "linux"),
+            target_arch = "x86_64"
+        ))
+    {
+        return Err("Runs on Windows and Linux PCs; a Mac runs the MLX build.");
     }
     Ok(())
 }
